@@ -1,0 +1,90 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"paths": {
+			"@octocodeai/octocode-telemetry": [
+				"./packages/telemetry/src/index.ts"
+			],
+			"@octocodeai/octocode-telemetry/testing": [
+				"./packages/telemetry/src/testing/index.ts"
+			],
+			"@octocodeai/octocode-telemetry/render": [
+				"./packages/telemetry/src/render.ts"
+			],
+			"@octocodeai/octocode-codemode": [
+				"./packages/codemode/src/index.ts"
+			],
+			"@octocodeai/octocode-codemode/cloudflare": [
+				"./packages/codemode/src/cloudflare.ts"
+			],
+			"@octocodeai/octocode-codemode/declarations": [
+				"./packages/codemode/src/declarations.ts"
+			],
+			"@octocodeai/octocode-codemode/portable": [
+				"./packages/codemode/src/portable.ts"
+			],
+			"@octocodeai/octocode-codemode/source": [
+				"./packages/codemode/src/source.ts"
+			],
+			"@octocodeai/octocode-codemode/worker": [
+				"./packages/codemode/src/runtime/worker.ts"
+			],
+			"@octocodeai/octocode-mcp": [
+				"./packages/mcp/src/index.ts"
+			],
+			"@octocodeai/octocode-mcp/oauth": [
+				"./packages/mcp/src/oauth/index.ts"
+			],
+			"@octocodeai/octocode-mcp/testing": [
+				"./packages/mcp/src/testing/index.ts"
+			],
+			"@octocodeai/octocode-ai": [
+				"./packages/ai/src/index.ts"
+			],
+			"@octocodeai/octocode-ai/oauth": [
+				"./packages/ai/src/oauth.ts"
+			],
+			"@octocodeai/octocode-ai/*": [
+				"./packages/ai/src/*.ts",
+				"./packages/ai/src/providers/*.ts"
+			],
+			"@octocodeai/octocode-ai/dist/*": [
+				"./packages/ai/src/*"
+			],
+			"@octocodeai/octocode-agent-core": [
+				"./packages/agent/src/index.ts"
+			],
+			"@octocodeai/octocodecode": [
+				"./packages/coding-agent/src/index.ts"
+			],
+			"@octocodeai/octocodecode/hooks": [
+				"./packages/coding-agent/src/core/hooks/index.ts"
+			],
+			"@octocodeai/octocodecode/*": [
+				"./packages/coding-agent/src/*"
+			],
+			"typebox": [
+				"./node_modules/typebox"
+			],
+			"@octocodeai/octocode-tui": [
+				"./packages/tui/src/index.ts"
+			],
+			"@octocodeai/octocode-tui/*": [
+				"./packages/tui/src/*"
+			]
+		}
+	},
+	"include": [
+		"scripts/model-catalog-protocol.ts",
+		"scripts/model-catalog-protocol.test.ts",
+		"packages/*/src/**/*",
+		"packages/*/test/**/*",
+		"packages/coding-agent/examples/**/*"
+	],
+	"exclude": [
+		"**/dist/**"
+	]
+}
