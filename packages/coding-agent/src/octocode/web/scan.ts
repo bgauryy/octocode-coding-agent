@@ -87,7 +87,7 @@ export function tagScanner(
 		for (let at = lt + 1; ;) {
 			if (ends[at] !== 0) {
 				end = ends[at]!;
-				token = tokens[at]! - 1;
+				token = tokens[at] - 1;
 				break;
 			}
 			if (at >= text.length) {
@@ -110,7 +110,7 @@ export function tagScanner(
 			} else at += 1;
 		}
 		for (let index = read.length - 1; index >= 0; index -= 1) {
-			const at = read[index]!;
+			const at = read[index];
 			if (isToken(at)) token = at;
 			ends[at] = end;
 			tokens[at] = token + 1;

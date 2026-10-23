@@ -116,7 +116,7 @@ function mask(command: string, bodies: string[]): string {
 	const heredocs: Array<{ tag: string; tabs: boolean; index: number; literal: boolean }> = [];
 	let index = 0;
 	while (index < command.length) {
-		const char = command[index]!;
+		const char = command[index];
 		if (char === "\n" && heredocs.length > 0) {
 			out += "\n";
 			index++;
@@ -128,15 +128,15 @@ function mask(command: string, bodies: string[]): string {
 				const stop = end < 0 ? command.length : end;
 				const line = command.slice(index, stop);
 				index = stop + 1;
-				const { tag, tabs, index: body } = heredocs[0]!;
+				const { tag, tabs, index: body } = heredocs[0];
 				if ((tabs ? line.replace(/^\t+/, "") : line) === tag) {
 					bodies[body] = lines.splice(0).join("\n");
 					read.push(heredocs.shift()!);
 				} else lines.push(line);
 			}
 			if (heredocs.length > 0) {
-				bodies[heredocs[0]!.index] = lines.join("\n");
-				read.push(heredocs[0]!);
+				bodies[heredocs[0].index] = lines.join("\n");
+				read.push(heredocs[0]);
 			}
 			// The shell expands an unquoted heredoc body: its substitutions run whether or not the body feeds a shell.
 			for (const { index: body, literal } of read) {
@@ -182,7 +182,7 @@ function mask(command: string, bodies: string[]): string {
 		const heredoc = char === "<" && command[index - 1] !== "<" ? HEREDOC.exec(command.slice(index)) : null;
 		if (heredoc && command[index + 2] !== "<") {
 			heredocs.push({
-				tag: heredoc[3]!,
+				tag: heredoc[3],
 				tabs: heredoc[1] === "-",
 				index: bodies.length,
 				literal: heredoc[2] !== "",
@@ -233,7 +233,7 @@ function words(segment: string): string[] {
 	let wrapper: string | undefined;
 	let operands = 0;
 	while (tokens.length > 0) {
-		const token = tokens[0]!;
+		const token = tokens[0];
 		if (WRAPPERS.has(base(token))) {
 			wrapper = base(token);
 			operands = LEADING_OPERANDS[wrapper] ?? 0;
@@ -371,7 +371,7 @@ function writesDevice(tokens: string[]): string | undefined {
 /** For a shell command: the script it runs from `-c`, or whether it reads its script from standard input. */
 function shellScript(tokens: string[]): { script?: string; stdin: boolean } {
 	for (let at = 1; at < tokens.length; at++) {
-		const token = tokens[at]!;
+		const token = tokens[at];
 		if (token === "--") return { stdin: at + 1 >= tokens.length };
 		if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(token)) return { script: tokens[at + 1] ?? "", stdin: false };
 		if (/^-[a-zA-Z]*s/.test(token)) return { stdin: true };
@@ -433,7 +433,7 @@ function destructiveIn(command: string, start: Place): string | undefined {
 	let place = start;
 	let piped: string[] = [];
 	for (let at = 0; at < parts.length; at += 2) {
-		const tokens = words(parts[at]!);
+		const tokens = words(parts[at]);
 		const fromPipe = parts[at - 1] === "|" ? piped : [];
 		piped = emitted(tokens, bodies).map(unhide);
 		const name = base(tokens[0] ?? "");
@@ -473,7 +473,7 @@ export function commandNames(command: string): string[] {
 	const parts = mask(command, bodies).split(SEPARATOR);
 	const names: string[] = [];
 	for (let at = 0; at < parts.length; at += 2) {
-		const tokens = words(parts[at]!);
+		const tokens = words(parts[at]);
 		const name = base(unhide(tokens[0] ?? ""));
 		if (!name || BODY.test(name)) continue;
 		names.push(name);
@@ -565,7 +565,7 @@ const long =
 	(...names: string[]): OptionTest =>
 	(option) => {
 		if (!option.startsWith("--")) return false;
-		const flag = option.slice(2).split("=")[0]!;
+		const flag = option.slice(2).split("=")[0];
 		return flag !== "" && names.some((name) => name.startsWith(flag));
 	};
 /** A short option anywhere in a cluster (`-ro`), or one with its value attached (`-ofile`): either way the letter is in the token. */
@@ -598,7 +598,7 @@ const UNIQ_VALUED = new Set(["-f", "-s", "-w", "--skip-fields", "--skip-chars", 
 const writesOperand = (options: string[]): boolean => {
 	let operands = 0;
 	for (let at = 0; at < options.length; at++) {
-		const option = options[at]!;
+		const option = options[at];
 		if (UNIQ_VALUED.has(option)) at++;
 		else if (!option.startsWith("-") || option === "-") operands++;
 	}
@@ -637,7 +637,7 @@ export function readOnlyCommand(command: string): boolean {
 	const parts = mask(command, bodies).replace(HARMLESS_REDIRECT, " ").split(SEPARATOR);
 	let commands = 0;
 	for (let at = 0; at < parts.length; at += 2) {
-		const segment = parts[at]!;
+		const segment = parts[at];
 		if (segment.includes(">")) return false;
 		const tokens = words(segment).map(unhide);
 		const name = tokens[0];

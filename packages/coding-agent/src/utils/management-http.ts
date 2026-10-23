@@ -26,7 +26,7 @@ interface FetchRetryOptions {
  */
 export async function fetchWithRetry(
 	input: FetchInput,
-	init: RequestInit | undefined = undefined,
+	init?: RequestInit,
 	options: FetchRetryOptions = {},
 ): Promise<Response> {
 	const maxRetries =

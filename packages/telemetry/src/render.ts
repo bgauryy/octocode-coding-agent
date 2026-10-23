@@ -42,7 +42,7 @@ export function renderTrace(spans: readonly StoredSpan[]): string {
 		}
 		const descendants = children.get(span.id) ?? [];
 		for (let index = descendants.length - 1; index >= 0; index--) {
-			pending.push({ span: descendants[index]!, depth: depth + 1 });
+			pending.push({ span: descendants[index], depth: depth + 1 });
 		}
 	}
 	return lines.join("\n");

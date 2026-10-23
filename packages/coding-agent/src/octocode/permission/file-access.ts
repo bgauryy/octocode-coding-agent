@@ -44,13 +44,13 @@ export function shellTargetAccess(
 	const root = workspaceRoot(cwd);
 	const inside = root !== undefined && isWithin(file, root);
 	return {
-		protected: target.kind === "write" && inside && runsLater(file, root!),
+		protected: target.kind === "write" && inside && runsLater(file, root),
 		action:
 			target.kind === "read"
 				? inside
 					? undefined
 					: "read.outside"
-				: inside && !runsLater(file, root!)
+				: inside && !runsLater(file, root)
 					? undefined
 					: "file.outside",
 	};

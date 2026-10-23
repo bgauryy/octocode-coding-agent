@@ -49,7 +49,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 		codexQueue.length = 0;
 		controller.abort();
 		pending = [];
-		await Promise.allSettled([...active]);
+		await Promise.allSettled(active);
 		if (!shutdown) {
 			controller = new AbortController();
 			closed = false;

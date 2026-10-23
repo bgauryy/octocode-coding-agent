@@ -18,25 +18,24 @@ export function Sheet({
 	wide?: boolean;
 	children: ReactNode;
 }) {
-	const ref = useRef<HTMLElement>(null);
+	const ref = useRef<HTMLDialogElement>(null);
 	useModal(ref, onClose, initialFocus);
 	return (
 		<>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer shortcut; Escape and the Close button are the accessible paths. */}
-			{/* biome-ignore lint/a11y/useKeyWithClickEvents: as above. */}
-			<div className="backdrop" id="backdrop" onClick={onClose} />
-			<aside
+			{/* A pointer shortcut, hidden from assistive technology: Escape and the Close button are the accessible paths. */}
+			<div className="backdrop" id="backdrop" aria-hidden="true" onClick={onClose} />
+			<dialog
+				open
 				ref={ref}
 				id="drawer"
 				className={cx("sheet", wide && "sheet-wide")}
-				role="dialog"
 				aria-modal="true"
 				aria-labelledby={labelledBy}
 				aria-label={labelledBy ? undefined : label}
 				tabIndex={-1}
 			>
 				{children}
-			</aside>
+			</dialog>
 		</>
 	);
 }

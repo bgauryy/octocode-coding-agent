@@ -31,8 +31,7 @@
 		"build": "tsc -p tsconfig.build.json",
 		"clean": "shx rm -rf dist",
 		"test": "vitest run",
-		"lint": "biome check .",
-		"lint:fix": "biome check --write .",
+		"lint": "oxlint .",
 		"typecheck": "tsc -p tsconfig.json"
 	},
 	"dependencies": {
@@ -43,7 +42,6 @@
 		"zustand": "5.0.15"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.15",
 		"@testing-library/dom": "10.4.2",
 		"@testing-library/jest-dom": "7.0.1",
 		"@testing-library/react": "16.3.3",

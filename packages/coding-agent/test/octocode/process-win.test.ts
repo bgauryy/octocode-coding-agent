@@ -27,8 +27,6 @@ afterEach(() => {
 
 const win32 = (): void => {
 	Object.defineProperty(process, "platform", { value: "win32" });
-	undefined;
-	return;
 };
 /** taskkill by absolute path: a bare name would run a `taskkill.exe` in the current folder first. */
 const TASKKILL = "C:\\Windows\\System32\\taskkill.exe";
@@ -69,8 +67,8 @@ describe("taskkill", () => {
 		vi.stubEnv("SystemRoot", "");
 		vi.stubEnv("windir", "D:\\WinNT");
 		signalTree(1234, "SIGTERM");
-		expect(spawn.mock.calls[0]![0]).toBe("D:\\WinNT\\System32\\taskkill.exe");
-		expect(spawn.mock.calls[0]![0]).not.toBe("taskkill");
+		expect(spawn.mock.calls[0][0]).toBe("D:\\WinNT\\System32\\taskkill.exe");
+		expect(spawn.mock.calls[0][0]).not.toBe("taskkill");
 	});
 });
 

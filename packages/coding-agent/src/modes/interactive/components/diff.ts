@@ -240,7 +240,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 
 		// Lines replaced one for one are paired, so each pair can show which words changed.
 		const paired = removed.length === added.length && removed.length <= MAX_PAIRED_LINES;
-		const ranges = paired ? removed.map((line, index) => changedRanges(line.content, added[index]!.content)) : [];
+		const ranges = paired ? removed.map((line, index) => changedRanges(line.content, added[index].content)) : [];
 		removed.forEach((line, index) => {
 			result.push(changedLine("-", line.lineNum, line.content, ranges[index]?.removed));
 		});

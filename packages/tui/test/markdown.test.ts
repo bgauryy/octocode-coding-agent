@@ -237,8 +237,8 @@ describe("Markdown component", () => {
 				lines.map((line) => stripAnsi(line).trimEnd()),
 				["1. ✔ done", "2. ☐ todo"],
 			);
-			assert.ok(lines[0]!.includes("\x1b[9m"));
-			assert.ok(!lines[1]!.includes("\x1b[9m"));
+			assert.ok(lines[0].includes("\x1b[9m"));
+			assert.ok(!lines[1].includes("\x1b[9m"));
 		});
 
 		it("keeps source task markers when markers are preserved", () => {
@@ -936,11 +936,13 @@ A=
 		});
 
 		it("does not treat currency, shell variables, or code spans as math", () => {
+			// oxlint-disable-next-line no-useless-concat -- split "$" and "{PATH}" so the literal is not read as a template placeholder
 			const source = "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and $" + "{PATH}.";
 			const markdown = new Markdown(source, 0, 0, defaultMarkdownTheme);
 
 			const lines = markdown.render(80).map((line) => stripAnsi(line).trimEnd());
 
+			// oxlint-disable-next-line no-useless-concat -- split "$" and "{PATH}" so the literal is not read as a template placeholder
 			assert.deepStrictEqual(lines, ["Costs $5 and $10 or $8k–$12k; use $x$, $HOME, and $" + "{PATH}."]);
 
 			const shellVariables = "Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG";

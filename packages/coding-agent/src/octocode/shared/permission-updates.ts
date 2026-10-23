@@ -51,7 +51,7 @@ export function parsePermissionUpdates(value: unknown): SourcePermissionUpdate[]
 					throw new Error("Invalid permission update rule");
 				return {
 					toolName: rule.toolName,
-					...(rule.ruleContent !== undefined ? { ruleContent: rule.ruleContent as string } : {}),
+					...(rule.ruleContent !== undefined ? { ruleContent: rule.ruleContent } : {}),
 				};
 			});
 			return {

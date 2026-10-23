@@ -9,7 +9,7 @@ import type { Backlog } from "../backlog/context.ts";
 import type { Member, Traffic } from "../team/model.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { contentText, errorMessage, isRecord, toolHint } from "../shared/util.ts";
-import type { WorkspaceCommand, WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "./model.ts";
+import type { WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "./model.ts";
 
 interface Operations {
 	application?: (ctx: ExtensionContext) => ApplicationService | undefined;
@@ -26,6 +26,7 @@ export class WorkspaceRuntime {
 	private seq = 0;
 	private sessionId: string | undefined;
 	private readonly listeners = new Set<() => void>();
+	private readonly projectedApplications = new WeakSet<ApplicationService>();
 
 	private readonly pi: ExtensionAPI;
 	private readonly operations: Operations;
@@ -33,6 +34,7 @@ export class WorkspaceRuntime {
 		this.pi = pi;
 		this.operations = operations;
 		pi.on("session_start", (_event, ctx) => {
+			this.application(ctx);
 			this.sessionId = ctx.sessionManager.getSessionId();
 			this.events = [];
 			this.publish("session", "Session started");
@@ -40,17 +42,17 @@ export class WorkspaceRuntime {
 		pi.on("agent_start", () => this.publish("agent.start", "Agent working"));
 		pi.on("agent_settled", (event) => this.publish("agent.settled", event.aborted ? "Agent stopped" : "Agent settled"));
 		pi.on("tool_execution_start", (event, ctx) => {
-			if (this.operations.application?.(ctx)) return;
+			if (this.application(ctx)) return;
 			const hint = toolHint(event.args);
 			this.publish("tool.start", event.toolName, { id: event.toolCallId, ...(hint ? { hint } : {}) });
 		});
 		pi.on("tool_execution_update", (event, ctx) => {
-			if (this.operations.application?.(ctx)) return;
+			if (this.application(ctx)) return;
 			if (event.toolName === "agent")
 				this.publish("agent.progress", contentText(event.partialResult.content), event.partialResult.details);
 		});
 		pi.on("tool_execution_end", (event, ctx) => {
-			if (this.operations.application?.(ctx)) return;
+			if (this.application(ctx)) return;
 			const result = isRecord(event.result) ? event.result : {};
 			this.publish(
 				"tool.result",
@@ -60,13 +62,18 @@ export class WorkspaceRuntime {
 			);
 		});
 		pi.on("message_end", (event, ctx) => {
-			if (event.message.role === "assistant" && this.operations.application?.(ctx)) return;
+			if (event.message.role === "assistant" && this.application(ctx)) return;
 			if (event.message.role === "assistant" || event.message.role === "custom") {
 				const message = event.message;
 				const details = "details" in message ? message.details : undefined;
 				if (message.role === "custom" && message.customType === "octocode-agent-result") {
 					const report = presentAgentReport(message.content, isRecord(details) ? details : {});
-					this.publish("agent.result", report.summary + "\n" + report.body, report);
+					const outcome = report.structured
+						? report.structured.status === "valid" && report.status === "done" && report.outcome === "done"
+							? "succeeded"
+							: "failed"
+						: undefined;
+					this.publish("agent.result", report.summary + "\n" + report.body, report, outcome);
 				} else this.publish("message", contentText(message.content), details);
 			}
 		});
@@ -74,6 +81,25 @@ export class WorkspaceRuntime {
 			this.sessionId = undefined;
 			this.listeners.clear();
 		});
+	}
+
+	private application(ctx: ExtensionContext): ApplicationService | undefined {
+		const application = this.operations.application?.(ctx);
+		if (application && !this.projectedApplications.has(application)) {
+			application.setToolOutputProjector((toolName, result) => {
+				if (
+					(toolName !== "agent" && toolName !== "octocode-agent-result") ||
+					!isRecord(result) ||
+					!isRecord(result.details) ||
+					!result.details.structured
+				)
+					return undefined;
+				const report = presentAgentReport(result.content, result.details);
+				return `${report.summary}\n${report.body}`;
+			});
+			this.projectedApplications.add(application);
+		}
+		return application;
 	}
 
 	private publish(type: string, text: string, details?: unknown, outcome?: WorkspaceEvent["outcome"]): void {
@@ -106,7 +132,7 @@ export class WorkspaceRuntime {
 
 	bind(ctx: ExtensionCommandContext, backlog: Backlog): WorkspaceConnection {
 		const sessionId = ctx.sessionManager.getSessionId();
-		const application = this.operations.application?.(ctx);
+		const application = this.application(ctx);
 		application?.setReceiptStore(
 			new ApplicationCommands((this.operations.database ?? sharedAgentDb)(), backlog.store.repo),
 		);
@@ -177,7 +203,8 @@ export class WorkspaceRuntime {
 							`${item ? `Backlog ${item.ref}: ${item.title}\n\n` : ""}${command.text}`,
 							controller.signal,
 						);
-						if (isRecord(sent) && sent.error) throw new Error(String(sent.error));
+						if (isRecord(sent) && sent.error)
+							throw new Error(typeof sent.error === "string" ? sent.error : JSON.stringify(sent.error));
 						message = "Message accepted for delivery. Follow its delivery status in Agents.";
 					} else {
 						if (!command.to) throw new Error("Choose an agent to stop.");

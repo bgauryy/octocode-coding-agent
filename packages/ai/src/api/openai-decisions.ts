@@ -2,7 +2,6 @@ import type {
 	ClassifierAnswer,
 	ClassifierContext,
 	ClassifierFunction,
-	ClassifierOptions,
 	ClassifierQuestion,
 	ClassifierResult,
 } from "../types.ts";
@@ -158,7 +157,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Classification through OpenAI's Decisions API. */
-export const classify: ClassifierFunction<ClassifierOptions> = async (model, context, options) => {
+export const classify: ClassifierFunction = async (model, context, options) => {
 	const output: ClassifierResult = {
 		api: model.api,
 		provider: model.provider,

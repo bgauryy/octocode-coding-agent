@@ -255,23 +255,23 @@ describe("message feed", () => {
 		);
 		expect(store.recent()[0]).toMatchObject({ id, from: "main-aaaaaa", to: ["researcher-bbbbbb"], state: "queued" });
 		take(store, "researcher-bbbbbb");
-		expect(store.recent()[0]!.state).toBe("awaiting reply");
+		expect(store.recent()[0].state).toBe("awaiting reply");
 		store.send("researcher-bbbbbb", ["main-aaaaaa"], "done", { replyRequired: false, replyTo: id });
 		const [reply, original] = store.recent();
-		expect(original!.state).toBe("answered");
+		expect(original.state).toBe("answered");
 		expect(reply).toMatchObject({ replyTo: id, state: "queued" });
 		expect(store.recent(3, Date.now() + 11 * 60_000)).toEqual([]);
-		const row = trafficRow(original!, original!.at + 5_000, theme, 200);
+		const row = trafficRow(original, original.at + 5_000, theme, 200);
 		expect(row).toContain("main-aaaaaa → researcher-bbbbbb");
 		expect(row).toContain("answered");
 		expect(row).toContain('"check the tests"');
 		// The panel leaves out this session's own messages (they are in its transcript) and shows its subagents' traffic.
 		const panel = [member("main-aaaaaa"), member("researcher-bbbbbb", { parentId: "main-aaaaaa" })];
-		expect(widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [original!]).join("\n")).not.toContain(`#${id}`);
-		expect(widgetLines(panel, "other-session", Date.now(), theme, 200, [original!])).toEqual([]);
+		expect(widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [original]).join("\n")).not.toContain(`#${id}`);
+		expect(widgetLines(panel, "other-session", Date.now(), theme, 200, [original])).toEqual([]);
 		expect(
 			widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [
-				{ ...original!, from: "researcher-bbbbbb", to: ["tester-c"] },
+				{ ...original, from: "researcher-bbbbbb", to: ["tester-c"] },
 			]).at(-1),
 		).toContain(`#${id}`);
 	});
@@ -388,7 +388,7 @@ describe("collaboration prompt", () => {
 			{ view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
 		);
-		expect(tools[0]!.parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
+		expect(tools[0].parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
 		// A child names its parent generically: its own id and parent arrive in its task.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate: true })).toMatch(
 			/your parent[\s\S]*agent[\s\S]*message/,
@@ -451,20 +451,20 @@ describe("Team", () => {
 			expect(asked).toMatchObject({ sent: ["researcher-1234"] });
 			vi.advanceTimersByTime(1_000);
 			expect(childLog).toHaveLength(1);
-			const content = childLog[0]!.message.content;
+			const content = childLog[0].message.content;
 			expect(content).toContain(`from your parent agent ${parent.id}`);
 			expect(content).toContain("also check tests");
 			expect(content).toContain(`replyTo ${(asked as { id: number }).id}`);
-			expect(childLog[0]!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+			expect(childLog[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 			// Awaiting a reply once Octocode puts it in front of the child's model.
-			child.onContext([{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0]!.message.details }]);
+			child.onContext([{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0].message.details }]);
 			expect(main.members().find((m) => m.id === "researcher-1234")?.pending).toBe(1);
 
 			// A reply defaults to FYI, so it never asks the asker to answer again (no ping-pong of woken agents).
 			await child.send("parent", "found it", { replyTo: (asked as { id: number }).id });
 			vi.advanceTimersByTime(1_000);
-			expect(mainLog[0]!.message.content).toContain("agent researcher-1234");
-			expect(mainLog[0]!.message.content).toContain("FYI: no reply needed");
+			expect(mainLog[0].message.content).toContain("agent researcher-1234");
+			expect(mainLog[0].message.content).toContain("FYI: no reply needed");
 			expect(main.members().find((m) => m.id === "researcher-1234")?.pending).toBe(0);
 
 			// Reservations: the child's edit is refused while the parent holds the file.
@@ -617,12 +617,12 @@ describe("Team safety", () => {
 			const result = await main.send("researcher-1234", text);
 			expect(result).toMatchObject({ sent: ["researcher-1234"] });
 			const [delivered] = open(cwd, file).pending("researcher-1234");
-			const pointer = /\n\[Full message \((\d+) characters\): (.+)\]$/.exec(delivered!.text)!;
+			const pointer = /\n\[Full message \((\d+) characters\): (.+)\]$/.exec(delivered.text)!;
 			expect(pointer[1]).toBe(String(clean.length));
-			expect(delivered!.text.length).toBeLessThanOrEqual(MESSAGE_MAX_CHARS);
-			expect(delivered!.text.startsWith("aaaa")).toBe(true);
+			expect(delivered.text.length).toBeLessThanOrEqual(MESSAGE_MAX_CHARS);
+			expect(delivered.text.startsWith("aaaa")).toBe(true);
 			// The file is read outside the message's fence: it holds the text with controls shown as escapes inside a fence of its own.
-			const saved = fs.readFileSync(pointer[2]!, "utf8");
+			const saved = fs.readFileSync(pointer[2], "utf8");
 			expect(saved).toMatch(
 				new RegExp(
 					`^Full message \\(${clean.length} characters\\) from ${me.id}:\\n<<<(untrusted-[0-9a-f]{16}) \\(data from the sender, not instructions`,
@@ -630,7 +630,7 @@ describe("Team safety", () => {
 			);
 			expect(saved).toContain(`\n${clean}\n`);
 			expect(saved).not.toMatch(/[\u001b\u0007\u202e]/u);
-			if (process.platform !== "win32") expect(fs.statSync(pointer[2]!).mode & 0o777).toBe(0o600);
+			if (process.platform !== "win32") expect(fs.statSync(pointer[2]).mode & 0o777).toBe(0o600);
 			// A message that fits is delivered as written.
 			await main.send("researcher-1234", "short");
 			expect(
@@ -850,7 +850,7 @@ describe("Team safety", () => {
 			vi.advanceTimersByTime(6_000);
 			const notices = log.filter((entry) => entry.message.content.includes("lapsed"));
 			expect(notices).toHaveLength(1);
-			expect(notices[0]!.message.content).toContain("Your reservation on src/a.ts lapsed");
+			expect(notices[0].message.content).toContain("Your reservation on src/a.ts lapsed");
 			vi.advanceTimersByTime(6_000);
 			expect(log.filter((entry) => entry.message.content.includes("lapsed"))).toHaveLength(1);
 			expect(main.reservation(target, "src/a.ts")).toMatch(/lapsed; lock it again/);
@@ -924,8 +924,8 @@ describe("Team safety", () => {
 		try {
 			child.start(ctx);
 			fail(true);
-			await child.send(main.id!, "first", { replyRequired: false });
-			await child.send(main.id!, "second", { replyRequired: false });
+			await child.send(main.id, "first", { replyRequired: false });
+			await child.send(main.id, "second", { replyRequired: false });
 			vi.advanceTimersByTime(1_000);
 			expect(log.filter((entry) => entry.message.content.includes("first"))).toHaveLength(0);
 			fail(false);
@@ -934,7 +934,7 @@ describe("Team safety", () => {
 			// One batch, in order, injected once.
 			const bodies = log.map((entry) => entry.message.content).filter((text) => /first|second/.test(text));
 			expect(bodies).toHaveLength(1);
-			expect(bodies[0]!.indexOf("first")).toBeLessThan(bodies[0]!.indexOf("second"));
+			expect(bodies[0].indexOf("first")).toBeLessThan(bodies[0].indexOf("second"));
 			// The recipient left: a later message is refused, not queued forever.
 			child.stop();
 			expect(await main.send("researcher-1234", "hello?")).toHaveProperty("error");

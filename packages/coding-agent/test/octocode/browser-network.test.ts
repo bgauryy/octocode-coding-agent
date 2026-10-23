@@ -204,7 +204,7 @@ describe("PagePolicy", () => {
 
 const stubs: CdpStub[] = [];
 const tools: InstanceType<typeof BrowserTool>[] = [];
-const closers: Array<() => Promise<unknown> | unknown> = [];
+const closers: Array<() => unknown> = [];
 
 beforeEach(() => launch.mockReset());
 
@@ -339,11 +339,11 @@ describe("browser page requests", () => {
 		const session = await browser.session();
 		const page = [...cdp.pages.values()].at(-1)!;
 		const types: Array<[string, string, Record<string, unknown>?]> = [
-			["XHR", PRIVATE_HOSTS[0]!],
-			["Image", PRIVATE_HOSTS[1]!],
-			["Document", PRIVATE_HOSTS[2]!],
-			["XHR", PRIVATE_HOSTS[3]!, { redirectedRequestId: "hop" }],
-			["Other", PRIVATE_HOSTS[4]!],
+			["XHR", PRIVATE_HOSTS[0]],
+			["Image", PRIVATE_HOSTS[1]],
+			["Document", PRIVATE_HOSTS[2]],
+			["XHR", PRIVATE_HOSTS[3], { redirectedRequestId: "hop" }],
+			["Other", PRIVATE_HOSTS[4]],
 			["Script", "http://localhost:1/x.js"],
 		];
 		types.forEach(([type, url, extra], index) => {
@@ -370,12 +370,12 @@ describe("browser page requests", () => {
 		const refused = audit().filter((entry) => entry.action === "invariant");
 		expect(refused.map((entry) => entry.allowed)).toEqual(refused.map(() => false));
 		expect(refused).toHaveLength(6);
-		expect(refused[0]!.note).toMatch(/^browser: blocked a page request \(XHR\)/);
+		expect(refused[0].note).toMatch(/^browser: blocked a page request \(XHR\)/);
 		// The same refusal again is counted, not written again; a different resource type to the same host is another refusal and is audited.
-		page.emit("Fetch.requestPaused", paused("again", PRIVATE_HOSTS[0]!, "XHR"));
+		page.emit("Fetch.requestPaused", paused("again", PRIVATE_HOSTS[0], "XHR"));
 		await vi.waitFor(() => expect(answered(cdp, "Fetch.failRequest")).toContain("again"));
 		expect(audit().filter((entry) => entry.action === "invariant")).toHaveLength(6);
-		page.emit("Fetch.requestPaused", paused("other-type", PRIVATE_HOSTS[0]!, "Image"));
+		page.emit("Fetch.requestPaused", paused("other-type", PRIVATE_HOSTS[0], "Image"));
 		await vi.waitFor(() => expect(answered(cdp, "Fetch.failRequest")).toContain("other-type"));
 		expect(audit().filter((entry) => entry.action === "invariant")).toHaveLength(7);
 		expect(
@@ -451,7 +451,7 @@ describe("browser page requests", () => {
 			const flipping: HostLookup = async () => [{ address: answers++ === 0 ? "93.184.216.34" : "10.0.0.5" }];
 			const { cdp, browser, audit } = await setup({ mode, lookup: flipping });
 			const ctx = fakeCtx({ cwd: "/private/tmp" });
-			const select = vi.fn(async (_title: string, choices: string[]) => choices[0]!);
+			const select = vi.fn(async (_title: string, choices: string[]) => choices[0]);
 			ctx.ui.select = select;
 			browser.useContext(ctx, "call-1");
 			await browser.session();
@@ -506,7 +506,7 @@ describe("browser page requests", () => {
 	it("lets the page load from the target the agent opened, and nothing else private", async () => {
 		const { cdp, browser } = await setup({ mode: "workspace" });
 		const ctx = fakeCtx({ cwd: "/private/tmp" });
-		ctx.ui.select = async (_title, choices) => choices.find((choice) => choice.startsWith("Allow")) ?? choices[0]!;
+		ctx.ui.select = async (_title, choices) => choices.find((choice) => choice.startsWith("Allow")) ?? choices[0];
 		browser.useContext(ctx, "call-1");
 		await browser.session();
 		const page = [...cdp.pages.values()].at(-1)!;
@@ -522,7 +522,7 @@ describe("browser page requests", () => {
 	it('scopes "Allow once" to the tab that opened the private host, and ends it when the tab navigates elsewhere', async () => {
 		const { cdp, browser } = await setup({ mode: "manual" });
 		const ctx = fakeCtx({ cwd: "/private/tmp" });
-		ctx.ui.select = async (_title, choices) => choices[0]!;
+		ctx.ui.select = async (_title, choices) => choices[0];
 		browser.useContext(ctx, "call-1");
 		await browser.session();
 		const page = [...cdp.pages.values()].at(-1)!;
@@ -556,7 +556,7 @@ describe("browser page requests", () => {
 		const select = vi.fn(
 			async (_title: string, choices: string[]) =>
 				choices.find((choice) => choice.endsWith("for this session") && choice.includes("127.0.0.1:3000")) ??
-				choices[0]!,
+				choices[0],
 		);
 		ctx.ui.select = select;
 		browser.useContext(ctx, "call-1");
@@ -583,7 +583,7 @@ describe("browser page requests", () => {
 		const dialogs: string[][] = [];
 		ctx.ui.select = async (_title: string, choices: string[]) => {
 			dialogs.push(choices);
-			return choices.find((choice) => choice.endsWith("for this session")) ?? choices[0]!;
+			return choices.find((choice) => choice.endsWith("for this session")) ?? choices[0];
 		};
 		browser.useContext(ctx, "call-1");
 		await browser.open("http://app.local/");
@@ -732,7 +732,7 @@ describe("browser page requests", () => {
 		const reported = audit().filter((entry) => entry.via === "reported");
 		expect(reported).toHaveLength(1);
 		expect(reported[0]).toMatchObject({ action: "invariant", allowed: true, what: ["ws://127.0.0.1:4000/socket"] });
-		expect(reported[0]!.note).toMatch(/^browser: a page WebSocket was not blocked, reported only/);
+		expect(reported[0].note).toMatch(/^browser: a page WebSocket was not blocked, reported only/);
 		// Nothing was failed or closed: Fetch cannot stop a handshake, and the report says so.
 		expect(answered(cdp, "Fetch.failRequest")).toEqual([]);
 		// The next result that carries page notes leads with it, once.
@@ -862,7 +862,7 @@ describe("browser launched Chrome behind the filtering proxy", () => {
 		const { cdp, browser } = await launched("manual");
 		const session = await browser.session();
 		const proxy = session.chrome!.proxy!;
-		expect(launch.mock.calls[0]![0].chromeFlags).toContain(`--proxy-server=${proxy.url}`);
+		expect(launch.mock.calls[0][0].chromeFlags).toContain(`--proxy-server=${proxy.url}`);
 
 		// Refused (manual, no one to ask), and a public target: neither is allowed through the proxy.
 		await expect(browser.open(`http://127.0.0.1:${approvedPort}/`)).rejects.toThrow(/no one can be asked here/);
@@ -910,7 +910,7 @@ describe("browser launched Chrome behind the filtering proxy", () => {
 			[`127.0.0.1:${otherPort}`],
 		]);
 		expect(proxied[0]).toMatchObject({ action: "invariant", allowed: false });
-		expect(proxied[0]!.note).toBe(
+		expect(proxied[0].note).toBe(
 			"browser: the filtering proxy refused a page connection to a local or private address",
 		);
 	}, 30_000);

@@ -40,7 +40,7 @@ async function fixture() {
 		}
 
 		if (readReferences && requests.length === 1) {
-			const tools = requests[0]!.tools as Array<{
+			const tools = requests[0].tools as Array<{
 				function?: { name?: string };
 			}>;
 			const reader = tools.find((tool) =>
@@ -332,7 +332,7 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 	const f = await fixture();
 	try {
 		await f.run("Inspect the inherited catalog and return a short report.");
-		const declared = (f.requests[0]!.tools as Array<{ function?: { name?: string } }>).map(
+		const declared = (f.requests[0].tools as Array<{ function?: { name?: string } }>).map(
 			(tool) => tool.function?.name,
 		);
 		expect(declared).toContain("mcp");

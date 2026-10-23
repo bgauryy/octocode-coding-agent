@@ -67,7 +67,7 @@ function setup(options: { isSubagent?: boolean; agentId?: string; parentSession?
 	const tool = fake.tools.get("backlog");
 	const call = (params: Record<string, unknown>, ctx = fakeCtx({ cwd })) =>
 		tool.execute("id", params, undefined, undefined, ctx) as Promise<{ content: Array<{ text: string }> }>;
-	const text = async (params: Record<string, unknown>) => (await call(params)).content[0]!.text;
+	const text = async (params: Record<string, unknown>) => (await call(params)).content[0].text;
 	return { ...fake, commands, cwd, tool, call, text, command: commands.get("backlog")! };
 }
 
@@ -286,12 +286,12 @@ describe("backlog store", () => {
 		store.update(item.ref, { priority: 0, tags: ["b", "c"], title: "new title" }, { id: "s1" });
 		const notes = store.notes(item, 50);
 		expect(notes.map((note) => note.kind)).toEqual(["change", "note"]);
-		expect(notes[0]!.text).toBe(
+		expect(notes[0].text).toBe(
 			`state todo → ongoing · assignee none → s1 · priority p2 → p0 · tags #a → #b #c · title was "old title" · body replaced; it was:\n${body}`,
 		);
 		expect(body.length).toBeGreaterThan(1000);
 		const blank = store.add({ ...READY, title: "blank", createdBy: "user" });
-		expect(store.notes(store.update(blank.ref, { body: "first text" }, { id: "s1" }))[0]!.text).toBe("body added");
+		expect(store.notes(store.update(blank.ref, { body: "first text" }, { id: "s1" }))[0].text).toBe("body added");
 	});
 
 	it("matches a query against title and body substrings but only whole tags", () => {
@@ -320,7 +320,7 @@ describe("backlog tool", () => {
 		const t = setup();
 		for (let i = 0; i < 53; i++)
 			await t.text({ op: "add", why: "Required work", title: `Task ${i}`, goal: "it works", state: "todo" });
-		const next = (text: string) => JSON.parse(text.match(/^Next: backlog (.+)$/m)![1]!);
+		const next = (text: string) => JSON.parse(text.match(/^Next: backlog (.+)$/m)![1]);
 		const first = await t.text({ op: "list", limit: 50 });
 		const second = await t.text(next(first));
 		const ids = [...`${first}\n${second}`.matchAll(/^(B\d+) \[/gm)].map((match) => match[1]);
@@ -618,7 +618,7 @@ describe("backlog status", () => {
 		// afterEach restores OCTOCODE_AGENT_DB.
 		closeSharedAgentDb();
 		process.env.OCTOCODE_AGENT_DB = db;
-		await t.handlers.get("agent_end")![0]!({}, rpc);
+		await t.handlers.get("agent_end")![0]({}, rpc);
 		expect(rpc.ui.statuses.get("octocode-backlog")).toBeUndefined();
 		expect(rpc.ui.widgets.has("octocode-backlog")).toBe(false);
 	});
@@ -877,7 +877,7 @@ describe("/backlog", () => {
 		});
 		await t.command.handler("tui", ctx);
 		// Sections are drawn in flow order, so → (toward done) moves an item down the board.
-		const at = (heading: string) => frames[0]!.indexOf(heading);
+		const at = (heading: string) => frames[0].indexOf(heading);
 		expect(at("Backlog (triage) (1)")).toBeLessThan(at("Todo (1)"));
 		expect(at("Todo (1)")).toBeLessThan(at("Ongoing (0)"));
 		expect(at("Ongoing (0)")).toBeLessThan(at("Done (0)"));
@@ -897,7 +897,7 @@ describe("/backlog", () => {
 			store.add({ ...READY, title: `d${index}`, state: "done", completion: completed(), createdBy: "user" });
 		store.add({ ...READY, title: "now", state: "ongoing", createdBy: "user" });
 		const rows = boardRows(store.list().items);
-		expect(rows[0]!.title).toBe("now");
+		expect(rows[0].title).toBe("now");
 		expect(rows).toHaveLength(6);
 		const ctx = fakeCtx({
 			cwd: tmp,
@@ -961,10 +961,10 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		store.update(blank.ref, { why: "w", evidence: ["e"], plan: "p", paths: ["x"] }, { id: "s1" });
 		const [first, ...more] = store.notes(item, 50);
 		expect(more).toEqual([]);
-		expect(first!.text).toBe(
+		expect(first.text).toBe(
 			`paths src/backlog/store.ts, src/backlog/ → src/a.ts · why replaced; it was:\n${FIELDS.why} · evidence replaced; it was:\n${FIELDS.evidence.join("\n")} · plan replaced; it was:\n${FIELDS.plan}`,
 		);
-		expect(store.notes(blank)[0]!.text).toBe("paths none → x · why added · evidence added · plan added");
+		expect(store.notes(blank)[0].text).toBe("paths none → x · why added · evidence added · plan added");
 		expect(store.update(item.ref, { paths: [] }, { id: "s1" }).paths).toEqual([]);
 	});
 

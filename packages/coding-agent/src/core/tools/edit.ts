@@ -139,7 +139,7 @@ function prepareEditArguments(input: unknown): EditToolInput {
 	const edits = Array.isArray(legacy.edits) ? [...legacy.edits] : [];
 	edits.push({ oldText: legacy.oldText, newText: legacy.newText });
 	const { oldText: _oldText, newText: _newText, ...rest } = legacy;
-	return { ...rest, edits } as EditToolInput;
+	return { ...rest, edits };
 }
 
 function validateEditInput(input: EditToolInput): {
@@ -188,7 +188,8 @@ export function createEditToolDefinition(
 					await ops.access(absolutePath);
 				} catch (error: unknown) {
 					throwIfAborted();
-					const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
+					const errorMessage =
+						error instanceof Error && "code" in error ? `Error code: ${String(error.code)}` : String(error);
 					throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
 				}
 				throwIfAborted();

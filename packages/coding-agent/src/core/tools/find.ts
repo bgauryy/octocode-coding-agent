@@ -106,7 +106,7 @@ export function createFindToolDefinition(
 				};
 				signal?.addEventListener("abort", onAbort, { once: true });
 
-				(async () => {
+				void (async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", ctx?.cwd || cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;

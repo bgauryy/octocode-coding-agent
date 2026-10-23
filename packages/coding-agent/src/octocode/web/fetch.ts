@@ -44,7 +44,7 @@ const systemLocale = (): string => Intl.DateTimeFormat().resolvedOptions().local
  * starts Octocode with that LANG.
  */
 export function language(locale = systemLocale()): string {
-	const base = locale.split("-")[0]!.toLowerCase();
+	const base = locale.split("-")[0].toLowerCase();
 	const tags = [locale, ...(base !== locale ? [base] : []), ...(base !== "en" ? ["en"] : [])];
 	return tags.map((tag, index) => (index === 0 ? tag : `${tag};q=${(1 - index / 10).toFixed(1)}`)).join(",");
 }
@@ -53,7 +53,7 @@ const REDIRECT_NOTE = "The target is server-supplied and not verified; fetch it 
 const UNREAD_NOTE = "; web cannot read it. Download it with bash (curl -o) if you need the file.";
 /** Content types an image is read from; SVG is not one: it is XML text, shown as its source and never rendered. */
 const INLINE_IMAGE_HEADERS = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]);
-const mediaType = (contentType: string) => contentType.split(";")[0]!.trim().toLowerCase();
+const mediaType = (contentType: string) => contentType.split(";")[0].trim().toLowerCase();
 
 /** Why a fetch result is a notice rather than page text (a cross-host redirect, a binary type), or undefined for a page. */
 export function unreadReason(text: string): "redirect" | "unsupported" | undefined {

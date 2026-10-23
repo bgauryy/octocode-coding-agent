@@ -18,14 +18,17 @@ class ModelCatalogRefreshCoordinator {
 		let active = this.activeByRuntime.get(modelRuntime);
 		if (!active) {
 			const controller = new AbortController();
-			let created!: ActiveModelCatalogRefresh;
 			const operation = modelRuntime.refresh({ signal: controller.signal });
-			const promise = raceWithAbortSignal(operation, controller.signal).finally(() => {
-				if (this.activeByRuntime.get(modelRuntime) === created) {
-					this.activeByRuntime.delete(modelRuntime);
-				}
-			});
-			created = { controller, promise, waiters: 0 };
+			const created: ActiveModelCatalogRefresh = {
+				controller,
+				// The cleanup runs asynchronously, after `created` is initialized.
+				promise: raceWithAbortSignal(operation, controller.signal).finally(() => {
+					if (this.activeByRuntime.get(modelRuntime) === created) {
+						this.activeByRuntime.delete(modelRuntime);
+					}
+				}),
+				waiters: 0,
+			};
 			active = created;
 			this.activeByRuntime.set(modelRuntime, active);
 		}

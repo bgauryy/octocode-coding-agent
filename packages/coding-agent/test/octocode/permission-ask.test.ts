@@ -171,10 +171,10 @@ describe("Permission.check", () => {
 	it("runs provenance and hook hits in full without a dialog, and records both reasons with the call", async () => {
 		const { permission, ctx, fake } = setup({ env: { [PERMISSION_ENV]: "full" } });
 		let opened = 0;
-		ctx.ui.select = (async () => {
+		ctx.ui.select = async () => {
 			opened += 1;
 			return "Allow once";
-		}) as never;
+		};
 		expect(
 			await permission.check(ctx, {
 				action: "shell",
@@ -217,11 +217,11 @@ describe("Permission.check", () => {
 		const { permission, ctx } = setup();
 		let options: string[] = [];
 		let shown = "";
-		ctx.ui.select = (async (title: string, choices: string[]) => {
+		ctx.ui.select = async (title: string, choices: string[]) => {
 			shown = title;
 			options = choices;
 			return "Allow once";
-		}) as never;
+		};
 		expect(
 			await permission.check(ctx, {
 				action: "shell",
@@ -253,11 +253,11 @@ describe("Permission.check", () => {
 		});
 		let shown = "";
 		let options: string[] = [];
-		ctx.ui.select = (async (title: string, choices: string[]) => {
+		ctx.ui.select = async (title: string, choices: string[]) => {
 			shown = title;
 			options = choices;
 			return "Allow once";
-		}) as never;
+		};
 		expect(
 			await permission.check(ctx, {
 				action: "shell",
@@ -306,10 +306,10 @@ describe("Permission.check", () => {
 	it("asks for a forcing reason when the call has no action class, and records that reason", async () => {
 		const { permission, ctx, fake } = setup({ env: { [PERMISSION_ENV]: "manual" }, selects: ["Allow once"] });
 		let shown = "";
-		ctx.ui.select = (async (title: string) => {
+		ctx.ui.select = async (title: string) => {
 			shown = title;
 			return "Allow once";
-		}) as never;
+		};
 		expect(
 			await permission.check(ctx, {
 				reasons: ["hook.ask"],

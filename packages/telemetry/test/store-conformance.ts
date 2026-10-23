@@ -34,7 +34,7 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			gate.resolve();
 			await active;
 			await f.flush();
-			const trace = (await f.store.findTraces()).traces[0]!;
+			const trace = (await f.store.findTraces()).traces[0];
 			const root = trace.spans.find((span) => span.name === "root")!;
 			const child = trace.spans.find((span) => span.name === "child")!;
 			expect(root.id).toMatch(/^[0-9a-f-]{36}:[1-9][0-9]*$/);
@@ -46,7 +46,7 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			expect(root.endedMs).toBeGreaterThanOrEqual(root.startedMs);
 			expect(root.events[0]?.timeMs).toBeGreaterThanOrEqual(0);
 			root.attributes.tags = ["changed"];
-			root.events[0]!.attributes.tags = ["changed"];
+			root.events[0].attributes.tags = ["changed"];
 			const fresh = await f.store.getTrace(trace.traceId);
 			expect(fresh?.spans.find((span) => span.id === root.id)?.attributes.tags).toEqual(["original"]);
 			expect(fresh?.spans.find((span) => span.id === root.id)?.events[0]?.attributes.tags).toEqual(["original"]);
@@ -130,7 +130,7 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 				carrier = sender.context.propagation.inject(span)!;
 			});
 			await sender.flush();
-			const sent = (await sender.store.findTraces()).traces[0]!;
+			const sent = (await sender.store.findTraces()).traces[0];
 			const remote = receiver.context.propagation.extract(JSON.parse(JSON.stringify(carrier)) as TelemetryCarrier);
 			await remote.startSpan({ name: "receiver" }, () => {});
 			await receiver.context.startSpan(
@@ -142,14 +142,14 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			expect(continued?.spans).toHaveLength(1);
 			expect(continued?.spans[0]).toMatchObject({
 				traceId: sent.traceId,
-				parentId: sent.spans[0]!.id,
+				parentId: sent.spans[0].id,
 				name: "receiver",
 			});
-			expect(continued?.spans[0]?.id).not.toBe(sent.spans[0]!.id);
-			const linked = (await receiver.store.findTraces({ name: "linked" })).traces[0]!;
+			expect(continued?.spans[0]?.id).not.toBe(sent.spans[0].id);
+			const linked = (await receiver.store.findTraces({ name: "linked" })).traces[0];
 			expect(linked.traceId).not.toBe(sent.traceId);
 			expect(linked.spans[0]?.links).toEqual([
-				{ traceId: sent.traceId, spanId: sent.spans[0]!.id, attributes: { reason: "background" } },
+				{ traceId: sent.traceId, spanId: sent.spans[0].id, attributes: { reason: "background" } },
 			]);
 			for (const key of Object.keys(carrier)) {
 				const incomplete = { ...carrier };
@@ -177,7 +177,7 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			expect(f.context.propagation.inject(parent)).toEqual(external);
 			await parent.startSpan({ name: "continued" }, () => {});
 			await f.flush();
-			const trace = (await f.store.findTraces({ name: "continued" })).traces[0]!;
+			const trace = (await f.store.findTraces({ name: "continued" })).traces[0];
 			expect(trace.traceId).toMatch(/^external-/);
 			expect(trace.spans[0]?.parentId).toMatch(/^external-/);
 		});
@@ -206,7 +206,7 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			expect(Math.min(...rows.map((row) => row.min))).toBe(2);
 			expect(Math.max(...rows.map((row) => row.max))).toBe(3);
 			expect(rows.every((row) => row.kind === "counter" && row.unit === "By" && row.intervalMs === 20_000)).toBe(true);
-			rows[0]!.attributes.method = "changed";
+			rows[0].attributes.method = "changed";
 			expect((await f.store.findMetrics(query))[0]?.attributes.method).toBe("read");
 			expect(await f.store.findMetrics({ name: "missing" })).toEqual([]);
 			expect(

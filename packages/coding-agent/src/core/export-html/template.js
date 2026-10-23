@@ -1632,7 +1632,7 @@
 				e.stopPropagation();
 				const entryId = btn.dataset.entryId;
 				const shareUrl = buildShareUrl(entryId);
-				copyToClipboard(shareUrl, btn);
+				void copyToClipboard(shareUrl, btn);
 			});
 		});
 

@@ -178,11 +178,11 @@ describe("model purposes", () => {
 			provider: "router",
 			id,
 		}));
-		const parent = all[0]!;
+		const parent = all[0];
 		expect(resolveTier("small", all, parent, catalog)?.id).toBe("mini-2");
 		expect(resolveTier("medium", all, parent, catalog)?.id).toBe("mid-2");
 		// Only an older generation of a family, and only that: it is still better than staying on the parent.
-		expect(resolveTier("small", [parent, all[5]!], parent, catalog)?.id).toBe("mini-old");
+		expect(resolveTier("small", [parent, all[5]], parent, catalog)?.id).toBe("mini-old");
 	});
 
 	it("never makes medium a near-copy of the parent", () => {

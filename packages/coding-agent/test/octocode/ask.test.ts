@@ -52,7 +52,7 @@ async function drive(
 				}),
 		},
 	});
-	const result = (await showAskDialog(ctx, questions, signal)) as AskResult;
+	const result = await showAskDialog(ctx, questions, signal);
 	return { result, frames };
 }
 

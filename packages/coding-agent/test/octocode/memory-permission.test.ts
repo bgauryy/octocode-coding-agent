@@ -43,7 +43,7 @@ function memoryTool(mode: PermissionMode) {
 		);
 		return tool
 			.execute("call", params, undefined, undefined, ctx)
-			.then((result: { content: Array<{ text: string }> }) => result.content[0]!.text);
+			.then((result: { content: Array<{ text: string }> }) => result.content[0].text);
 	};
 }
 

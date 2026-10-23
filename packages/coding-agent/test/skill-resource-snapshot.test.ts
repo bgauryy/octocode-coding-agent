@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
+import type { ExtensionAPI } from "../src/core/extensions/types.ts";
 import {
 	captureSkillResourceSnapshot,
 	adoptSkillResourceSnapshot,
@@ -351,7 +352,7 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 	const good = make("good"),
 		bad = { ...make("bad"), filePath: "<inline:bad>" };
 	const { createHarness } = await import("./suite/harness.ts");
-	let api: import("../src/core/extensions/types.ts").ExtensionAPI | undefined;
+	let api: ExtensionAPI | undefined;
 	const h = await createHarness({
 		extensionFactories: [
 			(pi) => {

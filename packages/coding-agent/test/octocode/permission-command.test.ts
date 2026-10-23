@@ -55,7 +55,7 @@ function setup(options: { trusted?: boolean; env?: NodeJS.ProcessEnv; confirms?:
 		await new Promise((resolve) => setImmediate(resolve));
 		return taken;
 	};
-	const cycle = () => ctx.ui.editor!({} as never, {} as never, new KeybindingsManager()).handleInput?.("\u001b[Z");
+	const cycle = () => ctx.ui.editor({} as never, {} as never, new KeybindingsManager()).handleInput?.("\u001b[Z");
 	return { fake, permission, ctx, run, tab, cycle };
 }
 

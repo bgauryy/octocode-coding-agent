@@ -265,12 +265,12 @@ function flattenSessionTree(roots: SessionTreeNode[]): FlatSessionNode[] {
 			const childIsLast = i === node.children.length - 1;
 			// Only show continuation line for non-root ancestors
 			const continues = depth > 0 ? !isLast : false;
-			walk(node.children[i]!, depth + 1, [...ancestorContinues, continues], childIsLast);
+			walk(node.children[i], depth + 1, [...ancestorContinues, continues], childIsLast);
 		}
 	};
 
 	for (let i = 0; i < roots.length; i++) {
-		walk(roots[i]!, 0, [], i === roots.length - 1);
+		walk(roots[i], 0, [], i === roots.length - 1);
 	}
 
 	return result;
@@ -454,7 +454,7 @@ class SessionList implements Component, Focusable {
 
 		// Render visible sessions (one line each with tree structure)
 		for (let i = startIndex; i < endIndex; i++) {
-			const node = this.filteredSessions[i]!;
+			const node = this.filteredSessions[i];
 			const session = node.session;
 			const isSelected = i === this.selectedIndex;
 			const isConfirmingDelete = session.path === this.confirmingDeletePath;

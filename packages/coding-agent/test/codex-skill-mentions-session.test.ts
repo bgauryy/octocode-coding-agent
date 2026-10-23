@@ -292,7 +292,7 @@ it("preserves image attachments alongside explicit skill fragments", async () =>
 it("loads other selected skills when one selected document has disappeared", async () => {
 	const f = await fixture();
 	try {
-		fs.unlinkSync(f.files[0]!);
+		fs.unlinkSync(f.files[0]);
 		const result = await request(f, "Use $alpha and $beta");
 		expect(result.text).toContain("BODY_beta_1");
 		expect(result.text).not.toContain("BODY_alpha_0");
@@ -333,7 +333,7 @@ it("reads the selected canonical identity even if its discovery symlink is retar
 		const evil = path.join(f.root, "retarget");
 		fs.mkdirSync(evil);
 		fs.writeFileSync(path.join(evil, "SKILL.md"), "RETARGET_BODY");
-		const alias = path.dirname(f.files[0]!);
+		const alias = path.dirname(f.files[0]);
 		fs.unlinkSync(alias);
 		fs.symlinkSync(evil, alias, "dir");
 		const result = await request(f, `Use [$alpha](${f.files[0]})`);
@@ -545,7 +545,7 @@ it.each(["portable", "legacy"])("uses qualified plugin mention names and %s prom
 it("skips invalid UTF-8 selected content while injecting the remaining valid skill", async () => {
 	const f = await fixture();
 	try {
-		fs.writeFileSync(f.files[0]!, Buffer.from([0xc3, 0x28]));
+		fs.writeFileSync(f.files[0], Buffer.from([0xc3, 0x28]));
 		const result = await request(f, "Use $alpha and $beta");
 		expect(result.text).toContain("BODY_beta_1");
 		expect(result.text).not.toContain("�");

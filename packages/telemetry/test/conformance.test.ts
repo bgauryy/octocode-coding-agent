@@ -39,8 +39,10 @@ describe("InMemoryTelemetryContext conformance", () => {
 		const [first] = context.getSpans();
 		expect(first?.settled).toBe(true);
 		expect(first?.endSequence).toBe(1);
-		(first?.attributes as SpanAttributes).tags = ["mutated"];
-		(first?.events[0]?.attributes as SpanAttributes).value = 2;
+		const event = first?.events[0];
+		if (!first || !event) throw new Error("expected a recorded span with an event");
+		(first.attributes as SpanAttributes).tags = ["mutated"];
+		(event.attributes as SpanAttributes).value = 2;
 
 		const [second] = context.getSpans();
 		expect(second?.attributes).toEqual({ tags: ["initial"] });

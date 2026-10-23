@@ -77,14 +77,7 @@ function webTool(active: string[] = [], permission: Permission = fakePermission(
 	// The tool asks through the call's context: a local one, with no UI, so only the mode decides.
 	return {
 		...definition,
-		execute: (id, params, signal) =>
-			(definition.execute as (...args: unknown[]) => Promise<ToolResult>)(
-				id,
-				params,
-				signal,
-				undefined,
-				fakeCtx({ cwd: tmp(), model }),
-			),
+		execute: (id, params, signal) => definition.execute(id, params, signal, undefined, fakeCtx({ cwd: tmp(), model })),
 	};
 }
 
@@ -312,7 +305,7 @@ describe("web tool", () => {
 		expect(all).toMatch(
 			/is in \/\S+: screen a bounded unread selection with mcp__octocode__clasify \(source \{tool:"localFetch", query:\{path:<this file>, ranges:<observed line ranges>\}\}, a noul question about one stated fact; typed answers only, read deciding evidence\); search literal text with mcp__octocode__localSearch \(headings: regex "\^#\{1,3\} "\); read line ranges with mcp__octocode__localFetch\]$/,
 		);
-		const saved = /is in (\/\S+):/.exec(all)![1]!;
+		const saved = /is in (\/\S+):/.exec(all)![1];
 		expect(fs.readFileSync(saved, "utf8")).toBe("y".repeat(30_000));
 		// Without the classification provider the local tools remain; without Octocode tools the generic wording stands.
 		expect(await call(["mcp__octocode__localSearch", "mcp__octocode__localFetch"])).toMatch(
@@ -334,7 +327,7 @@ describe("web tool", () => {
 		expect(first).toMatch(
 			/^x{20000}\n\[… 60000 more characters cut; the whole page \(1 lines, links included\) is in \S+: search it or read it by line range\]$/,
 		);
-		const saved = /is in (\S+):/.exec(first)![1]!;
+		const saved = /is in (\S+):/.exec(first)![1];
 		expect(fs.readFileSync(saved, "utf8")).toBe("x".repeat(80_000));
 		const more = text(await tool.execute("id", { url: `${base}/`, maxChars: 40_000 }));
 		expect(more.startsWith(`${"x".repeat(40_000)}\n[… 40000 more`)).toBe(true);
@@ -362,7 +355,7 @@ describe("web tool", () => {
 		const first = text(await tool.execute("id", { url: `${base}/`, maxChars: 1_000 }));
 		expect(first.startsWith("\\u{1b}]8;;http://x\\u{7}link\\u{202e}xxx")).toBe(true);
 		expect(first).not.toMatch(/[\u001b\u0007\u202e\u200b]/u);
-		const saved = fs.readFileSync(/is in (\S+):/.exec(first)![1]!, "utf8");
+		const saved = fs.readFileSync(/is in (\S+):/.exec(first)![1], "utf8");
 		expect(saved).toBe(
 			page
 				.replace("\u001b", "\\u{1b}")
@@ -402,12 +395,12 @@ describe("web tool", () => {
 		expect(Buffer.byteLength(out)).toBeLessThanOrEqual(51_200);
 		expect(out).not.toContain("Output trimmed");
 		expect(out).not.toContain("Full output:");
-		const [saved, ...other] = [...out.matchAll(/is in (\S+):/g)].map((match) => match[1]!);
+		const [saved, ...other] = [...out.matchAll(/is in (\S+):/g)].map((match) => match[1]);
 		expect(other).toEqual([]);
-		expect(fs.readFileSync(saved!, "utf8")).toBe(page);
+		expect(fs.readFileSync(saved, "utf8")).toBe(page);
 		const shown = /^(é+)\n\[… (\d+) more characters cut/.exec(out)!;
-		expect(shown[1]!.length + Number(shown[2])).toBe(80_000);
-		const files = fs.readdirSync(path.dirname(saved!)).filter((name) => name.startsWith("web-"));
+		expect(shown[1].length + Number(shown[2])).toBe(80_000);
+		const files = fs.readdirSync(path.dirname(saved)).filter((name) => name.startsWith("web-"));
 		expect(files).toHaveLength(1);
 	});
 
@@ -646,13 +639,13 @@ describe("web images", () => {
 			else send(200, "image/bmp", Buffer.alloc(32, 2));
 		});
 	const savedFile = (result: ToolResult) =>
-		/Original saved to (\S+?\.(?:png|jpg|gif|webp))\./.exec(result.content[0]!.text!)?.[1];
+		/Original saved to (\S+?\.(?:png|jpg|gif|webp))\./.exec(result.content[0].text!)?.[1];
 
 	it("returns an image within the budget as an image part, with the URL, type, size and the saved original", async () => {
 		const base = await imageServer();
-		const result = (await webTool().execute("1", { url: `${base}/small.png` })) as ToolResult;
+		const result = await webTool().execute("1", { url: `${base}/small.png` });
 		expect(result.content.map((part) => part.type)).toEqual(["text", "image"]);
-		expect(result.content[0]!.text).toMatch(
+		expect(result.content[0].text).toMatch(
 			new RegExp(
 				`^${base.replace(/[.]/g, "\\.")}/small\\.png: image/png image, \\d+(\\.\\d)?(B|KB|MB)\\. Original saved to \\S+\\.png\\.$`,
 			),
@@ -670,15 +663,15 @@ describe("web images", () => {
 
 	it("resizes an image over the context budget to the model limit, keeps the original and adds the dimension note", async () => {
 		const base = await imageServer();
-		const result = (await webTool([], fakePermission("full"), limit100).execute("1", {
+		const result = await webTool([], fakePermission("full"), limit100).execute("1", {
 			url: `${base}/big.png`,
-		})) as ToolResult;
+		});
 		expect(result.content.map((part) => part.type)).toEqual(["text", "image", "text"]);
-		const image = result.content[1]!;
+		const image = result.content[1];
 		expect(image.data!.length).toBeLessThanOrEqual(IMAGE_MAX_CHARS);
 		expect(pixelSize(image.data!)).toEqual({ width: 100, height: 100 });
-		expect(result.content[2]!.text).toContain("original 512x512, displayed at 100x100");
-		expect(result.content[2]!.text).toContain(`Original saved to ${savedFile(result)}.`);
+		expect(result.content[2].text).toContain("original 512x512, displayed at 100x100");
+		expect(result.content[2].text).toContain(`Original saved to ${savedFile(result)}.`);
 		expect(fs.readFileSync(savedFile(result)!)).toEqual(png);
 		// One saved copy: the fitted note names the file the first line names.
 		expect(result.details).toMatchObject({ kind: "image", file: savedFile(result) });
@@ -686,7 +679,7 @@ describe("web images", () => {
 
 	it("fits an over-budget image to the default limit when the model says nothing about images", async () => {
 		const base = await imageServer();
-		const result = (await webTool().execute("1", { url: `${base}/big.png` })) as ToolResult;
+		const result = await webTool().execute("1", { url: `${base}/big.png` });
 		const image = result.content.find((part) => part.type === "image")!;
 		expect(image.data!.length).toBeLessThanOrEqual(IMAGE_MAX_CHARS);
 		expect(pixelSize(image.data!).width).toBeLessThanOrEqual(1568);
@@ -694,9 +687,9 @@ describe("web images", () => {
 
 	it("passes a GIF through under the budget and names the real format when the header is wrong", async () => {
 		const base = await imageServer();
-		const gif = (await webTool().execute("1", { url: `${base}/dot.gif` })) as ToolResult;
+		const gif = await webTool().execute("1", { url: `${base}/dot.gif` });
 		expect(gif.content[1]).toEqual({ type: "image", data: GIF_1X1.toString("base64"), mimeType: "image/gif" });
-		const jpg = (await webTool().execute("1", { url: `${base}/mislabeled.jpg` })) as ToolResult;
+		const jpg = await webTool().execute("1", { url: `${base}/mislabeled.jpg` });
 		expect(jpg.content[1]).toMatchObject({ type: "image", mimeType: "image/png" });
 		expect(savedFile(jpg)).toMatch(/\.png$/);
 	});
@@ -708,7 +701,7 @@ describe("web images", () => {
 			/is image\/png by its header, but the body is not a PNG, JPEG, GIF or WebP image; web cannot read it/,
 		);
 		expect(unreadReason(notice)).toBe("unsupported");
-		const result = (await webTool().execute("1", { url: `${base}/fake.png` })) as ToolResult;
+		const result = await webTool().execute("1", { url: `${base}/fake.png` });
 		expect(result.content.map((part) => part.type)).toEqual(["text"]);
 		expect(result.details).toEqual({ kind: "notice", reason: "unsupported" });
 	});
@@ -752,12 +745,12 @@ describe("web images", () => {
 
 	it("keeps other binary types a notice, and reads SVG as untrusted XML text, never as an image", async () => {
 		const base = await imageServer();
-		const bmp = (await webTool().execute("1", { url: `${base}/photo.bmp` })) as ToolResult;
+		const bmp = await webTool().execute("1", { url: `${base}/photo.bmp` });
 		expect(bmp.content.map((part) => part.type)).toEqual(["text"]);
 		expect(bmp.details).toEqual({ kind: "notice", reason: "unsupported" });
-		const svg = (await webTool().execute("1", { url: `${base}/icon.svg` })) as ToolResult;
+		const svg = await webTool().execute("1", { url: `${base}/icon.svg` });
 		expect(svg.content.map((part) => part.type)).toEqual(["text"]);
-		expect(svg.content[0]!.text).toContain('<circle r="4"/>');
+		expect(svg.content[0].text).toContain('<circle r="4"/>');
 		expect(svg.details).toMatchObject({ kind: "fetch" });
 	});
 

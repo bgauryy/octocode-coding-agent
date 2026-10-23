@@ -1,7 +1,6 @@
 import type { ResponseCreateParamsStreaming, ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
 import type {
-	Api,
 	AssistantMessage,
 	CacheRetention,
 	Model,
@@ -17,6 +16,7 @@ import type {
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "../utils/cache-policy.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { requestJsonEventStream } from "../utils/json-event-stream.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
@@ -158,7 +158,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: model.api as Api,
+			api: model.api,
 			provider: model.provider,
 			model: model.id,
 			...(configurationUpdateEffort === undefined ? {} : { providerThinkingLevel: configurationUpdateEffort }),
@@ -258,7 +258,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };

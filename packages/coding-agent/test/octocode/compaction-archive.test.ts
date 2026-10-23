@@ -510,12 +510,12 @@ describe("the pointer in the summary and after a default summary", () => {
 		const f = fakePi();
 		deliverArchivePointer(f.pi, 3);
 		expect(f.sent).toHaveLength(1);
-		expect(f.sent[0]!.options).toEqual({ triggerTurn: false });
-		expect(f.sent[0]!.message).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
-		expect(f.sent[0]!.message.content).toContain(
+		expect(f.sent[0].options).toEqual({ triggerTurn: false });
+		expect(f.sent[0].message).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
+		expect(f.sent[0].message.content).toContain(
 			"- Before answering about anything from before this summary, search the archive instead of guessing",
 		);
-		expect(f.sent[0]!.message.content).toContain("This compaction is segment 3:");
+		expect(f.sent[0].message.content).toContain("This compaction is segment 3:");
 	});
 });
 
@@ -567,9 +567,9 @@ describe("archive wiring in the session", () => {
 		await s.compacted();
 		expect(readSegments()).toMatchObject([{ n: 1, entry: "c1", method: "pi-default", tldr: "fix login", messages: 2 }]);
 		expect(s.sendMessage).toHaveBeenCalledTimes(1);
-		expect(s.sendMessage.mock.calls[0]![0]).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
-		expect(s.sendMessage.mock.calls[0]![0].content).toContain("This compaction is segment 1:");
-		expect(s.sendMessage.mock.calls[0]![1]).toEqual({ triggerTurn: false });
+		expect(s.sendMessage.mock.calls[0][0]).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
+		expect(s.sendMessage.mock.calls[0][0].content).toContain("This compaction is segment 1:");
+		expect(s.sendMessage.mock.calls[0][1]).toEqual({ triggerTurn: false });
 	});
 
 	it("archives a hook's summary as method extension, and Octocode's by its own method without a second pointer", async () => {
@@ -637,7 +637,7 @@ describe("/archive", () => {
 
 	it("says where the history will be archived when nothing is yet", async () => {
 		const [note] = await run("");
-		expect(note!.message).toBe(
+		expect(note.message).toBe(
 			`No compacted history is archived yet: each compaction files its messages in ${archiveFolder()}.`,
 		);
 	});
@@ -645,7 +645,7 @@ describe("/archive", () => {
 	it("lists the folder, the library and one line per segment", async () => {
 		segments(2);
 		const [note] = await run("");
-		expect(note!.message.split("\n")).toEqual([
+		expect(note.message.split("\n")).toEqual([
 			`Archive of this session: ${archiveFolder()} (index: LIBRARY.md)`,
 			expect.stringMatching(/^#1 · .* · 90k tokens · segment 1 work$/),
 			expect.stringMatching(/^#2 · .* · segment 2 work$/),

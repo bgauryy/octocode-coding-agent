@@ -82,7 +82,7 @@ async function runOpenAI(
 	const message = await streamOpenAIResponses(options.model ?? openAIModel(), normalizeContext({ messages }), {
 		apiKey: options.apiKey ?? "sk-test",
 		reasoningEffort,
-		fetch: fetchMock as typeof globalThis.fetch,
+		fetch: fetchMock,
 	}).result();
 	if (!payload) throw new Error("Request payload was not captured");
 	expect(message.stopReason).not.toBe("error");

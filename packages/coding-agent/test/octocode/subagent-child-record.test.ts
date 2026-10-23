@@ -97,7 +97,7 @@ describe("a child's saved session", () => {
 		const parsed = parseArgs(buildAgentArgs(undefined, undefined, session));
 		const cwd = tmp();
 		// What Octocode's CLI builds for these flags (`createSessionManager`): a persisted manager, with the file `getSessionFile()` returns.
-		const manager = SessionManager.create(cwd, parsed.sessionDir!, { id: parsed.sessionId! });
+		const manager = SessionManager.create(cwd, parsed.sessionDir, { id: parsed.sessionId! });
 		const file = manager.getSessionFile();
 		expect(file).toBeDefined();
 		expect(path.dirname(file!)).toBe(session.dir);
@@ -171,9 +171,9 @@ describe("what the parent keeps of a child's run", () => {
 	it("puts the child's archive in a background run's details and footer", async () => {
 		await s.run({ task: "archives", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
-		const details = s.sent[0]!.message.details;
+		const details = s.sent[0].message.details;
 		expect(details.session.archive).toBe(archiveFolder(details.session.id));
-		expect(String(s.sent[0]!.message.content)).toContain(
+		expect(String(s.sent[0].message.content)).toContain(
 			`Its compacted history is archived in ${details.session.archive} `,
 		);
 	});
@@ -271,13 +271,13 @@ describe("what the parent keeps of a child's run", () => {
 	it("puts a background run's compaction counts in the parent's footer and its failure text inside the fence", async () => {
 		await s.run({ task: "compacts", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
-		const content = String(s.sent[0]!.message.content);
+		const content = String(s.sent[0].message.content);
 		const [fenced, footer] = content.split(/untrusted-[0-9a-f]{16}>>>/);
 		expect(footer).toContain("Compactions: 1 done, 1 aborted, 1 failed; latest 150k → 32k tokens.");
 		expect(fenced).toContain("latest compaction failure: Context overflow recovery failed: provider down");
 		expect(footer).not.toContain("provider down");
 		expect(content).toMatch(/\(\d+s · 0 tool calls · 3 compactions \(1 failed, 1 aborted\) · ≈\$0\.0[12]\)/);
-		expect(s.sent[0]!.message.details).toMatchObject({
+		expect(s.sent[0].message.details).toMatchObject({
 			status: "done",
 			compactions: { done: 1, aborted: 1, failed: 1 },
 			session: { id: expect.stringMatching(/^[a-z]+-[a-z]+$/), file: expect.stringMatching(/\.jsonl$/) },
@@ -306,11 +306,11 @@ describe("what the parent keeps of a child's run", () => {
 	it("reports the same reason for a background child, with its notices inside the fence and no popup in the parent", async () => {
 		await s.run({ task: "thrash", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
-		const content = String(s.sent[0]!.message.content);
+		const content = String(s.sent[0].message.content);
 		expect(content).toMatch(
 			/failed:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: Subagent stopped: Automatic compaction stopped:[\s\S]*- warning: Compaction summary fell back[\s\S]*>>>\n/,
 		);
-		expect(s.sent[0]!.message.details).toMatchObject({
+		expect(s.sent[0].message.details).toMatchObject({
 			status: "failed",
 			outcome: "failed",
 			notices: { kept: [{ level: "warning" }, { level: "error" }], more: 0 },
@@ -375,5 +375,5 @@ describe("a child that stops itself over the run API", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

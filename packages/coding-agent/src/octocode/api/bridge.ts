@@ -245,7 +245,7 @@ export class OctocodeApi {
 			});
 		});
 		pi.on("session_compact", () => {
-			this.server && log.publish("compaction", {});
+			if (this.server) log.publish("compaction", {});
 			return undefined;
 		});
 	}
@@ -521,7 +521,7 @@ export class OctocodeApi {
 			clearTimeout(preparingTimer);
 			this.receipts.accept(receipt, waiter, key !== undefined || wait);
 			dispatched = true;
-			this.pi.sendMessage(
+			void this.pi.sendMessage(
 				{
 					customType: EXTERNAL_MESSAGE_TYPE,
 					content: fenceUntrusted(messageHeader(apiClientLabel(from), at), text),
@@ -598,7 +598,7 @@ export class OctocodeApi {
 		let bytes = 0;
 		const messages: Array<{ index: number; role: string; text: string }> = [];
 		for (let index = end - 1; index >= Math.max(end - limit, 0); index--) {
-			const row = { index, role: all[index]!.role, text: boundedText(all[index]!.text) };
+			const row = { index, role: all[index].role, text: boundedText(all[index].text) };
 			const size = Buffer.byteLength(JSON.stringify(row)) + 1;
 			if (messages.length > 0 && bytes + size > MAX_FRAME_BYTES / 2) break;
 			messages.unshift(row);
@@ -619,7 +619,7 @@ export class OctocodeApi {
 function registerExternalMessageRenderer(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
 		const details = message.details as { from?: unknown; at?: unknown } | undefined;
-		const from = clip(String(details?.from ?? "API client"), 60);
+		const from = clip(typeof details?.from === "string" ? details.from : "API client", 60);
 		const text = contentText(message.content);
 		// The content is the fenced message the model reads; the header above says who sent it, so draw only the body.
 		const body = fencedBody(text);

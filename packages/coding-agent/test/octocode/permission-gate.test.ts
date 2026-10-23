@@ -36,10 +36,10 @@ function setup(
 	permission.start(ctx);
 	const asked: string[] = [];
 	const select = ctx.ui.select;
-	ctx.ui.select = (async (title: string, choices: string[]) => {
+	ctx.ui.select = async (title: string, choices: string[]) => {
 		asked.push(title);
 		return select(title, choices);
-	}) as never;
+	};
 	const provenance = { check: () => (options.hit ? { why: options.hit } : undefined) };
 	// The Windows helper is replaced: no test starts a real PowerShell.
 	const gate = permissionGate({
@@ -148,7 +148,7 @@ describe("permission gate", () => {
 				selects: ["Deny"],
 				powershell: async (text) => {
 					seen.push(text);
-					return verdicts[text] === true;
+					return verdicts[text];
 				},
 			});
 			await strict.gate(call("bash", { type: "powershell", command }), strict.ctx);
@@ -174,7 +174,7 @@ describe("permission gate", () => {
 			"no pwsh here": { parsed: false },
 			"Get-ChildItem": { parsed: true },
 		};
-		const classifier = async (command: string) => answers[command]!;
+		const classifier = async (command: string) => answers[command];
 		expect(await powershellDestructive("rm -r -fo C:\\x", classifier)).toBe(true);
 		expect(await powershellDestructive("no pwsh here", classifier)).toBe(true);
 		expect(await powershellDestructive("Get-ChildItem", classifier)).toBe(false);
@@ -264,10 +264,10 @@ describe("permission gate", () => {
 		]);
 		const choices: string[][] = [];
 		const workspace = setup("workspace");
-		workspace.ctx.ui.select = (async (_title: string, options: string[]) => {
+		workspace.ctx.ui.select = async (_title: string, options: string[]) => {
 			choices.push(options);
 			return "Allow once";
-		}) as never;
+		};
 		expect(
 			await workspace.gate(call("browser", { action: "evaluate", expression: "1" }), workspace.ctx),
 		).toBeUndefined();

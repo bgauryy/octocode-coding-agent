@@ -6,7 +6,7 @@ export function isNativeModifierPressed(key: ModifierKey): boolean {
 	const helper = getNativePlatformHelper();
 	if (!helper?.isModifierPressed) return false;
 	try {
-		return helper.isModifierPressed(key) === true;
+		return helper.isModifierPressed(key);
 	} catch {
 		return false;
 	}

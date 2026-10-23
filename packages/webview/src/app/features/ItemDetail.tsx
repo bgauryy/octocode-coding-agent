@@ -285,7 +285,7 @@ function Notes({ notes, now }: { notes: readonly Note[]; now: number }) {
 		<Section title="Notes and changes" count={notes.length}>
 			<ol className="timeline">
 				{notes.map((note, i) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: notes have no id and are append-only, so position is stable.
+					// oxlint-disable-next-line react/no-array-index-key -- notes have no id and are append-only, so position is stable.
 					<li key={`${note.at}:${note.author}:${i}`} className={`timeline-entry kind-${note.kind}`}>
 						<div className="timeline-meta">
 							<strong>{note.author}</strong>

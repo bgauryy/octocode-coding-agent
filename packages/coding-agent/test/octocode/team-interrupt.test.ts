@@ -72,7 +72,7 @@ describe("interrupt", () => {
 		const parentId = parent.team.join().id;
 		const child = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-retry", OCTOCODE_PARENT_ID: parentId }, { idle: false });
 		child.team.join();
-		const { id } = (await parent.team.send(child.team.id!, "redirect", {
+		const { id } = (await parent.team.send(child.team.id, "redirect", {
 			replyRequired: false,
 			interrupt: true,
 		})) as { id: number };
@@ -87,9 +87,7 @@ describe("interrupt", () => {
 		await child.emit(
 			"context",
 			{
-				messages: [
-					{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: mail(child.sent)[0]!.message.details },
-				],
+				messages: [{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: mail(child.sent)[0].message.details }],
 			},
 			child.ctx,
 		);
@@ -109,27 +107,27 @@ describe("interrupt", () => {
 		const { cwd, db, parent, child } = family();
 		const peer = agent(db, cwd);
 		peer.team.join();
-		expect(await peer.team.send(child.team.id!, "stop", { interrupt: true })).toEqual({
+		expect(await peer.team.send(child.team.id, "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent you started"),
 		});
-		expect(await parent.team.send(peer.team.id!, "stop", { interrupt: true })).toEqual({
+		expect(await parent.team.send(peer.team.id, "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent you started"),
 		});
 		expect(await parent.team.send("all", "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("one subagent"),
 		});
 		expect(await child.team.send("parent", "stop", { interrupt: true })).toHaveProperty("error");
-		expect(await parent.team.send(child.team.id!, "stop", { interrupt: true })).toMatchObject({
+		expect(await parent.team.send(child.team.id, "stop", { interrupt: true })).toMatchObject({
 			sent: [child.team.id],
 		});
-		expect(await parent.team.send(child.team.id!, "redirect", { from: USER_SENDER, interrupt: true })).toMatchObject({
+		expect(await parent.team.send(child.team.id, "redirect", { from: USER_SENDER, interrupt: true })).toMatchObject({
 			sent: [child.team.id],
 		});
 	});
 
 	it("stops a busy subagent's current step and continues the same run with the message once it settles", async () => {
 		const { parent, child, store } = family(false);
-		const { id } = (await parent.team.send(child.team.id!, "stop, use the v2 API instead", {
+		const { id } = (await parent.team.send(child.team.id, "stop, use the v2 API instead", {
 			replyRequired: false,
 			interrupt: true,
 		})) as { id: number };
@@ -138,13 +136,13 @@ describe("interrupt", () => {
 		expect(mail(child.sent)).toEqual([]);
 		await child.emit("agent_settled", {}, child.ctx);
 		const [continued] = mail(child.sent);
-		expect(continued!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
-		expect(continued!.message.content).toContain("stop, use the v2 API instead");
+		expect(continued.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(continued.message.content).toContain("stop, use the v2 API instead");
 		// It stays in the team for the continued run instead of leaving.
 		expect(parent.team.members().map((member) => member.id)).toContain(child.team.id);
 		await child.emit(
 			"context",
-			{ messages: [{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: continued!.message.details }] },
+			{ messages: [{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: continued.message.details }] },
 			child.ctx,
 		);
 		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("delivered");
@@ -156,7 +154,7 @@ describe("interrupt", () => {
 	it("signals a held interrupt, so a wait for background work at the end of the run can stop early", async () => {
 		const { parent, child } = family(false);
 		expect(child.team.interrupted.aborted).toBe(false);
-		await parent.team.send(child.team.id!, "stop waiting", { replyRequired: false, interrupt: true });
+		await parent.team.send(child.team.id, "stop waiting", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(child.team.interrupted.aborted).toBe(true), { timeout: 3_000 });
 		await child.emit("agent_settled", {}, child.ctx);
 		// A fresh signal for the next interrupt.
@@ -216,10 +214,10 @@ describe("interrupt", () => {
 
 	it("says the step was stopped only when it was", async () => {
 		const { cwd, db, parent, parentId, child } = family(false);
-		await parent.team.send(child.team.id!, "switch tasks", { replyRequired: false, interrupt: true });
+		await parent.team.send(child.team.id, "switch tasks", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalled(), { timeout: 3_000 });
 		await child.emit("agent_settled", {}, child.ctx);
-		expect(mail(child.sent)[0]!.message.content).toContain("your current step was stopped");
+		expect(mail(child.sent)[0].message.content).toContain("your current step was stopped");
 		// One with a UI that is idle is woken, not stopped.
 		const ui = agent(
 			db,
@@ -228,9 +226,9 @@ describe("interrupt", () => {
 			{ hasUI: true, idle: true },
 		);
 		ui.team.join();
-		await parent.team.send(ui.team.id!, "new direction", { replyRequired: false, interrupt: true });
+		await parent.team.send(ui.team.id, "new direction", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(mail(ui.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(ui.sent)[0]!.message.content).not.toContain("was stopped");
+		expect(mail(ui.sent)[0].message.content).not.toContain("was stopped");
 		expect(ui.abort).not.toHaveBeenCalled();
 	});
 
@@ -239,9 +237,9 @@ describe("interrupt", () => {
 		child.abort.mockImplementation(() => {
 			throw new Error("session ended");
 		});
-		await parent.team.send(child.team.id!, "stop", { replyRequired: false, interrupt: true });
+		await parent.team.send(child.team.id, "stop", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(child.sent)[0]!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 		expect(child.team.interrupted.aborted).toBe(false);
 	});
 
@@ -256,10 +254,10 @@ describe("interrupt", () => {
 			{ hasUI: false, idle: false },
 		);
 		theirs.team.join();
-		expect(await other.team.send(child.team.id!, "stop", { from: USER_SENDER, interrupt: true })).toEqual({
+		expect(await other.team.send(child.team.id, "stop", { from: USER_SENDER, interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent of this session"),
 		});
-		expect(await other.team.send(theirs.team.id!, "stop", { from: USER_SENDER, interrupt: true })).toMatchObject({
+		expect(await other.team.send(theirs.team.id, "stop", { from: USER_SENDER, interrupt: true })).toMatchObject({
 			sent: [theirs.team.id],
 		});
 	});
@@ -276,9 +274,9 @@ describe("interrupt", () => {
 			{ hasUI: true, idle: true },
 		);
 		child.team.join();
-		await parent.team.send(child.team.id!, "new direction", { replyRequired: false, interrupt: true });
+		await parent.team.send(child.team.id, "new direction", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(child.sent)[0]!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 		expect(child.abort).not.toHaveBeenCalled();
 	});
 
@@ -295,13 +293,13 @@ describe("interrupt", () => {
 			{ idle: false },
 		);
 		child.team.join();
-		await parent.team.send(child.team.id!, "drop the compaction, do this", { replyRequired: false, interrupt: true });
+		await parent.team.send(child.team.id, "drop the compaction, do this", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
 		expect(mail(child.sent)).toHaveLength(0);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
 		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(child.sent)[0]!.message.content).toContain("your current step was stopped");
-		expect(mail(child.sent)[0]!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(mail(child.sent)[0].message.content).toContain("your current step was stopped");
+		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 	});
 
 	it("is offered by the sendMessage tool and /agents interrupt", async () => {

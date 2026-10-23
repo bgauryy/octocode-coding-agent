@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import { type CallToolResult, type Tool, toLlmContent } from "@octocodeai/octocode-mcp";
-import type { TSchema } from "typebox";
 import type {
 	AgentToolResult,
 	ToolAnnotations as PiToolAnnotations,
@@ -199,7 +198,7 @@ function callSummary(args: unknown): { summary: string; queries: string[] } {
 	const queries = isRecord(args) && Array.isArray(args.queries) ? args.queries.filter(isRecord) : [];
 	const targets = queries.map((query) => clip(queryTarget(query), 200));
 	return {
-		summary: targets.length === 1 ? targets[0]! : targets.length > 1 ? `${targets.length} queries` : "",
+		summary: targets.length === 1 ? targets[0] : targets.length > 1 ? `${targets.length} queries` : "",
 		queries: targets.length > 1 ? targets : [],
 	};
 }
@@ -219,8 +218,8 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 		name,
 		label: tool.title?.trim() || tool.name,
 		description: tool.description?.trim() || tool.title?.trim() || `Octocode tool ${tool.name}`,
-		parameters: tool.inputSchema as unknown as TSchema,
-		...(declaresOutput ? { outputSchema: outputSchema as unknown as TSchema } : {}),
+		parameters: tool.inputSchema,
+		...(declaresOutput ? { outputSchema: outputSchema } : {}),
 		exposure: isDirectResearchTool(name) ? "direct" : (binding.exposure ?? "direct"),
 		namespace: binding.namespace,
 		...(hints ? { annotations: hints } : {}),
@@ -232,7 +231,7 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 		renderResult(result, _options, theme, context) {
 			const text = resultText(result);
 			// An error is one message: its first line is the summary, the rest the body.
-			const failed = context.isError === true;
+			const failed = context.isError;
 			return resultBlock(theme, context, {
 				summary: failed ? text : "",
 				body: failed ? text.split("\n").slice(1).join("\n") : text,

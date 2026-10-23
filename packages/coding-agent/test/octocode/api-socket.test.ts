@@ -12,7 +12,7 @@ afterEach(async () => {
 	await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 const serve = () => {
-	const server = new ApiServer((() => Promise.resolve(undefined)) as never, new EventLog(), "token");
+	const server = new ApiServer(() => Promise.resolve(undefined), new EventLog(), "token");
 	servers.push(server);
 	return server;
 };

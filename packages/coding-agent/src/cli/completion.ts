@@ -194,7 +194,7 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 	if (command === "mcp" && action === "exposure" && words.length === 4) return filter(exposures);
 	if (command && commands[command]) {
 		if (words.length === 2 && !prefix.startsWith("-")) return filter(commands[command]);
-		let flags = ["--help", "-h"];
+		const flags = ["--help", "-h"];
 		if (command === "auth")
 			flags.push(
 				"--provider",

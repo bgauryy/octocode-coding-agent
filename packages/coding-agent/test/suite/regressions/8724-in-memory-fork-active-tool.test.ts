@@ -78,7 +78,7 @@ describe("regression #8724: in-memory fork during an active tool turn", () => {
 
 		const outgoingPrompt = runtime.session.prompt("start blocking tool");
 		await toolStarted;
-		const forkResult = await runtime.fork(firstUserEntryId!);
+		const forkResult = await runtime.fork(firstUserEntryId);
 		await outgoingPrompt;
 		await runtime.session.bindExtensions({});
 

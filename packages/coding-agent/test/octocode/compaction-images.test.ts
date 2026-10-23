@@ -138,7 +138,7 @@ describe("request too large (HTTP 413)", () => {
 				{ type: "text", text: "Read image file [image/png]" },
 				{ type: "text", text: NOTE },
 			]);
-			const shown = /saved at (\S+)/.exec(content[1]!.text)![1]!;
+			const shown = /saved at (\S+)/.exec(content[1].text)![1];
 			const file = shown.startsWith("~") ? path.join(os.homedir(), shown.slice(2)) : shown;
 			expect(fs.readFileSync(file).equals(Buffer.from(SHOT, "base64"))).toBe(true);
 		}
@@ -157,9 +157,9 @@ describe("request too large (HTTP 413)", () => {
 			],
 		};
 		const edits = planTooLargeRecovery([{ id: "r0", message }], undefined, 0)!;
-		const content = (edits[0]!.replacement as { content: Array<{ text: string }> }).content;
-		const note = content[1]!.text;
-		const saved = [...note.matchAll(/(\S+\.png) \(sha256 [0-9a-f]{16}, \d+ bytes\)/g)].map((match) => match[1]!);
+		const content = (edits[0].replacement as { content: Array<{ text: string }> }).content;
+		const note = content[1].text;
+		const saved = [...note.matchAll(/(\S+\.png) \(sha256 [0-9a-f]{16}, \d+ bytes\)/g)].map((match) => match[1]);
 		expect(saved).toHaveLength(2);
 		expect(note).toMatch(
 			/^\[image from an earlier tool call omitted; saved at .*; image 2 of 3 could not be saved; read /,
@@ -172,7 +172,7 @@ describe("request too large (HTTP 413)", () => {
 			undefined,
 			0,
 		)!;
-		expect((none[0]!.replacement as { content: Array<{ text: string }> }).content[0]!.text).toBe(
+		expect((none[0].replacement as { content: Array<{ text: string }> }).content[0].text).toBe(
 			"[image from an earlier tool call omitted; it could not be saved]",
 		);
 	});
@@ -193,8 +193,8 @@ describe("request too large (HTTP 413)", () => {
 		expect(edits.filter((edit) => edit.targetId !== "fail").map((edit) => edit.targetId)).toEqual(["u0", "r0"]);
 		const content = (edits.find((edit) => edit.targetId === "u0")!.replacement as { content: Array<{ text: string }> })
 			.content;
-		expect(content[0]!.text).toBe("see this");
-		expect(content[1]!.text).toMatch(/^\[image from an earlier user message omitted; saved at /);
+		expect(content[0].text).toBe("see this");
+		expect(content[1].text).toMatch(/^\[image from an earlier user message omitted; saved at /);
 		// A text-only user message is never touched.
 		expect(
 			planTooLargeRecovery([{ id: "u1", message: { role: "user", content: "hello" } }], undefined, 0),
@@ -238,8 +238,8 @@ describe("request too large (HTTP 413)", () => {
 		expect(await fire("turn_end", turnEnd(bare, failed(), "fail3"))).toBeUndefined();
 		expect(await settle()).toBeUndefined();
 		expect(notify).toHaveBeenCalledOnce();
-		expect(notify.mock.calls[0]![0]).toMatch(/\/compact/);
-		expect(notify.mock.calls[0]![1]).toBe("warning");
+		expect(notify.mock.calls[0][0]).toMatch(/\/compact/);
+		expect(notify.mock.calls[0][1]).toBe("warning");
 	});
 
 	it("only strips images when Octocode recognises the overflow itself (Octocode compacts and retries)", async () => {

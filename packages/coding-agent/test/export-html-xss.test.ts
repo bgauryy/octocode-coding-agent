@@ -16,7 +16,7 @@ describe("export HTML markdown link sanitization", () => {
 	});
 
 	it("strips C0 controls before checking and emitting markdown URLs", () => {
-		expect(templateJs).toContain("replace(/[\\x00-\\x1f\\x7f]/g, '')");
+		expect(templateJs).toMatch(/replace\(\/\[\\x00-\\x1f\\x7f\]\/g, (?:''|"")\)/);
 		expect(templateJs).not.toMatch(/\^\\s\*\(javascript\|vbscript\|data\):/i);
 	});
 
@@ -47,12 +47,12 @@ describe("export HTML markdown link sanitization", () => {
 
 	it("escapes tree metadata rendered from session fields", () => {
 		// The tree renders session metadata via innerHTML, so dynamic fields must be escaped.
-		expect(templateJs).not.toMatch(/\[\$\{msg\.toolName \|\| 'tool'\}\]/);
+		expect(templateJs).not.toMatch(/\[\$\{msg\.toolName \|\| (?:'tool'|"tool")\}\]/);
 		expect(templateJs).not.toMatch(/\[\$\{msg\.role\}\]/);
 		expect(templateJs).not.toMatch(/\[model: \$\{entry\.modelId\}\]/);
 		expect(templateJs).not.toMatch(/\[thinking: \$\{entry\.thinkingLevel\}\]/);
 		expect(templateJs).not.toMatch(/\[\$\{entry\.type\}\]/);
-		expect(templateJs).toMatch(/\$\{escapeHtml\(msg\.toolName \|\| 'tool'\)\}/);
+		expect(templateJs).toMatch(/\$\{escapeHtml\(msg\.toolName \|\| (?:'tool'|"tool")\)\}/);
 		expect(templateJs).toMatch(/\$\{escapeHtml\(msg\.role\)\}/);
 		expect(templateJs).toMatch(/\$\{escapeHtml\(entry\.modelId\)\}/);
 		expect(templateJs).toMatch(/\$\{escapeHtml\(entry\.thinkingLevel\)\}/);
@@ -61,7 +61,9 @@ describe("export HTML markdown link sanitization", () => {
 
 	it("escapes model names in the exported header", () => {
 		// Assistant message provider/model values are collected from the session and rendered with innerHTML.
-		expect(templateJs).not.toMatch(/\$\{globalStats\.models\.join\(', '\) \|\| 'unknown'\}/);
-		expect(templateJs).toMatch(/\$\{escapeHtml\(globalStats\.models\.join\(', '\) \|\| 'unknown'\)\}/);
+		expect(templateJs).not.toMatch(/\$\{globalStats\.models\.join\((?:', '|", ")\) \|\| (?:'unknown'|"unknown")\}/);
+		expect(templateJs).toMatch(
+			/\$\{escapeHtml\(globalStats\.models\.join\((?:', '|", ")\) \|\| (?:'unknown'|"unknown")\)\}/,
+		);
 	});
 });

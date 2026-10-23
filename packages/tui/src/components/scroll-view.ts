@@ -41,7 +41,7 @@ export class ScrollView extends Container {
 	constructor(component: Component, options: ScrollViewOptions = {}) {
 		super();
 		if (options.axis !== undefined && options.axis !== "vertical") {
-			throw new Error(`Unsupported ScrollView axis: ${options.axis}`);
+			throw new Error(`Unsupported ScrollView axis: ${String(options.axis)}`);
 		}
 		this.child = component;
 		this.children.push(component);

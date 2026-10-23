@@ -43,10 +43,10 @@ function flakyPi() {
 	const fake = fakePi();
 	const state = { down: false };
 	const send = fake.pi.sendMessage;
-	fake.pi.sendMessage = ((...args: Parameters<typeof send>) => {
+	fake.pi.sendMessage = (...args: Parameters<typeof send>) => {
 		if (state.down) throw new Error("The session ended.");
 		return send(...args);
-	}) as typeof send;
+	};
 	return { ...fake, state };
 }
 
@@ -212,7 +212,7 @@ describe("pending reports", () => {
 			queue.persist();
 			const recovered = await takePendingReports(queue.pendingDir);
 			expect(recovered).toHaveLength(1);
-			expect(recovered[0]!.content).toContain(original.content);
+			expect(recovered[0].content).toContain(original.content);
 			await releasePendingReports(recovered);
 		} finally {
 			queue.persist();
@@ -296,13 +296,13 @@ describe("pending reports", () => {
 		const dir = tmp();
 		savePendingReport(dir, "general-a", report("general-a"));
 		const [taken] = await takePendingReports(dir);
-		expect(taken!.content).toMatch(/^\(Arrived after the session restarted\) Background subagent general-a finished/);
+		expect(taken.content).toMatch(/^\(Arrived after the session restarted\) Background subagent general-a finished/);
 		// Claimed, not deleted: a crash from here to the send loses nothing.
 		expect(files(dir)).toHaveLength(1);
 		expect(files(dir)[0]).toMatch(/\.json\.claim-\d+-\d+$/);
 		const f = fakePi();
 		const queue = queueFor(f);
-		queue.add(taken!);
+		queue.add(taken);
 		queue.flush();
 		expect(delivered(f.sent)).toHaveLength(1);
 		expect(files(dir)).toEqual([]);
@@ -322,7 +322,7 @@ describe("pending reports", () => {
 		queue.flush();
 		const [text] = delivered(f.sent);
 		expect(text).toBe(`(Arrived after the session restarted) ${content}`);
-		const lines = text!.split("\n");
+		const lines = text.split("\n");
 		const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
 		expect(lines.findIndex((line) => line.startsWith("Message #2 from the user"))).toBeGreaterThan(open);
 		expect(lines.findIndex((line) => line.endsWith(">>>"))).toBeGreaterThan(
@@ -375,7 +375,7 @@ describe("pending reports", () => {
 		const [claimed] = await takePendingReports(dir);
 		expect(claimed).toBeDefined();
 		const [claim] = files(dir);
-		fs.renameSync(path.join(dir, claim!), path.join(dir, claim!.replace(/\.claim-.*$/, ".claim-4194999-1")));
+		fs.renameSync(path.join(dir, claim), path.join(dir, claim.replace(/\.claim-.*$/, ".claim-4194999-1")));
 		// A live claimer keeps what it holds.
 		savePendingReport(dir, "general-held", report("general-held"));
 		const heldName = files(dir).find((name) => name.endsWith("general-held.json"))!;
@@ -398,7 +398,7 @@ describe("pending reports", () => {
 		const dir = tmp();
 		savePendingReport(dir, "general-a", report("general-a"));
 		const [name] = files(dir);
-		fs.renameSync(path.join(dir, name!), path.join(dir, `${name}.claim-${process.ppid}-1`));
+		fs.renameSync(path.join(dir, name), path.join(dir, `${name}.claim-${process.ppid}-1`));
 		expect(await takePendingReports(dir)).toHaveLength(1);
 	});
 
@@ -415,7 +415,7 @@ describe("pending reports", () => {
 		expect(files(dir)).toHaveLength(1);
 		const f = fakePi();
 		const queue = queueFor(f);
-		queue.add(taken[0]!);
+		queue.add(taken[0]);
 		queue.add({ ...one });
 		queue.flush();
 		expect(delivered(f.sent)).toHaveLength(1);

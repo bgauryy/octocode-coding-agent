@@ -29,9 +29,9 @@ describe("a child's notices reach the parent whole", () => {
 		const state = newChildState();
 		feed(state, notify("error", `bad\u001b[31m ${"x".repeat(3_000)} the end`));
 		const [only] = state.notices.kept;
-		expect(only!.text).toBe(`bad\\u{1b}[31m ${"x".repeat(3_000)} the end`);
-		expect(only!.text).not.toContain("more characters cut");
-		expect(state.notices.lastError).toBe(only!.text);
+		expect(only.text).toBe(`bad\\u{1b}[31m ${"x".repeat(3_000)} the end`);
+		expect(only.text).not.toContain("more characters cut");
+		expect(state.notices.lastError).toBe(only.text);
 	});
 
 	it("folds identical repeats into one notice with a count, wherever they came", () => {
@@ -71,7 +71,7 @@ describe("a child's notices reach the parent whole", () => {
 		const state = newChildState();
 		for (let n = 1; n <= NOTICES_INLINE + 1; n++) feed(state, notify("warning", `warning ${n}`));
 		feed(state, notify("warning", "warning 1"), notify("warning", `warning ${NOTICES_INLINE + 1}`));
-		expect(state.notices.kept[0]!.count).toBe(2);
+		expect(state.notices.kept[0].count).toBe(2);
 		expect(state.notices.more).toBe(1);
 		expect(log(state).at(-1)).toMatchObject({ text: `warning ${NOTICES_INLINE + 1}`, count: 2 });
 	});
@@ -86,7 +86,7 @@ describe("a child's notices reach the parent whole", () => {
 		);
 		expect(state.notices.kept.map((notice) => notice.text)).toEqual(["small"]);
 		expect(state.notices.more).toBe(2);
-		expect(log(state)[1]!.text).toBe("y".repeat(NOTICES_INLINE_CHARS));
+		expect(log(state)[1].text).toBe("y".repeat(NOTICES_INLINE_CHARS));
 		expect(state.notices.lastError).toBe("y".repeat(NOTICES_INLINE_CHARS));
 	});
 

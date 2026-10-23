@@ -64,7 +64,7 @@ export function agentModes() {
 				renderCall(args, theme, context) {
 					const input = isRecord(args.input) ? args.input : {};
 					return (
-						modes.get(args.type as Mode)?.renderCall?.(input, theme, { ...context, args: input }) ??
+						modes.get(args.type)?.renderCall?.(input, theme, { ...context, args: input }) ??
 						new Text(`Agent ${args.type ?? ""}`, 0, 0)
 					);
 				},

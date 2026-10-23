@@ -98,10 +98,10 @@ describe("unified MCP slash management", () => {
 			}),
 		);
 		await harness.session.prompt("/mcp");
-		expect(menus[0]!.items).toEqual([
+		expect(menus[0].items).toEqual([
 			{ value: "octocode", label: "octocode", description: "connected · direct · automatic" },
 		]);
-		expect(menus[1]!.items).toEqual([
+		expect(menus[1].items).toEqual([
 			{ value: "tools", label: "Tools", description: "12 offered" },
 			{ value: "reconnect", label: "Reconnect" },
 		]);
@@ -214,10 +214,10 @@ describe("unified MCP slash management", () => {
 			}),
 		);
 		await harness.session.prompt("/mcp");
-		expect(menus[0]!.details).toContain(join(harness.tempDir, "agent", "mcp.json"));
-		expect(menus[2]!.items[0]!.value).toBe("localFetch");
-		expect(menus[3]!.details).toContain('"path": {');
-		expect(menus[3]!.details).toContain("Read a file");
+		expect(menus[0].details).toContain(join(harness.tempDir, "agent", "mcp.json"));
+		expect(menus[2].items[0].value).toBe("localFetch");
+		expect(menus[3].details).toContain('"path": {');
+		expect(menus[3].details).toContain("Read a file");
 	});
 
 	it("withdraws tools on disable and restores them on enable, saving only controls", async () => {
@@ -281,7 +281,7 @@ describe("unified MCP slash management", () => {
 			const signal = new AbortController().signal;
 			const result = await tool.execute(
 				"call",
-				params as never,
+				params,
 				signal,
 				undefined,
 				harness.session.extensionRunner.createToolContext("call", signal),

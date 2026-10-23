@@ -117,7 +117,7 @@ export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
 // Input buffering for batch splitting
 export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "./stdin-buffer.ts";
 // Terminal interface and implementations
-export { isAppleTerminalSession, ProcessTerminal, type Terminal } from "./terminal.ts";
+export { isAppleTerminalSession, type OutputTelemetry, ProcessTerminal, type Terminal } from "./terminal.ts";
 // Terminal colors
 export {
 	parseTerminalColorSchemeReport,
@@ -170,6 +170,9 @@ export {
 	type OverlayOptions,
 	type OverlayUnfocusOptions,
 	renderFakeCursor,
+	computeRenderDelayMs,
+	type RenderPacingOptions,
+	type RenderPacingStats,
 	type SizeValue,
 	type TUI,
 	type TuiInputListener,

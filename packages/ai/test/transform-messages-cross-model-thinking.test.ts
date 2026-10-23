@@ -86,7 +86,7 @@ describe("thinking from other models", () => {
 		];
 
 		const result = transformMessages(messages, kimi);
-		const contents = result.filter((m) => m.role === "assistant").map((m) => (m as AssistantMessage).content);
+		const contents = result.filter((m) => m.role === "assistant").map((m) => m.content);
 
 		expect(contents).toEqual([
 			[thinking("kimi 1"), { type: "text", text: "a" }],

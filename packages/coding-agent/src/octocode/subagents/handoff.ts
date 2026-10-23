@@ -22,6 +22,7 @@ import { sweepStaleOutputs } from "../shared/sweep.ts";
 import { DAY_MS, isRecord } from "../shared/util.ts";
 import { teamWorkspace } from "../team/store.ts";
 import type { ResultDetails } from "./render.ts";
+import { validateStoredStructuredResult } from "./result-schema.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -172,6 +173,16 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 				(value.reportId !== undefined && (typeof value.reportId !== "string" || !value.reportId))
 			)
 				throw new Error("Invalid pending subagent report");
+			if (value.details.structured !== undefined) {
+				try {
+					validateStoredStructuredResult(value.details.structured);
+				} catch {
+					// Preserve corrupt contract metadata for diagnosis without delivering a false typed result.
+					await fsp.rename(claim, `${file}.invalid`);
+					process.stderr.write("Quarantined a saved subagent report with invalid result schema metadata\n");
+					continue;
+				}
+			}
 			const report = value as unknown as Report;
 			if (report.reportId === undefined) {
 				report.reportId = crypto.randomUUID();

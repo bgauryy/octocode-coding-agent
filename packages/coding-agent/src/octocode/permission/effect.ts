@@ -309,7 +309,7 @@ export function transcriptPurpose(
 	try {
 		const branch = sessionManager.getBranch() as BranchEntry[];
 		for (let at = branch.length - 1; at >= 0; at--) {
-			const message = branch[at]!.type === "message" ? branch[at]!.message : undefined;
+			const message = branch[at].type === "message" ? branch[at].message : undefined;
 			if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
 			const parts = message.content as Array<{ type?: string; id?: string; text?: string }>;
 			if (!parts.some((part) => part.type === "toolCall" && part.id === toolCallId)) continue;

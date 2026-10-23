@@ -40,7 +40,7 @@ export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOp
 		if (typeof block !== "object" || block === null) continue;
 		if (!("type" in block) || block.type !== "toolCall") continue;
 		if (!("arguments" in block) || !("name" in block)) continue;
-		addFileOp(block.name, block.arguments as Record<string, unknown> | undefined, fileOps);
+		addFileOp(block.name, block.arguments, fileOps);
 	}
 }
 

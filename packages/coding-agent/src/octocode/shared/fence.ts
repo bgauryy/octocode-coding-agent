@@ -58,7 +58,7 @@ export function fenceUntrusted(
 export function fencedParts(content: string): { body: string; footer: string } | undefined {
 	const lines = content.split("\n");
 	const open = lines.findIndex((line) => line.startsWith(`${OPEN}${MARKER_PREFIX}`));
-	const marker = open >= 0 ? /^<<<(\S+) /.exec(lines[open]!)?.[1] : undefined;
+	const marker = open >= 0 ? /^<<<(\S+) /.exec(lines[open])?.[1] : undefined;
 	const close = marker ? lines.lastIndexOf(`${marker}${CLOSE}`) : -1;
 	return open >= 0 && close > open
 		? {

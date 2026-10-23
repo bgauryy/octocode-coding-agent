@@ -62,10 +62,10 @@ describe("subagent permissions", () => {
 		permission.start(ctx);
 		let title = "";
 		const select = ctx.ui.select;
-		ctx.ui.select = (async (text: string, choices: string[]) => {
+		ctx.ui.select = async (text: string, choices: string[]) => {
 			title ||= text;
 			return select(text, choices);
-		}) as never;
+		};
 		const implementer = { name: "implementer", description: "", prompt: "" };
 		expect(await askSpawn(permission, ctx, implementer, "Fix the bug")).toEqual(["file.workspace", "shell"]);
 		expect(title).toMatch(/implementer may edit files in the repository and run shell commands[\s\S]*Fix the bug/);
@@ -83,10 +83,10 @@ describe("profile permissions", () => {
 		const ctx = fakeCtx({ cwd: tmp(), ui: { selects } });
 		const titles: string[] = [];
 		const select = ctx.ui.select;
-		ctx.ui.select = (async (title: string, choices: string[]) => {
+		ctx.ui.select = async (title: string, choices: string[]) => {
 			titles.push(title);
 			return select(title, choices);
-		}) as never;
+		};
 		return { ctx, titles };
 	};
 

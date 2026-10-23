@@ -100,7 +100,7 @@ describe("file tool content precondition", () => {
 		const result = await run(cwd, [
 			{ reasoning: "r", type: "edit", path: "run.sh", edits: [{ oldText: "one", newText: "two" }] },
 		]);
-		expect(result.content[0]!.text).toContain("1. OK edit run.sh");
+		expect(result.content[0].text).toContain("1. OK edit run.sh");
 		expect(fs.readFileSync(file, "utf8")).toBe("echo two\n");
 		expect(fs.statSync(file).mode & 0o777).toBe(0o755);
 		expect(noTemp(cwd)).toEqual([]);

@@ -286,7 +286,7 @@ describe("native external Octocode adapter", () => {
 			expect.any(Object),
 			expect.any(AbortSignal),
 		);
-		expect(fake.sent[0]!.message.details.message).toMatchObject({ text: "raw text", direction: "inbound" });
+		expect(fake.sent[0].message.details.message).toMatchObject({ text: "raw text", direction: "inbound" });
 	});
 
 	it("same-key callers share asynchronous preparation and do not claim acceptance early", async () => {

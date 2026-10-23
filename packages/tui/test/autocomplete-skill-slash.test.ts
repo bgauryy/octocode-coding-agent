@@ -48,7 +48,7 @@ describe("CombinedAutocompleteProvider slash-command filter", () => {
 				result.items.map((item) => item.value),
 				["model"],
 			);
-			const applied = provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix);
+			const applied = provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix);
 			assert.equal(applied.lines[0], expected);
 			assert.equal(applied.cursorCol, expected.length);
 		}
@@ -73,7 +73,7 @@ describe("CombinedAutocompleteProvider slash-command filter", () => {
 		});
 		assert.ok(result);
 		assert.equal(result.prefix, "son");
-		const applied = provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix);
+		const applied = provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix);
 		assert.equal(applied.lines[0], "  /model sonnet");
 	});
 
@@ -131,7 +131,7 @@ describe("command aliases", () => {
 		const result = await provider.getSuggestions([line], 0, line.length, { signal: new AbortController().signal });
 		assert.ok(result);
 		assert.equal(
-			provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix).lines[0],
+			provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix).lines[0],
 			" /scoped-models sonnet",
 		);
 	});

@@ -202,7 +202,7 @@ describe("bash tool", () => {
 		const message = await tool
 			.execute("t1", { command: "sleep 0; seq 1 5000; sleep 30", timeout: 1 }, undefined, undefined, ctx)
 			.catch((error: Error) => error.message);
-		const moved = /Full output: (.+?)\]/.exec(message)![1]!;
+		const moved = /Full output: (.+?)\]/.exec(message)![1];
 		expect(path.dirname(moved)).toBe(jobs.logDir());
 		expect(fs.readFileSync(moved, "utf8")).toContain("5000");
 	});
@@ -240,7 +240,7 @@ describe("bash tool", () => {
 			ctx,
 		);
 		await until(() => sent.length === 1);
-		expect(sent[0]!.message.content).toContain("prefix=set");
+		expect(sent[0].message.content).toContain("prefix=set");
 		expect(result.content[0].text).toMatch(/Started bash-1/);
 	});
 
@@ -299,7 +299,7 @@ describe("bash tool", () => {
 		// Whatever both files keep is one unbroken run of lines ending at the last one.
 		const numbers = [...`${previous}${log}`.matchAll(/^line (\d+) /gm)].map((match) => Number(match[1]));
 		expect(numbers.at(-1)).toBe(2999);
-		expect(numbers.every((n, i) => i === 0 || n === numbers[i - 1]! + 1)).toBe(true);
+		expect(numbers.every((n, i) => i === 0 || n === numbers[i - 1] + 1)).toBe(true);
 		expect(numbers.length).toBeGreaterThan(100);
 	});
 
@@ -339,7 +339,7 @@ describe("bash tool", () => {
 		expect(result.content[0].text).toContain("No interactive editor in this shell");
 		await tool.execute("t2", { command: `${git} commit`, background: true }, undefined, undefined, ctx);
 		await until(() => sent.length === 1, 10_000);
-		expect(sent[0]!.message.content).toMatch(/failed with exit code [1-9][\s\S]*No interactive editor/);
+		expect(sent[0].message.content).toMatch(/failed with exit code [1-9][\s\S]*No interactive editor/);
 		// An editor named on the command line still wins, and pagers default to cat.
 		const inline = await tool.execute(
 			"t3",
@@ -375,7 +375,7 @@ describe("bash tool", () => {
 		expect(ctx.ui.statuses.get("octocode-bash")).toBe("1 bash job");
 		await until(() => sent.length === 1);
 		expect(jobs.jobs.size).toBe(0);
-		const { message, options } = sent[0]!;
+		const { message, options } = sent[0];
 		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
 		expect(message.content).toMatch(/^Background bash bash-1 failed with exit code 2 after \d+s: echo started/);
 		expect(message.content).toMatch(/started\ndone/);
@@ -395,7 +395,7 @@ describe("bash tool", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(jobs.jobs.size).toBe(1);
 		await until(() => sent.length === 1);
-		expect(sent[0]!.message.content).not.toMatch(/stopped/);
+		expect(sent[0].message.content).not.toMatch(/stopped/);
 	});
 
 	it("gives a background job the environment Octocode gives a foreground command, with a private log", async () => {
@@ -410,7 +410,7 @@ describe("bash tool", () => {
 			const foreground = (await tool.execute("t0", { command }, undefined, undefined, ctx)).content[0].text as string;
 			const result = await tool.execute("t1", { command, background: true }, undefined, undefined, ctx);
 			await until(() => sent.length === 1);
-			const log = /Log: (\S+)/.exec(result.content[0].text as string)![1]!;
+			const log = /Log: (\S+)/.exec(result.content[0].text as string)![1];
 			const background = fs.readFileSync(log, "utf8");
 			expect(background).toBe(foreground.trim());
 			expect(background).toBe(
@@ -426,7 +426,7 @@ describe("bash tool", () => {
 		const { tool, ctx, sent } = setup();
 		await tool.execute("t1", { command: "sleep 30", background: true, timeout: 1 }, undefined, undefined, ctx);
 		await until(() => sent.length === 1, 8_000);
-		expect(sent[0]!.message.content).toMatch(/stopped after its 1s timeout/);
+		expect(sent[0].message.content).toMatch(/stopped after its 1s timeout/);
 	});
 
 	it("lists and kills jobs with /jobs, and reports the ones session end stops without waking anyone", async () => {
@@ -444,24 +444,24 @@ describe("bash tool", () => {
 		]);
 		await commands.get("jobs")!.handler("kill bash-1", ctx);
 		await until(() => sent.length === 1);
-		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(user\)/);
-		expect(processAlive(first!.pid)).toBe(false);
+		expect(sent[0].message.content).toMatch(/bash-1 stopped \(user\)/);
+		expect(processAlive(first.pid)).toBe(false);
 		await commands.get("jobs")!.handler("kill nope", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No background bash job "nope"/);
-		expect(sent[0]!.message.details).toEqual({ id: "bash-1", log: first!.log });
+		expect(sent[0].message.details).toEqual({ id: "bash-1", log: first.log });
 		// The user stopped it: the model learns of it without a turn being started for it.
-		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 		await fire("session_shutdown", {}, ctx);
-		await second!.done;
+		await second.done;
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		// Recorded once, before the stop, so a resumed session knows it did not finish; the exit adds nothing.
 		expect(sent).toHaveLength(2);
-		expect(sent[1]!.message).toMatchObject({
+		expect(sent[1].message).toMatchObject({
 			customType: "octocode-bash-job",
-			details: { id: "bash-2", log: second!.log },
+			details: { id: "bash-2", log: second.log },
 		});
-		expect(sent[1]!.message.content).toMatch(/bash-2 stopped \(session end\)/);
-		expect(sent[1]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[1].message.content).toMatch(/bash-2 stopped \(session end\)/);
+		expect(sent[1].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
 	it("starts a background job and stops it at session end", async () => {
@@ -688,14 +688,14 @@ describe("bash rendering", () => {
 					).split("\n");
 				const collapsed = view(false);
 				const expanded = view(true);
-				expect(collapsed[0]!.replace(" (ctrl+o to expand)", "")).toBe(expanded[0]);
+				expect(collapsed[0].replace(" (ctrl+o to expand)", "")).toBe(expanded[0]);
 				const body = expanded.slice(1).filter((line) => !line.trimStart().startsWith("saved:"));
 				if (!/to expand/.test(collapsed[1] ?? "")) {
 					// A short output is shown whole, without its blank lines.
 					expect(collapsed.slice(1)).toEqual(body.filter((line) => line.trim() !== ""));
 					continue;
 				}
-				const hidden = Number(/\+(\d+) lines?/.exec(collapsed[1]!)?.[1] ?? 0);
+				const hidden = Number(/\+(\d+) lines?/.exec(collapsed[1])?.[1] ?? 0);
 				expect(hidden + collapsed.slice(2).length).toBe(body.length);
 				expect(collapsed.slice(-3)).toEqual(body.filter((line) => line.trim() !== "").slice(-3));
 			}

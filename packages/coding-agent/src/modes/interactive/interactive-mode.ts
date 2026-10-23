@@ -17,20 +17,16 @@ import {
 	type Model,
 	type Usage,
 } from "@octocodeai/octocode-ai/compat";
-import type {
-	AutocompleteItem,
-	AutocompleteProvider,
-	EditorComponent,
-	Keybinding,
-	KeyId,
-	MarkdownTheme,
-	OverlayHandle,
-	OverlayOptions,
-	SlashCommand,
-	TuiMainScreenRenderState,
-} from "@octocodeai/octocode-tui";
-import * as TuiLayouts from "@octocodeai/octocode-tui";
 import {
+	type AutocompleteItem,
+	type AutocompleteProvider,
+	type EditorComponent,
+	type Keybinding,
+	type MarkdownTheme,
+	type OverlayHandle,
+	type OverlayOptions,
+	type SlashCommand,
+	type TuiMainScreenRenderState,
 	CombinedAutocompleteProvider,
 	type Component,
 	Container,
@@ -50,6 +46,7 @@ import {
 	TuiMainScreen,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
+import * as TuiLayouts from "@octocodeai/octocode-tui";
 import chalk from "chalk";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { spawn } from "child_process";
@@ -637,7 +634,7 @@ export class InteractiveMode {
 		});
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();
-		this.editorContainer.addChild(this.editor as Component);
+		this.editorContainer.addChild(this.editor);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
@@ -1129,7 +1126,7 @@ export class InteractiveMode {
 		});
 
 		// Initialize available provider count for footer display
-		await this.updateAvailableProviderCount();
+		this.updateAvailableProviderCount();
 
 		// Flush the completed startup state before loading the remaining syntax grammars.
 		this.ui.renderNow();
@@ -1170,14 +1167,14 @@ export class InteractiveMode {
 		}
 
 		// Start version check asynchronously
-		checkForNewOctocodeVersion(this.version).then((newRelease) => {
+		void checkForNewOctocodeVersion(this.version).then((newRelease) => {
 			if (newRelease) {
 				this.showNewVersionNotification(newRelease);
 			}
 		});
 
 		// Start package update check asynchronously
-		this.checkForPackageUpdates()
+		void this.checkForPackageUpdates()
 			.then((updates) => {
 				if (updates.length > 0) {
 					this.showPackageUpdateNotification(updates);
@@ -1192,7 +1189,7 @@ export class InteractiveMode {
 			});
 
 		// Check tmux keyboard setup asynchronously
-		this.checkTmuxKeyboardSetup().then((warning) => {
+		void this.checkTmuxKeyboardSetup().then((warning) => {
 			if (warning) {
 				this.showWarning(warning);
 			}
@@ -1486,7 +1483,7 @@ export class InteractiveMode {
 		const normalizedPath = shortPath.replace(/\\/g, "/");
 		const segments = normalizedPath.split("/").filter((segment) => segment.length > 0 && segment !== "~");
 		if (segments.length > 0) {
-			return segments[segments.length - 1]!;
+			return segments[segments.length - 1];
 		}
 		return shortPath;
 	}
@@ -2163,7 +2160,7 @@ export class InteractiveMode {
 			this.subscribeToAgent();
 		}
 
-		await this.updateAvailableProviderCount();
+		this.updateAvailableProviderCount();
 		this.updateEditorBorderColor();
 		this.updateTerminalTitle();
 	}
@@ -2338,7 +2335,7 @@ export class InteractiveMode {
 		this.defaultEditor.onExtensionShortcut = (data: string) => {
 			for (const [shortcutStr, shortcut] of shortcuts) {
 				// Cast to KeyId - extension shortcuts use the same format
-				if (matchesKey(data, shortcutStr as KeyId)) {
+				if (matchesKey(data, shortcutStr)) {
 					// Run handler async, don't block input
 					Promise.resolve(shortcut.handler(createContext())).catch((err) => {
 						this.showError(`Shortcut handler error: ${err instanceof Error ? err.message : String(err)}`);
@@ -2990,7 +2987,7 @@ export class InteractiveMode {
 			this.editor = this.defaultEditor;
 		}
 
-		this.editorContainer.addChild(this.editor as Component);
+		this.editorContainer.addChild(this.editor);
 		if (this.activeStatusIndicator) {
 			this.statusContainer.clear();
 			this.activeWorkingIndicatorEmbedded = this.setEditorWorkingStatusIndicator(this.activeStatusIndicator);
@@ -2998,7 +2995,7 @@ export class InteractiveMode {
 				this.statusContainer.addChild(this.activeStatusIndicator);
 			}
 		}
-		this.ui.setFocus(this.editor as Component);
+		this.ui.setFocus(this.editor);
 		this.ui.requestRender();
 	}
 
@@ -3287,7 +3284,7 @@ export class InteractiveMode {
 		const llama = this.session.extensionRunner.getCommand("llama");
 		if (llama) choices.push("Local llama.cpp models");
 		const choice = await this.showExtensionSelector("Models", choices);
-		if (choice === "Model cycling") await this.showModelsSelector();
+		if (choice === "Model cycling") this.showModelsSelector();
 		else if (choice === "Catalog and agent routing") await this.runNativeCommand("models");
 		else if (choice === "Local llama.cpp models" && llama)
 			await llama.handler("", this.session.extensionRunner.createCommandContext());
@@ -3381,7 +3378,7 @@ export class InteractiveMode {
 				await this.handleLoginCommand(args || undefined);
 				return;
 			case "logout":
-				this.showOAuthSelector("logout");
+				await this.showOAuthSelector("logout");
 				return;
 			case "new":
 				await this.handleClearCommand();
@@ -3414,7 +3411,7 @@ export class InteractiveMode {
 			if (builtin) {
 				this.editor.setText("");
 				try {
-					await this.runBuiltinCommand(builtin.name, parsed!.args);
+					await this.runBuiltinCommand(builtin.name, parsed.args);
 				} catch (error) {
 					this.showError(error instanceof Error ? error.message : String(error));
 				}
@@ -4965,6 +4962,7 @@ export class InteractiveMode {
 		create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void },
 	): void {
 		const token = {};
+		// oxlint-disable-next-line prefer-const -- `done` may run before `create` returns, while `dispose` is still unset
 		let dispose: (() => void) | undefined;
 		const done = () => {
 			dispose?.();
@@ -4988,11 +4986,10 @@ export class InteractiveMode {
 
 	private showSettingsSelector(): void {
 		this.showSelector((done) => {
-			let selector: SettingsSelectorComponent | undefined;
 			const defaultProvider = this.settingsManager.getDefaultProvider();
 			const defaultModelId = this.settingsManager.getDefaultModel();
 			const defaultModel = defaultProvider && defaultModelId ? `${defaultProvider}/${defaultModelId}` : "not set";
-			selector = new SettingsSelectorComponent(
+			const selector = new SettingsSelectorComponent(
 				{
 					defaultModel,
 					currentModel: this.session.model,
@@ -5186,7 +5183,7 @@ export class InteractiveMode {
 					},
 					onTuiModeChange: (mode) => {
 						if (!this.switchTuiMode(mode)) {
-							selector?.getSettingsList().updateValue("tui-mode", this.ui.mode);
+							selector.getSettingsList().updateValue("tui-mode", this.ui.mode);
 							this.showStatus("Close active overlays before changing TUI mode");
 							return;
 						}
@@ -5931,7 +5928,7 @@ export class InteractiveMode {
 
 		const providerOptions = this.findLoginProviderOptions(providerRef);
 		if (providerOptions.length === 1) {
-			await this.startProviderLogin(providerOptions[0]!);
+			await this.startProviderLogin(providerOptions[0]);
 			return;
 		}
 
@@ -6093,7 +6090,7 @@ export class InteractiveMode {
 						await this.session.modelRuntime.logout(providerOption.id, {
 							signal: AbortSignal.timeout(15_000),
 						});
-						await this.updateAvailableProviderCount();
+						this.updateAvailableProviderCount();
 						const message =
 							providerOption.authType === "oauth"
 								? `Logged out of ${providerOption.name}`
@@ -6163,7 +6160,7 @@ export class InteractiveMode {
 				}
 			}
 
-			await this.updateAvailableProviderCount();
+			this.updateAvailableProviderCount();
 			this.footer.invalidate();
 			this.updateEditorBorderColor();
 			if (selectedModel) {
@@ -6496,11 +6493,11 @@ export class InteractiveMode {
 					? "Reloaded keybindings, extensions, skills, prompts, themes, and context files; saved project trust"
 					: "Reloaded keybindings, extensions, skills, prompts, themes, and context files",
 			);
-			dismissReloadBox(this.editor as Component);
+			dismissReloadBox(this.editor);
 			reloadBoxDismissed = true;
 		} catch (error) {
 			if (!reloadBoxDismissed) {
-				dismissReloadBox(previousEditor as Component);
+				dismissReloadBox(previousEditor);
 			}
 			this.showError(`Reload failed: ${error instanceof Error ? error.message : String(error)}`);
 		}

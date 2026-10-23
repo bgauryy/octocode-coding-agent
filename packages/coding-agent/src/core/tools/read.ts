@@ -126,7 +126,7 @@ export function createReadToolDefinition(
 					};
 					signal?.addEventListener("abort", onAbort, { once: true });
 
-					(async () => {
+					void (async () => {
 						try {
 							const absolutePath = await resolveReadPathAsync(path, ctx?.cwd || cwd);
 							if (aborted) return;
@@ -178,7 +178,7 @@ export function createReadToolDefinition(
 								if (truncation.firstLineExceedsLimit) {
 									// First line alone exceeds the byte limit. Point the model at a bash fallback.
 									const firstLineSize = formatSize(
-										window?.firstLineBytes ?? Buffer.byteLength(allLines![startLine]!, "utf-8"),
+										window?.firstLineBytes ?? Buffer.byteLength(allLines![startLine], "utf-8"),
 									);
 									outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
 									details = { truncation };

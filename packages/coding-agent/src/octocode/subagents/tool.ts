@@ -58,6 +58,7 @@ import {
 	USER_STOP,
 } from "./process.ts";
 import { type AgentProfile, askSpawn, GENERAL_PROFILE } from "./profiles.ts";
+import { admitResultSchema, unavailableResult } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import {
 	archiveNote,
@@ -158,7 +159,7 @@ const reportFacts = (
 	details: RunDetails,
 ): Pick<
 	ResultDetails,
-	"usage" | "unpriced" | "compactions" | "notices" | "session" | "asks" | "firstTurnTokens" | "startup"
+	"usage" | "unpriced" | "compactions" | "notices" | "session" | "asks" | "firstTurnTokens" | "startup" | "structured"
 > => {
 	const usage = spent.get(details);
 	return {
@@ -169,6 +170,7 @@ const reportFacts = (
 		...(details.asks ? { asks: details.asks } : {}),
 		...(details.firstTurnTokens !== undefined ? { firstTurnTokens: details.firstTurnTokens } : {}),
 		...(details.startup ? { startup: details.startup } : {}),
+		...(details.structured ? { structured: details.structured } : {}),
 	};
 };
 
@@ -352,6 +354,8 @@ function startBackground(
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
+			if (outcome.structured) details.structured = outcome.structured;
+			const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 			const stats = [
 				formatDuration(Date.now() - details.startedAt),
 				toolCallCount(details.toolCalls),
@@ -377,6 +381,7 @@ function startBackground(
 			const shot = details.shot ? `(Last screenshot: ${shortPath(details.shot)})` : "";
 			reports.add({
 				content: reportMessage(head, body, [
+					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
 					next,
 					...runFooter(details, Boolean(outcome.error)),
 					shot,
@@ -395,6 +400,7 @@ function startBackground(
 				wake: !alreadyRead,
 			});
 		} catch (error) {
+			if (identity.resultContract) details.structured = unavailableResult(identity.resultContract);
 			const note = await finish();
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
@@ -494,6 +500,7 @@ async function runForeground(
 		runs.foreground.delete(identity.id);
 	}
 	const note = `${await finish()}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
+	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.error) {
 		// An error result rather than a throw, so the child's spent tokens still reach this session's totals.
 		details.status = "failed";
@@ -505,11 +512,13 @@ async function runForeground(
 	const reported = outcome.outcome;
 	if (reported) details.outcome = reported;
 	const heading = reported ? `Subagent ${identity.id} reported ${reported}:\n` : "";
+	const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 	return {
+		...(typedFailure ? { isError: true } : {}),
 		content: [
 			{
 				type: "text" as const,
-				text: `${heading}${withShot(details, outcome.text || "(subagent returned no text)")}${note}`,
+				text: `${heading}${withShot(details, outcome.text || "(subagent returned no text)")}${typedFailure ? `\n\nResult schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : ""}${note}`,
 			},
 		],
 		details,
@@ -542,17 +551,17 @@ export function registerAgentTool(
 	};
 	const { background } = runs;
 	pi.on("tool_result", async (event, ctx) => {
-		!event.isError && background.size > 0 && runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
+		if (!event.isError && background.size > 0) runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
 		return undefined;
 	});
 	// When this session asked the user: an answer the parent gives right after one may be the user's.
 	const questions = new UserQuestions();
 	pi.on("tool_execution_start", async (event) => {
-		event.toolName === "askUser" && questions.begin(event.toolCallId);
+		if (event.toolName === "askUser") questions.begin(event.toolCallId);
 		return undefined;
 	});
 	pi.on("tool_execution_end", async (event) => {
-		event.toolName === "askUser" && questions.end(event.toolCallId);
+		if (event.toolName === "askUser") questions.end(event.toolCallId);
 		return undefined;
 	});
 	/** Runs `work` and, once it ends, records the run's session file and its questions to this session's agent. */
@@ -655,7 +664,7 @@ export function registerAgentTool(
 		// Off the start path: it lists and deletes directories.
 		const root = scratchRoot(ctx.cwd);
 		setImmediate(() => {
-			sweepScratch(root);
+			void sweepScratch(root);
 			return undefined;
 		});
 		void pruneWorktrees(ctx.cwd)
@@ -707,6 +716,12 @@ export function registerAgentTool(
 							"Model override: provider/id, bare id or purpose (small, medium), optionally :thinking. Refused when unavailable; omit for the profile's model, else this session's",
 					}),
 				),
+				resultSchema: Type.Optional(
+					Type.Record(Type.String(), Type.Unknown(), {
+						description:
+							"Optional bounded JSON Schema for the child's final marked JSON result; the host validates it and returns the verdict in details. Supported keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric and length bounds.",
+					}),
+				),
 				background: Type.Optional(
 					Type.Boolean({
 						description:
@@ -729,6 +744,7 @@ export function registerAgentTool(
 			async execute(id, params, signal, onUpdate, ctx) {
 				const launchSignal = withLaunch(signal);
 				launchSignal.throwIfAborted();
+				const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 				const goal = checkGoal(params.goal);
 				const skillResources = pi.getSkillResourceSnapshot(params.skills);
 				// Refusals first (unknown profile, unavailable model), then a slot, then the spawn ask: the user is never asked
@@ -756,6 +772,7 @@ export function registerAgentTool(
 					if (!claimed) runs.slots.give();
 				}
 				const run = claimed;
+				if (resultContract) run.identity.resultContract = resultContract;
 				run.identity.skillResources = skillResources;
 				// A child cannot ask anyone: it also gets every kind the user allowed for this session.
 				run.identity.permission = {
@@ -782,7 +799,10 @@ export function registerAgentTool(
 					const browserMode = run.profile?.headless;
 					const taskInput =
 						browserMode === undefined ? params.task : `${params.task}\n\nBrowser mode: headless=${browserMode}.`;
-					const own = withIdentity(taskInput, run.identity, library ? { library } : undefined);
+					const contractTask = resultContract
+						? `${taskInput}\n\nResult contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
+						: taskInput;
+					const own = withIdentity(contractTask, run.identity, library ? { library } : undefined);
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
 					const details = runDetails(run);
 					const track = tracker(run.identity, details, modelLookup(ctx));

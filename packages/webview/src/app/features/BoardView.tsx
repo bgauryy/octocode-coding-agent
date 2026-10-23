@@ -70,7 +70,7 @@ export function BoardView({ index, params, setParams }: ViewProps) {
 					Run <code>/backlog add &lt;title&gt;</code> in a session to create the first task.
 				</EmptyState>
 			) : null}
-			{/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be keyboard-scrollable. */}
+			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be keyboard-scrollable. */}
 			<section className="board" aria-label="Task board, scroll horizontally for more lists" tabIndex={0}>
 				{index.states.map((state) => (
 					<BoardColumn

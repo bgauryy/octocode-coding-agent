@@ -15,7 +15,7 @@ import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
  * page and a private server. Run with OCTOCODE_TEST_CHROME=1 (needs a local Chrome); skipped otherwise.
  */
 describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page requests to a private server", () => {
-	const cleanups: Array<() => Promise<unknown> | unknown> = [];
+	const cleanups: Array<() => unknown> = [];
 	afterEach(async () => {
 		vi.unstubAllEnvs();
 		while (cleanups.length > 0) await cleanups.pop()!();
@@ -58,8 +58,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		const page = http.createServer((request, response) => {
 			const send = (type: string, body: string): void => {
 				response.writeHead(200, { "content-type": type }).end(body);
-				undefined;
-				return;
 			};
 			if (request.url === "/redir") return void response.writeHead(302, { location: `${origin}/redirected` }).end();
 			if (request.url === "/worker.js")
@@ -131,6 +129,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		expect(hits.filter((hit) => !hit.startsWith("UPGRADE"))).toEqual([]);
 		expect(hits).toEqual([`UPGRADE /ws`]);
 		// The blocks are in the audit, one per host.
-		expect(audit.filter((entry) => entry.allowed === false && entry.action === "invariant").length).toBeGreaterThan(0);
+		expect(audit.filter((entry) => !entry.allowed && entry.action === "invariant").length).toBeGreaterThan(0);
 	}, 60_000);
 });

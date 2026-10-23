@@ -98,7 +98,7 @@ async function connectVia(proxy: FilteringProxy, authority: string) {
 	const socket = await rawSocket(proxy.port);
 	socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`);
 	const head = await readUntil(socket, (text) => text.includes("\r\n\r\n"));
-	return { socket, status: head.split("\r\n")[0]!, head };
+	return { socket, status: head.split("\r\n")[0], head };
 }
 
 /** One plain-HTTP request through the proxy, with the whole response. */
@@ -120,8 +120,6 @@ async function start(options: Parameters<typeof startFilteringProxy>[0] = {}) {
 	return Object.assign(proxy, {
 		allow: (url: URL): void => {
 			opened.add(keyOf(url));
-			undefined;
-			return;
 		},
 	});
 }
@@ -501,7 +499,7 @@ describe("launching Chrome behind the proxy", () => {
 		const kill = fakeChrome();
 		const onBlocked = vi.fn();
 		const chrome = await launchChrome(true, undefined, { env: {}, onBlocked });
-		const flags = launch.mock.calls[0]![0].chromeFlags as string[];
+		const flags = launch.mock.calls[0][0].chromeFlags as string[];
 		expect(flags).toEqual(
 			expect.arrayContaining([
 				"--headless=new",
@@ -533,7 +531,7 @@ describe("launching Chrome behind the proxy", () => {
 		const profile = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-profile-"));
 		cleanups.push(() => fs.rmSync(profile, { recursive: true, force: true }));
 		const chrome = await launchChrome(false, profile);
-		expect(launch.mock.calls[0]![0].chromeFlags.join(" ")).not.toContain("--proxy");
+		expect(launch.mock.calls[0][0].chromeFlags.join(" ")).not.toContain("--proxy");
 		expect(chrome.proxy).toBeUndefined();
 		expect(JSON.parse(fs.readFileSync(path.join(profile, "Default", "Preferences"), "utf8"))).toEqual({
 			webrtc: { ip_handling_policy: "disable_non_proxied_udp" },

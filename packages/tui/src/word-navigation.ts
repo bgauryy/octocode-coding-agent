@@ -39,7 +39,7 @@ export function findWordBackward(text: string, cursor: number, options?: WordNav
 
 	if (segments.length === 0) return newCursor;
 
-	const last = segments[segments.length - 1]!;
+	const last = segments[segments.length - 1];
 
 	if (isAtomic?.(last.segment)) {
 		// Skip one atomic segment.
@@ -51,7 +51,7 @@ export function findWordBackward(text: string, cursor: number, options?: WordNav
 		if (matches.length <= 0) {
 			newCursor -= segment.length;
 		} else {
-			const lastMatch = matches[matches.length - 1]!;
+			const lastMatch = matches[matches.length - 1];
 			newCursor -= segment.length - (lastMatch.index + lastMatch[0].length);
 		}
 	} else {

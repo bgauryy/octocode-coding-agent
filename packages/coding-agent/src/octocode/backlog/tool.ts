@@ -252,7 +252,7 @@ export function registerBacklogTool(
 				);
 			const triage = states.includes("backlog") ? 0 : store.counts().backlog;
 			if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);
-			return textResult(lines.join("\n"), { shown: items.length, total } as BacklogToolDetails);
+			return textResult(lines.join("\n"), { shown: items.length, total });
 		}
 		if (params.op === "add") {
 			if (!params.title?.trim()) throw new Error("add needs a title.");
@@ -286,7 +286,7 @@ export function registerBacklogTool(
 				},
 				actor,
 			);
-			return textResult(`Added ${itemLine(item, actor.id, actor.owners)}`, { item } as BacklogToolDetails);
+			return textResult(`Added ${itemLine(item, actor.id, actor.owners)}`, { item });
 		}
 		if (!params.id?.trim()) throw new Error(`${params.op} needs an id, e.g. "B12".`);
 		if (params.op === "get") {
@@ -309,14 +309,14 @@ export function registerBacklogTool(
 				offset + notes.length < total
 					? `\nNext: backlog ${JSON.stringify({ op: "get", id: item.ref, limit, offset: offset + notes.length })}`
 					: "";
-			return textResult(`${detail}${next}`, { item } as BacklogToolDetails);
+			return textResult(`${detail}${next}`, { item });
 		}
 		if (params.op === "remove") {
 			if (subagent) throw new Error("A subagent cannot remove backlog items; report it to your parent.");
 			const item = store.remove(params.id, params.version, actor);
 			return textResult(`Removed ${item.ref} "${visibleControls(item.title)}" and its notes.`, {
 				removed: item.ref,
-			} as BacklogToolDetails);
+			});
 		}
 		const fields = {
 			type: params.type,
@@ -364,7 +364,7 @@ export function registerBacklogTool(
 			},
 			actor,
 		);
-		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}`, { item } as BacklogToolDetails);
+		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}`, { item });
 	}
 }
 

@@ -71,7 +71,7 @@ export function buildCommands(
 
 /** A modal combobox: arrows move the active option, Enter runs it, Escape closes. */
 export function CommandPalette({ commands, onClose }: { commands: readonly PaletteCommand[]; onClose: () => void }) {
-	const dialog = useRef<HTMLDivElement>(null);
+	const dialog = useRef<HTMLDialogElement>(null);
 	const input = useRef<HTMLInputElement>(null);
 	const listId = useId();
 	const [query, setQuery] = useState("");
@@ -96,11 +96,10 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 		}
 	}
 
-	let lastGroup = "";
 	return (
 		<>
 			<div className="backdrop palette-backdrop" aria-hidden="true" onMouseDown={onClose} />
-			<div ref={dialog} className="palette" role="dialog" aria-modal="true" aria-label="Command palette" tabIndex={-1}>
+			<dialog open ref={dialog} className="palette" aria-modal="true" aria-label="Command palette" tabIndex={-1}>
 				<div className="palette-input">
 					<SearchIcon />
 					<input
@@ -123,10 +122,10 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 					/>
 					<Kbd>Esc</Kbd>
 				</div>
+				{/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a combobox popup of rich options; a native select cannot hold icons or follow aria-activedescendant. */}
 				<div className="palette-list" id={listId} role="listbox" aria-label="Results">
-					{results.map((command) => {
-						const header = command.group !== lastGroup ? command.group : null;
-						lastGroup = command.group;
+					{results.map((command, position) => {
+						const header = position === 0 || results[position - 1].group !== command.group ? command.group : null;
 						const selected = command === current;
 						return (
 							<div key={command.id} role="presentation">
@@ -135,9 +134,10 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 										{header}
 									</div>
 								)}
-								{/* biome-ignore lint/a11y/useKeyWithClickEvents: options are chosen from the combobox input with arrows and Enter. */}
+								{/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- options are chosen from the combobox input with arrows and Enter. */}
 								<div
 									id={`${listId}-${command.id}`}
+									// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an option of the custom listbox above.
 									role="option"
 									tabIndex={-1}
 									aria-selected={selected}
@@ -166,7 +166,7 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 						<Kbd>/</Kbd> search view
 					</span>
 				</div>
-			</div>
+			</dialog>
 		</>
 	);
 }

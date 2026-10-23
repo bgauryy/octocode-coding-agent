@@ -17,7 +17,7 @@ import {
 	stream as streamOpenAICodexResponses,
 } from "../src/api/openai-codex-responses.ts";
 import { getModel, normalizeContext } from "../src/compat.ts";
-import type { AssistantMessage, Message, Model, Tool, ToolResultMessage, Transport } from "../src/types.ts";
+import type { AssistantMessage, Model, Tool, ToolResultMessage, Transport } from "../src/types.ts";
 
 type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
 				break;
 			}
 			for (const call of toolCalls) {
-				context.messages.push(executeTool(call) as Message);
+				context.messages.push(executeTool(call));
 				toolResults++;
 			}
 			if (requests > 4) throw new Error(`Too many requests for turn ${turn}`);

@@ -9,13 +9,13 @@ import { theme } from "../theme/theme.ts";
  * The host owns transcript spacing; renderer output should provide only its content.
  */
 export class CustomEntryComponent extends Container {
-	private entry: CustomEntry<unknown>;
+	private entry: CustomEntry;
 	private renderer: EntryRenderer;
 	private customComponent?: Component;
 	private _expanded = false;
 	private outputPad: number;
 
-	constructor(entry: CustomEntry<unknown>, renderer: EntryRenderer, outputPad = 1) {
+	constructor(entry: CustomEntry, renderer: EntryRenderer, outputPad = 1) {
 		super();
 		this.entry = entry;
 		this.renderer = renderer;

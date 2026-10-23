@@ -44,7 +44,8 @@ type ClientState = "idle" | "connecting" | "connected" | "closed";
 type NotificationListener = (params: unknown) => void;
 type ErrorListener = (error: Error) => void;
 type CloseListener = () => void;
-type RequestHandler = (params: unknown, context: { signal: AbortSignal }) => unknown | Promise<unknown>;
+/** May return a value or a promise of one. */
+type RequestHandler = (params: unknown, context: { signal: AbortSignal }) => unknown;
 
 export interface McpClientOptions extends Implementation {
 	capabilities?: ClientCapabilities;
@@ -620,6 +621,7 @@ export class McpClient {
 		for (const controller of this.incoming.values()) controller.abort(error);
 		this.incoming.clear();
 		if (wasClosed) return;
+		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during close do not change iteration
 		for (const listener of [...this.closeListeners]) {
 			try {
 				listener();

@@ -167,7 +167,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		const s = setup(idleMessages(items));
 		await s.start(T0 + 100 + HOUR + 1_000);
 		expect(s.entries).toHaveLength(1);
-		expect(s.entries[0]!.customType).toBe(CLEARED_RESULTS_TYPE);
+		expect(s.entries[0].customType).toBe(CLEARED_RESULTS_TYPE);
 		const outcome = resultTexts(await s.context());
 		expect(outcome.slice(0, 12 - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
 		expect(outcome.slice(-KEEP_RECENT_RESULTS).every((text) => text.length === BIG)).toBe(true);
@@ -273,7 +273,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		const messages = idleMessages(items);
 		const first = setup(messages);
 		await first.start(T0 + 100 + HOUR + 1_000);
-		const entry = first.entries[0]!;
+		const entry = first.entries[0];
 		const resumed = setup(messages, {
 			priorEntries: [{ type: "custom", id: "old", customType: entry.customType, data: entry.data }],
 		});
@@ -408,7 +408,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 				// The placeholder names Octocode's own spill file; no second copy is written.
 				expect(byId.get(item.id)).toContain(`Full output: ${shortPath(file)}.`);
 			});
-			const saved = (s.entries[0]!.data as { results: Array<{ saved: string }> }).results.map((result) => result.saved);
+			const saved = (s.entries[0].data as { results: Array<{ saved: string }> }).results.map((result) => result.saved);
 			expect(saved).toEqual(spilled.map(({ item }) => shortPath((item.messages[1] as any).details.fullOutputPath)));
 		});
 

@@ -73,7 +73,7 @@ function createUserMessage(text: string): UserMessage {
 function identityConverter(messages: AgentMessage[]): Message[] {
 	return messages.filter(
 		(m) => m.role === "system" || m.role === "user" || m.role === "assistant" || m.role === "toolResult",
-	) as Message[];
+	);
 }
 
 describe("default stream function compatibility", () => {
@@ -249,7 +249,7 @@ describe("agentLoop with AgentMessage", () => {
 				// Filter out notifications, convert rest
 				convertedMessages = messages
 					.filter((m) => (m as { role: string }).role !== "notification")
-					.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult") as Message[];
+					.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult");
 				return convertedMessages;
 			},
 		};
@@ -301,7 +301,7 @@ describe("agentLoop with AgentMessage", () => {
 			convertToLlm: (messages) => {
 				convertedMessages = messages.filter(
 					(m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult",
-				) as Message[];
+				);
 				return convertedMessages;
 			},
 		};
@@ -559,10 +559,10 @@ describe("agentLoop with AgentMessage", () => {
 			description: "Echo tool",
 			parameters: toolSchema,
 			async execute(_toolCallId, params) {
-				executed.push(params.value as string | number);
+				executed.push(params.value);
 				return {
 					content: [{ type: "text", text: `echoed: ${String(params.value)}` }],
-					details: { value: params.value as string | number },
+					details: { value: params.value },
 				};
 			},
 		};
@@ -2154,7 +2154,7 @@ describe("agentLoopContinue with AgentMessage", () => {
 						}
 						return m;
 					})
-					.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult") as Message[];
+					.filter((m) => m.role === "user" || m.role === "assistant" || m.role === "toolResult");
 			},
 		};
 

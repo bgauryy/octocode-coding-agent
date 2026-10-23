@@ -71,11 +71,11 @@ describe("in-memory store snapshots", () => {
 				span.setStatus({ status: "error", error: { name: "Expected", message: "original" } });
 			},
 		);
-		const trace = (await telemetry.findTraces({ name: "source" })).traces[0]!;
-		const span = trace.spans[0]!;
-		span.links[0]!.attributes!.tags = ["changed"];
+		const trace = (await telemetry.findTraces({ name: "source" })).traces[0];
+		const span = trace.spans[0];
+		span.links[0].attributes!.tags = ["changed"];
 		if (span.status.status === "error" && span.status.error) span.status.error.message = "changed";
-		const fresh = (await telemetry.getTrace(trace.traceId))!.spans[0]!;
+		const fresh = (await telemetry.getTrace(trace.traceId))!.spans[0];
 		expect(fresh.links[0]?.attributes?.tags).toEqual(["original"]);
 		expect(fresh.status).toEqual({ status: "error", error: { name: "Expected", message: "original" } });
 	});

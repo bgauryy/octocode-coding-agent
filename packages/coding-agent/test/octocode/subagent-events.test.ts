@@ -346,7 +346,7 @@ describe("reduceEvent: notices", () => {
 		const state = newChildState();
 		reduce(state, notify("error", `bad\u001b[31m ${"x".repeat(2_000)}`));
 		const [first] = state.notices.kept;
-		expect(first!.text).toContain("\\u{1b}");
-		expect(first!.text).toHaveLength("bad\\u{1b}[31m ".length + 2_000);
+		expect(first.text).toContain("\\u{1b}");
+		expect(first.text).toHaveLength("bad\\u{1b}[31m ".length + 2_000);
 	});
 });

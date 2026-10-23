@@ -22,11 +22,11 @@ function result(
 		isError: false,
 		details: undefined,
 		...extra,
-	} as ToolResultEvent;
+	};
 }
 
 function call(toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}): ToolCallEvent {
-	return { type: "tool_call", toolCallId: `call-${++ids}`, toolName, input, ...extra } as ToolCallEvent;
+	return { type: "tool_call", toolCallId: `call-${++ids}`, toolName, input, ...extra };
 }
 
 function setup(options: Parameters<typeof createProvenance>[0] = {}) {
@@ -269,8 +269,8 @@ describe("provenance: bounds and privacy", () => {
 		for (const text of [a, b, c])
 			provenance.record(result("web", { url: `https://example.com/${text.slice(0, 5)}` }, text), ctx);
 		expect(provenance.size()).toBeLessThanOrEqual(120);
-		expect(provenance.check(call("bash", { command: a!.slice(10, 60) }), ctx)).toBeUndefined();
-		expect(provenance.check(call("bash", { command: c!.slice(10, 60) }), ctx)).toMatchObject({
+		expect(provenance.check(call("bash", { command: a.slice(10, 60) }), ctx)).toBeUndefined();
+		expect(provenance.check(call("bash", { command: c.slice(10, 60) }), ctx)).toMatchObject({
 			why: expect.stringMatching(/^contains text from web https:\/\/example\.com\//),
 		});
 	});

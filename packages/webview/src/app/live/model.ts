@@ -37,6 +37,13 @@ function record(value: unknown): Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/** A detail that reads as text; an object or array has no readable string form. */
+function scalarText(value: unknown): string | undefined {
+	return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+		? String(value)
+		: undefined;
+}
+
 function isFailed(event: WorkspaceEvent): boolean {
 	return event.outcome === "failed" || FAILED_STATUSES.includes(String(record(event.details).status));
 }
@@ -61,18 +68,18 @@ export function activityCard(event: FeedEvent): ActivityCard {
 						? "agent"
 						: "neutral",
 		label: failed ? "Needs attention" : (LABELS[event.type] ?? event.type),
-		status: details.status === undefined ? undefined : String(details.status),
+		status: scalarText(details.status),
 		title: prose
 			? event.type === "message"
 				? "Agent message"
 				: "Progress update"
 			: structured
-				? String(details.summary || "Agent result")
+				? scalarText(details.summary) || "Agent result"
 				: hint
 					? `${firstLine} ${hint}`
 					: firstLine,
-		goal: details.goal ? String(details.goal) : undefined,
-		body: prose ? event.text : structured ? String(details.body ?? "") : rest.join("\n"),
+		goal: details.goal ? scalarText(details.goal) : undefined,
+		body: prose ? event.text : structured ? (scalarText(details.body) ?? "") : rest.join("\n"),
 		files: structured && Array.isArray(details.files) ? details.files.map(String) : [],
 		thoughtMs: typeof details.thoughtMs === "number" ? details.thoughtMs : undefined,
 		// A subagent's report is the agent tool's output: Markdown, like any other answer.
@@ -272,7 +279,7 @@ export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 	return { kind: "thinking" };
 }
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching the ESC that starts a terminal colour code is the point.
+// The ESC that starts a terminal colour code, then its parameters and final letter.
 const ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
 export function stripAnsi(text: string): string {
 	return text.replace(ANSI, "");
@@ -376,7 +383,7 @@ export function fileDiffs(details: unknown): FileDiff[] {
 	return outcomes.flatMap((outcome) => {
 		const entry = record(outcome);
 		return entry.ok === true && typeof entry.diff === "string" && entry.diff
-			? [{ path: String(entry.path ?? ""), type: String(entry.type ?? "edit"), diff: entry.diff }]
+			? [{ path: scalarText(entry.path) ?? "", type: scalarText(entry.type) ?? "edit", diff: entry.diff }]
 			: [];
 	});
 }

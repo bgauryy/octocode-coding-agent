@@ -21,7 +21,7 @@ async function socketServer(handle: (socket: net.Socket, request: Record<string,
 		socket.setEncoding("utf8");
 		socket.on("data", (chunk) => {
 			body += chunk;
-			if (body.includes("\n")) handle(socket, JSON.parse(body.split("\n")[0]!) as Record<string, unknown>);
+			if (body.includes("\n")) handle(socket, JSON.parse(body.split("\n")[0]) as Record<string, unknown>);
 		});
 	});
 	await new Promise<void>((resolve, reject) => {

@@ -13,7 +13,7 @@ import { launchChrome } from "../../src/octocode/browser/launch.ts";
  * launch flags are the only barrier. Run with OCTOCODE_TEST_CHROME=1 (needs a local Chrome); skipped otherwise.
  */
 describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("Chrome WebRTC reaching a private address", () => {
-	const cleanups: Array<() => Promise<unknown> | unknown> = [];
+	const cleanups: Array<() => unknown> = [];
 	afterEach(async () => {
 		while (cleanups.length > 0) await cleanups.pop()!();
 	});
@@ -35,7 +35,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("Chrome WebRTC reachin
 			streams.close();
 		});
 		return {
-			udpPort: (datagrams.address() as AddressInfo).port,
+			udpPort: datagrams.address().port,
 			tcpPort: (streams.address() as AddressInfo).port,
 			udp,
 			tcp,

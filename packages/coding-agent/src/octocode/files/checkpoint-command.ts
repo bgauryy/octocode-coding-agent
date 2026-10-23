@@ -103,7 +103,7 @@ export function registerCheckpoints(
 		return undefined;
 	});
 	pi.on("agent_start", async () => {
-		(!begun || pending) && begin();
+		if (!begun || pending) begin();
 		return undefined;
 	});
 
@@ -164,7 +164,7 @@ export function registerCheckpoints(
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {
-				pi.sendMessage(
+				void pi.sendMessage(
 					{
 						customType: "octocode-rewind",
 						content: `The user ran /rewind. ${describe(result, ctx.cwd, turns.length)} Those files are back to their earlier content: read them again before editing.`,

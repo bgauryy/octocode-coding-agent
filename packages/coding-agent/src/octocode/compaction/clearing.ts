@@ -178,5 +178,5 @@ export function applyClearedResults<T>(messages: T[], cleared: ReadonlyMap<strin
 		if (!isRecord(message) || message.role !== "toolResult") return message;
 		const saved = cleared.get(String(message.toolCallId));
 		return saved === undefined ? message : { ...message, content: [{ type: "text", text: clearedPlaceholder(saved) }] };
-	}) as T[];
+	});
 }

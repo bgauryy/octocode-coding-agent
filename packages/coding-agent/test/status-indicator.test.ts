@@ -38,8 +38,8 @@ describe("status indicators", () => {
 			return lines;
 		};
 		const [, heading, detail] = at(1000);
-		expect(stripAnsi(heading!)).toMatch(/Main · 3s · 1\.2k tokens +esc to interrupt$/);
-		expect(stripAnsi(detail!)).toBe("   └ Writing the summary");
+		expect(stripAnsi(heading)).toMatch(/Main · 3s · 1\.2k tokens +esc to interrupt$/);
+		expect(stripAnsi(detail)).toBe("   └ Writing the summary");
 		expect(at(1000)[2]).not.toBe(at(1600)[2]);
 		indicator.dispose();
 		setKeybindings(previousKeybindings);
@@ -63,8 +63,8 @@ describe("status indicators", () => {
 		const indicator = new WorkingStatusIndicator(tui, "Working");
 		editor.setWorkingStatusIndicator(indicator);
 
-		expect(stripAnsi(editor.render(20)[0]!)).toBe("─".repeat(20));
-		const standaloneLine = indicator.render(20)[1]!;
+		expect(stripAnsi(editor.render(20)[0])).toBe("─".repeat(20));
+		const standaloneLine = indicator.render(20)[1];
 		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
 		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
 		indicator.dispose();
@@ -84,7 +84,7 @@ describe("status indicators", () => {
 		const indicator = new WorkingStatusIndicator(tui, "Working", undefined, (text) => editor.borderColor(text));
 		editor.setWorkingStatusIndicator(indicator);
 
-		const topBorder = editor.render(20)[0]!;
+		const topBorder = editor.render(20)[0];
 		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
 		expect(visibleWidth(topBorder)).toBe(20);
 		expect(topBorder).toContain(theme.fg("muted", "Working"));
@@ -109,16 +109,16 @@ describe("status indicators", () => {
 		try {
 			for (const indicator of indicators) {
 				editor.setWorkingStatusIndicator(indicator);
-				const label = stripAnsi(indicator.render(120)[1]!).trim();
-				expect(stripAnsi(editor.render(120)[0]!)).toContain(`── ${label} `);
+				const label = stripAnsi(indicator.render(120)[1]).trim();
+				expect(stripAnsi(editor.render(120)[0])).toContain(`── ${label} `);
 				for (const width of [1, 4, 10, 20, 80, 120]) {
-					expect(visibleWidth(editor.render(width)[0]!)).toBe(width);
+					expect(visibleWidth(editor.render(width)[0])).toBe(width);
 				}
 			}
 			vi.advanceTimersByTime(1000);
-			expect(stripAnsi(editor.render(120)[0]!)).toContain("Retrying (1/3) in 2s");
+			expect(stripAnsi(editor.render(120)[0])).toContain("Retrying (1/3) in 2s");
 			editor.setWorkingStatusIndicator(undefined);
-			expect(stripAnsi(editor.render(120)[0]!)).toBe("─".repeat(120));
+			expect(stripAnsi(editor.render(120)[0])).toBe("─".repeat(120));
 		} finally {
 			for (const indicator of indicators) indicator.dispose();
 		}
@@ -139,11 +139,11 @@ describe("status indicators", () => {
 				expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
 			}
 			const rows = indicator.render(100);
-			expect(stripAnsi(rows[1]!)).toContain("Main · 5m24s · 28.8k tokens · 2 compactions");
+			expect(stripAnsi(rows[1])).toContain("Main · 5m24s · 28.8k tokens · 2 compactions");
 			expect(rows[1]).toContain(theme.fg("accent", theme.bold("Main")));
-			expect(stripAnsi(rows[2]!)).toContain("└ Running bash");
+			expect(stripAnsi(rows[2])).toContain("└ Running bash");
 			indicator.setMessage("Main · 5m25s · 29k tokens · 2 compactions\nWriting");
-			expect(stripAnsi(indicator.render(100)[2]!)).toContain("Writing");
+			expect(stripAnsi(indicator.render(100)[2])).toContain("Writing");
 		} finally {
 			indicator.dispose();
 		}

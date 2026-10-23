@@ -208,9 +208,9 @@ export function LiveProvider({
 export function ConnectionStatus() {
 	const status = useStore(useLive().session, (state) => state.status);
 	return (
-		<span id="connection-status" role="status" className={`connection tone-${status.tone}`}>
+		<output id="connection-status" className={`connection tone-${status.tone}`}>
 			{status.tone === "connecting" ? <Spinner size={10} /> : <span className="live-dot" aria-hidden="true" />}
 			{status.text}
-		</span>
+		</output>
 	);
 }

@@ -239,7 +239,7 @@ describe("browser tool over a shared Chrome", () => {
 		// 206 lines in a buffer of 200: the 6 oldest are gone from the view, the first kept is line 7; the long line says what was cut.
 		const [first, where] = shown.split("\n");
 		expect(first).toBe("[6 earlier console lines dropped from this view: only the last 200 are kept]");
-		const file = /every console line is in (\S+); search it/.exec(where!)?.[1];
+		const file = /every console line is in (\S+); search it/.exec(where)?.[1];
 		expect(file).toBeDefined();
 		expect(shown).toContain("[log] line 7\n");
 		expect(shown).not.toContain("[log] line 6\n");
@@ -360,7 +360,7 @@ describe("browser tool over a shared Chrome", () => {
 		vi.stubEnv("OCTOCODE_CHROME_PORT", String(cdp.port));
 		const { run } = register();
 		const textOf = async (args: Record<string, unknown>) =>
-			((await run(args)).content as Array<{ text: string }>)[0]!.text;
+			((await run(args)).content as Array<{ text: string }>)[0].text;
 		expect(await textOf({ action: "evaluate", expression: "hostile" })).toBe("a\\u{1b}[31mred\\u{1b}[0m \\u{202e}evil");
 		const saved = await textOf({ action: "evaluate", expression: "big" });
 		expect(saved).toContain("row 1 ");
@@ -515,7 +515,7 @@ describe("browser launching its own Chrome", () => {
 		launch.mockResolvedValue({ port: chrome.port, kill });
 		const session = await openBrowser({ OCTOCODE_CHROME_PORT: String(await closedPort()) });
 		expect(session).toMatchObject({ kind: "own", headless: true, port: chrome.port });
-		expect(launch.mock.calls[0]![0].chromeFlags).toContain("--headless=new");
+		expect(launch.mock.calls[0][0].chromeFlags).toContain("--headless=new");
 		const { browser } = register();
 		session.page.close();
 
@@ -524,7 +524,7 @@ describe("browser launching its own Chrome", () => {
 		vi.stubEnv("OCTOCODE_BROWSER_HEADLESS", "0");
 		const own = await browser.session();
 		expect(own.headless).toBe(true);
-		expect(launch.mock.calls[1]![0].chromeFlags).toContain("--headless=new");
+		expect(launch.mock.calls[1][0].chromeFlags).toContain("--headless=new");
 		await browser.close();
 		expect(kill).toHaveBeenCalledTimes(1);
 	}, 20_000);
@@ -690,7 +690,7 @@ describe("settle", () => {
 			new Promise<never>((_resolve, reject) =>
 				signal?.addEventListener("abort", () => reject(signal.reason), { once: true }),
 			);
-		const waiting = settle({ ...events(), evaluate: aborting as never }, controller.signal, timing);
+		const waiting = settle({ ...events(), evaluate: aborting }, controller.signal, timing);
 		await new Promise((resolve) => setTimeout(resolve, 60));
 		controller.abort(new Error("stop"));
 		await expect(waiting).rejects.toThrow("stop");

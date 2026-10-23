@@ -45,7 +45,7 @@ describe("getThemeExportColors", () => {
 			...darkTheme,
 			name: "custom-export-vars",
 			vars: {
-				...(darkTheme.vars ?? {}),
+				...darkTheme.vars,
 				pageBgVar: "#112233",
 				pageBgAlias: "pageBgVar",
 				infoBgVar: "#445566",
@@ -101,7 +101,7 @@ describe("getThemeExportColors", () => {
 			...darkTheme,
 			name: "custom-export-recursive",
 			vars: {
-				...(darkTheme.vars ?? {}),
+				...darkTheme.vars,
 				deepPageBg: "#abcdef",
 				pageBgAlias: "deepPageBg",
 				cardBgAnsi: 24,

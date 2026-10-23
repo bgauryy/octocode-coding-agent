@@ -66,9 +66,8 @@ describe("regressions #1717/#2113: agent session event settlement", () => {
 	});
 
 	it("runs tool_call handlers after the assistant tool-use message is settled in the session", async () => {
-		let harness: Harness;
 		const branchRolesAtToolCall: string[][] = [];
-		harness = await createHarness({
+		const harness: Harness = await createHarness({
 			tools: [createEchoTool()],
 			extensionFactories: [
 				(pi) => {

@@ -126,7 +126,7 @@ describe("installed MCP and skills through the native SDK", () => {
 			const selection =
 				role === "browser"
 					? parseArgs(
-							buildAgentArgs(loadProfiles(cwd, agentDir, false, {}).get("browser")!, undefined, {
+							buildAgentArgs(loadProfiles(cwd, agentDir, false, {}).get("browser"), undefined, {
 								dir: path.join(root, "session"),
 								id: "integration",
 							}),
@@ -203,8 +203,8 @@ describe("installed MCP and skills through the native SDK", () => {
 				await session.prompt("Load the research skill and its references.");
 				const servers = getMcpSessionStatus(resourceLoader.getEventBus());
 				expect(servers).toEqual([expect.objectContaining({ name: "octocode", state: "connected", enabled: true })]);
-				expect(servers[0]!.toolCount).toBeGreaterThan(0);
-				expect(servers[0]!.source).toBe(owner === "native" ? "built-in Octocode" : path.join(agentDir, "mcp.json"));
+				expect(servers[0].toolCount).toBeGreaterThan(0);
+				expect(servers[0].source).toBe(owner === "native" ? "built-in Octocode" : path.join(agentDir, "mcp.json"));
 				const infoOutput = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 				try {
 					await session.prompt("/info");
@@ -216,7 +216,7 @@ describe("installed MCP and skills through the native SDK", () => {
 					infoOutput.mockRestore();
 				}
 				expect(turns).toHaveLength(3);
-				const results = turns[1]!.messages.filter((message) => message.role === "toolResult");
+				const results = turns[1].messages.filter((message) => message.role === "toolResult");
 				expect(results).toHaveLength(1);
 				expect(JSON.stringify(results)).not.toMatch(/Access denied|outside.*allowed|not allowed|isError":true/i);
 				expect(JSON.stringify(results)).toContain("SKILL_REFERENCE_EVIDENCE");
@@ -224,7 +224,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				expect(JSON.stringify(results)).toContain("DISCOVERED_SKILL_EVIDENCE");
 				expect(
 					fs.readFileSync(evidence, "utf8"),
-					JSON.stringify(turns[2]!.messages.filter((message) => message.role === "toolResult").at(-1)),
+					JSON.stringify(turns[2].messages.filter((message) => message.role === "toolResult").at(-1)),
 				).toBe("after\n");
 				const reader = session
 					.getActiveToolNames()

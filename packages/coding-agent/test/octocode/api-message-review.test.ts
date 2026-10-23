@@ -97,7 +97,7 @@ describe("API messaging review regressions", () => {
 				const page = await target.call<{
 					messages: Array<{ index: number; text: string }>;
 					earlier?: { before: number };
-				}>("messages.list", { ...(before !== undefined ? { before } : {}) });
+				}>("messages.list", before !== undefined ? { before } : {});
 				expect(page.messages.length).toBeGreaterThan(0);
 				for (const row of page.messages) {
 					expect(row.text).toBe("x".repeat(60000));
@@ -119,9 +119,8 @@ describe("API messaging review regressions", () => {
 			holdStatus = resolve;
 		});
 		const sends: unknown[] = [];
-		let server: ApiServer;
 		const id = "review-instance";
-		server = new ApiServer(
+		const server: ApiServer = new ApiServer(
 			async (method, params) => {
 				if (method === "initialize")
 					return { protocolVersion: 1, instance: { id, pid: process.pid, cwd }, capabilities: { wait: true } };

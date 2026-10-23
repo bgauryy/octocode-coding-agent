@@ -22,7 +22,7 @@ it("orders a snapshot's messages and tools the way they happened", async () => {
 		};
 	}> = [];
 	const reading = (async () => {
-		for await (const frame of connection) frames.push(frame as never);
+		for await (const frame of connection) frames.push(frame);
 	})();
 	await new Promise((resolve) => setTimeout(resolve, 20));
 	connection.close();

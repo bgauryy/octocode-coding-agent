@@ -7,7 +7,7 @@ export async function requestJsonEventStream(
 	body: unknown,
 	headers: Record<string, string>,
 	options?: ProviderRequestOptions,
-): Promise<{ response: Response; events: AsyncGenerator<unknown>; dispose: () => void }> {
+): Promise<{ response: Response; events: AsyncGenerator; dispose: () => void }> {
 	const controller = new AbortController();
 	const signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
 	const timer = setTimeout(
@@ -60,7 +60,7 @@ export async function requestJsonEventStream(
 	}
 }
 
-async function* iterateJsonEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal): AsyncGenerator<unknown> {
+async function* iterateJsonEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal): AsyncGenerator {
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";

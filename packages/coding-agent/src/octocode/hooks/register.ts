@@ -4,11 +4,12 @@ import type { ToolInvocation } from "../../core/extensions/types.ts";
 import { sha256 } from "../shared/atomic.ts";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
 import { validateFileInput } from "../shared/file-input.ts";
+import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
 import { registerBackgroundHooks } from "./background.ts";
 import { limitCodexContext } from "./context-limit.ts";
 import { createPromptEvaluator, interpretPromptHook } from "./prompt.ts";
 import { rewriteFileQuery, rewriteCodexCommand } from "./rewrite.ts";
-import { validateToolArguments } from "@octocodeai/octocode-ai";
+import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
 import { getMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
 import { Box, Text } from "@octocodeai/octocode-tui";
 import type {
@@ -33,7 +34,15 @@ import { resultBlock } from "../shared/render.ts";
 import { redactSecrets, sanitizeTerminalText, visibleControls } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
 import { projectTrust } from "../shared/trust.ts";
-import { clipText, contentText, errorMessage, firstLine, isRecord } from "../shared/util.ts";
+import {
+	clipText,
+	contentText,
+	errorMessage,
+	firstLine,
+	isRecord,
+	optionalString,
+	stringOrEmpty,
+} from "../shared/util.ts";
 import {
 	commandsFor,
 	emptyHooks,
@@ -145,9 +154,9 @@ interface HooksView {
 				decision: "allow" | "deny";
 				message?: string;
 				interrupt?: boolean;
-				updatedInput?: import("@octocodeai/octocode-ai").JsonObject;
+				updatedInput?: JsonObject;
 				updatedFileInputs?: FileInputReplacement[];
-				updatedPermissions?: import("../shared/permission-updates.ts").SourcePermissionUpdate[];
+				updatedPermissions?: SourcePermissionUpdate[];
 		  }
 		| undefined
 	>;
@@ -241,7 +250,7 @@ function hooksReport(
 		config[event].flatMap((group) =>
 			group.hooks.map((hook) => {
 				const command = clipText(hookLabel(hook), 80);
-				return `  ${event} [${group.matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${tildePath(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0]!.dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
+				return `  ${event} [${group.matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${tildePath(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0].dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
 			}),
 		),
 	);
@@ -401,7 +410,7 @@ function createDispatcher(
 			if (hook.configurationError && event === "UserPromptSubmit") return { block: hook.configurationError };
 			if (hook.configurationError && (event === "PreToolUse" || event === "PreMessageSend")) {
 				return {
-					block: hookFailed(ctx, hook, hook.configurationError, String(payload.tool_name ?? "message"), event),
+					block: hookFailed(ctx, hook, hook.configurationError, optionalString(payload.tool_name) ?? "message", event),
 				};
 			}
 			if (
@@ -453,7 +462,10 @@ function createDispatcher(
 			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
 			const failure = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
 			const message = isRecord(payload.message) ? payload.message : {};
-			const target = gate === "PreMessageSend" ? `${message.from} -> ${message.to}` : String(payload.tool_name ?? "");
+			const target =
+				gate === "PreMessageSend"
+					? `${stringOrEmpty(message.from)} -> ${stringOrEmpty(message.to)}`
+					: stringOrEmpty(payload.tool_name);
 			const block =
 				failure && gate
 					? hookFailed(ctx, hook, failure, target, gate)
@@ -780,17 +792,17 @@ const preToolUseGate =
 			const definition = pi.getAllTools().find((tool) => tool.name === event.toolName);
 			if (!definition) return { block: true, reason: "Cannot validate rewritten input for an unknown tool" };
 			try {
-				let replacement: Record<string, unknown> = rewrites[0]!;
+				let replacement: Record<string, unknown> = rewrites[0];
 				if (
 					event.toolName === "bash" &&
 					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "codex"
 				)
-					replacement = rewriteCodexCommand(event.input, rewrites[0]!);
+					replacement = rewriteCodexCommand(event.input, rewrites[0]);
 				if (
 					event.toolName === "bash" &&
 					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "claude"
 				)
-					replacement = rewriteClaudeBash(event.input, rewrites[0]!);
+					replacement = rewriteClaudeBash(event.input, rewrites[0]);
 				if (event.toolName === "file") {
 					const codexRewrite = verdicts.find(
 						(verdict) => verdict.updatedInputProtocol === "codex" && verdict.updatedInput,
@@ -805,13 +817,14 @@ const preToolUseGate =
 						for (const [index, verdict] of verdicts.entries())
 							if (verdict.updatedInput) {
 								if (verdict.updatedInputProtocol !== "claude") throw new Error("Unsupported file rewrite profile");
-								replacement = rewriteFileQuery(replacement, dispatches[index]!.index, verdict.updatedInput);
+								replacement = rewriteFileQuery(replacement, dispatches[index].index, verdict.updatedInput);
 							}
 					if (codexGate || codexPost) {
 						try {
 							patches.set(
 								event.toolCallId,
-								codexRewrite ? String(codexRewrite.command) : projectCodexPatch(replacement),
+								// rewriteCodexPatch above refused a rewrite whose command is not a string.
+								codexRewrite ? (codexRewrite.command as string) : projectCodexPatch(replacement),
 							);
 						} catch (error) {
 							patches.delete(event.toolCallId);
@@ -949,7 +962,7 @@ function notificationHook(
 	const stop = async () => {
 		closed = true;
 		controller.abort();
-		await Promise.allSettled([...active]);
+		await Promise.allSettled(active);
 	};
 	pi.on("session_shutdown", stop);
 	pi.on("session_start", async () => {
@@ -1560,7 +1573,7 @@ export function registerHooks(
 			);
 		const verdicts: HookVerdict[] = [];
 		const fileReplacements: FileInputReplacement[] = [];
-		const permissionUpdates: import("../shared/permission-updates.ts").SourcePermissionUpdate[] = [];
+		const permissionUpdates: SourcePermissionUpdate[] = [];
 		for (const protocol of ["claude", "codex"] as const) {
 			if (protocol === "codex" && invocation.toolName === "file") {
 				if (

@@ -304,7 +304,7 @@ describe("hook runner", () => {
 		expect(capped).toMatch(
 			/line 1999 é+\n\n\[Output trimmed: showing \d+ of 2000 lines .*Full output: \S+hook-\S+\.txt;/,
 		);
-		const shown = /Full output: (\S+);/.exec(capped)![1]!;
+		const shown = /Full output: (\S+);/.exec(capped)![1];
 		expect(fs.readFileSync(shown.startsWith("~") ? path.join(os.homedir(), shown.slice(2)) : shown, "utf8")).toBe(text);
 		expect(capContext("short")).toBe("short");
 	});
@@ -636,7 +636,7 @@ describe("registerHooks", () => {
 		await fire("before_agent_start", {}, broken);
 		const warnings = notify.mock.calls.filter(([, level]) => level === "warning");
 		expect(warnings).toHaveLength(1);
-		expect(String(warnings[0]![0])).toContain("no session");
+		expect(String(warnings[0][0])).toContain("no session");
 	});
 
 	it("skips project hooks in an untrusted project", async () => {

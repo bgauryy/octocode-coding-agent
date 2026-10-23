@@ -26,7 +26,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		tempDir = join(tmpdir(), `pi-auto-compaction-queue-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 
-		const model = getModel("anthropic", "claude-sonnet-4-5")!;
+		const model = getModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			streamFn: streamSimple,
 			initialState: {
@@ -273,7 +273,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		});
 		sessionManager.appendMessage(staleAssistant);
 
-		const firstKeptEntryId = sessionManager.getEntries()[0]!.id;
+		const firstKeptEntryId = sessionManager.getEntries()[0].id;
 		sessionManager.appendCompaction("summary", firstKeptEntryId, staleAssistant.usage.totalTokens, undefined, false);
 
 		sessionManager.appendMessage({
@@ -453,7 +453,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 			timestamp: preCompactionTimestamp - 1000,
 		});
 		sessionManager.appendMessage(keptAssistant);
-		const firstKeptEntryId = sessionManager.getEntries()[0]!.id;
+		const firstKeptEntryId = sessionManager.getEntries()[0].id;
 		sessionManager.appendCompaction("summary", firstKeptEntryId, keptAssistant.usage.totalTokens, undefined, false);
 
 		// Post-compaction error message

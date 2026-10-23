@@ -81,14 +81,14 @@ describe("Octocode MCP launch and ownership", () => {
 			env: { WORKSPACE_ROOT: "/work/app", ALLOWED_PATHS: "/work/app,/h/.octocode" },
 		});
 		// The real bundled bin resolves (octocode-mcp is a dependency).
-		expect(fs.existsSync(octocodeLaunch("/w").args[0]!)).toBe(true);
+		expect(fs.existsSync(octocodeLaunch("/w").args[0])).toBe(true);
 	});
 
 	it("runs the octocode-mcp range of package.json: the dependency and the npx fallback share it", () => {
 		const manifest = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../..", "package.json"), "utf8")) as {
 			dependencies: Record<string, string>;
 		};
-		const range = manifest.dependencies["octocode-mcp"]!;
+		const range = manifest.dependencies["octocode-mcp"];
 		expect(OCTOCODE_MCP_SPEC).toBe(`octocode-mcp@${range}`);
 		if (range.startsWith("file:"))
 			expect(() => octocodeLaunch("/w", {}, "")).toThrow("local octocode-mcp build is missing");
@@ -401,7 +401,7 @@ describe("Octocode MCP client", () => {
 		const error = mcp.status().error!;
 		expect(error).toContain("boom \\u{1b}]0;pwned\\u{7}\\u{1b}[31mred\\u{1b}[0m\\u{202e}!");
 		expect(error).not.toMatch(/[\u001b\u0007\u202e]/);
-		expect(notes[0]!.message).not.toMatch(/[\u001b\u0007\u202e]/);
+		expect(notes[0].message).not.toMatch(/[\u001b\u0007\u202e]/);
 	});
 
 	it("reports a failed connect at once: notifies once, retries once on a later ready, then stays failed", async () => {
@@ -414,8 +414,8 @@ describe("Octocode MCP client", () => {
 		expect(mcp.status()).toMatchObject({ state: "failed", tools: 0 });
 		expect(mcp.status().error).toContain("kaboom");
 		expect(notes).toHaveLength(1);
-		expect(notes[0]!.message).toContain("Octocode MCP failed to start");
-		expect(notes[0]!.message).toContain("kaboom");
+		expect(notes[0].message).toContain("Octocode MCP failed to start");
+		expect(notes[0].message).toContain("kaboom");
 		expect(mcp.describe()).toContain("failed to start");
 		expect(mcp.instructions).toBeUndefined();
 		// A later prompt retries once; it fails again without another notice, and the one after does not even launch.
@@ -447,11 +447,11 @@ describe("Octocode MCP client", () => {
 		expect(mcp.describe()).toBe("Octocode MCP: connecting…");
 		const done = new AbortController();
 		done.abort();
-		expect(await mcp.ready({ ...ctx, signal: done.signal } as never)).toBe(false);
+		expect(await mcp.ready({ ...ctx, signal: done.signal })).toBe(false);
 		const aborted = new AbortController();
 		const waiting = session(hangs, { connectWaitMs: 30_000 });
 		await waiting.mcp.start(waiting.ctx);
-		const pending = waiting.mcp.ready({ ...waiting.ctx, signal: aborted.signal } as never);
+		const pending = waiting.mcp.ready({ ...waiting.ctx, signal: aborted.signal });
 		aborted.abort();
 		expect(await pending).toBe(false);
 		await Promise.all([mcp.close(), waiting.mcp.close()]);
@@ -505,7 +505,7 @@ describe("native discovery for deferred tools", () => {
 		const fake = fakePi();
 		fake.pi.registerTool({ name: "tool_search", defaultActive: false, reachesTools: () => "all" } as never);
 		const mcp = registerOctocodeMcp(fake.pi);
-		const ctx = fakeCtx({ cwd: tmp(), model: { contextWindow: 100, compat: { supportsToolSearch: true } } as never });
+		const ctx = fakeCtx({ cwd: tmp(), model: { contextWindow: 100, compat: { supportsToolSearch: true } } });
 		await fake.emit("session_start", {}, ctx);
 		return { fake, mcp, ctx };
 	};
@@ -603,13 +603,13 @@ describe("Octocode tool results and rendering", () => {
 			false,
 		);
 		const [text, dropped, kept] = result.content as Array<{ type: string; text?: string; data?: string }>;
-		expect(text!.text!.length).toBeLessThanOrEqual(TEXT_MAX_CHARS);
-		expect(text!.text).toContain("tail line");
-		const textFile = /Full output: (\S+?); search/.exec(text!.text!)?.[1];
+		expect(text.text!.length).toBeLessThanOrEqual(TEXT_MAX_CHARS);
+		expect(text.text).toContain("tail line");
+		const textFile = /Full output: (\S+?); search/.exec(text.text!)?.[1];
 		expect(fs.readFileSync(textFile!.replace(/^~/, os.homedir()), "utf8")).toBe(huge);
 		expect(textFile).toMatch(/mcp_localSearch/);
 		expect(dropped).toMatchObject({ type: "text" });
-		const imageFile = /Saved to (\S+?)\.\]/.exec(dropped!.text!)?.[1];
+		const imageFile = /Saved to (\S+?)\.\]/.exec(dropped.text!)?.[1];
 		expect(fs.statSync(imageFile!).size).toBe(Buffer.from(bigImage, "base64").length);
 		expect(kept).toEqual({ type: "image", data: "aW1n", mimeType: "image/png" });
 	});
@@ -680,7 +680,7 @@ describe("Octocode tool results and rendering", () => {
 		const small = await run({ inputLimits: { images: { resize: { maxWidth: 120, maxHeight: 90 } } } });
 		expect(pixelSize(small.shown.data!)).toEqual({ width: 90, height: 90 });
 		expect(small.note).toContain("original 512x512, displayed at 90x90");
-		expect(fs.readFileSync(/Original saved to (\S+?\.png)\./.exec(small.note)![1]!)).toEqual(original);
+		expect(fs.readFileSync(/Original saved to (\S+?\.png)\./.exec(small.note)![1])).toEqual(original);
 		// A model without image metadata gets the default 1568 px limit, which this image already fits: only the byte budget applies.
 		const unknown = await run(undefined);
 		expect(pixelSize(unknown.shown.data!)).toEqual({ width: 512, height: 512 });
@@ -709,7 +709,7 @@ describe("Octocode tool results and rendering", () => {
 				isError: false,
 				...extra,
 			}) as never;
-		const header = (args: object) => rendered(definition.renderCall!(args as never, theme, context()) as never);
+		const header = (args: object) => rendered(definition.renderCall!(args, theme, context()));
 		expect(header({ queries: [{ path: ".", searchText: "add" }] })).toContain("localFetch(add in .)");
 		const batch = header({ queries: [{ path: "a.ts" }, { path: "b.ts" }] });
 		expect(batch).toContain("localFetch(2 queries)");
@@ -722,7 +722,7 @@ describe("Octocode tool results and rendering", () => {
 				{ expanded: false, isPartial: false },
 				theme,
 				context(),
-			) as never,
+			),
 		);
 		expect(ok).toContain("line one");
 		const failed = rendered(
@@ -731,7 +731,7 @@ describe("Octocode tool results and rendering", () => {
 				{ expanded: true, isPartial: false },
 				theme,
 				context({ isError: true }),
-			) as never,
+			),
 		);
 		expect(failed).toContain("It broke");
 		expect(failed).toContain("with detail");
@@ -740,7 +740,7 @@ describe("Octocode tool results and rendering", () => {
 
 describe("Octocode result size budgets", () => {
 	const fileOf = (shown: string) =>
-		fs.readFileSync(/Full output: (\S+?); search/.exec(shown)![1]!.replace(/^~/, os.homedir()), "utf8");
+		fs.readFileSync(/Full output: (\S+?); search/.exec(shown)![1].replace(/^~/, os.homedir()), "utf8");
 	/** A page like the server's: rows, then the `next` continuation at the very end. */
 	const page = (bytes: number, mark: string) =>
 		`${"- row: some repository text\n".repeat(Math.ceil(bytes / 28))}next:\n  continueChars: { charOffset: ${mark} }\n`;
@@ -790,7 +790,7 @@ describe("Octocode result size budgets", () => {
 		);
 		expect(results.slice(0, 3)).toEqual(pages.slice(0, 3));
 		expect(results.reduce((sum, text) => sum + text.length, 0)).toBeLessThanOrEqual(TURN_MAX_CHARS);
-		const archive = /saved as JSON lines at (.+)\.\]/.exec(results[3]!)![1]!;
+		const archive = /saved as JSON lines at (.+)\.\]/.exec(results[3])![1];
 		const records = fs
 			.readFileSync(archive, "utf8")
 			.trim()
@@ -813,7 +813,7 @@ describe("Octocode result size budgets", () => {
 		);
 		expect(result.isError).toBe(true);
 		expect(result.structuredContent).toBeUndefined();
-		const file = /Full JSON: (.+)\. Request/.exec(shown(result))![1]!;
+		const file = /Full JSON: (.+)\. Request/.exec(shown(result))![1];
 		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual(value);
 	});
 
@@ -892,7 +892,7 @@ describe("fallback reader when Octocode's local readers are unavailable", () => 
 		const { pi } = fakePi();
 		pi.registerTool({ name: "file" } as never);
 		pi.registerTool({ name: "read", defaultActive: false } as never);
-		const sync = fallbackReader(pi as never);
+		const sync = fallbackReader(pi);
 		sync(true);
 		expect(pi.getActiveTools()).toEqual(["file", "read"]);
 		sync(true);
@@ -909,7 +909,7 @@ describe("fallback reader when Octocode's local readers are unavailable", () => 
 	it("does nothing when core read is not registered", () => {
 		const { pi } = fakePi();
 		pi.registerTool({ name: "file" } as never);
-		fallbackReader(pi as never)(true);
+		fallbackReader(pi)(true);
 		expect(pi.getActiveTools()).toEqual(["file"]);
 	});
 });

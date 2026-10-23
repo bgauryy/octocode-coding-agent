@@ -365,7 +365,7 @@ class Provenance {
 
 	private sourceOf(key: number, kind: Kind): Source | undefined {
 		const slot = this.index.get(key);
-		const id = slot === undefined ? 0 : this.ids![slot]!;
+		const id = slot === undefined ? 0 : this.ids![slot];
 		const source = id ? this.sources.get(id) : undefined;
 		return source?.kind === kind ? source : undefined;
 	}
@@ -390,7 +390,7 @@ class Provenance {
 		const slot = this.head;
 		this.head = (slot + 1) % this.maxShingles;
 		// An empty slot holds id 0 and key 0; a stale slot (its hash since moved) no longer owns the hash.
-		if (this.index.get(keys[slot]!) === slot) this.index.delete(keys[slot]!);
+		if (this.index.get(keys[slot]) === slot) this.index.delete(keys[slot]);
 		keys[slot] = key;
 		ids[slot] = id;
 		this.index.set(key, slot);

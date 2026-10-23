@@ -158,7 +158,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 		agentType = "reviewer",
 		permissionMode: "workspace" | "full" = "workspace",
 		calls = 0;
-	const ctx = fakeCtx({ cwd, model: { id: "original-model" } as never });
+	const ctx = fakeCtx({ cwd, model: { id: "original-model" } });
 	ctx.sessionManager.getSessionId = () => sessionId;
 	ctx.getTurnId = () => "original-turn";
 	const view = registerHooks(
@@ -245,7 +245,7 @@ it.each(["claude", "codex"] as const)("carries %s child identity through both co
 		}),
 	);
 	const fake = fakePi();
-	const ctx = fakeCtx({ cwd, model: { id: "current-model" } as never });
+	const ctx = fakeCtx({ cwd, model: { id: "current-model" } });
 	ctx.sessionManager.getSessionId = () => "child-session";
 	ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";
 	ctx.getTurnId = () => "current-turn";

@@ -13,17 +13,17 @@ import { createInMemoryTransportPair, type InMemoryTransport } from "../src/test
 interface TestServer {
 	transport: InMemoryTransport;
 	messages: JsonRpcMessage[];
-	setHandler(method: string, handler: (request: JsonRpcRequest) => unknown | Promise<unknown>): void;
+	setHandler(method: string, handler: (request: JsonRpcRequest) => unknown): void;
 }
 
 async function createServer(): Promise<{ clientTransport: InMemoryTransport; server: TestServer }> {
 	const pair = createInMemoryTransportPair();
-	const handlers = new Map<string, (request: JsonRpcRequest) => unknown | Promise<unknown>>();
+	const handlers = new Map<string, (request: JsonRpcRequest) => unknown>();
 	const messages: JsonRpcMessage[] = [];
 	pair.server.onMessage((message) => {
 		messages.push(message);
 		if (!("id" in message) || !("method" in message)) return;
-		const request = message as JsonRpcRequest;
+		const request = message;
 		const handler = handlers.get(request.method);
 		queueMicrotask(async () => {
 			try {

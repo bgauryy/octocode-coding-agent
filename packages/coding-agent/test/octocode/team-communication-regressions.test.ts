@@ -37,7 +37,7 @@ describe("team communication identity and lifecycle", () => {
 		sender.team.vouch(receiver.team.id!, "previous-session-secret");
 		sender.team.start(sender.ctx);
 		sender.team.join();
-		const result = await sender.team.send(receiver.team.id!, "message from new session", { from: USER_SENDER });
+		const result = await sender.team.send(receiver.team.id, "message from new session", { from: USER_SENDER });
 		if (!("id" in result)) throw new Error(result.error);
 		const raw = new DatabaseSync(file);
 		try {
@@ -56,7 +56,7 @@ describe("team communication identity and lifecycle", () => {
 			const { cwd, file, agent } = setup();
 			const sender = agent();
 			const receiver = agent();
-			const pending = sender.team.send(receiver.team.id!, "stale message");
+			const pending = sender.team.send(receiver.team.id, "stale message");
 			if (action === "leave") sender.team.leave();
 			else if (action === "stop") sender.team.stop();
 			else sender.team.start(sender.ctx);
@@ -78,7 +78,7 @@ describe("team communication identity and lifecycle", () => {
 		sender.team.setMessageHook(async () => {
 			controller.abort(new Error("run cancelled"));
 		});
-		expect(await sender.team.send(receiver.team.id!, "cancelled message")).toEqual({ error: "run cancelled" });
+		expect(await sender.team.send(receiver.team.id, "cancelled message")).toEqual({ error: "run cancelled" });
 		const store = TeamStore.open(cwd, file, {});
 		try {
 			expect(store.pending(receiver.team.id!)).toEqual([]);
@@ -92,7 +92,7 @@ describe("team communication identity and lifecycle", () => {
 		const controller = new AbortController();
 		const sender = agent(controller.signal);
 		const receiver = agent();
-		const pending = sender.team.send(receiver.team.id!, "cancelled without a hook");
+		const pending = sender.team.send(receiver.team.id, "cancelled without a hook");
 		controller.abort(new Error("run cancelled"));
 		expect(await pending).toEqual({ error: "run cancelled" });
 		const store = TeamStore.open(cwd, file, {});
@@ -107,7 +107,7 @@ describe("team communication identity and lifecycle", () => {
 		vi.useFakeTimers();
 		const { file, agent } = setup();
 		const receiver = agent();
-		const result = await receiver.team.send(receiver.team.id!, "original user request", { from: USER_SENDER });
+		const result = await receiver.team.send(receiver.team.id, "original user request", { from: USER_SENDER });
 		if (!("id" in result)) throw new Error(result.error);
 		const raw = new DatabaseSync(file);
 		try {

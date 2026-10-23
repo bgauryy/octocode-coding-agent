@@ -26,7 +26,7 @@
  */
 
 import { Text } from "@octocodeai/octocode-tui";
-import type { BashToolDetails, EditToolDetails, ExtensionAPI, ReadToolDetails } from "@octocodeai/octocodecode";
+import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import {
 	createBashToolDefinition,
 	createEditToolDefinition,
@@ -57,7 +57,7 @@ export default function (octocode: ExtensionAPI) {
 		renderResult(result, { expanded, isPartial }, theme, _context) {
 			if (isPartial) return new Text(theme.fg("warning", "Reading..."), 0, 0);
 
-			const details = result.details as ReadToolDetails | undefined;
+			const details = result.details;
 			const content = result.content[0];
 
 			if (content?.type === "image") {
@@ -107,7 +107,7 @@ export default function (octocode: ExtensionAPI) {
 		renderResult(result, { expanded, isPartial }, theme, _context) {
 			if (isPartial) return new Text(theme.fg("warning", "Running..."), 0, 0);
 
-			const details = result.details as BashToolDetails | undefined;
+			const details = result.details;
 			const content = result.content[0];
 			const output = content?.type === "text" ? content.text : "";
 
@@ -155,7 +155,7 @@ export default function (octocode: ExtensionAPI) {
 		renderResult(result, { expanded, isPartial }, theme, _context) {
 			if (isPartial) return new Text(theme.fg("warning", "Editing..."), 0, 0);
 
-			const details = result.details as EditToolDetails | undefined;
+			const details = result.details;
 			const content = result.content[0];
 
 			if (content?.type === "text" && content.text.startsWith("Error")) {

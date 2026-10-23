@@ -80,7 +80,15 @@ async function run() {
 
 async function scenario() {
 	// The identity block the agent tool appends (`## You …`, with the goal) is not part of the scenario text.
-	if (task.split("\n\n## You")[0].includes("linger")) {
+	if (task.startsWith("structured valid")) {
+		emit(say(`done.\n${"body ".repeat(1700)}\nStructured result:\n\`\`\`json\n{"verdict":"pass"}\n\`\`\``));
+	} else if (task.startsWith("structured abort")) {
+		emit(say('done.\nStructured result:\n```json\n{"verdict":"pass"}\n```'));
+		emit({ type: "agent_settled", aborted: true });
+		end = "hold";
+	} else if (task.startsWith("structured invalid")) {
+		emit(say('done.\nStructured result:\n```json\n{"verdict":"unknown"}\n```'));
+	} else if (task.split("\n\n## You")[0].includes("linger")) {
 		emit(
 			say(
 				`${task.includes("blocked") ? "blocked: " : ""}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""} ${process.argv.slice(2).join(" ")} ${task}`,

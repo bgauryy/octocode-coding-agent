@@ -169,7 +169,7 @@ export function createMcpResultSchema(structuredContentSchema: Record<string, un
 		required: ["content"],
 		// Fields newer protocol versions add.
 		additionalProperties: true,
-	} as unknown as TSchema;
+	};
 }
 
 /**
@@ -293,7 +293,7 @@ function toParameters(schema: Record<string, unknown>): TSchema {
 		...schema,
 		type: schema.type ?? "object",
 		...(schema.properties === undefined ? { properties: {} } : {}),
-	} as unknown as TSchema;
+	};
 }
 
 const ANNOTATION_HINTS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const;

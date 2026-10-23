@@ -149,7 +149,7 @@ function splitList(text: string): string[] {
 	let quote = "";
 	let depth = 0;
 	for (let at = 0; at < text.length; at++) {
-		const char = text[at]!;
+		const char = text[at];
 		if (char === "`") {
 			current += char + (text[at + 1] ?? "");
 			at++;
@@ -248,7 +248,7 @@ const computed = (path: string): boolean => /^[$(@%]/.test(path);
  */
 function cmdSwitches(word: string): string[] | undefined {
 	if (!/^(?:\/[a-z?](?::[^/]*)?)+$/i.test(word)) return undefined;
-	return [...word.matchAll(/\/([a-z?])/gi)].map((match) => match[1]!.toLowerCase());
+	return [...word.matchAll(/\/([a-z?])/gi)].map((match) => match[1].toLowerCase());
 }
 
 const hasSwitch = (word: string, letter: string): boolean => cmdSwitches(word)?.includes(letter) === true;
@@ -262,7 +262,7 @@ function removalDanger(name: string, args: readonly ScriptElement[]): string | u
 	let force = false;
 	const targets: string[] = [];
 	for (let at = 0; at < args.length; at++) {
-		const arg = args[at]!;
+		const arg = args[at];
 		if (arg.param === undefined) {
 			targets.push(...elementTargets(arg));
 			continue;
@@ -329,7 +329,7 @@ function cmdDanger(words: readonly string[]): string | undefined {
 /** Splits a cmd.exe line at `&`, `&&`, `|` and `||` and checks each command; words keep quoted spaces, and `^` escapes the next character (`r^d`). */
 function cmdLineDanger(line: string): string | undefined {
 	for (const part of line.replace(/\^(.?)/gs, "$1").split(/&&|\|\||[&|]/)) {
-		const words = [...part.matchAll(/"([^"]*)"|(\S+)/g)].map((match) => match[1] ?? match[2]!);
+		const words = [...part.matchAll(/"([^"]*)"|(\S+)/g)].map((match) => match[1] ?? match[2]);
 		const danger = cmdDanger(words);
 		if (danger) return danger;
 	}
@@ -339,7 +339,7 @@ function cmdLineDanger(line: string): string | undefined {
 /** The script a nested `pwsh`/`powershell` call runs: `-Command <words>`, `-EncodedCommand <base64>`, or a bare first word; null when it cannot be found (`-File`, no script). */
 function shellScript(args: readonly ScriptElement[]): { script: string } | { unparsed: true } | null {
 	for (let at = 0; at < args.length; at++) {
-		const arg = args[at]!;
+		const arg = args[at];
 		if (arg.param === undefined) return { script: args.slice(at).map(elementText).join(" ") };
 		const param = SHELL_ALIASES[arg.param.toLowerCase()] ?? resolveParam(arg.param, SHELL_PARAMS);
 		if (param === "file") return null;
@@ -354,8 +354,8 @@ function shellScript(args: readonly ScriptElement[]): { script: string } | { unp
 			const encoded =
 				arg.arg !== undefined
 					? unquote(arg.arg)
-					: args[at + 1] && args[at + 1]!.param === undefined
-						? elementText(args[at + 1]!)
+					: args[at + 1] && args[at + 1].param === undefined
+						? elementText(args[at + 1])
 						: "";
 			const bytes = Buffer.from(encoded, "base64");
 			// Valid base64 of UTF-16: an even byte count that decodes back to the same text.

@@ -182,7 +182,7 @@ export class ModelConfig {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return new ModelConfig(new Map());
 			return new ModelConfig(
 				new Map(),
-				`Failed to load models.json: ${error instanceof Error ? error.message : error}\n\nFile: ${path}`,
+				`Failed to load models.json: ${error instanceof Error ? error.message : String(error)}\n\nFile: ${path}`,
 			);
 		}
 
@@ -192,7 +192,7 @@ export class ModelConfig {
 		} catch (error) {
 			return new ModelConfig(
 				new Map(),
-				`Failed to parse models.json: ${error instanceof Error ? error.message : error}\n\nFile: ${path}`,
+				`Failed to parse models.json: ${error instanceof Error ? error.message : String(error)}\n\nFile: ${path}`,
 			);
 		}
 

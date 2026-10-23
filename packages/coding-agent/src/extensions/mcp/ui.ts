@@ -106,7 +106,6 @@ export class McpManagerView implements McpUi, Component, Focusable {
 
 	menu(build: () => McpMenu, subscribe?: (listener: () => void) => () => void): Promise<string | undefined> {
 		return new Promise((resolve) => {
-			let unsubscribe: (() => void) | undefined;
 			let settled = false;
 			const finish = (value: string | undefined) => {
 				if (settled) return;
@@ -146,7 +145,8 @@ export class McpManagerView implements McpUi, Component, Focusable {
 				this.setContent(frame(this.theme, menu.title, body, footer), (data) => list.handleInput(data));
 			};
 			render();
-			unsubscribe = subscribe?.(() => {
+			// Input handlers call `finish` only after this assignment.
+			const unsubscribe = subscribe?.(() => {
 				if (!settled) render();
 			});
 		});
@@ -243,13 +243,14 @@ export async function showMcpManager(
 ): Promise<void> {
 	await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
 		const view = new McpManagerView(tui, theme, keybindings);
-		void manage(view).then(
-			() => done(),
-			(error: unknown) => {
+		void (async () => {
+			try {
+				await manage(view);
+			} catch (error) {
 				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-				done();
-			},
-		);
+			}
+			done();
+		})();
 		return view;
 	});
 }

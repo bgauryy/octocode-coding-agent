@@ -150,7 +150,7 @@ describe("session selector path/delete interactions", () => {
 		list.handleInput("a");
 		list.handleInput(CTRL_D);
 
-		expect(confirmationChanges).toEqual([sessions[0]!.path]);
+		expect(confirmationChanges).toEqual([sessions[0].path]);
 	});
 
 	it("enters confirmation mode on Ctrl+Backspace when search query is empty", async () => {
@@ -177,11 +177,11 @@ describe("session selector path/delete interactions", () => {
 		};
 
 		list.handleInput(CTRL_BACKSPACE);
-		expect(confirmationChanges).toEqual([sessions[0]!.path]);
+		expect(confirmationChanges).toEqual([sessions[0].path]);
 
 		list.handleInput("\r");
-		expect(confirmationChanges).toEqual([sessions[0]!.path, null]);
-		expect(deletedPath).toBe(sessions[0]!.path);
+		expect(confirmationChanges).toEqual([sessions[0].path, null]);
+		expect(deletedPath).toBe(sessions[0].path);
 	});
 
 	it("does not switch scope back to All when All load resolves after toggling back to Current", async () => {
@@ -243,7 +243,7 @@ describe("session selector path/delete interactions", () => {
 		list.handleInput("\t"); // current -> all again while load pending
 
 		expect(allLoadCalls).toBe(1);
-		expect(selector.getSessionList().getSelectedSessionPath()).toBe(allSessions[0]!.path);
+		expect(selector.getSessionList().getSelectedSessionPath()).toBe(allSessions[0].path);
 		expect(selector.render(120).join("\n")).toContain("Loading");
 
 		allDeferred.resolve(allSessions);

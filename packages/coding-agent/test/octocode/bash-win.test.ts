@@ -41,8 +41,8 @@ describe("bash on Windows puts each spawned shell in a job", () => {
 		await tool.execute("t1", { command: "echo hi" }, undefined, undefined, ctx);
 		expect(tree.start).toHaveBeenCalledTimes(1);
 		expect(tree.assign).toHaveBeenCalledTimes(1);
-		expect(tree.assign.mock.calls[0]![0]).toBeGreaterThan(1);
-		expect(tree.start.mock.invocationCallOrder[0]).toBeLessThan(tree.assign.mock.invocationCallOrder[0]!);
+		expect(tree.assign.mock.calls[0][0]).toBeGreaterThan(1);
+		expect(tree.start.mock.invocationCallOrder[0]).toBeLessThan(tree.assign.mock.invocationCallOrder[0]);
 	});
 
 	it("does the same for a background job", async () => {

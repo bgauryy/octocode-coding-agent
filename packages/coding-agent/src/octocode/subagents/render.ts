@@ -149,7 +149,7 @@ interface AgentArgs {
 	isolate?: boolean | undefined;
 }
 
-const argsOf = (context: RenderContext): AgentArgs => (isRecord(context.args) ? (context.args as AgentArgs) : {});
+const argsOf = (context: RenderContext): AgentArgs => (isRecord(context.args) ? context.args : {});
 
 /**
  * `Prompt` and the task, then the heading of what follows (`Report`, `Progress`): the expanded view's preface. Task

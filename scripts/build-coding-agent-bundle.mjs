@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { isBuiltin } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
+import { rolldown } from "rolldown";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -12,9 +12,9 @@ const codingAgentDir = join(repoRoot, "packages", "coding-agent");
 const aiDistDir = join(repoRoot, "packages", "ai", "dist");
 const codingAgentDistDir = join(codingAgentDir, "dist");
 const bundleDir = join(codingAgentDistDir, "bundle");
-const banner = {
-	js: 'import { createRequire as __octocodeCreateRequire } from "node:module"; const require = __octocodeCreateRequire(import.meta.url);',
-};
+// Bundled CommonJS dependencies call require(); an ES module has none, so each output file defines one.
+const banner =
+	'import { createRequire as __octocodeCreateRequire } from "node:module"; const require = __octocodeCreateRequire(import.meta.url);';
 const allowedExternalPackages = new Set([
 	"@silvia-odwyer/photon-node",
 	"jiti",
@@ -27,15 +27,20 @@ const allowedExternalPackages = new Set([
 	"supports-color",
 ]);
 
+const LAZY_JITI = "\0lazy-jiti";
+const HTTPS_PROXY_AGENT = "\0https-proxy-agent-named-export";
+
+// The source uses jiti/static so Bun embeds its Babel transform. The Node package replaces it with a synchronous lazy
+// require so jiti loads only when importing an extension; Babel remains deferred until a cache miss needs transformation.
 const lazyJitiPlugin = {
 	name: "lazy-jiti-transform",
-	setup(build) {
-		build.onResolve({ filter: /^jiti\/static$/ }, () => ({
-			namespace: "lazy-jiti",
-			path: "jiti/static",
-		}));
-		build.onLoad({ filter: /.*/, namespace: "lazy-jiti" }, () => ({
-			contents: `
+	resolveId(source) {
+		if (source === "jiti/static") return LAZY_JITI;
+	},
+	load(id) {
+		if (id !== LAZY_JITI) return;
+		return {
+			code: `
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -46,96 +51,87 @@ export function createJiti(...args) {
 	return createJitiImpl(...args);
 }
 `,
-			loader: "js",
-		}));
+			moduleType: "js",
+		};
 	},
 };
 
+// A dynamic import of https-proxy-agent gets a module with the named export, whatever the package's module format.
 const httpsProxyAgentNamedExportPlugin = {
 	name: "https-proxy-agent-named-export",
-	setup(build) {
-		build.onResolve({ filter: /^https-proxy-agent$/ }, (args) => {
-			if (args.kind !== "dynamic-import") return undefined;
-			return {
-				namespace: "https-proxy-agent-named-export",
-				path: args.path,
-			};
-		});
-		build.onLoad(
-			{
-				filter: /^https-proxy-agent$/,
-				namespace: "https-proxy-agent-named-export",
-			},
-			() => ({
-				contents: 'export { HttpsProxyAgent } from "https-proxy-agent";',
-				loader: "js",
-				resolveDir: repoRoot,
-			}),
-		);
+	resolveId(source, importer, extra) {
+		if (source !== "https-proxy-agent") return;
+		if (importer === HTTPS_PROXY_AGENT) return this.resolve(source, join(repoRoot, "package.json"), { skipSelf: true });
+		if (extra?.kind === "dynamic-import") return HTTPS_PROXY_AGENT;
+	},
+	load(id) {
+		if (id === HTTPS_PROXY_AGENT)
+			return { code: 'export { HttpsProxyAgent } from "https-proxy-agent";', moduleType: "js" };
 	},
 };
 
-function commonBuildOptions() {
-	return {
-		absWorkingDir: repoRoot,
-		banner,
-		bundle: true,
-		define: { OCTOCODE_BUNDLED_NODE: "true" },
-		external: ["@silvia-odwyer/photon-node"],
-		format: "esm",
-		legalComments: "none",
-		logLevel: "warning",
-		metafile: true,
-		minifySyntax: true,
-		minifyWhitespace: true,
+/**
+ * Bundle `input` for Node. Imports that do not resolve stay external and are recorded in `unresolved`; they must be
+ * built-ins or optional packages listed in `allowedExternalPackages` (checked after both builds).
+ */
+async function bundle(input, output, unresolved) {
+	const build = await rolldown({
+		cwd: repoRoot,
+		input,
 		platform: "node",
-		// The source uses jiti/static so Bun embeds its Babel transform. The Node
-		// package replaces it with a synchronous lazy require so jiti loads only
-		// when importing an extension; Babel remains deferred until a cache miss
-		// needs transformation.
+		external: ["@silvia-odwyer/photon-node"],
+		// Do not apply the monorepo's source-oriented path aliases while bundling compiled output. Release builds must
+		// resolve the same package entries as an installed npm package.
+		tsconfig: false,
+		transform: { target: "node24", define: { OCTOCODE_BUNDLED_NODE: "true" } },
 		plugins: [lazyJitiPlugin, httpsProxyAgentNamedExportPlugin],
-		sourcemap: false,
-		target: "node24.15",
-		// Do not apply the monorepo's source-oriented path aliases while bundling
-		// compiled output. Release builds must resolve the same package entries as
-		// an installed npm package.
-		tsconfigRaw: { compilerOptions: {} },
-	};
-}
-
-function validateExternalImports(metafiles) {
-	const unexpected = new Set();
-	for (const metafile of metafiles) {
-		for (const input of Object.values(metafile.inputs)) {
-			for (const imported of input.imports) {
-				if (!imported.external || isBuiltin(imported.path) || allowedExternalPackages.has(imported.path)) {
-					continue;
-				}
-				unexpected.add(imported.path);
+		onLog(level, log, defaultHandler) {
+			if (log.code === "UNRESOLVED_IMPORT" && log.exporter) {
+				unresolved.add(log.exporter);
+				return;
 			}
-		}
-	}
-	if (unexpected.size > 0) {
-		throw new Error(`Bundle left unexpected external imports: ${Array.from(unexpected).sort().join(", ")}`);
+			if (level === "warn" && ["EVAL", "CIRCULAR_DEPENDENCY", "MIXED_EXPORTS", "EMPTY_IMPORT_META"].includes(log.code))
+				return;
+			defaultHandler(level, log);
+		},
+	});
+	try {
+		const result = await build.write({
+			format: "esm",
+			banner,
+			comments: { legal: false },
+			// Whitespace and syntax only: identifiers keep their names for stack traces.
+			minify: { compress: true, mangle: false, codegen: { removeWhitespace: true } },
+			sourcemap: false,
+			...output,
+		});
+		return result.output.filter((item) => item.type === "chunk");
+	} finally {
+		await build.close();
 	}
 }
 
-function findContainingOutput(metafile, inputSuffix) {
+function validateExternalImports(unresolved) {
+	const unexpected = [...unresolved].filter((path) => !isBuiltin(path) && !allowedExternalPackages.has(path));
+	if (unexpected.length > 0) {
+		throw new Error(
+			`Bundle left unexpected external imports: ${unexpected.sort((a, b) => a.localeCompare(b)).join(", ")}`,
+		);
+	}
+}
+
+function findContainingOutput(chunks, outputDir, inputSuffix) {
 	const normalizedSuffix = inputSuffix.replaceAll("\\", "/");
-	for (const [outputPath, output] of Object.entries(metafile.outputs)) {
-		if (Object.keys(output.inputs).some((inputPath) => inputPath.replaceAll("\\", "/").endsWith(normalizedSuffix))) {
-			return resolve(repoRoot, outputPath);
+	for (const chunk of chunks) {
+		if (chunk.moduleIds.some((id) => id.replaceAll("\\", "/").endsWith(normalizedSuffix))) {
+			return resolve(outputDir, chunk.fileName);
 		}
 	}
 	throw new Error(`Could not locate bundled output containing ${inputSuffix}`);
 }
 
-function outputBytes(metafiles) {
-	return metafiles.reduce(
-		(total, metafile) =>
-			total + Object.values(metafile.outputs).reduce((subtotal, output) => subtotal + output.bytes, 0),
-		0,
-	);
+function outputBytes(chunks) {
+	return chunks.reduce((total, chunk) => total + Buffer.byteLength(chunk.code), 0);
 }
 
 for (const entry of [
@@ -155,26 +151,29 @@ for (const entry of [
 rmSync(bundleDir, { force: true, recursive: true });
 mkdirSync(bundleDir, { recursive: true });
 
-const mainResult = await build({
-	...commonBuildOptions(),
-	entryNames: "[name]",
-	entryPoints: {
+const unresolved = new Set();
+const mainChunks = await bundle(
+	{
 		"cli-runtime": join(codingAgentDistDir, "cli.js"),
 		index: join(codingAgentDistDir, "index.js"),
 		"rpc-entry": join(codingAgentDistDir, "rpc-entry.js"),
 		"octocode-api": join(codingAgentDistDir, "octocode", "api", "cli.js"),
 	},
-	outdir: bundleDir,
-	chunkNames: "chunks/[name]-[hash]",
-	splitting: true,
-});
+	{ dir: bundleDir, entryFileNames: "[name].js", chunkFileNames: "chunks/[name]-[hash].js" },
+	unresolved,
+);
 
 const bedrockLoaderOutput = findContainingOutput(
-	mainResult.metafile,
+	mainChunks,
+	bundleDir,
 	"packages/ai/dist/api/bedrock-converse-stream.lazy.js",
 );
-const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
-const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
+const oauthLoaderOutput = findContainingOutput(mainChunks, bundleDir, "packages/ai/dist/auth/oauth/load.js");
+const imageResizeOutput = findContainingOutput(
+	mainChunks,
+	bundleDir,
+	"packages/coding-agent/dist/utils/image-resize.js",
+);
 if (dirname(bedrockLoaderOutput) !== dirname(oauthLoaderOutput)) {
 	throw new Error("Bedrock and OAuth lazy loaders were emitted into different directories");
 }
@@ -204,20 +203,25 @@ for (const match of oauthLoadSource.matchAll(/importOAuthModule\("\.\/([^"]+)\.t
 	}
 }
 
-const lazyResult = await build({
-	...commonBuildOptions(),
-	entryNames: "[name]",
-	entryPoints: lazyEntryPoints,
-	outdir: dirname(bedrockLoaderOutput),
-	splitting: false,
-});
+// One self-contained file per lazy entry: each inlines its own dynamic imports rather than sharing chunks.
+const lazyChunks = (
+	await Promise.all(
+		Object.entries(lazyEntryPoints).map(([name, input]) =>
+			bundle(
+				{ [name]: input },
+				{ dir: dirname(bedrockLoaderOutput), entryFileNames: "[name].js", codeSplitting: false },
+				unresolved,
+			),
+		),
+	)
+).flat();
 
 const imageResizeWorkerOutput = resolve(dirname(bedrockLoaderOutput), "image-resize-worker.js");
 if (dirname(imageResizeOutput) !== dirname(imageResizeWorkerOutput)) {
 	throw new Error("Image resize implementation and worker were emitted into different directories");
 }
-const metafiles = [mainResult.metafile, lazyResult.metafile];
-validateExternalImports(metafiles);
+const chunks = [...mainChunks, ...lazyChunks];
+validateExternalImports(unresolved);
 // The runtime is imported after the compile cache is enabled, so its modules are cached too. It uses top-level await
 // (lazy completion and main imports), which require() cannot load.
 const cliLauncher = `#!/usr/bin/env node
@@ -231,6 +235,6 @@ chmodSync(join(bundleDir, "cli.js"), 0o755);
 chmodSync(join(bundleDir, "rpc-entry.js"), 0o755);
 chmodSync(join(bundleDir, "octocode-api.js"), 0o755);
 
-const files = new Set(metafiles.flatMap((metafile) => Object.keys(metafile.outputs))).size + 1;
-const mib = (outputBytes(metafiles) + cliLauncher.length) / (1024 * 1024);
+const files = chunks.length + 1;
+const mib = (outputBytes(chunks) + cliLauncher.length) / (1024 * 1024);
 console.log(`Built ${relative(repoRoot, bundleDir)} (${files} files, ${mib.toFixed(1)} MiB)`);

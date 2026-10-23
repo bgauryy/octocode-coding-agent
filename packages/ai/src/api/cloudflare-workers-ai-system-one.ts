@@ -1,4 +1,4 @@
-import type { ClassifierFunction, ClassifierOptions } from "../types.ts";
+import type { ClassifierFunction } from "../types.ts";
 import { isRecord } from "./classifier-shared.ts";
 import { classifySystemOne, type SystemOneTransport } from "./system-one-shared.ts";
 
@@ -44,5 +44,5 @@ const transport: SystemOneTransport = {
 };
 
 /** Cloudflare Workers AI System One classification with public `bool` values mapped to wire-level `noul`. */
-export const classify: ClassifierFunction<ClassifierOptions> = (model, context, options) =>
+export const classify: ClassifierFunction = (model, context, options) =>
 	classifySystemOne(transport, model, context, options);

@@ -118,7 +118,7 @@ export function transformMessages<TApi extends Api>(
 
 		// Assistant messages need transformation check
 		if (msg.role === "assistant") {
-			const assistantMsg = msg as AssistantMessage;
+			const assistantMsg = msg;
 			const isSameModel =
 				assistantMsg.provider === model.provider && assistantMsg.api === model.api && assistantMsg.model === model.id;
 
@@ -144,7 +144,7 @@ export function transformMessages<TApi extends Api>(
 				}
 
 				if (block.type === "toolCall") {
-					const toolCall = block as ToolCall;
+					const toolCall = block;
 					let normalizedToolCall: ToolCall = toolCall;
 
 					if (!isSameModel && toolCall.thoughtSignature) {
@@ -194,7 +194,7 @@ export function transformMessages<TApi extends Api>(
 						content: [{ type: "text", text: "No result provided" }],
 						isError: true,
 						timestamp: Date.now(),
-					} as ToolResultMessage);
+					});
 				}
 			}
 			pendingToolCalls = [];
@@ -216,13 +216,13 @@ export function transformMessages<TApi extends Api>(
 			// - May have partial content (reasoning without message, incomplete tool calls)
 			// - Replaying them can cause API errors (e.g., OpenAI "reasoning without following item")
 			// - The model should retry from the last valid state
-			const assistantMsg = msg as AssistantMessage;
+			const assistantMsg = msg;
 			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
 				continue;
 			}
 
 			// Track tool calls from this assistant message
-			const toolCalls = assistantMsg.content.filter((b) => b.type === "toolCall") as ToolCall[];
+			const toolCalls = assistantMsg.content.filter((b) => b.type === "toolCall");
 			if (toolCalls.length > 0) {
 				pendingToolCalls = toolCalls;
 				existingToolResultIds = new Set();

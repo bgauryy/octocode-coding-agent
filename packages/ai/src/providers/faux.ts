@@ -217,7 +217,7 @@ function messageToText(message: Message): string {
 /** Length of the prompt text that joins `messages` with blank lines. */
 function joinedLength(messages: readonly string[], count = messages.length): number {
 	let length = count > 0 ? (count - 1) * 2 : 0;
-	for (let index = 0; index < count; index++) length += messages[index]!.length;
+	for (let index = 0; index < count; index++) length += messages[index].length;
 	return length;
 }
 

@@ -237,7 +237,7 @@ async function generateContext(
 		timestamp: Date.now(),
 	};
 
-	const supportsReasoning = model.reasoning === true;
+	const supportsReasoning = model.reasoning;
 	const headers = getHeaders(pair);
 	let lastPayload: unknown;
 	let assistantResponse: AssistantMessage;
@@ -446,7 +446,7 @@ describe.skipIf(!hasAnyApiKey())("Cross-Provider Handoff", () => {
 				}
 
 				const model: Model<Api> = targetPair.apiOverride ? { ...baseModel, api: targetPair.apiOverride } : baseModel;
-				const supportsReasoning = model.reasoning === true;
+				const supportsReasoning = model.reasoning;
 				const headers = getHeaders(targetPair);
 
 				console.log(

@@ -183,7 +183,7 @@ export default function planModeExtension(octocode: ExtensionAPI): void {
 					return !content.includes("[PLAN MODE ACTIVE]");
 				}
 				if (Array.isArray(content)) {
-					return !content.some((c) => c.type === "text" && (c as TextContent).text?.includes("[PLAN MODE ACTIVE]"));
+					return !content.some((c) => c.type === "text" && c.text?.includes("[PLAN MODE ACTIVE]"));
 				}
 				return true;
 			}),
@@ -261,7 +261,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		if (executionMode && todoItems.length > 0) {
 			if (todoItems.every((t) => t.completed)) {
 				const completedList = todoItems.map((t) => `~~${t.text}~~`).join("\n");
-				octocode.sendMessage(
+				void octocode.sendMessage(
 					{ customType: "plan-complete", content: `**Plan Complete!** ✓\n\n${completedList}`, display: true },
 					{ triggerTurn: false },
 				);
@@ -319,15 +319,15 @@ ${remainingList}
 
 Start with: ${firstTodoItem.text}
 After completing a step, include a [DONE:n] tag in your response.`;
-			octocode.sendMessage(planTodoListMessage, { deliverAs: "followUp" });
-			octocode.sendMessage(
+			void octocode.sendMessage(planTodoListMessage, { deliverAs: "followUp" });
+			void octocode.sendMessage(
 				{ customType: "plan-mode-execute", content: execMessage, display: true },
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
 		} else if (choice === "Refine the plan") {
 			const refinement = await ctx.ui.editor("Refine the plan:", "");
 			if (refinement?.trim()) {
-				octocode.sendMessage(planTodoListMessage, { deliverAs: "followUp" });
+				void octocode.sendMessage(planTodoListMessage, { deliverAs: "followUp" });
 				octocode.sendUserMessage(refinement.trim(), { deliverAs: "followUp" });
 			}
 		}
@@ -371,8 +371,8 @@ After completing a step, include a [DONE:n] tag in your response.`;
 			const messages: AssistantMessage[] = [];
 			for (let i = executeIndex + 1; i < entries.length; i++) {
 				const entry = entries[i];
-				if (entry.type === "message" && "message" in entry && isAssistantMessage(entry.message as AgentMessage)) {
-					messages.push(entry.message as AssistantMessage);
+				if (entry.type === "message" && "message" in entry && isAssistantMessage(entry.message)) {
+					messages.push(entry.message);
 				}
 			}
 			const allText = messages.map(getTextContent).join("\n");

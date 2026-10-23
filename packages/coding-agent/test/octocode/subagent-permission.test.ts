@@ -81,10 +81,10 @@ describe("a child's refused actions", () => {
 			.get("agent")
 			.execute("call-1", { task: "denied", goal: "try denied things", background: true }, undefined, undefined, ctx);
 		await vi.waitFor(() => expect(f.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		expect(String(f.sent[0]!.message.content)).toMatch(
+		expect(String(f.sent[0].message.content)).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: try denied things\) reported blocked \(/,
 		);
-		expect(f.sent[0]!.message.details).toMatchObject({
+		expect(f.sent[0].message.details).toMatchObject({
 			status: "done",
 			outcome: "blocked",
 			summary: expect.stringMatching(/^Blocked \(/),
@@ -108,7 +108,7 @@ describe("kinds allowed for the session", () => {
 			model: { provider: "faux", id: "model" },
 			modelRegistry: { getAvailable: () => [], find: () => undefined, getCachePolicy: fakeCachePolicy },
 		});
-		permission.start(ctx as never);
+		permission.start(ctx);
 		team.start(ctx);
 		expect(permission.mode).toBe("manual");
 		await permission.check(ctx, { action: "web", title: "Fetch?", what: ["https://example.com"] });
@@ -158,5 +158,5 @@ describe("an isolated child in a worktree of its parent's repository", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

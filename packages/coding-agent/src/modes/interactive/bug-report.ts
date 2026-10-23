@@ -226,12 +226,11 @@ function input(
 	initialValue?: string,
 ): Promise<string | null> {
 	return new Promise((resolve) => {
-		let component: ExtensionEditorComponent;
 		const finish = (value: string | null) => {
 			restoreEditor(context, component);
 			resolve(value);
 		};
-		component = new ExtensionEditorComponent(
+		const component = new ExtensionEditorComponent(
 			context.ui,
 			context.keybindings,
 			title,
@@ -252,12 +251,11 @@ function choose(
 	description?: string,
 ): Promise<string | undefined> {
 	return new Promise((resolve) => {
-		let component: ExtensionSelectorComponent;
 		const finish = (value?: string) => {
 			restoreEditor(context, component);
 			resolve(value);
 		};
-		component = new ExtensionSelectorComponent(title, options, finish, () => finish(), {
+		const component = new ExtensionSelectorComponent(title, options, finish, () => finish(), {
 			tui: context.ui,
 			description,
 		});

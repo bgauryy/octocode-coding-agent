@@ -150,7 +150,7 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 			result.diagnostics.push({ type: "error", path: file, message });
 		const add = (name: string, file: string, inline?: string, metadata: Record<string, unknown> = {}) => {
 			try {
-				if (!isPluginIdentifier(name)) throw new Error(`Invalid plugin command name: ${name}`);
+				if (!isPluginIdentifier(name)) throw new Error(`Invalid plugin command name: ${String(name)}`);
 				const unsupported = Object.keys(metadata).filter(
 					(key) => !["source", "content", "description", "argumentHint"].includes(key),
 				);
@@ -200,7 +200,7 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 			if (component.kind === "command")
 				add(
 					component.name,
-					typeof component.definition.source === "string" ? component.definition.source : manifest.sources[0]!,
+					typeof component.definition.source === "string" ? component.definition.source : manifest.sources[0],
 					typeof component.definition.content === "string" ? component.definition.content : undefined,
 					component.definition,
 				);

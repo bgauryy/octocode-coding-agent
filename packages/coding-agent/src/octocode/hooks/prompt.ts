@@ -1,6 +1,5 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import type { HookEvent, HookPrompt, HookRun } from "./contracts.ts";
-import { HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
+import { type HookEvent, type HookPrompt, type HookRun, HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
 import { errorMessage, isRecord, parseJson } from "../shared/util.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 

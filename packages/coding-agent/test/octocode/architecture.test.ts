@@ -20,7 +20,7 @@ const walk = (dir: string): string[] =>
 const files = walk(sourceRoot).sort();
 const domainOf = (file: string): string => {
 	const [first] = path.relative(sourceRoot, file).split(path.sep);
-	return first!.endsWith(".ts") ? "(root)" : first!;
+	return first.endsWith(".ts") ? "(root)" : first;
 };
 
 function importsOf(file: string): string[] {
@@ -28,7 +28,7 @@ function importsOf(file: string): string[] {
 	// `from '…'`, dynamic `import('…')`, side-effect `import '…'` and `require('…')` all create a dependency.
 	return [...text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)(['"])(\.{1,2}\/[^'"]+)\1/g)].flatMap(
 		(match) => {
-			const target = path.resolve(path.dirname(file), match[2]!.replace(/\.js$/, ".ts"));
+			const target = path.resolve(path.dirname(file), match[2].replace(/\.js$/, ".ts"));
 			return files.includes(target) ? [target] : [];
 		},
 	);
@@ -158,14 +158,14 @@ describe("source layout", () => {
 			...Object.keys(manifest.peerDependencies ?? {}),
 		]);
 		const packageOf = (specifier: string) =>
-			specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!;
+			specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
 		const bare = files.flatMap((file) =>
 			[
 				...fs
 					.readFileSync(file, "utf8")
 					.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)(['"])([^.'"][^'"]*)\1/g),
 			]
-				.map((match) => match[2]!)
+				.map((match) => match[2])
 				.filter((specifier) => !specifier.startsWith("node:"))
 				.map((specifier) => ({ file: path.relative(sourceRoot, file), name: packageOf(specifier) })),
 		);

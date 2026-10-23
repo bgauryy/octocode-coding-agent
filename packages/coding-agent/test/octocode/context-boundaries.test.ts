@@ -94,7 +94,7 @@ describe("agent context boundaries", () => {
 		const prompt = async (selectedTools: string[]) => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools } };
 			await fake.emit("before_agent_start", event, {});
-			return event.systemPromptOptions.sections.octocode!;
+			return event.systemPromptOptions.sections.octocode;
 		};
 		const inactive = await prompt(["read"]);
 		expect(inactive).not.toContain("Use Octocode MCP");

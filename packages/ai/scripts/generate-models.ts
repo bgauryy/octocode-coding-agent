@@ -23,7 +23,6 @@ import type {
 	ClassifierModel,
 	ImageApi,
 	ImageModel,
-	KnownProvider,
 	Model,
 	ModelCost,
 	ModelPromptCache,
@@ -557,7 +556,7 @@ function supportsDirectReasoningEffort(model: Model<Api>): boolean {
 
 	const compat = {
 		...detectOpenAICompletionsCompat(model as Model<"openai-completions">),
-		...(model.compat as OpenAICompletionsCompat | undefined),
+		...model.compat,
 	};
 	return compat.thinkingFormat === "openai" && compat.supportsReasoningEffort;
 }
@@ -833,14 +832,10 @@ function openAICompletionsCompatDelta(compat: OpenAICompletionsResolvedCompat): 
 	return delta;
 }
 
-function mergeOpenAICompletionsCompat(model: Model<Api>, compat: OpenAICompletionsCompat): void {
-	model.compat = { ...(model.compat as OpenAICompletionsCompat | undefined), ...compat };
-}
-
 function applyOpenAICompletionsCompatMetadata(model: Model<Api>): void {
 	if (model.api !== "openai-completions") return;
 	const detected = openAICompletionsCompatDelta(detectOpenAICompletionsCompat(model as Model<"openai-completions">));
-	model.compat = { ...detected, ...(model.compat as OpenAICompletionsCompat | undefined) };
+	model.compat = { ...detected, ...model.compat };
 	if (Object.keys(model.compat).length === 0) {
 		delete model.compat;
 	}
@@ -888,7 +883,7 @@ function applyAnthropicAllowedFallbackModelMetadata(models: readonly Model<"anth
 
 function applyStrictToolCompatMetadata(model: Model<Api>): void {
 	if ((model.provider === "openai" || model.provider === "cloudflare-ai-gateway") && model.api === "openai-responses") {
-		model.compat = { ...(model.compat as OpenAIResponsesCompat | undefined), supportsStrictMode: true };
+		model.compat = { ...model.compat, supportsStrictMode: true };
 	} else if (model.provider === "anthropic" && model.api === "anthropic-messages") {
 		mergeAnthropicMessagesCompat(model, { supportsStrictTools: true });
 	}
@@ -912,7 +907,7 @@ function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
 	if (!OPENAI_GRAMMAR_TOOL_APIS.has(model.api) || !OPENAI_GRAMMAR_TOOL_PROVIDERS.has(model.provider)) return;
 	const match = /^gpt-(\d+)/.exec(model.id);
 	if (!match || Number(match[1]) < 5) return;
-	model.compat = { ...(model.compat as OpenAIResponsesCompat | undefined), supportsOpenAIGrammarTools: true };
+	model.compat = { ...model.compat, supportsOpenAIGrammarTools: true };
 }
 
 function applyOpenAIToolSearchMetadata(model: Model<Api>): void {
@@ -923,7 +918,7 @@ function applyOpenAIToolSearchMetadata(model: Model<Api>): void {
 		(isOpenAIResponses && OPENAI_ADDITIONAL_TOOLS_MODEL_IDS.has(model.id)) ||
 		(isOpenAICodex && OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(model.id));
 	model.compat = {
-		...(model.compat as OpenAIResponsesCompat | undefined),
+		...model.compat,
 		...(supportsAdditionalTools ? { supportsAdditionalTools: true } : {}),
 		supportsToolSearch: true,
 	};
@@ -952,7 +947,7 @@ function applyOpenAICompletionsTranscriptMetadata(model: Model<Api>): void {
 			OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(model.id.slice("openai/".length)));
 	if (!isKimiK3 && !isTextOnly) return;
 	model.compat = {
-		...(model.compat as OpenAICompletionsCompat | undefined),
+		...model.compat,
 		supportsMidConvoSystemMessages: true,
 		...(isKimiK3 ? { supportsMidConvoToolAdditions: true } : {}),
 	};
@@ -975,7 +970,7 @@ function applyOpenAIResponsesTranscriptMetadata(model: Model<Api>): void {
 		return;
 	}
 	model.compat = {
-		...(model.compat as OpenAIResponsesCompat | undefined),
+		...model.compat,
 		supportsMidConvoSystemMessages: true,
 		...(isProxiedResponses ? { supportsAdditionalTools: true } : {}),
 	};
@@ -992,7 +987,7 @@ function applyOpenAIMidConvoEffortMetadata(model: Model<Api>): void {
 	if (model.provider !== "openai" || model.api !== "openai-responses") return;
 	if (!OPENAI_MID_CONVO_EFFORT_MODEL_IDS.has(model.id)) return;
 	model.compat = {
-		...(model.compat as OpenAIResponsesCompat | undefined),
+		...model.compat,
 		supportsMidConvoEffort: true,
 	};
 }
@@ -1448,7 +1443,7 @@ function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 
 	for (const { source, provider, baseUrl } of variants) {
 		for (const [modelId, model] of Object.entries(data[source]?.models ?? {})) {
-			const m = model as ModelsDevModel;
+			const m = model;
 			if (m.tool_call !== true) continue;
 			const supportsImage = m.modalities?.input?.includes("image");
 
@@ -1798,11 +1793,11 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Amazon Bedrock models
 		if (data["amazon-bedrock"]?.models) {
 			for (const [modelId, model] of Object.entries(data["amazon-bedrock"].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS.has(modelId)) continue;
 
-				let id = modelId;
+				const id = modelId;
 
 				if (id.startsWith("ai21.jamba")) {
 					// These models doesn't support tool use in streaming mode
@@ -1821,7 +1816,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					provider: "amazon-bedrock" as const,
 					baseUrl: getBedrockBaseUrl(id),
 					reasoning: m.reasoning === true,
-					input: (m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
+					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models (#10326).
 					cost: getModelsDevCost(m.cost),
 					contextWindow: m.limit?.context || 4096,
@@ -1835,7 +1830,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Anthropic models
 		if (data.anthropic?.models) {
 			for (const [modelId, model] of Object.entries(data.anthropic.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -1859,7 +1854,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process OpenAI models
 		if (data.openai?.models) {
 			for (const [modelId, model] of Object.entries(data.openai.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				// models.dev lists this alias, but it is not accepted by OpenAI APIs.
 				if (MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS.has(modelId)) continue;
@@ -1883,7 +1878,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Groq models
 		if (data.groq?.models) {
 			for (const [modelId, model] of Object.entries(data.groq.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -1905,7 +1900,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Cerebras models
 		if (data.cerebras?.models) {
 			for (const [modelId, model] of Object.entries(data.cerebras.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -1927,7 +1922,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Cloudflare Workers AI models
 		if (data["cloudflare-workers-ai"]?.models) {
 			for (const [modelId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -1951,7 +1946,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		const cloudflareAIGatewayModelIds = new Set<string>();
 		if (data["cloudflare-ai-gateway"]?.models) {
 			for (const [prefixedId, model] of Object.entries(data["cloudflare-ai-gateway"].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				const slashIdx = prefixedId.indexOf("/");
@@ -2010,7 +2005,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// prefix so the gateway keeps its OpenAI-compatible models stable.
 		if (data["cloudflare-workers-ai"]?.models) {
 			for (const [modelId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				const id = `workers-ai/${modelId}`;
@@ -2037,7 +2032,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process xAi models
 		if (data.xai?.models) {
 			for (const [modelId, model] of Object.entries(data.xai.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -2060,7 +2055,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Meta models
 		if (data.meta?.models) {
 			for (const [modelId, model] of Object.entries(data.meta.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -2084,7 +2079,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Mistral models
 		if (data.mistral?.models) {
 			for (const [modelId, model] of Object.entries(data.mistral.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				// Models with effort values use `reasoning_effort` with these levels.
@@ -2115,7 +2110,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process Hugging Face models
 		if (data.huggingface?.models) {
 			for (const [modelId, model] of Object.entries(data.huggingface.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 
 				models.push({
@@ -2142,7 +2137,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process NVIDIA NIM models
 		if (data.nvidia?.models) {
 			for (const [modelId, model] of Object.entries(data.nvidia.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (!m.modalities?.input?.includes("text")) continue;
 				if (!m.modalities?.output?.includes("text")) continue;
@@ -2173,7 +2168,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		const togetherProvider = data.together ?? data.togetherai ?? data["together-ai"];
 		if (togetherProvider?.models) {
 			for (const [modelId, model] of Object.entries(togetherProvider.models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (m.status === "deprecated") continue;
 
@@ -2214,7 +2209,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			if (!data[variant.key]?.models) continue;
 
 			for (const [modelId, model] of Object.entries(data[variant.key].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (m.status === "deprecated") continue;
 
@@ -2238,13 +2233,13 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				}
 
 				if (variant.provider === "opencode" && modelId === "grok-build-0.1") {
-					compat = { ...(compat ?? {}), supportsReasoningEffort: false };
+					compat = { ...compat, supportsReasoningEffort: false };
 				}
 
 				if ((variant.provider === "opencode" || variant.provider === "opencode-go") && modelId === "kimi-k2.6") {
 					// OpenCode Kimi K2.6 accepts Anthropic-style thinking objects
 					// and rejects string thinking values or combined reasoning_effort.
-					compat = { ...(compat ?? {}), thinkingFormat: "deepseek", supportsReasoningEffort: false };
+					compat = { ...compat, thinkingFormat: "deepseek", supportsReasoningEffort: false };
 				}
 
 				// Fix known mismatches between models.dev npm data and actual
@@ -2255,12 +2250,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					if (modelId === "qwen3.5-plus" || modelId === "qwen3.6-plus") {
 						api = "openai-completions";
 						// Qwen/DashScope uses enable_thinking at the top level.
-						compat = { ...(compat ?? {}), thinkingFormat: "qwen" };
+						compat = { ...compat, thinkingFormat: "qwen" };
 					}
 				}
 
 				if (api === "openai-completions") {
-					compat = { ...(compat ?? {}), maxTokensField: "max_tokens" };
+					compat = { ...compat, maxTokensField: "max_tokens" };
 					if (
 						OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS.has(`${variant.provider}:${modelId}`)
 					) {
@@ -2295,12 +2290,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process GitHub Copilot models
 		if (data["github-copilot"]?.models) {
 			for (const [modelId, model] of Object.entries(data["github-copilot"].models)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (m.status === "deprecated") continue;
 
 				// Claude 4.x and 5.x models route to Anthropic Messages API
-				const isCopilotClaude = /^claude-(haiku|sonnet|opus|fable)-[45]([.\-]|$)/.test(modelId);
+				const isCopilotClaude = /^claude-(haiku|sonnet|opus|fable)-[45]([.-]|$)/.test(modelId);
 				// GPT, Grok, OSWE, and MAI-Code models are only served through
 				// the Copilot /responses endpoint.
 				const needsResponsesApi =
@@ -2359,7 +2354,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		for (const { key, provider, baseUrl } of minimaxVariants) {
 			if (data[key]?.models) {
 				for (const [modelId, model] of Object.entries(data[key].models)) {
-					const m = model as ModelsDevModel;
+					const m = model;
 					if (m.tool_call !== true || minimaxHiddenIds.has(modelId)) continue;
 					// Models with effort levels (e.g. MiniMax-M3.1-Flash) take adaptive thinking with
 					// output_config.effort and reject thinking.type="disabled" (no "none" effort, so off is null).
@@ -2385,7 +2380,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 
 		// Process Kimi For Coding models
 		if (data["kimi-code-plan-global"]?.models) {
-			models.push(...createKimiCodingModels(data["kimi-code-plan-global"].models as Record<string, ModelsDevModel>));
+			models.push(...createKimiCodingModels(data["kimi-code-plan-global"].models));
 		}
 
 		// Process Moonshot AI models
@@ -2394,7 +2389,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			{ key: "moonshotai-cn", provider: "moonshotai-cn", baseUrl: "https://api.moonshot.cn/v1" },
 		] as const;
 		const getMoonshotProviderModels = (key: "moonshotai" | "moonshotai-cn"): Record<string, ModelsDevModel> => {
-			const providerModels = data[key]?.models as Record<string, ModelsDevModel> | undefined;
+			const providerModels = data[key]?.models;
 			return providerModels ? { ...providerModels } : {};
 		};
 		const moonshotModels = {
@@ -2478,7 +2473,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			if (!providerModels) continue;
 
 			for (const [modelId, model] of Object.entries(providerModels)) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (m.status === "deprecated") continue;
 
@@ -2536,7 +2531,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			const emittedModelIds = modelIds ? new Set<string>() : undefined;
 
 			for (const [modelId, model] of Object.entries(providerModels ?? {})) {
-				const m = model as ModelsDevModel;
+				const m = model;
 				if (m.tool_call !== true) continue;
 				if (QWEN_TOKEN_PLAN_EXCLUDED_MODEL_IDS.has(modelId)) continue;
 				if (modelIds && !modelIds.has(modelId)) continue;

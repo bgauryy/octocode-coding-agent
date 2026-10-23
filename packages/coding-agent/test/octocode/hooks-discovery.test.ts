@@ -18,7 +18,7 @@ describe("documented hook discovery and controls", () => {
 		expect(errors).toEqual([]);
 		const commands = commandsFor(config, "SessionStart", ["startup"]);
 		expect(commands).toHaveLength(1);
-		const result = await runHook(commands[0]!, { hook_event_name: "SessionStart" }, tmp());
+		const result = await runHook(commands[0], { hook_event_name: "SessionStart" }, tmp());
 		expect(result.code).toBe(0);
 		expect(interpret("SessionStart", result)).toEqual({ context: "Project hooks are active" });
 	});
@@ -43,7 +43,7 @@ describe("documented hook discovery and controls", () => {
 		const notify = vi.fn();
 		await commands.get("hooks")!.handler(argument, { hasUI: true, cwd: tmp(), ui: { notify } } as never);
 		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Usage: /hooks"), "warning");
-		expect(notify.mock.calls[0]![0]).toContain("OCTOCODE_HOOKS=1");
+		expect(notify.mock.calls[0][0]).toContain("OCTOCODE_HOOKS=1");
 		expect(hooks.summary()).toContain("off");
 	});
 
@@ -74,7 +74,7 @@ describe("documented hook discovery and controls", () => {
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toMatchObject({ origins: expected, source: files[0], timeoutMs: 60_000 });
 		expect(commandsFor(config, "PreToolUse", ["Bash"])).toEqual(selected);
-		expect(config.PreToolUse[0]!.hooks[0]!.origins).toEqual([expected[0]]);
+		expect(config.PreToolUse[0].hooks[0].origins).toEqual([expected[0]]);
 	});
 
 	it("discovers only the documented files at the repository root from a subdirectory", () => {

@@ -39,7 +39,7 @@ const fail = (message: string): never => {
 
 export function parsePatch(value: string): ParsedPatch {
 	let lines = trim(value).split(/\r?\n/);
-	if (lines.length >= 4 && ["<<EOF", "<<'EOF'", '<<"EOF"'].includes(lines[0]!) && lines.at(-1)!.endsWith("EOF"))
+	if (lines.length >= 4 && ["<<EOF", "<<'EOF'", '<<"EOF"'].includes(lines[0]) && lines.at(-1)!.endsWith("EOF"))
 		lines = lines.slice(1, -1);
 	if (trim(lines[0] ?? "") !== "*** Begin Patch" || trim(lines.at(-1) ?? "") !== "*** End Patch")
 		fail("missing patch boundaries");
@@ -66,7 +66,7 @@ export function parsePatch(value: string): ParsedPatch {
 		const header = /^\*\*\* (Add|Delete|Update) File: (.*)$/.exec(trimmed);
 		if (header) {
 			finish();
-			const path = header[2]!;
+			const path = header[2];
 			current =
 				header[1] === "Add"
 					? { kind: "add", path, content: "" }
@@ -132,7 +132,7 @@ function seek(lines: string[], pattern: string[], start: number, eof: boolean): 
 	const first = eof ? Math.max(start, lines.length - pattern.length) : start;
 	for (const normalize of [(s: string) => s, (s: string) => trimEnd(s), (s: string) => trim(s), normalized]) {
 		for (let i = first; i <= lines.length - pattern.length; i++)
-			if (pattern.every((p, j) => normalize(p) === normalize(lines[i + j]!))) return i;
+			if (pattern.every((p, j) => normalize(p) === normalize(lines[i + j]))) return i;
 	}
 	return undefined;
 }
@@ -141,7 +141,7 @@ export function transformPatch(source: string, chunks: PatchChunk[]): string {
 	const sourceLines: { text: string; ending: string }[] = [];
 	const regex = /([^\r\n]*)(\r\n|\r|\n|$)/g;
 	let match: RegExpExecArray | null;
-	while ((match = regex.exec(source)) && match[0]) sourceLines.push({ text: match[1]!, ending: match[2]! });
+	while ((match = regex.exec(source)) && match[0]) sourceLines.push({ text: match[1], ending: match[2] });
 	const ending = sourceLines.find((l) => l.ending)?.ending || "\n";
 	const lines = sourceLines.map((l) => l.text);
 	const replacements: { start: number; count: number; lines: string[] }[] = [];

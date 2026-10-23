@@ -98,7 +98,7 @@ describe("browser screenshots", () => {
 		expect(result.content[0]).toEqual({ type: "image", data: small, mimeType: "image/jpeg" });
 		expect(fs.readFileSync(savedPath(result)!, "utf8")).toBe("jpeg-pixels");
 		expect(path.extname(savedPath(result)!)).toBe(".jpg");
-		expect(result.content[1]!.text).toMatch(/^Screenshot of the visible page \(jpeg, 1 KB\)\. Full-size file: /);
+		expect(result.content[1].text).toMatch(/^Screenshot of the visible page \(jpeg, 1 KB\)\. Full-size file: /);
 	});
 
 	it("captures a png only when asked", async () => {
@@ -107,7 +107,7 @@ describe("browser screenshots", () => {
 		expect(captures(cdp)).toEqual([{ format: "png", captureBeyondViewport: false }]);
 		expect(result.content[0]).toMatchObject({ type: "image", mimeType: "image/png" });
 		expect(path.extname(savedPath(result)!)).toBe(".png");
-		expect(result.content[1]!.text).toContain("(png, 1 KB)");
+		expect(result.content[1].text).toContain("(png, 1 KB)");
 	});
 
 	it("retakes an oversized capture smaller, keeps the full file and says so", async () => {
@@ -119,7 +119,7 @@ describe("browser screenshots", () => {
 		]);
 		expect(captures(cdp)[1]).toMatchObject({ clip: { x: 0, y: 0, width: 1280, height: 800, scale: 0.5 } });
 		expect(result.content[0]).toEqual({ type: "image", data: "QUJD", mimeType: "image/jpeg" });
-		expect(result.content[1]!.text).toMatch(
+		expect(result.content[1].text).toMatch(
 			/^Screenshot of the visible page, retaken smaller to fit \(jpeg at 0\.5x scale, 1 KB; limit 439 KB\)\./,
 		);
 		expect(fs.statSync(savedPath(result)!).size).toBe(Buffer.from(BIG, "base64").length);
@@ -129,7 +129,7 @@ describe("browser screenshots", () => {
 		const { run } = await shots({ full: BIG, "0.5": BIG, "0.25": BIG });
 		const result = await run({ action: "screenshot" });
 		expect(result.content.map((part) => part.type)).toEqual(["text"]);
-		expect(result.content[0]!.text).toMatch(
+		expect(result.content[0].text).toMatch(
 			/^Screenshot too large for the context, not shown \(jpeg, \d+ KB; limit 439 KB\)\./,
 		);
 		expect(fs.existsSync(savedPath(result)!)).toBe(true);
@@ -145,7 +145,7 @@ describe("browser screenshots", () => {
 			undefined,
 			0.5,
 		]);
-		expect(result.content[1]!.text).toMatch(/retaken smaller to fit \(jpeg at 0\.5x scale, 1 KB; limit 73 KB\)/);
+		expect(result.content[1].text).toMatch(/retaken smaller to fit \(jpeg at 0\.5x scale, 1 KB; limit 73 KB\)/);
 		const unlimited = await run({ action: "screenshot" });
 		expect(unlimited.content[0]).toMatchObject({ type: "image", data: mid });
 	});

@@ -116,7 +116,7 @@ async function startSession(
 	const models = options.models ?? [{ id: "faux-1", inputCost: 0, maxTokens: 4_096 }];
 	const faux = createFauxCore({
 		provider: "faux",
-		models: models.map(({ id, maxTokens }) => ({ id, contextWindow: 200_000, maxTokens })) as never,
+		models: models.map(({ id, maxTokens }) => ({ id, contextWindow: 200_000, maxTokens })),
 	});
 	const provider: ExtensionFactory = (pi) => {
 		pi.registerProvider("faux", {
@@ -127,7 +127,7 @@ async function startSession(
 			models: faux.models.map((model, index) => ({
 				...model,
 				promptCache: { short: 300, long: 3600 },
-				cost: { input: models[index]!.inputCost, output: 0, cacheRead: 0, cacheWrite: 0 },
+				cost: { input: models[index].inputCost, output: 0, cacheRead: 0, cacheWrite: 0 },
 			})),
 			streamSimple: faux.streamSimple,
 		} as never);
@@ -295,8 +295,8 @@ describe("with Octocode MCP (default)", () => {
 			say("done"),
 		]);
 		const [afterRead, afterBatch, afterDelete] = turns.slice(-3);
-		expect(afterRead!.lastResults[0]!.text).toContain("export const answer = 41");
-		const batch = afterBatch!.lastResults[0]!;
+		expect(afterRead.lastResults[0].text).toContain("export const answer = 41");
+		const batch = afterBatch.lastResults[0];
 		expect(batch.isError).toBe(false);
 		expect(batch.text).toMatch(/1\. OK edit app\.ts/);
 		expect(batch.text).toMatch(/2\. OK write NOTES\.md/);
@@ -304,7 +304,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(batch.text).toMatch(
 			/3\. FAILED write unread\.txt: unread\.txt already exists and was not read in this session/,
 		);
-		expect(afterDelete!.lastResults[0]!.text).toMatch(/OK delete NOTES\.md/);
+		expect(afterDelete.lastResults[0].text).toMatch(/OK delete NOTES\.md/);
 		expect(fs.readFileSync(appPath, "utf8")).toBe("export const answer = 42;\n");
 		expect(fs.readFileSync(path.join(s.cwd, "unread.txt"), "utf8")).toBe("never read\n");
 		expect(fs.existsSync(path.join(s.cwd, "NOTES.md"))).toBe(false);
@@ -326,7 +326,7 @@ describe("with Octocode MCP (default)", () => {
 			},
 			say("done"),
 		]);
-		const result = turns.at(-1)!.lastResults[0]!;
+		const result = turns.at(-1)!.lastResults[0];
 		expect(result.isError).toBe(true);
 		expect(result.text).toMatch(/changed on disk since you last read it/);
 	}, 60_000);
@@ -351,8 +351,8 @@ describe("with Octocode MCP (default)", () => {
 			say("done"),
 		]);
 		const [afterRead, afterEdit] = turns.slice(-2);
-		expect(afterRead!.lastResults[0]!.text).toContain("export const seen = 1;");
-		expect(afterEdit!.lastResults[0]!.text).toMatch(/OK edit seen\.ts/);
+		expect(afterRead.lastResults[0].text).toContain("export const seen = 1;");
+		expect(afterEdit.lastResults[0].text).toMatch(/OK edit seen\.ts/);
 		expect(fs.readFileSync(seen, "utf8")).toBe("export const seen = 2;\n");
 	}, 60_000);
 
@@ -377,7 +377,7 @@ describe("with Octocode MCP (default)", () => {
 			),
 			say("done"),
 		]);
-		const text = turns.at(-1)!.lastResults[0]!.text;
+		const text = turns.at(-1)!.lastResults[0].text;
 		expect(Buffer.byteLength(text)).toBeGreaterThan(20 * 1024);
 		expect(text).not.toMatch(/truncated|fullOutputPath|pi-mcp/i);
 		// Both rows arrive whole: each one's first returned line and its own continuation.
@@ -437,8 +437,8 @@ describe("with another MCP server and Octocode disabled", () => {
 		]);
 		const [ok, failed] = turns.at(-1)!.lastResults;
 		expect(ok).toEqual({ toolName: "mcp__echo__shout", isError: false, text: "HI" });
-		expect(failed!.isError).toBe(true);
-		expect(failed!.text).toContain("boom");
+		expect(failed.isError).toBe(true);
+		expect(failed.text).toContain("boom");
 	});
 
 	it("writes new files, refuses an unread existing one, and a read then write works", async () => {
@@ -461,10 +461,10 @@ describe("with another MCP server and Octocode disabled", () => {
 			say("done"),
 		]);
 		const [writes, , rewrite] = turns.slice(-3);
-		expect(writes!.lastResults[0]!.text).toMatch(
+		expect(writes.lastResults[0].text).toMatch(
 			/1\. OK write new\.txt[\s\S]*2\. FAILED write existing\.txt: existing\.txt already exists and was not read/,
 		);
-		expect(rewrite!.lastResults[0]!.text).toMatch(/OK write existing\.txt/);
+		expect(rewrite.lastResults[0].text).toMatch(/OK write existing\.txt/);
 		expect(fs.readFileSync(path.join(s.cwd, "existing.txt"), "utf8")).toBe("replaced");
 	});
 
@@ -481,9 +481,9 @@ describe("with another MCP server and Octocode disabled", () => {
 			say("done"),
 		]);
 		const [first, second, rewrite] = turns.slice(-3);
-		expect(first!.lastResults[0]!.text).toContain("same line");
-		expect(second!.lastResults[0]!.text).toMatch(/^\[Unchanged since your earlier read of twice\.txt \(same range\)/);
-		expect(rewrite!.lastResults[0]!.text).toMatch(/OK write twice\.txt/);
+		expect(first.lastResults[0].text).toContain("same line");
+		expect(second.lastResults[0].text).toMatch(/^\[Unchanged since your earlier read of twice\.txt \(same range\)/);
+		expect(rewrite.lastResults[0].text).toMatch(/OK write twice\.txt/);
 	});
 
 	it("clears old results at request time once the cache is cold inside a run, to saved files and without any context edit", async () => {
@@ -523,8 +523,8 @@ describe("with another MCP server and Octocode disabled", () => {
 			],
 		};
 		const turns = await s.run("ask", [calls(fauxToolCall("askUser", { questions: [question] })), say("done")]);
-		expect(turns.at(-1)!.lastResults[0]!.text).toMatch(/No interactive user/);
-		expect(turns.at(-1)!.lastResults[0]!.text).toContain("No answer or approval was supplied.");
+		expect(turns.at(-1)!.lastResults[0].text).toMatch(/No interactive user/);
+		expect(turns.at(-1)!.lastResults[0].text).toContain("No answer or approval was supplied.");
 	});
 });
 
@@ -580,9 +580,9 @@ describe("compaction", () => {
 		expect(new Set(log.map((call) => call.model))).toEqual(new Set(["faux-1"]));
 		expect(log.some((call) => call.text.includes("This summary becomes the only record"))).toBe(true);
 		// The summary is asked for inside the session's own request (its messages, then one more), not as a standalone prompt.
-		expect(log[0]!.text).toContain("Please read notes.txt and create todo.txt");
-		expect(log[0]!.text).toContain("Stop here and write a context checkpoint");
-		expect(log[0]!.text).not.toContain("<conversation>");
+		expect(log[0].text).toContain("Please read notes.txt and create todo.txt");
+		expect(log[0].text).toContain("Stop here and write a context checkpoint");
+		expect(log[0].text).not.toContain("<conversation>");
 		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## Follow-ups", "only record"])
 			expect(log.some((call) => call.text.includes(section))).toBe(true);
 		const entry = compactionEntries().at(-1)!;
@@ -607,7 +607,7 @@ describe("compaction", () => {
 			),
 			say("done"),
 		]);
-		expect(turns.at(-1)!.lastResults[0]!.text).toMatch(/OK write notes\.txt/);
+		expect(turns.at(-1)!.lastResults[0].text).toMatch(/OK write notes\.txt/);
 		const restored = s.session.sessionManager
 			.getEntries()
 			.filter(
@@ -616,8 +616,8 @@ describe("compaction", () => {
 					(entry as { customType?: string }).customType === "octocode-restored-files",
 			) as Array<{ content: string; details: { files: string[] } }>;
 		expect(restored).toHaveLength(1);
-		expect(restored[0]!.content).toMatch(/<file path="todo\.txt">\nx\n<\/file>/);
-		expect(restored[0]!.content).toMatch(/<file path="notes\.txt">\nhello\n<\/file>/);
+		expect(restored[0].content).toMatch(/<file path="todo\.txt">\nx\n<\/file>/);
+		expect(restored[0].content).toMatch(/<file path="notes\.txt">\nhello\n<\/file>/);
 	}, 60_000);
 
 	it("carries file lists forward through the next compaction, and puts the summary first in the next request", async () => {

@@ -8,7 +8,7 @@ export function parseArgs(args: string[]): { flags: Map<string, string | true>; 
 	const flags = new Map<string, string | true>();
 	const words: string[] = [];
 	for (let index = 0; index < args.length; index += 1) {
-		const arg = args[index]!;
+		const arg = args[index];
 		if (!arg.startsWith("--")) words.push(arg);
 		else if (BOOLEAN_FLAGS.has(arg.slice(2))) flags.set(arg.slice(2), true);
 		else {
@@ -35,5 +35,5 @@ export function pickInstance(instances: InstanceRecord[], id: string | undefined
 				? "No running instance matches. Start Octocode with OCTOCODE_API=1."
 				: `Several instances match; pass --to <id>: ${found.map((entry) => entry.id).join(", ")}`,
 		);
-	return found[0]!;
+	return found[0];
 }

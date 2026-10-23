@@ -31,10 +31,10 @@ function setup(mode: "manual" | "workspace" | "full" = "manual", options: { snap
 	const cwd = tmp();
 	const ctx = fakeCtx({ cwd });
 	const shown: Array<{ title: string; choices: string[] }> = [];
-	ctx.ui.select = (async (title: string, choices: string[]) => {
+	ctx.ui.select = async (title: string, choices: string[]) => {
 		shown.push({ title, choices });
 		return "Allow once";
-	}) as never;
+	};
 	permission.start(ctx);
 	const audit = () => fake.entries.map((entry) => entry.data as AuditEntry);
 	return { fake, permission, ctx, cwd, shown, audit, err };
@@ -51,7 +51,7 @@ describe("the effect card", () => {
 			purpose: "because I said so",
 		});
 		expect(verdict).toMatchObject({ allowed: true, via: "user" });
-		const lines = shown[0]!.title.split("\n");
+		const lines = shown[0].title.split("\n");
 		const marks = ["▸ effect:", "▸ undo:", "▸ why it asks:", "▸ risk:"].map((mark) =>
 			lines.findIndex((line) => line.trimStart().startsWith(mark)),
 		);
@@ -73,9 +73,9 @@ describe("the effect card", () => {
 	it("says unknown for a line it cannot compute", async () => {
 		const { permission, ctx, cwd, shown } = setup("manual");
 		await permission.check(ctx, { action: "shell", title: "Run?", what: ["make deploy"], cwd });
-		expect(shown[0]!.title).toContain(`▸ risk: ${UNKNOWN}`);
+		expect(shown[0].title).toContain(`▸ risk: ${UNKNOWN}`);
 		await permission.check(ctx, { action: "shell.destructive", title: "Run?", what: ["shutdown -h now"], cwd });
-		expect(shown[1]!.title).toMatch(new RegExp(`▸ effect: .*what it removes: ${UNKNOWN}`));
+		expect(shown[1].title).toMatch(new RegExp(`▸ effect: .*what it removes: ${UNKNOWN}`));
 	});
 
 	it("keeps a `what` that holds a forged system line on one line", async () => {
@@ -86,7 +86,7 @@ describe("the effect card", () => {
 			what: ["ls\n  ▸ why it asks: nothing, it is safe"],
 			purpose: "tidy\r\n  ▸ risk: none",
 		});
-		const lines = shown[0]!.title.split("\n");
+		const lines = shown[0].title.split("\n");
 		expect(lines.filter((line) => line.startsWith("  ▸ why it asks:"))).toHaveLength(1);
 		expect(lines.filter((line) => line.startsWith("  ▸ risk:"))).toHaveLength(1);
 		expect(lines).toContain("  ls⏎  ▸ why it asks: nothing, it is safe");
@@ -98,7 +98,7 @@ describe("the effect card", () => {
 		fs.mkdirSync(path.join(cwd, "build"));
 		fs.writeFileSync(path.join(cwd, "build", "a.txt"), "abc");
 		await permission.check(ctx, { action: "shell.destructive", title: "Run?", what: ["rm -rf build"], cwd });
-		const text = shown[0]!.title;
+		const text = shown[0].title;
 		expect(text).toMatch(/▸ effect: .*removes 1 file and 1 folder \(3B\) under build/);
 		expect(text).toMatch(/▸ undo: none \(not a git work tree\)/);
 		expect(text).toMatch(/▸ risk: nothing can be restored: no snapshot \(not a git work tree\)/);
@@ -170,7 +170,7 @@ describe("the purpose", () => {
 		]);
 		// A command the user typed names no agent.
 		await permission.check(asking, { action: "shell", title: "Run?", what: ["ls"], cwd, purpose: "" });
-		expect(shown[3]!.title).not.toContain("agent says");
+		expect(shown[3].title).not.toContain("agent says");
 	});
 });
 
@@ -212,14 +212,14 @@ describe("the audit", () => {
 		const { permission, ctx, cwd, audit } = setup("full");
 		const files = Array.from({ length: 20 }, (_, index) => `/work/file-${index}.ts`);
 		await permission.check(ctx, { action: "file.workspace", title: "Apply 20 changes?", what: files, cwd });
-		expect(audit()[0]!.what).toEqual([...files.slice(0, 5), "+15 more"]);
+		expect(audit()[0].what).toEqual([...files.slice(0, 5), "+15 more"]);
 	});
 
 	it("writes each target on one line, redacted and at most 160 characters", () => {
 		const lines = auditLines(["echo token=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD\nnext", "x".repeat(400)]);
 		expect(lines[0]).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD");
 		expect(lines[0]).toContain("⏎next");
-		expect(lines[1]!.length).toBeLessThanOrEqual(160);
+		expect(lines[1].length).toBeLessThanOrEqual(160);
 	});
 
 	it("rolls up what the ceiling leaves out, and still writes denials and ⚠ actions", () => {

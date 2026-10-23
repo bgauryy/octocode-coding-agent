@@ -45,7 +45,7 @@ export function hintText(width: number, keybindings?: KeybindingsManager): strin
 		const text = parts.slice(0, count).join(" · ");
 		if (visibleWidth(text) <= width) return text;
 	}
-	return truncateToWidth(parts[0]!, Math.max(0, width), "…");
+	return truncateToWidth(parts[0], Math.max(0, width), "…");
 }
 
 /**

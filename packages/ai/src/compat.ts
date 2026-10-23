@@ -260,7 +260,7 @@ export function stream<TApi extends Api>(
 		return builtinProvider.stream(model, transcript, withEnvApiKey(model, options) as ApiStreamOptions<TApi>);
 	}
 	const provider = resolveApiProvider(model.api);
-	return provider.stream(model, transcript, withEnvApiKey(model, options) as StreamOptions);
+	return provider.stream(model, transcript, withEnvApiKey(model, options));
 }
 
 export async function complete<TApi extends Api>(

@@ -45,7 +45,7 @@ export function renderServersSection(servers: readonly McpServerListing[]): stri
 		.filter((server) => server.entry.config.enabled !== false && hasIndirectTools(server.entry))
 		.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
 	if (listed.length === 0) return undefined;
-	const reaches = listed.map((server) => "tool_search");
+	const reaches = listed.map(() => "tool_search");
 	const intro = serversSectionIntro(new Set(reaches));
 	const heads = listed.map((server, index) => `- ${mcpNamespace(server.entry.name)} (${reaches[index]})`);
 	const discovery = "tool_search";

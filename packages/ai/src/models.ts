@@ -873,7 +873,7 @@ class ModelsImpl implements MutableModels {
 		const apiKey = options?.apiKey ?? auth.apiKey;
 		let headers = mergeHeaders(auth.headers, options?.headers);
 		if (options?.transformHeaders) headers = await options.transformHeaders(headers ?? {});
-		const env = resolution.env || options?.env ? { ...(resolution.env ?? {}), ...(options?.env ?? {}) } : undefined;
+		const env = resolution.env || options?.env ? { ...resolution.env, ...options?.env } : undefined;
 		const requestModel: TModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
 		const { transformHeaders: _transformHeaders, ...providerOptions } = options ?? {};
 		const requestOptions = { ...providerOptions, apiKey, headers, env } as Omit<TOptions, "transformHeaders"> &
@@ -892,10 +892,7 @@ class ModelsImpl implements MutableModels {
 			model,
 			async () => {
 				const provider = this.requireChatProvider(model);
-				const { requestModel, requestOptions } = await this.applyAuth(
-					model,
-					options as ModelsApiStreamOptions<Api> | undefined,
-				);
+				const { requestModel, requestOptions } = await this.applyAuth(model, options);
 				return provider.stream(requestModel, transcript, requestOptions as ApiStreamOptions<TApi>);
 			},
 			observeModelRequest(model, options, false),
@@ -918,7 +915,7 @@ class ModelsImpl implements MutableModels {
 			async () => {
 				const provider = this.requireChatProvider(model);
 				const { requestModel, requestOptions } = await this.applyAuth(model, options);
-				return provider.streamSimple(requestModel, transcript, requestOptions as SimpleStreamOptions);
+				return provider.streamSimple(requestModel, transcript, requestOptions);
 			},
 			observeModelRequest(model, options, false),
 			options?.signal,
@@ -946,7 +943,7 @@ class ModelsImpl implements MutableModels {
 					throw new ModelsError("provider", `Provider ${model.provider} does not support deferred responses`);
 				}
 				const { requestModel, requestOptions } = await this.applyAuth(model, options);
-				return provider.fetchDeferred(requestModel, handle, requestOptions as DeferredFetchOptions);
+				return provider.fetchDeferred(requestModel, handle, requestOptions);
 			},
 			observeModelRequest(model, options, true),
 			options?.signal,
@@ -1067,8 +1064,8 @@ export function createProvider<TApi extends Api = Api>(input: CreateProviderOpti
 			? (input.api as ProviderStreams)
 			: undefined;
 	const byApi = single || !input.api ? undefined : (input.api as Partial<Record<string, ProviderStreams>>);
-	const images = input.images as Partial<Record<string, ProviderImages>> | undefined;
-	const classifiers = input.classifiers as Partial<Record<string, ProviderClassifier>> | undefined;
+	const images = input.images;
+	const classifiers = input.classifiers;
 	const streams = single ? [single] : Object.values(byApi ?? {}).filter((entry) => entry !== undefined);
 	const imageImplementations = Object.values(images ?? {}).filter((entry) => entry !== undefined);
 	const classifierImplementations = Object.values(classifiers ?? {}).filter((entry) => entry !== undefined);

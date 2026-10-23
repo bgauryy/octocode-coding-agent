@@ -49,13 +49,13 @@ async function* createEvents(
 		output_index: 0,
 		sequence_number: 0,
 		item: { type: "reasoning", id: doneItem.id, summary: [] },
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.output_item.done",
 		output_index: 0,
 		sequence_number: 1,
 		item: doneItem,
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.completed",
 		sequence_number: 2,

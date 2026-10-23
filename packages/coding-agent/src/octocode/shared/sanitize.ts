@@ -28,11 +28,13 @@ const BIDI_FORMATTING = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f]/gu;
  */
 const INVISIBLE =
 	// biome-ignore lint/suspicious/noMisleadingCharacterClass: Intentional literal fixture or exact Unicode character matching.
+	// oxlint-disable-next-line no-misleading-character-class -- each escaped code point (combining marks, selectors, skin tones) is matched on its own; still reported with the u and v flags
 	/[\u00ad\u034f\u17b4\u17b5\u180b-\u180e\u200b\u200c\u2060-\u2064\u2800\u3164\uffa0\ufeff\u{e0000}-\u{e007f}]|(?<![\p{Extended_Pictographic}\p{Script=Han}\p{Nd}#*\u{1f3fb}-\u{1f3ff}])[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]|(?<!\p{Extended_Pictographic}[\u{1f3fb}-\u{1f3ff}\ufe0f]?)\u200d|\u200d(?!\p{Extended_Pictographic})/gu;
 
 /** Anything `sanitizeTerminalText` or `visibleControls` may change: most output holds none of it. */
 const NEEDS_CLEANING =
 	// biome-ignore lint/suspicious/noMisleadingCharacterClass: Intentional literal fixture or exact Unicode character matching.
+	// oxlint-disable-next-line no-misleading-character-class -- each escaped code point (combining marks, selectors, skin tones) is matched on its own; still reported with the u and v flags
 	/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u034f\u061c\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2064\u2066-\u206f\u2800\u3164\ufe00-\ufe0f\uffa0\ufeff\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
 /**
  * Every character `visibleControls` makes visible: the controls (a CR not followed by LF; CRLF stays), bidi formatting,
@@ -90,6 +92,7 @@ export function visibleControls(value: string): string {
 export function storedText(text: string | undefined, max?: number): string {
 	const stored = sanitizeTerminalText(text ?? "").trim();
 	// By code point, so an emoji at the edge is never cut in half (this module cannot import `cutText`: it imports us).
+	// oxlint-disable-next-line typescript/no-misused-spread -- a code-point cut is intended; labels are bounded by width, not graphemes
 	return max === undefined ? stored : [...stored].slice(0, max).join("");
 }
 

@@ -167,7 +167,7 @@ export function registerBashTool(
 		try {
 			// followUp: read once the current turn ends; triggerTurn wakes an idle session. The log names the job uniquely
 			// (ids restart with each extension instance), so a resumed session can tell which jobs reported.
-			pi.sendMessage(
+			void pi.sendMessage(
 				{
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
@@ -312,7 +312,7 @@ export function registerBashTool(
 					return {
 						content: [{ type: "text" as const, text }],
 						structuredContent: { job: job.id, pid: job.pid, log: job.log },
-						details: { job: job.id, pid: job.pid, log: job.log } as BashDetails,
+						details: { job: job.id, pid: job.pid, log: job.log },
 					};
 				}
 				const { seconds: timeout, clamped } = effectiveTimeout(params.timeout);

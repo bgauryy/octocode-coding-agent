@@ -55,7 +55,7 @@ export function callTarget(name: string, args: unknown): { hint: string; more: n
 	if (shortToolName(name) === "agent" && typeof input.goal === "string") return { hint: safeText(input.goal), more: 0 };
 	const queries =
 		name === "file" ? fileChanges(input) : Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
-	if (queries.length > 0) return { hint: safeText(queryTarget(queries[0]!)), more: queries.length - 1 };
+	if (queries.length > 0) return { hint: safeText(queryTarget(queries[0])), more: queries.length - 1 };
 	return { hint: toolHint(args), more: 0 };
 }
 
@@ -197,7 +197,7 @@ export class Activity {
 			fitLine(`${verb} ${tool.name}`, " ", tool.hint, `${tool.more > 0 ? ` +${tool.more}` : ""}${since(at)}`);
 		const checking = running.find((tool) => tool.checkingSince !== undefined);
 		if (checking) return call("Checking", checking, checking.checkingSince!);
-		if (running.length === 1) return call("Running", running[0]!, running[0]!.startedAt);
+		if (running.length === 1) return call("Running", running[0], running[0].startedAt);
 		if (running.length > 1) {
 			const counts = new Map<string, number>();
 			for (const tool of running) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);

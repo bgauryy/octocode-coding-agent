@@ -429,7 +429,7 @@ export function sessionRecordOf(
 		...(started ? { started } : {}),
 		...(lastActive ? { lastActive } : {}),
 		transcript,
-		goal: toRecord(messages[users[0]!]!),
+		goal: toRecord(messages[users[0]]),
 		ending,
 		toolCalls,
 	};
@@ -445,7 +445,7 @@ export const ARCHIVE_POINTER_TYPE = "octocode-archive";
  */
 export function deliverArchivePointer(pi: Pick<ExtensionAPI, "sendMessage">, current: number): void {
 	try {
-		pi.sendMessage(
+		void pi.sendMessage(
 			{
 				customType: ARCHIVE_POINTER_TYPE,
 				content: `[After compaction]\n${archivePointer(current)

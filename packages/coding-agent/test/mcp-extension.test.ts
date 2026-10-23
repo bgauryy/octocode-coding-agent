@@ -222,7 +222,10 @@ describe("MCP config", () => {
 			expect.stringContaining('server "badDescription": description must be a string'),
 		]);
 
+		// The removed activation setting in the trusted project file adds no error and no field.
 		const trusted = loadMcpConfig({ ...paths, projectTrusted: true });
+		expect(trusted.errors).toEqual(untrusted.errors);
+		expect(trusted).not.toHaveProperty("autoEnableCodemode");
 	});
 
 	it("validates the OAuth callback URL, scope, and client name", () => {
@@ -1008,7 +1011,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 });
 
 describe("MCP servers section", () => {
-	const server = (name: string, description?: string, exposure?: "deferred" | "deferred" | "direct") => ({
+	const server = (name: string, description?: string, exposure?: "deferred" | "direct") => ({
 		entry: {
 			name,
 			config: { command: "x", ...(description ? { description } : {}), ...(exposure ? { exposure } : {}) },

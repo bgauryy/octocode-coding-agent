@@ -1,5 +1,11 @@
-import type { Terminal, WheelScrollLines } from "@octocodeai/octocode-tui";
-import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@octocodeai/octocode-tui";
+import {
+	type Terminal,
+	type WheelScrollLines,
+	ProcessTerminal,
+	type TUI,
+	TuiAltScreen,
+	TuiMainScreen,
+} from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { keyDisplayText } from "./components/keybinding-hints.ts";

@@ -46,7 +46,7 @@ const result = (id: string, text: string) => ({
 /** The model-facing text of a result larger than Octocode's budget: a preview whose closing note names the file. */
 const trimmed = (label: string, mark: string) =>
 	capOutputToFile(`${mark}\n${"line of output\n".repeat(6_000)}`, { label });
-const fileOf = (note: string) => /Full output: (\S+);/.exec(note)![1]!;
+const fileOf = (note: string) => /Full output: (\S+);/.exec(note)![1];
 
 /** `writeSummary` over a preparation holding `messages`, on a model that answers with `## Goal`. */
 function summarize(
@@ -116,7 +116,7 @@ describe("saved results carried into the compaction summary", () => {
 			// Once each, though two results name the second file.
 			expect(summary.split(file)).toHaveLength(2);
 		}
-		const block = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(summary)![1]!;
+		const block = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(summary)![1];
 		expect(block.split("\n").slice(1)).toEqual(files);
 		expect(out!.compaction!.details).toMatchObject({
 			[SAVED_RESULTS_DETAILS]: files.map((file) => path.resolve(file)),
@@ -140,7 +140,7 @@ describe("saved results carried into the compaction summary", () => {
 			{ type: "custom", customType: CLEARED_RESULTS_TYPE, data: { results: [{ id: "old", saved: copy }] } },
 		];
 		const out = await summarize([result("old", "whole cleared text"), result("other", "nothing saved")], { branch });
-		const file = copy.split(" (sha256")[0]!;
+		const file = copy.split(" (sha256")[0];
 		expect(out!.compaction!.summary).toContain(
 			`<saved-results>\nTool results this summary leaves out are saved whole in these files; read or search them:\n${file}\n</saved-results>`,
 		);
@@ -176,7 +176,7 @@ describe("saved results carried into the compaction summary", () => {
 			branch,
 			previousSummary: firstOut.summary,
 		}))!.compaction!;
-		const lines = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(secondOut.summary)![1]!.split("\n").slice(1);
+		const lines = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(secondOut.summary)![1].split("\n").slice(1);
 		expect(lines).toEqual([fileOf(earlier), fileOf(later)]);
 		expect(secondOut.details).toMatchObject({
 			[SAVED_RESULTS_DETAILS]: [path.resolve(fileOf(earlier)), path.resolve(fileOf(later))],
@@ -197,7 +197,7 @@ describe("saved results carried into the compaction summary", () => {
 		const block = savedResultsBlock(files);
 		expect(block.length).toBeLessThan(SAVED_RESULTS_INLINE_CHARS);
 		expect(block).toMatch(/^\n\n<saved-results count="80">\n/);
-		const list = /listed one per line in (\S+);/.exec(block)![1]!;
+		const list = /listed one per line in (\S+);/.exec(block)![1];
 		expect(path.dirname(path.resolve(list))).toBe(sessionOutputDir("output"));
 		expect(fs.readFileSync(path.resolve(list), "utf8").trimEnd().split("\n")).toEqual(files);
 		// The pointer block is stripped from a summary like the inline one.

@@ -6,6 +6,7 @@ import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createEventBus } from "../src/core/event-bus.ts";
@@ -65,13 +66,13 @@ describe("ExtensionRunner", () => {
 				totalTokens: 4,
 				cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 },
 			},
-		} as unknown as import("@octocodeai/octocode-ai").AssistantMessage;
+		} as unknown as AssistantMessage;
 		record(message);
 		record(message);
 		expect(onUsageRecorded).toHaveBeenCalledTimes(1);
 		expect(onUsageRecorded.mock.calls[0][0]).toMatchObject({ type: "usage", kind: "compaction" });
 		sessionManager.newSession();
-		record({ ...message, usage: { ...message.usage } } as never);
+		record({ ...message, usage: { ...message.usage } });
 		expect(onUsageRecorded).toHaveBeenCalledTimes(1);
 		expect(sessionManager.getEntries()).toHaveLength(0);
 	});
@@ -521,8 +522,8 @@ describe("ExtensionRunner", () => {
 			}`,
 			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			result.extensions[0]!.commands.get("model")!.sourceInfo = {
-				...result.extensions[0]!.sourceInfo,
+			result.extensions[0].commands.get("model")!.sourceInfo = {
+				...result.extensions[0].sourceInfo,
 				path: "<inline:octocode>",
 			};
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
@@ -1236,9 +1237,9 @@ describe("ExtensionRunner", () => {
 			runtime.registerProvider(
 				"broken-provider",
 				{
-					streamSimple: (() => {
+					streamSimple: () => {
 						throw new Error("should not run");
-					}) as any,
+					},
 				},
 				"/tmp/broken-extension.ts",
 			);

@@ -84,8 +84,8 @@ export class Subcommands {
 				prefix,
 			);
 		return (
-			this.get(match[1]!)
-				?.complete?.(match[2]!.trimStart())
+			this.get(match[1])
+				?.complete?.(match[2].trimStart())
 				?.map((item) => ({ ...item, value: `${match[1]} ${item.value}` })) ?? null
 		);
 	}

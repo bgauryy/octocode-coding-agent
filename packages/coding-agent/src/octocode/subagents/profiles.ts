@@ -92,9 +92,8 @@ export function loadProfiles(
 export const profileFileName = (file: string): string => path.basename(file, ".md");
 
 export function parseProfile(fallbackName: string, text: string): AgentProfile {
-	const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(text);
-	const field = (key: string) =>
-		typeof frontmatter[key] === "string" ? (frontmatter[key] as string).trim() : undefined;
+	const { frontmatter, body } = parseFrontmatter(text);
+	const field = (key: string) => (typeof frontmatter[key] === "string" ? frontmatter[key].trim() : undefined);
 	for (const key of ["tools", "excludeTools"]) {
 		if (frontmatter[key] !== undefined && frontmatter[key] !== null && typeof frontmatter[key] !== "string")
 			throw new Error(`${key} must be a comma-separated string`);

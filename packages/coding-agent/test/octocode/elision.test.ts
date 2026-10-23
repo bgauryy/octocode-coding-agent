@@ -3,7 +3,7 @@ import { copiedElision } from "../../src/octocode/files/tool.ts";
 import { capOutputToFile } from "../../src/octocode/shared/spill.ts";
 import { capChars, capOutput, elisionMarkers } from "../../src/octocode/shared/util.ts";
 
-const marker = elisionMarkers(capChars("z".repeat(100), 10, "use a range"))[0]!;
+const marker = elisionMarkers(capChars("z".repeat(100), 10, "use a range"))[0];
 
 describe("elision markers", () => {
 	it("match what capChars emits, not ordinary text", () => {
@@ -58,11 +58,11 @@ describe("elision markers", () => {
 			);
 		expect(gap).not.toBeNull();
 		const [, count, first, last] = gap!.map(Number);
-		expect(last! - first! + 1).toBe(count);
+		expect(last - first + 1).toBe(count);
 		const lines = preview.split("\n");
 		const at = lines.findIndex((line) => line.startsWith("[…"));
-		expect(lines[at - 2]).toBe(`row ${first! - 1}`);
-		expect(lines[at + 2]).toBe(`row ${last! + 1}`);
+		expect(lines[at - 2]).toBe(`row ${first - 1}`);
+		expect(lines[at + 2]).toBe(`row ${last + 1}`);
 	});
 
 	it("refuses writing a spilled preview (a web page fetched over 50 KB) as if it were the content", () => {

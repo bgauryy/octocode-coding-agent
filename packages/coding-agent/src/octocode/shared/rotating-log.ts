@@ -22,7 +22,7 @@ export class RotatingLog {
 
 	readonly file: string;
 	private readonly max: number;
-	private readonly what: unknown;
+	private readonly what: string;
 	constructor(file: string, max: number, what = "output") {
 		this.file = file;
 		this.max = max;
@@ -94,6 +94,6 @@ export class RotatingLog {
 function characterStart(data: Buffer, at: number): number {
 	let start = at;
 	// A character has at most three continuation bytes; more means the bytes are not UTF-8 text, which is cut at the cap.
-	while (start > 0 && start < data.length && at - start < 3 && (data[start]! & 0xc0) === 0x80) start--;
-	return start > 0 && (data[start]! & 0xc0) !== 0x80 ? start : at;
+	while (start > 0 && start < data.length && at - start < 3 && (data[start] & 0xc0) === 0x80) start--;
+	return start > 0 && (data[start] & 0xc0) !== 0x80 ? start : at;
 }

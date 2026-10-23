@@ -14,7 +14,6 @@ import {
 	type ClassifierApi,
 	type ClassifierContext,
 	type ClassifierModel,
-	type ClassifierOptions,
 	type ClassifierResult,
 	type Context,
 	type Credential,
@@ -22,13 +21,10 @@ import {
 	type CredentialStore,
 	clampThinkingLevel,
 	createModels,
-	type DeferredCancelOptions,
-	type DeferredFetchOptions,
 	type DeferredHandle,
 	type ImageApi,
 	type ImageModel,
 	type ImagesContext,
-	type ImagesOptions,
 	InMemoryModelsStore,
 	isModelType,
 	type LoginOptions,
@@ -55,7 +51,6 @@ import {
 	type Provider,
 	type ProviderHeaders,
 	type ProviderRequestOptions,
-	type SimpleStreamOptions,
 	type StreamOptions,
 } from "@octocodeai/octocode-ai";
 import * as builtinProviderCatalog from "@octocodeai/octocode-ai/providers/all";
@@ -549,7 +544,7 @@ export class ModelRuntime implements Models {
 			providerOrModel,
 			this.config.getProvider(providerOrModel.provider),
 			this.extensionProviders.get(providerOrModel.provider),
-			{ ...(resolution.env ?? {}), ...(overrides.env ?? {}) },
+			{ ...resolution.env, ...overrides.env },
 		);
 		return {
 			...resolution,
@@ -658,8 +653,7 @@ export class ModelRuntime implements Models {
 		const providerOptions = rawProviderOptions as Omit<TOptions, "transformHeaders"> & ProviderRequestOptions<TModel>;
 		let headers = mergeHeaders(resolution.auth.headers, providerOptions.headers);
 		if (transformHeaders) headers = await transformHeaders(headers ?? {});
-		const env =
-			resolution.env || providerOptions.env ? { ...(resolution.env ?? {}), ...(providerOptions.env ?? {}) } : undefined;
+		const env = resolution.env || providerOptions.env ? { ...resolution.env, ...providerOptions.env } : undefined;
 		const requestModel: TModel = resolution.auth.baseUrl
 			? isModelType(model, "chat")
 				? withCacheEndpoint(model, resolution.auth.baseUrl)
@@ -673,7 +667,7 @@ export class ModelRuntime implements Models {
 				apiKey: providerOptions.apiKey ?? resolution.auth.apiKey,
 				headers,
 				env,
-			} as Omit<TOptions, "transformHeaders"> & ProviderRequestOptions<TModel>,
+			},
 		};
 	}
 
@@ -688,7 +682,7 @@ export class ModelRuntime implements Models {
 			const prepared = await this.prepareRequest(model, {
 				...options,
 				...this.getCachePolicy(model, options).options,
-			} as StreamOptions & ModelsRequestTransforms);
+			});
 			return prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>);
 		});
 	}
@@ -728,7 +722,7 @@ export class ModelRuntime implements Models {
 				...options,
 				...this.getCachePolicy(model, options).options,
 			});
-			return prepared.provider.streamSimple(prepared.model, transcript, prepared.options as SimpleStreamOptions);
+			return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 		});
 	}
 
@@ -747,7 +741,7 @@ export class ModelRuntime implements Models {
 			if (!prepared.provider.fetchDeferred) {
 				throw new ModelsError("provider", `Provider ${model.provider} does not support deferred responses`);
 			}
-			return prepared.provider.fetchDeferred(prepared.model, handle, prepared.options as DeferredFetchOptions);
+			return prepared.provider.fetchDeferred(prepared.model, handle, prepared.options);
 		});
 	}
 
@@ -769,7 +763,7 @@ export class ModelRuntime implements Models {
 		if (!prepared.provider.cancelDeferred) {
 			throw new ModelsError("provider", `Provider ${model.provider} does not support deferred responses`);
 		}
-		await prepared.provider.cancelDeferred(prepared.model, handle, prepared.options as DeferredCancelOptions);
+		await prepared.provider.cancelDeferred(prepared.model, handle, prepared.options);
 	}
 
 	async generateImages(
@@ -783,7 +777,7 @@ export class ModelRuntime implements Models {
 			if (!prepared.provider.generateImages) {
 				throw new ModelsError("provider", `Provider ${model.provider} does not support image generation`);
 			}
-			return await prepared.provider.generateImages(prepared.model, context, prepared.options as ImagesOptions);
+			return await prepared.provider.generateImages(prepared.model, context, prepared.options);
 		} catch (error) {
 			return imageErrorResult(model, error, options?.signal?.aborted);
 		}
@@ -801,7 +795,7 @@ export class ModelRuntime implements Models {
 			if (!prepared.provider.classify) {
 				throw new ModelsError("provider", `Provider ${model.provider} does not support classification`);
 			}
-			return await prepared.provider.classify(prepared.model, context, prepared.options as ClassifierOptions);
+			return await prepared.provider.classify(prepared.model, context, prepared.options);
 		} catch (error) {
 			return classifierErrorResult(model, error, options?.signal?.aborted);
 		}

@@ -394,9 +394,9 @@ function SessionComposer() {
 				)}
 				{session.status && session.status !== "idle" && <span className="muted">{session.status}</span>}
 			</div>
-			<p className="visually-hidden" role="status" aria-atomic="true">
+			<output className="visually-hidden" aria-atomic="true">
 				{announcement}
-			</p>
+			</output>
 			{choices.length > 0 && (
 				<form className="composer" onSubmit={submit}>
 					<Field label="Message">

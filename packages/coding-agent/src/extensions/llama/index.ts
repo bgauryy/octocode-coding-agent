@@ -205,20 +205,21 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 				while (true) {
 					const action = await ui.showModels(client.serverUrl, catalog);
 					if (action.type === "close") return;
-					let actionError: unknown;
+					let actionFailure: { error: unknown } | undefined;
 					try {
 						if (action.type === "download") await downloadModel(ctx, ui, client);
 						else if (modelIsLoaded(action.model)) await unloadModel(ctx, ui, client, action.model);
 						else if (action.model.status.value === "unloaded") await loadModel(ctx, ui, client, catalog, action.model);
 						else ctx.ui.notify(`${action.model.id} is ${action.model.status.value}`, "warning");
 					} catch (error) {
-						actionError = error;
+						actionFailure = { error };
 					}
 					const refreshed = await readCatalog();
 					if (!refreshed) return;
 					catalog = refreshed;
-					if (actionError && !isConnectionError(actionError)) {
-						ctx.ui.notify(actionError instanceof Error ? actionError.message : String(actionError), "error");
+					if (actionFailure && !isConnectionError(actionFailure.error)) {
+						const { error } = actionFailure;
+						ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 					}
 				}
 			});

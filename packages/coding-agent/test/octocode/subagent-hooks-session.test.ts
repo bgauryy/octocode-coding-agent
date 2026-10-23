@@ -272,21 +272,21 @@ it.each(["codex", "claude"] as const)(
 			const stop = records.filter((x) => x.hook_event_name === "SubagentStop");
 			expect(start).toHaveLength(1);
 			expect(stop).toHaveLength(2);
-			expect(start[0]!.agent_type).toBe("reviewer");
-			expect(start[0]!.permission_mode).toBe("default");
+			expect(start[0].agent_type).toBe("reviewer");
+			expect(start[0].permission_mode).toBe("default");
 			expect(records.filter((record) => ["SessionStart", "Stop"].includes(record.hook_event_name))).toHaveLength(0);
 			const childFile = childSessionFile(f.childSession);
 			expect(childFile).toBeDefined();
 			if (protocol === "codex") {
-				expect(start[0]!.agent_id).toBe(f.childSession.id);
-				expect(start[0]!.agent_id).not.toBe(f.identity.id);
+				expect(start[0].agent_id).toBe(f.childSession.id);
+				expect(start[0].agent_id).not.toBe(f.identity.id);
 			} else {
-				expect(start[0]!.agent_id).toBe(f.identity.id);
-				expect(start[0]!.session_id).toBe(f.parent.getSessionId());
+				expect(start[0].agent_id).toBe(f.identity.id);
+				expect(start[0].session_id).toBe(f.parent.getSessionId());
 			}
-			expect(stop[0]!.agent_transcript_path).toBe(childFile);
-			expect(stop[0]!.transcript_path).toBe(f.parent.getSessionFile());
-			expect(stop[0]!.agent_transcript_path).not.toBe(stop[0]!.transcript_path);
+			expect(stop[0].agent_transcript_path).toBe(childFile);
+			expect(stop[0].transcript_path).toBe(f.parent.getSessionFile());
+			expect(stop[0].agent_transcript_path).not.toBe(stop[0].transcript_path);
 		} finally {
 			await f.close();
 		}
@@ -403,7 +403,7 @@ it.each(["codex", "claude"] as const)(
 				}
 				const starts = records.filter((r) => r.hook_event_name === "SubagentStart");
 				expect(starts).toHaveLength(protocol === "codex" ? 1 : turn);
-				expect(starts[0]!.agent_id).toBe(protocol === "codex" ? f.childSession.id : f.identity.id);
+				expect(starts[0].agent_id).toBe(protocol === "codex" ? f.childSession.id : f.identity.id);
 				const stops = records.filter((r) => r.hook_event_name === "SubagentStop");
 				expect(stops).toHaveLength(turn);
 				if (protocol === "claude") {
@@ -494,7 +494,7 @@ it.each(["codex", "claude"] as const)(
 				expect(records, event).toHaveLength(1);
 				expect(records[0]).not.toHaveProperty("agent_id");
 				expect(records[0]).not.toHaveProperty("agent_type");
-				expect(records[0]!.session_id).toBe("main-session-identity");
+				expect(records[0].session_id).toBe("main-session-identity");
 			}
 			expect(JSON.stringify(f.requests.at(-1))).toContain("CHILD_TOOL_OUTPUT");
 		} finally {

@@ -17,7 +17,7 @@ import type {
 	ThinkingBudgets,
 	TranscriptContext,
 } from "../types.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
@@ -288,7 +288,7 @@ function getGoogleBudget(
 	customBudgets?: ThinkingBudgets,
 ): number {
 	if (customBudgets?.[level] !== undefined) {
-		return customBudgets[level]!;
+		return customBudgets[level];
 	}
 
 	if (model.id.includes("2.5-pro")) {

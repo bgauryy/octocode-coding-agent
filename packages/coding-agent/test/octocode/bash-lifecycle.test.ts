@@ -95,13 +95,13 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(result.content[0].text).toMatch(/moved to the background as bash-1/);
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1, 8_000);
-		const report = sent[0]!.message.content as string;
+		const report = sent[0].message.content as string;
 		expect(report).toMatch(/^Background bash bash-1 failed with exit code 3 after [23]s: echo before; sleep 2/);
 		expect(report).toMatch(/before\nafter$/);
 		// Like any background job: reported as a follow-up that wakes an idle session, and gone from the job list.
-		expect(sent[0]!.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
-		expect(sent[0]!.message.details.id).toBe("bash-1");
-		expect(fs.readFileSync(sent[0]!.message.details.log, "utf8")).toBe("before\nafter\n");
+		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(sent[0].message.details.id).toBe("bash-1");
+		expect(fs.readFileSync(sent[0].message.details.log, "utf8")).toBe("before\nafter\n");
 		expect(jobs.jobs.size).toBe(0);
 	});
 
@@ -109,7 +109,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		const { tool, sent, ctx } = setup();
 		await tool.execute("t1", { command: "echo out; sleep 1.5; echo err >&2", timeout: 1 }, undefined, undefined, ctx);
 		await until(() => sent.length === 1, 8_000);
-		expect(sent[0]!.message.content).toMatch(/bash-1 finished after [12]s[\s\S]*out\nerr$/);
+		expect(sent[0].message.content).toMatch(/bash-1 finished after [12]s[\s\S]*out\nerr$/);
 	});
 
 	it("stops a moved command at session end, with its whole process group", async () => {
@@ -120,8 +120,8 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		await fire("session_shutdown", {}, ctx);
 		expect(groupAlive(job.pid)).toBe(false);
 		expect(sent).toHaveLength(1);
-		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(session end\)[\s\S]*started/);
-		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].message.content).toMatch(/bash-1 stopped \(session end\)[\s\S]*started/);
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
 	it("is stopped by /octocode jobs kill, with SIGTERM first so it can clean up", async () => {
@@ -144,9 +144,9 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^bash-1 · \d+s · pid \d+ · trap /);
 		await commands.get("jobs")!.handler("kill bash-1", ctx);
 		await until(() => sent.length === 1);
-		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(user\)[\s\S]*ready\ncleaned-up/);
+		expect(sent[0].message.content).toMatch(/bash-1 stopped \(user\)[\s\S]*ready\ncleaned-up/);
 		expect(groupAlive(job.pid)).toBe(false);
-		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
 	it("is stopped at the end of a headless run, since it has no timeout of its own", async () => {
@@ -160,7 +160,7 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		expect(job.stopped).toBe("run end");
 		expect(groupAlive(job.pid)).toBe(false);
 		await until(() => sent.length === 1);
-		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(run end\)[\s\S]*up/);
+		expect(sent[0].message.content).toMatch(/bash-1 stopped \(run end\)[\s\S]*up/);
 	});
 
 	it("does not move a command that starts with sleep: it is stopped at the deadline", async () => {
@@ -217,15 +217,15 @@ describe.runIf(posix)("background job lifecycle", () => {
 		expect(jobs.jobs.has("bash-1")).toBe(true);
 		await fire("session_shutdown", {}, ctx);
 		expect(sent).toHaveLength(1);
-		expect(sent[0]!.message.content).toMatch(/^Background bash bash-1 failed with exit code 3/);
-		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(sent[0].message.content).toMatch(/^Background bash bash-1 failed with exit code 3/);
+		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
 	it("labels jobs a /reload stops and names them in the next session", async () => {
 		const { tool, sent, fire, ctx, jobs } = setup();
 		await tool.execute("t1", { command: "sleep 30", background: true }, undefined, undefined, ctx);
 		await fire("session_shutdown", { reason: "reload" }, ctx);
-		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(reload\)/);
+		expect(sent[0].message.content).toMatch(/bash-1 stopped \(reload\)/);
 		expect(jobs.jobs.size).toBe(0);
 		// The next extension instance (same process, same session folder) reads the note once.
 		const next = fakePi();
@@ -351,7 +351,7 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 		const dir = tmp();
 		const group = await leaderlessGroup();
 		try {
-			const started = Number(groupStartTimes(group)![0]!.started);
+			const started = Number(groupStartTimes(group)![0].started);
 			// The pid was reused as this group's leader after the job started: its member is older than the recorded job.
 			const reused = write(dir, "bash-1-1.job.json", { pid: group, started: String(started + 3600) });
 			expect(await reapOrphanJobs([dir])).toEqual([expect.objectContaining({ pid: group, stopped: false })]);
@@ -483,11 +483,11 @@ describe.runIf(posix)("orphan reaper: only proven jobs are stopped", () => {
 describe.runIf(posix)("job log failures", () => {
 	it("records the first write error, stops writing and says so in the job report", async () => {
 		const write = fs.writeSync;
-		const spy = vi.spyOn(fs, "writeSync").mockImplementation(((fd: number, data: unknown, ...rest: unknown[]) => {
+		const spy = vi.spyOn(fs, "writeSync").mockImplementation((fd: number, data: unknown, ...rest: unknown[]) => {
 			if (Buffer.isBuffer(data) && data.toString().includes("doomed"))
 				throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
 			return (write as (...args: unknown[]) => number)(fd, data, ...rest);
-		}) as typeof fs.writeSync);
+		});
 		try {
 			const jobs = new BashJobs(tmp());
 			let exit: Parameters<typeof jobReport>[1] | undefined;

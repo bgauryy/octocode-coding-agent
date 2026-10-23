@@ -154,8 +154,8 @@ describe("MemoryStore", () => {
 			a
 				.search("tabs")
 				.map((hit) => hit.id)
-				.sort(),
-		).toEqual([global.id, own.id].sort());
+				.sort((x, y) => x - y),
+		).toEqual([global.id, own.id].sort((x, y) => x - y));
 		expect(a.search("tabs", "global").map((hit) => hit.id)).toEqual([global.id]);
 		expect(a.list("project").map((memory) => memory.id)).toEqual([own.id]);
 		expect(a.get(other.id)).toBeUndefined();
@@ -611,7 +611,9 @@ describe("memory auto-injection", () => {
 		const { ctx, branch } = ctxFor();
 		const result = (await fake.fire("before_agent_start", { prompt: "fix the rewind checkpoints bug" }, ctx)) as any;
 		expect(result.message).toMatchObject({ customType: MEMORY_MESSAGE_TYPE, display: false });
-		expect(result.message.details.ids.sort()).toEqual([project.id, global.id].sort());
+		expect(result.message.details.ids.sort((x: number, y: number) => x - y)).toEqual(
+			[project.id, global.id].sort((x, y) => x - y),
+		);
 		expect(result.message.content.startsWith(MEMORY_HEADER)).toBe(true);
 		expect(store.get(project.id)?.useCount).toBe(1);
 		branch.push({ type: "custom_message", ...result.message });
@@ -769,7 +771,7 @@ describe("/memory", () => {
 		});
 		await command.handler("", ctx);
 		expect(store.get(1)).toMatchObject({ title: "Editor made", kind: "decision", author: "user" });
-		expect(editorCalls[0]!.prefill).toContain("title: ");
+		expect(editorCalls[0].prefill).toContain("title: ");
 
 		const option = (title: string) => `Project · M1 (project, decision) ${title} — `;
 		ctx.ui.selects.push(`${option("Editor made")}body text`, "Edit");

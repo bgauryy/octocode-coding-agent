@@ -60,7 +60,7 @@ describe("#6647 compaction retries transient summarization failures", () => {
 	function useScriptedStreamFn(harness: Harness, script: AssistantMessage[]): () => number {
 		let callCount = 0;
 		const streamFunction: StreamFn = (model) => {
-			const message = script[callCount] ?? script[script.length - 1]!;
+			const message = script[callCount] ?? script[script.length - 1];
 			callCount++;
 			const stream = createAssistantMessageEventStream();
 			queueMicrotask(() => {

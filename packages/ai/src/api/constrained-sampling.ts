@@ -137,7 +137,7 @@ export function makeStrictJsonSchema(
 }
 
 export function getJsonSchemaToolParameters(tool: Tool, strict: boolean | undefined): Tool["parameters"] {
-	return (strict === true ? makeStrictJsonSchema(tool.parameters) : tool.parameters) as Tool["parameters"];
+	return strict === true ? makeStrictJsonSchema(tool.parameters) : tool.parameters;
 }
 
 interface GrammarConstrainedSampling {

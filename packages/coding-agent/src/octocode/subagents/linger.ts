@@ -55,7 +55,7 @@ export class Lingering {
 	}
 
 	forgetAll(): void {
-		for (const id of [...this.entries.keys()]) this.forget(id);
+		for (const id of Array.from(this.entries.keys())) this.forget(id);
 	}
 
 	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */

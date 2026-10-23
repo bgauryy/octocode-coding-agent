@@ -36,7 +36,7 @@ it("reverses each Claude file projection while preserving unrelated queries and 
 			},
 		],
 	});
-	expect(input.queries[0]!.path).toBe("old");
+	expect(input.queries[0].path).toBe("old");
 });
 it("preserves replace-all semantics and refuses invalid or incomplete replacement arguments", () => {
 	const input = {

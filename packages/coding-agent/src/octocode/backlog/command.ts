@@ -441,7 +441,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 				`${sanitizeTerminalText(item.title)} — ${item.state}`,
 			]);
 			if (words[0] === "do" && words.length === 2)
-				return wordCompletions(refs, words[1]!)?.map((item) => ({ ...item, value: `do ${item.value}` })) ?? null;
+				return wordCompletions(refs, words[1])?.map((item) => ({ ...item, value: `do ${item.value}` })) ?? null;
 			if (words.length <= 1)
 				return wordCompletions(
 					[
@@ -453,9 +453,9 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 					],
 					prefix,
 				);
-			if (words.length === 2 && parseRef(words[0]!) !== undefined)
+			if (words.length === 2 && parseRef(words[0]) !== undefined)
 				return (
-					wordCompletions(itemActions, words[1]!)?.map((item) => ({
+					wordCompletions(itemActions, words[1])?.map((item) => ({
 						...item,
 						value: `${words[0]} ${item.value}`,
 					})) ?? null

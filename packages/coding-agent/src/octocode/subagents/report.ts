@@ -5,7 +5,13 @@ import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { capOutput, cutText } from "../shared/util.ts";
+import { capOutput, cutText, errorMessage as describeError } from "../shared/util.ts";
+import {
+	type ResultContract,
+	type StructuredResultV1,
+	unavailableResult,
+	validateResultAnswer,
+} from "./result-schema.ts";
 
 const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
@@ -80,26 +86,35 @@ export class ReportTracker {
 	private file: string | undefined;
 	private partialFile: string | undefined;
 	private spillFailed = false;
+	private structured: StructuredResultV1 | undefined;
+	private readonly resultContract?: ResultContract;
 
 	private readonly scratch?: string;
-	constructor(scratch?: string) {
+	constructor(scratch?: string, resultContract?: ResultContract) {
 		this.scratch = scratch;
+		this.resultContract = resultContract;
 	}
 
 	incoming(role: unknown): void {
-		if (role === "user" || role === "custom") this.fresh = true;
+		if (role === "user" || role === "custom") {
+			this.fresh = true;
+			if (this.resultContract) this.structured = unavailableResult(this.resultContract);
+		}
 	}
 
 	answer(raw: string | undefined, stopReason: unknown, errorMessage?: unknown): void {
 		const failed = stopReason === "error" || stopReason === "aborted" || stopReason === "length";
 		this.failure = failed
 			? visibleControls(
-					String(
+					describeError(
 						errorMessage ??
 							(stopReason === "length" ? "Model output limit reached; the report is incomplete" : stopReason),
 					),
 				)
 			: undefined;
+		if (this.resultContract && stopReason !== "toolUse")
+			this.structured =
+				failed || !raw ? unavailableResult(this.resultContract) : validateResultAnswer(raw, this.resultContract);
 		if (!raw) return;
 		const text = visibleControls(raw);
 		this.lastText = preview(text);
@@ -166,6 +181,7 @@ export class ReportTracker {
 		error?: string;
 		outcome?: ReportStatus;
 		answered: boolean;
+		structured?: StructuredResultV1;
 	} {
 		if (this.sections === 0) {
 			const pointer = this.partialFile
@@ -177,6 +193,7 @@ export class ReportTracker {
 				...(pointer ? { pointer } : {}),
 				answered: false,
 				...(this.failure ? { error: this.failure } : {}),
+				...(this.resultContract ? { structured: unavailableResult(this.resultContract) } : {}),
 			};
 		}
 		const body = this.failure ? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : this.text;
@@ -187,6 +204,7 @@ export class ReportTracker {
 			...(pointer ? { pointer } : {}),
 			...(this.outcome ? { outcome: this.outcome } : {}),
 			...(this.failure ? { error: this.failure } : {}),
+			...(this.resultContract ? { structured: this.structured ?? unavailableResult(this.resultContract) } : {}),
 			answered: true,
 		};
 	}

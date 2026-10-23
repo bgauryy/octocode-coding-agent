@@ -15,7 +15,8 @@ export function createEventBus(): EventBusController {
 		emit: (channel, data) => {
 			emitter.emit(channel, data);
 		},
-		on: (channel, handler) => {
+		// Handlers may be async; their results are awaited so rejections are reported.
+		on: (channel, handler: (data: unknown) => unknown) => {
 			const safeHandler = async (data: unknown) => {
 				try {
 					await handler(data);

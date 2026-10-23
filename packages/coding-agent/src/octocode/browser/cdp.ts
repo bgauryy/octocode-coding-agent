@@ -464,6 +464,13 @@ export interface BrowserSession {
 	warning?: string;
 }
 
+/**
+ * ` (blocked <why>)` when the policy failed a request since `session.blocked` was last cleared. A call, so a caller that
+ * cleared the field before awaiting a navigation still reads what the network handlers wrote meanwhile.
+ */
+export const blockedSuffix = (session: BrowserSession): string =>
+	session.blocked ? ` (blocked ${session.blocked})` : "";
+
 export interface Download {
 	name: string;
 	state: "inProgress" | "completed" | "canceled";
@@ -563,7 +570,7 @@ export function trackDownload(session: BrowserSession, guid: string, download: D
 	if (session.downloads.size <= DOWNLOADS_KEEP) return;
 	session.downloads.delete(
 		([...session.downloads].find(([key, item]) => key !== guid && item.state !== "inProgress") ??
-			[...session.downloads][0]!)[0],
+			[...session.downloads][0])[0],
 	);
 }
 

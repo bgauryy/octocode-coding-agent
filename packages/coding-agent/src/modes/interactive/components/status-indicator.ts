@@ -76,8 +76,8 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		if (rows?.length !== 2 || !rows[0]?.startsWith("Main · ")) return super.render(width);
 		const [summary, detail] = rows;
 		const clip = (text: string) => truncateToWidth(text, Math.max(0, width), "…");
-		const [label, ...metrics] = summary!.split(" · ");
-		let heading = ` ${this.getRenderedIndicator()} ${theme.fg("accent", theme.bold(label!))}${theme.fg("muted", ` · ${metrics.join(" · ")}`)}`;
+		const [label, ...metrics] = summary.split(" · ");
+		let heading = ` ${this.getRenderedIndicator()} ${theme.fg("accent", theme.bold(label))}${theme.fg("muted", ` · ${metrics.join(" · ")}`)}`;
 		const key = interruptKey();
 		const hint = key ? `${theme.fg("muted", key)}${theme.fg("dim", " to interrupt")}` : "";
 		const gap = width - visibleWidth(heading) - visibleWidth(hint) - 1;

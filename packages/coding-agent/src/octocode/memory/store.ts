@@ -2,7 +2,7 @@ import type { AgentDb } from "../agentdb/db.ts";
 import { readMeta, writeMeta } from "../agentdb/meta.ts";
 import type { Row } from "../agentdb/rows.ts";
 import { storedSecret, storedText } from "../shared/sanitize.ts";
-import { clipText } from "../shared/util.ts";
+import { clipText, stringOrEmpty } from "../shared/util.ts";
 import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, terms } from "./query.ts";
 
 export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure"] as const;
@@ -72,11 +72,11 @@ function toMemory(row: Row): Memory {
 		scope: row.scope === "global" ? "global" : "project",
 		repoKey: (row.repo_key as string | null) ?? null,
 		kind: (MEMORY_KINDS as readonly string[]).includes(String(row.kind)) ? (row.kind as MemoryKind) : "fact",
-		title: String(row.title ?? ""),
-		body: String(row.body ?? ""),
-		keywords: String(row.keywords ?? ""),
+		title: stringOrEmpty(row.title),
+		body: stringOrEmpty(row.body),
+		keywords: stringOrEmpty(row.keywords),
 		pinned: Number(row.pinned) === 1,
-		author: String(row.author ?? ""),
+		author: stringOrEmpty(row.author),
 		sourceSession: (row.source_session as string | null) ?? null,
 		createdAt: Number(row.created_at),
 		updatedAt: Number(row.updated_at),

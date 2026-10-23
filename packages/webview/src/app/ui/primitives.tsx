@@ -51,10 +51,10 @@ export function Spinner({ size = 14 }: { size?: number }) {
 /** Placeholder blocks shaped like the content that is loading; the wrapper announces what is loading. */
 export function Skeleton({ label, children }: { label: string; children: ReactNode }) {
 	return (
-		<div className="skeleton" role="status" aria-label={label}>
+		<output className="skeleton" aria-label={label}>
 			{children}
 			<span className="visually-hidden">{label}…</span>
-		</div>
+		</output>
 	);
 }
 export function SkeletonLine({ width = "100%", height = 12 }: { width?: string; height?: number }) {
@@ -89,6 +89,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function Avatar({ name, label }: { name: string; label?: string }) {
 	return (
+		// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- initials drawn as text, announced as one labelled image.
 		<span className="avatar" role="img" aria-label={label ?? name} title={label ?? name}>
 			{name.slice(0, 2).toUpperCase()}
 		</span>
@@ -103,6 +104,7 @@ export function StatusIcon({ state, size = 14 }: { state: State; size?: number }
 			width={size}
 			height={size}
 			viewBox="0 0 14 14"
+			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 			role="img"
 			aria-label={STATE_TITLES[state]}
 		>
@@ -142,6 +144,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: string; size?:
 				width={size}
 				height={size}
 				viewBox="0 0 14 14"
+				// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 				role="img"
 				aria-label={label}
 			>
@@ -156,6 +159,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: string; size?:
 			width={size}
 			height={size}
 			viewBox="0 0 14 14"
+			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 			role="img"
 			aria-label={label}
 		>

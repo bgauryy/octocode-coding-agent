@@ -4,7 +4,7 @@
 
 import { performance } from "node:perf_hooks";
 import { isKeyRelease, matchesKey } from "./keys.ts";
-import type { Terminal } from "./terminal.ts";
+import type { OutputTelemetry, Terminal } from "./terminal.ts";
 import {
 	parseOscColorResponse,
 	parseTerminalColorSchemeReport,
@@ -532,6 +532,8 @@ export interface RenderPacingStats {
 	lastFrameCostMs: number;
 	maxFrameCostMs: number;
 	maxInputToPaintMs: number;
+	maxTimerLagMs: number;
+	output?: Readonly<OutputTelemetry>;
 }
 
 /** Cadence and frame-cost floors are independent of output queue admission. */
@@ -577,6 +579,7 @@ export abstract class TuiBase extends Container implements TUI {
 		lastFrameCostMs: 0,
 		maxFrameCostMs: 0,
 		maxInputToPaintMs: 0,
+		maxTimerLagMs: 0,
 	};
 	private lastFrameCostMs = 0;
 	private lastInputAt: number | undefined;
@@ -643,10 +646,16 @@ export abstract class TuiBase extends Container implements TUI {
 		this.renderPacing = next;
 		this.outputPressureHeld = false;
 		this.terminal.setDecorativeOutputPressureThreshold?.(next.outputGate ? next.highWaterBytes : undefined);
+		this.terminal.setOutputTelemetryEnabled?.(next.metrics);
 	}
 
 	getRenderPacingStats(): Readonly<RenderPacingStats> {
-		return { ...this.renderPacingStats };
+		return {
+			...this.renderPacingStats,
+			...(this.renderPacing.metrics && this.terminal.getOutputTelemetry
+				? { output: this.terminal.getOutputTelemetry() }
+				: {}),
+		};
 	}
 
 	private outputIsPressured(): boolean {
@@ -667,10 +676,12 @@ export abstract class TuiBase extends Container implements TUI {
 
 	private paint(measure = false): void {
 		const start = measure ? performance.now() : 0;
+		if (this.renderPacing.metrics) this.samplePendingOutput();
 		this.doRender();
 		if (!measure) return;
 		this.lastFrameCostMs = performance.now() - start;
 		if (this.renderPacing.metrics) {
+			this.samplePendingOutput();
 			this.renderPacingStats.paintedFrames++;
 			this.renderPacingStats.lastFrameCostMs = this.lastFrameCostMs;
 			this.renderPacingStats.maxFrameCostMs = Math.max(this.renderPacingStats.maxFrameCostMs, this.lastFrameCostMs);
@@ -682,6 +693,13 @@ export abstract class TuiBase extends Container implements TUI {
 			}
 		}
 		this.lastInputAt = undefined;
+	}
+
+	private samplePendingOutput(): void {
+		const pending = this.terminal.pendingOutputBytes;
+		if (pending !== undefined && Number.isFinite(pending) && pending >= 0) {
+			this.renderPacingStats.maxPendingOutputBytes = Math.max(this.renderPacingStats.maxPendingOutputBytes, pending);
+		}
 	}
 
 	get fullRedraws(): number {
@@ -1006,7 +1024,7 @@ export abstract class TuiBase extends Container implements TUI {
 	/** Keep overlay containers as keyboard focus owners when a nested control is clicked. */
 	protected resolveMouseFocusTarget(component: Component): Component {
 		for (let index = this.overlayStack.length - 1; index >= 0; index--) {
-			const overlay = this.overlayStack[index]!;
+			const overlay = this.overlayStack[index];
 			if (this.isOverlayVisible(overlay) && this.containsComponent(overlay.component, component)) {
 				return overlay.component;
 			}
@@ -1017,7 +1035,7 @@ export abstract class TuiBase extends Container implements TUI {
 	/** Dispatch to the visually topmost overlay under the pointer. */
 	protected dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult } {
 		for (let index = this.renderedOverlayLayouts.length - 1; index >= 0; index--) {
-			const layout = this.renderedOverlayLayouts[index]!;
+			const layout = this.renderedOverlayLayouts[index];
 			if (
 				event.screenX < layout.col ||
 				event.screenX >= layout.col + layout.width ||
@@ -1071,11 +1089,15 @@ export abstract class TuiBase extends Container implements TUI {
 
 	start(): void {
 		this.renderLifecycle++;
+		this.cancelRenderTimer();
+		this.renderRequested = false;
+		this.immediateRenderScheduled = false;
 		this.stopped = false;
 		this.outputPressureHeld = false;
 		this.terminal.setDecorativeOutputPressureThreshold?.(
 			this.renderPacing.outputGate ? this.renderPacing.highWaterBytes : undefined,
 		);
+		this.terminal.setOutputTelemetryEnabled?.(this.renderPacing.metrics);
 		this.beforeTerminalStart();
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
@@ -1136,6 +1158,7 @@ export abstract class TuiBase extends Container implements TUI {
 		this.outputPressureHeld = false;
 		this.cancelRenderTimer();
 		this.terminal.setDecorativeOutputPressureThreshold?.(undefined);
+		this.terminal.setOutputTelemetryEnabled?.(false);
 		if (this.terminalColorSchemeNotificationsEnabled) {
 			this.terminal.write("\x1b[?2031l");
 		}
@@ -1208,20 +1231,33 @@ export abstract class TuiBase extends Container implements TUI {
 		}
 		const elapsed = performance.now() - this.lastRenderAt;
 		const delay = computeRenderDelayMs(
-			TuiBase.MIN_RENDER_INTERVAL_MS, this.lastFrameCostMs, elapsed, this.renderPacing.adaptiveCadence,
+			TuiBase.MIN_RENDER_INTERVAL_MS,
+			this.lastFrameCostMs,
+			elapsed,
+			this.renderPacing.adaptiveCadence,
 		);
+		const dueAt = this.renderPacing.metrics ? performance.now() + delay : 0;
 		const lifecycle = this.renderLifecycle;
-		this.renderTimer = setTimeout(() => {
+		const timer = setTimeout(() => {
+			if (this.renderTimer !== timer) return;
 			this.renderTimer = undefined;
 			if (lifecycle !== this.renderLifecycle || this.stopped || !this.renderRequested) {
 				return;
 			}
+			if (this.renderPacing.metrics) {
+				this.renderPacingStats.maxTimerLagMs = Math.max(
+					this.renderPacingStats.maxTimerLagMs,
+					performance.now() - dueAt,
+				);
+			}
 			if (this.outputIsPressured()) {
 				if (this.renderPacing.metrics) this.renderPacingStats.deferredFrames++;
-				this.renderTimer = setTimeout(() => {
+				const retry = setTimeout(() => {
+					if (this.renderTimer !== retry) return;
 					this.renderTimer = undefined;
 					if (lifecycle === this.renderLifecycle) this.scheduleRender();
 				}, this.renderPacing.retryMs);
+				this.renderTimer = retry;
 				return;
 			}
 			this.renderRequested = false;
@@ -1231,10 +1267,10 @@ export abstract class TuiBase extends Container implements TUI {
 				this.scheduleRender();
 			}
 		}, delay);
+		this.renderTimer = timer;
 	}
 
 	private handleTerminalInput(data: string): void {
-		if (this.renderPacing.metrics) this.lastInputAt = performance.now();
 		if (this.consumeTerminalColorResponse(data)) {
 			return;
 		}
@@ -1309,6 +1345,7 @@ export abstract class TuiBase extends Container implements TUI {
 			if (isKeyRelease(data) && !this.focusedComponent.wantsKeyRelease) {
 				return;
 			}
+			if (this.renderPacing.metrics) this.lastInputAt = performance.now();
 			this.focusedComponent.handleInput(data);
 			// Keyboard input is latency-sensitive. Avoid the throttled timer path,
 			// where even setTimeout(0) can take a full 16 ms tick on Windows.
@@ -1351,7 +1388,7 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	private terminalColorQueryResult(query: PendingTerminalColorQuery): TerminalColors {
-		const palette = query.palette.every((color) => color !== undefined) ? (query.palette as RgbColor[]) : undefined;
+		const palette = query.palette.every((color) => color !== undefined) ? query.palette : undefined;
 		return { foreground: query.foreground, background: query.background, palette };
 	}
 

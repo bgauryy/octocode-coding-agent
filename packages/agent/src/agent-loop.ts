@@ -903,15 +903,10 @@ async function executePreparedToolCall(
 	const elapsed = () => Math.round(performance.now() - startedAt);
 
 	try {
-		const result = await prepared.tool.execute(
-			prepared.toolCall.id,
-			prepared.args as never,
-			signal,
-			(partialResult) => {
-				if (!acceptingUpdates) return;
-				updateEvents.push(Promise.resolve(onUpdate(partialResult)));
-			},
-		);
+		const result = await prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
+			if (!acceptingUpdates) return;
+			updateEvents.push(Promise.resolve(onUpdate(partialResult)));
+		});
 		const durationMs = elapsed();
 		acceptingUpdates = false;
 		await Promise.all(updateEvents);

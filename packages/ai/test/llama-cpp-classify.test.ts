@@ -133,7 +133,7 @@ describe("llama.cpp classifier", () => {
 		const levels = labelProbabilities([-4, -1.8, -0.2], 1);
 		expect(result.answers.severity).toEqual({
 			type: "score",
-			score: levels[1]! + 2 * levels[2]!,
+			score: levels[1] + 2 * levels[2],
 			confidence: peakConfidence(levels),
 		});
 

@@ -134,7 +134,7 @@ describe("cache-sharing compaction summary", () => {
 		// The conversation as Octocode sends it (system message included, same order) then exactly one new user message.
 		expect(context.messages.slice(0, -1)).toEqual(entries.flatMap((item) => item.messages));
 		expect(context.messages.at(-1)?.role).toBe("user");
-		expect(finalPrompt(calls[0]!)).toContain("Focus on parsing.");
+		expect(finalPrompt(calls[0])).toContain("Focus on parsing.");
 		expect(options).toMatchObject({
 			reasoning: "high",
 			sessionId: "sid-1",
@@ -161,7 +161,7 @@ describe("cache-sharing compaction summary", () => {
 	it("leaves reasoning off when the session thinking level is off", async () => {
 		const { calls, pi, ctx, event } = setup({ thinking: "off" });
 		await sharedSummary(pi, event, ctx, model as never, "x");
-		expect(calls[0]!.options.reasoning).toBeUndefined();
+		expect(calls[0].options.reasoning).toBeUndefined();
 	});
 
 	it("shows the results cleared on the branch as the placeholders the real requests carry", async () => {
@@ -174,7 +174,7 @@ describe("cache-sharing compaction summary", () => {
 		];
 		const { calls, pi, ctx, event } = setup({ branch });
 		await sharedSummary(pi, event, ctx, model as never, "x");
-		const sent = calls[0]!.context.messages.find((message) => message.role === "toolResult");
+		const sent = calls[0].context.messages.find((message) => message.role === "toolResult");
 		expect(sent?.content[0]).toMatchObject({
 			text: expect.stringMatching(/^\[Old tool result cleared .*\/tmp\/saved\.txt/),
 		});
@@ -202,10 +202,10 @@ describe("cache-sharing compaction summary", () => {
 		await sharedSummary(strips.pi, strips.event, strips.ctx, binding as never, "x");
 		const sent = (call: { context: Context }) =>
 			call.context.messages.find((message) => message.role === "assistant")?.content;
-		expect(sent(strips.calls[0]!)).toEqual([{ type: "text", text: "kept turn" }]);
+		expect(sent(strips.calls[0])).toEqual([{ type: "text", text: "kept turn" }]);
 		const keeps = setup({ firstKeptEntryId: "e2", projection });
 		await sharedSummary(keeps.pi, keeps.event, keeps.ctx, model as never, "x");
-		expect(sent(keeps.calls[0]!)).toHaveLength(2);
+		expect(sent(keeps.calls[0])).toHaveLength(2);
 	});
 
 	it("returns Octocode-shaped compaction: summary with file lists, details, usage, cut point and size before", async () => {
@@ -234,18 +234,18 @@ describe("cache-sharing compaction summary", () => {
 	it("names where the kept messages begin so the model summarizes what comes before", async () => {
 		const { calls, pi, ctx, event } = setup({ firstKeptEntryId: "e3" });
 		await sharedSummary(pi, event, ctx, model as never, "x");
-		expect(finalPrompt(calls[0]!)).toMatch(/result of the read tool call/);
+		expect(finalPrompt(calls[0])).toMatch(/result of the read tool call/);
 		const other = setup({ firstKeptEntryId: "e1" });
 		await sharedSummary(other.pi, other.event, other.ctx, model as never, "x");
-		expect(finalPrompt(other.calls[0]!)).toContain('user message beginning "fix the parser in src/a.ts"');
+		expect(finalPrompt(other.calls[0])).toContain('user message beginning "fix the parser in src/a.ts"');
 		const call2 = setup({ firstKeptEntryId: "e2" });
 		await sharedSummary(call2.pi, call2.event, call2.ctx, model as never, "x");
-		expect(finalPrompt(call2.calls[0]!)).toContain(
+		expect(finalPrompt(call2.calls[0])).toContain(
 			'assistant message that calls the read tool with {"path":"src/a.ts"}',
 		);
 		const unknown = setup({ firstKeptEntryId: "missing" });
 		await sharedSummary(unknown.pi, unknown.event, unknown.ctx, model as never, "x");
-		expect(finalPrompt(unknown.calls[0]!)).not.toMatch(/stay in the conversation/);
+		expect(finalPrompt(unknown.calls[0])).not.toMatch(/stay in the conversation/);
 	});
 
 	it("quotes the start of a long message without splitting a surrogate pair at the cut", async () => {
@@ -257,7 +257,7 @@ describe("cache-sharing compaction summary", () => {
 			projection: () => ({ entries: projected, messages: projected.flatMap((item) => item.messages) }),
 		});
 		await sharedSummary(pi, event, ctx, model as never, "x");
-		const prompt = finalPrompt(calls[0]!);
+		const prompt = finalPrompt(calls[0]);
 		expect(prompt).toContain(`user message beginning "${"a".repeat(119)}…"`);
 		expect(prompt).not.toMatch(/\p{Surrogate}/u);
 	});
@@ -265,10 +265,10 @@ describe("cache-sharing compaction summary", () => {
 	it("tells the model to carry a previous summary forward without copying the sections code appends", async () => {
 		const first = setup();
 		await sharedSummary(first.pi, first.event, first.ctx, model as never, "x");
-		expect(finalPrompt(first.calls[0]!)).not.toMatch(/earlier summary/);
+		expect(finalPrompt(first.calls[0])).not.toMatch(/earlier summary/);
 		const next = setup({ previousSummary: "## Goal\nold" });
 		await sharedSummary(next.pi, next.event, next.ctx, model as never, "x");
-		const prompt = finalPrompt(next.calls[0]!);
+		const prompt = finalPrompt(next.calls[0]);
 		expect(prompt).toMatch(/earlier summary/);
 		expect(prompt).toContain("## User Messages");
 		expect(prompt).toContain("## Recovery");
@@ -380,7 +380,7 @@ describe("cache-sharing compaction summary", () => {
 	it("keeps the summary within the model cap when the model has none", async () => {
 		const { calls, pi, ctx, event } = setup();
 		await sharedSummary(pi, event, ctx, { ...model, maxTokens: 0 } as never, "x");
-		expect(calls[0]!.options.maxTokens).toBe(8_000);
+		expect(calls[0].options.maxTokens).toBe(8_000);
 	});
 });
 
@@ -389,7 +389,7 @@ describe("writeSummary with the shared path", () => {
 		const { calls, pi, ctx, event, recordedUsage } = setup();
 		const out = await writeSummary(pi, event, ctx);
 		expect(calls).toHaveLength(1);
-		expect(calls[0]!.context.messages[0]).toBe(system);
+		expect(calls[0].context.messages[0]).toBe(system);
 		expect(out?.compaction?.summary).toMatch(/^## Goal\nfix the parser\n\n<read-files>/);
 		expect(out?.compaction?.details).toEqual({
 			readFiles: ["src/a.ts"],
@@ -412,7 +412,7 @@ describe("writeSummary with the shared path", () => {
 		});
 		const out = await writeSummary(pi, event, ctx);
 		expect(calls).toHaveLength(2);
-		expect(finalPrompt(calls[1]!)).toContain("<conversation>");
+		expect(finalPrompt(calls[1])).toContain("<conversation>");
 		expect(out?.compaction?.summary).toContain("fallback");
 		// The extra cost is not silent: the user is told why the cache was not used.
 		expect(notices).toEqual([
@@ -439,7 +439,7 @@ describe("writeSummary with the shared path", () => {
 		const { calls, pi, ctx, event } = setup();
 		const out = await writeSummary(pi, event, ctx, { ...model, id: "previous" } as never);
 		expect(calls).toHaveLength(1);
-		expect(finalPrompt(calls[0]!)).toContain("<conversation>");
+		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.summary).toContain("## Goal");
 		expect(out?.compaction?.details).toMatchObject({
 			[SUMMARY_METHOD_DETAILS]: {

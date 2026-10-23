@@ -55,7 +55,7 @@ describe("checkpoints", () => {
 	/** A file changed once in each of `versions.length - 1` turns: v0 (on disk before), then each next version. */
 	async function chain(versions: string[]) {
 		const file = path.join(tmp(), "a.txt");
-		fs.writeFileSync(file, versions[0]!);
+		fs.writeFileSync(file, versions[0]);
 		const store = path.join(tmp(), "cp");
 		const checkpoints = new Checkpoints();
 		checkpoints.open(store);
@@ -238,7 +238,7 @@ describe("checkpoints", () => {
 		}
 		expect(checkpoints.turns()).toEqual([2]);
 		expect(checkpoints.list()).toHaveLength(256);
-		expect(checkpoints.list()[0]!.path).toBe(path.join(cwd, "f0.txt"));
+		expect(checkpoints.list()[0].path).toBe(path.join(cwd, "f0.txt"));
 		expect(notes.slice(0, 256).every((note) => note === undefined)).toBe(true);
 		expect(notes.slice(256)).toEqual(Array(4).fill("not checkpointed: turn over the checkpoint cap"));
 	});
@@ -340,7 +340,7 @@ describe("checkpoints", () => {
 		// Same size, wrong bytes: caught at rewind, not at capture.
 		fs.writeFileSync(b, "B");
 		await checkpoints.settle(b, { fresh: false }, true);
-		fs.writeFileSync(path.join(store, "blobs", blob!), "evil");
+		fs.writeFileSync(path.join(store, "blobs", blob), "evil");
 		expect(await checkpoints.rewind([1])).toEqual({ restored: [], partly: [], skipped: [b, a] });
 	});
 

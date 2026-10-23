@@ -2,9 +2,10 @@ import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { clampThinkingLevel } from "../models.ts";
-import type { Api, AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
+import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -53,7 +54,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: "azure-openai-responses" as Api,
+			api: "azure-openai-responses",
 			provider: model.provider,
 			model: model.id,
 			usage: {
@@ -137,7 +138,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };

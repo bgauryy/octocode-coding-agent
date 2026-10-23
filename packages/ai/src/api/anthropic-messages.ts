@@ -1,7 +1,6 @@
 import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
 import type {
 	BetaInputTransformation,
-	BetaStopReason,
 	BetaTool,
 	BetaCacheControlEphemeral as CacheControlEphemeral,
 	BetaContentBlockParam as ContentBlockParam,
@@ -19,7 +18,6 @@ import {
 } from "../env-api-keys.ts";
 import { calculateCost } from "../models.ts";
 import type {
-	Api,
 	AssistantMessage,
 	CacheRetention,
 	ImageContent,
@@ -40,6 +38,7 @@ import type {
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "../utils/cache-policy.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair, parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
@@ -574,7 +573,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: model.api as Api,
+			api: model.api,
 			provider: model.provider,
 			model: model.id,
 			usage: {
@@ -918,7 +917,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };
@@ -1667,7 +1666,7 @@ function convertTools(
 }
 
 function mapStopReason(
-	reason: BetaStopReason | string,
+	reason: string,
 	stopDetails?: RefusalStopDetails | null,
 ): { stopReason: StopReason; errorMessage?: string } {
 	switch (reason) {

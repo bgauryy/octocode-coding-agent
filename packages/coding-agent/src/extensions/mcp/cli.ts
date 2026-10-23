@@ -655,7 +655,7 @@ async function login(
 	}
 
 	const openUrl = options.openUrl ?? openBrowser;
-	const interactive = process.stdin.isTTY === true && options.openUrl === undefined;
+	const interactive = process.stdin.isTTY && options.openUrl === undefined;
 	try {
 		await signInMcpServer({
 			serverUrl: url,

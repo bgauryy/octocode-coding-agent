@@ -90,7 +90,7 @@ export function htmlToText(html: string): string {
 function removeElements(text: string, opener: RegExp): string {
 	const close = closeTags(text);
 	return rewrite(text, opener, (open) => {
-		const end = close(open[1]!, open.index + open[0].length);
+		const end = close(open[1], open.index + open[0].length);
 		return end && { end: end.index + end[0].length, text: "" };
 	});
 }
@@ -108,11 +108,11 @@ function headingsToMarkdown(text: string): string {
 	const close = closeTags(text);
 	return rewrite(text, /<(h[1-6])/gi, (open) => {
 		const body = tagEnd(open.index + open[0].length);
-		const end = body && close(open[1]!, body.index + 1);
+		const end = body && close(open[1], body.index + 1);
 		return (
 			end && {
 				end: end.index + end[0].length,
-				text: `\n\n${"#".repeat(Number(open[1]![1]))} ${text.slice(body!.index + 1, end.index)}\n\n`,
+				text: `\n\n${"#".repeat(Number(open[1][1]))} ${text.slice(body.index + 1, end.index)}\n\n`,
 			}
 		);
 	});
@@ -120,7 +120,7 @@ function headingsToMarkdown(text: string): string {
 
 /** Whether a link target starts at `at`: `href=` on a word boundary with a double-quoted, single-quoted or bare value not starting with `#`. */
 function hrefAt(text: string, at: number): boolean {
-	if (at > 0 && /\w/.test(text[at - 1]!)) return false;
+	if (at > 0 && /\w/.test(text[at - 1])) return false;
 	if (text.slice(at, at + 5).toLowerCase() !== "href=") return false;
 	const first = text[at + 5];
 	if (first === '"' || first === "'")
@@ -137,7 +137,7 @@ function linksToMarkdown(text: string): string {
 		if (end < 0 || token < 0) return null;
 		const closing = close("a", end);
 		if (!closing) return null;
-		const quote = text[token + 5]!;
+		const quote = text[token + 5];
 		const href =
 			quote === '"' || quote === "'"
 				? text.slice(token + 6, text.indexOf(quote, token + 6))
@@ -174,7 +174,7 @@ const VOID_TAGS = new Set([
 /** True for an opening tag's attributes that hide it: `hidden`, `aria-hidden="true"`, or an inline `display:none` / `visibility:hidden`. */
 function hiddenByAttributes(attributes: string): boolean {
 	for (const match of attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g)) {
-		const name = match[1]!.toLowerCase();
+		const name = match[1].toLowerCase();
 		const value = (match[2] ?? "").replace(/^["']|["']$/g, "").toLowerCase();
 		if (name === "hidden" || (name === "aria-hidden" && value === "true")) return true;
 		if (name === "style" && /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/.test(value)) return true;
@@ -198,7 +198,7 @@ export function stripHidden(html: string): string {
 		open.lastIndex = tagEnd;
 		const attributes = html.slice(match.index + match[0].length, tagEnd - 1);
 		if (!/hidden|none/i.test(attributes) || !hiddenByAttributes(attributes)) continue;
-		const tag = match[1]!.toLowerCase();
+		const tag = match[1].toLowerCase();
 		let end = tagEnd;
 		if (!VOID_TAGS.has(tag) && !attributes.trimEnd().endsWith("/")) {
 			let elementEnd = elements.get(tag);
@@ -340,7 +340,7 @@ export function mainContent(html: string): string {
 	const main = /<main\b/i.exec(html);
 	if (main) candidates.push({ at: main.index, tag: "main" });
 	const role = firstTagWith(html, /<([a-z][a-z0-9]*)\b/gi, /\brole=["']?main\b/gi);
-	if (role) candidates.push({ at: role.open.index, tag: role.open[1]!.toLowerCase() });
+	if (role) candidates.push({ at: role.open.index, tag: role.open[1].toLowerCase() });
 	const articles = html.match(/<article\b/gi) ?? [];
 	if (articles.length === 1) candidates.push({ at: html.search(/<article\b/i), tag: "article" });
 	for (const { at, tag } of candidates) {

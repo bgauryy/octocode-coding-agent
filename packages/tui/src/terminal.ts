@@ -28,7 +28,7 @@ export function parseKeyboardProtocolNegotiationSequence(
 ): KeyboardProtocolNegotiationSequence | undefined {
 	const kittyFlags = sequence.match(/^\x1b\[\?(\d+)u$/);
 	if (kittyFlags) {
-		return { type: "kitty-flags", flags: Number.parseInt(kittyFlags[1]!, 10) };
+		return { type: "kitty-flags", flags: Number.parseInt(kittyFlags[1], 10) };
 	}
 	if (/^\x1b\[\?[\d;]*c$/.test(sequence)) {
 		return { type: "device-attributes" };
@@ -96,6 +96,9 @@ export interface Terminal {
 	readonly pendingOutputBytes?: number;
 	/** Optional hint to omit decorative progress keepalives while scheduled frames are pressure-gated. */
 	setDecorativeOutputPressureThreshold?(bytes: number | undefined): void;
+	/** Optional aggregate output counters; no rendered text is retained. */
+	setOutputTelemetryEnabled?(enabled: boolean): void;
+	getOutputTelemetry?(): Readonly<OutputTelemetry>;
 
 	// Get terminal dimensions
 	get columns(): number;
@@ -127,6 +130,14 @@ export interface Terminal {
 	 * status is re-sent when support is confirmed or the terminal restarts.
 	 */
 	setProgramStatus(status: ProgramStatus): void;
+}
+
+export interface OutputTelemetry {
+	writtenBytes: number;
+	writeCalls: number;
+	maxWriteBytes: number;
+	backpressuredWrites: number;
+	maxQueuedBytes: number;
 }
 
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
@@ -163,6 +174,14 @@ export function resolvePasteTimeoutMs(env: NodeJS.ProcessEnv = process.env): num
  */
 export class ProcessTerminal implements Terminal {
 	private decorativeOutputPressureThreshold: number | undefined;
+	private outputTelemetryEnabled = false;
+	private outputTelemetry: OutputTelemetry = {
+		writtenBytes: 0,
+		writeCalls: 0,
+		maxWriteBytes: 0,
+		backpressuredWrites: 0,
+		maxQueuedBytes: 0,
+	};
 
 	get pendingOutputBytes(): number {
 		return process.stdout.writableLength;
@@ -170,6 +189,23 @@ export class ProcessTerminal implements Terminal {
 
 	setDecorativeOutputPressureThreshold(bytes: number | undefined): void {
 		this.decorativeOutputPressureThreshold = bytes;
+	}
+
+	setOutputTelemetryEnabled(enabled: boolean): void {
+		if (enabled && !this.outputTelemetryEnabled) {
+			this.outputTelemetry = {
+				writtenBytes: 0,
+				writeCalls: 0,
+				maxWriteBytes: 0,
+				backpressuredWrites: 0,
+				maxQueuedBytes: 0,
+			};
+		}
+		this.outputTelemetryEnabled = enabled;
+	}
+
+	getOutputTelemetry(): Readonly<OutputTelemetry> {
+		return { ...this.outputTelemetry };
 	}
 	private wasRaw = false;
 	private inputHandler?: (data: string) => void;
@@ -543,7 +579,15 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	write(data: string): void {
-		process.stdout.write(data);
+		const accepted = process.stdout.write(data);
+		if (this.outputTelemetryEnabled) {
+			const bytes = Buffer.byteLength(data);
+			this.outputTelemetry.writtenBytes += bytes;
+			this.outputTelemetry.writeCalls++;
+			this.outputTelemetry.maxWriteBytes = Math.max(this.outputTelemetry.maxWriteBytes, bytes);
+			if (!accepted) this.outputTelemetry.backpressuredWrites++;
+			this.outputTelemetry.maxQueuedBytes = Math.max(this.outputTelemetry.maxQueuedBytes, this.pendingOutputBytes);
+		}
 		if (this.writeLogPath) {
 			try {
 				fs.appendFileSync(this.writeLogPath, data, { encoding: "utf8" });

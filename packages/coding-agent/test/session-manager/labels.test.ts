@@ -132,7 +132,7 @@ describe("SessionManager labels", () => {
 
 		// New label entries should exist
 		const entries = session.getEntries();
-		const labelEntries = entries.filter((e) => e.type === "label") as LabelEntry[];
+		const labelEntries = entries.filter((e) => e.type === "label");
 		expect(labelEntries).toHaveLength(2);
 
 		const tree = session.getTree();

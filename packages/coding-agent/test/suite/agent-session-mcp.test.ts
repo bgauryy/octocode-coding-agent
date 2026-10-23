@@ -1,9 +1,7 @@
-import { readFileSync, rmSync } from "node:fs";
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@octocodeai/octocode-ai";
 import type { SystemMessage, ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "@octocodeai/octocode-mcp";
 import { createInMemoryTransportPair } from "@octocodeai/octocode-mcp/testing";
-import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
@@ -109,7 +107,7 @@ function createFakeServer(
 	};
 	pair.server.onMessage((message) => {
 		if (!("id" in message) || !("method" in message)) return;
-		const request = message as JsonRpcRequest;
+		const request = message;
 		const send = () => void pair.server.send({ jsonrpc: "2.0", id: request.id, result: respond(request) });
 		if (request.method !== "initialize" || initializeDelayMs === 0) queueMicrotask(send);
 		else if (Number.isFinite(initializeDelayMs)) setTimeout(send, initializeDelayMs);

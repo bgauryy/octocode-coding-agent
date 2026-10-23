@@ -105,8 +105,7 @@ describe("loadEntriesFromFile", () => {
 
 	it("preserves an unterminated malformed final fragment for explicit recovery", () => {
 		const file = join(tempDir, "malformed-tail.jsonl");
-		const content =
-			'{"type":"session","id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n' + '{"type":"message"';
+		const content = '{"type":"session","id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n{"type":"message"';
 		writeFileSync(file, content);
 
 		expect(loadEntriesFromFile(file)).toHaveLength(1);

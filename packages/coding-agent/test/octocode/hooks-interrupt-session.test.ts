@@ -305,7 +305,7 @@ it("runs one observational Interrupt after real RPC provider cancellation, inclu
 		await f.wait(() => !!f.response("abort-one") && !!f.response("abort-two"));
 		expect(f.response("abort-one")!.success).toBe(true);
 		expect(interrupts(f)).toHaveLength(1);
-		const record = interrupts(f)[0]!;
+		const record = interrupts(f)[0];
 		expect(record.providerClosed).toBe(true);
 		expect(record.input.session_id).toBe("interrupt-session");
 		expect(record.input.turn_id).toEqual(expect.any(String));
@@ -497,7 +497,7 @@ it("captures the current permission and persisted turn through direct AgentSessi
 		await session.abort();
 		await running;
 		expect(interrupts(f)).toHaveLength(1);
-		const input = interrupts(f)[0]!.input;
+		const input = interrupts(f)[0].input;
 		expect(input.permission_mode).toBe("bypassPermissions");
 		expect(input.turn_id).toBe(id);
 		expect(input.session_id).toBe(session.sessionId);
@@ -520,7 +520,7 @@ it("runs an asynchronous Interrupt command without continuing the canceled provi
 		await f.wait(() => !!f.response("cancel") && interrupts(f).length === 1);
 		expect(f.response("cancel")!.success).toBe(true);
 		expect(f.requests).toHaveLength(1);
-		expect(interrupts(f)[0]!.providerClosed).toBe(true);
+		expect(interrupts(f)[0].providerClosed).toBe(true);
 	} finally {
 		await f.close();
 	}
@@ -543,8 +543,8 @@ it.each(["success", "hold"] as const)(
 			expect(f.response("cancel")!.success).toBe(true);
 			const calls = f.mcpRecords().filter((r) => r.message.method === "tools/call");
 			expect(calls).toHaveLength(1);
-			expect(calls[0]!.providerClosed).toBe(true);
-			const params = calls[0]!.message.params as {
+			expect(calls[0].providerClosed).toBe(true);
+			const params = calls[0].message.params as {
 				name: string;
 				arguments: Record<string, unknown>;
 			};
@@ -573,7 +573,7 @@ it.each(["success", "hold"] as const)(
 		} finally {
 			await f.close();
 		}
-		const pid = f.mcpRecords()[0]!.pid;
+		const pid = f.mcpRecords()[0].pid;
 		expect(() => process.kill(pid, 0)).toThrow();
 	},
 	30000,

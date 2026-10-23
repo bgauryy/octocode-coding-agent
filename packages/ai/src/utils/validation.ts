@@ -50,7 +50,7 @@ function matchesJsonType(value: unknown, type: string): boolean {
 
 function getSubSchemaValidator(schema: JsonSchemaObject): ReturnType<typeof Compile> | undefined {
 	try {
-		return getValidator(schema as Tool["parameters"]);
+		return getValidator(schema);
 	} catch {
 		return undefined;
 	}
@@ -269,7 +269,7 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
 }
 
 function getValidator(schema: Tool["parameters"]): ReturnType<typeof Compile> {
-	const key = schema as object;
+	const key = schema;
 	const cached = validatorCache.get(key);
 	if (cached) {
 		return cached;
@@ -320,12 +320,12 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		throw new Error(`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}`);
 	}
 	const args = structuredClone(toolCall.arguments);
-	normalizeOptionalNulls(args, tool.parameters as JsonSchemaObject);
+	normalizeOptionalNulls(args, tool.parameters);
 	Value.Convert(tool.parameters, args);
 
 	const validator = getValidator(tool.parameters);
 	if (!Object.getOwnPropertySymbols(tool.parameters).includes(TYPEBOX_KIND)) {
-		const coerced = coerceWithJsonSchema(args, tool.parameters as JsonSchemaObject);
+		const coerced = coerceWithJsonSchema(args, tool.parameters);
 		if (coerced !== args) {
 			if (typeof args === "object" && args !== null && typeof coerced === "object" && coerced !== null) {
 				for (const key of Object.keys(args)) {

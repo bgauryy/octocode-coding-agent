@@ -47,14 +47,14 @@ const changes = [
 
 describe("file change review", () => {
 	it("describes each change with its reasoning and a bounded preview", () => {
-		expect(describeChange(changes[0]!)).toEqual([
+		expect(describeChange(changes[0])).toEqual([
 			"edit src/a.ts · 1 edit",
 			"  - i <= n",
 			"  + i < n",
 			"  agent says (unverified): Fix the loop",
 		]);
-		expect(describeChange(changes[1]!).join("\n")).toContain("+ export const x = 1;");
-		expect(describeChange(changes[2]!)).toEqual([
+		expect(describeChange(changes[1]).join("\n")).toContain("+ export const x = 1;");
+		expect(describeChange(changes[2])).toEqual([
 			"delete old.ts",
 			"  removes the file",
 			"  agent says (unverified): Unused",
@@ -113,7 +113,7 @@ describe("file change review", () => {
 	});
 
 	it("keeps rejection notes for one file, the whole batch, and individual changes", async () => {
-		for (const batch of [[changes[0]!], changes]) {
+		for (const batch of [[changes[0]], changes]) {
 			const reject = ui({
 				selects: ["Reject all and tell the agent why…"],
 				inputs: ["  Keep the existing API  "],
@@ -136,7 +136,7 @@ describe("file change review", () => {
 			selects: ["Reject all and tell the agent why…"],
 			inputs: ["  "],
 		});
-		expect(await askReview(empty.ctx, [changes[0]!])).toEqual(new Map([[0, undefined]]));
+		expect(await askReview(empty.ctx, [changes[0]])).toEqual(new Map([[0, undefined]]));
 	});
 
 	it("cancels without a verdict when a review or rejection note is dismissed", async () => {

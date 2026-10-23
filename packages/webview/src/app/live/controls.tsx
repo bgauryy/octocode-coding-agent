@@ -12,11 +12,7 @@ const NO_AGENTS: never[] = [];
 
 /** A polite status line that exists from the first render, so screen readers announce its later changes. */
 export function StatusLine({ children }: { children: ReactNode }) {
-	return (
-		<p className="form-status" role="status">
-			{children}
-		</p>
-	);
+	return <output className="form-status">{children}</output>;
 }
 
 /**

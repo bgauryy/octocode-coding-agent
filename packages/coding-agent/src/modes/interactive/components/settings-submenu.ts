@@ -194,7 +194,7 @@ export class SteppedSubmenu extends Container {
 		this.onComplete = onComplete;
 		this.onCancel = onCancel;
 		this.opts = opts;
-		this.context = { ...(opts.initialContext ?? {}) };
+		this.context = { ...opts.initialContext };
 		this.activeComponent = this.buildStep(opts.startAtStep ?? 0);
 	}
 

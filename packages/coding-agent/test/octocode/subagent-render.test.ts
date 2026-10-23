@@ -39,7 +39,7 @@ describe("subagent renderers", () => {
 		expect(
 			rendered(
 				renderAgentCall(
-					{ task: "t", goal: "audit auth token refresh", profile: "reviewer", isolate: true } as never,
+					{ task: "t", goal: "audit auth token refresh", profile: "reviewer", isolate: true },
 					theme,
 					ctx(),
 				),
@@ -224,7 +224,7 @@ describe("subagent renderers", () => {
 						timestamp: 0,
 					} as never,
 					{ expanded, outputPad: 1 },
-					theme as never,
+					theme,
 				) as never,
 			);
 		expect(message(false)).toContain("Agent(general-0001 · fix login flow)");
@@ -238,7 +238,7 @@ describe("subagent renderers", () => {
 		const box = renderAgentMessage(
 			{ role: "custom", customType: "x", content: "Report head\nbody", display: true, timestamp: 0 } as never,
 			{ expanded: true, outputPad: 1 },
-			theme as never,
+			theme,
 		);
 		const text = rendered(box as never);
 		expect(text).toContain("Agent(background)");
@@ -255,7 +255,7 @@ describe("subagent renderers", () => {
 					details: { id: "a-1", status: "failed", summary: "Failed: boom", durationMs: 1_200 },
 				} as never,
 				{ expanded: false, outputPad: 2 },
-				theme as never,
+				theme,
 			) as never,
 		);
 		expect(failed).toMatch(/Agent\(a-1\).*1\.2s/);

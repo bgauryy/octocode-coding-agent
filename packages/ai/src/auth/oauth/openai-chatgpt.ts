@@ -149,7 +149,7 @@ async function requestToken(body: URLSearchParams, signal: AbortSignal): Promise
 	if (typeof data !== "object" || data === null || Array.isArray(data)) {
 		throw new Error("OpenAI OAuth token response must be an object");
 	}
-	return data as TokenResponse;
+	return data;
 }
 
 function requireTokenString(value: unknown, field: "access_token" | "refresh_token" | "scope"): string {

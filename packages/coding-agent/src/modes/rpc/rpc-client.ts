@@ -133,7 +133,7 @@ export class RpcClient {
 		});
 
 		// Set up strict JSONL reader for stdout.
-		this.stopReadingStdout = attachJsonlLineReader(childProcess.stdout!, (line) => {
+		this.stopReadingStdout = attachJsonlLineReader(childProcess.stdout, (line) => {
 			this.handleLine(line);
 		});
 
@@ -546,6 +546,7 @@ export class RpcClient {
 			const data = JSON.parse(line);
 			if (typeof data !== "object" || data === null || typeof data.type !== "string") return;
 			if (data.type === "extension_ui_request") {
+				// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during dispatch do not change iteration
 				for (const listener of [...this.extensionUIListeners]) {
 					listener(data as RpcExtensionUIRequest);
 				}
@@ -563,6 +564,7 @@ export class RpcClient {
 
 			// Otherwise it's an event. Iterate a snapshot so listeners that unsubscribe during dispatch
 			// do not cause later listeners to miss this event.
+			// oxlint-disable-next-line unicorn/no-useless-spread -- the snapshot described above
 			for (const listener of [...this.eventListeners]) {
 				listener(data as JsonAgentSessionEvent);
 			}
@@ -646,7 +648,7 @@ export class RpcClient {
 
 	private getData<T>(response: RpcResponse): T {
 		if (!response.success) {
-			const errorResponse = response as Extract<RpcResponse, { success: false }>;
+			const errorResponse = response;
 			throw new Error(errorResponse.error);
 		}
 		// Type assertion: we trust response.data matches T based on the command sent.

@@ -182,6 +182,7 @@ try {
 	const beforeProviders = JSON.parse(readFileSync(join(baselineOutput, "providers.json"), "utf8"));
 	const afterProviders = JSON.parse(readFileSync(join(currentOutput, "providers.json"), "utf8"));
 	const providers =
+		// oxlint-disable-next-line typescript/require-array-sort-compare -- string entries; default code-unit order is intended
 		requestedProviders.length > 0 ? requestedProviders : [...new Set([...beforeProviders, ...afterProviders])].sort();
 	const beforeCatalogOutput = thinkingOnly ? baselineThinkingOutput : baselineOutput;
 	const currentCatalogOutput = thinkingOnly ? currentThinkingOutput : currentOutput;

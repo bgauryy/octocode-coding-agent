@@ -50,9 +50,9 @@ it("loads one canonical native command per row and resolves aliases through the 
 		]) {
 			const canonical = commands.filter((command) => command.name === name);
 			expect(canonical).toHaveLength(1);
-			expect(canonical[0]!.aliases).toContain(alias);
+			expect(canonical[0].aliases).toContain(alias);
 			expect(commands.some((command) => command.name === alias)).toBe(false);
-			expect(runner.getCommand(alias!)?.handler).toBe(runner.getCommand(name!)?.handler);
+			expect(runner.getCommand(alias)?.handler).toBe(runner.getCommand(name)?.handler);
 		}
 		expect(commands.filter((command) => command.name === "mcp")).toHaveLength(1);
 		expect(commands.some((command) => command.name === "octocode")).toBe(false);

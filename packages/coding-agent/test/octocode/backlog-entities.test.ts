@@ -145,7 +145,7 @@ describe("backlog composition", () => {
 	it("retains corrected results and searches their files and lessons", () => {
 		const item = add("Work");
 		const done = store.update(item.ref, { state: "done", completion: result() }, actor);
-		const prior = done.completions[0]!;
+		const prior = done.completions[0];
 		const correction = {
 			...result("correction"),
 			replaces: prior.id,

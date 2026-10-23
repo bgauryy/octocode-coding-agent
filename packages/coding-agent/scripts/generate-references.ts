@@ -156,7 +156,7 @@ function renderReference(artifact: ReferenceArtifact): string {
 		blocks.push(section.heading.startsWith("#") ? section.heading : `## ${section.heading}`);
 		if (section.intro) blocks.push(section.intro);
 		if (section.schema) {
-			const rows = referenceRows(section.schema as ReferenceSchema, section);
+			const rows = referenceRows(section.schema, section);
 			blocks.push(["| Field | Type | Default | Description |", "|---|---|---|---|", ...rows].join("\n"));
 		}
 	}

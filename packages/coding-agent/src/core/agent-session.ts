@@ -39,18 +39,16 @@ import {
 	type ThinkingLevel,
 } from "@octocodeai/octocode-agent-core";
 import { contentText, getCurrentSystemMessage, retryDelayMs } from "@octocodeai/octocode-ai";
-import type {
-	AssistantMessage,
-	AuthResult,
-	ImageContent,
-	Model,
-	ProviderHeaders,
-	SystemMessage,
-	TextContent,
-	ToolResultMessage,
-	Usage,
-} from "@octocodeai/octocode-ai/compat";
 import {
+	type AssistantMessage,
+	type AuthResult,
+	type ImageContent,
+	type Model,
+	type ProviderHeaders,
+	type SystemMessage,
+	type TextContent,
+	type ToolResultMessage,
+	type Usage,
 	clampThinkingLevel,
 	cleanupSessionResources,
 	getSupportedThinkingLevels,
@@ -101,7 +99,6 @@ import {
 	type MessageStartEvent,
 	type MessageUpdateEvent,
 	type ReplacedSessionContext,
-	type SessionBeforeTreeResult,
 	type SessionBoundaryDraft,
 	type SessionCompactFailedEvent,
 	type SessionStartEvent,
@@ -903,7 +900,9 @@ export class AgentSession {
 					projection,
 				};
 			};
-			let { previous, context, projection } = await prepare();
+			const prepared = await prepare();
+			const { projection } = prepared;
+			let { previous, context } = prepared;
 			const model = previous?.model ?? this.agent.state.model;
 			const thinkingLevel = previous?.thinkingLevel ?? this.agent.state.thinkingLevel;
 			if (!isVirtualModel(model)) return { ...previous, context, model, thinkingLevel };
@@ -1132,6 +1131,7 @@ export class AgentSession {
 
 	/** Emit an event to all listeners */
 	private _emit(event: AgentSessionEvent): void {
+		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during dispatch do not change iteration
 		for (const l of [...this._eventListeners]) {
 			l(event);
 		}
@@ -1267,7 +1267,7 @@ export class AgentSession {
 			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
 
 			if (event.message.role === "assistant") {
-				const assistantMsg = event.message as AssistantMessage;
+				const assistantMsg = event.message;
 				this._lastAssistantMessage = assistantMsg;
 				if (assistantMsg.stopReason !== "error" && assistantMsg.stopReason !== "length") {
 					this._overflowRecoveryAttempted = false;
@@ -1307,7 +1307,7 @@ export class AgentSession {
 		for (let i = event.messages.length - 1; i >= 0; i--) {
 			const message = event.messages[i];
 			if (message.role === "assistant") {
-				return this._isRetryableError(message as AssistantMessage);
+				return this._isRetryableError(message);
 			}
 		}
 		return false;
@@ -1360,7 +1360,7 @@ export class AgentSession {
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const msg = messages[i];
 			if (msg.role === "assistant") {
-				return msg as AssistantMessage;
+				return msg;
 			}
 		}
 		return undefined;
@@ -2962,7 +2962,7 @@ export class AgentSession {
 	 */
 	getAvailableThinkingLevels(): ThinkingLevel[] {
 		if (!this.model) return [...THINKING_LEVEL_OPTIONS];
-		return getSupportedThinkingLevels(this.model) as ThinkingLevel[];
+		return getSupportedThinkingLevels(this.model);
 	}
 
 	/**
@@ -2987,7 +2987,7 @@ export class AgentSession {
 	}
 
 	private _clampThinkingLevel(level: ThinkingLevel, _availableLevels: ThinkingLevel[]): ThinkingLevel {
-		return this.model ? (clampThinkingLevel(this.model, level) as ThinkingLevel) : "off";
+		return this.model ? clampThinkingLevel(this.model, level) : "off";
 	}
 
 	// =========================================================================
@@ -3329,7 +3329,7 @@ export class AgentSession {
 				if (
 					compactionEntry &&
 					usageMsg.role === "assistant" &&
-					(usageMsg as AssistantMessage).timestamp <= new Date(compactionEntry.timestamp).getTime()
+					usageMsg.timestamp <= new Date(compactionEntry.timestamp).getTime()
 				) {
 					return false;
 				}
@@ -4160,7 +4160,7 @@ export class AgentSession {
 	 * Cancel running bash command.
 	 */
 	abortBash(): void {
-		for (const abortController of [...this._bashAbortControllers]) {
+		for (const abortController of this._bashAbortControllers) {
 			abortController.abort();
 		}
 	}
@@ -4293,11 +4293,11 @@ export class AgentSession {
 
 			// Emit session_before_tree event
 			if (this._extensionRunner.hasHandlers("session_before_tree")) {
-				const result = (await this._extensionRunner.emit({
+				const result = await this._extensionRunner.emit({
 					type: "session_before_tree",
 					preparation,
 					signal: this._branchSummaryAbortController.signal,
-				})) as SessionBeforeTreeResult | undefined;
+				});
 
 				if (result?.cancel) {
 					return { cancelled: true };

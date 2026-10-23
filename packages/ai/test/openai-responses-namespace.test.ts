@@ -50,7 +50,7 @@ async function* createFunctionCallEvents(): AsyncIterable<ResponseStreamEvent> {
 			name: "lookup",
 			arguments: "",
 		},
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.output_item.done",
 		sequence_number: 1,
@@ -63,7 +63,7 @@ async function* createFunctionCallEvents(): AsyncIterable<ResponseStreamEvent> {
 			arguments: '{"value":"hello"}',
 			namespace: "dynamic_tools",
 		},
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.completed",
 		sequence_number: 2,
@@ -83,7 +83,7 @@ async function* createCustomToolCallEvents(): AsyncIterable<ResponseStreamEvent>
 			name: "query",
 			input: "",
 		},
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.output_item.done",
 		sequence_number: 1,
@@ -96,7 +96,7 @@ async function* createCustomToolCallEvents(): AsyncIterable<ResponseStreamEvent>
 			input: "hello",
 			namespace: "dynamic_tools",
 		},
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.completed",
 		sequence_number: 2,

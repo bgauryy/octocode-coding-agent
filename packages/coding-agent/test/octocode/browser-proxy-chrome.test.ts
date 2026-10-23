@@ -6,7 +6,7 @@ import { keyOf } from "../../src/octocode/browser/network.ts";
 
 /** Real Chrome behind the filtering proxy. Run with OCTOCODE_TEST_CHROME=1 (needs a local Chrome); skipped otherwise. */
 describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("Chrome behind the filtering proxy", () => {
-	const cleanups: Array<() => Promise<unknown> | unknown> = [];
+	const cleanups: Array<() => unknown> = [];
 	afterEach(async () => {
 		vi.unstubAllEnvs();
 		while (cleanups.length > 0) await cleanups.pop()!();
@@ -71,8 +71,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("Chrome behind the fil
 		const opened = new Set<string>();
 		const allow = (url: URL): void => {
 			opened.add(keyOf(url));
-			undefined;
-			return;
 		};
 		const chrome = await launchChrome(true, undefined, {
 			onBlocked,

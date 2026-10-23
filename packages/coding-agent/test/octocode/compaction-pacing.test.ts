@@ -111,7 +111,7 @@ describe("tool definitions in the estimate", () => {
 					throw new Error("gone");
 				},
 				getAllTools: () => [],
-			} as never),
+			}),
 		).toBe(0);
 	});
 	it("shares one characters-per-token constant with the restore budget", () => {

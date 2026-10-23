@@ -59,7 +59,7 @@ it("runs at most eight Codex jobs and discards queued invocations at shutdown", 
 	try {
 		expect(await f.hooks.preToolUse(call as never, f.ctx)).toBeUndefined();
 		expect(run).toHaveBeenCalledTimes(8);
-		completions[0]!(success);
+		completions[0](success);
 		await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(9), {
 			timeout: 1000,
 		});
@@ -138,7 +138,7 @@ it("keeps Codex timeouts and runs SessionEnd synchronously despite async", async
 	);
 	const selected = commandsFor(parsed, "PreToolUse", ["Bash"])[0];
 	expect(selected).toBeDefined();
-	expect((await runner.runHook(selected!, {}, tmp())).timedOut).toBe(true);
+	expect((await runner.runHook(selected, {}, tmp())).timedOut).toBe(true);
 	const run = vi.spyOn(runner, "runHook").mockResolvedValue(success);
 	const f = await fixture(1, "SessionEnd");
 	await f.fire("session_shutdown", { reason: "quit" }, f.ctx);

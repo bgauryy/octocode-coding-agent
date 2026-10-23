@@ -61,8 +61,8 @@ describe("a child's questions to its parent, from the team tables", () => {
 				},
 				{ id: second, text: "Rename the column?", askedAt: 12_000 },
 			]);
-			expect(askWaitMs(asks[0]!, 0)).toBe(60_000);
-			expect(askWaitMs(asks[1]!, 100_000)).toBe(88_000);
+			expect(askWaitMs(asks[0], 0)).toBe(60_000);
+			expect(askWaitMs(asks[1], 100_000)).toBe(88_000);
 		} finally {
 			store.close();
 		}
@@ -86,7 +86,7 @@ describe("a child's questions to its parent, from the team tables", () => {
 			const asks = store.asks("child-0001", "main-aaaaaa", 5_000);
 			expect(asks.map((ask) => [ask.id, ask.answer])).toEqual([[mine, undefined]]);
 			expect(store.asks("child-0001", "main-aaaaaa", 0).map((ask) => ask.id)).toEqual([old, mine]);
-			expect([toSibling, other]).not.toContain(asks[0]!.id);
+			expect([toSibling, other]).not.toContain(asks[0].id);
 		} finally {
 			store.close();
 		}
@@ -97,7 +97,7 @@ describe("a child's questions to its parent, from the team tables", () => {
 		try {
 			const text = `${"why ".repeat(1_000)}end`;
 			store.send("child-0001", ["main-aaaaaa"], text, { replyRequired: true });
-			expect(store.asks("child-0001", "main-aaaaaa", 0)[0]!.text).toBe(text);
+			expect(store.asks("child-0001", "main-aaaaaa", 0)[0].text).toBe(text);
 		} finally {
 			store.close();
 		}
@@ -131,12 +131,12 @@ describe("ask counts and the askUser windows", () => {
 		questions.end("late", 6_000);
 		questions.begin("never-ended", 2_500);
 		const marked = questions.mark([ask(1, 4_000), ask(3, 2_500), ask(5)]);
-		expect(marked[0]!.answer).toEqual({ id: 2, at: 4_000, by: "main-aaaaaa", afterAskUser: true });
+		expect(marked[0].answer).toEqual({ id: 2, at: 4_000, by: "main-aaaaaa", afterAskUser: true });
 		// The only window before this answer ended after it; an open question has none.
-		expect(marked[1]!.answer).toEqual({ id: 4, at: 2_500, by: "main-aaaaaa" });
+		expect(marked[1].answer).toEqual({ id: 4, at: 2_500, by: "main-aaaaaa" });
 		expect(marked[2]).toEqual(ask(5));
 		// The early call began before this question was asked.
-		expect(new UserQuestions().mark([ask(1, 4_000)])[0]!.answer).not.toHaveProperty("afterAskUser");
+		expect(new UserQuestions().mark([ask(1, 4_000)])[0].answer).not.toHaveProperty("afterAskUser");
 	});
 
 	it("adds a line to a subagent's block in the agent listing only when given its asks", () => {

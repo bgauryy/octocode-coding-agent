@@ -400,7 +400,7 @@ describe("project trust: decisions", () => {
 		});
 		await commands.get("trust")!.handler("", command as never);
 		expect(command.ui.confirm).toHaveBeenCalledTimes(2);
-		expect(String((command.ui.confirm as ReturnType<typeof vi.fn>).mock.calls[1]![1])).toContain("curl evil");
+		expect(String((command.ui.confirm as ReturnType<typeof vi.fn>).mock.calls[1][1])).toContain("curl evil");
 		expect(projectTrustNow(ctx(cwd))).toBe(true);
 	});
 

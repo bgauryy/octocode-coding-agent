@@ -148,7 +148,7 @@ export function modeAllowingReasons(reasons: readonly AskReason[]): PermissionMo
 export const kindOf = (action: ActionClass): string | undefined => MATRIX[action].all;
 
 export function decide(mode: PermissionMode, action: ActionClass): Rule {
-	return MATRIX[action].rules[PERMISSION_MODES.indexOf(mode)]!;
+	return MATRIX[action].rules[PERMISSION_MODES.indexOf(mode)];
 }
 
 /** How `action` reads in a message ("the shell command"). */

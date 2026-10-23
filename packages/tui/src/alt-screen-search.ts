@@ -122,11 +122,11 @@ function findSearchCorpusMatches(corpus: SearchCorpus, normalizedQuery: string):
 	for (const match of corpus.text.matchAll(expression)) {
 		const start = match.index;
 		const end = start + match[0].length;
-		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex]!.textEnd <= start) spanIndex += 1;
+		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex].textEnd <= start) spanIndex += 1;
 
 		const segments: AltScreenSearchSegment[] = [];
 		for (let index = spanIndex; index < corpus.spans.length; index++) {
-			const span = corpus.spans[index]!;
+			const span = corpus.spans[index];
 			if (span.textStart >= end) break;
 			if (span.textEnd <= start) continue;
 			const startCol = span.linearColumns
@@ -140,7 +140,7 @@ function findSearchCorpusMatches(corpus: SearchCorpus, normalizedQuery: string):
 				segments.push({ row: span.row, startCol, endCol });
 			}
 		}
-		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex]!.textEnd <= end) spanIndex += 1;
+		while (spanIndex < corpus.spans.length && corpus.spans[spanIndex].textEnd <= end) spanIndex += 1;
 		if (segments.length > 0) matches.push({ segments });
 	}
 

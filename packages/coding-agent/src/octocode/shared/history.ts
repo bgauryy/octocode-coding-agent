@@ -261,7 +261,7 @@ export async function searchHistory(
 	const blocks: Array<{ heading: string; lines: string[] }> = [];
 	let hits = 0;
 	for (const { index: fileIndex, lines, matched } of matches) {
-		const { file, session, label } = files[fileIndex]!;
+		const { file, session, label } = files[fileIndex];
 		hits += matched.length;
 		const hit = new Set(matched);
 		const shown: string[] = [];
@@ -270,7 +270,7 @@ export async function searchHistory(
 			const from = Math.max(index - HIT_CONTEXT, end + 1);
 			if (end >= 0 && from > end + 1) shown.push("     …");
 			for (let at = from; at <= Math.min(index + HIT_CONTEXT, lines.length - 1); at++)
-				shown.push(`${lineLabel(at + 1, hit.has(at))}${hit.has(at) ? lines[at]! : contextLine(lines[at]!, at + 1)}`);
+				shown.push(`${lineLabel(at + 1, hit.has(at))}${hit.has(at) ? lines[at] : contextLine(lines[at], at + 1)}`);
 			end = Math.max(end, Math.min(index + HIT_CONTEXT, lines.length - 1));
 		}
 		blocks.push({ heading: `## ${file} · ${session.id} (${session.relation}) · ${label}`, lines: shown });

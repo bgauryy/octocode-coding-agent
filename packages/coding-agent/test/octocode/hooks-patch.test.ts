@@ -124,7 +124,7 @@ it("dispatches one Codex batch with the original tool id and reuses its pre-call
 		input: structuredClone(input),
 	};
 	expect(await view.preToolUse(event as never, ctx)).toBeUndefined();
-	event.input.queries[0]!.content = "changed\n";
+	event.input.queries[0].content = "changed\n";
 	await fake.fire(
 		"tool_result",
 		{

@@ -20,20 +20,20 @@ export class HStack extends Stack {
 			return lines.reduce((max, line) => Math.max(max, visibleWidth(line)), 0);
 		});
 		const widths = allocateStackSizes(entries, intrinsicWidths, safeWidth, this.gap);
-		const rendered = entries.map((entry, index) => (widths[index] === 0 ? [] : entry.component.render(widths[index]!)));
+		const rendered = entries.map((entry, index) => (widths[index] === 0 ? [] : entry.component.render(widths[index])));
 		const height = rendered.reduce((max, lines) => Math.max(max, lines.length), 0);
 		const result = Array.from({ length: height }, () => "");
 		let x = 0;
 		for (let index = 0; index < rendered.length; index++) {
-			const lines = rendered[index]!;
-			const childWidth = widths[index]!;
+			const lines = rendered[index];
+			const childWidth = widths[index];
 			let offset = 0;
 			if (this.align === "center") offset = Math.floor((height - lines.length) / 2);
 			else if (this.align === "end") offset = height - lines.length;
 			for (let row = 0; row < lines.length; row++) {
 				const target = row + offset;
 				if (target < 0 || target >= result.length) continue;
-				result[target] = compositeTuiLine(result[target]!, lines[row]!, x, childWidth, safeWidth);
+				result[target] = compositeTuiLine(result[target], lines[row], x, childWidth, safeWidth);
 			}
 			x += childWidth + this.gap;
 		}

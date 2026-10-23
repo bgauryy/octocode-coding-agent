@@ -27,6 +27,27 @@ npm start -- native --help
 
 Local dependencies make this a development checkout. Publication is blocked while they remain configured; locally packed artifacts depend on the sibling checkout and are not portable releases.
 
+## Validate a registry release candidate
+
+Development keeps the three sibling `link:` dependencies. A registry candidate uses a separate staging command after `npm run build:offline`; it does not rewrite development manifests or publish packages. Supply a reviewed JSON mapping with `schemaVersion: 1` and a `packages` object keyed by dependency name. Each mapped sibling package must have an exact `version`, its `sourceRevision`, and the registry's `sha512-…` `integrity`. Include reviewed native platform packages and other sibling transitive candidates in the mapping as applicable. Prepare candidate tarballs first, then seed a disposable registry with those exact tarballs and the reviewed sibling/platform tarballs; the verification phase will check the complete registry graph.
+
+```sh
+node scripts/stage-registry-release.mjs \
+  --prepare \
+  --map /path/to/reviewed-release-map.json \
+  --registry http://127.0.0.1:4873/ \
+  --out /tmp/octocode-registry-candidate
+
+# After the registry serves the exact candidate and reviewed dependency tarballs:
+node scripts/stage-registry-release.mjs \
+  --verify \
+  --map /path/to/reviewed-release-map.json \
+  --registry http://127.0.0.1:4873/ \
+  --out /tmp/octocode-registry-candidate
+```
+
+Preparation saves tarballs, their checksums and the mapping digest in `candidate.json`. Verification preserves these bytes on failure, checks registry metadata and resolved integrities, creates a dedicated npm installer lock under the output directory, then installs the **single** staged coding-agent tarball in a clean consumer without workspace overrides. It checks both CLI entries, SDK imports, roles, research skills, hydrated model data and native/research `--help` paths with isolated configuration. A candidate validated against a disposable registry is not a production installer lock; rerun `--verify` with `--registry https://registry.npmjs.org/` on the **same prepared tarballs** after the identical dependency tarballs are published. Verification discards any prior fixture lock and resolves afresh. Before promoting the coding-agent package, the verified production installer lock must be reviewed and copied through the release process; this command does not publish or alter the development install-lock directory. The generator refuses to write a fixture lock to the production installer-lock directory. Validate supported OS/CPU/libc variants separately so their optional native binaries are actually loaded. The existing `npm run check:package-install` exercises the local multi-tarball development graph instead.
+
 ## Documentation
 
 - [Documentation index](packages/coding-agent/docs/index.md)

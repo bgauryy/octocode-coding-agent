@@ -20,5 +20,6 @@ export function findPackageDirectories(root = "packages") {
 	}
 
 	visit(root);
+	// oxlint-disable-next-line typescript/require-array-sort-compare -- string entries; default code-unit order is intended
 	return packageDirectories.sort();
 }

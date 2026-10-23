@@ -28,7 +28,6 @@ import { HttpProxyAgent } from "http-proxy-agent";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { calculateCost } from "../models.ts";
 import type {
-	Api,
 	AssistantMessage,
 	CacheRetention,
 	ImageContent,
@@ -52,6 +51,7 @@ import type {
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
@@ -138,7 +138,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: "bedrock-converse-stream" as Api,
+			api: "bedrock-converse-stream",
 			provider: model.provider,
 			model: model.id,
 			usage: {
@@ -343,12 +343,12 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			}
 
 			// A stream can settle without stopping every block, so finalize here too.
-			for (const block of output.content) finalizeStreamingBlock(block as Block);
+			for (const block of output.content) finalizeStreamingBlock(block);
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
 			for (const block of output.content) {
-				finalizeStreamingBlock(block as Block);
+				finalizeStreamingBlock(block);
 			}
 			output.stopReason = options.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatBedrockError(error);
@@ -358,7 +358,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };
@@ -572,7 +572,7 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 			maxTokens,
 			reasoning: options.reasoning,
 			thinkingBudgets: {
-				...(options.thinkingBudgets || {}),
+				...options.thinkingBudgets,
 				[clampReasoning(options.reasoning)!]: thinkingBudget,
 			},
 		} satisfies BedrockOptions);
@@ -735,7 +735,7 @@ function handleContentBlockStop(
 	const index = blocks.findIndex((b) => b.index === event.contentBlockIndex);
 	const block = blocks[index];
 	if (!block) return;
-	delete (block as Block).index;
+	delete block.index;
 
 	switch (block.type) {
 		case "text":
@@ -1134,7 +1134,7 @@ function convertMessages(
 	if (cacheRetention !== "none" && supportsPromptCaching(model, env) && result.length > 0) {
 		const lastMessage = result[result.length - 1];
 		if (lastMessage.role === ConversationRole.USER && lastMessage.content) {
-			(lastMessage.content as ContentBlock[]).push({
+			lastMessage.content.push({
 				cachePoint: {
 					type: CachePointType.DEFAULT,
 					...longCacheTtl(model, cacheRetention),

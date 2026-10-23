@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateLocalDependencies } from "./local-dependencies.mjs";
+import { validateRegistryLock } from "./registry-release.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -19,16 +20,62 @@ const allowedInstallScriptPackages = new Map([
 	["protobufjs@7.6.6", "postinstall only warns about protobufjs version scheme mismatches"],
 ]);
 
-const args = new Set(process.argv.slice(2));
+const cliArgs = process.argv.slice(2);
+const options = {};
+for (let index = 0; index < cliArgs.length; index++) {
+	const arg = cliArgs[index];
+	if (["--resolution-dir", "--out", "--registry"].includes(arg)) {
+		if (!cliArgs[index + 1] || cliArgs[index + 1].startsWith("--")) throw new Error(`Missing value for ${arg}`);
+		options[arg] = cliArgs[++index];
+	} else if (arg !== "--check" && arg !== "--require-registry") {
+		throw new Error(`Unknown argument: ${arg}`);
+	}
+}
+const args = new Set(cliArgs.filter((arg) => arg.startsWith("--")));
 const checkOnly = args.has("--check");
 const requireRegistry = args.has("--require-registry");
 
-for (const arg of args) {
-	if (arg !== "--check" && arg !== "--require-registry") {
-		console.error(`Unknown argument: ${arg}`);
-		process.exit(1);
+if (options["--resolution-dir"]) {
+	if (!options["--out"] || !options["--registry"])
+		throw new Error("Dedicated resolution requires --out and --registry");
+	const resolutionDir = resolve(options["--resolution-dir"]);
+	const targetDir = resolve(options["--out"]);
+	const registryUrl = new URL(options["--registry"]);
+	if (targetDir === outputDir && ["localhost", "127.0.0.1"].includes(registryUrl.hostname)) {
+		throw new Error("A fixture registry cannot produce the production installer lock");
 	}
+	const manifest = JSON.parse(readFileSync(join(resolutionDir, "package.json"), "utf8"));
+	const lock = JSON.parse(readFileSync(join(resolutionDir, "package-lock.json"), "utf8"));
+	const dependencies = Object.entries(manifest.dependencies ?? {});
+	if (dependencies.length !== 1 || dependencies[0][0] !== "@octocodeai/octocodecode") {
+		throw new Error("Dedicated installer manifest must name only @octocodeai/octocodecode");
+	}
+	validateRegistryLock(lock, {
+		registry: options["--registry"],
+		directName: dependencies[0][0],
+		directVersion: dependencies[0][1],
+		allowInstallScripts: [...allowedInstallScriptPackages.keys()],
+	});
+	const packageContent = `${JSON.stringify(manifest, null, "\t")}\n`;
+	const lockContent = `${JSON.stringify(lock, null, "\t")}\n`;
+	if (checkOnly) {
+		if (
+			!existsSync(join(targetDir, "package.json")) ||
+			!existsSync(join(targetDir, "package-lock.json")) ||
+			readFileSync(join(targetDir, "package.json"), "utf8") !== packageContent ||
+			readFileSync(join(targetDir, "package-lock.json"), "utf8") !== lockContent
+		) {
+			throw new Error(`Dedicated installer lock is missing or stale: ${targetDir}`);
+		}
+	} else {
+		mkdirSync(targetDir, { recursive: true });
+		writeFileSync(join(targetDir, "package.json"), packageContent);
+		writeFileSync(join(targetDir, "package-lock.json"), lockContent);
+	}
+	console.log(`Dedicated registry installer lock validated: ${targetDir}`);
+	process.exit(0);
 }
+if (options["--out"] || options["--registry"]) throw new Error("--out and --registry require --resolution-dir");
 
 function readJson(path) {
 	return JSON.parse(readFileSync(path, "utf8"));
@@ -36,8 +83,8 @@ function readJson(path) {
 
 function packageDependencies(entry) {
 	return {
-		...(entry.dependencies ?? {}),
-		...(entry.optionalDependencies ?? {}),
+		...entry.dependencies,
+		...entry.optionalDependencies,
 	};
 }
 

@@ -121,6 +121,7 @@ export type KnownProvider =
 	| "xiaomi-token-plan-cn"
 	| "xiaomi-token-plan-ams"
 	| "xiaomi-token-plan-sgp";
+// oxlint-disable-next-line typescript/no-redundant-type-constituents -- names the built-in providers while accepting custom provider IDs
 export type ProviderId = KnownProvider | string;
 
 export type ToolChoice = "auto" | "none";
@@ -167,9 +168,9 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
 	env?: ProviderEnv;
 	/**
 	 * Optional callback for inspecting or replacing provider payloads before sending.
-	 * Return undefined to keep the payload unchanged.
+	 * May be async. Return or resolve to undefined to keep the payload unchanged.
 	 */
-	onPayload?: (payload: unknown, model: TModel) => unknown | undefined | Promise<unknown | undefined>;
+	onPayload?: (payload: unknown, model: TModel) => unknown;
 	/**
 	 * Optional callback invoked after an HTTP response is received.
 	 */
@@ -203,7 +204,7 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
 	maxRetryDelayMs?: number;
 }
 
-export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
+export interface StreamOptions extends ProviderRequestOptions {
 	/**
 	 * Optional callback invoked after an HTTP response is received and before
 	 * its body stream is consumed.
@@ -259,7 +260,7 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
 
 export type ProviderStreamOptions = StreamOptions & Record<string, unknown>;
 
-export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>> {
+export interface DeferredFetchOptions extends ProviderRequestOptions {
 	/**
 	 * Maximum provider long-poll duration in milliseconds.
 	 * Defaults to 0, which performs one status check.
@@ -268,7 +269,7 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
 }
 
 /** Request options for best-effort deferred-response cancellation. */
-export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
+export type DeferredCancelOptions = ProviderRequestOptions;
 
 /**
  * Maps known APIs to their full provider-specific stream option types.

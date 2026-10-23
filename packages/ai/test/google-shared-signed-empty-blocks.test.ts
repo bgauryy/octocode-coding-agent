@@ -37,7 +37,7 @@ function makeContext(
 			{
 				role: "assistant",
 				content,
-				api: model.api as AssistantMessage["api"],
+				api: model.api,
 				provider: model.provider,
 				model: model.id,
 				usage: {

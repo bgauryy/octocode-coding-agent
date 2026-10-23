@@ -21,7 +21,7 @@ export const outside = (from: string) => from === USER_SENDER || from === EXTERN
 export function deadLetterText(letter: DeadLetter): string {
 	const who = letter.recipients.join(", ");
 	return visibleControls(
-		`Message #${letter.id} to ${who} was not read: ${letter.recipients.length === 1 ? `${who} left` : "they left"} the team first. Its text began: "${cutText(letter.text.split("\n")[0]!, 120, { chars: true })}"`,
+		`Message #${letter.id} to ${who} was not read: ${letter.recipients.length === 1 ? `${who} left` : "they left"} the team first. Its text began: "${cutText(letter.text.split("\n")[0], 120, { chars: true })}"`,
 	);
 }
 
@@ -225,7 +225,7 @@ export function mutatedPaths(toolName: string, input: unknown): string[] {
 		return PATH_KEYS.flatMap((key) => (typeof record[key] === "string" ? [record[key]] : []));
 	if (toolName !== "file") return [];
 	return fileChanges(record).flatMap((query) =>
-		typeof query === "object" && query !== null && typeof (query as Record<string, unknown>).path === "string"
+		typeof query === "object" && query !== null && typeof query.path === "string"
 			? [(query as { path: string }).path, ...(typeof query.movePath === "string" ? [query.movePath] : [])]
 			: [],
 	);

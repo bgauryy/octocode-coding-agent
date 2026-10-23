@@ -271,7 +271,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	if (!model) {
 		thinkingLevel = "off";
 	} else {
-		thinkingLevel = clampThinkingLevel(model, thinkingLevel) as ThinkingLevel;
+		thinkingLevel = clampThinkingLevel(model, thinkingLevel);
 	}
 
 	const toolListError = options.tools ? getToolListError(options.tools) : undefined;

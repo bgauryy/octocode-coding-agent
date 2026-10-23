@@ -201,7 +201,7 @@ class AskDialog {
 	}
 
 	private submitTyped(value: string): void {
-		const q = this.questions[this.tab]!;
+		const q = this.questions[this.tab];
 		const text = value.trim();
 		this.typing = false;
 		this.editor.setText("");
@@ -210,9 +210,7 @@ class AskDialog {
 			return;
 		}
 		this.drafts.set(this.tab, text);
-		const picked = [...(this.toggled.get(this.tab) ?? [])]
-			.sort((a, b) => a - b)
-			.map((index) => q.options[index]!.label);
+		const picked = [...(this.toggled.get(this.tab) ?? [])].sort((a, b) => a - b).map((index) => q.options[index].label);
 		this.answer(this.tab, answerOf(q.question, picked, text));
 	}
 
@@ -254,7 +252,7 @@ class AskDialog {
 				this.finish(false);
 			return;
 		}
-		this.questionKey(this.questions[this.tab]!, data);
+		this.questionKey(this.questions[this.tab], data);
 	}
 
 	private questionKey(q: AskQuestion, data: string): void {
@@ -288,7 +286,7 @@ class AskDialog {
 			return;
 		}
 		if (!q.multiSelect) {
-			this.answer(this.tab, answerOf(q.question, [q.options[this.cursor]!.label]));
+			this.answer(this.tab, answerOf(q.question, [q.options[this.cursor].label]));
 			return;
 		}
 		// Multi-select: Enter on an option toggles it; only the Submit row answers.
@@ -303,7 +301,7 @@ class AskDialog {
 			this.refresh();
 			return;
 		}
-		const labels = [...set].sort((a, b) => a - b).map((index) => q.options[index]!.label);
+		const labels = [...set].sort((a, b) => a - b).map((index) => q.options[index].label);
 		this.answer(this.tab, answerOf(q.question, labels));
 	}
 
@@ -326,7 +324,7 @@ class AskDialog {
 			lines.push("");
 		}
 		if (this.tab === questions.length) this.renderReview(add, lines);
-		else this.renderQuestion(questions[this.tab]!, add, lines, w);
+		else this.renderQuestion(questions[this.tab], add, lines, w);
 		lines.push("");
 		const q = questions[this.tab];
 		const confirm = shortcutText("tui.select.confirm", this.keybindings);

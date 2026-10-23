@@ -139,7 +139,7 @@ async function runScenario(
 	const elapsedMs = performance.now() - start;
 	const { profile } = await session.post("HeapProfiler.stopSampling");
 	return {
-		allocatedBytes: sumProfile(profile.head as SamplingNode),
+		allocatedBytes: sumProfile(profile.head),
 		elapsedMs,
 		bytesWritten: terminal.bytesWritten - writtenBefore,
 	};

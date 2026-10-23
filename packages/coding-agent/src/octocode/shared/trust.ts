@@ -114,7 +114,7 @@ export function describeProjectConfig(cwd: string, files = projectConfigFiles(cw
 /** `permissions: browser.control` for a profile (a `.md` file) whose front matter names classes, every name as written (the profile loader decides which it honours); none for any other file. */
 function permissionsIn(text: string): string[] {
 	try {
-		const value = parseFrontmatter<Record<string, unknown>>(text).frontmatter.permissions;
+		const value = parseFrontmatter(text).frontmatter.permissions;
 		const names = (
 			Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : value === undefined ? [] : [value]
 		)
@@ -159,7 +159,7 @@ function envSent(server: Record<string, unknown>): string | undefined {
 		if (!isRecord(block)) continue;
 		const before = names.size;
 		for (const text of Object.values(block))
-			for (const match of String(text).matchAll(ENV_REFERENCE)) names.add(match[1]!);
+			for (const match of String(text).matchAll(ENV_REFERENCE)) names.add(match[1]);
 		if (names.size > before) where.push(key);
 	}
 	return names.size > 0
@@ -259,7 +259,7 @@ function computeTrust(
 		const stored = readStore(home)[parent];
 		return (
 			files.length === 0 ||
-			(stored?.trusted === true &&
+			(stored?.trusted &&
 				stored.sha === fingerprint(files, (file) => path.join(parent, path.relative(root, file)), read))
 		);
 	}
@@ -504,7 +504,7 @@ export function preparePermissionTrustUpdate(
 	const originalSha = fingerprint(files, undefined, (file) => before.get(file)!);
 	const key = storeKey(ctx.cwd);
 	const prior = readStore(home)[key];
-	if (!ctx.isProjectTrusted() || prior?.trusted !== true || prior.sha !== originalSha) return () => false;
+	if (!ctx.isProjectTrusted() || !prior?.trusted || prior.sha !== originalSha) return () => false;
 	const permitted = new Set(projectHookFiles(ctx.cwd).map(realPath));
 	const changes = new Map<string, { before?: string; after: string }>();
 	const withoutPermissions = (text: string | undefined) => {
@@ -512,7 +512,7 @@ export function preparePermissionTrustUpdate(
 		if (!isRecord(parsed)) throw new Error("Invalid permission settings object");
 		const permissions = parsed.permissions;
 		if (permissions !== undefined && !isRecord(permissions)) throw new Error("Invalid permissions object");
-		const rest = { ...(permissions as Record<string, unknown> | undefined) };
+		const rest = { ...permissions };
 		for (const field of ["allow", "deny", "ask", "defaultMode", "additionalDirectories"]) delete rest[field];
 		return JSON.stringify({ ...parsed, permissions: rest });
 	};
@@ -551,7 +551,7 @@ export function preparePermissionTrustUpdate(
 		let advanced = false;
 		withFileLock(storeFile, () => {
 			const store = readStore(home);
-			if (store[key]?.trusted !== true || store[key]?.sha !== originalSha) return;
+			if (!store[key]?.trusted || store[key]?.sha !== originalSha) return;
 			store[key] = { sha: nextSha, trusted: true };
 			atomicWriteFileSync(storeFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
 			trustMemo.clear();

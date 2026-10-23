@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { commandsFor, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { failureOf, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
@@ -25,7 +26,7 @@ async function endpoint(handler: http.RequestListener) {
 	const server = http.createServer(handler);
 	servers.push(server);
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-	return `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}/hook`;
+	return `http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`;
 }
 function configured(url: string, fields: Record<string, unknown> = {}, policy: Record<string, unknown> = {}) {
 	const home = tmp();
@@ -36,7 +37,7 @@ function configured(url: string, fields: Record<string, unknown> = {}, policy: R
 		JSON.stringify({ ...policy, hooks: { PreToolUse: [{ hooks: [{ type: "http", url, ...fields }] }] } }),
 	);
 	const result = loadHooks(tmp(), false, home, { sourceProfiles: true });
-	return { ...result, home, hook: commandsFor(result.config, "PreToolUse", ["Bash"])[0]! };
+	return { ...result, home, hook: commandsFor(result.config, "PreToolUse", ["Bash"])[0] };
 }
 describe("Claude HTTP hook transport", () => {
 	it("posts the payload and restricts header interpolation with both allowlists", async () => {
@@ -180,20 +181,18 @@ describe("Claude HTTP hook transport", () => {
 			path.join(cwd, ".claude/settings.json"),
 			JSON.stringify({ allowedHttpHookUrls: ["http://example.com/Allowed"] }),
 		);
-		const trusted = commandsFor(loadHooks(cwd, true, home, { sourceProfiles: true }).config, "PreToolUse", [
-			"Bash",
-		])[0]!;
+		const trusted = commandsFor(loadHooks(cwd, true, home, { sourceProfiles: true }).config, "PreToolUse", ["Bash"])[0];
 		expect(trusted.configurationError).toBeUndefined();
 		const untrusted = commandsFor(loadHooks(cwd, false, home, { sourceProfiles: true }).config, "PreToolUse", [
 			"Bash",
-		])[0]!;
+		])[0];
 		expect(untrusted.configurationError).toBeTruthy();
 		fs.writeFileSync(
 			path.join(cwd, ".claude/settings.json"),
 			JSON.stringify({ allowedHttpHookUrls: ["http://example.com/allowed"] }),
 		);
 		expect(
-			commandsFor(loadHooks(cwd, true, home, { sourceProfiles: true }).config, "PreToolUse", ["Bash"])[0]!
+			commandsFor(loadHooks(cwd, true, home, { sourceProfiles: true }).config, "PreToolUse", ["Bash"])[0]
 				.configurationError,
 		).toBeTruthy();
 	});

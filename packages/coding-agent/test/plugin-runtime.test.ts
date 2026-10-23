@@ -193,7 +193,7 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 		JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "true" }] }] } }),
 	);
 	fs.writeFileSync(path.join(f.plugin, "commands/data.md"), "${CLAUDE_PLUGIN_DATA} | $0");
-	const entry = { ...f.settings.plugins[0]!, hooksFingerprint: inspectPluginHooks(f.settings.plugins[0]!).fingerprint };
+	const entry = { ...f.settings.plugins[0], hooksFingerprint: inspectPluginHooks(f.settings.plugins[0]).fingerprint };
 	fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify({ plugins: [entry] }));
 	const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
 	await loader.reload();

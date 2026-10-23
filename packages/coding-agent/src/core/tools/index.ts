@@ -134,7 +134,7 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
 		default:
-			throw new Error(`Unknown tool name: ${toolName}`);
+			throw new Error(`Unknown tool name: ${String(toolName)}`);
 	}
 }
 
@@ -157,7 +157,7 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 		case "ls":
 			return createLsTool(cwd, options?.ls);
 		default:
-			throw new Error(`Unknown tool name: ${toolName}`);
+			throw new Error(`Unknown tool name: ${String(toolName)}`);
 	}
 }
 

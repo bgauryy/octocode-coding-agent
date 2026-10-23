@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
 import { getModel, normalizeContext } from "../src/compat.ts";
-import type { Model, ProviderResponse } from "../src/types.ts";
+import type { ProviderResponse } from "../src/types.ts";
 
 const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
@@ -35,7 +35,7 @@ async function startBedrockResponseServer(): Promise<string> {
 
 describe("bedrock response headers", () => {
 	it("forwards raw Smithy response headers to onResponse", async () => {
-		const baseModel = getModel("amazon-bedrock", MODEL_ID) as Model<"bedrock-converse-stream">;
+		const baseModel = getModel("amazon-bedrock", MODEL_ID);
 		const model = { ...baseModel, baseUrl: await startBedrockResponseServer() };
 		const responses: ProviderResponse[] = [];
 

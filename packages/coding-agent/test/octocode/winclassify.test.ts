@@ -25,17 +25,17 @@ const parse: ParseScript = async (script) => {
 	for (const part of parts.map((each) => each.trim()).filter(Boolean)) {
 		const words = [...part.matchAll(/(-[A-Za-z]+):("[^"]*")|"([^"]*)"|'([^']*)'|(\S+)/g)].map(
 			(match): ScriptElement => {
-				if (match[1] !== undefined) return { param: match[1].slice(1), arg: match[2]!, text: match[0] };
+				if (match[1] !== undefined) return { param: match[1].slice(1), arg: match[2], text: match[0] };
 				const quoted = match[3] ?? match[4];
 				if (quoted !== undefined) return { text: match[0], value: quoted };
-				const word = match[5]!;
+				const word = match[5];
 				const param = /^-([A-Za-z]+)(?::(.*))?$/.exec(word);
-				if (param) return { param: param[1]!, text: word, ...(param[2] !== undefined ? { arg: param[2] } : {}) };
+				if (param) return { param: param[1], text: word, ...(param[2] !== undefined ? { arg: param[2] } : {}) };
 				return word.startsWith("$") || word.startsWith("(") ? { text: word } : { text: word, value: word };
 			},
 		);
 		const [name, ...args] = words;
-		commands.push({ name: name!.text.startsWith("$") ? null : (name!.value ?? name!.text), args });
+		commands.push({ name: name.text.startsWith("$") ? null : (name.value ?? name.text), args });
 	}
 	return commands;
 };

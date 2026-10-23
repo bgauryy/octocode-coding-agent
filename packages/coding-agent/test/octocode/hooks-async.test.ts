@@ -289,7 +289,7 @@ it("enforces the timeout for asyncRewake even when async is also true", async ()
 	);
 	const selected = commandsFor(config, "PreToolUse", ["Bash"])[0];
 	expect(selected).toBeDefined();
-	const result = await hookRunner.runHook(selected!, {}, tmp());
+	const result = await hookRunner.runHook(selected, {}, tmp());
 	expect(result.timedOut).toBe(true);
 });
 

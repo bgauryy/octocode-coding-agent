@@ -114,7 +114,7 @@ export function createGrepToolDefinition(
 					}
 				};
 
-				(async () => {
+				void (async () => {
 					try {
 						const rgPath = await ensureTool("rg");
 						if (signal?.aborted) {
@@ -309,7 +309,7 @@ export function createGrepToolDefinition(
 							);
 						});
 					} catch (err) {
-						settle(() => reject(err as Error));
+						settle(() => reject(err));
 					}
 				})();
 			});

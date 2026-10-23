@@ -83,7 +83,7 @@ describe("AgentSession built-in compaction policy", () => {
 				path === "manual" ? "manual" : path === "overflow" ? "overflow" : "threshold",
 			);
 			if (path === "manual" || path === "pre-prompt") {
-				expect(harness.sessionManager.getEntry(preparations[0]!.preparation.firstKeptEntryId)).toBeDefined();
+				expect(harness.sessionManager.getEntry(preparations[0].preparation.firstKeptEntryId)).toBeDefined();
 			}
 			expect(harness.eventsOfType("compaction_end")).toHaveLength(1);
 			expect(harness.eventsOfType("compaction_end")[0]).toMatchObject({

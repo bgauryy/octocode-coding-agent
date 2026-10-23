@@ -113,7 +113,7 @@ export function streamProxy(
 ): AssistantMessageEventStream {
 	const stream = createAssistantMessageEventStream();
 
-	(async () => {
+	void (async () => {
 		// Initialize the partial message that we'll build up from events
 		const partial: AssistantMessage = {
 			role: "assistant",

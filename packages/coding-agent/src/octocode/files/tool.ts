@@ -1041,8 +1041,8 @@ export function registerFileTool(
 								const final = await inspectQueryBatch(nextQueries, guard, ctx, approvalSignal, true);
 								for (const [index, item] of final.prepared.entries())
 									if (
-										item.digest !== inspected.prepared[index]!.digest ||
-										item.canonicalPath !== inspected.prepared[index]!.canonicalPath ||
+										item.digest !== inspected.prepared[index].digest ||
+										item.canonicalPath !== inspected.prepared[index].canonicalPath ||
 										final.outside !== inspected.outside
 									)
 										throw changedOnDisk(item.query.path);
@@ -1097,7 +1097,7 @@ export function registerFileTool(
 							rejected = answer;
 							if (answer.size !== reviewQueries.length) return "once";
 							const notes = [...answer].flatMap(([index, note]) =>
-								note ? [`${reviewQueries[index]!.path}: ${note}`] : [],
+								note ? [`${reviewQueries[index].path}: ${note}`] : [],
 							);
 							return notes.length > 0 ? { deny: notes.join("\n") } : "deny";
 						},
@@ -1111,7 +1111,7 @@ export function registerFileTool(
 						if (
 							final.outside !== originalInspection!.outside ||
 							final.prepared.some(
-								(item, index) => item.canonicalPath !== originalInspection!.prepared[index]!.canonicalPath,
+								(item, index) => item.canonicalPath !== originalInspection!.prepared[index].canonicalPath,
 							)
 						)
 							throw new Error("File target identity changed after approval; no changes applied");
@@ -1149,7 +1149,7 @@ export function registerFileTool(
 									permission,
 									checkpoints,
 									prepared?.[index] ?? effectivePrepared?.[index],
-									sourceBatch ? (effectivePrepared ?? originalInspection!.prepared)[index]!.canonicalPath : undefined,
+									sourceBatch ? (effectivePrepared ?? originalInspection!.prepared)[index].canonicalPath : undefined,
 								)),
 						);
 						if (canonical && !outcomes.at(-1)!.ok) throw new Error(formatOutcomes(outcomes));

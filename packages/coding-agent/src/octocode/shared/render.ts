@@ -114,7 +114,7 @@ function phaseOf(context: RenderContext): Phase {
 }
 
 function rowState(context: RenderContext): ToolRow {
-	return isRecord(context.state) ? (context.state as ToolRow) : {};
+	return isRecord(context.state) ? context.state : {};
 }
 
 function glyph(theme: Theme, phase: Phase): string {
@@ -324,7 +324,7 @@ export function toolHeader(
 export function bodyLines(text: string): string[] {
 	const rows = sanitizeTerminalText(text).replace(/\t/g, "   ").split("\n");
 	while (rows.length > 0 && rows.at(-1)!.trim() === "") rows.pop();
-	while (rows.length > 0 && rows[0]!.trim() === "") rows.shift();
+	while (rows.length > 0 && rows[0].trim() === "") rows.shift();
 	return rows;
 }
 
@@ -426,7 +426,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		// Summary-only tools (`⎿  Read 51 lines (ctrl+o to expand)`), or a saved path that only the expanded view shows.
 		if (summary && (max === 0 ? folded || options.spill : !folded && options.spill))
 			rows[0] = {
-				text: `${rows[0]!.text}${theme.fg("dim", `${max === 0 ? more : ""} (${expandKey()} to expand)`)}`,
+				text: `${rows[0].text}${theme.fg("dim", `${max === 0 ? more : ""} (${expandKey()} to expand)`)}`,
 			};
 		if (max === 0 && summary) return lines(context).set(undefined, rows);
 		const hint = {
@@ -514,7 +514,7 @@ export function timingOf(details: unknown): { waits?: string } {
  * are merged, never replaced. Octocode passes the tool call id first; that is how the wait is found.
  */
 export function timed<A extends unknown[], R>(execute: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
-	return (async (...args: A) => {
+	return async (...args: A) => {
 		if (typeof args[0] === "string") markRun(args[0]);
 		const waits = typeof args[0] === "string" ? takeTiming(args[0]) : {};
 		const result = await execute(...args);
@@ -523,7 +523,7 @@ export function timed<A extends unknown[], R>(execute: (...args: A) => Promise<R
 		if (details === undefined || details === null) return { ...result, details: waits };
 		if (isRecord(details) && !Array.isArray(details)) return { ...result, details: { ...waits, ...details } };
 		return result;
-	}) as (...args: A) => Promise<R>;
+	};
 }
 
 /**

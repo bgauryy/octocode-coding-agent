@@ -141,7 +141,7 @@ describe("config value env var syntax migration", () => {
 					}
 				>;
 			};
-			const provider = migrated.providers["custom-provider"]!;
+			const provider = migrated.providers["custom-provider"];
 			expect(provider.apiKey).toBe("CUSTOM_API_KEY");
 			expect(provider.headers?.["x-api-key"]).toBe("HEADER_API_KEY");
 			expect(provider.headers?.["x-literal"]).toBe("literal");

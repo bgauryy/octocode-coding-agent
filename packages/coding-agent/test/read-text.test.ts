@@ -72,7 +72,7 @@ describe("directory continuations", () => {
 		expect(next).toBeGreaterThan(0);
 		expect(next).toBeLessThan(400);
 		const second = await directoryTool.execute("ls", { offset: next, limit: 400 });
-		const text = (result: typeof first) => (result.content[0] as { text: string }).text.split("\n\n[")[0]!.split("\n");
+		const text = (result: typeof first) => (result.content[0] as { text: string }).text.split("\n\n[")[0].split("\n");
 		expect([...text(first), ...text(second)]).toEqual(entries);
 		await expect(tool.execute("ls", { offset: -1 })).rejects.toThrow(/non-negative integer/);
 	});

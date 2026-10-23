@@ -32,7 +32,7 @@ function withEnvVars(vars: Record<string, string | undefined>, fn: () => void): 
 			fn();
 			return;
 		}
-		const [name, value] = entries[index]!;
+		const [name, value] = entries[index];
 		withEnv(name, value, () => run(index + 1));
 	};
 	run(0);

@@ -17,10 +17,10 @@ describe("browser tool schema", () => {
 		} as unknown as ExtensionAPI;
 		registerBrowserTool(pi, new BrowserTool(fakePermission()));
 		const props = parameters!.properties;
-		expect(props.ref!.type).toBe("integer");
-		expect(props.to!.type).toBe("integer");
-		expect(props.fields!.items!.properties.ref!.type).toBe("integer");
+		expect(props.ref.type).toBe("integer");
+		expect(props.to.type).toBe("integer");
+		expect(props.fields.items!.properties.ref.type).toBe("integer");
 		for (const action of ["type:", "wait:", "navigate/snapshot:", "drag:", "dialog:"])
-			expect(props.text!.description).toContain(action);
+			expect(props.text.description).toContain(action);
 	});
 });

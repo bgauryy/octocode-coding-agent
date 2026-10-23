@@ -75,7 +75,7 @@ export async function startWorkspaceWeb(
 					socket.close(1013, "Reconnect to synchronize");
 					break;
 				}
-				const safe = redactData(frame) as ApplicationFrame;
+				const safe = redactData(frame);
 				if (safe.type === "event" && safe.event.type === "message.delta" && safe.event.text !== undefined) {
 					safe.event.delta = "";
 					const previous =
@@ -292,7 +292,8 @@ export async function startWorkspaceWeb(
 			client.on("message", (data, binary) => {
 				if (authenticated.has(client)) return client.close(1008, "Updates only");
 				if (binary) return client.close(1008, "Reopen /backlog");
-				let supplied = data.toString();
+				// The default binaryType ("nodebuffer") delivers each message as one Buffer.
+				let supplied = (data as Buffer).toString();
 				let cursor: ApplicationCursor | undefined;
 				if (supplied.startsWith("{")) {
 					let hello: { token?: unknown; protocolVersion?: unknown; cursor?: unknown };

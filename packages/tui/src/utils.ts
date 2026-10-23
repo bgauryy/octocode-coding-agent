@@ -188,6 +188,7 @@ function graphemeWidth(segment: string): number {
 
 	// Some marks occupy cells even without a base character.
 	if (terminalSpacingMarkRegex.test(segment)) {
+		// oxlint-disable-next-line typescript/no-misused-spread -- counts code points inside one grapheme on purpose
 		return [...segment].length;
 	}
 
@@ -222,6 +223,7 @@ function graphemeWidth(segment: string): number {
 	// cells for: Indic consonants after marks, halfwidth/fullwidth forms, and
 	// Thai/Lao AM vowels.
 	let followsMark = false;
+	// oxlint-disable-next-line typescript/no-misused-spread -- walks code points inside one grapheme on purpose
 	const chars = [...base];
 	for (const char of chars.slice(1)) {
 		if (terminalSpacingMarkRegex.test(char)) {
@@ -959,7 +961,7 @@ function wrapSingleLine(line: string, width: number): string[] {
 			// Break long token - breakLongWord handles its own resets
 			const broken = breakLongWord(token, width, tracker);
 			for (let i = 0; i < broken.length - 1; i++) {
-				wrapped.push(broken[i]!);
+				wrapped.push(broken[i]);
 			}
 			currentLine = broken[broken.length - 1];
 			currentVisibleLength = visibleWidth(currentLine);

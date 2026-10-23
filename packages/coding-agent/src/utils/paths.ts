@@ -93,7 +93,7 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 		}
 	}
 
-	if (/^file:\/\//.test(normalized)) {
+	if (normalized.startsWith("file://")) {
 		return fileURLToPath(normalized);
 	}
 

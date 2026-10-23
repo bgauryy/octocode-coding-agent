@@ -7,7 +7,7 @@
  * like any other tool change and survives `/tree`, resume, and fork on that branch.
  */
 
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
 import type {
 	ExtensionAPI,
 	ToolDefinition,

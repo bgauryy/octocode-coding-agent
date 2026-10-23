@@ -481,7 +481,7 @@ function parseThemeJsonContent(label: string, content: string): ThemeJson {
 	try {
 		json = JSON.parse(stripBom(content));
 	} catch (error) {
-		throw new Error(`Failed to parse theme ${label}: ${error}`);
+		throw new Error(`Failed to parse theme ${label}: ${String(error)}`);
 	}
 	return parseThemeJson(label, json);
 }

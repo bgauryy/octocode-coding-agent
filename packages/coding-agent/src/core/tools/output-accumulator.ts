@@ -19,7 +19,7 @@ function collapseLine(line: string): string {
 	if (!line.includes("\r")) return line;
 	const parts = line.split("\r");
 	for (let i = parts.length - 1; i >= 0; i--) {
-		if (parts[i]) return parts[i]!;
+		if (parts[i]) return parts[i];
 	}
 	return "";
 }
@@ -316,7 +316,7 @@ export class OutputAccumulator {
 		}
 		const buffer = Buffer.from(text, "utf-8");
 		let end = room;
-		while (end > 0 && (buffer[end]! & 0xc0) === 0x80) {
+		while (end > 0 && (buffer[end] & 0xc0) === 0x80) {
 			end--;
 		}
 		this.headBuffer += buffer.subarray(0, end).toString("utf-8");

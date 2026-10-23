@@ -189,7 +189,7 @@ export class SendReceipts {
 			this.cancelPreparation(receipt, "The session ran while the message was being prepared");
 		for (const receipt of this.byKey.values()) if (receipt.phase === "accepted") receipt.phase = "settled";
 		this.activeKey = undefined;
-		for (const waiter of [...this.waiters]) {
+		for (const waiter of Array.from(this.waiters)) {
 			this.waiters.delete(waiter);
 			waiter.resolve(result);
 		}

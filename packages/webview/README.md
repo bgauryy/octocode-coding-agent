@@ -12,8 +12,8 @@ From the repository root:
 - `npm run build --workspace=@octocodeai/octocode-contacts` builds shared declarations first.
 - `npm run build --workspace=@octocodeai/octocode-webview` builds this package.
 - `npm run test --workspace=@octocodeai/octocode-webview` runs model, component, page-flow and security tests.
-- `npm run lint --workspace=@octocodeai/octocode-webview` runs Biome (formatting, React hooks and accessibility rules); `lint:fix` applies safe fixes. `typecheck` checks the package with DOM and JSX settings.
-- `npm run check` also verifies TypeScript, browser imports, bundle freshness, package boundaries and this package's lint.
+- The repository's Oxlint configuration covers this package with React, React hooks and accessibility rules (`npm run lint` from the root, or `npm run lint --workspace=@octocodeai/octocode-webview`); Prettier formats it with the rest of the code. `typecheck` checks the package with DOM and JSX settings.
+- `npm run check` also verifies TypeScript, lint and formatting, browser imports, bundle freshness and package boundaries.
 
 ## Structure
 

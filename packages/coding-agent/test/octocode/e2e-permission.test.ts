@@ -163,8 +163,8 @@ describe("permission modes in a headless run", () => {
 			),
 			say("blocked"),
 		]);
-		expect(after!.map((result) => result.toolName)).toEqual(["file", "bash"]);
-		for (const result of after!) {
+		expect(after.map((result) => result.toolName)).toEqual(["file", "bash"]);
+		for (const result of after) {
 			expect(result.isError).toBe(true);
 			expect(result.text.startsWith(NEEDS_APPROVAL)).toBe(true);
 			expect(result.text).toContain("report it to your parent as SBAR");
@@ -185,9 +185,9 @@ describe("permission modes in a headless run", () => {
 			),
 			say("done"),
 		]);
-		expect(after![0]!.text).not.toContain(NEEDS_APPROVAL);
+		expect(after[0].text).not.toContain(NEEDS_APPROVAL);
 		expect(fs.existsSync(path.join(cwd, "app.ts"))).toBe(false);
-		expect(after![1]).toMatchObject({ toolName: "file", isError: false });
+		expect(after[1]).toMatchObject({ toolName: "file", isError: false });
 		expect(fs.readFileSync(path.join(cwd, "new.txt"), "utf8")).toBe("x");
 		const audit = session.sessionManager
 			.getEntries()
@@ -207,17 +207,17 @@ describe("permission modes in a headless run", () => {
 	it("refuses a catastrophic command in workspace with no one to ask, and runs none of it", async () => {
 		const { cwd, run } = await headless({ OCTOCODE_PERMISSION: "workspace" });
 		const [, after] = await run("go", [calls(fauxToolCall("bash", { command: DESTRUCTIVE })), say("blocked")]);
-		expect(after![0]!.isError).toBe(true);
-		expect(after![0]!.text.startsWith(NEEDS_APPROVAL)).toBe(true);
-		expect(after![0]!.text).toContain("OCTOCODE_PERMISSION=full");
+		expect(after[0].isError).toBe(true);
+		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
+		expect(after[0].text).toContain("OCTOCODE_PERMISSION=full");
 		expect(fs.existsSync(path.join(cwd, "app.ts"))).toBe(true);
 	}, 60_000);
 
 	it("denies an ask in a headless main session and names the mode that would allow it", async () => {
 		const { run } = await headless({ OCTOCODE_PERMISSION: "manual" });
 		const [, after] = await run("run", [calls(fauxToolCall("bash", { command: "echo hi" })), say("blocked")]);
-		expect(after![0]!.isError).toBe(true);
-		expect(after![0]!.text.startsWith(NEEDS_APPROVAL)).toBe(true);
-		expect(after![0]!.text).toContain("OCTOCODE_PERMISSION=workspace");
+		expect(after[0].isError).toBe(true);
+		expect(after[0].text.startsWith(NEEDS_APPROVAL)).toBe(true);
+		expect(after[0].text).toContain("OCTOCODE_PERMISSION=workspace");
 	}, 60_000);
 });

@@ -111,8 +111,18 @@ export function hasOpenModal(): boolean {
 	return modals.length > 0;
 }
 
+/** Return focus from a closed modal to its opener, else to the next modal down; read once that modal is interactive. */
+function restoreFocus(removed: ModalEntry): void {
+	const activeDialog = modals.at(-1)?.container.current;
+	const available = (element: HTMLElement | null) =>
+		element?.isConnected && !element.closest("[inert]") && (!activeDialog || activeDialog.contains(element));
+	const target = [removed.opener, removed.fallback].find(available);
+	if (target) target.focus({ preventScroll: true });
+	else activeDialog?.focus({ preventScroll: true });
+}
+
 /**
- * Modal behavior for a dialog that is not a native `<dialog>` (jsdom and older engines lack `showModal`): Tab and Shift+Tab wrap inside it, Escape closes it,
+ * Modal behavior for a `<dialog open>` not opened with `showModal` (jsdom and older engines lack it): Tab and Shift+Tab wrap inside it, Escape closes it,
  * the page behind stops scrolling, and focus returns to the opener when it closes.
  */
 export function useModal(
@@ -169,14 +179,7 @@ export function useModal(
 			}
 			if (!top) return;
 			// React removes the background's inert attribute later in the same commit; restore focus afterward.
-			queueMicrotask(() => {
-				const activeDialog = modals.at(-1)?.container.current;
-				const available = (element: HTMLElement | null) =>
-					element?.isConnected && !element.closest("[inert]") && (!activeDialog || activeDialog.contains(element));
-				const target = [removed.opener, removed.fallback].find(available);
-				if (target) target.focus({ preventScroll: true });
-				else activeDialog?.focus({ preventScroll: true });
-			});
+			queueMicrotask(() => restoreFocus(removed));
 		};
 	}, [container]);
 }
@@ -186,7 +189,6 @@ export function useElapsed(since: number, active: boolean): number {
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
 		if (!active) return;
-		setNow(Date.now());
 		const timer = setInterval(() => setNow(Date.now()), 1000);
 		return () => clearInterval(timer);
 	}, [active]);
@@ -201,7 +203,13 @@ const BOTTOM_SLACK = 32;
 export function useStickToBottom<T extends HTMLElement>(content: unknown) {
 	// The element, not a ref object: the log may mount after the first render (an empty transcript shows a placeholder),
 	// and the scroll listener must attach whenever it does.
-	const [element, ref] = useState<T | null>(null);
+	const [element, setElement] = useState<T | null>(null);
+	// The same node for writes: React state is read-only, a ref may be mutated in effects.
+	const node = useRef<T | null>(null);
+	const ref = useCallback((current: T | null) => {
+		node.current = current;
+		setElement(current);
+	}, []);
 	const [atBottom, setAtBottom] = useState(true);
 	const pinned = useRef(true);
 	useEffect(() => {
@@ -213,9 +221,10 @@ export function useStickToBottom<T extends HTMLElement>(content: unknown) {
 		element.addEventListener("scroll", onScroll, { passive: true });
 		return () => element.removeEventListener("scroll", onScroll);
 	}, [element]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-pin whenever new content arrives.
+	// Re-pin when the log mounts and whenever new content arrives.
 	useLayoutEffect(() => {
-		if (element && pinned.current) element.scrollTop = element.scrollHeight;
+		const log = node.current;
+		if (log && pinned.current) log.scrollTop = log.scrollHeight;
 	}, [element, content]);
 	const jump = useCallback(() => {
 		if (!element) return;

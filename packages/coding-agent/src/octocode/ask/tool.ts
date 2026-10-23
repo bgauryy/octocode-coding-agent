@@ -36,7 +36,7 @@ async function askWithDialogs(
 		for (;;) {
 			const remaining = labels.filter((_, index) => !chosen.has(index));
 			const extra = q.multiSelect && chosen.size > 0 ? [SUBMIT_PICKS, TYPE_OWN] : [TYPE_OWN];
-			const selected = [...chosen].map((index) => q.options[index]!.label).join(", ");
+			const selected = [...chosen].map((index) => q.options[index].label).join(", ");
 			const title = q.multiSelect
 				? `${q.question} (choose one or more, then ${SUBMIT_PICKS}${selected ? `; selected: ${selected}` : ""})`
 				: q.question;

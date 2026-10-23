@@ -10,7 +10,7 @@ let timer: NodeJS.Timeout | undefined;
 
 function tick(): void {
 	let failure: { error: unknown } | undefined;
-	for (const subscription of [...subscriptions]) {
+	for (const subscription of Array.from(subscriptions)) {
 		if (!subscriptions.has(subscription)) continue; // stopped by an earlier listener of this tick
 		try {
 			subscription.listener();

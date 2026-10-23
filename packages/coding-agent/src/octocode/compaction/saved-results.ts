@@ -121,13 +121,13 @@ export function carriedSavedResults(branch: readonly SessionEntry[]): string[] {
 	const unrecorded: string[][] = [];
 	let recorded: string[] = [];
 	for (let at = compactions.length - 1; at >= 0; at--) {
-		const entry = branch[compactions[at]!] as SessionEntry & { details?: unknown };
+		const entry = branch[compactions[at]] as SessionEntry & { details?: unknown };
 		const carried = isRecord(entry.details) ? entry.details[SAVED_RESULTS_DETAILS] : undefined;
 		if (Array.isArray(carried)) {
 			recorded = carried.filter((item): item is string => typeof item === "string");
 			break;
 		}
-		unrecorded.unshift(stretchPaths(branch, compactions[at]!, compactions[at - 1], cleared));
+		unrecorded.unshift(stretchPaths(branch, compactions[at], compactions[at - 1], cleared));
 	}
 	return [...new Set([...recorded, ...unrecorded.flat()])];
 }

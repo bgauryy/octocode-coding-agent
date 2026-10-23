@@ -95,12 +95,12 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 		const previousWrite = process.stdout.write;
 		const previousOn = process.stdin.on;
 
-		process.stdout.write = ((chunk: string | Uint8Array) => {
+		process.stdout.write = (chunk: string | Uint8Array) => {
 			writes.push(String(chunk));
 			return true;
-		}) as typeof process.stdout.write;
+		};
 		process.stdin.on = ((event: string | symbol, listener: (...args: unknown[]) => void) => {
-			if (event === "data") dataHandler = listener as (data: string) => void;
+			if (event === "data") dataHandler = listener;
 			return process.stdin;
 		}) as typeof process.stdin.on;
 
@@ -384,15 +384,49 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 });
 
 describe("ProcessTerminal progress", () => {
+	it("omits only decorative keepalives above an opted-in queue threshold", () => {
+		const terminal = new ProcessTerminal();
+		const writes: string[] = [];
+		const previousWrite = process.stdout.write;
+		const previousLength = Object.getOwnPropertyDescriptor(process.stdout, "writableLength");
+		let queued = 0;
+		mock.timers.enable({ apis: ["setInterval"] });
+		process.stdout.write = (chunk: string | Uint8Array) => {
+			writes.push(String(chunk));
+			return true;
+		};
+		Object.defineProperty(process.stdout, "writableLength", { configurable: true, get: () => queued });
+		try {
+			terminal.setDecorativeOutputPressureThreshold(100);
+			terminal.setProgress(true);
+			assert.equal(writes.length, 1);
+			queued = 200;
+			mock.timers.tick(1000);
+			assert.equal(writes.length, 1);
+			queued = 50;
+			mock.timers.tick(1000);
+			assert.equal(writes.length, 2);
+			queued = 200;
+			terminal.setProgress(false);
+			assert.equal(writes.at(-1), "\x1b]9;4;0\x07");
+		} finally {
+			terminal.setProgress(false);
+			process.stdout.write = previousWrite;
+			if (previousLength) Object.defineProperty(process.stdout, "writableLength", previousLength);
+			else Reflect.deleteProperty(process.stdout, "writableLength");
+			mock.timers.reset();
+		}
+	});
+
 	it("writes a valid OSC 9;4 clear sequence", () => {
 		const terminal = new ProcessTerminal();
 		const writes: string[] = [];
 		const previousWrite = process.stdout.write;
 
-		process.stdout.write = ((chunk: string | Uint8Array) => {
+		process.stdout.write = (chunk: string | Uint8Array) => {
 			writes.push(String(chunk));
 			return true;
-		}) as typeof process.stdout.write;
+		};
 
 		try {
 			terminal.setProgress(false);

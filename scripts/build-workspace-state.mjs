@@ -1,40 +1,41 @@
-import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, writeFile } from "node:fs/promises";
+import { rolldown } from "rolldown";
 
 const root = new URL("../", import.meta.url);
 const destination = new URL("packages/webview/src/state.generated.ts", root);
 async function bundle(live) {
-	const result = await build({
-		absWorkingDir: fileURLToPath(root),
-		entryPoints: ["packages/webview/src/page.tsx"],
-		bundle: true,
-		write: false,
+	const page = await rolldown({
+		cwd: fileURLToPath(root),
+		input: fileURLToPath(new URL("packages/webview/src/page.tsx", root)),
 		platform: "browser",
-		format: "iife",
-		globalName: "WorkspaceView",
-		jsx: "automatic",
+		transform: { jsx: "react-jsx", target: "es2022", define: { "process.env.NODE_ENV": '"production"' } },
 		// The offline export swaps the live extension for a null stub, so transport, Markdown and editor code never ship.
 		plugins: live
 			? []
 			: [
 					{
 						name: "offline-page",
-						setup(builder) {
-							builder.onResolve({ filter: /^\.\/app\/live\/index\.ts$/ }, ({ resolveDir }) => ({
-								path: join(resolveDir, "app/live/offline.ts"),
-							}));
+						resolveId(source, importer) {
+							if (source === "./app/live/index.ts" && importer) return join(dirname(importer), "app/live/offline.ts");
 						},
 					},
 				],
-		minify: true,
-		legalComments: "none",
-		target: "es2022",
-		define: { "process.env.NODE_ENV": '"production"' },
+		logLevel: "warn",
 	});
-	return result.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
+	try {
+		const { output } = await page.generate({
+			format: "iife",
+			name: "WorkspaceView",
+			minify: true,
+			comments: { legal: false },
+		});
+		return output[0].code.replace(/<\/script/gi, "<\\/script");
+	} finally {
+		await page.close();
+	}
 }
 const [liveScript, offlineScript] = await Promise.all([bundle(true), bundle(false)]);
 const require = createRequire(new URL("packages/webview/package.json", root));

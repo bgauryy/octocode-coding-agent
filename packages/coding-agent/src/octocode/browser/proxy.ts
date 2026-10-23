@@ -294,8 +294,8 @@ export async function startFilteringProxy(options: FilteringProxyOptions = {}): 
 				(answer) => {
 					const raw: string[] = [];
 					for (let index = 0; index + 1 < answer.rawHeaders.length; index += 2) {
-						const name = answer.rawHeaders[index]!;
-						if (!HOP_BY_HOP.has(name.toLowerCase())) raw.push(name, answer.rawHeaders[index + 1]!);
+						const name = answer.rawHeaders[index];
+						if (!HOP_BY_HOP.has(name.toLowerCase())) raw.push(name, answer.rawHeaders[index + 1]);
 					}
 					response.writeHead(answer.statusCode ?? 502, answer.statusMessage, raw);
 					answer.pipe(response);

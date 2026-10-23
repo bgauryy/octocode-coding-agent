@@ -64,7 +64,59 @@ export interface ApplicationReceiptStore {
 	finish(id: string, status: "completed" | "failed", message?: string): ApplicationReceipt;
 }
 
+export type ToolOutputProjector = (owner: string, result: unknown) => string | undefined;
+
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, AgentSession> {
+	private outputProjector?: {
+		project: ToolOutputProjector;
+		active: boolean;
+		previous?: ApplicationService["outputProjector"];
+	};
+	/** Project display text only; native results remain unchanged. Owners include custom message types. */
+	setToolOutputProjector(project: ToolOutputProjector): () => void {
+		const registration = { project, active: true, previous: this.outputProjector };
+		this.outputProjector = registration;
+		this.refreshOutputProjection();
+		return () => {
+			registration.active = false;
+			if (this.outputProjector !== registration) return;
+			let previous = registration.previous;
+			while (previous && !previous.active) previous = previous.previous;
+			this.outputProjector = previous;
+			this.refreshOutputProjection();
+		};
+	}
+	private projectedOutput(owner: string, value: unknown): string | undefined {
+		try {
+			return this.outputProjector?.project(owner, value);
+		} catch {
+			return "Tool output unavailable";
+		}
+	}
+	private refreshOutputProjection(): void {
+		// Previous previews cannot be safely reinterpreted without the original metadata.
+		for (const [id, tool] of this.tools) this.tools.set(id, { ...tool, text: "Tool output unavailable" });
+		for (const [id, message] of this.messages) {
+			if (message.role !== "toolResult" && message.role !== "custom") continue;
+			this.messages.set(id, { ...message, text: "Tool output unavailable" });
+		}
+		for (const source of this.session.messages ?? []) {
+			const id = this.messageIds.get(source);
+			const message = id && this.messages.get(id);
+			if (!id || !message) continue;
+			const owner =
+				source.role === "toolResult" ? source.toolName : source.role === "custom" ? source.customType : undefined;
+			if (owner) this.messages.set(id, { ...message, text: this.outputText(owner, source) });
+		}
+		this.epoch = randomUUID();
+		this.sequence = 0;
+		this.replay = [];
+		this.replaySizes = [];
+		this.replayChars = 0;
+		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
+		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "overflow" }));
+	}
+
 	private receiptStore?: ApplicationReceiptStore;
 	setReceiptStore(store: ApplicationReceiptStore): void {
 		this.receiptStore = store;
@@ -118,6 +170,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				console.error("Application projection failed", error);
 				for (const sink of this.sinks) sink(this.frame({ type: "resync", reason: "overflow" }));
 			} finally {
+				// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners added during dispatch do not receive this event
 				for (const listener of [...this.native]) {
 					try {
 						Promise.resolve(listener(event)).catch((error) => console.error("Application listener failed", error));
@@ -144,6 +197,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.activeMessage = undefined;
 		this.steering = [];
 		this.followUp = [];
+		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "session-changed" }));
 	}
 	private cursor(): ApplicationCursor {
@@ -197,6 +251,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			this.replay.shift();
 			this.replayChars -= this.replaySizes.shift()!;
 		}
+		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(frame);
 	}
 	private queuePreview(values: string[]): string[] {
@@ -232,7 +287,13 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		let bytes = 0;
 		let waiting: ((result: IteratorResult<ApplicationFrame>) => void) | undefined;
 		const push = (frame: ApplicationFrame) => {
-			if (closed || overflowed) return;
+			if (closed) return;
+			if (frame.type === "resync") {
+				queue = [];
+				bytes = 0;
+				overflowed = false;
+			}
+			if (overflowed) return;
 			if (waiting) {
 				const resolve = waiting;
 				waiting = undefined;
@@ -393,8 +454,16 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 					randomUUID();
 				this.messageIds.set(event.message, id);
 				const content = "content" in event.message ? event.message.content : undefined;
+				const owner =
+					event.message.role === "toolResult"
+						? event.message.toolName
+						: event.message.role === "custom"
+							? event.message.customType
+							: undefined;
+				const projected = owner ? this.projectedOutput(owner, event.message) : undefined;
 				const text =
-					typeof content === "string"
+					projected ??
+					(typeof content === "string"
 						? content
 						: Array.isArray(content)
 							? content
@@ -408,7 +477,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 													: "[Content available in the session]",
 									)
 									.join("")
-							: "";
+							: "");
 				const message = {
 					id,
 					role: event.message.role,
@@ -478,9 +547,9 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 					toolName: event.toolName,
 					...(hint ? { hint } : {}),
 					...(event.type === "tool_execution_end"
-						? { failed: event.isError, text: this.outputText(event.result) }
+						? { failed: event.isError, text: this.outputText(event.toolName, event.result) }
 						: event.type === "tool_execution_update"
-							? { text: this.outputText(event.partialResult) }
+							? { text: this.outputText(event.toolName, event.partialResult) }
 							: {}),
 				});
 				break;
@@ -506,7 +575,11 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				break;
 		}
 	}
-	private outputText(value: unknown): string {
+	private outputText(owner: string, value: unknown): string {
+		const projected = this.projectedOutput(owner, value);
+		if (projected !== undefined) return keepEnds(projected, OUTPUT_CHARS);
+		if (value && typeof value === "object" && "content" in value && typeof value.content === "string")
+			return keepEnds(value.content, OUTPUT_CHARS);
 		if (!value || typeof value !== "object" || !("content" in value) || !Array.isArray(value.content)) return "";
 		const text = value.content
 			.filter((block) => block && typeof block === "object" && block.type === "text" && typeof block.text === "string")
@@ -515,7 +588,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		return keepEnds(text, OUTPUT_CHARS);
 	}
 	dispose(): void {
-		for (const close of [...this.closes]) close();
+		for (const close of this.closes) close();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.native.clear();

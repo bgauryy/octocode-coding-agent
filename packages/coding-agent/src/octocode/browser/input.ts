@@ -348,7 +348,7 @@ export async function settleAfterLoad(
 			failed = true;
 			return false;
 		});
-	return { settled: quiet !== false, failed, ms: Date.now() - started };
+	return { settled: quiet, failed, ms: Date.now() - started };
 }
 
 /** The page text `waitForText` searches: the document, open shadow roots and same-origin frames. */
@@ -458,8 +458,7 @@ export async function typeInto(
     })()`,
 		signal,
 	);
-	if (matches !== true)
-		throw new Error(`[${ref}] did not retain the requested value; inspect the field before retrying.`);
+	if (!matches) throw new Error(`[${ref}] did not retain the requested value; inspect the field before retrying.`);
 	if (submit) await pressKey(page, "Enter", signal);
 }
 

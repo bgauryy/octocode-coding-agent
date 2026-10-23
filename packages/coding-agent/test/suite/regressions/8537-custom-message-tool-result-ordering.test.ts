@@ -19,7 +19,6 @@ describe("#8537 custom messages injected during tool execution", () => {
 	});
 
 	it("appends the message after the turn's tool results instead of between call and result", async () => {
-		let notify: (() => Promise<void>) | undefined;
 		const slowTool: AgentTool = {
 			name: "wait",
 			label: "Wait",
@@ -28,14 +27,14 @@ describe("#8537 custom messages injected during tool execution", () => {
 			execute: async () => {
 				// A background task (e.g. a subagent reply) notifies the session while the
 				// tool is still running.
-				await notify?.();
+				await notify();
 				return { content: [{ type: "text", text: "tool done" }], details: {} };
 			},
 		};
 
 		const harness = await createHarness({ tools: [slowTool] });
 		harnesses.push(harness);
-		notify = () =>
+		const notify = (): Promise<void> =>
 			harness.session.sendCustomMessage(
 				{ customType: "subagent-reply", content: "subagent replied", display: true },
 				{ triggerTurn: false },
@@ -59,21 +58,20 @@ describe("#8537 custom messages injected during tool execution", () => {
 	});
 
 	it("keeps session entries and message events in the same order as agent state", async () => {
-		let notify: (() => Promise<void>) | undefined;
 		const slowTool: AgentTool = {
 			name: "wait",
 			label: "Wait",
 			description: "Wait for a background task",
 			parameters: Type.Object({}),
 			execute: async () => {
-				await notify?.();
+				await notify();
 				return { content: [{ type: "text", text: "tool done" }], details: {} };
 			},
 		};
 
 		const harness = await createHarness({ tools: [slowTool] });
 		harnesses.push(harness);
-		notify = () =>
+		const notify = (): Promise<void> =>
 			harness.session.sendCustomMessage(
 				{ customType: "subagent-reply", content: "subagent replied", display: true },
 				{ triggerTurn: false },
@@ -101,21 +99,20 @@ describe("#8537 custom messages injected during tool execution", () => {
 	});
 
 	it("produces an llm history where every tool result follows its tool call", async () => {
-		let notify: (() => Promise<void>) | undefined;
 		const slowTool: AgentTool = {
 			name: "wait",
 			label: "Wait",
 			description: "Wait for a background task",
 			parameters: Type.Object({}),
 			execute: async () => {
-				await notify?.();
+				await notify();
 				return { content: [{ type: "text", text: "tool done" }], details: {} };
 			},
 		};
 
 		const harness = await createHarness({ tools: [slowTool] });
 		harnesses.push(harness);
-		notify = () =>
+		const notify = (): Promise<void> =>
 			harness.session.sendCustomMessage(
 				{ customType: "subagent-reply", content: "subagent replied", display: true },
 				{ triggerTurn: false },

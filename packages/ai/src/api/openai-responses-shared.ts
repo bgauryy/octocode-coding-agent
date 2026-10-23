@@ -334,7 +334,7 @@ export function convertResponsesMessages<TApi extends Api>(
 			}
 		} else if (msg.role === "assistant") {
 			const output: ResponseInput = [];
-			const assistantMsg = msg as AssistantMessage;
+			const assistantMsg = msg;
 			const isSameProviderAndApi = assistantMsg.provider === model.provider && assistantMsg.api === model.api;
 			const isSameModel = isSameProviderAndApi && assistantMsg.model === model.id;
 			const isDifferentModel = isSameProviderAndApi && assistantMsg.model !== model.id;
@@ -347,7 +347,7 @@ export function convertResponsesMessages<TApi extends Api>(
 						output.push(reasoningItem);
 					}
 				} else if (block.type === "text") {
-					const textBlock = block as TextContent;
+					const textBlock = block;
 					const parsedSignature = parseTextSignature(textBlock.textSignature);
 					const fallbackMessageId =
 						textBlockIndex === 0 ? `msg_pi_${msgIndex}` : `msg_pi_${msgIndex}_${textBlockIndex}`;
@@ -368,7 +368,7 @@ export function convertResponsesMessages<TApi extends Api>(
 						phase: parsedSignature?.phase,
 					} satisfies ResponseOutputMessage);
 				} else if (block.type === "toolCall") {
-					const toolCall = block as ToolCall;
+					const toolCall = block;
 					const [callId, itemIdRaw] = toolCall.id.split("|");
 					const customInputProperty = options?.grammarToolInputProperties?.get(toolCall.name);
 					let itemId: string | undefined = itemIdRaw;
@@ -828,7 +828,7 @@ export async function processResponsesStream<TApi extends Api>(
 		} else if (event.type === "response.completed" || event.type === "response.incomplete") {
 			finalizeResponse(event.response);
 		} else if (event.type === "error") {
-			throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
+			throw new Error(`Error Code ${event.code}: ${event.message || "Unknown error"}`);
 		} else if (event.type === "response.failed") {
 			sawTerminalResponseEvent = true;
 			output.rawStopReason = event.response?.status;
@@ -888,7 +888,7 @@ function mapStopReason(
 			return { stopReason: "stop" };
 		default: {
 			const _exhaustive: never = status;
-			throw new Error(`Unhandled stop reason: ${_exhaustive}`);
+			throw new Error(`Unhandled stop reason: ${String(_exhaustive)}`);
 		}
 	}
 }

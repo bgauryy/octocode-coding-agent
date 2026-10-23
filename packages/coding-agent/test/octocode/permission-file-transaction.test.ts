@@ -31,7 +31,7 @@ function setup(queries: any[], replacements: any[]) {
 	registerFileTool(fake.pi, guard, permission, undefined, {
 		enabled: () => true,
 		refresh,
-	} as any);
+	});
 	return {
 		cwd,
 		ctx,

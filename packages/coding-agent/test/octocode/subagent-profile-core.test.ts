@@ -147,7 +147,7 @@ describe("core tools of a subagent profile", () => {
 					label: exposure,
 					description: exposure,
 					parameters: Type.Object({}),
-					exposure: exposure as "deferred" | "deferred" | "hidden",
+					exposure: exposure as "deferred" | "hidden",
 					execute: async () => ({ content: [], details: {} }),
 				})),
 				...(tools ? { tools: parseArgs(["--tools", tools]).tools! } : {}),

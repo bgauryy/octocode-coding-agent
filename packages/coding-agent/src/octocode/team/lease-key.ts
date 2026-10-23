@@ -70,7 +70,7 @@ export function overlappingRequests<T extends { key: string; kind: LeaseKind }>(
 ): [T, T] | undefined {
 	for (let later = 1; later < requests.length; later += 1) {
 		for (let earlier = 0; earlier < later; earlier += 1) {
-			const [a, b] = [requests[earlier]!, requests[later]!];
+			const [a, b] = [requests[earlier], requests[later]];
 			if (keysOverlap(a.key, a.kind, b.key, b.kind)) return [a, b];
 		}
 	}

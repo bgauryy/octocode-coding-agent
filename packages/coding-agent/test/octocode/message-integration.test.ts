@@ -160,7 +160,7 @@ describe("message hook integration", () => {
 				from: "peer",
 				to: "main-agent",
 				text: "completed reply",
-				replyTo: backend.prompt.mock.calls[0]![1].key,
+				replyTo: backend.prompt.mock.calls[0][1].key,
 			}),
 		]);
 		expect(runtime.sent).toEqual([]);

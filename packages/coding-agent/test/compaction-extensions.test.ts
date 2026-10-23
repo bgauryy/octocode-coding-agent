@@ -86,7 +86,7 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 	}
 
 	async function createSession(extensions: Extension[]) {
-		const model = getModel("anthropic", "claude-sonnet-4-5")!;
+		const model = getModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			getApiKey: () => API_KEY,
 			streamFn: streamSimple,

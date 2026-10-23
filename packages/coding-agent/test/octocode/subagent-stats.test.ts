@@ -87,7 +87,7 @@ describe("agent stats", () => {
 			["researcher", 3],
 			["general", 2],
 		]);
-		const researcher = stats[0]!;
+		const researcher = stats[0];
 		expect(researcher.outcomes).toEqual({ done: 1, partial: 0, blocked: 0, failed: 1, unknown: 1 });
 		expect(researcher.background).toBe(3);
 		// Two runs ended on their own; one named an outcome.
@@ -97,7 +97,7 @@ describe("agent stats", () => {
 		expect(researcher.compactions).toBe(1);
 		expect(researcher.startupFailures).toBe(1);
 		expect(researcher.cold).toEqual({ runs: 2, tokens: 28000 });
-		const general = stats[1]!;
+		const general = stats[1];
 		expect(general.foreground).toBe(2);
 		expect(general.outcomes).toMatchObject({ partial: 1, blocked: 1 });
 		expect(general.unpriced).toBe(true);
@@ -111,7 +111,7 @@ describe("agent stats", () => {
 			report({ id: "b", profile: "x", status: "failed", usage: usage(5, 5), startup: undefined }, "2"),
 			report({ id: "c", profile: "x", status: "failed", usage: usage(5, 5), startup: {} }, "3"),
 		]);
-		expect(stats[0]!.startupFailures).toBe(1);
+		expect(stats[0].startupFailures).toBe(1);
 	});
 
 	it("renders a readable summary", () => {

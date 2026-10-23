@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
+import type { FauxResponseStep } from "@octocodeai/octocode-ai/compat";
 import { expect, it } from "vitest";
 import { createReadToolDefinition } from "../src/core/tools/read.ts";
 import { Checkpoints } from "../src/octocode/files/checkpoint.ts";
@@ -117,7 +118,7 @@ async function run(
 	reads: Array<{ name: string; offset?: number; limit?: number }> = [],
 	beforeFile?: () => void,
 ) {
-	const responses: import("@octocodeai/octocode-ai/compat").FauxResponseStep[] = reads.map(({ name, ...range }) =>
+	const responses: FauxResponseStep[] = reads.map(({ name, ...range }) =>
 		fauxAssistantMessage(
 			[
 				fauxToolCall("read", {

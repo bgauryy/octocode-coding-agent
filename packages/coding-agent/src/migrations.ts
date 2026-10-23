@@ -40,7 +40,7 @@ function migrateAuthToAuthJson(): string[] {
 			const oauth = JSON.parse(stripBom(readFileSync(oauthPath, "utf-8")));
 			for (const [provider, cred] of Object.entries(oauth)) {
 				if (Object.hasOwn(migrated, provider) || typeof cred !== "object" || cred === null) continue;
-				migrated[provider] = { type: "oauth", ...(cred as object) };
+				migrated[provider] = { type: "oauth", ...cred };
 				providers.push(provider);
 			}
 			oauthRead = true;
@@ -154,7 +154,7 @@ function migrateCommandsToPrompts(baseDir: string, label: string): boolean {
 		} catch (err) {
 			console.log(
 				chalk.yellow(
-					`Warning: Could not migrate ${label} commands/ to prompts/: ${err instanceof Error ? err.message : err}`,
+					`Warning: Could not migrate ${label} commands/ to prompts/: ${err instanceof Error ? err.message : String(err)}`,
 				),
 			);
 		}

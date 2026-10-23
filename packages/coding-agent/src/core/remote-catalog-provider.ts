@@ -35,7 +35,7 @@ function mergeModels<TModel extends AnyModel>(baseline: readonly TModel[], dynam
 	for (const model of [...baseline, ...dynamic])
 		merged.set(
 			`${getModelType(model)}\0${model.id}`,
-			withOpenCodeEndpoint(isModelType(model, "chat") ? withCacheCapabilities(model) : model) as TModel,
+			withOpenCodeEndpoint(isModelType(model, "chat") ? withCacheCapabilities(model) : model),
 		);
 	return [...merged.values()];
 }

@@ -116,7 +116,6 @@ describe("createInteractiveTui", () => {
 			logDirectory: "/tmp",
 			terminal,
 		});
-		let stableUi: TUI;
 		const invalidatedModes: TuiMode[] = [];
 		const component: Component & { focused: boolean } = {
 			focused: false,
@@ -151,11 +150,11 @@ describe("createInteractiveTui", () => {
 			renderer,
 			ui: undefined as unknown as TUI,
 			fullscreenLayoutRoot: component,
-			options: { tuiMode: "regular" as TuiMode },
+			options: { tuiMode: "regular" },
 			themeController: { rebindTui: () => {} },
 			extensionTerminalInputSubscriptions: new Set<never>(),
 		}) as SwitchContext;
-		stableUi = createInteractiveTuiReference(() => context.renderer);
+		const stableUi: TUI = createInteractiveTuiReference(() => context.renderer);
 		context.ui = stableUi;
 		const { stopInteractiveTui, switchTuiMode } = InteractiveMode.prototype as unknown as {
 			stopInteractiveTui(this: SwitchContext, fullscreenExitOutput: FullscreenExitOutput): void;

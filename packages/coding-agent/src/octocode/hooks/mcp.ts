@@ -1,7 +1,6 @@
 import type { McpHookCaller } from "../../extensions/mcp/hook-caller.ts";
-import type { HookMcp } from "./contracts.ts";
-import { HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
+import { type HookMcp, HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
+import { errorMessage, isRecord, stringOrEmpty } from "../shared/util.ts";
 
 function substitute(value: unknown, payload: Record<string, unknown>, codex: boolean): unknown {
 	const resolve = (path: string): unknown => {
@@ -12,7 +11,7 @@ function substitute(value: unknown, payload: Record<string, unknown>, codex: boo
 	};
 	if (typeof value === "string") {
 		const whole = codex ? /^\$\{([^{}]+)\}$/.exec(value) : null;
-		if (whole) return structuredClone(resolve(whole[1]!));
+		if (whole) return structuredClone(resolve(whole[1]));
 		return value.replace(codex ? /\$\{([^{}]+)\}/g : /\$\{([^}]+)\}/g, (_match, path: string) => {
 			const found = resolve(path);
 			return found === undefined ? "" : typeof found === "string" ? found : JSON.stringify(found);
@@ -60,7 +59,7 @@ export async function runMcpHook(
 		cancel();
 	}, hook.timeoutMs);
 	try {
-		const event = String(payload.hook_event_name ?? "");
+		const event = stringOrEmpty(payload.hook_event_name);
 		const result = await Promise.race([
 			call({
 				server: hook.server,

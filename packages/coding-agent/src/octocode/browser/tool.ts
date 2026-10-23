@@ -15,7 +15,7 @@ import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "../shared/vision.ts";
 import { classifyHost, type HostClass, type HostLookup, isHttpUrl } from "../web/guard.ts";
 import { answerDialog, dialogNotice, download, uploadFiles } from "./actions.ts";
-import { type BrowserSession, CONSOLE_KEEP } from "./cdp.ts";
+import { blockedSuffix, type BrowserSession, CONSOLE_KEEP } from "./cdp.ts";
 import {
 	click,
 	drag,
@@ -619,10 +619,7 @@ async function navigate({ session, page, params, signal, browser }: PageAction):
 			{ url: params.url },
 			signal,
 		);
-		if (result.errorText)
-			throw new Error(
-				`Navigation failed: ${result.errorText}${session.blocked ? ` (blocked ${session.blocked})` : ""}`,
-			);
+		if (result.errorText) throw new Error(`Navigation failed: ${result.errorText}${blockedSuffix(session)}`);
 		// A same-document navigation (a #fragment) has no loader and fires no load event.
 		if (result.loaderId) await loaded;
 	} finally {

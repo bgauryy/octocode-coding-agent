@@ -146,7 +146,7 @@ export async function createAgentSessionServices(
 		}));
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
 	const resourceLoader = new DefaultResourceLoader({
-		...(options.resourceLoaderOptions ?? {}),
+		...options.resourceLoaderOptions,
 		cwd,
 		agentDir,
 		settingsManager,

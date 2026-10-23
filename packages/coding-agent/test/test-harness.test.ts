@@ -26,7 +26,7 @@ describe("test harness", () => {
 		const assistantMessages = harness.session.messages.filter((m) => m.role === "assistant");
 		expect(assistantMessages).toHaveLength(1);
 
-		const msg = assistantMessages[0] as AssistantMessage;
+		const msg = assistantMessages[0];
 		expect(msg.content).toEqual([{ type: "text", text: "hello world" }]);
 		expect(msg.stopReason).toBe("stop");
 	});
@@ -304,7 +304,7 @@ describe("test harness", () => {
 		const runner = harness.session.extensionRunner;
 		expect(runner).toBeDefined();
 
-		const commands = runner!.getRegisteredCommands();
+		const commands = runner.getRegisteredCommands();
 		expect(
 			commands.map((command) => ({
 				name: command.name,
@@ -317,8 +317,8 @@ describe("test harness", () => {
 			{ name: "shared-cmd", invocationName: "shared-cmd:2", description: "Beta command", path: "<beta>" },
 		]);
 
-		await runner!.getCommand("shared-cmd:1")?.handler("first", runner!.createCommandContext());
-		await runner!.getCommand("shared-cmd:2")?.handler("second", runner!.createCommandContext());
+		await runner.getCommand("shared-cmd:1")?.handler("first", runner.createCommandContext());
+		await runner.getCommand("shared-cmd:2")?.handler("second", runner.createCommandContext());
 
 		expect(calls).toEqual(["alpha:first", "beta:second"]);
 	});

@@ -71,6 +71,7 @@ async function page(fragment = "access=test") {
 						readyState = 1;
 						onmessage?: (event: { data: string }) => void;
 						constructor() {
+							// oxlint-disable-next-line typescript/no-this-alias -- the fake records the socket the page constructs.
 							socket = this;
 						}
 						send() {}

@@ -160,9 +160,9 @@ describe("CombinedAutocompleteProvider", () => {
 						result.items.map((item) => item.value),
 						["@README.md"],
 					);
-					const applied = provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix);
+					const applied = provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix);
 					assert.strictEqual(applied.lines[0], `${before}@README.md `);
-					assert.strictEqual(applied.cursorCol, applied.lines[0]!.length);
+					assert.strictEqual(applied.cursorCol, applied.lines[0].length);
 				}
 			}
 		});
@@ -175,7 +175,7 @@ describe("CombinedAutocompleteProvider", () => {
 				const result = await getSuggestions(provider, [line], 0, line.length);
 				assert.ok(result, line);
 				assert.strictEqual(result.prefix, "@REA");
-				const applied = provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix);
+				const applied = provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix);
 				assert.strictEqual(applied.lines[0], `${before}@README.md `);
 			}
 			const embedded = "foo(@REA";
@@ -218,7 +218,7 @@ describe("CombinedAutocompleteProvider", () => {
 					result.items.map((item) => item.value),
 					[`@"${directory}/说明.md"`],
 				);
-				const applied = provider.applyCompletion([line], 0, cursorCol, result.items[0]!, result.prefix);
+				const applied = provider.applyCompletion([line], 0, cursorCol, result.items[0], result.prefix);
 				assert.strictEqual(applied.lines[0], `查看：@"${directory}/说明.md" 后文`);
 				assert.strictEqual(applied.cursorCol, `查看：@"${directory}/说明.md" `.length);
 			}
@@ -544,7 +544,7 @@ describe("CombinedAutocompleteProvider", () => {
 			const item = result?.items.find((entry) => entry.value === '@"my folder/test.txt"');
 			assert.ok(item, "Should find test.txt suggestion");
 
-			const applied = provider.applyCompletion([line], 0, cursorCol, item!, result!.prefix);
+			const applied = provider.applyCompletion([line], 0, cursorCol, item, result!.prefix);
 			assert.strictEqual(applied.lines[0], '@"my folder/test.txt" ');
 		});
 	});
@@ -584,7 +584,7 @@ describe("CombinedAutocompleteProvider", () => {
 						result.items.map((item) => item.value),
 						[value],
 					);
-					const applied = provider.applyCompletion([line], 0, cursorCol, result.items[0]!, result.prefix);
+					const applied = provider.applyCompletion([line], 0, cursorCol, result.items[0], result.prefix);
 					assert.strictEqual(applied.lines[0], `${before}${value} 后文`);
 					assert.strictEqual(applied.cursorCol, before.length + value.length);
 				}
@@ -616,7 +616,7 @@ describe("CombinedAutocompleteProvider", () => {
 					result.items.map((item) => item.value),
 					[`"${directory}/说明.md"`],
 				);
-				const applied = provider.applyCompletion([quoted], 0, cursorCol, result.items[0]!, result.prefix);
+				const applied = provider.applyCompletion([quoted], 0, cursorCol, result.items[0], result.prefix);
 				assert.strictEqual(applied.lines[0], `查看，"${directory}/说明.md"后文`);
 				const missing = `查看，"不存在${separator}归档/说`;
 				assert.strictEqual(await getSuggestions(provider, [missing], 0, missing.length, true), null);
@@ -656,7 +656,7 @@ describe("CombinedAutocompleteProvider", () => {
 						result.items.map((item) => item.value),
 						[value],
 					);
-					const applied = provider.applyCompletion([line], 0, line.length, result.items[0]!, result.prefix);
+					const applied = provider.applyCompletion([line], 0, line.length, result.items[0], result.prefix);
 					assert.strictEqual(applied.lines[0], `${before}${value}`);
 				}
 			}
@@ -818,7 +818,7 @@ describe("CombinedAutocompleteProvider", () => {
 			const item = result?.items.find((entry) => entry.value === '"my folder/test.txt"');
 			assert.ok(item, "Should find test.txt suggestion");
 
-			const applied = provider.applyCompletion([line], 0, cursorCol, item!, result!.prefix);
+			const applied = provider.applyCompletion([line], 0, cursorCol, item, result!.prefix);
 			assert.strictEqual(applied.lines[0], '"my folder/test.txt"');
 		});
 	});

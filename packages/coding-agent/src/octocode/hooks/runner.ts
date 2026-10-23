@@ -1,9 +1,15 @@
 import { permissionOutput } from "./permission-output.ts";
 import { usesCodexSpecificDecision } from "./codex-output.ts";
 import { runPromptHook, type PromptEvaluator } from "./prompt.ts";
-import type { HookRun } from "./contracts.ts";
+import {
+	type HookRun,
+	type HookVerdict,
+	HOOK_OUTPUT_MAX_BYTES as OUTPUT_MAX_BYTES,
+	type HookBase,
+	type HookHandler,
+	type HookEvent,
+} from "./contracts.ts";
 export type { HookRun } from "./contracts.ts";
-import type { HookVerdict } from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 export type { HookVerdict } from "./contracts.ts";
 import { runMcpHook } from "./mcp.ts";
@@ -16,12 +22,6 @@ import { KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { errorMessage, firstLine, isRecord, parseJson } from "../shared/util.ts";
-import {
-	HOOK_OUTPUT_MAX_BYTES as OUTPUT_MAX_BYTES,
-	type HookBase,
-	type HookHandler,
-	type HookEvent,
-} from "./contracts.ts";
 import { type HookProtocol, unsupportedOutput } from "./profiles.ts";
 
 /** Context a hook may add to the conversation, as in the native host. */

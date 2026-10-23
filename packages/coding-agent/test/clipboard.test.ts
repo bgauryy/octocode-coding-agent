@@ -219,15 +219,15 @@ describe("copyToClipboard", () => {
 		let written: string | undefined;
 		mocks.command.mockImplementation(async (name, args) => {
 			if (name !== "wslpath") return Buffer.alloc(0);
-			written = readFileSync(args[1]!, "utf8");
+			written = readFileSync(args[1], "utf8");
 			return Buffer.from("\\\\wsl.localhost\\Ubuntu\\tmp\\clip.txt\n");
 		});
 		await copyToClipboard("héllo");
 		expect(mocks.command.mock.calls.map(([name]) => name)).toEqual(["wslpath", "powershell.exe"]);
 		expect(written).toBe("héllo");
-		const [, wslpathArgs] = mocks.command.mock.calls[0]!;
-		expect(existsSync(wslpathArgs[1]!)).toBe(false);
-		const [, powershellArgs] = mocks.command.mock.calls[1]!;
+		const [, wslpathArgs] = mocks.command.mock.calls[0];
+		expect(existsSync(wslpathArgs[1])).toBe(false);
+		const [, powershellArgs] = mocks.command.mock.calls[1];
 		expect(powershellArgs[2]).toContain("Set-Clipboard");
 		expect(powershellArgs[2]).toContain("'\\\\wsl.localhost\\Ubuntu\\tmp\\clip.txt'");
 		expect(osc52Writes).toHaveLength(0);

@@ -49,7 +49,7 @@ import {
 	resolvePath,
 } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
-import { type ExtensionManifest, hasPluginOrSkillMarker, readExtensionManifest } from "./extension-manifest.ts";
+import { hasPluginOrSkillMarker, readExtensionManifest } from "./extension-manifest.ts";
 import { isStdoutTakenOver } from "./output-guard.ts";
 import type { PackageSource, SettingsManager } from "./settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "./source-info.ts";
@@ -936,8 +936,8 @@ export class DefaultPackageManager implements PackageManager {
 
 		for (const resourceType of RESOURCE_TYPES) {
 			const target = this.getTargetMap(accumulator, resourceType);
-			const globalEntries = (globalSettings[resourceType] ?? []) as string[];
-			const projectEntries = (projectSettings[resourceType] ?? []) as string[];
+			const globalEntries = globalSettings[resourceType] ?? [];
+			const projectEntries = projectSettings[resourceType] ?? [];
 			this.resolveLocalEntries(
 				projectEntries,
 				resourceType,
@@ -1693,7 +1693,7 @@ export class DefaultPackageManager implements PackageManager {
 			return [];
 		}
 
-		const results: T[] = new Array(tasks.length);
+		const results: T[] = [];
 		let nextIndex = 0;
 		const workerCount = Math.max(1, Math.min(limit, tasks.length));
 
@@ -2229,7 +2229,7 @@ export class DefaultPackageManager implements PackageManager {
 		const manifest = readExtensionManifest(join(packageRoot, "package.json"));
 		if (manifest) {
 			for (const resourceType of RESOURCE_TYPES) {
-				const entries = manifest[resourceType as keyof ExtensionManifest];
+				const entries = manifest[resourceType];
 				this.addManifestEntries(
 					entries,
 					packageRoot,
@@ -2263,7 +2263,7 @@ export class DefaultPackageManager implements PackageManager {
 		metadata: PathMetadata,
 	): void {
 		const manifest = readExtensionManifest(join(packageRoot, "package.json"));
-		const entries = manifest?.[resourceType as keyof ExtensionManifest];
+		const entries = manifest?.[resourceType];
 		if (entries) {
 			this.addManifestEntries(entries, packageRoot, resourceType, target, metadata);
 			return;
@@ -2332,7 +2332,7 @@ export class DefaultPackageManager implements PackageManager {
 		resourceType: ResourceType,
 	): { allFiles: string[]; enabledByManifest: Set<string> } {
 		const manifest = readExtensionManifest(join(packageRoot, "package.json"));
-		const entries = manifest?.[resourceType as keyof ExtensionManifest];
+		const entries = manifest?.[resourceType];
 		if (entries && entries.length > 0) {
 			const allFiles = this.collectFilesFromManifestEntries(entries, packageRoot, resourceType);
 			const manifestPatterns = entries.filter(isOverridePattern);
@@ -2425,16 +2425,16 @@ export class DefaultPackageManager implements PackageManager {
 		};
 
 		const userOverrides = {
-			extensions: (globalSettings.extensions ?? []) as string[],
-			skills: (globalSettings.skills ?? []) as string[],
-			prompts: (globalSettings.prompts ?? []) as string[],
-			themes: (globalSettings.themes ?? []) as string[],
+			extensions: globalSettings.extensions ?? [],
+			skills: globalSettings.skills ?? [],
+			prompts: globalSettings.prompts ?? [],
+			themes: globalSettings.themes ?? [],
 		};
 		const projectOverrides = {
-			extensions: (projectSettings.extensions ?? []) as string[],
-			skills: (projectSettings.skills ?? []) as string[],
-			prompts: (projectSettings.prompts ?? []) as string[],
-			themes: (projectSettings.themes ?? []) as string[],
+			extensions: projectSettings.extensions ?? [],
+			skills: projectSettings.skills ?? [],
+			prompts: projectSettings.prompts ?? [],
+			themes: projectSettings.themes ?? [],
 		};
 
 		const userDirs = {
@@ -2608,7 +2608,7 @@ export class DefaultPackageManager implements PackageManager {
 			case "themes":
 				return accumulator.themes;
 			default:
-				throw new Error(`Unknown resource type: ${resourceType}`);
+				throw new Error(`Unknown resource type: ${String(resourceType)}`);
 		}
 	}
 

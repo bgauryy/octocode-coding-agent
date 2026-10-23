@@ -37,7 +37,7 @@ function ipv4ToInt(ip: string): number | null {
 	if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return null;
 	const values = parts.map(Number);
 	if (values.some((value) => value > 255)) return null;
-	return ((values[0]! << 24) >>> 0) + (values[1]! << 16) + (values[2]! << 8) + values[3]!;
+	return ((values[0] << 24) >>> 0) + (values[1] << 16) + (values[2] << 8) + values[3];
 }
 
 function inV4(ip: number, base: string, bits: number): boolean {
@@ -49,7 +49,7 @@ function expandIpv6(ip: string): number[] | null {
 	let value = ip.toLowerCase().replace(/%.*$/, "");
 	const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(value);
 	if (dotted) {
-		const v4 = ipv4ToInt(dotted[2]!);
+		const v4 = ipv4ToInt(dotted[2]);
 		if (v4 === null) return null;
 		value = `${dotted[1]}${((v4 >>> 16) & 0xffff).toString(16)}:${(v4 & 0xffff).toString(16)}`;
 	}
@@ -74,14 +74,14 @@ function expandIpv6(ip: string): number[] | null {
 function embeddedIpv4(groups: number[]): string[] {
 	const dotted = (left: number, right: number) => `${left >>> 8}.${left & 255}.${right >>> 8}.${right & 255}`;
 	const zero = (from: number, to: number) => groups.slice(from, to).every((group) => group === 0);
-	const low = dotted(groups[6]!, groups[7]!);
+	const low = dotted(groups[6], groups[7]);
 	if (zero(0, 5) && groups[5] === 0xffff) return [low];
 	if (zero(0, 4) && groups[4] === 0xffff && groups[5] === 0) return [low];
-	if (zero(0, 6) && (groups[6] !== 0 || groups[7]! > 1)) return [low];
+	if (zero(0, 6) && (groups[6] !== 0 || groups[7] > 1)) return [low];
 	if (groups[0] === 0x64 && groups[1] === 0xff9b && zero(2, 6)) return [low];
-	if (groups[0] === 0x2002) return [dotted(groups[1]!, groups[2]!)];
+	if (groups[0] === 0x2002) return [dotted(groups[1], groups[2])];
 	if (groups[0] === 0x2001 && groups[1] === 0)
-		return [dotted(groups[2]!, groups[3]!), dotted(~groups[6]! & 0xffff, ~groups[7]! & 0xffff)];
+		return [dotted(groups[2], groups[3]), dotted(~groups[6] & 0xffff, ~groups[7] & 0xffff)];
 	return [];
 }
 
@@ -97,7 +97,7 @@ export function isBlockedIp(ip: string): boolean {
 	if (groups === null) return true;
 	const embedded = embeddedIpv4(groups);
 	if (embedded.length > 0) return embedded.some(isBlockedIp);
-	const first = groups[0]!;
+	const first = groups[0];
 	return (
 		groups.slice(0, 7).every((group) => group === 0) || // :: and ::1
 		(first === 0x64 && groups[1] === 0xff9b) || // NAT64 local-use 64:ff9b:1::/48 and the rest of 64:ff9b::/32
@@ -261,7 +261,7 @@ function toResponse(target: URL, response: http.IncomingMessage): Response {
 	if (status < 200 || status > 599) throw new Error(`invalid HTTP status ${status}`);
 	const headers = new Headers();
 	for (let index = 0; index + 1 < response.rawHeaders.length; index += 2)
-		headers.append(response.rawHeaders[index]!, response.rawHeaders[index + 1]!);
+		headers.append(response.rawHeaders[index], response.rawHeaders[index + 1]);
 	let body: Readable | null = response;
 	if (NULL_BODY_STATUSES.has(status)) {
 		response.resume();
@@ -304,7 +304,7 @@ function pinnedLookup(addresses: string[]): net.LookupFunction {
 	return (_hostname, options, callback) => {
 		if (options.all) return callback(null, entries);
 		const wanted = options.family === "IPv4" ? 4 : options.family === "IPv6" ? 6 : options.family;
-		const entry = entries.find(({ family }) => !wanted || family === wanted) ?? entries[0]!;
+		const entry = entries.find(({ family }) => !wanted || family === wanted) ?? entries[0];
 		callback(null, entry.address, entry.family);
 	};
 }

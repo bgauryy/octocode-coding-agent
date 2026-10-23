@@ -49,8 +49,8 @@ export function parseTemplate(text: string): MemoryInput {
 	for (const line of header) {
 		const match = /^\s*(title|kind|scope|keywords|pinned)\s*:(.*)$/i.exec(line);
 		if (!match) continue;
-		const key = match[1]!.toLowerCase();
-		const value = (key === "title" ? match[2]! : match[2]!.replace(/#.*$/, "")).trim();
+		const key = match[1].toLowerCase();
+		const value = (key === "title" ? match[2] : match[2].replace(/#.*$/, "")).trim();
 		if (key === "title") input.title = value;
 		else if (key === "keywords") input.keywords = value;
 		else if (key === "pinned") input.pinned = /^(y|yes|true|1|on)$/i.test(value);

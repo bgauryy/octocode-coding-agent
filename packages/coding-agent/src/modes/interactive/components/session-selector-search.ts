@@ -71,7 +71,7 @@ function parseSearchQuery(query: string): ParsedSearchQuery {
 	};
 
 	for (let i = 0; i < trimmed.length; i++) {
-		const ch = trimmed[i]!;
+		const ch = trimmed[i];
 		if (ch === '"') {
 			if (inQuote) {
 				flush("phrase");

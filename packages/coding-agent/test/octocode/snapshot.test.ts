@@ -114,10 +114,10 @@ describe("a destructive shell call", () => {
 		});
 		const ctx = fakeCtx({ cwd });
 		const shown: string[] = [];
-		ctx.ui.select = (async (title: string) => {
+		ctx.ui.select = async (title: string) => {
 			shown.push(title);
 			return "Allow once";
-		}) as never;
+		};
 		permission.start(ctx);
 		return { permission, ctx, shown, audit: () => fake.entries.map((entry) => entry.data as AuditEntry) };
 	}
@@ -132,7 +132,7 @@ describe("a destructive shell call", () => {
 		const cwd = repo();
 		const full = started("full", cwd);
 		await full.permission.check(full.ctx, request(cwd));
-		const ref = full.audit()[0]!.snapshot!;
+		const ref = full.audit()[0].snapshot!;
 		expect(ref).toMatch(/^refs\/octocode\/snapshots\//);
 		fs.rmSync(path.join(cwd, "tracked.txt"));
 		git(cwd, "checkout", ref, "--", "tracked.txt");
@@ -143,7 +143,7 @@ describe("a destructive shell call", () => {
 			/▸ undo: snapshot refs\/octocode\/snapshots\/\d+-\d+; git checkout .* -- <path> restores tracked files/,
 		);
 		expect(asked.shown[0]).toContain(`▸ effect:`);
-		expect(asked.audit()[0]!.snapshot).toMatch(/^refs\/octocode\/snapshots\//);
+		expect(asked.audit()[0].snapshot).toMatch(/^refs\/octocode\/snapshots\//);
 		expect(git(cwd, "status", "--porcelain")).toContain("loose.txt");
 	});
 
@@ -162,7 +162,7 @@ describe("a destructive shell call", () => {
 			via: "mode",
 			lasts: "call",
 		});
-		expect(full.audit()[0]!.snapshot).toBeUndefined();
+		expect(full.audit()[0].snapshot).toBeUndefined();
 		const asked = started("workspace", cwd, { snapshotMs: 200 });
 		await withHungGit(() => asked.permission.check(asked.ctx, request(cwd)));
 		expect(asked.shown[0]).toContain("▸ undo: none (snapshot timed out)");

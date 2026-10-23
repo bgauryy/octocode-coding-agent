@@ -97,10 +97,10 @@ describe("WindowsHelper", () => {
 		expect([first, second]).toEqual([true, true]);
 		await helper.assign(300);
 		expect(spawned).toHaveLength(1);
-		const [shell, args] = spawned[0]!;
+		const [shell, args] = spawned[0];
 		expect(shell).toBe("pwsh");
 		expect(args.slice(0, 4)).toEqual(["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
-		expect(Buffer.from(args[4]!, "base64").toString("utf16le")).toBe(WINDOWS_HELPER_SCRIPT);
+		expect(Buffer.from(args[4], "base64").toString("utf16le")).toBe(WINDOWS_HELPER_SCRIPT);
 	});
 
 	it("starts the shells by absolute path, never by a bare name the current folder could answer", async () => {

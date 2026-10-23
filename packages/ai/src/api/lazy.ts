@@ -27,6 +27,22 @@ function createSetupErrorMessage(
 	};
 }
 
+/**
+ * Ends a provider stream with an error event when its stream task rejects outside
+ * its own error handling. Does nothing to a stream that already finished.
+ */
+export function failStreamTask(
+	stream: AssistantMessageEventStream,
+	model: Model<Api>,
+	error: unknown,
+	signal?: AbortSignal,
+): void {
+	const aborted = signal?.aborted || (error instanceof Error && error.name === "AbortError");
+	const message = createSetupErrorMessage(model, error, Date.now(), aborted);
+	stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message });
+	stream.end();
+}
+
 function hasResult(
 	source: AsyncIterable<AssistantMessageEvent>,
 ): source is AsyncIterable<AssistantMessageEvent> & { result(): Promise<AssistantMessage> } {

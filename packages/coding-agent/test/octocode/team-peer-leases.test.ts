@@ -462,7 +462,7 @@ describe("peer leases in the team reservation gate", () => {
 			expect(run("lock", { path: "src/a.ts", reasoning: "custom database edit" }, id).ok).toBe(true);
 			// The package's CLI process is gone already; its entry still counts for the lease grace.
 			const [file] = fs.readdirSync(peerRegistryDir());
-			const written = JSON.parse(fs.readFileSync(path.join(peerRegistryDir(), file!), "utf8")) as {
+			const written = JSON.parse(fs.readFileSync(path.join(peerRegistryDir(), file), "utf8")) as {
 				version: number;
 				database: string;
 				pid: number;

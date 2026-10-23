@@ -142,16 +142,16 @@ function windowOf(text: string, max: number, line = 1): Window {
 	let first = start;
 	let last = start;
 	let used = 0;
-	while (last < total && used + lines[last]!.length <= max) used += lines[last++]!.length;
+	while (last < total && used + lines[last].length <= max) used += lines[last++].length;
 	if (last === start)
 		return {
-			text: cutText(lines[start]!, max, { chars: true }),
+			text: cutText(lines[start], max, { chars: true }),
 			first: start + 1,
 			last: start + 1,
 			total,
 			cut: true,
 		};
-	while (last === total && first > 0 && used + lines[first - 1]!.length <= max) used += lines[--first]!.length;
+	while (last === total && first > 0 && used + lines[first - 1].length <= max) used += lines[--first].length;
 	return { text: lines.slice(first, last).join(""), first: first + 1, last, total, cut: true };
 }
 
@@ -297,7 +297,7 @@ export function deliverRestoredFiles(
 			...(partial.length > 0 ? { partial } : {}),
 			worked: restored.worked,
 		};
-		pi.sendMessage(
+		void pi.sendMessage(
 			{ customType: RESTORED_FILES_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);

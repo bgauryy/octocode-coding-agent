@@ -127,7 +127,7 @@ describe("image bounds", () => {
 		const note = parts.find((part) => part.type === "text")!.text;
 		expect(note).toContain("original 512x512, displayed at 100x100");
 		expect(note).toContain("Multiply coordinates by 5.12");
-		expect(fs.readFileSync(/Original saved to (.+?)\.(?: |\])/.exec(note)![1]!)).toEqual(original);
+		expect(fs.readFileSync(/Original saved to (.+?)\.(?: |\])/.exec(note)![1])).toEqual(original);
 	}, 120_000); // CPU-bound wasm resize: seconds alone, several times that on a loaded machine
 
 	it("uses an original the caller saved instead of saving it again, and a model byte limit below the default budget", async () => {
@@ -176,7 +176,7 @@ describe("image bounds", () => {
 	it("replaces an invalid over-budget image by a note naming the saved full file", async () => {
 		const data = "A".repeat(IMAGE_MAX_CHARS + 4);
 		const [out] = await boundImagePart({ type: "image", data, mimeType: "image/png" }, "mcp_shot");
-		expect(out!.type).toBe("text");
+		expect(out.type).toBe("text");
 		const file = /Saved to (\S+)\./.exec((out as { text: string }).text)?.[1];
 		expect(file).toBeDefined();
 		expect(fs.readFileSync(file!).length).toBe(Buffer.from(data, "base64").length);

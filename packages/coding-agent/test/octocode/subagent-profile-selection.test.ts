@@ -165,10 +165,10 @@ describe("the spawn grant for a session", () => {
 		const grant = sessionOption("worker subagents");
 		const asked: string[] = [];
 		const replies = [grant, "Deny", "Deny", "Deny", "Deny"];
-		ctx.ui.select = (async (title: string) => {
+		ctx.ui.select = async (title: string) => {
 			asked.push(title);
 			return replies.shift();
-		}) as never;
+		};
 		const profile = parseProfile("worker", text("Fix it."));
 		await askSpawn(permission, ctx, profile, "one");
 		expect(asked).toHaveLength(1);

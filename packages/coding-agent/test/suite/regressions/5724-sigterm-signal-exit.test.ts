@@ -48,9 +48,9 @@ describe("InteractiveMode SIGTERM shutdown with signal-exit (#5724)", () => {
 	});
 
 	test("keeps signal handlers registered while signal-triggered cleanup is pending", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
+		});
 
 		const order: string[] = [];
 		const dispose = deferred();

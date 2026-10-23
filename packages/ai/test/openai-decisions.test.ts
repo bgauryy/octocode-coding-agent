@@ -87,7 +87,7 @@ describe("OpenAI Decisions", () => {
 		const result = await classify(model, context, { apiKey: "secret", fetch, temperature: 1.5 });
 
 		expect(fetch).toHaveBeenCalledOnce();
-		const [url, init] = fetch.mock.calls[0]!;
+		const [url, init] = fetch.mock.calls[0];
 		expect(String(url)).toBe("https://api.openai.com/v1/decisions");
 		expect(new Headers(init?.headers).get("authorization")).toBe("Bearer secret");
 		expect(JSON.parse(String(init?.body))).toEqual({

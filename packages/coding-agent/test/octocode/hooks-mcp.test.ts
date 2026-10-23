@@ -31,7 +31,7 @@ function hook(input: unknown = { path: "${tool_input.file_path}" }) {
 		),
 		"PreToolUse",
 		["Bash"],
-	)[0]!;
+	)[0];
 }
 it("calls the MCP owner with substituted arguments and decodes text results", async () => {
 	const call = vi.fn(async () => ({
@@ -96,7 +96,7 @@ it("skips launch SessionStart MCP hooks but runs later compact/clear hooks", asy
 		"claude",
 	);
 	expect(errors).toEqual([]);
-	const selected = commandsFor(config, "SessionStart", ["compact"])[0]!;
+	const selected = commandsFor(config, "SessionStart", ["compact"])[0];
 	const call = vi.fn(async () => ({
 		content: [{ type: "text" as const, text: "session guidance" }],
 	}));
@@ -153,7 +153,7 @@ it("runs Codex MCP hooks on existing connections with typed recursive placeholde
 		],
 	}));
 	const result = await runHook(
-		selected!,
+		selected,
 		{
 			hook_event_name: "PreToolUse",
 			tool_input: { count: 3, object: { enabled: true }, nil: null },
@@ -183,7 +183,7 @@ it("fails Codex missing placeholders without invoking the tool", async () => {
 	});
 	expect(errors).toEqual([]);
 	const call = vi.fn();
-	const result = await runHook(selected!, { tool_input: {} }, tmp(), {}, undefined, call);
+	const result = await runHook(selected, { tool_input: {} }, tmp(), {}, undefined, call);
 	expect(result.code).toBeNull();
 	expect(result.stderr).toContain("was not found");
 	expect(call).not.toHaveBeenCalled();
@@ -194,7 +194,7 @@ it("attempts Codex startup MCP hooks but excludes SessionEnd", async () => {
 	const call = vi.fn(async () => ({
 		content: [{ type: "text" as const, text: "startup context" }],
 	}));
-	await runHook(selected!, { hook_event_name: "SessionStart", source: "startup" }, tmp(), {}, undefined, call);
+	await runHook(selected, { hook_event_name: "SessionStart", source: "startup" }, tmp(), {}, undefined, call);
 	expect(call).toHaveBeenCalledWith(expect.objectContaining({ waitForConnection: false }));
 	const ending = codexHook("SessionEnd");
 	expect(ending.selected).toBeUndefined();
@@ -205,7 +205,7 @@ it("isolates typed Codex placeholder objects from the original event payload", a
 	const { selected } = codexHook("PreToolUse", {
 		value: "${tool_input.nested}",
 	});
-	await runHook(selected!, payload, tmp(), {}, undefined, async (request) => {
+	await runHook(selected, payload, tmp(), {}, undefined, async (request) => {
 		(request.input.value as { permitted: boolean }).permitted = true;
 		return { content: [] };
 	});

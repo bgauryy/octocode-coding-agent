@@ -184,7 +184,7 @@ function resolvePromptInput(input: string | undefined, description: string): str
 		try {
 			return stripBom(readFileSync(input, "utf-8"));
 		} catch (error) {
-			console.error(chalk.yellow(`Warning: Could not read ${description} file ${input}: ${error}`));
+			console.error(chalk.yellow(`Warning: Could not read ${description} file ${input}: ${String(error)}`));
 			return input;
 		}
 	}
@@ -218,7 +218,7 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 					content: capContextFile(filePath, stripBom(readFileSync(filePath, "utf-8"))),
 				};
 			} catch (error) {
-				console.error(chalk.yellow(`Warning: Could not read ${filePath}: ${error}`));
+				console.error(chalk.yellow(`Warning: Could not read ${filePath}: ${String(error)}`));
 			}
 		}
 	}

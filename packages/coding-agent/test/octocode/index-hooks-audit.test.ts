@@ -115,7 +115,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 			input: { queries: [{ type: "write", path: "original.txt", content: "old", reasoning: "create" }] },
 		};
 		await fake.emit("tool_call", event, ctx);
-		expect(event.input.queries[0]!.path).toBe(destination);
+		expect(event.input.queries[0].path).toBe(destination);
 		await expect(
 			fake.tools.get("file").execute(event.toolCallId, event.input, undefined, undefined, ctx),
 		).rejects.toThrow("Reserved by peer");

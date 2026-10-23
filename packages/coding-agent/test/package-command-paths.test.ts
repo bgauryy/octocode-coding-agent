@@ -155,14 +155,14 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 		originalExitCode = process.exitCode;
 		originalExecPath = process.execPath;
 		process.exitCode = undefined;
-		vi.spyOn(process, "exit").mockImplementation(((code?: string | number | null) => {
+		vi.spyOn(process, "exit").mockImplementation((code?: string | number | null) => {
 			if (code === undefined || code === null || Number(code) === 0) {
 				process.exitCode = undefined;
 			} else {
 				process.exitCode = code;
 			}
 			return undefined as never;
-		}) as typeof process.exit);
+		});
 		process.env[ENV_AGENT_DIR] = agentDir;
 		process.chdir(projectDir);
 	});

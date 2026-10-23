@@ -47,7 +47,7 @@ describe('banner "OCTOCODE CODE"', () => {
 		};
 		bannerLines(paint, 120);
 		const strokes = calls.filter((call) => call.shade === "stroke");
-		expect(strokes[0]!.t).toBe(0);
+		expect(strokes[0].t).toBe(0);
 		expect(Math.max(...strokes.map((call) => call.t))).toBeGreaterThan(0.95);
 		expect(calls.filter((call) => call.shade === "shadow").every((call) => !call.text.includes("█"))).toBe(true);
 		expect(calls.every((call) => call.glow === 0)).toBe(true);

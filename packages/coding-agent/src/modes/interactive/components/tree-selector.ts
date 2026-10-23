@@ -942,21 +942,26 @@ class TreeList implements Component {
 			return p;
 		};
 
+		const text = (...values: unknown[]): string => {
+			for (const value of values) if (typeof value === "string" && value) return value;
+			return "";
+		};
+
 		switch (name) {
 			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
+				const path = shortenPath(text(args.path, args.file_path));
 				return `[read: ${path}${formatReadLineRange(args.offset, args.limit)}]`;
 			}
 			case "write": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
+				const path = shortenPath(text(args.path, args.file_path));
 				return `[write: ${path}]`;
 			}
 			case "edit": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
+				const path = shortenPath(text(args.path, args.file_path));
 				return `[edit: ${path}]`;
 			}
 			case "bash": {
-				const rawCmd = String(args.command || "");
+				const rawCmd = text(args.command);
 				const cmd = rawCmd
 					.replace(/[\n\t]/g, " ")
 					.trim()
@@ -964,17 +969,17 @@ class TreeList implements Component {
 				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
 			}
 			case "grep": {
-				const pattern = String(args.pattern || "");
-				const path = shortenPath(String(args.path || "."));
+				const pattern = text(args.pattern);
+				const path = shortenPath(text(args.path) || ".");
 				return `[grep: /${pattern}/ in ${path}]`;
 			}
 			case "find": {
-				const pattern = String(args.pattern || "");
-				const path = shortenPath(String(args.path || "."));
+				const pattern = text(args.pattern);
+				const path = shortenPath(text(args.path) || ".");
 				return `[find: ${pattern} in ${path}]`;
 			}
 			case "ls": {
-				const path = shortenPath(String(args.path || "."));
+				const path = shortenPath(text(args.path) || ".");
 				return `[ls: ${path}]`;
 			}
 			default: {
@@ -1081,7 +1086,7 @@ class TreeList implements Component {
 		} else if (kb.matches(keyData, "app.tree.toggleLabelTimestamp")) {
 			this.showLabelTimestamps = !this.showLabelTimestamps;
 		} else {
-			const hasControlChars = [...keyData].some((ch) => {
+			const hasControlChars = keyData.split("").some((ch) => {
 				const code = ch.charCodeAt(0);
 				return code < 32 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
 			});
@@ -1245,7 +1250,7 @@ function formatHelpKeys(keybindings: Keybinding[]): string {
 }
 
 function compactRawKeys(keys: string[]): string {
-	if (keys.length === 1) return keys[0]!;
+	if (keys.length === 1) return keys[0];
 
 	const parts = keys.map((key) => {
 		const separatorIndex = key.lastIndexOf("+");
@@ -1253,7 +1258,7 @@ function compactRawKeys(keys: string[]): string {
 			? { prefix: "", suffix: key }
 			: { prefix: key.slice(0, separatorIndex + 1), suffix: key.slice(separatorIndex + 1) };
 	});
-	const prefix = parts[0]!.prefix;
+	const prefix = parts[0].prefix;
 	return prefix && parts.every((part) => part.prefix === prefix)
 		? `${prefix}${parts.map((part) => part.suffix).join("/")}`
 		: keys.join("/");

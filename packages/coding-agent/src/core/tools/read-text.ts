@@ -46,7 +46,7 @@ export async function readTextWindow(
 		signal?.throwIfAborted();
 		const parts = (chunk as string).split("\n");
 		for (let index = 0; index < parts.length; index++) {
-			part(parts[index]!);
+			part(parts[index]);
 			if (index < parts.length - 1) {
 				line++;
 				startedLine = false;

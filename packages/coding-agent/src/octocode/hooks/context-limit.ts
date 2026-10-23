@@ -9,8 +9,8 @@ function preview(text: string, limit: number): string {
 	if (bytes.length <= budget) return text;
 	let left = Math.floor(budget / 2);
 	let right = bytes.length - (budget - left);
-	while (left > 0 && (bytes[left]! & 0xc0) === 0x80) left--;
-	while (right < bytes.length && (bytes[right]! & 0xc0) === 0x80) right++;
+	while (left > 0 && (bytes[left] & 0xc0) === 0x80) left--;
+	while (right < bytes.length && (bytes[right] & 0xc0) === 0x80) right++;
 	const lines = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 	return (
 		`Warning: truncated output (original token count: ${tokens(text)})\nTotal output lines: ${lines}\n\n` +

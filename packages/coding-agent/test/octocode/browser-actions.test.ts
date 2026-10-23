@@ -373,8 +373,8 @@ describe("visible mode (headless=false)", () => {
 		expect(await text({ action: "info" })).toBe(
 			`own Chrome (visible) · profile ${profile} · DevTools port ${chrome.port} · https://example.com/ | Stub`,
 		);
-		expect(launch.mock.calls[0]![0]).toMatchObject({ userDataDir: profile });
-		expect(launch.mock.calls[0]![0].chromeFlags).not.toContain("--headless=new");
+		expect(launch.mock.calls[0][0]).toMatchObject({ userDataDir: profile });
+		expect(launch.mock.calls[0][0].chromeFlags).not.toContain("--headless=new");
 		await handlers.get("session_shutdown")!();
 		expect(kill).not.toHaveBeenCalled();
 		expect(unref).toHaveBeenCalled();

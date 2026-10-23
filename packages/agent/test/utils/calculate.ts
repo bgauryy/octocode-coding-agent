@@ -9,6 +9,7 @@ export interface CalculateResult extends AgentToolResult<undefined> {
 
 export function calculate(expression: string): CalculateResult {
 	try {
+		// oxlint-disable-next-line typescript/no-implied-eval -- test calculator evaluates model-written arithmetic
 		const result = new Function(`return ${expression}`)();
 		return { content: [{ type: "text", text: `${expression} = ${result}` }], details: undefined };
 	} catch (e: any) {

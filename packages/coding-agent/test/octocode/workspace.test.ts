@@ -166,6 +166,42 @@ describe("workspace data and commands", () => {
 		app.connection.close();
 	});
 
+	it("keeps typed verdicts visible without projecting large result data", async () => {
+		const app = setup();
+		await app.emit("session_start", {}, app.ctx);
+		const data = { payload: "x".repeat(40000) };
+		for (const status of ["valid", "invalid", "unavailable"] as const) {
+			await app.emit(
+				"message_end",
+				{
+					message: {
+						role: "custom",
+						customType: "octocode-agent-result",
+						content: `Checked\nNotes\nStructured result:\n\`\`\`json\n${JSON.stringify(data)}\n\`\`\``,
+						details: {
+							status: "done",
+							outcome: "done",
+							summary: "Checked",
+							structured: {
+								version: 1,
+								schemaHash: "abc",
+								status,
+								...(status === "valid" ? { data } : { error: { code: "invalid_result" } }),
+							},
+						},
+					},
+				},
+				app.ctx,
+			);
+			const event = app.connection.snapshot().events.at(-1)!;
+			expect(event.details).toMatchObject({ structured: { schemaHash: "abc", status } });
+			expect(JSON.stringify(event)).not.toContain(data.payload);
+			expect(event.text).not.toContain('"payload"');
+			expect(event.outcome).toBe(status === "valid" ? "succeeded" : "failed");
+		}
+		app.connection.close();
+	});
+
 	it("exposes comments and scoped commands through authenticated HTTP", async () => {
 		const app = setup();
 		const item = add();

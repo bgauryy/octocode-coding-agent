@@ -12,7 +12,6 @@ import {
 	estimateTokens,
 	finalizeCompactionResult,
 } from "./compaction/index.ts";
-import type { NativeCompactionResult } from "./compaction/native-result.ts";
 import type { ExtensionRunner } from "./extensions/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 
@@ -66,14 +65,14 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	let extensionCompaction: CompactionResult | undefined;
 
 	if (host.extensionRunner.hasHandlers("session_before_compact")) {
-		const result = (await host.extensionRunner.emit({
+		const result = await host.extensionRunner.emit({
 			type: "session_before_compact",
 			preparation,
 			branchEntries: run.branchEntries,
 			reason,
 			willRetry,
 			signal,
-		})) as NativeCompactionResult | undefined;
+		});
 
 		if (result?.cancel) {
 			run.outcome.cancelledByExtension = true;

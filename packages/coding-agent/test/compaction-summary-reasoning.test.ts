@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { type AssistantMessage, type Model, normalizeContext, type TranscriptContext } from "@octocodeai/octocode-ai";
+import type * as AiCompat from "@octocodeai/octocode-ai/compat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CompactionPreparation,
@@ -14,7 +15,7 @@ const { completeSimpleMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@octocodeai/octocode-ai/compat", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@octocodeai/octocode-ai/compat")>();
+	const actual = await importOriginal<typeof AiCompat>();
 	return {
 		...actual,
 		completeSimple: completeSimpleMock,

@@ -84,7 +84,7 @@ export function describeModels(
 			? ""
 			: "fallback" in route && route.fallback
 				? ` (${profile.model} unavailable)`
-				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]!) ? ", a purpose" : ""})`;
+				: ` (${profile.model}${isModelTier(profile.model.split(":")[0]) ? ", a purpose" : ""})`;
 		return `  ${profile.name}: ${runs}${asked}`;
 	});
 	return [

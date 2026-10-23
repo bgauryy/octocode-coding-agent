@@ -20,7 +20,6 @@ import type {
 	AssistantMessage,
 	Model,
 	SimpleStreamOptions,
-	SystemMessage,
 	TranscriptContext,
 	Usage,
 } from "@octocodeai/octocode-ai/compat";
@@ -137,7 +136,7 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = builtInCompaction
  */
 function getAssistantUsage(msg: AgentMessage): Usage | undefined {
 	if (msg.role === "assistant" && "usage" in msg) {
-		const assistantMsg = msg as AssistantMessage;
+		const assistantMsg = msg;
 		if (
 			assistantMsg.stopReason !== "aborted" &&
 			assistantMsg.stopReason !== "error" &&
@@ -290,7 +289,7 @@ export function estimateTokens(message: AgentMessage): number {
 
 	switch (message.role) {
 		case "system": {
-			const system = message as SystemMessage;
+			const system = message;
 			chars = estimateTextAndImageContentChars(system.content);
 			if (system.sections) {
 				for (const section of Object.values(system.sections)) {
@@ -307,7 +306,7 @@ export function estimateTokens(message: AgentMessage): number {
 			return Math.ceil(chars / 4);
 		}
 		case "assistant": {
-			const assistant = message as AssistantMessage;
+			const assistant = message;
 			for (const block of assistant.content) {
 				if (block.type === "text") {
 					chars += block.text.length;
@@ -1041,7 +1040,7 @@ export async function compact(
 		firstKeptEntryId,
 		tokensBefore,
 		usage: summaryUsage,
-		details: { readFiles, modifiedFiles } as CompactionDetails,
+		details: { readFiles, modifiedFiles },
 	};
 }
 

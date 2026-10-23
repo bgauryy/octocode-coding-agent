@@ -22,9 +22,9 @@ export class VStack extends Stack {
 			if (index > 0) {
 				for (let gap = 0; gap < this.gap; gap++) lines.push("");
 			}
-			const childLines = rendered[index]!.slice(0, sizes[index]);
+			const childLines = rendered[index].slice(0, sizes[index]);
 			lines.push(...childLines);
-			for (let padding = childLines.length; padding < sizes[index]!; padding++) lines.push("");
+			for (let padding = childLines.length; padding < sizes[index]; padding++) lines.push("");
 		}
 		return lines;
 	}

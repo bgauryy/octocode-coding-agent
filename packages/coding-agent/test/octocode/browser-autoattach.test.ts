@@ -227,7 +227,7 @@ describe("the connection and auto-attached sessions", () => {
 		});
 		const worker = stub.autoAttach({ id: "w", type: "worker", parent: "a" });
 		await vi.waitFor(() => expect(attached).toHaveLength(1));
-		const session = attached[0]!.page;
+		const session = attached[0].page;
 		const seen: string[] = [];
 		session.on((method) => seen.push(method));
 		worker.emit("Runtime.executionContextCreated");

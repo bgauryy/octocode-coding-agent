@@ -72,7 +72,7 @@ The feed keeps at most 200 events, so it is not virtualized. No authoritative it
 - The host test keeps the CSP, markup and network-API literal checks.
 - `webview/test/security.test.ts` checks that this package's source contains no sink.
 - The same test runs the offline export on hostile data across every view, with each HTML sink and network API trapped. A mutation check confirmed that an injected `innerHTML` write fails it.
-- Biome forbids `dangerouslySetInnerHTML`.
+- Oxlint (`react/no-danger`) forbids `dangerouslySetInnerHTML`; the review ran when Biome enforced the same rule.
 
 **Cost.** The offline export script grew from about 20 KB to about 268 KB, and the live script from about 349 KB to about 609 KB, mostly React DOM.
 

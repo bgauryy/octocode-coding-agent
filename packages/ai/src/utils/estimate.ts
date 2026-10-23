@@ -1,4 +1,4 @@
-import type { AssistantMessage, ImageContent, Message, TextContent, TranscriptContext, Usage } from "../types.ts";
+import type { ImageContent, Message, TextContent, TranscriptContext, Usage } from "../types.ts";
 import { getSystemMessageText } from "./text.ts";
 
 interface ContextUsageEstimate {
@@ -75,7 +75,7 @@ function getLastAssistantUsageInfo(messages: readonly Message[]): { usage: Usage
 	for (let i = 0; i < messages.length; i++) {
 		const message = messages[i];
 		if (message.role === "assistant") {
-			const assistant = message as AssistantMessage;
+			const assistant = message;
 			// A newer prefix message was inserted after this response (for example, a
 			// compaction summary), so its usage cannot describe the current prefix.
 			const usageAppliesToPrefix = assistant.timestamp >= latestPrefixTimestamp;

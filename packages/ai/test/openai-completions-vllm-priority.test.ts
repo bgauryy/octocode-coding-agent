@@ -78,9 +78,7 @@ describe("openai-completions vllm priority", () => {
 	});
 
 	it("sends compat.vllmPriority as the top-level priority request field", async () => {
-		const payload = await captureRequest(
-			createModel({ compat: { vllmPriority: 10 } as Model<"openai-completions">["compat"] }),
-		);
+		const payload = await captureRequest(createModel({ compat: { vllmPriority: 10 } }));
 
 		expect(payload?.priority).toBe(10);
 	});

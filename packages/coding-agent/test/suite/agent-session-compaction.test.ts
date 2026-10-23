@@ -906,7 +906,7 @@ describe("AgentSession compaction characterization", () => {
 			timestamp: staleTimestamp - 1000,
 		});
 		harness.sessionManager.appendMessage(staleAssistant);
-		const firstKeptEntryId = harness.sessionManager.getEntries()[0]!.id;
+		const firstKeptEntryId = harness.sessionManager.getEntries()[0].id;
 		harness.sessionManager.appendCompaction(
 			"summary",
 			firstKeptEntryId,
@@ -993,7 +993,7 @@ describe("AgentSession compaction characterization", () => {
 			timestamp: preCompactionTimestamp - 1000,
 		});
 		harness.sessionManager.appendMessage(keptAssistant);
-		const firstKeptEntryId = harness.sessionManager.getEntries()[0]!.id;
+		const firstKeptEntryId = harness.sessionManager.getEntries()[0].id;
 		harness.sessionManager.appendCompaction(
 			"summary",
 			firstKeptEntryId,

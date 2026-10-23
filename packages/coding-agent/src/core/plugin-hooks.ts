@@ -45,7 +45,7 @@ export function inspectPluginHooks(entry: NonNullable<Settings["plugins"]>[numbe
 			if ("modules" in value)
 				result.errors.push(`${source}: modules require the unsupported Claude Mods runtime; plugin hooks not approved`);
 			hash.update(JSON.stringify([source, text]));
-			result.definitions.push({ source, value: value as Record<string, unknown> });
+			result.definitions.push({ source, value: value });
 		}
 		if (result.errors.length === 0) result.fingerprint = hash.digest("hex");
 	} catch (error) {

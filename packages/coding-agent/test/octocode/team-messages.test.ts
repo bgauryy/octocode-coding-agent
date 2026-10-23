@@ -112,8 +112,8 @@ describe("team message delivery", () => {
 			});
 			const [mine] = store.pending("a-0001");
 			expect(mine).toMatchObject({ id, to: "a-0001" });
-			expect(userProofValid("secret-a", mine!)).toBe(true);
-			expect(store.pending("b-0002")[0]!.proof).toBeUndefined();
+			expect(userProofValid("secret-a", mine)).toBe(true);
+			expect(store.pending("b-0002")[0].proof).toBeUndefined();
 		} finally {
 			store.close();
 		}
@@ -160,7 +160,7 @@ describe("team message delivery", () => {
 			expect([store.waiting("a-0001", id), store.pending("a-0001", id).map((m) => m.id)]).toEqual([1, [later]]);
 			store.ack("a-0001", [id, later]);
 			expect(store.pending("a-0001")).toEqual([]);
-			expect(store.recent()[0]!.state).toBe("delivered");
+			expect(store.recent()[0].state).toBe("delivered");
 		} finally {
 			store.close();
 		}

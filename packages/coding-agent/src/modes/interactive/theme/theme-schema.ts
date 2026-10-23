@@ -141,5 +141,5 @@ export function validateThemeJson(label: string, json: unknown): ValidatedThemeJ
 		throw new Error(errorMessage);
 	}
 
-	return json as ValidatedThemeJson;
+	return json;
 }

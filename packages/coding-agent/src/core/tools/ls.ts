@@ -88,7 +88,7 @@ export function createLsToolDefinition(
 				const onAbort = () => reject(new Error("Operation aborted"));
 				signal?.addEventListener("abort", onAbort, { once: true });
 
-				(async () => {
+				void (async () => {
 					try {
 						const dirPath = resolveToCwd(path || ".", ctx?.cwd || cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;
@@ -134,10 +134,13 @@ export function createLsToolDefinition(
 
 							const start = index;
 							const batch = entries.slice(index, index + Math.min(32, effectiveLimit - results.length));
-							const stats = await Promise.allSettled(batch.map((entry) => ops.stat(nodePath.join(dirPath, entry))));
+							const stats = await Promise.allSettled(
+								// async wraps synchronous stat results and throws so a failed entry is skipped
+								batch.map(async (entry) => ops.stat(nodePath.join(dirPath, entry))),
+							);
 							for (const [relative, stat] of stats.entries()) {
 								if (stat.status !== "fulfilled") continue;
-								results.push(batch[relative]! + (stat.value.isDirectory() ? "/" : ""));
+								results.push(batch[relative] + (stat.value.isDirectory() ? "/" : ""));
 								positions.push(start + relative);
 							}
 							index += batch.length;
@@ -168,7 +171,7 @@ export function createLsToolDefinition(
 						}
 						if (entryLimitReached || truncation.truncated) {
 							const shown = truncation.truncated ? truncation.outputLines : results.length;
-							details.nextOffset = positions[shown - 1]! + 1;
+							details.nextOffset = positions[shown - 1] + 1;
 							notices.push(`Use offset=${details.nextOffset} to continue (entries must remain unchanged)`);
 						}
 						if (notices.length > 0) {

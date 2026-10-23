@@ -112,9 +112,9 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	});
 
 	test("signal-triggered shutdown emits session_shutdown before terminal writes", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
+		});
 		const order: string[] = [];
 		const context = createContext(order);
 
@@ -125,9 +125,9 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	});
 
 	test("interactive quit stops the TUI before emitting session_shutdown", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
+		});
 		const order: string[] = [];
 		const context = createContext(order);
 
@@ -137,12 +137,10 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	});
 
 	test("interactive quit prints a resume hint for persisted sessions", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
-		const stdoutWrite = vi
-			.spyOn(process.stdout, "write")
-			.mockImplementation((() => true) as typeof process.stdout.write);
+		});
+		const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		setStdoutIsTTY(true);
 		const order: string[] = [];
 		const context = createContext(order, createSessionManager({ sessionFile: createTempFile() }));
@@ -156,12 +154,10 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	});
 
 	test("signal-triggered shutdown does not print a resume hint", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
-		const stdoutWrite = vi
-			.spyOn(process.stdout, "write")
-			.mockImplementation((() => true) as typeof process.stdout.write);
+		});
+		const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		setStdoutIsTTY(true);
 		const order: string[] = [];
 		const context = createContext(order, createSessionManager({ sessionFile: createTempFile() }));
@@ -174,9 +170,9 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 	});
 
 	test("re-entrant shutdown is a no-op", async () => {
-		vi.spyOn(process, "exit").mockImplementation((() => {
+		vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new ProcessExitError();
-		}) as typeof process.exit);
+		});
 		const order: string[] = [];
 		const context = createContext(order);
 		context.isShuttingDown = true;

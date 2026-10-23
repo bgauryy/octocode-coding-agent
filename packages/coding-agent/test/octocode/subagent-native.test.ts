@@ -106,5 +106,5 @@ describe("native Octocode subagent completion", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

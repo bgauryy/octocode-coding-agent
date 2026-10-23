@@ -84,9 +84,9 @@ describe("isolated subagent worktrees", () => {
 		const refs: string[] = [];
 		// dup-1, dup-1 again (takes dup-1-2), then an agent really named dup-1-2: its own ref is taken too.
 		for (const [id, text] of [
-			["dup-1", texts["dup-1"]!],
+			["dup-1", texts["dup-1"]],
 			["dup-1", "second\n"],
-			["dup-1-2", texts["dup-1-2"]!],
+			["dup-1-2", texts["dup-1-2"]],
 		] as const) {
 			const worktree = await createWorktree(dir, id, home);
 			fs.writeFileSync(path.join(worktree.cwd, "src", "a.txt"), text);
@@ -205,7 +205,7 @@ describe("isolated subagent worktrees", () => {
 		const pending = [pruneWorktrees(dir, home), pruneWorktrees(dir, home)];
 		expect(pending[0]).toBe(pending[1]);
 		const [first] = await Promise.all(pending);
-		expect(first!.saved).toEqual([{ agentId: "race-1", ref: "refs/octocode/pi/race-1" }]);
+		expect(first.saved).toEqual([{ agentId: "race-1", ref: "refs/octocode/pi/race-1" }]);
 		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode/pi/")).toBe("refs/octocode/pi/race-1");
 
 		// A session that died mid-prune leaves its claim behind; the next prune takes it over.
@@ -392,7 +392,7 @@ describe("isolated subagent worktrees", () => {
 			{ agentId: "stuck-1", error: expect.stringContaining(`worktree is kept at ${stuck.path}`) },
 		]);
 		expect(fs.readFileSync(path.join(stuck.path, "src", "a.txt"), "utf8")).toBe("stuck-1 work\n");
-		const ref = report.saved[0]!.ref!;
+		const ref = report.saved[0].ref!;
 		expect(ref).toBe("refs/octocode/pi/lost-1-2");
 		expect(git(dir, "show", `${ref}:src/a.txt`)).toBe("lost-1 work");
 		const note = describePrune(report)!;

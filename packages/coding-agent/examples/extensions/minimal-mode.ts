@@ -100,7 +100,7 @@ export default function (octocode: ExtensionAPI) {
 
 		renderCall(args, theme, _context) {
 			const command = args.command || "...";
-			const timeout = args.timeout as number | undefined;
+			const timeout = args.timeout;
 			const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
 
 			return new Text(theme.fg("toolTitle", theme.bold(`$ ${command}`)) + timeoutSuffix, 0, 0);

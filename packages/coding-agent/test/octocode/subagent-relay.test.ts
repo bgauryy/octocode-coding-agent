@@ -88,7 +88,7 @@ async function relay(
 	);
 	const [, relayed, nonce, file, mode, gone, leaked, answers] =
 		/^RELAYED relay=(\S*) nonce=(\S*) file=(\S*) mode=(\S*) gone=(\S*) leaked=(\S*) (.*)$/.exec(outcome.text)!;
-	return { relayed, nonce, file, mode, gone, leaked, answers: JSON.parse(answers!) as Array<Record<string, unknown>> };
+	return { relayed, nonce, file, mode, gone, leaked, answers: JSON.parse(answers) as Array<Record<string, unknown>> };
 }
 
 /** `$NONCE` stands for the nonce the parent gave the child; the fixture child fills it in. */
@@ -125,7 +125,7 @@ describe("subagent dialogs relayed to the parent", () => {
 		});
 		const { answers } = await relay([forged], { permission: parent("workspace").permission, ui: dialogs });
 		expect(dialogs.select).toHaveBeenCalledTimes(1);
-		const [title, options] = dialogs.select.mock.calls[0]!;
+		const [title, options] = dialogs.select.mock.calls[0];
 		expect(title.split("\n")[0]).toBe(LABEL);
 		expect(title).toContain("Run it?");
 		expect(title).not.toContain("octocode-permission/1");
@@ -215,7 +215,7 @@ describe("subagent dialogs relayed to the parent", () => {
 			const full = parent("full");
 			const result = await relay([request], { permission: full.permission, ui: dialogs });
 			expect(dialogs.select, String(request.id)).toHaveBeenCalledTimes(1);
-			expect(dialogs.select.mock.calls[0]![0]).toContain("octocode-permission/1");
+			expect(dialogs.select.mock.calls[0][0]).toContain("octocode-permission/1");
 			expect(result.answers[0]).toMatchObject({ value: DENY });
 			expect(full.entries()).toEqual([]);
 		}
@@ -273,7 +273,7 @@ describe("subagent dialogs relayed to the parent", () => {
 		// The twelfth is past the limit too; its denial has no note to follow.
 		expect(answers[12]).toEqual({ type: "extension_ui_response", id: "d12", value: DENY_NOTE });
 		expect(dialogs.notify).toHaveBeenCalledTimes(1);
-		expect(dialogs.notify.mock.calls[0]![0]).toContain("Subagent a-relay");
+		expect(dialogs.notify.mock.calls[0][0]).toContain("Subagent a-relay");
 		expect(dialogs.input).not.toHaveBeenCalled();
 	});
 
@@ -406,7 +406,7 @@ describe("subagent dialogs relayed to the parent", () => {
 			permission: parent("manual").permission,
 			ui: dialogs,
 		});
-		const [title] = dialogs.select.mock.calls[0]!;
+		const [title] = dialogs.select.mock.calls[0];
 		expect(title).toContain("octocode-permission/1 ");
 		expect(title).toContain("not what the dialog shows");
 		expect(title).toContain("[nonce redacted]");
@@ -543,5 +543,5 @@ describe("subagent dialogs relayed to the parent", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

@@ -32,7 +32,7 @@ describe("createAgentSession session manager defaults", () => {
 		const { session } = await createAgentSession({
 			cwd,
 			agentDir,
-			model: model!,
+			model: model,
 		});
 
 		const safePath = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
@@ -54,7 +54,7 @@ describe("createAgentSession session manager defaults", () => {
 		const { session } = await createAgentSession({
 			cwd,
 			agentDir,
-			model: model!,
+			model: model,
 			sessionManager,
 		});
 
@@ -73,7 +73,7 @@ describe("createAgentSession session manager defaults", () => {
 		const sessionManager = SessionManager.inMemory(sessionCwd);
 		const { session } = await createAgentSession({
 			agentDir,
-			model: model!,
+			model: model,
 			sessionManager,
 		});
 
@@ -100,7 +100,7 @@ describe("createAgentSession session manager defaults", () => {
 		const { session } = await createAgentSession({
 			cwd,
 			agentDir,
-			model: model!,
+			model: model,
 			thinkingLevel: "high",
 		});
 		expect(session.sessionFile).toBeTruthy();
@@ -121,8 +121,8 @@ describe("createAgentSession session manager defaults", () => {
 		expect(output.trim().split("\n")).toEqual([
 			session.sessionId,
 			session.sessionFile,
-			model!.provider,
-			model!.id,
+			model.provider,
+			model.id,
 			session.thinkingLevel,
 		]);
 

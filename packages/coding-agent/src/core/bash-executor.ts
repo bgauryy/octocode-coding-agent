@@ -129,9 +129,10 @@ export async function executeBashWithOperations(
 		if (!options?.signal?.aborted) {
 			try {
 				await closeTempFile?.();
-			} finally {
-				throw err;
+			} catch {
+				// Report the command failure rather than the cleanup failure
 			}
+			throw err;
 		}
 	}
 

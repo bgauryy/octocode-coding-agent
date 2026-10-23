@@ -1,10 +1,11 @@
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import type * as SpillModule from "../../src/octocode/shared/spill.ts";
 
 const savedTexts = vi.hoisted(() => [] as string[]);
 vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
-	...(await original<typeof import("../../src/octocode/shared/spill.ts")>()),
+	...(await original<typeof SpillModule>()),
 	saveFullOutput: (text: string) => {
 		savedTexts.push(text);
 		return `/checkpoint-${savedTexts.length}.txt`;
@@ -217,15 +218,15 @@ describe("compaction summary", () => {
 			{ role: "toolResult", toolCallId: "s", content: [{ type: "text", text: "short" }] },
 			{ role: "user", content: log },
 		];
-		const view = summarizerView(messages) as typeof messages;
-		const text = (view[0]!.content as Array<{ type: string; text?: string }>)[0]!.text!;
+		const view = summarizerView(messages);
+		const text = (view[0].content as Array<{ type: string; text?: string }>)[0].text!;
 		expect(text.length).toBeLessThanOrEqual(SUMMARIZER_RESULT_CHARS);
 		expect(text).toContain("Complete text saved at");
 		expect(savedTexts.at(-1)).toBe(log);
-		expect(view[0]!.content).toContainEqual(image);
+		expect(view[0].content).toContainEqual(image);
 		expect(view[1]).toBe(messages[1]);
 		expect(view[2]).toBe(messages[2]);
-		expect((messages[0]!.content as Array<{ text?: string }>)[0]!.text).toBe(log);
+		expect((messages[0].content as Array<{ text?: string }>)[0].text).toBe(log);
 	});
 
 	it("preserves the existing archive provenance when replacing a collection with a durable reference", () => {
@@ -243,7 +244,7 @@ describe("compaction summary", () => {
 		const view = summarizerView([
 			{ role: "toolResult", toolCallId: "t", content: [{ type: "text", text: `x${emoji}` }] },
 		]) as Array<{ content: Array<{ text: string }> }>;
-		expect(view[0]!.content[0]!.text).not.toMatch(lone);
+		expect(view[0].content[0].text).not.toMatch(lone);
 		const section = userMessagesSection([], 0, [`x${emoji}`], { total: 60_000, perMessage: 1_001 });
 		expect(section).not.toMatch(lone);
 	});

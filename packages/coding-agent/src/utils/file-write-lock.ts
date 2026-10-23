@@ -64,17 +64,22 @@ export async function withFileWriteLock<T>(
 		signal?.throwIfAborted();
 		if (compromised) throw compromised;
 	};
-	let completed = false;
+	let result: T;
 	try {
 		assertHeld();
-		const result = await mutate(target, assertHeld);
-		completed = true;
-		return result;
-	} finally {
+		result = await mutate(target, assertHeld);
+	} catch (error) {
 		try {
 			await release();
-		} catch (error) {
-			if (completed) throw new FileLockReleaseError(file, error);
+		} catch {
+			// A failed mutation reports its own error, not a release failure.
 		}
+		throw error;
 	}
+	try {
+		await release();
+	} catch (error) {
+		throw new FileLockReleaseError(file, error);
+	}
+	return result;
 }

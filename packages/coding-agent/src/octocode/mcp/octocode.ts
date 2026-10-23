@@ -12,11 +12,10 @@ import { type McpServerStatus, setMcpSessionStatus } from "../../extensions/mcp/
 import { notify } from "../shared/commands.ts";
 import { envFlag, MCP_ENV } from "../shared/env.ts";
 import { octocodeHome } from "../shared/home.ts";
-import { OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX } from "../shared/octocode-tools.ts";
+import { OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX, isDirectResearchTool } from "../shared/octocode-tools.ts";
 import { findManifest, packageRoot } from "../shared/package.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { type Launch, OctocodeServer, type ServerStatus } from "./client.ts";
-import { isDirectResearchTool } from "../shared/octocode-tools.ts";
 import { octocodeToolDefinition, TurnBudget } from "./tools.ts";
 
 /**

@@ -218,12 +218,12 @@ function registerCoordinateTool(
 			renderCall(args, theme, context) {
 				const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
 				const target = paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? "");
-				const id = (args as Partial<CoordinateParams>).id;
+				const { id, goal } = args as Partial<CoordinateParams>;
 				const summary = [
 					String(args.action ?? ""),
 					id === undefined ? "" : String(id),
 					target,
-					args.goal ? `"${String(args.goal)}"` : "",
+					goal ? `"${String(goal)}"` : "",
 				]
 					.filter(Boolean)
 					.join(" ");
@@ -360,7 +360,7 @@ function registerTeamEvents(pi: ExtensionAPI, team: Team, beforeLeave?: (reason:
 	// Team mail is delivered when the model is called with it. Octocode emits `context` before every model call, whichever way
 	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
 	pi.on("context", async (event) => {
-		team.onContext(event.messages as Array<{ role?: string; customType?: string; details?: unknown }>);
+		team.onContext(event.messages);
 		return undefined;
 	});
 	// Who changed which file, for `coordinate changes`: Octocode's edit/write by their arguments, `file` by its outcomes (a

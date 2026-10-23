@@ -55,7 +55,7 @@ it.each([false, true])("streams one engine run and preserves late attachment (he
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: {
-				model: getModel("anthropic", "claude-sonnet-4-5")!,
+				model: getModel("anthropic", "claude-sonnet-4-5"),
 				systemPrompt: "Test",
 				tools: [],
 			},

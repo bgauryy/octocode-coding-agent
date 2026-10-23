@@ -118,21 +118,21 @@ describe("the agent tool's goal", () => {
 		const id = started.details.id as string;
 		expect(started.content[0].text).toContain(`Started ${id} (reviewer: ${GOAL}) in the background`);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		expect(s.sent[0]!.message.content).toMatch(
+		expect(s.sent[0].message.content).toMatch(
 			new RegExp(`^Background subagent ${id} \\(reviewer: ${GOAL}\\) finished \\(`),
 		);
-		expect(s.sent[0]!.message.details).toMatchObject({ id, goal: GOAL, profile: "reviewer" });
-		const shown = rendered(s.renderers.get("octocode-agent-result")(s.sent[0]!.message, { expanded: false }, theme));
+		expect(s.sent[0].message.details).toMatchObject({ id, goal: GOAL, profile: "reviewer" });
+		const shown = rendered(s.renderers.get("octocode-agent-result")(s.sent[0].message, { expanded: false }, theme));
 		expect(shown).toContain(`Agent(${id} · ${GOAL})`);
 		expect(shown.split("\n")[0]).not.toContain("reviewer");
 		expect(shown).toContain(`Done (${id} · 1 tool call`);
 	});
 
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {
-		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {} as never))).toBe(
+		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {}))).toBe(
 			`○ Agent(${GOAL})`,
 		);
-		expect(rendered(renderAgentCall({ goal: "a\u001b[2Jb" }, theme, {} as never))).not.toContain("\u001b");
+		expect(rendered(renderAgentCall({ goal: "a\u001b[2Jb" }, theme, {}))).not.toContain("\u001b");
 		const s = setup();
 		const partial = rendered(
 			s.agent.renderResult(
@@ -227,5 +227,5 @@ describe("a subagent's usage", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

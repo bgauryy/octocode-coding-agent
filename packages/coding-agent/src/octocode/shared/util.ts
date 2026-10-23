@@ -8,11 +8,11 @@ import { redactSecrets } from "./sanitize.ts";
 /** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
 export function loadSqlite(): typeof Sqlite {
 	const emit = process.emitWarning;
-	process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+	process.emitWarning = (warning: string | Error, ...rest: unknown[]) => {
 		const text = typeof warning === "string" ? warning : warning.message;
 		if (/sqlite/i.test(text)) return;
 		return (emit as (...args: unknown[]) => void).call(process, warning, ...rest);
-	}) as typeof process.emitWarning;
+	};
 	try {
 		return createRequire(import.meta.url)("node:sqlite") as typeof Sqlite;
 	} finally {
@@ -69,7 +69,7 @@ export function cutText(
 	const bytes = Buffer.from(text, "utf8");
 	if (bytes.length <= limit) return text;
 	// UTF-8 continuation bytes are 10xxxxxx: a cut moves off them to the nearest character boundary inside the budget.
-	const continuation = (index: number) => (bytes[index]! & 0xc0) === 0x80;
+	const continuation = (index: number) => (bytes[index] & 0xc0) === 0x80;
 	if (tail) {
 		let start = bytes.length - limit;
 		while (start < bytes.length && continuation(start)) start++;
@@ -220,7 +220,7 @@ export const finiteNumber = (value: unknown): number | undefined =>
 
 /** `value` when it is an array of strings, else undefined. */
 export const stringList = (value: unknown): string[] | undefined =>
-	Array.isArray(value) && value.every((item) => typeof item === "string") ? (value as string[]) : undefined;
+	Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 
 /** `text` as a regular-expression source that matches it literally. */
 export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -257,7 +257,7 @@ export function toolHint(args: unknown): string {
 	const input = isRecord(args) ? args : {};
 	const hint = [input.path, input.command, input.query, input.url, input.ref].find(
 		(value) => typeof value === "string",
-	) as string | undefined;
+	);
 	if (!hint) return "";
 	const line = firstLine(hint).replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1");
 	return clipText(redactSecrets(line), 80);

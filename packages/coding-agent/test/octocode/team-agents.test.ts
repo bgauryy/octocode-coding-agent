@@ -166,7 +166,7 @@ describe("what the team shows about an agent", () => {
 	});
 
 	it("keeps name, model, state and time when the terminal is narrow, dropping stats and shortening the goal first", () => {
-		const narrow = widgetLines(team, "salty-squid", NOW, theme, 70)[1]!;
+		const narrow = widgetLines(team, "salty-squid", NOW, theme, 70)[1];
 		for (const kept of ["inky-kraken", "claude-opus-5-5", "working", "8m38s"]) expect(narrow).toContain(kept);
 		expect(narrow).toMatch(/audit auth[^·]*…/);
 		expect(narrow).not.toContain("implementer");

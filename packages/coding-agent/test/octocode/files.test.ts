@@ -467,7 +467,7 @@ describe("file tool", () => {
 					undefined,
 					ctx,
 				)
-			).details.outcomes[0]!.diff;
+			).details.outcomes[0].diff;
 		const created = await write("b.txt", "alpha\nbeta\n");
 		expect(created?.split("\n").filter((line) => line.startsWith("+"))).toHaveLength(2);
 		expect(created).not.toMatch(/^-/m);
@@ -1267,7 +1267,7 @@ describe("file tool", () => {
 			),
 		).rejects.toThrow(/Octocode's state folder/);
 		expect(fs.existsSync(state)).toBe(false);
-		expect((await write("inside.txt", { cwd, hasUI: false })).content[0]!.text).toMatch(/OK write inside\.txt/);
+		expect((await write("inside.txt", { cwd, hasUI: false })).content[0].text).toMatch(/OK write inside\.txt/);
 	});
 
 	it("keeps a change that succeeded when its checkpoint cannot be saved, and says so once", async () => {
@@ -1301,7 +1301,7 @@ describe("file tool", () => {
 			undefined,
 			ctx,
 		);
-		expect(first.content[0]!.text).toMatch(
+		expect(first.content[0].text).toMatch(
 			/1\. OK write a\.txt.*checkpoint not saved[\s\S]*2\. OK write b\.txt.*checkpoint not saved/,
 		);
 		expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf8")).toBe("a");
@@ -1573,7 +1573,7 @@ describe("bash safety", () => {
 			"rm -rf ~/.",
 			"rm -rf ~/",
 			"rm -rf $HOME/..",
-			"rm -rf " + "$" + "{HOME}/../",
+			"rm -rf ${HOME}/../",
 			"rm -rf /usr/..",
 			"rm -rf /./",
 			"rm -rf //",

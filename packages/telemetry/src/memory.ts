@@ -336,7 +336,7 @@ export class InMemoryTelemetryContext
 			.filter((span) => span.settled)
 			.map((span) => ({
 				id: carrierId(span.context),
-				traceId: span.context["pi-memory-trace"]!,
+				traceId: span.context["pi-memory-trace"],
 				...(span.parentContext ? { parentId: carrierId(span.parentContext) } : {}),
 				name: span.name,
 				startedMs: span.startedMs,
@@ -348,7 +348,7 @@ export class InMemoryTelemetryContext
 					attributes: copyAttributes(event.attributes),
 				})),
 				links: span.links.map((link) => ({
-					traceId: link.context["pi-memory-trace"]!,
+					traceId: link.context["pi-memory-trace"],
 					spanId: carrierId(link.context),
 					attributes: copyAttributes(link.attributes),
 				})),
@@ -376,7 +376,7 @@ export class InMemoryTelemetryContext
 		}
 		const matches = [...grouped.values()]
 			.filter((trace) => {
-				const first = trace.spans[0]!;
+				const first = trace.spans[0];
 				return (
 					(query.name === undefined || first.name === query.name) &&
 					(query.startMin === undefined || first.startedMs >= query.startMin) &&
@@ -391,13 +391,13 @@ export class InMemoryTelemetryContext
 			})
 			.sort(
 				(a, b) =>
-					b.spans[0]!.startedMs - a.spans[0]!.startedMs || (a.traceId < b.traceId ? -1 : a.traceId > b.traceId ? 1 : 0),
+					b.spans[0].startedMs - a.spans[0].startedMs || (a.traceId < b.traceId ? -1 : a.traceId > b.traceId ? 1 : 0),
 			);
 		const traces = matches.slice(0, limit);
 		const last = traces.at(-1)!;
 		return {
 			traces,
-			...(matches.length > limit ? { cursor: JSON.stringify([last.spans[0]!.startedMs, last.traceId]) } : {}),
+			...(matches.length > limit ? { cursor: JSON.stringify([last.spans[0].startedMs, last.traceId]) } : {}),
 		};
 	}
 

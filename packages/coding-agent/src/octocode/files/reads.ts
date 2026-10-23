@@ -234,7 +234,7 @@ function changedFiles(details: unknown, cwd: string): ChangedFile[] {
 			{
 				file: resolveToolPath(cwd, outcome.path),
 				line: changed ? Number(changed[1]) : undefined,
-				...(outcome.type === "edit" ? { edit: { ...(lineDelta !== undefined ? { lineDelta } : {}) } } : {}),
+				...(outcome.type === "edit" ? { edit: lineDelta !== undefined ? { lineDelta } : {} } : {}),
 			},
 		];
 	});

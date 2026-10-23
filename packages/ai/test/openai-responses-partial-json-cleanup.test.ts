@@ -1,7 +1,7 @@
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { describe, expect, it, vi } from "vitest";
 import { processResponsesStream } from "../src/api/openai-responses-shared.ts";
-import type { AssistantMessage, AssistantMessageEvent, Model } from "../src/types.ts";
+import type { AssistantMessage, Model } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 function createOutput(model: Model<"openai-responses">): AssistantMessage {
@@ -94,7 +94,7 @@ describe("openai responses partialJson cleanup", () => {
 		expect(persistedToolCall.arguments).toEqual({ path: "README.md", content: "updated" });
 		expect("partialJson" in persistedToolCall).toBe(false);
 
-		const emittedEvents = pushSpy.mock.calls.map(([event]) => event as AssistantMessageEvent);
+		const emittedEvents = pushSpy.mock.calls.map(([event]) => event);
 		const toolCallEnd = emittedEvents.find((event) => event.type === "toolcall_end");
 		expect(toolCallEnd).toBeDefined();
 		if (!toolCallEnd || toolCallEnd.type !== "toolcall_end") {

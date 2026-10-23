@@ -112,7 +112,7 @@ describe("file restore after compaction", () => {
 		fs.writeFileSync(binary, Buffer.from([1, 0, 2]));
 		const restored = restoreFiles(
 			plain(binary, path.join(dir, "gone.txt"), ...files),
-			new Set([canonicalPath(files[1]!)]),
+			new Set([canonicalPath(files[1])]),
 			dir,
 		)!;
 		expect(restored.files.map((entry) => path.basename(entry.file))).toEqual([
@@ -243,11 +243,11 @@ describe("file restore after compaction", () => {
 			RESTORE_TOTAL_CHARS,
 		)!;
 		expect(sent).toHaveLength(1);
-		expect(sent[0]!.message).toMatchObject({
+		expect(sent[0].message).toMatchObject({
 			customType: RESTORED_FILES_TYPE,
 			details: { id: pending.id, files: [file], worked: [{ file, workedAt: 3, line: 1 }] },
 		});
-		expect(sent[0]!.options).toEqual({ triggerTurn: false });
+		expect(sent[0].options).toEqual({ triggerTurn: false });
 		// Octocode holds the message until the running turn ends: a model call without it records nothing.
 		expect(settleRestoredFiles([{ role: "user", content: "x" }], pending, guard)).toBe(false);
 		expect(guard.check(file, "edit", "w.ts")).toMatch(/not read in this session/);
@@ -260,7 +260,7 @@ describe("file restore after compaction", () => {
 		).toBe(false);
 		expect(
 			settleRestoredFiles(
-				[sent[0]!.message as never].map((message) => ({ role: "custom", ...(message as object) })),
+				[sent[0].message as never].map((message) => ({ role: "custom", ...(message as object) })),
 				pending,
 				guard,
 			),
@@ -273,7 +273,7 @@ describe("file restore after compaction", () => {
 					message: {
 						role: "custom",
 						customType: RESTORED_FILES_TYPE,
-						details: sent[0]!.message.details,
+						details: sent[0].message.details,
 						timestamp: 5,
 					},
 				},
@@ -308,7 +308,7 @@ describe("file restore after compaction", () => {
 		)!;
 		// The user rewrites the file while the session idles; the model still holds the old text.
 		fs.writeFileSync(file, "the user rewrote this file entirely, much longer than before\n");
-		expect(settleRestoredFiles([{ role: "custom", ...sent[0]!.message }], pending, guard)).toBe(true);
+		expect(settleRestoredFiles([{ role: "custom", ...sent[0].message }], pending, guard)).toBe(true);
 		expect(guard.check(file, "write", "w.ts")).toBeDefined();
 		expect(guard.check(file, "delete", "w.ts")).toBeDefined();
 	});
@@ -353,8 +353,8 @@ describe("file restore after compaction", () => {
 		};
 		const pending = deliverRestoredFiles(pi as never, [{ file, workedAt: 3 }], ctx as never, RESTORE_TOTAL_CHARS)!;
 		expect(pending.files[0]).toMatchObject({ file, whole: false });
-		expect(sent[0]!.message.details.partial).toEqual([file]);
-		expect(settleRestoredFiles([{ role: "custom", ...(sent[0]!.message as object) }], pending, guard)).toBe(true);
+		expect(sent[0].message.details.partial).toEqual([file]);
+		expect(settleRestoredFiles([{ role: "custom", ...(sent[0].message as object) }], pending, guard)).toBe(true);
 		expect(guard.check(file, "edit", "big.txt")).toBeUndefined();
 		expect(guard.check(file, "write", "big.txt")).toMatch(/whole file/);
 		const seen = seenFiles(
@@ -364,7 +364,7 @@ describe("file restore after compaction", () => {
 					message: {
 						role: "custom",
 						customType: RESTORED_FILES_TYPE,
-						details: sent[0]!.message.details,
+						details: sent[0].message.details,
 						timestamp: 5,
 					},
 				},
@@ -515,7 +515,7 @@ describe("file restore after compaction", () => {
 			};
 			const pending = deliverRestoredFiles(pi as never, plain(held, stale, cut), ctx as never, RESTORE_TOTAL_CHARS)!;
 			expect(pending.files.map((entry) => entry.file)).toEqual([stale, cut]);
-			expect(sent[0]!.details.files).toEqual([stale, cut]);
+			expect(sent[0].details.files).toEqual([stale, cut]);
 			// Everything the context holds already: no message at all.
 			const everything = {
 				...ctx,
@@ -545,8 +545,8 @@ describe("restored message framing budget", () => {
 		const pending = deliverRestoredFiles({ sendMessage }, plain(file), ctx as never, total);
 		expect(pending?.files).toHaveLength(1);
 		expect(sendMessage).toHaveBeenCalledOnce();
-		expect(sendMessage.mock.calls[0]![0].content.length).toBeLessThanOrEqual(total);
-		expect(sendMessage.mock.calls[0]![0].content).toContain("const value = 123;");
+		expect(sendMessage.mock.calls[0][0].content.length).toBeLessThanOrEqual(total);
+		expect(sendMessage.mock.calls[0][0].content).toContain("const value = 123;");
 		expect(pending?.files[0]?.whole).toBe(false);
 	});
 });

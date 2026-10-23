@@ -124,7 +124,7 @@ export function createCustomMessage(
 	customType: string,
 	content: string | (TextContent | ImageContent)[],
 	display: boolean,
-	details: unknown | undefined,
+	details: unknown,
 	timestamp: string,
 ): CustomMessage {
 	return {

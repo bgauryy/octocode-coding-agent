@@ -27,6 +27,24 @@ const session = (overrides: Partial<ApplicationSnapshot> = {}): ApplicationSnaps
 });
 
 describe("activity cards", () => {
+	it("shows the host's typed-result failure while retaining the original child status", () => {
+		expect(
+			activityCard({
+				id: 1,
+				at: 0,
+				type: "agent.result",
+				text: "Checked",
+				outcome: "failed",
+				details: {
+					summary: "Checked",
+					body: "Structured result: invalid (schema).",
+					status: "done",
+					structured: { version: 1, schemaHash: "abc", status: "invalid" },
+				},
+			}),
+		).toMatchObject({ failed: true, tone: "danger", status: "done", body: "Structured result: invalid (schema)." });
+	});
+
 	it("titles structured agent results from their summary and flags blocked outcomes", () => {
 		const card = activityCard({
 			id: 1,

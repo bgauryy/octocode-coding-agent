@@ -772,6 +772,21 @@ if (matchesKey(data, Key.enter)) {
 
 Both renderers wrap updates in **synchronized output** (`\x1b[?2026h` ... `\x1b[?2026l`) for atomic, flicker-free rendering.
 
+### Experimental render pacing
+
+The default scheduler still coalesces ordinary requests at a 16 ms minimum interval. Applications can opt a concrete renderer into output-pressure admission, adaptive cadence, or both independently:
+
+```typescript
+const tui = new TuiMainScreen(new ProcessTerminal());
+tui.setRenderPacing({ outputGate: true, metrics: true });
+// Or trial only frame-cost pacing: tui.setRenderPacing({ adaptiveCadence: true, metrics: true });
+const stats = tui.getRenderPacingStats();
+```
+
+The optional `Terminal.pendingOutputBytes` reports queued output where a terminal can observe it; custom implementations without it retain the legacy schedule. Scheduled frames are deferred before their diffs are composed when the queue exceeds the experimental 256 KiB high watermark, then retry every 10 ms until it falls to 128 KiB. These values can be set with `highWaterBytes`, `lowWaterBytes` and `retryMs`; they are **unmeasured starting values**, not a memory limit. `requestRender(true)` and `renderNow()` bypass the gate, as do terminal restoration and final output. An individual frame may exceed the watermark. Adaptive cadence uses the previous frame duration with a 200 ms maximum interval and is off by default.
+
+`metrics: true` enables bounded counters for painted and deferred frames, maximum observed queued bytes, frame time, timer lateness and input-to-paint latency. `ProcessTerminal` also counts bytes, write sizes and writes that returned `false` through `getOutputTelemetry()`. No transcript text is retained. The extra counters and decorative-progress keepalive suppression are disabled by default. The opt-in gate cannot prevent a synchronous POSIX TTY write from blocking; measure on the target transport before enabling it. Run `node scripts/profile-render-backpressure.mjs --trials 3` from the repository root for a four-mode **offline simulated-consumer** comparison; it is not a live PTY or end-user benchmark.
+
 ## Terminal Interface
 
 The TUI works with any object implementing the `Terminal` interface:

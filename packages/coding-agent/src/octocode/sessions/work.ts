@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { JOB_TYPE } from "../files/bash-jobs.ts";
 import { tildePath } from "../shared/home.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord, stringOrEmpty } from "../shared/util.ts";
 import { RESULT_TYPE } from "../subagents/handoff.ts";
 import { flatLine } from "./store.ts";
 
@@ -51,7 +51,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			continue;
 		}
 		if (message.role !== "toolResult" || message.isError === true || !isRecord(message.details)) continue;
-		if (since !== undefined && !(Date.parse(String(entry.timestamp ?? "")) >= since)) continue;
+		if (since !== undefined && !(Date.parse(stringOrEmpty(entry.timestamp)) >= since)) continue;
 		const details = message.details;
 		const input = args.get(String(message.toolCallId)) ?? {};
 		if (message.toolName === "bash" && typeof details.job === "string") {
@@ -59,7 +59,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			started.set(jobKey(details.job, log), {
 				kind: "bash",
 				id: details.job,
-				label: flatLine(String(input.command ?? "")),
+				label: flatLine(stringOrEmpty(input.command)),
 				...(log ? { log } : {}),
 			});
 		} else if (message.toolName === "agent" && details.status === "background" && typeof details.id === "string") {
@@ -69,7 +69,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			started.set(`agent:${details.id}`, {
 				kind: "agent",
 				id: details.id,
-				...(goal ? { label: goal, goal: true } : { label: flatLine(String(task.task ?? "")) }),
+				...(goal ? { label: goal, goal: true } : { label: flatLine(stringOrEmpty(task.task)) }),
 			});
 		}
 	}

@@ -36,8 +36,8 @@ import { retryProviderRequest } from "../utils/provider-retry.ts";
 
 const LABEL = "llama.cpp";
 
-const CHOICE_LABELS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"];
-const SCORE_LABELS = [..."0123456789"];
+const CHOICE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split("");
+const SCORE_LABELS = "0123456789".split("");
 const BOOL_LABELS = ["Yes", "No"];
 
 /** First `n_probs` depth is `max(MIN_READOUT_DEPTH, READOUT_DEPTH_PER_LABEL * labels)`. */
@@ -199,7 +199,7 @@ export function answerFromProbabilities(
 	probabilities: readonly number[],
 ): ClassifierAnswer {
 	if (question.type === "bool") {
-		return { type: "bool", probability: probabilities[keys.indexOf("true")]! };
+		return { type: "bool", probability: probabilities[keys.indexOf("true")] };
 	}
 	const confidence = peakConfidence(probabilities);
 	if (question.type === "score") {
@@ -208,12 +208,12 @@ export function answerFromProbabilities(
 	}
 	let best = 0;
 	for (let index = 1; index < probabilities.length; index++) {
-		if (probabilities[index]! > probabilities[best]!) best = index;
+		if (probabilities[index] > probabilities[best]) best = index;
 	}
 	return {
 		type: "choice",
-		choice: keys[best]!,
-		probabilities: Object.fromEntries(keys.map((key, index) => [key, probabilities[index]!])),
+		choice: keys[best],
+		probabilities: Object.fromEntries(keys.map((key, index) => [key, probabilities[index]])),
 		confidence,
 	};
 }
@@ -419,7 +419,7 @@ async function classifyQuestion(
 }
 
 /** Classifies with a chat model on llama-server by reading next-token probabilities of answer labels. */
-export const classify: ClassifierFunction<ClassifierOptions> = async (model, context, options) => {
+export const classify: ClassifierFunction = async (model, context, options) => {
 	const output: ClassifierResult = {
 		api: model.api,
 		provider: model.provider,

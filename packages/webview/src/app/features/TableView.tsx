@@ -70,7 +70,7 @@ export function TableView({ index, params, setParams }: ViewProps) {
 				/>
 				<ResultCount shown={shown.length} total={index.items.length} />
 			</Toolbar>
-			{/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be keyboard-scrollable. */}
+			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be keyboard-scrollable. */}
 			<section className="table-scroll" aria-label="Tasks table" tabIndex={0}>
 				<table className="data-table">
 					<thead>

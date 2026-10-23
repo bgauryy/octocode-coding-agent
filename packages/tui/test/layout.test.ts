@@ -229,7 +229,7 @@ describe("viewport layout", () => {
 			lines.map((line) => line.includes(thumbColor)),
 			[false, true, true, false],
 		);
-		assert.ok(lines[1]!.lastIndexOf(contentBackground) < lines[1]!.lastIndexOf(thumbColor));
+		assert.ok(lines[1].lastIndexOf(contentBackground) < lines[1].lastIndexOf(thumbColor));
 
 		scrollView.setScrollbarActive(false);
 		await new Promise((resolve) => setTimeout(resolve, 30));

@@ -71,7 +71,7 @@ async function declaredTools(
 		role === "main"
 			? parseArgs([])
 			: parseArgs(
-					buildAgentArgs(loadProfiles(cwd, agentDir, false, {}).get(role)!, undefined, {
+					buildAgentArgs(loadProfiles(cwd, agentDir, false, {}).get(role), undefined, {
 						dir: path.join(root, "session"),
 						id: "exposure",
 					}),

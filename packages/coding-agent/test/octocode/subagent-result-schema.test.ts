@@ -5,6 +5,9 @@ import {
 	validateStoredStructuredResult,
 } from "../../src/octocode/subagents/result-schema.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
+import fs from "node:fs";
+import { savePendingReport, takePendingReports, releasePendingReports } from "../../src/octocode/subagents/handoff.ts";
+import { tmp } from "./helpers.ts";
 
 const schema = {
 	type: "object",
@@ -59,6 +62,15 @@ describe("caller-defined subagent result schema", () => {
 			expect(result).not.toHaveProperty("data");
 		}
 	});
+	it("only the latest completed answer can satisfy the contract", () => {
+		const contract = admitResultSchema(schema);
+		const tracker = new ReportTracker(undefined, contract);
+		tracker.answer('done\nStructured result:\n```json\n{"verdict":"pass"}\n```', "endTurn");
+		expect(tracker.result().structured?.status).toBe("valid");
+		tracker.incoming("user");
+		tracker.answer(undefined, "error", "provider unavailable");
+		expect(tracker.result().structured?.status).toBe("unavailable");
+	});
 
 	it("validates persisted versioned metadata without reinterpreting data", () => {
 		const contract = admitResultSchema(schema);
@@ -67,5 +79,26 @@ describe("caller-defined subagent result schema", () => {
 		expect(() => validateStoredStructuredResult({ ...valid, version: 2 })).toThrow();
 		expect(() => validateStoredStructuredResult({ ...valid, data: { verdict: "pass", extra: "x" } })).not.toThrow();
 		expect(() => validateStoredStructuredResult({ ...valid, data: "x".repeat(100_000) })).toThrow();
+	});
+	it("replays a durable verdict and quarantines corrupt versioned metadata", async () => {
+		const dir = tmp("schema-replay-");
+		const contract = admitResultSchema(schema);
+		const structured = validateResultAnswer('done\nStructured result:\n```json\n{"verdict":"pass"}\n```', contract);
+		savePendingReport(dir, "valid", {
+			content: "done",
+			wake: true,
+			details: { id: "valid", status: "done", outcome: "done", summary: "Done", structured },
+		});
+		savePendingReport(dir, "corrupt", {
+			content: "done",
+			wake: true,
+			details: { id: "corrupt", status: "done", summary: "Done", structured: { ...structured, version: 2 as 1 } },
+		});
+		const reports = await takePendingReports(dir);
+		expect(reports).toHaveLength(1);
+		expect(reports[0].details.structured).toEqual(structured);
+		expect(fs.readdirSync(dir).some((name) => name.endsWith(".invalid"))).toBe(true);
+		await releasePendingReports(reports);
+		expect((await takePendingReports(dir))[0].details.structured).toEqual(structured);
 	});
 });

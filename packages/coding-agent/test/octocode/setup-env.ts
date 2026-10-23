@@ -28,8 +28,5 @@ process.env.OCTOCODE_MODELS_DEV = "0";
 // holds returns at the next 50 ms check, so a call that passes its own `timeout` keeps it.
 const WAIT_FOR_TIMEOUT_MS = 20_000;
 const waitFor = vi.waitFor.bind(vi);
-vi.waitFor = ((callback, options) =>
-	waitFor(
-		callback,
-		typeof options === "number" ? options : { timeout: WAIT_FOR_TIMEOUT_MS, ...options },
-	)) as typeof vi.waitFor;
+vi.waitFor = (callback, options) =>
+	waitFor(callback, typeof options === "number" ? options : { timeout: WAIT_FOR_TIMEOUT_MS, ...options });

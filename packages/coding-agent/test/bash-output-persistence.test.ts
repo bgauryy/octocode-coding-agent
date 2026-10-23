@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.ts";
 
 vi.mock("node:fs", async (importOriginal) => ({
-	...(await importOriginal<typeof import("node:fs")>()),
+	...(await importOriginal<typeof fs>()),
 	createWriteStream: vi.fn(),
 }));
 afterEach(() => vi.restoreAllMocks());

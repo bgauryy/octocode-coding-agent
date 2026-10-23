@@ -6,9 +6,10 @@
  */
 
 // NEVER convert to top-level imports - breaks browser/Vite builds
+// oxlint-disable-next-line typescript/consistent-type-imports -- import() type keeps node:crypto out of browser bundles
 let _randomBytes: typeof import("node:crypto").randomBytes | null = null;
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
-	import("node:crypto").then((m) => {
+	void import("node:crypto").then((m) => {
 		_randomBytes = m.randomBytes;
 	});
 }

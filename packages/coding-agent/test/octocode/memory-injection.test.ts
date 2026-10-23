@@ -55,7 +55,7 @@ describe("bounded memory retrieval", () => {
 				seen: new Set(Array.from({ length: 10_000 }, (_, i) => i)),
 				topK: 5,
 			});
-			expect(search.mock.calls[0]![2]).toBeLessThanOrEqual(10);
+			expect(search.mock.calls[0][2]).toBeLessThanOrEqual(10);
 		} finally {
 			db.close();
 		}
@@ -145,7 +145,7 @@ describe("edited and long memories", () => {
 				scope: "all",
 				seen: new Set(),
 				topK: 5,
-			})!.content.split("\n")[1]!;
+			})!.content.split("\n")[1];
 			expect(line.length).toBeLessThanOrEqual(600);
 			expect(line.endsWith(`…" (memory get M${memory.id})`)).toBe(true);
 		} finally {

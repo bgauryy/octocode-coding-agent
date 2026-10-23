@@ -58,7 +58,7 @@ async function* createEarlyEofEvents(): AsyncIterable<ResponseStreamEvent> {
 		sequence_number: 1,
 		output_index: 0,
 		item: { type: "reasoning", id: "rs_early_eof", summary: [] },
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.reasoning_text.delta",
 		sequence_number: 2,
@@ -66,7 +66,7 @@ async function* createEarlyEofEvents(): AsyncIterable<ResponseStreamEvent> {
 		content_index: 0,
 		item_id: "rs_early_eof",
 		delta: "partial reasoning before the stream ends",
-	} as ResponseStreamEvent;
+	};
 }
 
 async function* createCompletedEvents(): AsyncIterable<ResponseStreamEvent> {
@@ -132,7 +132,7 @@ async function* createPhasedMessageEvents(
 			content: [],
 			phase: phases[0],
 		},
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.output_item.done",
 		sequence_number: 1,
@@ -145,7 +145,7 @@ async function* createPhasedMessageEvents(
 			content: [{ type: "output_text", text: "answer", annotations: [] }],
 			phase: phases[1],
 		},
-	} as ResponseStreamEvent;
+	};
 	if (terminalStatus === "incomplete") {
 		yield {
 			type: "response.incomplete",
@@ -171,14 +171,14 @@ async function* createUnfinishedToolCallEvents(): AsyncIterable<ResponseStreamEv
 		sequence_number: 0,
 		output_index: 0,
 		item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "bash", arguments: "" },
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.function_call_arguments.delta",
 		sequence_number: 1,
 		output_index: 0,
 		item_id: "fc_1",
 		delta: '{"command":"rm -rf /tmp/build',
-	} as ResponseStreamEvent;
+	};
 	yield {
 		type: "response.completed",
 		sequence_number: 2,

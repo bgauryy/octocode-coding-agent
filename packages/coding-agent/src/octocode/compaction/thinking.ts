@@ -44,7 +44,7 @@ export function stripStaleThinking<T>(messages: T[]): T[] {
 		changed = true;
 		return { ...message, content };
 	});
-	return changed ? (out as T[]) : messages;
+	return changed ? out : messages;
 }
 
 /**

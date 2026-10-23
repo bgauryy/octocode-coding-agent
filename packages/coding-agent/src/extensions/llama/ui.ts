@@ -480,13 +480,14 @@ class LlamaView implements LlamaUi, Focusable {
 export async function showLlamaUi(ctx: ExtensionCommandContext, run: (ui: LlamaUi) => Promise<void>): Promise<void> {
 	await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
 		const view = new LlamaView(tui, theme, keybindings);
-		void run(view).then(
-			() => done(),
-			(error: unknown) => {
+		void (async () => {
+			try {
+				await run(view);
+			} catch (error) {
 				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-				done();
-			},
-		);
+			}
+			done();
+		})();
 		return view;
 	});
 }
@@ -515,7 +516,8 @@ export async function runWithProgress<T>(
 			(error: unknown) => ({ ok: false as const, error }),
 		);
 	let completed = false;
-	settled.finally(() => {
+	// `settled` maps rejection to a value, so it never rejects.
+	void settled.finally(() => {
 		completed = true;
 	});
 

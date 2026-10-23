@@ -1,3 +1,4 @@
+import type { JsonObject } from "@octocodeai/octocode-ai";
 import { parsePermissionUpdates } from "../shared/permission-updates.ts";
 import { errorMessage, isRecord } from "../shared/util.ts";
 import type { HookRun, HookVerdict } from "./contracts.ts";
@@ -16,7 +17,7 @@ export function permissionOutput(run: HookRun, protocol: HookProtocol): HookVerd
 	try {
 		output = JSON.parse(run.stdout);
 	} catch {
-		return /^[\s]*[\[{]/.test(run.stdout) ? { error: "Invalid PermissionRequest JSON output" } : {};
+		return /^[\s]*[[{]/.test(run.stdout) ? { error: "Invalid PermissionRequest JSON output" } : {};
 	}
 	if (!isRecord(output)) return { error: "PermissionRequest output must be an object" };
 	const warning = typeof output.systemMessage === "string" ? { systemMessage: output.systemMessage } : {};
@@ -100,7 +101,7 @@ export function permissionOutput(run: HookRun, protocol: HookProtocol): HookVerd
 				...(updatedPermissions?.length ? { updatedPermissions } : {}),
 				...(hasInput
 					? {
-							updatedInput: decision.updatedInput as import("@octocodeai/octocode-ai").JsonObject,
+							updatedInput: decision.updatedInput as JsonObject,
 							updatedInputProtocol: "claude" as const,
 						}
 					: {}),

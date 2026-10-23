@@ -172,7 +172,7 @@ describe("constrained tool sampling", () => {
 					type: "object",
 					properties: { child: { $ref: "https://example.com/child.json" } },
 					required: ["child"],
-				} as Tool["parameters"],
+				},
 				error: "$ref schemas are unsupported",
 			},
 		];

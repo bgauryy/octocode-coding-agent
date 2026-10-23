@@ -30,10 +30,10 @@ const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", 
 
 /** Colour at `t` (0..1) along evenly spaced stops. */
 function along(stops: Color[], t: number): Color {
-	if (stops.length === 1) return stops[0]!;
+	if (stops.length === 1) return stops[0];
 	const scaled = Math.min(1, Math.max(0, t)) * (stops.length - 1);
 	const index = Math.min(stops.length - 2, Math.floor(scaled));
-	return mixColors(stops[index]!, stops[index + 1]!, scaled - index);
+	return mixColors(stops[index], stops[index + 1], scaled - index);
 }
 
 /**
@@ -61,7 +61,7 @@ export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 		let color = cache.get(key);
 		if (!color) {
 			color = along(stops, t);
-			if (shade === "shadow") color = mixColors(color, colors!.dim ?? color, 0.6);
+			if (shade === "shadow") color = mixColors(color, colors.dim ?? color, 0.6);
 			if (glow > 0 && highlight)
 				color = mixColors(color, highlight, Math.min(1, glow * (shade === "shadow" ? 0.35 : 0.8)));
 			cache.set(key, color);

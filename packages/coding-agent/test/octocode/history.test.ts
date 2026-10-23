@@ -100,7 +100,7 @@ describe("history scope", () => {
 			["newer", "same repository"],
 			["older", "same repository"],
 		]);
-		expect(scope[0]!.record).toMatchObject({ session: "me", goal: "goal of me", ended: "me ended well" });
+		expect(scope[0].record).toMatchObject({ session: "me", goal: "goal of me", ended: "me ended well" });
 		// The record comes first, then segments newest first.
 		expect(historyFiles(scope.slice(0, 1)).map((file) => path.basename(file.file))).toEqual([
 			RECORD_FILE,

@@ -3,7 +3,7 @@ import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import type { ApiKeyAuth, CredentialStore, OAuthAuth, ProviderAuth } from "../src/auth/types.ts";
 import { calculateCost, createModels, createProvider, hasApi, type Provider } from "../src/models.ts";
 import { InMemoryModelsStore, type ModelsStore, type ModelsStoreEntry } from "../src/models-store.ts";
-import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, StreamOptions, Usage } from "../src/types.ts";
+import type { Api, AssistantMessage, Context, Model, StreamOptions, Usage } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 
 function testModel(provider: string, id: string): Model<Api> {
@@ -76,8 +76,8 @@ function testProvider(input: {
 		auth: input.auth ?? { apiKey: ambientAuth },
 		getModels: input.getModels ?? (() => models),
 		refreshModels: input.refreshModels,
-		stream: (model, _context, options) => respond(model, options as StreamOptions | undefined),
-		streamSimple: (model, _context, options) => respond(model, options as SimpleStreamOptions | undefined),
+		stream: (model, _context, options) => respond(model, options),
+		streamSimple: (model, _context, options) => respond(model, options),
 	};
 }
 

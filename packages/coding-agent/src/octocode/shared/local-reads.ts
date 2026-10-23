@@ -116,8 +116,8 @@ export async function completedLocalReads(
 			data.isPartial !== true &&
 			data.terminalLimit !== true &&
 			spans.length === 1 &&
-			spans[0]![0] === 1 &&
-			spans[0]![1] === data.totalLines;
+			spans[0][0] === 1 &&
+			spans[0][1] === data.totalLines;
 		if (whole) reads.push({ ...base, whole: true });
 		else for (const lines of spans) reads.push({ ...base, whole: false, lines });
 	}

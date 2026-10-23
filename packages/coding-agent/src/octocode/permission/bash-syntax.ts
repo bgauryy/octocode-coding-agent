@@ -1,4 +1,4 @@
-import type { BashCommand, BashFileTarget, BashSyntax } from "./bash-types.ts";
+import type { BashCommand, BashSyntax } from "./bash-types.ts";
 import { bashCandidates } from "./bash-wrappers.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -64,7 +64,7 @@ function staticWord(node: Node): string | undefined {
 	if (node.type === "command_name") return node.namedChildCount === 1 ? staticWord(node.namedChild(0)!) : undefined;
 	if (node.type === "raw_string") return node.text.slice(1, -1);
 	if (node.type === "word" || node.type === "number") {
-		if (/(?<!\\)[$`*?\[]/.test(node.text)) return undefined;
+		if (/(?<!\\)[$`*?[]/.test(node.text)) return undefined;
 		return node.text.replace(/\\(?:\r?\n|(.))/gs, (_match, escaped: string | undefined) => escaped ?? "");
 	}
 	if (node.type === "string") {
@@ -176,7 +176,7 @@ export function bashSyntax(source: string): BashSyntax {
 					/^(?:tee|cat|head|tail|wc)$/.test(command.tokens[index]?.literal ?? ""),
 				);
 				if (readerIndex !== undefined) {
-					const reader = command.tokens[readerIndex]!.literal!;
+					const reader = command.tokens[readerIndex].literal!;
 					const kind = reader === "tee" ? "write" : "read";
 					let countValue = false;
 					let options = true;
@@ -199,7 +199,7 @@ export function bashSyntax(source: string): BashSyntax {
 						.filter((argument): argument is Node => argument !== null)
 						.sort((a, b) => a.startIndex - b.startIndex);
 					for (const argument of argumentsInOrder) {
-						if (argument.startIndex < rawNode.startIndex + command.tokens[readerIndex]!.end) continue;
+						if (argument.startIndex < rawNode.startIndex + command.tokens[readerIndex].end) continue;
 						const value = staticWord(argument);
 						if (countValue) {
 							countValue = false;

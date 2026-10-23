@@ -17,14 +17,13 @@ describe("snapshot spill", () => {
 				items,
 			}),
 		);
-		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1]!.replace(/^~/, process.env.HOME!);
+		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1].replace(/^~/, process.env.HOME!);
 		const saved = fs.readFileSync(file, "utf8");
 		expect(saved).toContain('[1000] button "Action \\u{202e}1000"');
 		expect(saved).toContain("# Big \\u{1b}]0;pwned\\u{7}");
 		expect(saved).toContain("page\\u{200d} text ");
 		expect(saved).toContain("\\u{e0041}");
-		// biome-ignore lint/suspicious/noMisleadingCharacterClass: Intentional literal fixture or exact Unicode character matching.
-		expect(saved).not.toMatch(/[\u001b\u0007\u202e\u200d\u{e0041}]/u);
+		expect(saved).not.toMatch(/\u001b|\u0007|\u202e|\u200d|\u{e0041}/u);
 	});
 
 	it("keeps CRLF page text as it is and escapes a lone carriage return", async () => {
@@ -32,7 +31,7 @@ describe("snapshot spill", () => {
 		const out = await snapshot(
 			sessionOf({ title: "T", url: "https://example.com", text: `crlf\r\nline\rlone ${"word ".repeat(10)}`, items }),
 		);
-		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1]!.replace(/^~/, process.env.HOME!);
+		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1].replace(/^~/, process.env.HOME!);
 		const saved = fs.readFileSync(file, "utf8");
 		expect(saved).toContain("crlf\r\nline\\rlone ");
 	});

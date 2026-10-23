@@ -138,7 +138,7 @@ describe("ProgramStatusReporter", () => {
 
 	it("sends each status once and follows session name changes", () => {
 		const { reporter, reports, session, send, last } = setup("Old");
-		send({ type: "agent_start" }, { type: "turn_start" } as AgentSessionEvent, assistantEnd("toolUse"));
+		send({ type: "agent_start" }, { type: "turn_start" }, assistantEnd("toolUse"));
 		reporter.report();
 		expect(reports).toHaveLength(1);
 

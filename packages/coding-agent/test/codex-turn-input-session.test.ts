@@ -170,10 +170,10 @@ it.each(["steer", "followUp"] as const)(
 			await running;
 			expect(submits(f).map((x) => x.prompt)).toEqual(["initial", "queued $alpha"]);
 			const [initial, queued] = submits(f);
-			expect(initial!.turn_id).toEqual(expect.any(String));
-			expect(initial!.turn_id).not.toBe("");
-			if (method === "steer") expect(queued!.turn_id).toBe(initial!.turn_id);
-			else expect(queued!.turn_id).not.toBe(initial!.turn_id);
+			expect(initial.turn_id).toEqual(expect.any(String));
+			expect(initial.turn_id).not.toBe("");
+			if (method === "steer") expect(queued.turn_id).toBe(initial.turn_id);
+			else expect(queued.turn_id).not.toBe(initial.turn_id);
 			expect(f.harness.session.pendingMessageCount).toBe(0);
 		} finally {
 			f.release();
@@ -223,9 +223,9 @@ it.each(["all", "one-at-a-time"] as const)("allocates consumed follow-up IDs per
 		const records = submits(f);
 		expect(records.map((x) => x.prompt)).toEqual(["initial", "queued-one", "queued-two"]);
 		expect(records.every((x) => typeof x.turn_id === "string" && x.turn_id.length > 0)).toBe(true);
-		expect(records[1]!.turn_id).not.toBe(records[0]!.turn_id);
-		if (mode === "all") expect(records[2]!.turn_id).toBe(records[1]!.turn_id);
-		else expect(records[2]!.turn_id).not.toBe(records[1]!.turn_id);
+		expect(records[1].turn_id).not.toBe(records[0].turn_id);
+		if (mode === "all") expect(records[2].turn_id).toBe(records[1].turn_id);
+		else expect(records[2].turn_id).not.toBe(records[1].turn_id);
 	} finally {
 		f.release();
 		await running;
@@ -250,7 +250,7 @@ it("blocks initial input before reading selected skills and retains hook context
 		expect(read.mock.calls.some(([file]) => [f.skill, fs.realpathSync(f.skill)].includes(String(file)))).toBe(false);
 		expect(JSON.stringify(f.harness.session.messages)).toContain("BLOCKED_CONTEXT_EVIDENCE");
 		expect(f.records().filter((x) => x.profile === "codex" && x.hook_event_name === "Stop")).toHaveLength(0);
-		expect(submits(f)[0]!.turn_id).toEqual(expect.any(String));
+		expect(submits(f)[0].turn_id).toEqual(expect.any(String));
 	} finally {
 		read.mockRestore();
 		syncBuiltinESMExports();
@@ -289,14 +289,14 @@ it.each([false, true])("filters consumed blocked follow-up items (all blocked: %
 		expect(f.harness.session.pendingMessageCount).toBe(0);
 		const queued = submits(f).filter((x) => x.prompt !== "initial");
 		expect(queued).toHaveLength(2);
-		expect(queued[0]!.turn_id).toBe(queued[1]!.turn_id);
+		expect(queued[0].turn_id).toBe(queued[1].turn_id);
 		if (allBlocked)
 			expect(
 				f
 					.records()
 					.filter(
 						(record) =>
-							record.profile === "codex" && record.hook_event_name === "Stop" && record.turn_id === queued[0]!.turn_id,
+							record.profile === "codex" && record.hook_event_name === "Stop" && record.turn_id === queued[0].turn_id,
 					),
 			).toHaveLength(0);
 		expect(f.currentId()).toBeUndefined();
@@ -497,7 +497,7 @@ it("reads a selected skill only after the consumed submit hook accepts it", asyn
 	try {
 		await f.harness.session.prompt("Use $alpha");
 		expect(observed.length).toBeGreaterThan(0);
-		expect(observed.every((records) => records.length === 1 && records[0]!.prompt === "Use $alpha")).toBe(true);
+		expect(observed.every((records) => records.length === 1 && records[0].prompt === "Use $alpha")).toBe(true);
 	} finally {
 		read.mockRestore();
 		syncBuiltinESMExports();
@@ -546,7 +546,7 @@ it("retains a blocked logical ID through settlement and clears it after return",
 	const f = await fixture();
 	try {
 		await f.harness.session.prompt("BLOCK initial");
-		const id = submits(f)[0]!.turn_id;
+		const id = submits(f)[0].turn_id;
 		expect(id).toEqual(expect.any(String));
 		expect(f.settledIds).toEqual([id]);
 		expect(f.currentId()).toBeUndefined();
@@ -612,9 +612,9 @@ it("allocates follow-up identity before next-turn preparation and before consume
 		await running;
 		const records = submits(f);
 		expect(records.map((record) => record.prompt)).toEqual(["initial", "followup"]);
-		expect(records[1]!.turn_id).not.toBe(records[0]!.turn_id);
+		expect(records[1].turn_id).not.toBe(records[0].turn_id);
 		expect(prepared).toContainEqual({
-			id: records[1]!.turn_id,
+			id: records[1].turn_id,
 			prompts: ["initial"],
 		});
 	} finally {
@@ -645,11 +645,11 @@ it("retains an accepted empty text item in a mixed blocked follow-up batch", asy
 		f.release();
 		await running;
 		expect(observed).toHaveLength(2);
-		expect(users(observed[1]!)).toContain("");
-		expect(users(observed[1]!)).not.toContain("BLOCK first");
+		expect(users(observed[1])).toContain("");
+		expect(users(observed[1])).not.toContain("BLOCK first");
 		expect(submits(f).map((record) => record.prompt)).toEqual(["initial", "BLOCK first", ""]);
 		const records = submits(f);
-		expect(records[1]!.turn_id).toBe(records[2]!.turn_id);
+		expect(records[1].turn_id).toBe(records[2].turn_id);
 		expect(f.harness.session.pendingMessageCount).toBe(0);
 	} finally {
 		f.release();
@@ -685,8 +685,8 @@ it("still gates every selected item when clearQueue runs during its first hook",
 		await running;
 		expect(submits(f).map((record) => record.prompt)).toEqual(["initial", "HOLD selected", "BLOCK second selected"]);
 		expect(observed).toHaveLength(2);
-		expect(users(observed[1]!)).toContain("HOLD selected");
-		expect(users(observed[1]!)).not.toContain("BLOCK second selected");
+		expect(users(observed[1])).toContain("HOLD selected");
+		expect(users(observed[1])).not.toContain("BLOCK second selected");
 		expect(f.harness.session.pendingMessageCount).toBe(0);
 	} finally {
 		f.releaseHook();

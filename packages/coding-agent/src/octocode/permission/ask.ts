@@ -10,7 +10,7 @@ import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
 import { statusColor } from "../shared/render.ts";
 import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
-import { isRecord, clipText } from "../shared/util.ts";
+import { isRecord, clipText, errorMessage } from "../shared/util.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "./audit.ts";
 import { auditLine, auditLines, cardLines, computeCard, foldLines, NO_REASON, transcriptPurpose } from "./effect.ts";
 import { permissionHeader } from "./header.ts";
@@ -35,7 +35,6 @@ import {
 	startMode,
 	UNGRANTABLE,
 } from "./mode.ts";
-import { errorMessage } from "../shared/util.ts";
 import type { SourceDecision } from "./source-policy.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type Snapshot, takeSnapshot } from "./snapshot.ts";
@@ -349,7 +348,7 @@ export class Permission {
 		if (interactive(ctx, this.#isSubagent))
 			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, mode === "full" ? "warning" : "info");
 		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
-		this.#pi.sendMessage(
+		void this.#pi.sendMessage(
 			{
 				customType: PERMISSION_ID,
 				content: `[${PERMISSION_ID}] mode is now ${mode}: ${modeSummary(mode)}`,
@@ -362,7 +361,7 @@ export class Permission {
 
 	/** The editor shortcut: the next mode in `PERMISSION_CYCLE`, wrapping to the first. */
 	cycle(ctx: ExtensionContext): void {
-		this.setMode(PERMISSION_CYCLE[(PERMISSION_CYCLE.indexOf(this.#mode) + 1) % PERMISSION_CYCLE.length]!, ctx);
+		this.setMode(PERMISSION_CYCLE[(PERMISSION_CYCLE.indexOf(this.#mode) + 1) % PERMISSION_CYCLE.length], ctx);
 	}
 
 	/** Session grants, as `action: label`. */

@@ -213,9 +213,7 @@ describe("chrome", () => {
 	});
 
 	it("repaints the banner in the new colours after invalidate (a theme change)", () => {
-		const live = { ...(colorTheme as object), colors: { ...(colorTheme as { colors: object }).colors } } as {
-			colors: Record<string, unknown>;
-		};
+		const live = { ...(colorTheme as object), colors: { ...(colorTheme as { colors: object }).colors } };
 		const header = bannerHeader({ requestRender: vi.fn() }, live as never, undefined);
 		const before = header.render(120);
 		live.colors = {

@@ -5,7 +5,6 @@ import { renderDiff } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import {
-	COLLAPSED_LINES,
 	SHOW_ALL_LINES,
 	clip,
 	expandKey,
@@ -113,7 +112,7 @@ function bashOutcome(
 		body.push(line);
 	}
 	while (body.length > 0 && body.at(-1)!.trim() === "") body.pop();
-	while (cut === 0 && body.length > 0 && body[0]!.trim() === "") body.shift();
+	while (cut === 0 && body.length > 0 && body[0].trim() === "") body.shift();
 	if (body.length === 1 && body[0] === "(no output)") body.length = 0;
 	if (isError && !status) {
 		// Not a command status (a missing directory, a refused command): the message is the summary.

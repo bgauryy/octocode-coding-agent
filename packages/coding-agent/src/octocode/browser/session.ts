@@ -1,4 +1,5 @@
 import { BROWSER_VISIBLE_ENV, envFlag } from "../shared/env.ts";
+import { optionalString, stringOrEmpty } from "../shared/util.ts";
 import { throwIfAborted, unlessAborted } from "./abort.ts";
 import {
 	type BrowserSession,
@@ -207,6 +208,15 @@ async function preparePage(session: BrowserSession, page: CdpPage): Promise<void
 const prepared = new WeakSet<CdpPage>();
 
 /** Tracks the page's dialogs, downloads and console output on the session. */
+/** A console argument as text: its primitive value, else Chrome's description of it (`Object`, `Array(3)`, …). */
+function consoleArgText(arg: unknown): string {
+	const { value, description } = arg as { value?: unknown; description?: string };
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (value !== undefined && value !== null) return JSON.stringify(value);
+	return description ?? "";
+}
+
 function listen(session: BrowserSession, page: CdpPage): void {
 	page.on((method, params) => {
 		// A tab the session moved away from stays attached; only the driven one speaks for the session.
@@ -219,12 +229,12 @@ function listen(session: BrowserSession, page: CdpPage): void {
 		)
 			return;
 		if (method === "Page.javascriptDialogOpening") {
-			session.dialog = { type: String(params.type), message: String(params.message ?? "") };
+			session.dialog = { type: String(params.type), message: stringOrEmpty(params.message) };
 		} else if (method === "Page.javascriptDialogClosed") {
 			delete session.dialog;
 		} else if (method === "Browser.downloadWillBegin" || method === "Page.downloadWillBegin") {
 			trackDownload(session, String(params.guid), {
-				name: String(params.suggestedFilename ?? "download"),
+				name: optionalString(params.suggestedFilename) ?? "download",
 				state: "inProgress",
 				bytes: 0,
 			});
@@ -240,15 +250,7 @@ function listen(session: BrowserSession, page: CdpPage): void {
 				});
 		} else if (method === "Runtime.consoleAPICalled") {
 			const args = Array.isArray(params.args) ? params.args : [];
-			const text = args
-				.map((arg) =>
-					String(
-						(arg as { value?: unknown; description?: string }).value ??
-							(arg as { description?: string }).description ??
-							"",
-					),
-				)
-				.join(" ");
+			const text = args.map(consoleArgText).join(" ");
 			logConsole(session, `[${String(params.type)}] ${text}`);
 		} else if (method === "Runtime.exceptionThrown") {
 			const details = params.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;

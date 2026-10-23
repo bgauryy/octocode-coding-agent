@@ -319,7 +319,7 @@ async function main(): Promise<void> {
 		agentDir: dirname(args.sessionPath),
 		model: baseModel,
 		thinkingLevel: "low",
-		customTools: [deterministicProbeTool() as unknown as ToolDefinition],
+		customTools: [deterministicProbeTool()],
 		resourceLoader,
 		sessionManager: SessionManager.open(args.sessionPath),
 		settingsManager,

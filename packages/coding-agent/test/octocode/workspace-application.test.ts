@@ -62,6 +62,39 @@ function setup() {
 	};
 }
 describe("application server boundary", () => {
+	it("projects typed agent output before the application stream truncates it", async () => {
+		const app = setup();
+		const workspace = app.runtime.bind(app.ctx, app.backlog);
+		cleanup.push(() => workspace.close());
+		const connection = app.application.connect();
+		cleanup.push(() => connection.close());
+		const stream = connection[Symbol.asyncIterator]();
+		await stream.next();
+		app.emit({
+			type: "tool_execution_end",
+			toolCallId: "typed",
+			toolName: "agent",
+			isError: true,
+			result: {
+				content: [
+					{
+						type: "text",
+						text: 'Checked\nNotes\nStructured result:\n```json\n{"payload":"' + "x".repeat(40000) + '"}\n```',
+					},
+				],
+				details: {
+					status: "done",
+					outcome: "done",
+					structured: { version: 1, schemaHash: "abc", status: "invalid", error: { code: "schema" } },
+				},
+			},
+		});
+		const frame = (await stream.next()).value;
+		expect(frame).toMatchObject({ type: "event", event: { type: "tool.completed", failed: true } });
+		expect(JSON.stringify(frame)).toContain("Structured result: invalid (schema).");
+		expect(JSON.stringify(frame)).not.toContain("payload");
+	});
+
 	it("delivers the same live message to terminal and authenticated web, and closing web does not cancel", async () => {
 		const app = setup();
 		const terminal: AgentSessionEvent[] = [];

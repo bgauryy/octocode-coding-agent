@@ -78,7 +78,7 @@ export function registerArchiveTool(pi: ExtensionAPI): void {
 				page: Type.Optional(Type.Integer({ description: "Continue a result" })),
 			}),
 			async execute(_toolCallId, input, signal, _onUpdate, ctx) {
-				const params = input as ArchiveParams;
+				const params = input;
 				signal?.throwIfAborted();
 				const goal = params.goal?.trim();
 				const reason = params.reason?.trim();

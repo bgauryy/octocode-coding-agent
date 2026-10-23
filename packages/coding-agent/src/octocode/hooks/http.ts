@@ -1,5 +1,11 @@
-import type { HookConfig, HookHttp, HookSource } from "./contracts.ts";
-import { HOOK_MAX_TIMEOUT_S, HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
+import {
+	type HookConfig,
+	type HookHttp,
+	type HookSource,
+	HOOK_MAX_TIMEOUT_S,
+	HOOK_OUTPUT_MAX_BYTES,
+	type HookRun,
+} from "./contracts.ts";
 import { errorMessage, isRecord } from "../shared/util.ts";
 
 const RESPONSE_LIMIT = HOOK_OUTPUT_MAX_BYTES;

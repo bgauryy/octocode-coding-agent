@@ -211,7 +211,7 @@ describe("backlog html page", () => {
 		expect(html).toContain("a\\u2028b\\u2029c");
 		// The data reads back exactly.
 		expect(parts(html).data).toEqual(JSON.parse(JSON.stringify(snapshot)));
-		expect(parts(html).data.items[0]!.title).toBe(`${XSS} ${LINE_SEPARATORS}`);
+		expect(parts(html).data.items[0].title).toBe(`${XSS} ${LINE_SEPARATORS}`);
 		expect(embeddedJson({ a: "<" })).toBe('{"a":"\\u003c"}');
 	});
 
@@ -233,6 +233,7 @@ describe("backlog html page", () => {
 	it("has a script that parses and renders data only through createElement and text nodes", () => {
 		const { script } = parts(renderBacklogHtml(snapshotWith("t", "n")));
 		// Parse only (the function is never called): a syntax error in the template fails here, not in a user's browser.
+		// oxlint-disable-next-line typescript/no-implied-eval -- parses the page script to catch template syntax errors; never called
 		expect(() => new Function(script)).not.toThrow();
 		// React DOM contains HTML-sink code paths this page never uses. webview/test/security.test.ts keeps every sink out
 		// of the renderer's source and runs this page on hostile data with each sink and network API trapped.
@@ -265,7 +266,7 @@ describe("openFile", () => {
 			const fake = fakeSpawn("spawn");
 			await openFile("/tmp/my repo/backlog.html", { platform, spawn: fake.spawn });
 			expect(fake.unref).toHaveBeenCalled();
-			return fake.calls[0]!;
+			return fake.calls[0];
 		};
 		expect(await run("darwin")).toMatchObject({
 			command: "open",
@@ -318,7 +319,7 @@ describe("/backlog html", () => {
 		const t = setup(open);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.command.handler("", ctx);
-		const url = new URL(open.mock.calls[0]![0]);
+		const url = new URL(open.mock.calls[0][0]);
 		expect(url.hostname).toBe("127.0.0.1");
 		expect(url.hash).toMatch(/^#access=/);
 		expect((await fetch(url.origin)).status).toBe(200);
@@ -334,18 +335,18 @@ describe("/backlog html", () => {
 		try {
 			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("", ctx)]);
 			const urls = open.mock.calls.map(([url]) => new URL(url));
-			expect(urls[0]!.origin).toBe(urls[1]!.origin);
+			expect(urls[0].origin).toBe(urls[1].origin);
 			expect(urls.map((url) => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
 			expect(urls.every((url) => !url.search)).toBe(true);
 			await t.commands.get("web")!.handler("backlogs", ctx);
-			expect(open.mock.calls[2]![0]).toBe(urls[1]!.href);
+			expect(open.mock.calls[2][0]).toBe(urls[1].href);
 			await t.commands.get("web")!.handler("unknown", ctx);
 			expect(open).toHaveBeenCalledTimes(3);
 			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /web [backlogs]");
 			await t.fire("session_start", {}, ctx);
-			await expect(fetch(urls[0]!.origin)).rejects.toThrow();
+			await expect(fetch(urls[0].origin)).rejects.toThrow();
 			await t.commands.get("web")!.handler("", ctx);
-			expect(new URL(open.mock.calls[3]![0]).hash).not.toBe(urls[0]!.hash);
+			expect(new URL(open.mock.calls[3][0]).hash).not.toBe(urls[0].hash);
 		} finally {
 			await t.fire("session_shutdown", {}, ctx);
 		}

@@ -125,7 +125,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				},
 				reject,
 			});
-			output({ type: "extension_ui_request", id, ...request } as RpcExtensionUIRequest);
+			output({ type: "extension_ui_request", id, ...request });
 		});
 	}
 
@@ -156,7 +156,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				method: "notify",
 				message,
 				notifyType: type,
-			} as RpcExtensionUIRequest);
+			});
 		},
 
 		onTerminalInput(): () => void {
@@ -172,7 +172,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				method: "setStatus",
 				statusKey: key,
 				statusText: text,
-			} as RpcExtensionUIRequest);
+			});
 		},
 
 		setWorkingMessage(_message?: string): void {
@@ -201,7 +201,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					widgetKey: key,
 					widgetLines: content as string[] | undefined,
 					widgetPlacement: options?.placement,
-				} as RpcExtensionUIRequest);
+				});
 			}
 			// Component factories are not supported in RPC mode - would need TUI access
 		},
@@ -221,7 +221,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				id: crypto.randomUUID(),
 				method: "setTitle",
 				title,
-			} as RpcExtensionUIRequest);
+			});
 		},
 
 		async custom() {
@@ -241,7 +241,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				id: crypto.randomUUID(),
 				method: "set_editor_text",
 				text,
-			} as RpcExtensionUIRequest);
+			});
 		},
 
 		getEditorText(): string {
@@ -265,7 +265,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					},
 					reject,
 				});
-				output({ type: "extension_ui_request", id, method: "editor", title, prefill } as RpcExtensionUIRequest);
+				output({ type: "extension_ui_request", id, method: "editor", title, prefill });
 			});
 		},
 

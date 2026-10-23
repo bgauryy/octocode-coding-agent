@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import type * as RoleModule from "../../src/octocode/instructions/role.ts";
 import { writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { runSubagent, subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
 vi.mock("../../src/octocode/instructions/role.ts", async (original) => ({
-	...(await original<typeof import("../../src/octocode/instructions/role.ts")>()),
+	...(await original<typeof RoleModule>()),
 	writeRolePrompt: vi.fn(),
 }));
 afterEach(() => {

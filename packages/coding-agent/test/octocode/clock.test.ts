@@ -43,7 +43,7 @@ describe("the shared one-second clock", () => {
 		vi.useFakeTimers();
 		const set = vi.spyOn(globalThis, "setInterval");
 		const stop = onSecond(() => undefined);
-		expect((set.mock.results[0]!.value as NodeJS.Timeout).hasRef()).toBe(false);
+		expect((set.mock.results[0].value as NodeJS.Timeout).hasRef()).toBe(false);
 		stop();
 	});
 

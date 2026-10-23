@@ -27,7 +27,7 @@ describe("late background reports", () => {
 			wake: true,
 		});
 		const [file] = fs.readdirSync(dir);
-		if (process.platform !== "win32") expect(fs.statSync(path.join(dir, file!)).mode & 0o777).toBe(0o600);
+		if (process.platform !== "win32") expect(fs.statSync(path.join(dir, file)).mode & 0o777).toBe(0o600);
 		const f = fakePi();
 		registerAgentTool(
 			f.pi,
@@ -40,7 +40,7 @@ describe("late background reports", () => {
 		const late = () => f.sent.filter((entry) => String(entry.message.content).includes("LATE REPORT"));
 		await f.emit("session_start", {}, ctx);
 		await vi.waitFor(() => expect(late()).toHaveLength(1), { timeout: 5_000 });
-		expect(String(late()[0]!.message.content)).toMatch(
+		expect(String(late()[0].message.content)).toMatch(
 			/^\(Arrived after the session restarted\) Background subagent general-late finished/,
 		);
 		expect(fs.readdirSync(dir)).toEqual([]);

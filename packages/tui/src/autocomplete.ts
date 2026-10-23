@@ -63,7 +63,7 @@ function findLastDelimiter(text: string): number {
 function stripLeadingWrappers(token: string): string {
 	let result = token;
 	while (result.length > 0) {
-		const closer = PATH_WRAPPERS[result[0]!];
+		const closer = PATH_WRAPPERS[result[0]];
 		if (!closer || result.includes(closer, 1)) {
 			break;
 		}
@@ -90,7 +90,7 @@ function findUnclosedQuoteStart(text: string): number | null {
 
 function isTokenStart(text: string, index: number): boolean {
 	let start = index;
-	while (start > 0 && PATH_WRAPPERS[text[start - 1]!]) {
+	while (start > 0 && PATH_WRAPPERS[text[start - 1]]) {
 		start -= 1;
 	}
 	return PATH_DELIMITERS.has(text[start - 1] ?? "") || tokenStartRegex.test(text.slice(0, start));

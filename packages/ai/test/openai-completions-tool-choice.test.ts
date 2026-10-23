@@ -110,7 +110,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("forwards toolChoice from simple options to payload", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const tools: Tool[] = [
 			{
@@ -151,7 +151,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("includes toolChoice when no tools are provided", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		let payload: unknown;
 
@@ -175,7 +175,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("omits strict when compat disables strict mode", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = {
 			...baseModel,
 			api: "openai-completions",
@@ -209,7 +209,7 @@ describe("openai-completions tool_choice", () => {
 				onPayload: (params: unknown) => {
 					payload = params;
 				},
-			} as unknown as Parameters<typeof streamSimple>[2],
+			},
 		).result();
 
 		const params = (payload ?? mockState.lastParams) as { tools?: Array<{ function?: Record<string, unknown> }> };
@@ -260,7 +260,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("preserves strict tools for capable built-in Chat Completions models", async () => {
-		const model = getModel("groq", "openai/gpt-oss-20b")!;
+		const model = getModel("groq", "openai/gpt-oss-20b");
 		expect(model.compat?.supportsStrictMode).toBe(true);
 		const tool: Tool = {
 			name: "ping",
@@ -296,7 +296,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("maps Groq Qwen reasoning levels to default reasoning_effort", async () => {
-		const model = getModel("groq", "qwen/qwen3.6-27b")!;
+		const model = getModel("groq", "qwen/qwen3.6-27b");
 		let payload: unknown;
 
 		await streamSimple(
@@ -324,7 +324,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("keeps normal reasoning_effort for groq models without compat mapping", async () => {
-		const model = getModel("groq", "openai/gpt-oss-20b")!;
+		const model = getModel("groq", "openai/gpt-oss-20b");
 		let payload: unknown;
 
 		await streamSimple(
@@ -352,7 +352,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("enables tool_stream for supported z.ai models with tools", async () => {
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		const tools: Tool[] = [
 			{
 				name: "ping",
@@ -397,7 +397,7 @@ describe("openai-completions tool_choice", () => {
 
 	it("stores z.ai effort metadata", () => {
 		for (const modelId of ["glm-5.2", "glm-5.2-highspeed"] as const) {
-			const model = getModel("zai", modelId)!;
+			const model = getModel("zai", modelId);
 			expect(model.compat?.supportsReasoningEffort).toBe(true);
 			expect(model.thinkingLevelMap).toEqual({
 				off: "none",
@@ -411,7 +411,7 @@ describe("openai-completions tool_choice", () => {
 		}
 
 		for (const provider of ["zai", "zai-coding-cn"] as const) {
-			const glm53 = getModel(provider, "glm-5.3")!;
+			const glm53 = getModel(provider, "glm-5.3");
 			expect(glm53.compat?.supportsReasoningEffort).toBe(true);
 			expect(glm53.thinkingLevelMap).toEqual({
 				off: null,
@@ -426,7 +426,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("maps z.ai GLM-5.2 thinking levels to reasoning_effort", async () => {
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		const cases = [
 			{ reasoning: "low", effort: "high" },
 			{ reasoning: "medium", effort: "high" },
@@ -464,7 +464,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("preserves z.ai thinking when replaying reasoning_content", async () => {
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		const assistantMessage: AssistantMessage = {
 			role: "assistant",
 			api: "openai-completions",
@@ -524,7 +524,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("omits z.ai GLM-5.2 reasoning_effort when thinking is off", async () => {
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		let payload: unknown;
 
 		await streamSimple(
@@ -552,7 +552,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("respects explicit z.ai tool_stream compat override", async () => {
-		const baseModel = getModel("zai", "glm-5.2")!;
+		const baseModel = getModel("zai", "glm-5.2");
 		const model = {
 			...baseModel,
 			compat: {
@@ -596,7 +596,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("omits tool_stream when no tools are provided", async () => {
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		let payload: unknown;
 
 		await streamSimple(
@@ -638,7 +638,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const model = getModel("zai", "glm-5.2")!;
+		const model = getModel("zai", "glm-5.2");
 		const response = await streamSimple(
 			model,
 			{
@@ -676,7 +676,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -711,7 +711,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -739,7 +739,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = {
 			...baseModel,
 			api: "openai-completions",
@@ -781,7 +781,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const tool: Tool = {
 			name: "read",
@@ -871,7 +871,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const tool: Tool = {
 			name: "read",
@@ -1018,7 +1018,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const tools: Tool[] = [
 			{
@@ -1151,7 +1151,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("uses system messages for non-OpenAI/Anthropic OpenRouter reasoning model instructions", async () => {
-		const model = getModel("openrouter", "deepseek/deepseek-v4-pro")!;
+		const model = getModel("openrouter", "deepseek/deepseek-v4-pro");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1181,7 +1181,7 @@ describe("openai-completions tool_choice", () => {
 			let payload: unknown;
 
 			await streamSimple(
-				model!,
+				model,
 				{
 					systemPrompt: "Follow instructions.",
 					messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
@@ -1200,7 +1200,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("keeps developer messages for OpenAI reasoning model instructions", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-5.5")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-5.5");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		let payload: unknown;
 
@@ -1225,7 +1225,7 @@ describe("openai-completions tool_choice", () => {
 	it("stores OpenRouter Kimi K2.6 reasoning replay compat in built-in metadata", () => {
 		// `:free` variant delisted from the OpenRouter API; the generator override
 		// matches any `moonshotai/kimi-k2.6*` variant that is listed.
-		const model = getModel("openrouter", "moonshotai/kimi-k2.6")!;
+		const model = getModel("openrouter", "moonshotai/kimi-k2.6");
 		expect(model.compat?.supportsDeveloperRole).toBe(false);
 		expect(model.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
 	});
@@ -1234,7 +1234,7 @@ describe("openai-completions tool_choice", () => {
 		const providers = ["xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-ams", "xiaomi-token-plan-sgp"] as const;
 
 		for (const provider of providers) {
-			const model = getModel(provider, "mimo-v2.6-pro")!;
+			const model = getModel(provider, "mimo-v2.6-pro");
 			expect(model.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
 			expect(model.compat?.thinkingFormat).toBe("deepseek");
 			expect(model.compat?.maxTokensField).toBeUndefined();
@@ -1246,7 +1246,7 @@ describe("openai-completions tool_choice", () => {
 		const providers = ["qwen-token-plan", "qwen-token-plan-cn", "qwen-token-plan-individual"] as const;
 
 		for (const provider of providers) {
-			const model = getModel(provider, "qwen3.7-max")!;
+			const model = getModel(provider, "qwen3.7-max");
 			expect(model.compat?.thinkingFormat).toBe("qwen");
 			expect(model.compat?.requiresReasoningContentOnAssistantMessages).toBeUndefined();
 			expect(model.compat?.supportsDeveloperRole).toBe(false);
@@ -1255,7 +1255,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("replays Xiaomi MiMo assistant tool calls with empty reasoning_content when thinking is missing", async () => {
-		const model = getModel("xiaomi", "mimo-v2.6-pro")!;
+		const model = getModel("xiaomi", "mimo-v2.6-pro");
 		const assistantMessage: AssistantMessage = {
 			role: "assistant",
 			api: "openai-completions",
@@ -1316,7 +1316,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("opencode-go", "kimi-k3")!;
+		const { compat: _compat, ...baseModel } = getModel("opencode-go", "kimi-k3");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -1343,7 +1343,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -1363,7 +1363,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("replays OpenCode Go reasoning thinking blocks as reasoning_content", () => {
-		const { compat: _compat, ...baseModel } = getModel("opencode-go", "kimi-k3")!;
+		const { compat: _compat, ...baseModel } = getModel("opencode-go", "kimi-k3");
 		const model = { ...baseModel, api: "openai-completions" } as Model<"openai-completions">;
 		const messages = convertMessages(
 			model,
@@ -1422,7 +1422,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("sends thinking disabled for OpenCode Kimi K2.6 when thinking is off", async () => {
-		const model = getModel("opencode", "kimi-k2.6")!;
+		const model = getModel("opencode", "kimi-k2.6");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1444,7 +1444,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("sends thinking enabled for OpenCode Kimi K2.6 when thinking is enabled", async () => {
-		const model = getModel("opencode", "kimi-k2.6")!;
+		const model = getModel("opencode", "kimi-k2.6");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1474,7 +1474,7 @@ describe("openai-completions tool_choice", () => {
 			let payload: unknown;
 
 			await streamSimple(
-				model!,
+				model,
 				{
 					messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
 				},
@@ -1493,7 +1493,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("keeps disabled thinking for Moonshot Kimi K2.6 when thinking is off", async () => {
-		const model = getModel("moonshotai-cn", "kimi-k2.6")!;
+		const model = getModel("moonshotai-cn", "kimi-k2.6");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1515,7 +1515,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("sends max_tokens for OpenCode completions models", async () => {
-		const cases = [getModel("opencode-go", "kimi-k3")!, getModel("opencode", "kimi-k2.6")!] as const;
+		const cases = [getModel("opencode-go", "kimi-k3"), getModel("opencode", "kimi-k2.6")] as const;
 
 		for (const model of cases) {
 			let payload: unknown;
@@ -1555,7 +1555,7 @@ describe("openai-completions tool_choice", () => {
 			name: "Custom Uppercase DeepSeek Model",
 			baseUrl: "https://API.DeepSeek.COM",
 		} satisfies Model<"openai-completions">;
-		const nativeModels = [getModel("deepseek", "deepseek-flash")!, getModel("deepseek", "deepseek-v4-pro")!] as const;
+		const nativeModels = [getModel("deepseek", "deepseek-flash"), getModel("deepseek", "deepseek-v4-pro")] as const;
 		const cases = [...nativeModels, customModel, customUppercaseModel] as const;
 
 		for (const model of nativeModels) {
@@ -1586,7 +1586,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("sends max_tokens for Z.AI completions models", async () => {
-		const cases = [getModel("zai", "glm-5-turbo")!, getModel("zai", "glm-5.2")!] as const;
+		const cases = [getModel("zai", "glm-5-turbo"), getModel("zai", "glm-5.2")] as const;
 
 		for (const model of cases) {
 			expect(model.compat?.maxTokensField).toBe("max_tokens");
@@ -1613,7 +1613,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("omits reasoning effort for OpenCode Grok Build", async () => {
-		const model = getModel("opencode", "grok-build-0.1")!;
+		const model = getModel("opencode", "grok-build-0.1");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1648,7 +1648,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -1687,7 +1687,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -1733,7 +1733,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 		const response = await streamSimple(
 			model,
@@ -1757,7 +1757,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("uses OpenRouter reasoning object instead of reasoning_effort", async () => {
-		const model = getModel("openrouter", "deepseek/deepseek-r1-0528")!;
+		const model = getModel("openrouter", "deepseek/deepseek-r1-0528");
 		let payload: unknown;
 
 		await streamSimple(
@@ -1860,7 +1860,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("uses Ant Ling compatibility metadata", async () => {
-		const model = getModel("ant-ling", "Ring-2.6-1T")!;
+		const model = getModel("ant-ling", "Ring-2.6-1T");
 		let payload: unknown;
 
 		expect(model.compat).toMatchObject({
@@ -1913,7 +1913,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("omits Ant Ling reasoning for unmapped direct reasoning efforts and non-reasoning models", async () => {
-		const ring = getModel("ant-ling", "Ring-2.6-1T")!;
+		const ring = getModel("ant-ling", "Ring-2.6-1T");
 		let payload: unknown;
 
 		await stream(
@@ -1932,7 +1932,7 @@ describe("openai-completions tool_choice", () => {
 
 		expect((payload ?? mockState.lastParams) as { reasoning?: unknown }).not.toHaveProperty("reasoning");
 
-		const ling = getModel("ant-ling", "Ling-2.6-flash")!;
+		const ling = getModel("ant-ling", "Ling-2.6-flash");
 		await streamSimple(
 			ling,
 			{

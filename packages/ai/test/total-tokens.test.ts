@@ -154,7 +154,7 @@ describe("totalTokens field", () => {
 
 	describe.skipIf(!process.env.OPENAI_API_KEY)("OpenAI Completions", () => {
 		it("gpt-4o-mini - should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
-			const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+			const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
 			void _compat;
 			const llm: Model<"openai-completions"> = {
 				...baseModel,

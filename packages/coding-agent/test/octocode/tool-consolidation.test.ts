@@ -236,14 +236,9 @@ describe("unified agent", () => {
 		modes.register(fake.pi);
 		const agent = fake.tools.get("agent")!;
 		const args = { type: "message", input: { to: "inky" } };
-		agent.renderCall(args, {} as never, { args } as never);
+		agent.renderCall(args, {}, { args });
 		// A thrown error has no agentType in its details; the call's type still selects the mode's renderer.
-		agent.renderResult(
-			{ content: [{ type: "text", text: "boom" }], details: {}, isError: true },
-			{} as never,
-			{} as never,
-			{ args } as never,
-		);
+		agent.renderResult({ content: [{ type: "text", text: "boom" }], details: {}, isError: true }, {}, {}, { args });
 		expect(seen).toEqual([{ to: "inky" }, { to: "inky" }]);
 	});
 

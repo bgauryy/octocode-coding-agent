@@ -7,9 +7,9 @@ it("replaces every non-overlapping original occurrence without recursion", () =>
 });
 it("keeps default and explicit false exact-once behavior", () => {
 	for (const flag of [undefined, false])
-		expect(() =>
-			applyEditsToNormalizedContent("A A", [{ oldText: "A", newText: "B", replaceAll: flag } as Edit], "f"),
-		).toThrow(/unique/);
+		expect(() => applyEditsToNormalizedContent("A A", [{ oldText: "A", newText: "B", replaceAll: flag }], "f")).toThrow(
+			/unique/,
+		);
 });
 it("prefers exact occurrences over equivalent quotes", () => {
 	expect(applyEditsToNormalizedContent('"A" “A” "A"', [all('"A"', "B")], "f").newContent).toBe("B “A” B");

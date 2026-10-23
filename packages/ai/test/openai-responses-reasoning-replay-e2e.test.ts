@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { complete, getEnvApiKey, getModel } from "../src/compat.ts";
-import type { AssistantMessage, Context, Message, Tool, ToolCall } from "../src/types.ts";
+import type { AssistantMessage, Context, Message, Tool } from "../src/types.ts";
 
 const testToolSchema = Type.Object({
 	value: Type.Number({ description: "A number to double" }),
@@ -117,8 +117,7 @@ describe.skipIf(!process.env.OPENAI_API_KEY || !process.env.ANTHROPIC_API_KEY)(
 				},
 			);
 
-			const toolCallBlock = assistantResponse.content.find((block) => block.type === "toolCall") as
-				ToolCall | undefined;
+			const toolCallBlock = assistantResponse.content.find((block) => block.type === "toolCall");
 
 			if (!toolCallBlock) {
 				throw new Error("Missing tool call from OpenAI Responses - model did not use the tool");
@@ -217,8 +216,7 @@ describe.skipIf(!process.env.OPENAI_API_KEY || !process.env.ANTHROPIC_API_KEY)(
 				},
 			);
 
-			const toolCallBlock = assistantResponse.content.find((block) => block.type === "toolCall") as
-				ToolCall | undefined;
+			const toolCallBlock = assistantResponse.content.find((block) => block.type === "toolCall");
 
 			if (!toolCallBlock) {
 				throw new Error("Missing tool call from Anthropic - model did not use the tool");

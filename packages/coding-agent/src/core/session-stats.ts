@@ -57,7 +57,7 @@ export function computeSessionStats(
 			}
 		} else if (message.role === "assistant") {
 			assistantMessages++;
-			const assistantMsg = message as AssistantMessage;
+			const assistantMsg = message;
 			if (Array.isArray(assistantMsg.content)) {
 				toolCalls += assistantMsg.content.filter((c) => c.type === "toolCall").length;
 			}
@@ -139,7 +139,7 @@ export function lastAssistantText(messages: readonly AgentMessage[]): string | u
 		.reverse()
 		.find((m) => {
 			if (m.role !== "assistant") return false;
-			const msg = m as AssistantMessage;
+			const msg = m;
 			// Skip aborted messages with no content
 			if (msg.stopReason === "aborted" && msg.content.length === 0) return false;
 			return true;

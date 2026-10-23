@@ -43,7 +43,7 @@ describe("footer", () => {
 			/^claude-opus-5-5 · ⏸ permission: manual · Shift\+Tab · high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
 		);
 		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
-		expect(visibleWidth(top!)).toBe(170);
+		expect(visibleWidth(top)).toBe(170);
 	});
 
 	it("colours context by how full it is", () => {
@@ -135,8 +135,8 @@ describe("footer", () => {
 			theme,
 			75,
 		);
-		expect(visibleWidth(top!)).toBeLessThanOrEqual(75);
-		expect(visibleWidth(bottom!)).toBeLessThanOrEqual(75);
+		expect(visibleWidth(top)).toBeLessThanOrEqual(75);
+		expect(visibleWidth(bottom)).toBeLessThanOrEqual(75);
 		expect(bottom).toContain("feature/a-very-long-bran…");
 		for (const kept of ["claude-opus-5-5", "42%", "manual", "agents 1/2", "1 bash job"]) expect(top).toContain(kept);
 		expect(top).not.toContain("tok/s");
@@ -247,8 +247,8 @@ describe("footer wiring", () => {
 			theme,
 			data,
 		);
-		let [top, bottom] = component.render(120) as string[];
-		expect(top).toMatch(/^model-x · medium · ctx ▱{8} 11% of 87\.5k +≈\$0\.15$/);
+		const [initialTop, bottom] = component.render(120) as string[];
+		expect(initialTop).toMatch(/^model-x · medium · ctx ▱{8} 11% of 87\.5k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
 		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · 0 compactions · mcp 1/1");
 		percent = 64;
@@ -258,13 +258,12 @@ describe("footer wiring", () => {
 			ctx,
 		);
 		expect(renders).toBe(1);
-		[top] = component.render(120) as string[];
+		const [top] = component.render(120) as string[];
 		expect(top).toContain("73%");
 		expect(top).toContain("≈$0.16");
 		// A rename (/name, or the automatic title) shows at once.
-		let name: string | undefined;
+		const name = "auth flow";
 		ctx.sessionManager.getSessionName = () => name;
-		name = "auth flow";
 		await fake.emit("session_info_changed", { type: "session_info_changed", name }, ctx);
 		expect(renders).toBe(2);
 		expect((component.render(120) as string[]).join("\n")).toContain("auth flow");

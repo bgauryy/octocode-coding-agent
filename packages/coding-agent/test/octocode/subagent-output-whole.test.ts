@@ -40,7 +40,7 @@ afterAll(() => {
 async function run(task: string, scratch: string) {
 	const notices: ChildNotices[] = [];
 	const onProgress = (update: ChildProgress) => {
-		update.notices && notices.push(update.notices);
+		if (update.notices) notices.push(update.notices);
 		return undefined;
 	};
 	const id = `a-${task.replace(/\W+/g, "-")}`;
@@ -200,5 +200,5 @@ describe("a crashed child's last progress", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

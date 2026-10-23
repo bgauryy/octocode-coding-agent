@@ -229,7 +229,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 	}
 
 	private notifyChange(): void {
-		this.callbacks.onChange(this.enabledIds === null ? null : [...this.enabledIds]);
+		void this.callbacks.onChange(this.enabledIds === null ? null : [...this.enabledIds]);
 	}
 
 	private updateList(): void {
@@ -246,7 +246,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		);
 		const endIndex = Math.min(startIndex + this.maxVisible, this.filteredItems.length);
 		for (let i = startIndex; i < endIndex; i++) {
-			const item = this.filteredItems[i]!;
+			const item = this.filteredItems[i];
 			const isSelected = i === this.selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", "→ ") : "  ";
 			const id = item.model?.id ?? item.fullId;
@@ -367,7 +367,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 
 		// Save/persist to settings
 		if (kb.matches(data, "app.models.save")) {
-			this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
+			void this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
 			this.isDirty = false;
 			this.footerText.setText(this.getFooterText());
 			return;

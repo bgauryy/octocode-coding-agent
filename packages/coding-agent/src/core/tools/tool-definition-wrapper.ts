@@ -47,12 +47,12 @@ export function wrapToolDefinition<TDetails = unknown>(
  * This keeps AgentSession's internal registry definition-first even when a caller
  * provides plain AgentTool overrides that do not include prompt metadata or renderers.
  */
-export function createToolDefinitionFromAgentTool(tool: AgentTool<any>): ToolDefinition<any, unknown> {
+export function createToolDefinitionFromAgentTool(tool: AgentTool<any>): ToolDefinition<any> {
 	return {
 		name: tool.name,
 		label: tool.label,
 		description: tool.description,
-		parameters: tool.parameters as any,
+		parameters: tool.parameters,
 		outputSchema: tool.outputSchema,
 		constrainedSampling: tool.constrainedSampling,
 		prepareArguments: tool.prepareArguments,

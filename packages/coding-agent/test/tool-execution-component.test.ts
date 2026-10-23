@@ -210,7 +210,7 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-bash-1",
 			{ command: "sleep 10" },
 			undefined,
-			(update) => updates.push(update as { content: Array<{ type: string; text?: string }>; details?: unknown }),
+			(update) => updates.push(update),
 			{} as never,
 		);
 		expect(updates).toEqual([{ content: [], details: undefined }]);

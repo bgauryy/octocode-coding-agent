@@ -47,7 +47,7 @@ interface Response {
 function parseLine(line: string): Response | undefined {
 	try {
 		const value: unknown = JSON.parse(line);
-		return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Response) : undefined;
+		return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
 	} catch {
 		return undefined;
 	}
@@ -169,7 +169,7 @@ export class WindowsHelper {
 	}
 
 	#failPending(): void {
-		for (const settle of [...this.#pending.values()]) settle(undefined);
+		for (const settle of Array.from(this.#pending.values())) settle(undefined);
 	}
 
 	/** One request and its response; undefined when the helper is unavailable, died, did not answer in time or the write failed. */

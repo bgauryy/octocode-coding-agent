@@ -164,7 +164,7 @@ describe("a repeated read of an unchanged file", () => {
 			"/repo",
 		);
 		expect([...seen.values()]).toMatchObject([{ file: "/repo/a.ts", id: "e3" }]);
-		expect([...seen.values()][0]!.partial).toBeUndefined();
+		expect([...seen.values()][0].partial).toBeUndefined();
 	});
 
 	it("stops counting a stub as a read once the result it points to was cleared", () => {

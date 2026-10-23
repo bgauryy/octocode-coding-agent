@@ -150,7 +150,7 @@ describe("PreToolUse hook failures", () => {
 		]);
 		expect(
 			parseHooks({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "g", failClosed: "yes" }] }] } }, "a")
-				.PreToolUse[0]!.hooks[0],
+				.PreToolUse[0].hooks[0],
 		).not.toHaveProperty("failClosed");
 	});
 });

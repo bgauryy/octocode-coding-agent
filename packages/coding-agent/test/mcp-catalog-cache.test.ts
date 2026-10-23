@@ -137,15 +137,15 @@ describe("MCP connection catalog lifecycle", () => {
 			await fixture.notify();
 			await fixture.notify();
 			await vi.waitFor(() => expect(requests).toHaveLength(2));
-			await requests[1]!.peer.send({
+			await requests[1].peer.send({
 				jsonrpc: "2.0",
-				id: requests[1]!.request.id,
+				id: requests[1].request.id,
 				result: { tools: [{ ...tool(), name: "new" }] },
 			});
 			await vi.waitFor(() => expect(connection.tools[0]?.name).toBe("new"));
-			await requests[0]!.peer.send({
+			await requests[0].peer.send({
 				jsonrpc: "2.0",
-				id: requests[0]!.request.id,
+				id: requests[0].request.id,
 				error: { code: -32000, message: "old failure" },
 			});
 			await new Promise((resolve) => setTimeout(resolve, 20));
@@ -153,9 +153,9 @@ describe("MCP connection catalog lifecycle", () => {
 			expect(connection.error).toBeUndefined();
 			await fixture.notify();
 			await vi.waitFor(() => expect(requests).toHaveLength(3));
-			await requests[2]!.peer.send({
+			await requests[2].peer.send({
 				jsonrpc: "2.0",
-				id: requests[2]!.request.id,
+				id: requests[2].request.id,
 				error: { code: -32000, message: "latest failure" },
 			});
 			await vi.waitFor(() => expect(connection.tools).toEqual([]));

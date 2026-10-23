@@ -354,18 +354,16 @@ export class BacklogStore {
 				Math.max(1, Math.min(500, Math.floor(limit))),
 			) as Array<Record<string, string | number | null>>;
 		return redactData(
-			rows
-				.reverse()
-				.map((row) => ({
-					id: Number(row.id),
-					backlogId: String(row.backlog_id),
-					at: Number(row.at),
-					actor: JSON.parse(String(row.actor)),
-					action: String(row.action),
-					entity: String(row.entity),
-					before: row.before_value ? JSON.parse(String(row.before_value)) : null,
-					after: row.after_value ? JSON.parse(String(row.after_value)) : null,
-				})),
+			rows.reverse().map((row) => ({
+				id: Number(row.id),
+				backlogId: String(row.backlog_id),
+				at: Number(row.at),
+				actor: JSON.parse(String(row.actor)),
+				action: String(row.action),
+				entity: String(row.entity),
+				before: row.before_value ? JSON.parse(String(row.before_value)) : null,
+				after: row.after_value ? JSON.parse(String(row.after_value)) : null,
+			})),
 		);
 	}
 

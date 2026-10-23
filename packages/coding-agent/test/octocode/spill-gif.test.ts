@@ -93,7 +93,7 @@ describe("boundImagePart on an animated GIF", () => {
 			"broken",
 		);
 		expect(parts).toHaveLength(1);
-		expect(parts[0]!.type).toBe("text");
+		expect(parts[0].type).toBe("text");
 		const text = (parts[0] as { text: string }).text;
 		expect(text).toContain("image/gif");
 		expect(text).toContain("left out: too large for the context");

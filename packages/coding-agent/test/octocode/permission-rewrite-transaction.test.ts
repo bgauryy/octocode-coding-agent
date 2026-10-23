@@ -65,7 +65,7 @@ it("validates, rechecks and commits effective source input without old native op
 	expect(f.resolver).toHaveBeenCalledTimes(1);
 	expect(f.refresh).toHaveBeenCalledTimes(2);
 	expect(f.reserved).toHaveBeenCalledTimes(2);
-	expect(f.resolver.mock.calls[0]![1].input).toEqual({
+	expect(f.resolver.mock.calls[0][1].input).toEqual({
 		command: "printf original",
 		timeout: 30,
 		background: true,

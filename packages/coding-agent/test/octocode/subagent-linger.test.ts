@@ -278,9 +278,9 @@ describe("a lingering background subagent", () => {
 			await expect(running).rejects.toThrow(
 				/was stopped by a permission change\. Ask the user before starting it again\./,
 			);
-			expect(
-				updates.some((update) => update.details.stopping === true && update.content[0]!.text === "stopping…"),
-			).toBe(true);
+			expect(updates.some((update) => update.details.stopping === true && update.content[0].text === "stopping…")).toBe(
+				true,
+			);
 		} finally {
 			t.team.stop();
 		}
@@ -388,5 +388,5 @@ describe("a lingering background subagent", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

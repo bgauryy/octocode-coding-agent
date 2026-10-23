@@ -2,6 +2,7 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import type { ReportStatus } from "../instructions/report.ts";
 import type { Ask } from "../team/asks.ts";
 import type { ChildNotices, Compactions } from "./events.ts";
+import type { StructuredResultV1 } from "./result-schema.ts";
 
 /**
  * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/pi/sessions/<id>`),
@@ -58,6 +59,8 @@ export interface RunDetails {
 	fallback?: string;
 	/** The latest completed report's outcome; absent while running or when that report names none. */
 	outcome?: ReportStatus;
+	/** Host-validated final JSON result, if the caller requested a result contract. */
+	structured?: StructuredResultV1;
 	/** The subagent's latest screenshot, saved to this path. */
 	shot?: string;
 	/** Prompt tokens (uncached, cache reads and writes) of its first model reply: what its cold start cost. */
@@ -76,6 +79,8 @@ export interface ResultDetails {
 	status: "done" | "failed" | "stopped";
 	/** The latest completed report's outcome (`failed` for a failed run); absent when it names none. */
 	outcome?: ReportStatus;
+	/** Immutable contract hash and host validation verdict; valid data is available to the caller. */
+	structured?: StructuredResultV1;
 	/** The `⎿` line, e.g. `Done (name · 4 tool calls · ↑12k ↓2k · ≈$0.12 · 38s)`. */
 	summary: string;
 	durationMs?: number;

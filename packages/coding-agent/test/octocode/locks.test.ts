@@ -44,11 +44,9 @@ describe("exclusive", () => {
 	});
 
 	it("lets a holder re-enter its own lock instead of deadlocking", async () => {
-		let inner!: (id: string) => Promise<string>;
-		const run = exclusive(async (id: string): Promise<string> =>
-			id === "outer" ? `outer(${await inner("inner")})` : id,
+		const run: (id: string) => Promise<string> = exclusive(async (id: string): Promise<string> =>
+			id === "outer" ? `outer(${await run("inner")})` : id,
 		);
-		inner = run;
 		await expect(run("outer")).resolves.toBe("outer(inner)");
 	});
 });

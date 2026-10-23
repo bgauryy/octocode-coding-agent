@@ -118,7 +118,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 		const ctx = fakeCtx({
 			cwd: tmp(),
 			hasUI: false,
-			model: { id: "later-model" } as never,
+			model: { id: "later-model" },
 		});
 		ctx.signal = AbortSignal.abort();
 		registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home, undefined, () => ({

@@ -1,6 +1,6 @@
 import type { ContextEditEntryDraft } from "../../core/extensions/index.ts";
 import { imageExtension, saveContentCopy } from "../shared/spill.ts";
-import { isRecord, partText } from "../shared/util.ts";
+import { isRecord, partText, stringOrEmpty } from "../shared/util.ts";
 
 /**
  * Message parts and images for recovery from a request rejected as too large. Images cost few tokens but many request
@@ -72,7 +72,7 @@ function hasImage(message: unknown): boolean {
 /** Whether a failed turn was rejected for the byte size of its request (HTTP 413 and its provider spellings). */
 export function isRequestTooLarge(message: unknown): boolean {
 	return (
-		isRecord(message) && message.stopReason === "error" && TOO_LARGE_ERROR.test(String(message.errorMessage ?? ""))
+		isRecord(message) && message.stopReason === "error" && TOO_LARGE_ERROR.test(stringOrEmpty(message.errorMessage))
 	);
 }
 
@@ -126,6 +126,8 @@ function jsonChars(value: unknown): number {
 	if (Array.isArray(value)) return value.reduce<number>((sum, item) => sum + jsonChars(item) + 1, 2);
 	if (isRecord(value))
 		return Object.entries(value).reduce<number>((sum, [key, item]) => sum + key.length + 4 + jsonChars(item), 2);
+	// Objects (null aside) were counted above: only scalars reach here.
+	// oxlint-disable-next-line typescript/no-base-to-string -- isRecord and Array.isArray do not narrow `unknown`
 	return value === undefined ? 0 : String(value).length;
 }
 

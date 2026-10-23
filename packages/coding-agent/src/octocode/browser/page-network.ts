@@ -1,4 +1,4 @@
-import { errorMessage, withTimeout } from "../shared/util.ts";
+import { errorMessage, optionalString, stringOrEmpty, withTimeout } from "../shared/util.ts";
 import {
 	type AttachedTarget,
 	type BrowserSession,
@@ -175,8 +175,8 @@ async function screenRequest(
 	params: Record<string, unknown>,
 ): Promise<void> {
 	const requestId = String(params.requestId);
-	const url = String((params.request as { url?: unknown } | undefined)?.url ?? "");
-	const resourceType = String(params.resourceType ?? "Other");
+	const url = stringOrEmpty((params.request as { url?: unknown } | undefined)?.url);
+	const resourceType = optionalString(params.resourceType) ?? "Other";
 	try {
 		await withTimeout(policy.check(url, resourceType, source), REQUEST_VERDICT_MS, "The request check");
 	} catch (error) {
@@ -252,7 +252,7 @@ export function watchNetwork(
 	page.on((method, params) => {
 		if (method === "Fetch.requestPaused") {
 			if (params.resourceType === "Document")
-				noteOrigin(session, String((params.request as { url?: unknown } | undefined)?.url ?? ""));
+				noteOrigin(session, stringOrEmpty((params.request as { url?: unknown } | undefined)?.url));
 			void screenRequest(session, page, policy, source, params);
 		} else if (method === "Page.frameNavigated" && tab !== undefined) {
 			// The tab's main frame committed: its approval for a private host ends when it left that host, and its origin is pinned.
@@ -273,7 +273,7 @@ export function watchNetwork(
 				void closeRebound(session, policy, url, address, tab);
 			}
 		} else if (method === "Network.webSocketCreated" && !session.chrome?.proxy) {
-			void reportWebSocket(session, policy, source, String(params.url ?? ""));
+			void reportWebSocket(session, policy, source, stringOrEmpty(params.url));
 		}
 	});
 }

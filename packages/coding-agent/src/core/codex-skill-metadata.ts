@@ -60,6 +60,7 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 		for (const pair of node.items) {
 			const keyNode = resolve(pair.key);
 			if (!isScalar(keyNode)) return fail();
+			// oxlint-disable-next-line typescript/no-base-to-string -- a YAML scalar's value is a primitive, never a plain object
 			const key = String(keyNode.source ?? keyNode.value ?? "");
 			const name = aliases[key] ?? key;
 			if (!known.includes(name)) continue;

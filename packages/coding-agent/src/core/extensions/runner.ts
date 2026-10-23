@@ -926,6 +926,7 @@ export class ExtensionRunner {
 	 * Context values are resolved at call time, so changes via bindCore/bindUI are reflected.
 	 */
 	createContext(): ExtensionContext {
+		// oxlint-disable-next-line typescript/no-this-alias -- the returned getters have their own `this` and resolve runner state at access time
 		const runner = this;
 		const getModel = this.getModel;
 		const getScopedModels = this.getScopedModels;
@@ -1018,6 +1019,7 @@ export class ExtensionRunner {
 	 * `tools` and `executeTool()`. `signal` is the default signal of nested calls.
 	 */
 	createToolContext(toolCallId: string, signal: AbortSignal | undefined): ExtensionToolContext {
+		// oxlint-disable-next-line typescript/no-this-alias -- the property getters have their own `this` and resolve runner state at access time
 		const runner = this;
 		// createContext() returns a fresh object, so adding properties does not affect other contexts.
 		return Object.defineProperties(this.createContext() as ExtensionToolContext, {
@@ -1102,7 +1104,7 @@ export class ExtensionRunner {
 					entries,
 					continue: shouldContinue,
 					context,
-				} as TurnEndEvent | AgentBeforeSettleEvent;
+				};
 				try {
 					const handlerResult = (await handler(event, ctx)) as BoundaryResult | undefined;
 					if (handlerResult?.entries !== undefined) entries = handlerResult.entries;
@@ -1166,7 +1168,7 @@ export class ExtensionRunner {
 					if (event.type === "session_before_compact" && !nativeCompaction) continue;
 
 					if (this.isSessionBeforeEvent(event) && handlerResult) {
-						result = handlerResult as SessionBeforeEventResult;
+						result = handlerResult;
 						if (result.cancel) {
 							return result as RunnerEmitResult<TEvent>;
 						}
@@ -1318,7 +1320,7 @@ export class ExtensionRunner {
 				const handlerResult = await handler(event, ctx);
 
 				if (handlerResult) {
-					result = handlerResult as ToolCallEventResult;
+					result = handlerResult;
 					if (result.block) {
 						return result;
 					}

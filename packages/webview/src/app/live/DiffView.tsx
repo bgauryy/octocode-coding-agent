@@ -27,7 +27,7 @@ export function DiffView({ diffs }: { diffs: readonly FileDiff[] }) {
 						</figcaption>
 						<pre className="diff-body">
 							{lines.map((line, index) => (
-								// biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional and never reorder.
+								// oxlint-disable-next-line react/no-array-index-key -- diff lines are positional and never reorder.
 								<span key={index} className={lineClass(line)}>
 									{line}
 								</span>

@@ -1,4 +1,4 @@
-import { validateToolArguments, type Tool } from "@octocodeai/octocode-ai";
+import { type JsonObject, validateToolArguments, type Tool } from "@octocodeai/octocode-ai";
 import { rewriteClaudeBash } from "../shared/claude-bash.ts";
 import { runsLater, stateFolderRefusal, shellTargetAccess } from "./file-access.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
@@ -18,6 +18,7 @@ import { classifyPowerShell } from "../shared/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
+import type { SourceDecision } from "./source-policy.ts";
 import { catastrophicCommand, SHELL_TOOLS, simpleCommand } from "./shell.ts";
 
 /**
@@ -66,7 +67,7 @@ export async function powershellDestructive(
 const mcpPaths = (input: Record<string, unknown>): string[] =>
 	[input, ...(Array.isArray(input.queries) ? input.queries : [])].flatMap((query) =>
 		query && typeof query === "object" && typeof (query as Record<string, unknown>).path === "string"
-			? [(query as Record<string, string>).path!]
+			? [(query as Record<string, string>).path]
 			: [],
 	);
 /** The call's arguments, whole: the user approves exactly what is shown. */
@@ -85,13 +86,7 @@ export function classify(
 	annotations: (toolName: string) => ToolAnnotations | undefined,
 	forceDestructive = false,
 ): PermissionRequest | undefined {
-	const request = classOf(
-		event.toolName,
-		event.input as Record<string, unknown>,
-		ctx.cwd,
-		annotations,
-		forceDestructive,
-	);
+	const request = classOf(event.toolName, event.input, ctx.cwd, annotations, forceDestructive);
 	return request
 		? { ...request, toolCallId: event.toolCallId, cwd: ctx.cwd, ...(event.parentToolCallId ? { nested: true } : {}) }
 		: undefined;
@@ -326,7 +321,7 @@ export function permissionGate(options: PermissionGateOptions) {
 			};
 			const prepare =
 				options.replacement && originalEvent.toolName === "bash" && originalEvent.toolCallId !== "user-bash"
-					? async (updated: import("@octocodeai/octocode-ai").JsonObject) => {
+					? async (updated: JsonObject) => {
 							const owner = options.replacement!;
 							if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");
 							const definition = owner.definition(originalEvent.toolName);
@@ -336,7 +331,7 @@ export function permissionGate(options: PermissionGateOptions) {
 								type: "toolCall",
 								id: originalEvent.toolCallId,
 								name: originalEvent.toolName,
-								arguments: replacement as import("@octocodeai/octocode-ai").JsonObject,
+								arguments: replacement as JsonObject,
 							});
 							const candidate: ToolCallEvent = {
 								...originalEvent,
@@ -373,10 +368,7 @@ export function permissionGate(options: PermissionGateOptions) {
 							let committed = false;
 							return {
 								request,
-								commit: async (
-									signal: AbortSignal,
-									approvedSource: import("./source-policy.ts").SourceDecision | undefined,
-								) => {
+								commit: async (signal: AbortSignal, approvedSource: SourceDecision | undefined) => {
 									if (committed || !active || signal.aborted || ctx.signal?.aborted)
 										throw new Error("PermissionRequest replacement cancelled or already committed");
 									await owner.refresh(ctx);

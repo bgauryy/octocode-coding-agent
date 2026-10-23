@@ -200,9 +200,9 @@ describe("Native features through the SDK", () => {
 	it("registers every tool and command, keeps the banner out of the session and picks up ~/.claude skills", async () => {
 		const [turn] = await run("hello", [say("ready")]);
 		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "memory"])
-			expect(turn!.tools).toContain(name);
+			expect(turn.tools).toContain(name);
 		// The bundled web profiles carry browser, so the main session leaves its schema out (it stays registered).
-		expect(turn!.tools).not.toContain("browser");
+		expect(turn.tools).not.toContain("browser");
 		expect(session.getAllTools().map((tool) => tool.name)).toContain("browser");
 		const commands = session.extensionRunner.getRegisteredCommands().map((command) => command.name);
 		for (const name of [
@@ -221,13 +221,13 @@ describe("Native features through the SDK", () => {
 		expect(commands).not.toContain("octocode");
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
 		expect(session.systemPrompt).toContain("demo-skill");
-		expect(turn!.context).toMatch(/Delegation/);
+		expect(turn.context).toMatch(/Delegation/);
 		// The banner is the TUI header (none over RPC), never a session entry.
 		expect(session.sessionManager.getEntries().some((entry) => entry.type === "custom")).toBe(false);
 		expect((ui as { header?: unknown }).header).toBeUndefined();
 		expect((ui as { title?: string }).title).toBeUndefined();
 		// SessionStart hook output reaches the model once, as data.
-		expect(turn!.context).toContain("hook says: project uses tabs");
+		expect(turn.context).toContain("hook says: project uses tabs");
 	});
 
 	it("runs direct native commands and handles retired namespace input without a model call", async () => {
@@ -256,7 +256,7 @@ describe("Native features through the SDK", () => {
 			.getEntries()
 			.filter((entry) => entry.type === "custom_message" && entry.customType === "octocode-permission");
 		expect(notes.length).toBeGreaterThan(0);
-		expect(notes.every((entry) => entry.type === "custom_message" && entry.display === false)).toBe(true);
+		expect(notes.every((entry) => entry.type === "custom_message" && !entry.display)).toBe(true);
 		expect(session.systemPrompt).toBe(prompt);
 	});
 
@@ -271,12 +271,12 @@ describe("Native features through the SDK", () => {
 			),
 			say("done"),
 		]);
-		const [danger, blocked, fine] = second!.results;
+		const [danger, blocked, fine] = second.results;
 		expect(danger).toMatchObject({ isError: true });
-		expect(danger!.text).toContain(`The user denied the destructive shell command: ${destructive}`);
+		expect(danger.text).toContain(`The user denied the destructive shell command: ${destructive}`);
 		expect(blocked).toMatchObject({ isError: true });
-		expect(blocked!.text).toMatch(/PreToolUse hook: no forbidden words/);
-		expect(fine!.text).toMatch(/fine[\s\S]*\[PostToolUse hook\] post hook saw Bash/);
+		expect(blocked.text).toMatch(/PreToolUse hook: no forbidden words/);
+		expect(fine.text).toMatch(/fine[\s\S]*\[PostToolUse hook\] post hook saw Bash/);
 	});
 
 	it("replaces Octocode bash: a deadline in its schema, and a background job wakes the session with its result", async () => {
@@ -292,8 +292,8 @@ describe("Native features through the SDK", () => {
 		const deadline = Date.now() + 5_000;
 		while (turns.length < start + 3 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
 		const [, started, woken] = turns.slice(start);
-		expect(started!.results[0]!.text).toMatch(/^Started bash-\d+ in the background/);
-		expect(woken!.context).toMatch(/Background bash bash-\d+ finished after \d+s: echo bg-output[\s\S]*bg-output/);
+		expect(started.results[0].text).toMatch(/^Started bash-\d+ in the background/);
+		expect(woken.context).toMatch(/Background bash bash-\d+ finished after \d+s: echo bg-output[\s\S]*bg-output/);
 	});
 
 	it("asks before web fetches a loopback URL, and fetches nothing when denied", async () => {
@@ -302,8 +302,8 @@ describe("Native features through the SDK", () => {
 			calls(fauxToolCall("web", { url: "http://127.0.0.1:9/secret" })),
 			say("done"),
 		]);
-		expect(second!.results[0]).toMatchObject({ toolName: "web", isError: true });
-		expect(second!.results[0]!.text).toMatch(
+		expect(second.results[0]).toMatchObject({ toolName: "web", isError: true });
+		expect(second.results[0].text).toMatch(
 			/The user denied opening a private or local address: http:\/\/127\.0\.0\.1:9\/secret/,
 		);
 	});
@@ -313,8 +313,8 @@ describe("Native features through the SDK", () => {
 			calls(fauxToolCall("web", { url: "https://example.com", query: "example" })),
 			say("done"),
 		]);
-		expect(second!.results[0]).toMatchObject({ toolName: "web", isError: true });
-		expect(second!.results[0]!.text).toContain("Provide exactly one of url or query.");
+		expect(second.results[0]).toMatchObject({ toolName: "web", isError: true });
+		expect(second.results[0].text).toContain("Provide exactly one of url or query.");
 	});
 
 	it("checkpoints file changes and /rewind restores them", async () => {
@@ -346,7 +346,7 @@ describe("Native features through the SDK", () => {
 			],
 		};
 		const [, second] = await run("ask", [calls(fauxToolCall("askUser", { questions: [question] })), say("done")]);
-		expect(second!.results[0]!.text).toMatch(/Which\?[\s\S]*B/);
+		expect(second.results[0].text).toMatch(/Which\?[\s\S]*B/);
 	});
 
 	it("coordinates with a peer: locks, refused edits on held paths and messages both ways", async () => {
@@ -364,12 +364,12 @@ describe("Native features through the SDK", () => {
 			say("done"),
 		];
 		const t = await run("team", replies);
-		expect(t[1]!.results[0]!.text).toMatch(/Joined/i);
-		expect(t[2]!.results[0]).toMatchObject({ isError: true });
-		expect(t[2]!.results[0]!.text).toContain(peer.id);
-		expect(t[3]!.results[0]!.text).toMatch(/held\.txt/);
-		expect(t[4]!.results[0]!.text).toContain(peer.id);
-		expect(t[5]!.results[0]!.isError).toBe(false);
+		expect(t[1].results[0].text).toMatch(/Joined/i);
+		expect(t[2].results[0]).toMatchObject({ isError: true });
+		expect(t[2].results[0].text).toContain(peer.id);
+		expect(t[3].results[0].text).toMatch(/held\.txt/);
+		expect(t[4].results[0].text).toContain(peer.id);
+		expect(t[5].results[0].isError).toBe(false);
 		await vi.waitFor(() => expect(JSON.stringify(peerPi.sent)).toContain("please release held.txt"), {
 			timeout: 5_000,
 		});
@@ -392,11 +392,11 @@ describe("Native features through the SDK", () => {
 			say("done"),
 		]);
 		const [plain, isolated] = t.at(-1)!.results;
-		expect(plain!.text).toMatch(/report \{/);
-		expect(plain!.text).toMatch(/"subagent":"1"/);
-		expect(isolated!.text).toMatch(/refs\/octocode\/pi\//);
+		expect(plain.text).toMatch(/report \{/);
+		expect(plain.text).toMatch(/"subagent":"1"/);
+		expect(isolated.text).toMatch(/refs\/octocode\/pi\//);
 		expect(fs.existsSync(path.join(cwd, "child.txt"))).toBe(false);
-		const id = /refs\/octocode\/pi\/([\w-]+)/.exec(isolated!.text)![1]!;
+		const id = /refs\/octocode\/pi\/([\w-]+)/.exec(isolated.text)![1];
 		await session.prompt(`/agents merge ${id}`);
 		expect(fs.readFileSync(path.join(cwd, "child.txt"), "utf8")).toBe("from the child\n");
 	}, 60_000);
@@ -406,10 +406,10 @@ describe("Native features through the SDK", () => {
 			calls(agentCall("task", { goal: "check things", task: "long report", profile: "researcher" })),
 			say("done"),
 		]);
-		const result = t.at(-1)!.results[0]!;
+		const result = t.at(-1)!.results[0];
 		expect(result.isError).toBe(false);
 		expect(Buffer.byteLength(result.text)).toBeLessThan(9 * 1024);
-		const file = /Full report: (.+) \(read only the parts you need\)/.exec(result.text)![1]!;
+		const file = /Full report: (.+) \(read only the parts you need\)/.exec(result.text)![1];
 		expect(fs.readFileSync(file, "utf8")).toMatch(/the end$/);
 	}, 60_000);
 
@@ -425,9 +425,9 @@ describe("Native features through the SDK", () => {
 			say("ok"),
 			say("ok"),
 		]);
-		const [later, slow] = t[1]!.results;
-		const laterId = /^Started (\S+) .* in the background/.exec(later!.text)![1]!;
-		const slowId = /^Started (\S+) .* in the background/.exec(slow!.text)![1]!;
+		const [later, slow] = t[1].results;
+		const laterId = /^Started (\S+) .* in the background/.exec(later.text)![1];
+		const slowId = /^Started (\S+) .* in the background/.exec(slow.text)![1];
 		// The finished child's own report reaches the model in a turn of this test (it wakes the session when it arrives
 		// after the run). Earlier tests' reports are in the transcript too: only this child's id proves its report arrived.
 		const report = new RegExp(`Background subagent ${laterId} \\([^)]*\\) (reported \\w+|finished) \\(`);
@@ -438,7 +438,7 @@ describe("Native features through the SDK", () => {
 		await session.prompt("/agents kill");
 		expect(note(/Running: /)).toBeDefined();
 		// The reported child is done: the slow one alone still runs.
-		expect(/Running: (.+)$/.exec(note(/Running: /)!)![1]!.split(", ")).toEqual([slowId]);
+		expect(/Running: (.+)$/.exec(note(/Running: /)!)![1].split(", ")).toEqual([slowId]);
 		await session.prompt(`/agents kill ${slowId}`);
 		expect(note(new RegExp(`^Stopping ${slowId}`))).toBeDefined();
 		// A stop the user asked for wakes no turn: its report is delivered as a session message.
@@ -503,21 +503,21 @@ describe("Native features through the SDK", () => {
 			calls(fauxToolCall("memory", { op: "set", title: "Deploy token", body: `use ghp_${"a".repeat(36)}` })),
 			say("done"),
 		]);
-		const [added, listed, claimed, noNote, done, saved, found, secret] = t.slice(1).map((turn) => turn.results[0]!);
-		expect(added!.text).toMatch(/^Added B1\b/);
-		expect(listed!.text).toContain("B1");
-		expect(claimed!.text).toMatch(/^Updated B1\b/);
+		const [added, listed, claimed, noNote, done, saved, found, secret] = t.slice(1).map((turn) => turn.results[0]);
+		expect(added.text).toMatch(/^Added B1\b/);
+		expect(listed.text).toContain("B1");
+		expect(claimed.text).toMatch(/^Updated B1\b/);
 		expect(noNote).toMatchObject({ isError: true });
-		expect(noNote!.text).toMatch(/needs completion/);
+		expect(noNote.text).toMatch(/needs completion/);
 		expect(done).toMatchObject({ isError: false });
-		expect(saved!.text).toMatch(/^Saved M\d+/);
-		expect(found!.text).toContain("The answer constant lives in app.ts");
+		expect(saved.text).toMatch(/^Saved M\d+/);
+		expect(found.text).toContain("The answer constant lives in app.ts");
 		expect(secret).toMatchObject({ isError: true });
-		expect(secret!.text).toMatch(/GitHub token/);
+		expect(secret.text).toMatch(/GitHub token/);
 		// The next prompt that mentions the topic gets the memory injected as data.
 		const [next] = await run("where is the answer constant exported?", [say("in app.ts")]);
-		expect(next!.context).toContain("[octocode-memory");
-		expect(next!.context).toContain("The answer constant lives in app.ts");
+		expect(next.context).toContain("[octocode-memory");
+		expect(next.context).toContain("The answer constant lives in app.ts");
 	});
 
 	it("prints /backlog, memory and sessions as text without a UI", async () => {
@@ -555,11 +555,11 @@ describe("Native features through the SDK", () => {
 	it("restarts cleanly on reload (shutdown, then a fresh session_start)", async () => {
 		await session.reload();
 		const [turn] = await run("after reload", [say("ok")]);
-		expect(turn!.tools).toContain("agent");
+		expect(turn.tools).toContain("agent");
 	});
 });
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

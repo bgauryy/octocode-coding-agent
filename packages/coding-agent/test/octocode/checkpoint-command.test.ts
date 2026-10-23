@@ -81,9 +81,9 @@ describe("/rewind when an older change cannot be undone", () => {
 		);
 		expect(note.message).not.toMatch(/Left alone/);
 		expect(fake.sent).toHaveLength(1);
-		expect(fake.sent[0]!.message.customType).toBe("octocode-rewind");
-		expect(fake.sent[0]!.message.content).toContain("Partly restored");
-		expect(fake.sent[0]!.message.content).toContain("read them again before editing");
+		expect(fake.sent[0].message.customType).toBe("octocode-rewind");
+		expect(fake.sent[0].message.content).toContain("Partly restored");
+		expect(fake.sent[0].message.content).toContain("read them again before editing");
 		// The failed entry stays so a later rewind can retry once the copy is repaired.
 		expect(checkpoints.turns()).toEqual([1]);
 	});

@@ -151,7 +151,7 @@ function parseTimeoutSetting(value: unknown, settingName: string): number | unde
 		return timeoutMs;
 	}
 	if (value !== undefined) {
-		throw new Error(`Invalid ${settingName} setting: ${String(value)}`);
+		throw new Error(`Invalid ${settingName} setting: ${typeof value === "string" ? value : JSON.stringify(value)}`);
 	}
 	return undefined;
 }
@@ -415,7 +415,7 @@ export class SettingsManager {
 	/** Create an in-memory SettingsManager (no file I/O) */
 	static inMemory(settings: Partial<Settings> = {}, options: SettingsManagerCreateOptions = {}): SettingsManager {
 		const storage = new InMemorySettingsStorage();
-		const initialSettings = SettingsManager.migrateSettings(structuredClone(settings) as Record<string, unknown>);
+		const initialSettings = SettingsManager.migrateSettings(structuredClone(settings));
 		storage.withLock("global", () => JSON.stringify(initialSettings, null, 2));
 		return SettingsManager.fromStorage(storage, options);
 	}
@@ -507,14 +507,14 @@ export class SettingsManager {
 				(providerSettings?.maxRetryDelayMs === undefined || providerSettings?.maxRetryDelayMs === null)
 			) {
 				retrySettings.provider = {
-					...(providerSettings ?? {}),
+					...providerSettings,
 					maxRetryDelayMs: retrySettings.maxDelayMs,
 				};
 			}
 			delete retrySettings.maxDelayMs;
 		}
 
-		return settings as Settings;
+		return settings;
 	}
 
 	/** A copy of the effective settings: global and project settings merged, with overrides. */
@@ -840,7 +840,7 @@ export class SettingsManager {
 	}
 
 	getAllModelThinkingLevels(): Record<string, ThinkingLevel> {
-		return { ...(this.settings.modelThinkingLevels ?? {}) };
+		return { ...this.settings.modelThinkingLevels };
 	}
 
 	setModelThinkingLevel(provider: string, modelId: string, level: ThinkingLevel): void {
@@ -1463,7 +1463,7 @@ export class SettingsManager {
 	}
 
 	getWarnings(): WarningSettings {
-		return { ...(this.settings.warnings ?? {}) };
+		return { ...this.settings.warnings };
 	}
 
 	setWarnings(warnings: WarningSettings): void {

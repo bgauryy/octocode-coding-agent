@@ -44,7 +44,7 @@ export class OctocodeBackend implements ExternalBackend {
 		const cwd = canonical(input.cwd);
 		const records = listInstances(apiDir(env)).filter((entry) => entry.id === input.instanceId);
 		if (records.length !== 1) throw new Error("Octocode instance is not uniquely discoverable");
-		const instance = records[0]!;
+		const instance = records[0];
 		if (instance.protocol !== PROTOCOL_VERSION || canonical(instance.cwd) !== cwd)
 			throw new Error("Octocode instance protocol or workspace mismatch");
 		if (instance.socket !== undefined) {

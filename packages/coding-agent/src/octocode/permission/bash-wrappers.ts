@@ -52,7 +52,7 @@ function projectCandidates(command: BashCommand, behavior: "deny" | "ask" | "all
 	};
 	const words = command.tokens.map((token) => token.raw);
 	const normalizedAt = (index: number) => {
-		const token = command.tokens[index]!;
+		const token = command.tokens[index];
 		return (token.literal ?? token.raw) + command.raw.slice(token.end);
 	};
 	if (command.tokens[0]?.literal !== undefined)
@@ -62,7 +62,7 @@ function projectCandidates(command: BashCommand, behavior: "deny" | "ask" | "all
 	if (!blockedAssignments && command.assignments.length && words.length) result.candidates.push(normalizedAt(0));
 	let cursor = 0;
 	for (let depth = 0; depth < 32 && cursor < words.length; depth++) {
-		const wrapper = command.tokens[cursor]!.literal ?? words[cursor]!;
+		const wrapper = command.tokens[cursor].literal ?? words[cursor];
 		if (
 			EXEC_WRAPPERS.has(wrapper) ||
 			(wrapper === "find" &&
@@ -89,7 +89,7 @@ function projectCandidates(command: BashCommand, behavior: "deny" | "ask" | "all
 			if (words[next] === "-p") next++;
 		} else if (wrapper === "timeout") {
 			while (words[next]?.startsWith("-")) {
-				const option = words[next]!;
+				const option = words[next];
 				if (option === "--") {
 					next++;
 					break;
@@ -120,14 +120,14 @@ function projectCandidates(command: BashCommand, behavior: "deny" | "ask" | "all
 			while (/^-[ioe].+/.test(words[next] ?? "")) next++;
 		}
 		if (words[next] === "--") next++;
-		if (!words[next] || words[next]!.startsWith("-")) {
+		if (!words[next] || words[next].startsWith("-")) {
 			result.unsupported = true;
 			break;
 		}
 		cursor = next;
 		result.executables.push(cursor);
 		if (!blockedAssignments) result.candidates.push(normalizedAt(cursor));
-		if (depth === 31 && WRAPPERS.has(command.tokens[cursor]!.literal ?? words[cursor]!)) result.unsupported = true;
+		if (depth === 31 && WRAPPERS.has(command.tokens[cursor].literal ?? words[cursor])) result.unsupported = true;
 	}
 	return result;
 }

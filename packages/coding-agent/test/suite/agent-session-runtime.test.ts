@@ -344,7 +344,7 @@ describe("AgentSessionRuntime characterization", () => {
 
 		events.length = 0;
 		await runtime.session.prompt("hello");
-		const userMessage = runtime.session.getUserMessagesForForking()[0]!;
+		const userMessage = runtime.session.getUserMessagesForForking()[0];
 		const previousSessionFile = runtime.session.sessionFile;
 
 		const successResult = await runtime.fork(userMessage.entryId);

@@ -20,7 +20,7 @@ export function isPluginIdentifier(value: unknown): value is string {
 	return (
 		typeof value === "string" &&
 		value.length > 0 &&
-		!/[\s@:\/\\\p{Cc}\p{Cf}]/u.test(value) &&
+		!/[\s@:/\\\p{Cc}\p{Cf}]/u.test(value) &&
 		value !== "." &&
 		value !== ".."
 	);

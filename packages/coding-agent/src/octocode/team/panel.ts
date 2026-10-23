@@ -104,7 +104,7 @@ function memberRows(
 			const nameRoom = Math.max(1, width - visibleWidth(state) - 7);
 			const head = ` ${theme.fg(row.glyph.color, row.glyph.text)} ${theme.fg(row.name.color, fitWidth(row.name.text, nameRoom))} · ${theme.fg(row.flags.text ? "warning" : row.state.color, state)}`;
 			const detail = row.detail || row.goal.text;
-			const metadata = theme.fg("muted", `age ${row.age.text} · model ${safe(tree[index]!.member.model) || "unknown"}`);
+			const metadata = theme.fg("muted", `age ${row.age.text} · model ${safe(tree[index].member.model) || "unknown"}`);
 			return [
 				truncateToWidth(head, Math.max(1, width), "…"),
 				...wrapTextWithAnsi(metadata, Math.max(1, width - 3)).map((line) =>

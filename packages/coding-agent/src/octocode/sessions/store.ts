@@ -40,6 +40,7 @@ export const flatLine = (text: string): string => sanitizeTerminalText(text).rep
 /** `flatLine` of at most `max` characters, for a terminal row. */
 export function shownLine(text: string, max: number): string {
 	// By code point, so a cut never splits a surrogate pair (an emoji).
+	// oxlint-disable-next-line typescript/no-misused-spread -- a code-point cut is intended, as the comment above says
 	const line = [...flatLine(text)];
 	return line.length > max ? `${line.slice(0, max - 1).join("")}…` : line.join("");
 }

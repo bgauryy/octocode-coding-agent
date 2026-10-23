@@ -682,9 +682,9 @@ describe("Coding Agent Tools", () => {
 			});
 			const chunks: Buffer[] = [];
 			const ops = createLocalBashOperations({ shellPath: "C:\\Windows\\System32\\bash.exe" });
-			const nameExpansion = "$" + "{name}";
-			const countExpansion = "$" + "{count}";
-			const iExpansion = "$" + "{i}";
+			const nameExpansion = "${name}";
+			const countExpansion = "${count}";
+			const iExpansion = "${i}";
 			const command = `name='World'; echo "Hello, ${nameExpansion}!"; count=3; for i in $(seq 1 ${countExpansion}); do echo "Iteration ${iExpansion} of ${countExpansion}"; done`;
 
 			const result = await ops.exec(command, testDir, {
@@ -885,8 +885,8 @@ describe("Coding Agent Tools", () => {
 			}
 
 			expect(fullOutputPath).toBeDefined();
-			expect(existsSync(fullOutputPath!)).toBe(true);
-			const fullOutput = readFileSync(fullOutputPath!, "utf-8");
+			expect(existsSync(fullOutputPath)).toBe(true);
+			const fullOutput = readFileSync(fullOutputPath, "utf-8");
 			expect(fullOutput).toContain("1\n2\n3");
 			expect(fullOutput).toContain("2998\n2999\n3000");
 		});

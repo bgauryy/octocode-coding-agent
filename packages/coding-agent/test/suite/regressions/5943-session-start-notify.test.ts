@@ -419,8 +419,7 @@ describe("regression #5943: session_start transient UI", () => {
 	it("refreshes hideThinkingBlock before rebuilding chat during reload", async () => {
 		initTheme("dark", false);
 		const events: string[] = [];
-		let context: ReloadCommandContext;
-		context = createReloadCommandContext({
+		const context: ReloadCommandContext = createReloadCommandContext({
 			settingsManager: { getHideThinkingBlock: () => true },
 			session: {
 				reload: async (options) => {

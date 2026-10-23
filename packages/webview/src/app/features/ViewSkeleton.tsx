@@ -6,14 +6,13 @@ export function BoardSkeleton() {
 		<Skeleton label="Loading board">
 			<div className="board skeleton-board" aria-hidden="true">
 				{[3, 2, 2, 1].map((cards, column) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative placeholders.
+					// oxlint-disable-next-line react/no-array-index-key -- fixed decorative placeholders.
 					<div key={column} className="column">
 						<div className="column-title">
 							<SkeletonLine width="40%" />
 						</div>
 						<div className="column-cards">
 							{Array.from({ length: cards }, (_, card) => (
-								// biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative placeholders.
 								<div key={card} className="card skeleton-card">
 									<SkeletonLine width="24%" height={10} />
 									<SkeletonLine width="85%" height={14} />
@@ -34,7 +33,6 @@ export function ListSkeleton({ label, rows = 3 }: { label: string; rows?: number
 		<Skeleton label={label}>
 			<div className="skeleton-list" aria-hidden="true">
 				{Array.from({ length: rows }, (_, row) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: fixed decorative placeholders.
 					<div key={row} className="skeleton-card">
 						<SkeletonLine width="18%" height={10} />
 						<SkeletonLine width="70%" height={14} />

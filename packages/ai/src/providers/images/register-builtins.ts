@@ -34,7 +34,7 @@ function loadOpenRouterImagesProviderModule(): Promise<OpenRouterImagesProviderM
 	return openRouterImagesProviderModulePromise;
 }
 
-export const generateImagesOpenRouter: ImagesFunction<ImagesOptions> = async (
+export const generateImagesOpenRouter: ImagesFunction = async (
 	model: ImageModel<ImageApi>,
 	context: ImagesContext,
 	options?: ImagesOptions,

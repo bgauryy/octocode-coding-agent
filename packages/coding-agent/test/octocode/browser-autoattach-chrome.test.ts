@@ -19,7 +19,7 @@ import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 	"attached Chrome: popups, workers and service workers",
 	() => {
-		const cleanups: Array<() => Promise<unknown> | unknown> = [];
+		const cleanups: Array<() => unknown> = [];
 		afterEach(async () => {
 			vi.unstubAllEnvs();
 			while (cleanups.length > 0) await cleanups.pop()!();
@@ -59,8 +59,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 				http.createServer((request, response) => {
 					const send = (type: string, body: string): void => {
 						response.writeHead(200, { "content-type": type }).end(body);
-						undefined;
-						return;
 					};
 					seen.add(request.url ?? "");
 					if (request.url === "/worker.js")
@@ -132,7 +130,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 			// Each refusal is in the audit.
 			const blocked = fake.entries
 				.map((entry) => entry.data as AuditEntry)
-				.filter((entry) => entry.allowed === false && entry.action === "invariant");
+				.filter((entry) => !entry.allowed && entry.action === "invariant");
 			expect(
 				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`)).length,
 			).toBeGreaterThan(0);
@@ -147,7 +145,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 	"attached Chrome: tabs the agent left, and the user's own",
 	() => {
-		const cleanups: Array<() => Promise<unknown> | unknown> = [];
+		const cleanups: Array<() => unknown> = [];
 		afterEach(async () => {
 			vi.unstubAllEnvs();
 			while (cleanups.length > 0) await cleanups.pop()!();
@@ -176,8 +174,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 			const seen = new Set<string>();
 			const send = (response: http.ServerResponse, type: string, body: string): void => {
 				response.writeHead(200, { "content-type": type }).end(body);
-				undefined;
-				return;
 			};
 			// The agent's first tab acts only after the agent moved to another one.
 			const agentPort = await listen(
@@ -259,7 +255,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 			expect(leaks.filter((leak) => leak.startsWith("/agent"))).toEqual([]);
 			const blocked = fake.entries
 				.map((entry) => entry.data as AuditEntry)
-				.filter((entry) => entry.allowed === false && entry.action === "invariant");
+				.filter((entry) => !entry.allowed && entry.action === "invariant");
 			expect(
 				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`)).length,
 			).toBeGreaterThan(0);

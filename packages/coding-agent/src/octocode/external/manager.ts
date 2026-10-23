@@ -201,6 +201,6 @@ export class ExternalAgents {
 		const entries = [...this.connections.values()];
 		this.connections.clear();
 		for (const entry of entries) entry.controller.abort(new Error("External connection closed"));
-		await Promise.allSettled(entries.map((entry) => entry.backend?.close()));
+		await Promise.allSettled(entries.flatMap((entry) => entry.backend?.close() ?? []));
 	}
 }

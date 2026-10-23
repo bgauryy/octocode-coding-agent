@@ -134,10 +134,14 @@ export async function sharedSummary(
 	unusable: (reason: string, userChoice?: boolean) => void = () => undefined,
 	recordUsage?: (message: AssistantMessage) => void,
 ): Promise<CompactionResult | undefined> {
+	const fail = (reason: string, userChoice?: boolean): undefined => {
+		unusable(reason, userChoice);
+		return undefined;
+	};
 	try {
 		const settings = pi.getSettings();
 		// Octocode replaces images with a note in a session's requests; this request cannot show them, so it is not made.
-		if (settings.images?.blockImages) return void unusable("images are blocked in settings", true);
+		if (settings.images?.blockImages) return fail("images are blocked in settings", true);
 		const { preparation } = event;
 		const projection = ctx.sessionManager.buildSessionProjection();
 		// The projection plus the transform Octocode's own `context` handler applies to every real request.
@@ -175,11 +179,11 @@ export async function sharedSummary(
 			)
 			.result();
 		recordUsage?.(response);
-		if (response.stopReason !== "stop") return void unusable(`the reply stopped with ${response.stopReason}`);
-		if (response.content.some((block) => block.type === "toolCall")) return void unusable("the reply called a tool");
+		if (response.stopReason !== "stop") return fail(`the reply stopped with ${response.stopReason}`);
+		if (response.content.some((block) => block.type === "toolCall")) return fail("the reply called a tool");
 		const text = contentText(response.content).trim();
-		if (text === "") return void unusable("the reply was empty");
-		if (text.length / CHARS_PER_TOKEN > cap) return void unusable("the reply was longer than the cap");
+		if (text === "") return fail("the reply was empty");
+		if (text.length / CHARS_PER_TOKEN > cap) return fail("the reply was longer than the cap");
 		const lists = fileLists(preparation.fileOps);
 		return {
 			summary: `${text}${fileBlocks(lists)}`,

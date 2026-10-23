@@ -140,7 +140,7 @@ export class Mail {
 		options: { triggerTurn?: boolean; deliverAs: "steer" },
 	): boolean {
 		try {
-			this.pi.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
+			void this.pi.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
 			return true;
 		} catch {
 			return false; // The session ended or is not ready.

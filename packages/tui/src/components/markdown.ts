@@ -536,7 +536,7 @@ export class Markdown implements Component {
 				// the block indent and the line's own indentation instead of starting at column 0.
 				const codeWidth = Math.max(1, width - visibleWidth(indent));
 				for (let i = 0; i < styledLines.length; i++) {
-					const styledLine = styledLines[i]!;
+					const styledLine = styledLines[i];
 					if (visibleWidth(styledLine) <= codeWidth) {
 						lines.push(`${indent}${styledLine}`);
 						continue;
@@ -909,7 +909,7 @@ export class Markdown implements Component {
 		let minCellsWidth = minColumnWidths.reduce((a, b) => a + b, 0);
 
 		if (minCellsWidth > availableForCells) {
-			minColumnWidths = new Array(numCols).fill(1);
+			minColumnWidths = Array.from({ length: numCols }, () => 1);
 			const remaining = availableForCells - numCols;
 
 			if (remaining > 0) {
@@ -1010,7 +1010,7 @@ export class Markdown implements Component {
 		// Rules between rows are only needed to tell wrapped rows apart; single-line rows read better without them.
 		const separateRows = rowsCellLines.some((cells) => cells.some((cellLines) => cellLines.length > 1));
 		for (let rowIndex = 0; rowIndex < rowsCellLines.length; rowIndex++) {
-			const rowCellLines = rowsCellLines[rowIndex]!;
+			const rowCellLines = rowsCellLines[rowIndex];
 			const rowLineCount = Math.max(...rowCellLines.map((c) => c.length));
 
 			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {

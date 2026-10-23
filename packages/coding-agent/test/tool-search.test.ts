@@ -1,7 +1,6 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ToolNamespace } from "../src/core/extensions/types.ts";
 import { Bm25Ranker, createToolSearchDocument, tokenize } from "../src/extensions/tool-search/tool.ts";
 
 function tool(name: string, description: string, properties: Record<string, unknown> = {}): AgentTool {

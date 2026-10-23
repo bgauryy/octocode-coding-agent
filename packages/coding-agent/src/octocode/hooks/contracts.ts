@@ -1,5 +1,6 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { PluginContext } from "../../core/plugin-context.ts";
+import type { SourcePermissionUpdate } from "../shared/permission-updates.ts";
 import type { HookProtocol } from "./profiles.ts";
 
 /** Most bytes Octocode reads back from any hook: a command's stdout, an HTTP response, an MCP or prompt result. */
@@ -97,7 +98,7 @@ export interface HookRun {
 }
 
 export interface HookVerdict {
-	updatedPermissions?: import("../shared/permission-updates.ts").SourcePermissionUpdate[];
+	updatedPermissions?: SourcePermissionUpdate[];
 	permissionDecision?: "allow" | "deny";
 	permissionInterrupt?: true;
 	systemMessage?: string;

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Terminal } from "../src/terminal.ts";
+import { ProcessTerminal, type Terminal } from "../src/terminal.ts";
 import { computeRenderDelayMs, TuiBase } from "../src/tui.ts";
+import { TuiMainScreen } from "../src/tui-main-screen.ts";
+import { VirtualTerminal } from "./virtual-terminal.ts";
 
 class PressureTerminal implements Terminal {
 	pendingOutputBytes: number | undefined = 0;
@@ -36,9 +38,38 @@ class CountingTui extends TuiBase {
 	}
 }
 
+class PressureVirtualTerminal extends VirtualTerminal {
+	pendingOutputBytes = 0;
+	readonly writes: string[] = [];
+	override write(data: string): void {
+		this.writes.push(data);
+		super.write(data);
+	}
+}
+
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 describe("opt-in render pacing", () => {
+	it("counts output bytes and refused writes only when telemetry is enabled", () => {
+		const terminal = new ProcessTerminal();
+		const originalWrite = process.stdout.write;
+		process.stdout.write = () => false;
+		try {
+			terminal.write("ignored");
+			assert.equal(terminal.getOutputTelemetry().writtenBytes, 0);
+			terminal.setOutputTelemetryEnabled(true);
+			terminal.write("🙂");
+			assert.deepEqual(terminal.getOutputTelemetry(), {
+				writtenBytes: 4,
+				writeCalls: 1,
+				maxWriteBytes: 4,
+				backpressuredWrites: 1,
+				maxQueuedBytes: process.stdout.writableLength,
+			});
+		} finally {
+			process.stdout.write = originalWrite;
+		}
+	});
 	it("holds ordinary renders before composition, then paints the latest state once", async () => {
 		const terminal = new PressureTerminal();
 		const tui = new CountingTui(terminal);
@@ -62,6 +93,37 @@ describe("opt-in render pacing", () => {
 		terminal.pendingOutputBytes = 100 * 1024;
 		await pause(45);
 		assert.deepEqual(tui.painted, ["initial", "update-7"]);
+		tui.stop();
+	});
+
+	it("keeps the main-screen diff baseline aligned while obsolete states are deferred", async () => {
+		const terminal = new PressureVirtualTerminal(40, 8);
+		const tui = new TuiMainScreen(terminal);
+		const component = {
+			line: "initial",
+			render() {
+				return [this.line];
+			},
+			invalidate() {},
+		};
+		tui.addChild(component);
+		tui.setRenderPacing({ outputGate: true, retryMs: 10 });
+		tui.start();
+		tui.renderNow();
+		await terminal.flush();
+		terminal.pendingOutputBytes = 300 * 1024;
+		terminal.writes.length = 0;
+		for (const value of ["obsolete-one", "obsolete-two", "latest"]) {
+			component.line = value;
+			tui.requestRender();
+		}
+		await pause(35);
+		assert.equal(terminal.writes.length, 0);
+		assert.equal((await terminal.flushAndGetViewport())[0], "initial");
+		terminal.pendingOutputBytes = 0;
+		await pause(35);
+		assert.equal((await terminal.flushAndGetViewport())[0], "latest");
+		assert.doesNotMatch(terminal.writes.join(""), /obsolete-one|obsolete-two/);
 		tui.stop();
 	});
 
@@ -108,6 +170,19 @@ describe("opt-in render pacing", () => {
 		await pause(35);
 		assert.equal(tui.painted.length, beforeStop + 1);
 		tui.stop();
+	});
+
+	it("starts a fresh paint after a pre-start ordinary or forced request", async () => {
+		for (const force of [false, true]) {
+			const terminal = new PressureTerminal();
+			const tui = new CountingTui(terminal);
+			tui.content = force ? "force-before-start" : "ordinary-before-start";
+			tui.requestRender(force);
+			tui.start();
+			await pause(35);
+			assert.deepEqual(tui.painted, [tui.content]);
+			tui.stop();
+		}
 	});
 
 	it("computes an adaptive floor independently of queue pressure", () => {

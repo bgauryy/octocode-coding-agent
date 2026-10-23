@@ -1,35 +1,73 @@
 import { existsSync, writeFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { build } from "esbuild";
+import { rolldown } from "rolldown";
 
-const outputPath = join(tmpdir(), "pi-browser-smoke.js");
-const agentTreeshakeOutputPath = join(tmpdir(), "pi-agent-treeshake-smoke.js");
 const errorLogPath = join(tmpdir(), "pi-browser-smoke-errors.log");
 const generatedCatalogDataDir = join(process.cwd(), "packages/ai/src/providers/data");
+const EMPTY_CATALOG = "\0empty-generated-model-catalog:";
 
 // Fresh checkouts do not materialize provider JSON until model data is hydrated.
 const generatedCatalogDataPlugin = {
 	name: "generated-model-catalog",
-	setup(build) {
-		build.onResolve({ filter: /^\.\/data\/[^/]+\.json$/ }, (args) => {
-			const path = resolve(dirname(args.importer), args.path);
-			if (dirname(path) !== generatedCatalogDataDir || existsSync(path)) return;
-			return { path, namespace: "empty-generated-model-catalog" };
-		});
-		build.onLoad({ filter: /.*/, namespace: "empty-generated-model-catalog" }, () => ({
-			contents: "{}",
-			loader: "json",
-		}));
+	resolveId(source, importer) {
+		if (!importer || !/^\.\/data\/[^/]+\.json$/.test(source)) return;
+		const path = resolve(dirname(importer), source);
+		if (dirname(path) !== generatedCatalogDataDir || existsSync(path)) return;
+		return EMPTY_CATALOG + path;
+	},
+	load(id) {
+		if (id.startsWith(EMPTY_CATALOG)) return { code: "{}", moduleType: "json" };
 	},
 };
+
+// A browser bundle must not import Node: Rolldown would leave a built-in import external, so refuse it here. A guarded
+// `require()` (for example a Bun-only branch) is a runtime decision, not a static import, and stays allowed.
+const browserOnlyPlugin = {
+	name: "browser-only",
+	resolveId(source, importer, extra) {
+		if (isBuiltin(source) && extra?.kind === "import-statement")
+			this.error(`Node built-in "${source}" imported by ${importer ?? "an entry"}`);
+	},
+};
+
+/** Bundle for the browser; resolves to every module the graph reached and the output chunks. */
+async function bundleForBrowser(input, plugins = []) {
+	let reached = [];
+	const bundle = await rolldown({
+		input,
+		platform: "browser",
+		// The workspace path aliases point package imports at their sources, as for the type checker.
+		tsconfig: "tsconfig.json",
+		plugins: [
+			browserOnlyPlugin,
+			...plugins,
+			{
+				name: "graph",
+				buildEnd() {
+					reached = [...this.getModuleIds()];
+				},
+			},
+		],
+		onLog(level, log) {
+			if (level === "warn" && log.code === "UNRESOLVED_IMPORT") throw new Error(log.message);
+		},
+	});
+	try {
+		const { output } = await bundle.generate({ format: "esm" });
+		return { reached, chunks: output.filter((item) => item.type === "chunk") };
+	} finally {
+		await bundle.close();
+	}
+}
 
 function normalizePath(path) {
 	return path.replaceAll("\\", "/");
 }
 
 function findInput(inputs, suffix) {
-	return Object.keys(inputs).find((input) => {
+	return inputs.find((input) => {
 		const normalized = normalizePath(input);
 		return normalized === suffix || normalized.endsWith(`/${suffix}`);
 	});
@@ -37,41 +75,15 @@ function findInput(inputs, suffix) {
 
 function includesNodePackage(inputs, packageName) {
 	const marker = `node_modules/${packageName}/`;
-	return Object.keys(inputs).some((input) => normalizePath(input).includes(marker));
+	return inputs.some((input) => normalizePath(input).includes(marker));
 }
 
 try {
-	await build({
-		entryPoints: ["packages/contacts/src/index.ts", "packages/webview/src/index.ts"],
-		bundle: true,
-		platform: "browser",
-		format: "esm",
-		write: false,
-		outdir: "browser-contract-smoke",
-		logLevel: "silent",
-	});
-	await build({
-		entryPoints: ["scripts/browser-smoke-entry.ts"],
-		bundle: true,
-		platform: "browser",
-		format: "esm",
-		logLevel: "silent",
-		outfile: outputPath,
-		plugins: [generatedCatalogDataPlugin],
-	});
+	await bundleForBrowser(["packages/contacts/src/index.ts", "packages/webview/src/index.ts"]);
+	await bundleForBrowser("scripts/browser-smoke-entry.ts", [generatedCatalogDataPlugin]);
 
-	const agentTreeshakeBuild = await build({
-		entryPoints: ["scripts/agent-treeshake-smoke-entry.ts"],
-		bundle: true,
-		platform: "browser",
-		format: "esm",
-		logLevel: "silent",
-		metafile: true,
-		outfile: agentTreeshakeOutputPath,
-		plugins: [generatedCatalogDataPlugin],
-		write: false,
-	});
-	const inputs = agentTreeshakeBuild.metafile.inputs;
+	const agentTreeshake = await bundleForBrowser("scripts/agent-treeshake-smoke-entry.ts", [generatedCatalogDataPlugin]);
+	const inputs = agentTreeshake.reached;
 	for (const forbiddenInput of [
 		"packages/ai/src/compat.ts",
 		"packages/ai/src/models.generated.ts",
@@ -84,9 +96,9 @@ try {
 	}
 
 	const contributingInputs = new Set(
-		Object.values(agentTreeshakeBuild.metafile.outputs).flatMap((output) =>
-			Object.entries(output.inputs)
-				.filter(([, contribution]) => contribution.bytesInOutput > 0)
+		agentTreeshake.chunks.flatMap((chunk) =>
+			Object.entries(chunk.modules)
+				.filter(([, contribution]) => contribution.renderedLength > 0)
 				.map(([input]) => input),
 		),
 	);

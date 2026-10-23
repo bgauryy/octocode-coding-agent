@@ -16,37 +16,44 @@ interface Page {
 	error: string;
 }
 
+const FIRST_PAGE: Page = { pages: [], loading: true, error: "" };
+
 /** Change history, newest first, including deleted items; older pages load on request. */
 export function AuditView({ params }: ViewProps) {
 	const { api } = useLive();
 	const backlogId = params.backlogId;
-	const [page, setPage] = useState<Page>({ pages: [], loading: true, error: "" });
+	const [page, setPage] = useState<Page>(FIRST_PAGE);
 	/** Aborted when the filter changes, so no page of the previous filter, first or older, lands in the new list. */
 	const filter = useRef<AbortController>(undefined);
 
 	const load = useCallback(
-		async (before: number | undefined, signal: AbortSignal | undefined) => {
-			setPage((current) => ({ ...current, loading: true, error: "" }));
-			try {
-				const result = await api.audit({ before, backlogId }, signal);
-				if (signal?.aborted) return;
-				setPage((current) => ({
-					pages: [...current.pages, result.events],
-					before: result.before,
-					loading: false,
-					error: "",
-				}));
-			} catch (error) {
-				if (signal?.aborted) return;
-				setPage((current) => ({ ...current, loading: false, error: errorMessage(error) }));
-			}
-		},
+		(before: number | undefined, signal: AbortSignal | undefined) =>
+			api.audit({ before, backlogId }, signal).then(
+				(result) => {
+					if (signal?.aborted) return;
+					setPage((current) => ({
+						pages: [...current.pages, result.events],
+						before: result.before,
+						loading: false,
+						error: "",
+					}));
+				},
+				(error: unknown) => {
+					if (signal?.aborted) return;
+					setPage((current) => ({ ...current, loading: false, error: errorMessage(error) }));
+				},
+			),
 		[api, backlogId],
 	);
+	// A new filter or connection starts a fresh list; reset while rendering so the old list never shows with it.
+	const [source, setSource] = useState({ api, backlogId });
+	if (source.api !== api || source.backlogId !== backlogId) {
+		setSource({ api, backlogId });
+		setPage(FIRST_PAGE);
+	}
 	useEffect(() => {
 		const controller = new AbortController();
 		filter.current = controller;
-		setPage({ pages: [], loading: true, error: "" });
 		void load(undefined, controller.signal);
 		return () => controller.abort();
 	}, [load]);
@@ -72,7 +79,13 @@ export function AuditView({ params }: ViewProps) {
 				</p>
 			)}
 			{page.before !== undefined && (
-				<Button loading={page.loading} onClick={() => load(page.before, filter.current?.signal)}>
+				<Button
+					loading={page.loading}
+					onClick={() => {
+						setPage((current) => ({ ...current, loading: true, error: "" }));
+						void load(page.before, filter.current?.signal);
+					}}
+				>
 					Load older events
 				</Button>
 			)}

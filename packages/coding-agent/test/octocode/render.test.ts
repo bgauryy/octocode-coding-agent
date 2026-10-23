@@ -346,8 +346,8 @@ describe("resultBlock", () => {
 		const [summary, line, spill] = text.split("\n");
 		// Collapsed, the saved path is behind the expand key; expanded it shows, home- or cwd-relative.
 		expect(summary).toBe("  ⎿  Error: exit 1 (ctrl+o to expand)");
-		expect(visibleWidth(line!)).toBeLessThanOrEqual(60);
-		expect(line!.replace(/\u001b\[[0-9;]*m/g, "").endsWith("…")).toBe(true);
+		expect(visibleWidth(line)).toBeLessThanOrEqual(60);
+		expect(line.replace(/\u001b\[[0-9;]*m/g, "").endsWith("…")).toBe(true);
 		expect(spill).toBeUndefined();
 		const open = (spillPath: string, label?: string) =>
 			rendered(
@@ -437,10 +437,10 @@ describe("statusColor", () => {
 		const old = { fg: (color: string, text: string) => `<old ${color}>${text}` };
 		const status = statusColor({ mode: "tui", ui: { theme: old } } as never, "accent", "✉ 2 queued");
 		expect(status).toBe("<old accent>✉ 2 queued");
-		expect(livePaint(status, { fg: (color: string, text: string) => `<new ${color}>${text}` } as never)).toBe(
+		expect(livePaint(status, { fg: (color: string, text: string) => `<new ${color}>${text}` })).toBe(
 			"<new accent>✉ 2 queued",
 		);
-		expect(livePaint("plain", { fg: () => "x" } as never)).toBe("plain");
+		expect(livePaint("plain", { fg: () => "x" })).toBe("plain");
 		expect(statusColor({ mode: "rpc", ui: { theme: old } } as never, "accent", "x")).toBe("x");
 	});
 });
@@ -555,7 +555,7 @@ describe("interrupted rows and expandable prefaces", () => {
 		const invalidate = vi.fn();
 		const context = { isPartial: false, isError: true, executionStarted: true, state, invalidate };
 		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<error>✗");
-		const body = rendered(resultBlock(colored, context, { summary: "Operation aborted" }) as never);
+		const body = rendered(resultBlock(colored, context, { summary: "Operation aborted" }));
 		expect(body).toContain("<warning>Operation aborted");
 		expect(body).not.toContain("Error:");
 		await Promise.resolve();
@@ -563,7 +563,7 @@ describe("interrupted rows and expandable prefaces", () => {
 		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<warning>◼");
 		// A real failure keeps its Error prefix and ✗.
 		const failed = rendered(
-			resultBlock(colored, { isPartial: false, isError: true, state: {} }, { summary: "exit 1" }) as never,
+			resultBlock(colored, { isPartial: false, isError: true, state: {} }, { summary: "exit 1" }),
 		);
 		expect(failed).toContain("Error: exit 1");
 	});
@@ -575,7 +575,7 @@ describe("interrupted rows and expandable prefaces", () => {
 				theme,
 				{ isPartial: false, isError: false },
 				{ summary: "Done", body: "a\nb", preface, prefaceLabel: "prompt" },
-			) as never,
+			),
 		);
 		expect(collapsed).toBe("  ⎿  Done\n     a\n     b\n     … prompt (ctrl+o to expand)");
 		const more = rendered(
@@ -583,15 +583,11 @@ describe("interrupted rows and expandable prefaces", () => {
 				theme,
 				{ isPartial: false, isError: false },
 				{ summary: "Done", body: "1\n2\n3\n4\n5\n6\n7", preface, prefaceLabel: "prompt" },
-			) as never,
+			),
 		);
 		expect(more).toContain("… +2 lines · prompt (ctrl+o to expand)");
 		const open = rendered(
-			resultBlock(
-				theme,
-				{ isPartial: false, isError: false, expanded: true },
-				{ summary: "Done", body: "a", preface },
-			) as never,
+			resultBlock(theme, { isPartial: false, isError: false, expanded: true }, { summary: "Done", body: "a", preface }),
 		);
 		expect(open).toBe("  ⎿  Done\n     Prompt\n     line 1\n     line 2\n     a");
 	});

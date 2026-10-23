@@ -4,7 +4,6 @@ import type { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { getAgentDir } from "../../config.ts";
-import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";

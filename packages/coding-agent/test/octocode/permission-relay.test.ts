@@ -40,10 +40,10 @@ function child(env: NodeJS.ProcessEnv) {
 	};
 	const titles: string[] = [];
 	const select = ctx.ui.select;
-	ctx.ui.select = (async (title: string, ...rest: [string[], never]) => {
+	ctx.ui.select = async (title: string, ...rest: [string[], never]) => {
 		titles.push(title);
 		return select(title, ...rest);
-	}) as never;
+	};
 	permission.start(ctx);
 	return { permission, ctx, titles, fake, environment };
 }
@@ -56,8 +56,8 @@ describe("a subagent session that relays its dialogs", () => {
 			via: "user",
 			lasts: "call",
 		});
-		const { header, title } = splitHeader(titles[0]!, NONCE);
-		expect(titles[0]!.split("\n")[0]!.startsWith(HEADER_PREFIX)).toBe(true);
+		const { header, title } = splitHeader(titles[0], NONCE);
+		expect(titles[0].split("\n")[0].startsWith(HEADER_PREFIX)).toBe(true);
 		expect(header).toMatchObject({
 			action: "shell",
 			also: ["net.private"],
@@ -102,13 +102,13 @@ describe("a subagent session that relays its dialogs", () => {
 			};
 			const titles: string[] = [];
 			const select = ctx.ui.select;
-			ctx.ui.select = (async (title: string, ...rest: [string[], never]) => {
+			ctx.ui.select = async (title: string, ...rest: [string[], never]) => {
 				titles.push(title);
 				return select(title, ...rest);
-			}) as never;
+			};
 			reloaded.start(ctx);
 			await reloaded.check(ctx, shell);
-			expect(splitHeader(titles[0]!, "reload-nonce").header).toMatchObject({ action: "shell" });
+			expect(splitHeader(titles[0], "reload-nonce").header).toMatchObject({ action: "shell" });
 		} finally {
 			delete (globalThis as Record<symbol, unknown>)[Symbol.for("octocode.permissionNonce")];
 			process.env = saved;
@@ -122,7 +122,7 @@ describe("a subagent session that relays its dialogs", () => {
 		});
 		await permission.check(ctx, shell);
 		permission.typed("ls", "/tmp");
-		expect(titles[0]!.startsWith(HEADER_PREFIX)).toBe(false);
+		expect(titles[0].startsWith(HEADER_PREFIX)).toBe(false);
 		expect(ctx.ui.notes.filter((note) => note.message.startsWith(AUDIT_NOTIFY_PREFIX))).toEqual([]);
 	});
 
@@ -163,7 +163,7 @@ describe("a subagent session that relays its dialogs", () => {
 				.map((note) => note.message)
 				.filter((message) => message.startsWith(AUDIT_NOTIFY_PREFIX));
 			expect(sent).toHaveLength(1);
-			expect(childAuditEntry(sent[0]!, "child", NONCE)).toMatchObject({
+			expect(childAuditEntry(sent[0], "child", NONCE)).toMatchObject({
 				action: "shell",
 				agent: "child",
 				via: "typed",

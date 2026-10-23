@@ -43,10 +43,10 @@ function asking(replies: Array<string | undefined>) {
 	const ctx = fakeCtx({ cwd });
 	permission.start(ctx);
 	const shown: string[] = [];
-	ctx.ui.select = (async (title: string) => {
+	ctx.ui.select = async (title: string) => {
 		shown.push(title);
 		return replies.shift();
-	}) as never;
+	};
 	return { cwd, permission, ctx, shown };
 }
 
@@ -293,7 +293,7 @@ describe("shared memory moves", () => {
 		const run = (params: Record<string, unknown>) =>
 			tool
 				.execute("c", params, undefined, undefined, ctx)
-				.then((r: { content: Array<{ text: string }> }) => r.content[0]!.text);
+				.then((r: { content: Array<{ text: string }> }) => r.content[0].text);
 		await run({ op: "set", title: "Pinned note", pinned: true });
 		await run({ op: "set", title: "Global note", scope: "global" });
 		await expect(run({ op: "set", id: "M1", pinned: false })).resolves.toMatch(/Updated M1/);

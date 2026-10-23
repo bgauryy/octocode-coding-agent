@@ -225,9 +225,9 @@ describe("session extras", () => {
 		const host = setup();
 		await host.start();
 		await host.fire("agent_end", { type: "agent_end" }, host.ctx);
-		requests[1]!({ branch: "new" });
+		requests[1]({ branch: "new" });
 		await Promise.resolve();
-		requests[0]!({ branch: "old" });
+		requests[0]({ branch: "old" });
 		await Promise.resolve();
 		expect(row(host.id)?.branch).toBe("new");
 		await host.fire("agent_end", { type: "agent_end" }, host.ctx);
@@ -238,7 +238,7 @@ describe("session extras", () => {
 				throw new Error("stale Octocode context");
 			},
 		});
-		requests[2]!({ branch: "closed" });
+		requests[2]({ branch: "closed" });
 		await Promise.resolve();
 		expect(write).not.toHaveBeenCalled();
 		expect(row(host.id)?.branch).toBe("new");
@@ -283,7 +283,7 @@ describe("session extras", () => {
 		await start();
 		await fire("agent_end", { type: "agent_end", messages: [] }, ctx);
 		expect(ctx.ui.notes.filter((note) => note.type === "warning")).toHaveLength(1);
-		expect(ctx.ui.notes[0]!.message).toMatch(/not an Octocode agent database/);
+		expect(ctx.ui.notes[0].message).toMatch(/not an Octocode agent database/);
 	});
 });
 
@@ -351,7 +351,7 @@ describe("running work after compaction", () => {
 			.run(repoKey(cwd).key);
 		await host.fire("session_compact", { type: "session_compact" }, host.ctx);
 		expect(host.sent).toHaveLength(1);
-		const { message, options } = host.sent[0]!;
+		const { message, options } = host.sent[0];
 		expect(message).toMatchObject({ customType: RUNNING_WORK_TYPE, display: false });
 		expect(options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 		expect(message.content).toContain(
@@ -552,14 +552,14 @@ describe("resume brief", () => {
 		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
 			message: { content: string };
 		};
-		const first = result.message.content.split("\n")[0]!;
+		const first = result.message.content.split("\n")[0];
 		expect(first).toMatch(
 			/^Resumed after 5m away — Stopped when the session ended, without a report: bash-3 \(`yarn test`, log .*bash-3-1700000000000\.log\); general-ab12 \(task "Review the parser p{200} second line"\)\. Check their logs/,
 		);
 		expect(first).not.toMatch(/bash-1|general-done/);
 		// A log the retention sweep removed is not offered.
 		fs.rmSync(log);
-		expect(describeWork(unreportedWork(entries)[0]!)).toBe("bash-3 (`yarn test`, log deleted)");
+		expect(describeWork(unreportedWork(entries)[0])).toBe("bash-3 (`yarn test`, log deleted)");
 	});
 
 	it("formats short durations", () => {
@@ -612,7 +612,7 @@ describe("/octocode sessions", () => {
 			piSessions.filter((each) => each.cwd === dir),
 		);
 		setCurrentSession("cur");
-		return { current, other: piSessions[1]! };
+		return { current, other: piSessions[1] };
 	}
 
 	it("lists Octocode's sessions of this directory newest first with their extras, all directories with `all`, and filters by a query", async () => {
@@ -658,7 +658,7 @@ describe("/octocode sessions", () => {
 				},
 			});
 			await handler("", ctx);
-			return lines[0]!;
+			return lines[0];
 		};
 
 		await pick(1, "Resume");
@@ -679,7 +679,7 @@ describe("/octocode sessions", () => {
 				},
 			});
 			await handler("", ctx);
-			return seen[1]!;
+			return seen[1];
 		};
 		expect(await actionsOf(1)).toEqual(["Resume", "Details", "Forget Octocode data"]);
 		expect(await actionsOf(0)).toContain("Rename");

@@ -171,7 +171,7 @@ export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 
 /** Content that an append-only context edit may replace without changing message metadata. */
 export type ContextEditableContent =
-	UserMessage["content"] | AssistantMessage["content"] | ToolResultMessage["content"] | CustomMessage["content"];
+	UserMessage["content"] | AssistantMessage["content"] | ToolResultMessage["content"];
 
 /** Append-only change to one earlier entry's contribution to model context. */
 export interface ContextEditEntry extends SessionEntryBase {
@@ -324,7 +324,7 @@ function migrateV2ToV3(entries: FileEntry[]): void {
 
 		// Update message entries with hookMessage role
 		if (entry.type === "message") {
-			const msgEntry = entry as SessionMessageEntry;
+			const msgEntry = entry;
 			if (msgEntry.message && (msgEntry.message as { role: string }).role === "hookMessage") {
 				(msgEntry.message as { role: string }).role = "custom";
 			}
@@ -337,7 +337,7 @@ function migrateV2ToV3(entries: FileEntry[]): void {
  * Mutates entries in place. Returns true if any migration was applied.
  */
 function migrateToCurrentVersion(entries: FileEntry[]): boolean {
-	const header = entries.find((e) => e.type === "session") as SessionHeader | undefined;
+	const header = entries.find((e) => e.type === "session");
 	const version = header?.version ?? 1;
 
 	if (version >= CURRENT_SESSION_VERSION) return false;
@@ -912,13 +912,13 @@ async function mapWithConcurrency<T, R>(
 	map: (item: T, index: number) => Promise<R>,
 	signal?: AbortSignal,
 ): Promise<R[]> {
-	const results = new Array<R>(items.length);
+	const results: R[] = [];
 	let nextIndex = 0;
 	const worker = async (): Promise<void> => {
 		while (nextIndex < items.length) {
 			signal?.throwIfAborted();
 			const index = nextIndex++;
-			results[index] = await map(items[index]!, index);
+			results[index] = await map(items[index], index);
 		}
 	};
 	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
@@ -1056,7 +1056,7 @@ export class SessionManager {
 				return;
 			}
 
-			const header = entries.find((entry) => entry.type === "session") as SessionHeader | undefined;
+			const header = entries.find((entry) => entry.type === "session");
 			if ((header?.version ?? 1) < CURRENT_SESSION_VERSION) assertCompleteSessionTail(resolvedFile);
 			this.sessionFile = resolvedFile;
 			this._loadEntries(entries);
@@ -1099,7 +1099,7 @@ export class SessionManager {
 	}
 
 	private _loadEntries(entries: FileEntry[], options?: NewSessionOptions): void {
-		const header = entries.find((e) => e.type === "session") as SessionHeader | undefined;
+		const header = entries.find((e) => e.type === "session");
 
 		if (header) {
 			this.fileEntries = entries;
@@ -1571,7 +1571,7 @@ export class SessionManager {
 	 */
 	getHeader(): SessionHeader | null {
 		const h = this.fileEntries.find((e) => e.type === "session");
-		return h ? (h as SessionHeader) : null;
+		return h ? h : null;
 	}
 
 	/** Number of session entries (excludes header), without copying them like `getEntries()`. */
@@ -1892,7 +1892,7 @@ export class SessionManager {
 			throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
 		}
 
-		const sourceHeader = sourceEntries.find((e) => e.type === "session") as SessionHeader | undefined;
+		const sourceHeader = sourceEntries.find((e) => e.type === "session");
 		if (!sourceHeader) {
 			throw new Error(`Cannot fork: source session has no header: ${resolvedSourcePath}`);
 		}

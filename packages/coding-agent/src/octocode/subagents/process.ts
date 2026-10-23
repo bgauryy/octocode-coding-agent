@@ -61,9 +61,11 @@ import {
 import { type AgentProfile, profileExcludes, profileTools } from "./profiles.ts";
 import { ChildRelay, type RelayHost } from "./relay.ts";
 import { ReportTracker } from "./report.ts";
+import { type ResultContract, type StructuredResultV1, unavailableResult } from "./result-schema.ts";
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
 export interface Identity {
+	resultContract?: ResultContract;
 	skillResources?: SkillResourceSnapshot;
 	cachePreferences?: CachePreferences;
 	id: string;
@@ -104,29 +106,25 @@ export function subagentProcessEnv(
 	const inherited = { ...base };
 	// User settings survive; run identity, trust delegation, permissions and browser mode belong to this child.
 	const owned = [
-		...[
-			ROLE_PROMPT_FILE_ENV,
-			SKILL_SNAPSHOT_FILE_ENV,
-			HOOKS_ENV,
-			READ_ONLY_ENV,
-			TRUST_ROOT_ENV,
-			BROWSER_VISIBLE_ENV,
-			PERMISSION_ENV,
-			PERMISSION_GRANTS_ENV,
-			PERMISSION_NONCE_FILE_ENV,
-			PERMISSION_RELAY_ENV,
-		],
-		...[
-			AGENT_ID_ENV,
-			AGENT_ROLE_ENV,
-			PARENT_ID_ENV,
-			AGENT_GOAL_ENV,
-			AGENT_COLLABORATE_ENV,
-			AGENT_SCRATCH_ENV,
-			PARENT_SESSION_ENV,
-			PARENT_TRANSCRIPT_ENV,
-			PARENT_PID_ENV,
-		],
+		ROLE_PROMPT_FILE_ENV,
+		SKILL_SNAPSHOT_FILE_ENV,
+		HOOKS_ENV,
+		READ_ONLY_ENV,
+		TRUST_ROOT_ENV,
+		BROWSER_VISIBLE_ENV,
+		PERMISSION_ENV,
+		PERMISSION_GRANTS_ENV,
+		PERMISSION_NONCE_FILE_ENV,
+		PERMISSION_RELAY_ENV,
+		AGENT_ID_ENV,
+		AGENT_ROLE_ENV,
+		PARENT_ID_ENV,
+		AGENT_GOAL_ENV,
+		AGENT_COLLABORATE_ENV,
+		AGENT_SCRATCH_ENV,
+		PARENT_SESSION_ENV,
+		PARENT_TRANSCRIPT_ENV,
+		PARENT_PID_ENV,
 	];
 	for (const key of owned) delete inherited[key];
 	return {
@@ -258,6 +256,7 @@ export function exitReason(code: number | null, signal: NodeJS.Signals | null): 
 
 interface SubagentOutcome {
 	text: string;
+	structured?: StructuredResultV1;
 	outcome?: ReportStatus;
 	usage: Usage;
 	/** Set when the child's model call failed (stopReason error/aborted). */
@@ -358,6 +357,22 @@ async function runChild(
 	let nonceFile: string | undefined;
 	let vouched: (() => void) | undefined;
 	try {
+		if (identity.resultContract) {
+			const session = childSession(identity);
+			fs.mkdirSync(session.dir, { recursive: true, mode: 0o700 });
+			const file = path.join(session.dir, "result-schema-v1.json");
+			const snapshot = JSON.stringify({
+				version: 1,
+				schemaHash: identity.resultContract.hash,
+				schema: identity.resultContract.schema,
+			});
+			try {
+				fs.writeFileSync(file, snapshot, { flag: "wx", mode: PRIVATE_FILE_MODE });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST" || fs.readFileSync(file, "utf8") !== snapshot)
+					throw new Error("Subagent result schema snapshot could not be persisted unchanged", { cause: error });
+			}
+		}
 		if (identity.skillResources) {
 			adoptSkillResourceSnapshot(identity.skillResources);
 			const directory = privateDir(identity.scratch ?? reportDir(identity.id) ?? sessionOutputDir("output"));
@@ -390,7 +405,7 @@ async function runChild(
 			adoptTree(child.pid);
 			const state = newChildState();
 			const outputDir = identity.scratch ?? reportDir(identity.id);
-			const report = new ReportTracker(outputDir);
+			const report = new ReportTracker(outputDir, identity.resultContract);
 			const stderr = new StderrTail(outputDir);
 			let buffer = "";
 			let frameBytes = 0;
@@ -572,7 +587,7 @@ async function runChild(
 				stderr.close();
 				const saved = savedNotices(state, outputDir);
 				if (saved) progress({ usage: state.usage, notices: saved });
-				const { text: finalText, body: lastProgress, pointer, error, answered, outcome } = report.result();
+				const { text: finalText, body: lastProgress, pointer, error, answered, outcome, structured } = report.result();
 				if (streamFailure) reject(streamFailure);
 				// A child stopped while settling after its answer still delivers that answer.
 				else if (stalled && !answered) reject(stalled);
@@ -606,6 +621,14 @@ async function runChild(
 						: error;
 					resolve({
 						text: finalText,
+						...(identity.resultContract
+							? {
+									structured:
+										signal?.aborted || code !== 0 || failure
+											? unavailableResult(identity.resultContract)
+											: (structured ?? unavailableResult(identity.resultContract)),
+								}
+							: {}),
 						usage: state.usage,
 						...(outcome ? { outcome } : {}),
 						...(failure ? { error: failure } : {}),

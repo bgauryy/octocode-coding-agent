@@ -28,10 +28,10 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let consecutiveMatches = 0;
 
 		while (queryIndex < normalizedQuery.length) {
-			const i = textLower.indexOf(normalizedQuery[queryIndex]!, lastMatchIndex + 1);
+			const i = textLower.indexOf(normalizedQuery[queryIndex], lastMatchIndex + 1);
 			if (i === -1) break;
 
-			const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+			const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]);
 
 			// Reward consecutive matches
 			if (lastMatchIndex === i - 1) {

@@ -173,7 +173,7 @@ describe("prompt-cache lifetimes for models that declare none", () => {
 		expect(session.registerProvider).not.toHaveBeenCalled();
 		await session.fire("turn_end", turnEnd([], reply(model, { cacheWrite: 9_000 })));
 		expect(session.registerProvider).toHaveBeenCalledOnce();
-		const [name, config] = session.registerProvider.mock.calls[0]!;
+		const [name, config] = session.registerProvider.mock.calls[0];
 		expect(name).toBe("gateway");
 		// Every model of the provider stays; only the one that showed caching gains lifetimes, the rest of it unchanged.
 		expect(config.models).toEqual([{ ...model, promptCache: { short: 300, long: 3600 } }, sibling]);
@@ -302,7 +302,7 @@ describe("cache clock evidence", () => {
 				usage: { cacheRead: 100, cacheWrite: 0 },
 			},
 		];
-		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(270_000);
+		expect(cacheClock({ getBranch: () => branch }).useAt).toBe(270_000);
 	});
 	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid lifetime %s", (short) => {
 		expect(promptCacheTtlMs({ short }, {})).toBeUndefined();
@@ -317,7 +317,7 @@ describe("cache clock evidence", () => {
 				usage: { cacheRead: 0, cacheWrite: 0 },
 			},
 		];
-		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(1000);
+		expect(cacheClock({ getBranch: () => branch }).useAt).toBe(1000);
 	});
 });
 
@@ -333,7 +333,7 @@ describe("failed requests after cache expiry", () => {
 				message: { role: "assistant", stopReason, timestamp: 400_000, usage: { cacheRead: 0, cacheWrite: 0 } },
 			},
 		];
-		const clock = cacheClock({ getBranch: () => branch } as never);
+		const clock = cacheClock({ getBranch: () => branch });
 		expect(clock.replyAt).toBe(400_000);
 		expect(clock.useAt).toBe(1_000);
 	});
@@ -350,6 +350,6 @@ describe("failed requests after cache expiry", () => {
 				},
 			},
 		];
-		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(400_000);
+		expect(cacheClock({ getBranch: () => branch }).useAt).toBe(400_000);
 	});
 });

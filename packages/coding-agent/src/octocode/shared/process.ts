@@ -146,8 +146,8 @@ function groupRows(
 	const rows: Array<{ pid: number; rest: string }> = [];
 	for (const line of table.split("\n")) {
 		const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
-		if (match && Number(match[2]) === pgid && !match[3]!.startsWith("Z"))
-			rows.push({ pid: Number(match[1]), rest: match[4]!.trim() });
+		if (match && Number(match[2]) === pgid && !match[3].startsWith("Z"))
+			rows.push({ pid: Number(match[1]), rest: match[4].trim() });
 	}
 	return rows;
 }

@@ -150,7 +150,7 @@ export const ApplicationFrameSchema = Type.Union([
 ]);
 
 export function parseApplicationFrame(value: unknown): ApplicationFrame | undefined {
-	return Value.Check(ApplicationFrameSchema, value) ? (value as ApplicationFrame) : undefined;
+	return Value.Check(ApplicationFrameSchema, value) ? value : undefined;
 }
 
 export type ApplicationOperation<Operations> = {

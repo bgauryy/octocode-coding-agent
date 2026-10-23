@@ -1333,13 +1333,13 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			servers.push(...added);
 			emitChange();
 			ensureDiscoveryActive(ctx);
-			await Promise.all(removed.map((server) => server.connection?.close()));
+			await Promise.all(removed.flatMap((server) => server.connection?.close() ?? []));
 			const connecting = added.filter(isEnabled);
 			if (signal.aborted || connecting.length === 0) return;
 			try {
 				await Promise.all(connecting.map((server) => startConnection(server)));
 				if (signal.aborted) {
-					await Promise.all(connecting.map((server) => server.connection?.close()));
+					await Promise.all(connecting.flatMap((server) => server.connection?.close() ?? []));
 					return;
 				}
 			} catch (error) {

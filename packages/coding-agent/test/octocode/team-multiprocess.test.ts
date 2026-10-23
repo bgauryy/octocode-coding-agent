@@ -1,8 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { buildSync } from "esbuild";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import type { Member } from "../../src/octocode/team/model.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -11,6 +10,7 @@ import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
 const posix = process.platform !== "win32";
+const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "src", "experimental", "source-resolver.ts");
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: "worker",
@@ -40,12 +40,6 @@ const other = (): Pick<Member, "pid" | "started"> => ({
 });
 
 const children: ChildProcess[] = [];
-afterAll(() =>
-	fs.rmSync(path.join(import.meta.dirname, "..", "node_modules", ".team-join-worker"), {
-		recursive: true,
-		force: true,
-	}),
-);
 afterEach(() => {
 	vi.restoreAllMocks();
 	for (const child of children.splice(0)) child.kill("SIGKILL");
@@ -55,27 +49,20 @@ describe("joining the team", () => {
 	it.runIf(posix)(
 		"gives 20 processes joining at once 20 distinct rows when they all draw the same names",
 		async () => {
-			// Bundled next to the package's dependencies, which stay external and so resolve from there.
-			const worker = path.join(import.meta.dirname, "..", "node_modules", ".team-join-worker", "worker.mjs");
-			buildSync({
-				entryPoints: [path.join(import.meta.dirname, "fixtures", "team-join-worker.ts")],
-				bundle: true,
-				packages: "external",
-				platform: "node",
-				format: "esm",
-				outfile: worker,
-				logLevel: "silent",
-			});
+			// Node runs the TypeScript worker directly; the source resolver maps workspace packages to their sources.
+			const worker = path.join(import.meta.dirname, "fixtures", "team-join-worker.ts");
 			const cwd = repo();
 			const db = path.join(tmp(), "team.sqlite");
 			// The database exists before the race, as it does for the first of several real Octocode processes.
 			TeamStore.open(cwd, db).close();
 			const joined = Array.from({ length: 20 }, () => {
-				const child = spawn(process.execPath, [worker, cwd, db], { stdio: ["pipe", "pipe", "inherit"] });
+				const child = spawn(process.execPath, ["--import", SOURCE_RESOLVER, worker, cwd, db], {
+					stdio: ["pipe", "pipe", "inherit"],
+				});
 				children.push(child);
 				return new Promise<string>((resolve, reject) => {
 					let out = "";
-					child.stdout!.on("data", (chunk: Buffer) => {
+					child.stdout.on("data", (chunk: Buffer) => {
 						out += chunk.toString();
 						const name = /joined (\S+)/.exec(out)?.[1];
 						if (name) resolve(name);
@@ -109,7 +96,7 @@ describe("joining the team", () => {
 			// Another process, same name: refused, and the holder's row is untouched.
 			expect(store.join(member("inky", { goal: "intruder" }))).toBe(false);
 			expect(store.list()[0]).toMatchObject({ id: "inky", pid: process.ppid });
-			expect(store.list()[0]!.goal).toBeUndefined();
+			expect(store.list()[0].goal).toBeUndefined();
 			// The same process joining again refreshes its row.
 			expect(store.join(member("mine"))).toBe(true);
 			expect(store.join(member("mine", { goal: "again" }))).toBe(true);

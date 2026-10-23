@@ -180,11 +180,11 @@ function layoutComponent(
 		for (let index = 0; index < entries.length; index++) {
 			box.children.push(
 				withParent(
-					layoutComponent(context, entries[index]!.component, x, childY, safeWidth, sizes[index]!, box.clip),
+					layoutComponent(context, entries[index].component, x, childY, safeWidth, sizes[index], box.clip),
 					box,
 				),
 			);
-			childY += sizes[index]! + node.gap;
+			childY += sizes[index] + node.gap;
 		}
 		return box;
 	}
@@ -194,7 +194,7 @@ function layoutComponent(
 	);
 	const widths = allocateStackSizes(entries, intrinsicWidths, safeWidth, node.gap);
 	const intrinsicHeights = entries.map((entry, index) =>
-		measureHeight(context, entry.component, Math.max(1, widths[index]!)),
+		measureHeight(context, entry.component, Math.max(1, widths[index])),
 	);
 	const allocatedHeight =
 		height === undefined
@@ -210,15 +210,15 @@ function layoutComponent(
 	};
 	let childX = x;
 	for (let index = 0; index < entries.length; index++) {
-		const naturalChildHeight = intrinsicHeights[index]!;
+		const naturalChildHeight = intrinsicHeights[index];
 		const childHeight = node.align === "stretch" ? allocatedHeight : Math.min(allocatedHeight, naturalChildHeight);
 		let childY = y;
 		if (node.align === "center") childY += Math.floor((allocatedHeight - childHeight) / 2);
 		else if (node.align === "end") childY += allocatedHeight - childHeight;
-		const childWidth = widths[index]!;
+		const childWidth = widths[index];
 		if (childWidth === 0) {
 			box.children.push({
-				component: entries[index]!.component,
+				component: entries[index].component,
 				rect: { x: childX, y: childY, width: 0, height: childHeight },
 				clip: { x: childX, y: childY, width: 0, height: 0 },
 				children: [],
@@ -228,7 +228,7 @@ function layoutComponent(
 		} else {
 			box.children.push(
 				withParent(
-					layoutComponent(context, entries[index]!.component, childX, childY, childWidth, childHeight, box.clip),
+					layoutComponent(context, entries[index].component, childX, childY, childWidth, childHeight, box.clip),
 					box,
 				),
 			);

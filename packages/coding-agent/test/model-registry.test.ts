@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-unnecessary-type-assertion -- tsc needs these casts to narrow the compat union */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,7 +40,7 @@ describe("ModelRegistry", () => {
 		return {
 			baseUrl,
 			apiKey: "test-key",
-			api: api as Api,
+			api: api,
 			models: models.map((m) => ({
 				id: m.id,
 				name: m.name ?? m.id,
@@ -1631,7 +1632,7 @@ describe("ModelRegistry", () => {
 		test("apiKey with braced env syntax resolves to env value", async () => {
 			const originalEnv = process.env.TEST_BRACED_API_KEY_12345;
 			process.env.TEST_BRACED_API_KEY_12345 = "braced-env-api-key-value";
-			const bracedKey = "$" + "{TEST_BRACED_API_KEY_12345}";
+			const bracedKey = "${TEST_BRACED_API_KEY_12345}";
 
 			try {
 				writeRawModelsJson({

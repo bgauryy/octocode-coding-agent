@@ -116,10 +116,12 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 			const base = servers.get(namespace);
 			const extra = Object.keys(value).filter((key) => !OVERRIDE_KEYS.includes(key));
 			if (!base) {
+				// An override has neither "command" nor "url", so validation returns the reason it is incomplete.
+				const invalid = validateMcpServerConfig(name, value);
 				errors.push(
-					scope === "project"
+					scope === "project" || typeof invalid !== "string"
 						? `${path}: server "${name}" needs "command" or "url", or a global server to override`
-						: `${path}: ${validateMcpServerConfig(name, value)}`,
+						: `${path}: ${invalid}`,
 				);
 			} else if (extra.length > 0) {
 				errors.push(`${path}: server "${name}": an override can only set ${OVERRIDE_KEYS.join(", ")}`);

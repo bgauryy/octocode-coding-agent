@@ -56,7 +56,7 @@ describe("AgentSession prompt characterization", () => {
 		await harness.session.prompt("hi");
 
 		expect(harness.session.messages.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
-		expect(getMessageText(harness.session.messages[1]!)).toBe("hi");
+		expect(getMessageText(harness.session.messages[1])).toBe("hi");
 		expect(harness.getPendingResponseCount()).toBe(0);
 	});
 
@@ -165,7 +165,6 @@ describe("AgentSession prompt characterization", () => {
 	});
 
 	it("uses the model selected by before_agent_start for image normalization", async () => {
-		let strictModel: Model<string> | undefined;
 		const harness = await createHarness({
 			models: [{ id: "wide" }, { id: "strict" }],
 			extensionFactories: [
@@ -178,7 +177,7 @@ describe("AgentSession prompt characterization", () => {
 			],
 		});
 		harnesses.push(harness);
-		strictModel = harness.getModel("strict");
+		const strictModel = harness.getModel("strict");
 		if (!strictModel) throw new Error("Expected strict model");
 		const resizeOptions = { maxWidth: 1000, maxHeight: 1000, maxBytes: 500000, jpegQuality: 70 };
 		strictModel.inputLimits = { images: { resize: resizeOptions } };
@@ -376,7 +375,7 @@ describe("AgentSession prompt characterization", () => {
 		await harness.session.sendUserMessage("from extension");
 
 		expect(harness.session.messages.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
-		expect(getMessageText(harness.session.messages[1]!)).toBe("from extension");
+		expect(getMessageText(harness.session.messages[1])).toBe("from extension");
 	});
 
 	it("does not report streamingBehavior to input handlers while idle", async () => {

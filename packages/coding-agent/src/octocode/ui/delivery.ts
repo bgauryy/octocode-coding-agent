@@ -59,7 +59,7 @@ export class Delivery {
 	deliver(message: Message, options?: Options): void {
 		// Octocode queues once a run starts preparing, before `agent_start` (its `before_agent_start` handlers run in between).
 		const busy = this.running || this.preparing();
-		this.send(message, options);
+		void this.send(message, options);
 		const queued = busy && options?.triggerTurn !== false && options?.deliverAs !== "nextTurn";
 		if (!queued || !isRecord(message.details)) return;
 		this.waiting.set(message.details, message);
@@ -89,7 +89,7 @@ export class Delivery {
 		const failures: string[] = [];
 		for (const message of dropped) {
 			try {
-				this.send(message, { triggerTurn: false });
+				void this.send(message, { triggerTurn: false });
 				kept += 1;
 			} catch (error) {
 				// The session ended meanwhile: this message is lost, and the notice says so.

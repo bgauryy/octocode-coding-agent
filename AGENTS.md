@@ -34,7 +34,10 @@ When changing native tools or commands, check registration and SDK consumers sep
 
 Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Follow the root README for installation and model-data hydration.
 
-- `npm run check` runs TypeScript, browser imports, workspace bundle freshness, package-boundary checks and the webview lint without rewriting files.
+- `npm run check` runs TypeScript, Oxlint, the Prettier check, browser imports, workspace bundle freshness and package-boundary checks without rewriting files.
+- `npm run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `npm run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `npm run format` formats code with Prettier (`.prettierrc.json`).
+- Source files stay within 400 lines. The `max-lines` override in `.oxlintrc.json` lists the files that were longer when the rule was adopted; split one and remove it from the list (`scripts/check-max-lines-baseline.mjs` fails while a listed file fits). Never add files to it.
+- Silence a rule only for a deliberate pattern, on the line, with the reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 - `./test.sh` runs all tests with isolated user configuration and credentials. Install `fd` and `ripgrep` for filesystem-tool tests. Bun worker checks run when Bun is available; live provider tests require separate configured runs.
 - From `packages/coding-agent`, `npx vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes live e2e and Chrome tests.
 - `npm run test:scripts` checks build, packaging and repository scripts.

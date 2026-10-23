@@ -80,8 +80,8 @@ describe("permission lifecycle", () => {
 
 	it("treats Esc while entering denial feedback as cancellation", async () => {
 		const { permission, ctx } = setup();
-		ctx.ui.select = vi.fn(async () => "Deny and tell the agent why…") as never;
-		ctx.ui.input = vi.fn(async () => undefined) as never;
+		ctx.ui.select = vi.fn(async () => "Deny and tell the agent why…");
+		ctx.ui.input = vi.fn(async () => undefined);
 		expect(await permission.check(ctx, request())).toMatchObject({ allowed: false, via: "cancelled" });
 	});
 
@@ -97,7 +97,7 @@ describe("permission lifecycle", () => {
 		ctx.ui.select = vi.fn(async (_title: string, choices: string[]) => {
 			offered.push(choices);
 			return "Allow once";
-		}) as never;
+		});
 		await permission.check(ctx, destructive);
 		expect(offered[0]).toEqual(["Allow once", "Deny", "Deny and tell the agent why…"]);
 		expect(await permission.check(ctx, destructive, async () => "kind")).toMatchObject({ allowed: false });

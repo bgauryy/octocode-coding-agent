@@ -1,4 +1,4 @@
-import { errorMessage, isRecord } from "../shared/util.ts";
+import { errorMessage, isRecord, stringOrEmpty } from "../shared/util.ts";
 import { combineSignals, language, readCapped, USER_AGENT } from "./fetch.ts";
 import { isHttpUrl, type PublicFetchInit, publicFetch } from "./guard.ts";
 import { decodeEntities, htmlToText } from "./html.ts";
@@ -16,9 +16,9 @@ export function parseDuckDuckGo(html: string, max: number): SearchHit[] {
 		const link = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
 		if (!link) continue;
 		const snippet = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? "";
-		const url = unwrapDuckDuckGo(decodeEntities(link[1]!));
+		const url = unwrapDuckDuckGo(decodeEntities(link[1]));
 		if (!url) continue;
-		hits.push({ url, title: htmlToText(link[2]!), snippet: htmlToText(snippet) });
+		hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
 		if (hits.length >= max) break;
 	}
 	return hits;
@@ -29,12 +29,12 @@ export function parseDuckDuckGoLite(html: string, max: number): SearchHit[] {
 	const hits: SearchHit[] = [];
 	const links = [...html.matchAll(/<a\b([^>]*class=['"]result-link['"][^>]*)>([\s\S]*?)<\/a>/gi)];
 	links.forEach((link, index) => {
-		const href = /href=['"]([^'"]+)['"]/.exec(link[1]!)?.[1];
+		const href = /href=['"]([^'"]+)['"]/.exec(link[1])?.[1];
 		if (!href || hits.length >= max) return;
 		const rest = html.slice(link.index + link[0].length, links[index + 1]?.index ?? html.length);
 		const snippet = /<td[^>]*class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/i.exec(rest)?.[1] ?? "";
 		const url = unwrapDuckDuckGo(decodeEntities(href));
-		if (url) hits.push({ url, title: htmlToText(link[2]!), snippet: htmlToText(snippet) });
+		if (url) hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
 	});
 	return hits;
 }
@@ -46,9 +46,9 @@ export function parseBing(html: string, max: number): SearchHit[] {
 		const link = /<h2[^>]*>\s*<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
 		if (!link) continue;
 		const snippet = /<p\b[^>]*>([\s\S]*?)<\/p>/.exec(block)?.[1] ?? "";
-		const url = unwrapBing(decodeEntities(link[1]!));
+		const url = unwrapBing(decodeEntities(link[1]));
 		if (!url) continue;
-		hits.push({ url, title: htmlToText(link[2]!), snippet: htmlToText(snippet) });
+		hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
 		if (hits.length >= max) break;
 	}
 	return hits;
@@ -150,8 +150,8 @@ export async function search(
 		clean: (text: string) => string = (text) => text,
 	): SearchHit[] =>
 		(Array.isArray(value) ? value.filter(isRecord) : []).flatMap((r) => {
-			const link = httpUrl(String(r[url] ?? ""));
-			return link ? [{ title: String(r.title ?? ""), url: link, snippet: clean(String(r[snippet] ?? "")) }] : [];
+			const link = httpUrl(stringOrEmpty(r[url]));
+			return link ? [{ title: stringOrEmpty(r.title), url: link, snippet: clean(stringOrEmpty(r[snippet])) }] : [];
 		});
 	const keyed = [
 		{

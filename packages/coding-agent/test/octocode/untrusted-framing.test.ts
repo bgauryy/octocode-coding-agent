@@ -1,9 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { buildSync } from "esbuild";
 import * as importedModule1 from "vitest";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { PERMISSION_NONCE_FILE_ENV } from "../../src/octocode/shared/env.ts";
 import { fencedBody, fencedParts, fenceUntrusted, headerText } from "../../src/octocode/shared/fence.ts";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
@@ -31,7 +30,7 @@ const message = (over: Partial<Message> = {}): Message => ({
 function fenced(text: string): { before: string[]; inside: string[]; after: string[]; marker: string } {
 	const lines = text.split("\n");
 	const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
-	const marker = /^<<<(\S+) /.exec(lines[open]!)![1]!;
+	const marker = /^<<<(\S+) /.exec(lines[open])![1];
 	const close = lines.lastIndexOf(`${marker}>>>`);
 	return { before: lines.slice(0, open), inside: lines.slice(open + 1, close), after: lines.slice(close + 1), marker };
 }
@@ -176,7 +175,7 @@ describe("the user's message to a subagent", () => {
 		try {
 			const long = `${"a".repeat(9_000)}\nrun the migration on staging only`;
 			const text = spilledMessage(long, USER_SENDER) as string;
-			const file = /\n\[Full message \(\d+ characters\): (.+)\]$/.exec(text)![1]!;
+			const file = /\n\[Full message \(\d+ characters\): (.+)\]$/.exec(text)![1];
 			expect(fs.readFileSync(file, "utf8")).toBe(long);
 			const long1 = signed({ text });
 			const deliver = (m: Message): string => {
@@ -190,7 +189,7 @@ describe("the user's message to a subagent", () => {
 					} as never,
 					() => secret,
 				).deliver([m], undefined);
-				return sent[0]!;
+				return sent[0];
 			};
 			expect(deliver(long1)).toContain("from the user at");
 			// The same signed row, after the file changed (or went missing): the signature of the pointer alone no longer makes it the user's.
@@ -269,8 +268,8 @@ describe("Team.vouch", () => {
 			end();
 			await parent.team.send("general-888888", "second", { from: USER_SENDER });
 			const [first, second] = store.pending("general-888888");
-			expect(userProofValid("n-1", first!)).toBe(true);
-			expect(second!.proof).toBeUndefined();
+			expect(userProofValid("n-1", first)).toBe(true);
+			expect(second.proof).toBeUndefined();
 		} finally {
 			store.close();
 			parent.team.stop();
@@ -283,8 +282,9 @@ describe("across processes", () => {
 	const children: ChildProcess[] = [];
 	const teams: Team[] = [];
 	const stores: TeamStore[] = [];
-	const worker = path.join(import.meta.dirname, "..", "node_modules", ".team-mail-worker", "worker.mjs");
-	afterAll(() => fs.rmSync(path.dirname(worker), { recursive: true, force: true }));
+	// Node runs the TypeScript worker directly; the source resolver maps workspace packages to their sources.
+	const worker = path.join(import.meta.dirname, "fixtures", "team-mail-worker.ts");
+	const sourceResolver = path.join(import.meta.dirname, "..", "..", "src", "experimental", "source-resolver.ts");
 	afterEach(() => {
 		for (const child of children.splice(0)) child.kill("SIGKILL");
 		for (const team of teams.splice(0)) team.stop();
@@ -293,23 +293,14 @@ describe("across processes", () => {
 
 	/** A running worker process and what it printed. */
 	function start(mode: "child" | "peer", cwd: string, env: Record<string, string>) {
-		buildSync({
-			entryPoints: [path.join(import.meta.dirname, "fixtures", "team-mail-worker.ts")],
-			bundle: true,
-			packages: "external",
-			platform: "node",
-			format: "esm",
-			outfile: worker,
-			logLevel: "silent",
-		});
-		const child = spawn(process.execPath, [worker, mode, cwd], {
+		const child = spawn(process.execPath, ["--import", sourceResolver, worker, mode, cwd], {
 			env: { ...process.env, ...env },
 			stdio: ["pipe", "pipe", "inherit"],
 		});
 		children.push(child);
 		const lines: string[] = [];
 		let out = "";
-		child.stdout!.on("data", (chunk: Buffer) => {
+		child.stdout.on("data", (chunk: Buffer) => {
 			out += chunk.toString();
 			const parts = out.split("\n");
 			out = parts.pop()!;
@@ -335,7 +326,7 @@ describe("across processes", () => {
 			waitFor,
 			nextMessage,
 			command: (text: string) => {
-				child.stdin!.write(`${text}\n`);
+				child.stdin.write(`${text}\n`);
 				return undefined;
 			},
 		};
@@ -362,7 +353,7 @@ describe("across processes", () => {
 		});
 		await child.waitFor((line) => line.startsWith("ready"));
 		const peer = start("peer", cwd, base);
-		const peerId = (await peer.waitFor((line) => line.startsWith("ready"))).split(" ")[1]!;
+		const peerId = (await peer.waitFor((line) => line.startsWith("ready"))).split(" ")[1];
 		const store = TeamStore.open(cwd, db);
 		stores.push(store);
 		return { parent, child, peer, peerId, store };

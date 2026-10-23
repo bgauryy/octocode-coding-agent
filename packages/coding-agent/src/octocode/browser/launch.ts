@@ -13,8 +13,11 @@ import { type FilteringProxy, type FilteringProxyOptions, startFilteringProxy } 
 /** The persistent profile visible mode uses: `<Octocode home>/pi-browser-profile`. */
 export const persistentProfileDir = (env: NodeJS.ProcessEnv): string => outputDir(HOME_NAMES.browserProfile, env);
 
-/** A Chrome this session launched; `proxy` is the filtering proxy it runs behind, stopped when Chrome is killed. */
-export type OwnChrome = LaunchedChrome & { proxy?: FilteringProxy };
+/**
+ * A Chrome this session launched; `proxy` is the filtering proxy it runs behind, stopped when Chrome is killed. `kill`
+ * returns a promise when it also stops that proxy and removes the temporary profile.
+ */
+export type OwnChrome = Omit<LaunchedChrome, "kill"> & { kill: () => void | Promise<void>; proxy?: FilteringProxy };
 
 /** Chrome's flags to send every request through `proxy`, loopback included (`<-loopback>` removes Chrome's built-in loopback bypass). */
 export const proxyFlags = (proxy: FilteringProxy): string[] => [

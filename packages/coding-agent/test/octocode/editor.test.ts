@@ -200,7 +200,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		await fake.fire("session_start", {}, ctx);
 		const { tui, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
-		const row = () => editor.render(100)[1]!;
+		const row = () => editor.render(100)[1];
 		expect(row()).toContain("Ask about any code");
 		await fake.fire("agent_start", {}, ctx);
 		expect(row()).not.toContain("Ask about any code");
@@ -241,7 +241,7 @@ describe("Octocode prompt box", () => {
 					return mode.value;
 				},
 			},
-			() => tagged as never,
+			() => tagged,
 			() => hint.value,
 		);
 		tui.setFocus(editor);
@@ -276,16 +276,16 @@ describe("Octocode prompt box", () => {
 		const { editor, input, mode } = boxed({ value: "manual" });
 		editor.borderColor = (text) => painted(36, text);
 		let lines = editor.render(60);
-		expect(lines[0]!.startsWith(painted(35, "╭─"))).toBe(true);
-		expect(plain(lines[2]!)).toContain("⏸ manual");
+		expect(lines[0].startsWith(painted(35, "╭─"))).toBe(true);
+		expect(plain(lines[2])).toContain("⏸ manual");
 		mode.value = "full";
 		lines = editor.render(60);
-		expect(lines[0]!.startsWith(painted(35, "╭─"))).toBe(true);
+		expect(lines[0].startsWith(painted(35, "╭─"))).toBe(true);
 		expect(lines[2]).toContain(painted(31, " ⏵⏵ full "));
-		expect(plain(lines[2]!)).toContain("⏵⏵ full");
+		expect(plain(lines[2])).toContain("⏵⏵ full");
 		input("!ls");
-		expect(editor.render(60)[0]!.startsWith(painted(36, "╭─"))).toBe(true);
-		expect(plain(editor.render(60)[0]!)).toMatch(/^╭── ! shell ─+╮$/);
+		expect(editor.render(60)[0].startsWith(painted(36, "╭─"))).toBe(true);
+		expect(plain(editor.render(60)[0])).toMatch(/^╭── ! shell ─+╮$/);
 	});
 
 	it("names the ! modes in the top border instead of the idle label", () => {
@@ -298,11 +298,11 @@ describe("Octocode prompt box", () => {
 	it("gives the top border to Octocode’s working line during a run", () => {
 		const { editor } = boxed();
 		editor.setWorkingStatusIndicator({ renderInBorder: () => "Working", renderSpinnerInBorder: () => "⠋" } as never);
-		const top = plain(editor.render(60)[0]!);
+		const top = plain(editor.render(60)[0]);
 		expect(top).toMatch(/^╭─── Working ─+╮$/);
 		expect(top).not.toContain("octocode");
 		editor.setWorkingStatusIndicator(undefined);
-		expect(plain(editor.render(60)[0]!)).toContain(" octocode ");
+		expect(plain(editor.render(60)[0])).toContain(" octocode ");
 	});
 
 	it("places the cursor where a click lands inside the box", () => {
@@ -346,23 +346,23 @@ describe("Octocode prompt box", () => {
 		const row = lines.findIndex((line, index) => index > 2 && line.includes("hello"));
 		expect(row).toBeGreaterThan(2);
 		// Autocomplete rows sit two columns in, aligned with the text above.
-		expect(lines[row]!.startsWith("  ")).toBe(true);
-		click(editor, lines[row]!.indexOf("hello"), row);
+		expect(lines[row].startsWith("  ")).toBe(true);
+		click(editor, lines[row].indexOf("hello"), row);
 		expect(editor.getText()).toMatch(/^\/hello/);
 	});
 
 	it("shows the hint only while `hint()` holds (the conversation has not started)", () => {
 		const { editor, hint } = boxed();
-		expect(plain(editor.render(80)[1]!)).toContain("Ask about any code");
+		expect(plain(editor.render(80)[1])).toContain("Ask about any code");
 		hint.value = false;
-		expect(plain(editor.render(80)[1]!)).toMatch(/^│ \S? +│$/);
+		expect(plain(editor.render(80)[1])).toMatch(/^│ \S? +│$/);
 	});
 
 	it("keeps Octocode’s scroll indicators when the text overflows", () => {
 		const { editor } = boxed();
 		editor.setText(Array.from({ length: 20 }, (_, line) => `line ${line}`).join("\n"));
 		const text = editor.render(60).map(plain);
-		expect(text[0]!.startsWith("╭─")).toBe(true);
+		expect(text[0].startsWith("╭─")).toBe(true);
 		expect(text[0]).toContain("↑");
 		expect(text[0]).not.toContain("octocode");
 		expect(text.every((line) => visibleWidth(line) === 60)).toBe(true);
@@ -379,7 +379,7 @@ describe("Octocode prompt box", () => {
 		const { editor, input } = boxed();
 		for (const width of [BOX_MIN_WIDTH, 40]) {
 			const text = editor.render(width).map(plain);
-			expect(text[0]!.startsWith("╭─")).toBe(true);
+			expect(text[0].startsWith("╭─")).toBe(true);
 			expect(text.every((line) => visibleWidth(line) === width)).toBe(true);
 		}
 		input("a prompt long enough to wrap inside the narrow box");

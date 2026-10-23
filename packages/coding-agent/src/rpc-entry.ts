@@ -6,8 +6,8 @@ import { main } from "./main.ts";
 process.title = `${APP_NAME}-rpc`;
 process.env.OCTOCODE_CODING_AGENT = "true";
 process.env.AI_AGENT = "octocode";
-process.emitWarning = (() => {}) as typeof process.emitWarning;
+process.emitWarning = () => {};
 
 configureHttpDispatcher();
 
-main(["--mode", "rpc", ...process.argv.slice(2)]);
+await main(["--mode", "rpc", ...process.argv.slice(2)]);

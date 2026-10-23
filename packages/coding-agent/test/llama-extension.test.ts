@@ -205,7 +205,7 @@ describe("llama.cpp extension", () => {
 	it("preserves cached llama.cpp context for unloaded autoload presets", async () => {
 		let cachedEntry: ModelsStoreEntry | undefined;
 		let loaded = true;
-		let unloadedArgs: string[] | undefined;
+		let unloadedArgs: string[] | undefined = undefined;
 		const { url } = await listen((request, response) => {
 			if (request.url === "/models") {
 				json(response, {

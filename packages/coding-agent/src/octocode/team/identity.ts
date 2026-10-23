@@ -96,8 +96,8 @@ export const AGENT_NAMES: readonly string[] = ADJECTIVES.flatMap((adjective) =>
 export function agentName(taken: Iterable<string> = [], random: () => number = Math.random): string {
 	const used = new Set(taken);
 	const free = AGENT_NAMES.filter((name) => !used.has(name));
-	if (free.length > 0) return free[Math.floor(random() * free.length)]!;
-	const base = AGENT_NAMES[Math.floor(random() * AGENT_NAMES.length)]!;
+	if (free.length > 0) return free[Math.floor(random() * free.length)];
+	const base = AGENT_NAMES[Math.floor(random() * AGENT_NAMES.length)];
 	let suffix = 2;
 	while (used.has(`${base}-${suffix}`)) suffix += 1;
 	return `${base}-${suffix}`;

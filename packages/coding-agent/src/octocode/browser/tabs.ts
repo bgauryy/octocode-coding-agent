@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { type BrowserSession, httpOrigin, openTab, type PageTarget, pageTargets } from "./cdp.ts";
+import { blockedSuffix, type BrowserSession, httpOrigin, openTab, type PageTarget, pageTargets } from "./cdp.ts";
 import { switchTo } from "./session.ts";
 
 /** What the agent opening a private page records for the tab that loads it (see `BrowserTool.open`); nothing for a public page. */
@@ -75,8 +75,7 @@ export async function newTab(
 	approve(session.targetId);
 	delete session.blocked;
 	const result = await session.page.send<{ errorText?: string }>("Page.navigate", { url }, signal);
-	if (result.errorText)
-		throw new Error(`Navigation failed: ${result.errorText}${session.blocked ? ` (blocked ${session.blocked})` : ""}`);
+	if (result.errorText) throw new Error(`Navigation failed: ${result.errorText}${blockedSuffix(session)}`);
 	await whenLoaded(session, signal, NAVIGATE_LOAD_MS);
 }
 

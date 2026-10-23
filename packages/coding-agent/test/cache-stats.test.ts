@@ -40,11 +40,11 @@ function assistant(options: {
 		},
 		stopReason: "stop",
 		timestamp: options.timestamp ?? 0,
-	} as AssistantMessage;
+	};
 }
 
 function entry(message: AssistantMessage): SessionEntry {
-	return { type: "message", id: "x", parentId: null, timestamp: "", message } as SessionEntry;
+	return { type: "message", id: "x", parentId: null, timestamp: "", message };
 }
 
 function usageEntry(kind: string, timestamp: number): SessionEntry {

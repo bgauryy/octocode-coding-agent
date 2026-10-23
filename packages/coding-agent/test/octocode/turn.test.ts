@@ -29,7 +29,7 @@ describe("registerTurnSetup", () => {
 			systemPromptOptions: { sections: {} as Record<string, string>, ...(selectedTools ? { selectedTools } : {}) },
 		};
 		await fake.emit("before_agent_start", event, {});
-		return event.systemPromptOptions.sections.octocode!;
+		return event.systemPromptOptions.sections.octocode;
 	};
 	const argv = process.argv;
 	let agentDir = "";

@@ -10,7 +10,7 @@ function makeTool(parameters: Record<string, unknown>): Tool {
 	return {
 		name: "test_tool",
 		description: "A test tool",
-		parameters: parameters as Tool["parameters"],
+		parameters: parameters,
 	};
 }
 

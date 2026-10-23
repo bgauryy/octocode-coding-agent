@@ -14,7 +14,11 @@
 		"build:native:darwin": "npm --prefix packages/tui run build:native:darwin",
 		"build:native:linux": "npm --prefix packages/tui run build:native:linux",
 		"build:native:win32": "npm --prefix packages/tui run build:native:win32",
-		"check": "tsc --noEmit && npm run check:browser-smoke && npm run check:workspace && npm run check:boundaries && npm run check:webview",
+		"check": "tsc --noEmit && npm run lint && npm run format:check && npm run check:browser-smoke && npm run check:workspace && npm run check:boundaries",
+		"lint": "oxlint packages scripts && node scripts/check-max-lines-baseline.mjs",
+		"lint:fix": "oxlint packages scripts --fix",
+		"format": "prettier --write \"packages/**/*.{ts,tsx,mts,cts,js,mjs,cjs}\" \"scripts/**/*.{ts,mjs,js}\"",
+		"format:check": "prettier --check \"packages/**/*.{ts,tsx,mts,cts,js,mjs,cjs}\" \"scripts/**/*.{ts,mjs,js}\"",
 		"check:browser-smoke": "node scripts/check-browser-smoke.mjs",
 		"check:package-install": "node scripts/check-package-install.mjs",
 		"check:install-lock:coding-agent": "node scripts/generate-coding-agent-install-lock.mjs --check",
@@ -43,16 +47,15 @@
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
 		"generate:workspace": "node scripts/build-workspace-state.mjs",
 		"check:workspace": "node scripts/build-workspace-state.mjs --check",
-		"check:boundaries": "node scripts/check-package-boundaries.mjs",
-		"check:webview": "npm run lint --workspace=@octocodeai/octocode-webview"
+		"check:boundaries": "node scripts/check-package-boundaries.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",
-		"esbuild": "0.28.2",
 		"oxlint": "1.89.0",
 		"oxlint-tsgolint": "7.0.2004",
 		"pnpm": "11.15.1",
 		"prettier": "3.9.10",
+		"rolldown": "1.2.15",
 		"shx": "0.4.0",
 		"typescript": "7.0.2",
 		"yaml": "2.9.0"

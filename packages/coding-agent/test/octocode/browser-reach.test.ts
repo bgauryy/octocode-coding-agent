@@ -83,7 +83,7 @@ describe("browser reach", () => {
 		const manual = ui(true);
 		await checkBrowserUrl("http://127.0.0.1:3000/", manual, fakePermission("manual"), "call-1");
 		expect(manual.select).toHaveBeenCalledTimes(1);
-		const shown = manual.select.mock.calls[0]![0];
+		const shown = manual.select.mock.calls[0][0];
 		expect(shown.split("\n").filter((line) => line.includes("▸ why it asks:"))).toEqual([
 			"  ▸ why it asks: the address is private or local, so it can reach internal services (manual mode asks)",
 			"  ▸ why it asks: it acts in a real browser",
@@ -92,7 +92,7 @@ describe("browser reach", () => {
 		const workspace = ui(true);
 		await checkBrowserUrl("http://127.0.0.1:3000/", workspace, fakePermission("workspace"), "call-2");
 		expect(
-			workspace.select.mock.calls[0]![0].split("\n").filter((line) => line.includes("▸ why it asks:")),
+			workspace.select.mock.calls[0][0].split("\n").filter((line) => line.includes("▸ why it asks:")),
 		).toHaveLength(1);
 		// A public page opens unasked in workspace.
 		const open = ui(true);
@@ -107,15 +107,15 @@ describe("browser reach", () => {
 			"/work/a.txt",
 			"/work/sub/b.txt",
 		]);
-		expect(inside.select.mock.calls[0]![0]).toMatch(/^Upload files to the page\?/);
-		expect(inside.select.mock.calls[0]![1]).toEqual(["Allow once", "Deny", "Deny and tell the agent why…"]);
+		expect(inside.select.mock.calls[0][0]).toMatch(/^Upload files to the page\?/);
+		expect(inside.select.mock.calls[0][1]).toEqual(["Allow once", "Deny", "Deny and tell the agent why…"]);
 		await expect(checkUploadPaths(["a.txt"], ui(false), permission)).rejects.toThrow(
 			/^Refused to upload files: The user denied/,
 		);
 		const outside = ui(true);
 		await expect(checkUploadPaths(["../secret", "/etc/passwd"], outside, permission)).resolves.toHaveLength(2);
 		expect(outside.select).toHaveBeenCalledTimes(1);
-		const shown = outside.select.mock.calls[0]![0];
+		const shown = outside.select.mock.calls[0][0];
 		expect(shown).toMatch(/^Upload files from outside the workspace\?/);
 		expect(shown.split("\n").filter((line) => line.includes("▸ why it asks:"))).toHaveLength(2);
 		await expect(checkUploadPaths(["../secret", "/etc/passwd"], ui(false), permission)).rejects.toThrow(
@@ -181,7 +181,7 @@ describe("browser reach", () => {
 			// From a subfolder, a file elsewhere in the repository is inside the workspace: no outside reason.
 			const inside = ui(true);
 			await checkUploadPaths(["../top.txt"], { ...inside, cwd: path.join(root, "pkg") }, fakePermission("workspace"));
-			expect(inside.select.mock.calls[0]![0]).toMatch(/^Upload files to the page\?/);
+			expect(inside.select.mock.calls[0][0]).toMatch(/^Upload files to the page\?/);
 			// A session whose cwd is the home folder has no workspace: even a file under it is outside.
 			const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "octocode-upload-home-")));
 			vi.stubEnv("HOME", home);
@@ -189,7 +189,7 @@ describe("browser reach", () => {
 			fs.writeFileSync(path.join(home, "notes.txt"), "n");
 			const homeCtx = ui(true);
 			await checkUploadPaths(["notes.txt"], { ...homeCtx, cwd: home }, fakePermission("workspace"));
-			expect(homeCtx.select.mock.calls[0]![0]).toMatch(/^Upload files from outside the workspace\?/);
+			expect(homeCtx.select.mock.calls[0][0]).toMatch(/^Upload files from outside the workspace\?/);
 			fs.rmSync(home, { recursive: true, force: true });
 		} finally {
 			vi.unstubAllEnvs();

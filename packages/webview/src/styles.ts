@@ -40,6 +40,8 @@ code { font-size: 12px; overflow-wrap: anywhere; }
 h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 p { margin: 0; }
+/* Open dialogs are positioned and styled by their component class; drop the user-agent dialog box. */
+dialog { inset: auto; width: auto; height: auto; margin: 0; padding: 0; border: 0; background: none; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 ::selection { background: var(--accent-soft); }
 .icon { flex-shrink: 0; }
@@ -255,7 +257,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--tex
 .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-error { color: var(--danger); font-size: 13px; }
 .form-error:empty, .form-status:empty { display: none; }
-.form-status { color: var(--text-2); font-size: 12px; }
+.form-status { display: block; color: var(--text-2); font-size: 12px; }
 
 /* Command palette */
 .palette-backdrop { background: rgb(13 17 23 / .35); z-index: 30; }

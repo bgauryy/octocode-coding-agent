@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import type {
 	ChatCompletionAssistantMessageParam,
-	ChatCompletionChunk,
 	ChatCompletionContentPart,
 	ChatCompletionContentPartImage,
 	ChatCompletionContentPartText,
@@ -36,6 +35,7 @@ import type {
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
@@ -710,7 +710,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };
@@ -819,7 +819,7 @@ function buildParams(
 		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
 	};
 
-	if (compat.supportsUsageInStreaming !== false) {
+	if (compat.supportsUsageInStreaming) {
 		params.stream_options = { include_usage: true };
 	}
 
@@ -1491,7 +1491,7 @@ function convertTools(
 			};
 		}
 
-		const strict = resolveJsonSchemaStrictSampling(tool, compat.supportsStrictMode !== false);
+		const strict = resolveJsonSchemaStrictSampling(tool, compat.supportsStrictMode);
 		return {
 			type: "function",
 			function: {
@@ -1499,7 +1499,7 @@ function convertTools(
 				description: tool.description,
 				parameters: getJsonSchemaToolParameters(tool, strict) as Record<string, unknown>,
 				// Only include strict if provider supports it. Some reject unknown fields.
-				...(compat.supportsStrictMode !== false && { strict: strict ?? false }),
+				...(compat.supportsStrictMode && { strict: strict ?? false }),
 			},
 		};
 	});
@@ -1548,7 +1548,7 @@ function parseChunkUsage(
 	return usage;
 }
 
-function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): {
+function mapStopReason(reason: string | null): {
 	stopReason: StopReason;
 	errorMessage?: string;
 } {

@@ -14,7 +14,7 @@ function getRawStdoutWrite(): StdoutTakeoverState["rawStdoutWrite"] {
 	if (stdoutTakeoverState) {
 		return stdoutTakeoverState.rawStdoutWrite;
 	}
-	return process.stdout.write.bind(process.stdout) as StdoutTakeoverState["rawStdoutWrite"];
+	return process.stdout.write.bind(process.stdout);
 }
 
 async function writeRawStdoutChunk(text: string): Promise<void> {
@@ -51,7 +51,7 @@ export function takeOverStdout(): void {
 	const rawStderrWrite = process.stderr.write.bind(process.stderr) as StdoutTakeoverState["rawStderrWrite"];
 	const originalStdoutWrite = process.stdout.write;
 
-	process.stdout.write = ((
+	process.stdout.write = (
 		chunk: string | Uint8Array,
 		encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
 		callback?: (error?: Error | null) => void,
@@ -60,7 +60,7 @@ export function takeOverStdout(): void {
 			return rawStderrWrite(String(chunk), encodingOrCallback);
 		}
 		return rawStderrWrite(String(chunk), callback);
-	}) as typeof process.stdout.write;
+	};
 
 	stdoutTakeoverState = {
 		rawStdoutWrite,

@@ -29,7 +29,7 @@ describe("source command forms", () => {
 		});
 		expect(errors).toEqual([]);
 		expect(hooks).toHaveLength(1);
-		const result = await runHook(hooks[0]!, {}, cwd, { CLAUDE_PROJECT_DIR: cwd });
+		const result = await runHook(hooks[0], {}, cwd, { CLAUDE_PROJECT_DIR: cwd });
 		expect(result.code).toBe(0);
 		expect(JSON.parse(result.stdout)).toEqual(["", literal, `${cwd}/a b`]);
 		expect(fs.readdirSync(cwd)).toEqual([]);
@@ -88,7 +88,7 @@ describe("source command forms", () => {
 		const { hooks, errors } = parse({ command: "echo posix", commandWindows: "echo windows" }, "codex");
 		expect(errors).toEqual([]);
 		expect(hooks[0]).toMatchObject({ commandWindows: "echo windows" });
-		if (process.platform !== "win32") expect((await runHook(hooks[0]!, {}, tmp())).stdout.trim()).toBe("posix");
+		if (process.platform !== "win32") expect((await runHook(hooks[0], {}, tmp())).stdout.trim()).toBe("posix");
 	});
 
 	it.each(["block", "continue"])(

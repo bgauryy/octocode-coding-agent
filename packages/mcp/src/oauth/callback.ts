@@ -65,6 +65,7 @@ export class OAuthCallbackServer {
 		const host = options.host ?? "127.0.0.1";
 		const redirectHost = options.redirectHost ?? host;
 		const path = options.path ?? "/callback";
+		// oxlint-disable-next-line prefer-const -- assigned once the server binds; the request handler created earlier reads it
 		let instance: OAuthCallbackServer | undefined;
 		const server = createServer((request, response) => instance?.handle(request.url ?? "/", response));
 		await new Promise<void>((resolve, reject) => {

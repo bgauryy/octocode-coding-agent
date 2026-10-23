@@ -40,7 +40,7 @@ describe("shared MCP status", () => {
 		const original = server("docs");
 		setMcpSessionStatus(bus, "configured", [original]);
 		original.enabled = false;
-		getMcpSessionStatus(bus)[0]!.state = "failed";
+		getMcpSessionStatus(bus)[0].state = "failed";
 		expect(getMcpSessionStatus(bus)).toEqual([server("docs")]);
 	});
 });

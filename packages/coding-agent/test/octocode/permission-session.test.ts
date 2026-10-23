@@ -19,7 +19,7 @@ function manual(answers: Array<string | undefined>) {
 			return answers.shift();
 		},
 	});
-	permission.start(ctx as never);
+	permission.start(ctx);
 	return { permission, ctx, asked };
 }
 
@@ -39,7 +39,7 @@ describe("allow a whole kind of action for the session", () => {
 			via: "user",
 			lasts: "session",
 		});
-		expect(asked[0]!.choices).toContain("Allow all shell commands for this session");
+		expect(asked[0].choices).toContain("Allow all shell commands for this session");
 		expect(await permission.check(ctx, shell("find . -type f | grep -v node_modules"))).toEqual({
 			allowed: true,
 			via: "grant",
@@ -51,13 +51,13 @@ describe("allow a whole kind of action for the session", () => {
 		expect(
 			await permission.check(ctx, { action: "web", title: "Fetch?", what: ["https://example.com"] }),
 		).toMatchObject({ allowed: false, via: "cancelled" });
-		expect(asked[1]!.choices).toContain("Allow all web requests for this session");
+		expect(asked[1].choices).toContain("Allow all web requests for this session");
 	});
 
 	it("keeps the exact-grant choice next to it, and clears both on request and at a new session", async () => {
 		const { permission, ctx, asked } = manual(["Allow all shell commands for this session"]);
 		await permission.check(ctx, { ...shell("npm test"), grant: { key: "npm test", label: "`npm test`" } });
-		expect(asked[0]!.choices).toEqual([
+		expect(asked[0].choices).toEqual([
 			"Allow once",
 			"Allow `npm test` for this session",
 			"Allow all shell commands for this session",
@@ -103,7 +103,7 @@ describe("allow a whole kind of action for the session", () => {
 			env: { OCTOCODE_PERMISSION: "manual", [PERMISSION_GRANTS_ENV]: "shell,web" },
 			isSubagent: true,
 		});
-		child.start(Object.assign(fakeCtx({ cwd: tmp(), hasUI: false }), { isProjectTrusted: () => false }) as never);
+		child.start(Object.assign(fakeCtx({ cwd: tmp(), hasUI: false }), { isProjectTrusted: () => false }));
 		expect(await child.check(fakeCtx({ cwd: tmp(), hasUI: false }), shell("x | y"))).toEqual({
 			allowed: true,
 			via: "grant",
@@ -132,7 +132,7 @@ describe("how far an allowed verdict reaches", () => {
 	it('lasts for the call when the mode or "Allow once" allowed it, and for the session when a grant or a session answer did', async () => {
 		const full = new Permission({ pi: fakePi().pi, env: { OCTOCODE_PERMISSION: "full" }, isSubagent: false });
 		const fullCtx = Object.assign(fakeCtx({ cwd: tmp() }), { isProjectTrusted: () => true });
-		full.start(fullCtx as never);
+		full.start(fullCtx);
 		expect(await full.check(fullCtx as never, shell("ls"))).toMatchObject({
 			allowed: true,
 			via: "mode",

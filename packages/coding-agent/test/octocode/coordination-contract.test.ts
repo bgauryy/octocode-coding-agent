@@ -8,7 +8,6 @@ const TARGET = new URL("../../src/octocode/team/casefold-table.ts", import.meta.
 
 import { CASE_FOLDING_UNICODE_VERSION } from "../../src/octocode/team/casefold-table.ts";
 import { foldComponent, keysOverlap, type LeaseKind, leaseKey } from "../../src/octocode/team/lease-key.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
 import { pathKey, TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 
@@ -55,7 +54,7 @@ function open() {
 			output: 0,
 			cost: 0,
 			unpriced: false,
-		} as Member);
+		});
 	return { cwd, store };
 }
 

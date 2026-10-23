@@ -15,7 +15,6 @@ import type {
 import { externalFailure, registerExternal } from "../../src/octocode/external/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { withDialog } from "../../src/octocode/shared/locks.ts";
-import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 
 const managers: ExternalAgents[] = [];
@@ -292,8 +291,8 @@ describe("external manager policy and lifecycle", () => {
 		state.owned.prompt.mockResolvedValueOnce(reply);
 		const result = (await state.prompt("request")) as { reply: ExternalReply };
 		expect(result.reply).toEqual(reply);
-		const outbound = state.beforeSend.mock.calls[0]?.[0] as MessageEnvelope;
-		const inbound = state.afterReceive.mock.calls[0]?.[0] as MessageEnvelope;
+		const outbound = state.beforeSend.mock.calls[0]?.[0];
+		const inbound = state.afterReceive.mock.calls[0]?.[0];
 		expect(outbound).toMatchObject({
 			channel: "external",
 			direction: "outbound",

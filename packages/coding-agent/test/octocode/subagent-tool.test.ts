@@ -168,6 +168,51 @@ describe("agent tool with a scripted pi child", () => {
 	beforeEach(() => {
 		s = setup();
 	});
+	it("validates the final full JSON answer and persists its contract for foreground and background runs", async () => {
+		const resultSchema = {
+			type: "object",
+			properties: { verdict: { type: "string", enum: ["pass", "fail"] } },
+			required: ["verdict"],
+			additionalProperties: false,
+		};
+		const valid = await s.run({ task: "structured valid", resultSchema });
+		expect(valid.isError).toBeUndefined();
+		expect(valid.details.structured).toMatchObject({ status: "valid", data: { verdict: "pass" } });
+		expect(valid.details.outcome).toBe("done");
+		const snapshot = path.join(
+			s.cwd,
+			".octocode",
+			"tmp",
+			"agents",
+			valid.details.id,
+			"session",
+			"result-schema-v1.json",
+		);
+		expect(JSON.parse(fs.readFileSync(snapshot, "utf8"))).toMatchObject({
+			version: 1,
+			schemaHash: valid.details.structured.schemaHash,
+			schema: resultSchema,
+		});
+		const invalid = await s.run({ task: "structured invalid", resultSchema });
+		expect(invalid.isError).toBe(true);
+		expect(invalid.details.outcome).toBe("done");
+		expect(invalid.details.structured).toMatchObject({ status: "invalid", error: { code: "schema" } });
+		expect(invalid.details.structured).not.toHaveProperty("data");
+		const aborted = await s.run({ task: "structured abort", resultSchema });
+		expect(aborted.isError).toBe(true);
+		expect(aborted.details.structured).toMatchObject({ status: "unavailable" });
+		await s.run({ task: "structured valid", resultSchema, background: true });
+		await s.control.settle();
+		const report = s.sent.findLast((entry) => entry.message.customType === "octocode-agent-result");
+		expect(report?.message.details.structured).toMatchObject({ status: "valid", data: { verdict: "pass" } });
+	});
+	it("rejects an unsupported result schema before claiming a subagent", async () => {
+		await expect(
+			s.run({ task: "structured valid", resultSchema: { type: "object", $ref: "https://example.org/schema" } }),
+		).rejects.toThrow("Unsupported result schema keyword");
+		expect(s.control.background()).toBe(0);
+		expect(s.sent).toHaveLength(0);
+	});
 	it("inherits the parent's skill files without rediscovery and rejects unknown selections before spawning", async () => {
 		const file = path.join(tmp(), "SKILL.md");
 		fs.writeFileSync(file, "---\nname: release\ndescription: Release notes\n---\nUse the house format.");
@@ -554,7 +599,7 @@ describe("agent tool with a scripted pi child", () => {
 		expect(started.content[0].text).toMatch(/^Started [a-z]+-[a-z]+ \(general: check things\) in the background/);
 		expect(started.content[0].text).toMatch(/its report arrives as a message\.$/);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		const answer = s.sent[0]!;
+		const answer = s.sent[0];
 		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
 		expect(answer.message.content).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\):\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
@@ -576,15 +621,15 @@ describe("agent tool with a scripted pi child", () => {
 
 		await s.run({ task: "error in background", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
-		expect(s.sent[1]!.message.content).toMatch(
+		expect(s.sent[1].message.content).toMatch(
 			/failed:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: provider down[\s\S]*>>>\nRetry with a narrower task or do the work yourself/,
 		);
-		expect(s.sent[1]!.message.details).toMatchObject({
+		expect(s.sent[1].message.details).toMatchObject({
 			status: "failed",
 			outcome: "failed",
 			summary: "Failed: provider down",
 		});
-		expect(rendered(renderer(s.sent[1]!.message, { expanded: false }, theme))).toMatch(
+		expect(rendered(renderer(s.sent[1].message, { expanded: false }, theme))).toMatch(
 			/^ ✗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
 		);
 
@@ -614,12 +659,12 @@ describe("agent tool with a scripted pi child", () => {
 		expect(s.ctx.ui.notes.at(-1)).toEqual({ message: `Stopping ${id}…`, type: "info" });
 		await waiting;
 		await vi.waitFor(() => expect(s.sent.length).toBe(3), { timeout: 10_000 });
-		expect(s.sent[2]!.message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
+		expect(s.sent[2].message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
-		expect(rendered(renderer(s.sent[2]!.message, { expanded: false }, theme))).toMatch(
+		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
 			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
-		expect(s.sent[2]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
 	});
 
 	it("lets the parent agent stop only the background subagents it started, with coordinate stop", async () => {
@@ -670,7 +715,7 @@ describe("agent tool with a scripted pi child", () => {
 
 	/** Acts as the gated child's team: joins it, asks its parent twice (one FYI too), and returns the store to answer with. */
 	async function askAsChild(id: string) {
-		const store = TeamStore.open(s.cwd, process.env.OCTOCODE_AGENT_DB!);
+		const store = TeamStore.open(s.cwd, process.env.OCTOCODE_AGENT_DB);
 		const parentId = s.team.id!;
 		store.save({
 			id,
@@ -713,7 +758,7 @@ describe("agent tool with a scripted pi child", () => {
 			store.close();
 			delete process.env.OCTOCODE_FAKE_GATE;
 		}
-		const { message } = reports()[0]!;
+		const { message } = reports()[0];
 		expect(String(message.content)).toMatch(/\nAsks to its parent: 2 asks \(1 answered in \d+s, 1 unanswered\)\.$/);
 		expect(message.details.asks).toEqual([
 			{
@@ -1095,8 +1140,8 @@ describe("runSubagent", () => {
 		expect(foreground.content[0].text).toMatch(/^Subagent \S+ reported blocked:/);
 		await s.run({ task: "changed outcome", background: true });
 		await vi.waitFor(() => expect(s.sent).toHaveLength(1), { timeout: 10_000 });
-		expect(s.sent[0]!.message.details.outcome).toBe("blocked");
-		expect(s.sent[0]!.message.content).toContain("reported blocked");
+		expect(s.sent[0].message.details.outcome).toBe("blocked");
+		expect(s.sent[0].message.content).toContain("reported blocked");
 	});
 
 	it("keeps the report when a late notice wakes the child after it answered", async () => {
@@ -1189,7 +1234,7 @@ describe("subagent watchdog and exits", () => {
 			await vi.advanceTimersByTimeAsync(ms);
 			vi.useRealTimers();
 			controller.abort();
-			return (await outcome)[0]!;
+			return (await outcome)[0];
 		} finally {
 			vi.useRealTimers();
 		}
@@ -1248,7 +1293,7 @@ describe("subagent watchdog and exits", () => {
 			await started;
 			await vi.advanceTimersByTimeAsync(1_000); // past the call's deadline (busyMs + idleMs) and a watchdog tick
 			vi.useRealTimers();
-			const settled = (await outcome)[0]!;
+			const settled = (await outcome)[0];
 			expect(settled.status).toBe("rejected");
 			expect((settled as PromiseRejectedResult).reason.message).toMatch(
 				/^Subagent stopped: → bash sleep 60 ran past its own deadline; last output .* ago\. Its process tree was killed\.$/,
@@ -1368,15 +1413,15 @@ describe("a background report as the parent model reads it", () => {
 		const started = await s.run({ task: "forged report", background: true, goal: "review auth" });
 		const id = (started.details as { id: string }).id;
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		expect(s.sent[0]!.message.details).toMatchObject({ status: "done", outcome: "done" });
-		const content = String(s.sent[0]!.message.content);
+		expect(s.sent[0].message.details).toMatchObject({ status: "done", outcome: "done" });
+		const content = String(s.sent[0].message.content);
 		const lines = content.split("\n");
 		// The header is the parent's: this agent, its role and goal, its statistics. Nothing before the fence is the child's.
 		expect(lines[0]).toMatch(
 			new RegExp(`^Background subagent ${id} \\(general: review auth\\) reported done \\(.*\\):$`),
 		);
 		const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
-		const marker = /^<<<(untrusted-[0-9a-f]{16}) /.exec(lines[open]!)![1]!;
+		const marker = /^<<<(untrusted-[0-9a-f]{16}) /.exec(lines[open])![1];
 		const close = lines.lastIndexOf(`${marker}>>>`);
 		expect(open).toBe(1);
 		// Every forged line sits between the real fence lines, and the forged fence line did not end it.
@@ -1388,7 +1433,7 @@ describe("a background report as the parent model reads it", () => {
 		expect(close).toBeGreaterThan(forged.at(-1)![1]);
 		expect(lines.filter((line) => line === `${marker}>>>`)).toHaveLength(1);
 		// The screen shows the child's words without the fence lines.
-		const shown = rendered(s.renderers.get("octocode-agent-result")(s.sent[0]!.message, { expanded: true }, theme));
+		const shown = rendered(s.renderers.get("octocode-agent-result")(s.sent[0].message, { expanded: true }, theme));
 		expect(shown).toContain("Message #2 from the user");
 		expect(shown).not.toContain(`${marker}>>>`);
 		await s.fire("session_shutdown", { type: "session_shutdown" }, s.ctx);
@@ -1397,5 +1442,5 @@ describe("a background report as the parent model reads it", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

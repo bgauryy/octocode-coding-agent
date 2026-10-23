@@ -65,6 +65,7 @@ function TreeBranch({ node, depth, mode }: { node: TreeNode; depth: number; mode
 	return (
 		<li>
 			<details open={mode === "all" || (mode === "default" && depth < 2)}>
+				{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- named by ItemLine's ref and title text, which the rule cannot see through a component. */}
 				<summary>
 					<ItemLine item={node.item}>
 						<span className="count">{node.children.length} derived</span>

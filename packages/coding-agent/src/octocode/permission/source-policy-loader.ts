@@ -104,12 +104,12 @@ export function registerSourcePolicy(
 			}
 			next.rules.push(
 				...loaded.rules.filter(
-					(rule) => trusted || source.path === allSources[0]!.path || localAllowed[index] || rule.behavior !== "allow",
+					(rule) => trusted || source.path === allSources[0].path || localAllowed[index] || rule.behavior !== "allow",
 				),
 			);
 			next.errors.push(...loaded.errors);
 			if (loaded.defaultMode) next.defaultMode = loaded.defaultMode;
-			if (trusted || source.path === allSources[0]!.path || localAllowed[index])
+			if (trusted || source.path === allSources[0].path || localAllowed[index])
 				next.additionalDirectories = [...(next.additionalDirectories ?? []), ...(loaded.additionalDirectories ?? [])];
 		}
 		return { fingerprint, next, id, contents };
@@ -154,9 +154,9 @@ export function registerSourcePolicy(
 			if (sessionParsed.errors.length) throw new Error(sessionParsed.errors.join("\n"));
 			const sources = claudeSettingsSources(ctx.cwd, true, home);
 			const destinations = {
-				userSettings: sources[0]!,
-				projectSettings: sources[1]!,
-				localSettings: sources[2]!,
+				userSettings: sources[0],
+				projectSettings: sources[1],
+				localSettings: sources[2],
 			};
 			const plans = (["userSettings", "projectSettings", "localSettings"] as const).flatMap((destination) => {
 				const selected = updates.filter((update) => update.destination === destination);

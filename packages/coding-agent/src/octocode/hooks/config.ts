@@ -4,10 +4,6 @@ import {
 	HOOK_EVENTS,
 	HOOK_MAX_TIMEOUT_S as MAX_TIMEOUT_S,
 	type HookSource,
-	type HookBase,
-	type HookCommand,
-	type HookHttp,
-	type HookMcp,
 	type HookHandler,
 	type HookConfig,
 	type HookEvent,
@@ -111,7 +107,7 @@ function hookSources(
 	return [
 		{
 			path: path.join(
-				sourceProfiles ? path.dirname(claudeSettingsSources(cwd, false, home)[0]!.path) : path.join(home, ".claude"),
+				sourceProfiles ? path.dirname(claudeSettingsSources(cwd, false, home)[0].path) : path.join(home, ".claude"),
 				"settings.json",
 			),
 			dialect: "claude",

@@ -172,7 +172,7 @@ function budget(vendor, phase, text) {
 	return trial;
 }
 function failure(error) {
-	return { error: error.message ?? String(error), ...(error.data ?? {}) };
+	return { error: error.message ?? String(error), ...error.data };
 }
 async function toolBatch(inputs) {
 	const ids = inputs.map(() => randomUUID());

@@ -3,10 +3,10 @@
  */
 
 import {
+	type GoogleGenAI,
 	type Content,
 	FinishReason,
 	type GenerateContentParameters,
-	GoogleGenAI,
 	FunctionCallingConfigMode,
 	ThinkingLevel as GoogleSdkThinkingLevel,
 	type Part,
@@ -15,7 +15,6 @@ import {
 } from "@google/genai";
 import { calculateCost, clampThinkingLevel } from "../models.ts";
 import type {
-	Api,
 	AssistantMessage,
 	ImageContent,
 	Model,
@@ -31,6 +30,7 @@ import type {
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { collapseSystemMessages, withoutInitialSystemMessage } from "../utils/transcript.ts";
@@ -403,9 +403,7 @@ export function convertTools(
 				return {
 					name: tool.name,
 					description: tool.description,
-					...(useParameters
-						? { parameters: sanitizeForOpenApi(parameters as unknown) }
-						: { parametersJsonSchema: parameters }),
+					...(useParameters ? { parameters: sanitizeForOpenApi(parameters) } : { parametersJsonSchema: parameters }),
 				};
 			}),
 		},
@@ -475,7 +473,7 @@ export function mapStopReason(reason: FinishReason): StopReason {
 			return "error";
 		default: {
 			const _exhaustive: never = reason;
-			throw new Error(`Unhandled stop reason: ${_exhaustive}`);
+			throw new Error(`Unhandled stop reason: ${String(_exhaustive)}`);
 		}
 	}
 }
@@ -575,7 +573,7 @@ export function streamGoogle<T extends GoogleApiType>(
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: model.api as Api,
+			api: model.api,
 			provider: model.provider,
 			model: model.id,
 			usage: {
@@ -793,7 +791,7 @@ export function streamGoogle<T extends GoogleApiType>(
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 }

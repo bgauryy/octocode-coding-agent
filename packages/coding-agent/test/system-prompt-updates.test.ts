@@ -61,7 +61,7 @@ describe("system prompt updates", () => {
 			const created = await createAgentSession({
 				cwd: tempDir,
 				agentDir: join(tempDir, "agent"),
-				model: getModel("anthropic", "claude-sonnet-4-5")!,
+				model: getModel("anthropic", "claude-sonnet-4-5"),
 				settingsManager: SettingsManager.inMemory(),
 				sessionManager,
 				noTools: "all",
@@ -140,8 +140,8 @@ describe("system prompt updates", () => {
 				timestamp: systemMessages[0]?.[0]?.timestamp,
 			});
 			expect(systemMessages[2]?.at(-1)).toEqual(forced);
-			expect(getCurrentSystemPrompt(requests[2]!.messages)).toBe("Exact prompt.");
-			expect(requests[2]!.messages.map((message) => message.role)).toEqual([
+			expect(getCurrentSystemPrompt(requests[2].messages)).toBe("Exact prompt.");
+			expect(requests[2].messages.map((message) => message.role)).toEqual([
 				"system",
 				"user",
 				"assistant",

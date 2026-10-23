@@ -39,7 +39,7 @@ describe("renderDiff", () => {
 				.split("\n")
 				.find((line) => plain(line).startsWith("+"))!;
 			const [, wordTint] = [...new Set(backgrounds(added))];
-			const start = added.indexOf(wordTint!) + wordTint!.length;
+			const start = added.indexOf(wordTint) + wordTint.length;
 			const emphasized = plain(added.slice(start, added.indexOf("\x1b[48;", start)));
 			expect(emphasized).toBe("sum");
 		});

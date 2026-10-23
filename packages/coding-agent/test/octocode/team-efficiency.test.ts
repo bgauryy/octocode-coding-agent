@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Inbox } from "../../src/octocode/team/inbox.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member, Message } from "../../src/octocode/team/model.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { INBOX_BATCH_SIZE, TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker, type TeamView } from "../../src/octocode/team/ticker.ts";
@@ -41,8 +41,8 @@ describe("team delivery efficiency", () => {
 				(_, i) => store.send("sender", ["recipient"], `${i}:` + "界".repeat(7900), { replyRequired: false }).id!,
 			);
 			const inbox = new Inbox();
-			const batches: import("../../src/octocode/team/model.ts").Message[][] = [];
-			const send = (batch: import("../../src/octocode/team/model.ts").Message[]) => {
+			const batches: Message[][] = [];
+			const send = (batch: Message[]) => {
 				batches.push(batch);
 				return true;
 			};
@@ -92,13 +92,13 @@ describe("team delivery efficiency", () => {
 		try {
 			store.save(member("recipient"));
 			const inbox = new Inbox();
-			const send = vi.fn((_batch: import("../../src/octocode/team/model.ts").Message[]) => true);
+			const send = vi.fn((_batch: Message[]) => true);
 			store.send("sender", ["recipient"], "FYI", { replyRequired: false });
 			inbox.deliver(store, "recipient", send, true);
 			const question = store.send("sender", ["recipient"], "please reply", { replyRequired: true }).id!;
 			inbox.deliver(store, "recipient", send, true);
 			expect(send).toHaveBeenCalledTimes(2);
-			expect(send.mock.calls[1]![0][0].id).toBe(question);
+			expect(send.mock.calls[1][0][0].id).toBe(question);
 		} finally {
 			store.close();
 		}
@@ -174,7 +174,7 @@ describe("team delivery efficiency", () => {
 			mail.reset();
 			mail.reportDeadLetters(newStore, "sender");
 			expect(sent).toHaveLength(2);
-			expect(sent[1]!.message.content).toContain("new session");
+			expect(sent[1].message.content).toContain("new session");
 			expect(newStore.deadLetters("sender")).toEqual([]);
 			expect(oldStore.deadLetters("sender")).toHaveLength(1);
 		} finally {

@@ -84,7 +84,7 @@ function createFakeAnthropicClient(response: Response): Anthropic {
 describe("Anthropic SSE body lifetime", () => {
 	it("cancels the response body when the consumer stops early", async () => {
 		let cancelled = false;
-		const first = `event: message_start\ndata: ${minimalAnthropicEvents[0]!.data}\n\n`;
+		const first = `event: message_start\ndata: ${minimalAnthropicEvents[0].data}\n\n`;
 		const body = new ReadableStream<Uint8Array>({
 			start(controller) {
 				controller.enqueue(new TextEncoder().encode(first));

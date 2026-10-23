@@ -307,7 +307,7 @@ it("registered user Bash source denial prevents the actual executor from writing
 	});
 	try {
 		const command = "printf WRITE > original.txt";
-		const event = await f.session.extensionRunner!.emitUserBash({
+		const event = await f.session.extensionRunner.emitUserBash({
 			type: "user_bash",
 			command,
 			excludeFromContext: false,
@@ -337,7 +337,7 @@ for (const compatibility of [true, false]) {
 		try {
 			fs.mkdirSync(path.join(f.cwd, ".claude"), { recursive: true });
 			const command = "printf WRITE > .claude/generated.txt";
-			const event = await f.session.extensionRunner!.emitUserBash({
+			const event = await f.session.extensionRunner.emitUserBash({
 				type: "user_bash",
 				command,
 				excludeFromContext: false,
@@ -366,7 +366,7 @@ it("registered user Bash retains outside-target approval without a primary nativ
 	try {
 		const command = "printf WRITE > ../outside.txt";
 		const target = path.resolve(f.cwd, "../outside.txt");
-		const event = await f.session.extensionRunner!.emitUserBash({
+		const event = await f.session.extensionRunner.emitUserBash({
 			type: "user_bash",
 			command,
 			excludeFromContext: false,

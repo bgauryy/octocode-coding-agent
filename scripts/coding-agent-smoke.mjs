@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 export const codingAgentName = "@octocodeai/octocodecode";
 
-export function smokeTestCodingAgent(directory, runtime = process.execPath) {
+export function smokeTestCodingAgent(directory, runtime = process.execPath, { strictRuntime = false } = {}) {
 	const packageDir = join(directory, "node_modules", codingAgentName);
 	const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
 	const home = mkdtempSync(join(tmpdir(), "octocode-coding-agent-smoke-home-"));
@@ -42,7 +42,7 @@ import { fileURLToPath } from "node:url";
 import { createAgentSession, SessionManager, ModelRuntime } from "${codingAgentName}";
 import octocode from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/octocode/index.js")).href)};
 import { octocodeLaunch } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/octocode/mcp/octocode.js")).href)};
-import { getCliInvocation, getSubagentsDir } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/config.js")).href)};
+import { getCliInvocation, getSubagentsDir${strictRuntime ? ", getBundledSkillsDir, getResearchCliInvocation" : ""} } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/config.js")).href)};
 for (const dependency of ["octocode-mcp", "chrome-launcher", "@agentclientprotocol/sdk"]) {
 	assert.ok(existsSync(fileURLToPath(import.meta.resolve(dependency))), dependency);
 }
@@ -55,6 +55,13 @@ assert.equal(mcpLaunch.command, process.execPath, "installed MCP runs without np
 assert.ok(existsSync(mcpLaunch.args[0]), "MCP executable exists");
 assert.equal(realpathSync(getSubagentsDir()), realpathSync(${JSON.stringify(profileDir)}));
 assert.ok(getCliInvocation().prefix.some((argument) => argument.endsWith("dist/bundle/cli.js")));
+${
+	strictRuntime
+		? `assert.ok(existsSync(getBundledSkillsDir()), "research skills are packaged");
+for (const kind of ["research", "native"]) assert.ok(existsSync(getResearchCliInvocation(kind).prefix[0]), kind + " entry is packaged");
+`
+		: ""
+}
 `,
 		);
 		execFileSync(runtime, [entry], { cwd: directory, env, stdio: ["inherit", "pipe", "pipe"], timeout: 30_000 });
@@ -76,6 +83,25 @@ assert.ok(getCliInvocation().prefix.some((argument) => argument.endsWith("dist/b
 			timeout: 30_000,
 		});
 		if (!apiHelp.includes("octocode-api list")) throw new Error("Installed Octocode API CLI did not show usage");
+		if (strictRuntime) {
+			const modelsDir = join(directory, "node_modules", "@octocodeai", "octocode-ai", "dist", "providers", "data");
+			if (!existsSync(modelsDir) || !readdirSync(modelsDir).some((name) => name.endsWith(".json"))) {
+				throw new Error("Installed Octocode AI package is missing hydrated model data");
+			}
+			for (const kind of ["research", "native"]) {
+				const manifestName = kind === "research" ? "octocode" : "@octocodeai/octocode-native";
+				const siblingDir = join(directory, "node_modules", manifestName);
+				const sibling = JSON.parse(readFileSync(join(siblingDir, "package.json"), "utf8"));
+				const bin = typeof sibling.bin === "string" ? sibling.bin : sibling.bin?.octocode;
+				if (!bin || !existsSync(join(siblingDir, bin))) throw new Error(`Installed ${kind} executable is missing`);
+				execFileSync(runtime, [join(siblingDir, bin), "--help"], {
+					cwd: directory,
+					env,
+					stdio: ["ignore", "pipe", "pipe"],
+					timeout: 30_000,
+				});
+			}
+		}
 	} finally {
 		rmSync(entry, { force: true });
 		rmSync(home, { recursive: true, force: true });

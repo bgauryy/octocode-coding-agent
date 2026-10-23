@@ -78,7 +78,7 @@ function lastActive(entries: readonly Entry[]): number | undefined {
 
 /** The session's current branch (what the model sees), or all entries when Octocode offers no branch. */
 const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
-	(ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? []) as readonly unknown[];
+	ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
 
 /**
  * After a compaction, a short non-waking note of the work still running (background bash jobs and subagents started
@@ -105,7 +105,7 @@ function registerRunningWork(pi: ExtensionAPI): void {
 		];
 		const content = `[After compaction] ${parts.join(" ")}`;
 		try {
-			pi.sendMessage(
+			void pi.sendMessage(
 				{ customType: RUNNING_WORK_TYPE, content, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -201,7 +201,7 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 			// Off the start path; at most once per 6 h across all sessions.
 			const env = { ...process.env };
 			setImmediate(() => {
-				sweepSessions(sessions, currentSessionId(), { env });
+				void sweepSessions(sessions, currentSessionId(), { env });
 				return undefined;
 			});
 		});

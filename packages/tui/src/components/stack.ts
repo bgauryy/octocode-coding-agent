@@ -104,27 +104,27 @@ function distribute(
 			.map((entry, index) => ({ entry, index }))
 			.filter(({ entry, index }) => {
 				if (mode === "grow") {
-					return (entry.grow ?? 0) > 0 && sizes[index]! < (entry.maxSize ?? Number.MAX_SAFE_INTEGER);
+					return (entry.grow ?? 0) > 0 && sizes[index] < (entry.maxSize ?? Number.MAX_SAFE_INTEGER);
 				}
-				return (entry.shrink ?? 1) > 0 && sizes[index]! > (entry.minSize ?? 0);
+				return (entry.shrink ?? 1) > 0 && sizes[index] > (entry.minSize ?? 0);
 			});
 		if (candidates.length === 0) return;
 
 		const totalWeight = candidates.reduce((sum, { entry, index }) => {
-			return sum + (mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]!));
+			return sum + (mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]));
 		}, 0);
 		let distributed = 0;
 		for (const { entry, index } of candidates) {
 			if (remaining <= 0) break;
-			const weight = mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]!);
+			const weight = mode === "grow" ? (entry.grow ?? 0) : (entry.shrink ?? 1) * Math.max(1, sizes[index]);
 			const proposed = Math.max(1, Math.floor((remaining * weight) / totalWeight));
 			const capacity =
 				mode === "grow"
-					? (entry.maxSize ?? Number.MAX_SAFE_INTEGER) - sizes[index]!
-					: sizes[index]! - (entry.minSize ?? 0);
+					? (entry.maxSize ?? Number.MAX_SAFE_INTEGER) - sizes[index]
+					: sizes[index] - (entry.minSize ?? 0);
 			const delta = Math.min(remaining, proposed, capacity);
 			if (delta <= 0) continue;
-			sizes[index] = sizes[index]! + (mode === "grow" ? delta : -delta);
+			sizes[index] = sizes[index] + (mode === "grow" ? delta : -delta);
 			remaining -= delta;
 			distributed += delta;
 		}

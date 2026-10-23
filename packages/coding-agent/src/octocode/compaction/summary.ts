@@ -120,7 +120,7 @@ export function splitSummary(summary: string): SplitSummary {
 	if (at < 0) return { body: withoutSavedResults(recovered), messages: [], omitted: 0 };
 	const section = recovered.slice(at);
 	const body = withoutSavedResults(recovered.slice(0, at));
-	const messages = [...section.matchAll(/<user-message>\n([\s\S]*?)\n<\/user-message>/g)].map((match) => match[1]!);
+	const messages = [...section.matchAll(/<user-message>\n([\s\S]*?)\n<\/user-message>/g)].map((match) => match[1]);
 	const omitted = Number(
 		new RegExp(`^\\n\\n${escapeRegExp(USER_HEADING)}\\nEarlier user messages not kept here: (\\d+)`).exec(
 			section,
@@ -223,7 +223,7 @@ export function summarizerView<T>(
 		if (reference.length > SUMMARIZER_RESULT_CHARS)
 			throw new CheckpointPersistenceError("The summarizer budget cannot hold a complete-text reference.");
 		const others = content.filter((part) => !(isRecord(part) && part.type === "text"));
-		return { ...message, content: [{ type: "text", text: reference }, ...others] } as T;
+		return { ...message, content: [{ type: "text", text: reference }, ...others] };
 	});
 }
 

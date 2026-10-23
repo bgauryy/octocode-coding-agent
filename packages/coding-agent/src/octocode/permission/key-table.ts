@@ -52,7 +52,7 @@ export class KeyTable {
 		// Backward shift: each following cell of the run moves into the hole when its home is not between the hole and itself.
 		const mask = this.capacity - 1;
 		for (let at = (hole + 1) & mask; this.slots[at] !== -1; at = (at + 1) & mask) {
-			const home = this.home(this.keys[at]!);
+			const home = this.home(this.keys[at]);
 			const between = hole <= at ? home > hole && home <= at : home > hole || home <= at;
 			if (between) continue;
 			this.keys[hole] = this.keys[at]!;

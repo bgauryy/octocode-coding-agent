@@ -44,7 +44,7 @@ function setup(env: Record<string, string> = {}) {
 	return { dir, wired, commands, ctx, run, notes: ctx.ui.notes };
 }
 
-const deadPid = (): number => spawnSync(process.execPath, ["-e", "0"]).pid!;
+const deadPid = (): number => spawnSync(process.execPath, ["-e", "0"]).pid;
 
 describe("/api", () => {
 	it("rejects malformed or trailing arguments before starting or stopping a server", async () => {

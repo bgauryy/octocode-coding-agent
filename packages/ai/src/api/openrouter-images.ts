@@ -39,7 +39,7 @@ type OpenRouterImageGenerationResponse = ChatCompletion & {
 };
 
 /** Image generation over OpenRouter's chat completions endpoint. */
-export const generateImages: ImagesFunction<ImagesOptions> = async (
+export const generateImages: ImagesFunction = async (
 	model: ImageModel<ImageApi>,
 	context: ImagesContext,
 	options?: ImagesOptions,

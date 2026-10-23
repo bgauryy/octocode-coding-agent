@@ -88,7 +88,7 @@ it("projects the explicit flag in original and effective source file inputs", ()
 			},
 		],
 	};
-	expect(hookCalls("file", input, "/repo")[0]!.tool_input).toMatchObject({
+	expect(hookCalls("file", input, "/repo")[0].tool_input).toMatchObject({
 		old_string: "A",
 		new_string: "B",
 		replace_all: true,

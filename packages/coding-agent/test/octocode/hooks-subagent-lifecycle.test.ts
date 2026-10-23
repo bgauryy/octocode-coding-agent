@@ -34,7 +34,7 @@ it.each(["guidance", "guidance".repeat(4000)])(
 		const ctx = fakeCtx({
 			cwd: tmp(),
 			hasUI: false,
-			model: { id: "fixture" } as never,
+			model: { id: "fixture" },
 		});
 		let active: unknown[] = [];
 		ctx.sessionManager.buildSessionProjection = () =>
@@ -151,7 +151,7 @@ it("child source termination wins over native Stop continuation", async () => {
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,
-		model: { id: "fixture" } as never,
+		model: { id: "fixture" },
 	});
 	ctx.getTurnId = () => "turn";
 	registerHooks(
@@ -196,7 +196,7 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 	const ctx = fakeCtx({
 		cwd: tmp(),
 		hasUI: false,
-		model: { id: "fixture" } as never,
+		model: { id: "fixture" },
 	});
 	ctx.getTurnId = () => "turn";
 	let permissionMode: "workspace" | "full" = "workspace";

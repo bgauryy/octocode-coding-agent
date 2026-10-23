@@ -124,7 +124,7 @@ function fitLine(left: Part[], right: Part[], theme: Paint, width: number): stri
 	// A kept model or work status can itself exceed the row. Shorten lower-priority parts before the permission chip,
 	// rather than clipping the complete row from the right and hiding its most important status.
 	while (visibleWidth(render()) > width && parts.length > 1) {
-		const next = [...parts].sort((a, b) => a.priority - b.priority)[0]!;
+		const next = [...parts].sort((a, b) => a.priority - b.priority)[0];
 		const room = visibleWidth(next.text) - (visibleWidth(render()) - width);
 		if (room > 1) next.text = truncateToWidth(next.text, room, theme.fg("dim", "…"));
 		else parts = parts.filter((part) => part !== next);
@@ -375,7 +375,7 @@ type ModelInfo = Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id" 
 /** A model of another provider with the same id that declares `reasoning` (a built-in one, for a `models.json` copy that left it out). */
 export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): ModelInfo | undefined {
 	if (model.reasoning) return undefined;
-	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning === true);
+	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning);
 }
 
 /**

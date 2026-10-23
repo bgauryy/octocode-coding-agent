@@ -53,7 +53,7 @@ describe("getPowerShellConfig", () => {
 			stdout: args[0] === "powershell.exe" ? windowsPowerShell : "",
 		}));
 		accessSyncMock.mockImplementation((path: string) => {
-			if (![pwsh7, windowsPowerShell].includes(path as string)) {
+			if (![pwsh7, windowsPowerShell].includes(path)) {
 				throw Object.assign(new Error("not found"), { code: "ENOENT" });
 			}
 		});
@@ -65,7 +65,7 @@ describe("getPowerShellConfig", () => {
 		const shell = "E:\\Tools\\powershell.exe";
 		spawnSyncMock.mockReturnValueOnce({ status: 1, stdout: "" }).mockReturnValueOnce({ status: 0, stdout: shell });
 		accessSyncMock.mockImplementation((path: string) => {
-			if (![shell, windowsPowerShell].includes(path as string)) {
+			if (![shell, windowsPowerShell].includes(path)) {
 				throw Object.assign(new Error("not found"), { code: "ENOENT" });
 			}
 		});

@@ -317,7 +317,7 @@ export class OctocodeServer {
 		this.state = "closed";
 		this.withdrawCatalog();
 		this.options.onStatus?.(this.status());
-		await Promise.allSettled(clients.map((client) => client?.close()));
+		await Promise.allSettled(clients.flatMap((client) => client?.close() ?? []));
 	}
 
 	private describe(message: string, transport: StdioTransport): string {

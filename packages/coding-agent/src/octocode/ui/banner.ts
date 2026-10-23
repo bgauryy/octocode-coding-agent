@@ -52,7 +52,8 @@ const STEPS = 32;
 const BAND = 0.09;
 
 const word = (font: Record<string, string[]>, text: string, row: number, gap: string) =>
-	[...text].map((letter) => font[letter]![row]).join(gap);
+	// oxlint-disable-next-line typescript/no-misused-spread -- the words are ASCII letters, one code point each
+	[...text].map((letter) => font[letter][row]).join(gap);
 const artLines = (font: Record<string, string[]>, rows: number, letterGap: string) =>
 	Array.from({ length: rows }, (_, row) => WORDS.map(({ text }) => word(font, text, row, letterGap)).join(WORD_GAP));
 
@@ -84,6 +85,7 @@ function paintArt(paint: BannerPaint, line: string, width: number, split: number
 		if (run) out += style ? style(run) : run;
 		run = "";
 	};
+	// oxlint-disable-next-line typescript/no-misused-spread -- art lines hold single-code-point block and space characters
 	[...line].forEach((char, column) => {
 		let nextKey: string;
 		let nextStyle: ((text: string) => string) | undefined;

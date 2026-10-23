@@ -9,7 +9,6 @@ import type {
 import { clampThinkingLevel } from "../models.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
-	Api,
 	AssistantMessage,
 	Model,
 	ProviderEnv,
@@ -29,6 +28,7 @@ import {
 } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
@@ -250,7 +250,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
-			api: "openai-codex-responses" as Api,
+			api: "openai-codex-responses",
 			provider: model.provider,
 			model: model.id,
 			usage: {
@@ -501,7 +501,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
-	})();
+	})().catch((error: unknown) => failStreamTask(stream, model, error, options?.signal));
 
 	return stream;
 };
@@ -1313,7 +1313,7 @@ async function decodeWebSocketData(data: unknown): Promise<string | null> {
 		return new TextDecoder().decode(new Uint8Array(data));
 	}
 	if (ArrayBuffer.isView(data)) {
-		const view = data as ArrayBufferView;
+		const view = data;
 		return new TextDecoder().decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
 	}
 	if (data && typeof data === "object" && "arrayBuffer" in data) {

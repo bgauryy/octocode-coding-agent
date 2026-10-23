@@ -5,6 +5,6 @@ import { setBedrockProviderModule } from "@octocodeai/octocode-ai/compat";
 import { APP_NAME } from "../config.ts";
 
 process.title = APP_NAME;
-process.emitWarning = (() => {}) as typeof process.emitWarning;
+process.emitWarning = () => {};
 registerBunOAuthFlows();
 setBedrockProviderModule(bedrockProviderModule);

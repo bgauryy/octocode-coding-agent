@@ -94,11 +94,11 @@ describe("a subagent child over RPC", () => {
 	it("answers every dialog the child opens as cancelled, and nothing else", async () => {
 		const outcome = await runSubagent("dialogs", [], tmp(), undefined, { id: "a-dialogs" }, undefined, () => undefined);
 		const [, answers, sent] = /^ANSWERS (.*) COMMANDS (.*)$/.exec(outcome.text)!;
-		expect(JSON.parse(answers!)).toEqual(
+		expect(JSON.parse(answers)).toEqual(
 			["d1", "d2", "d3", "d4"].map((id) => ({ type: "extension_ui_response", id, cancelled: true })),
 		);
 		// The only commands the child received after its prompt are those four answers: none for notify or setStatus.
-		expect(JSON.parse(sent!)).toEqual(["d1", "d2", "d3", "d4"]);
+		expect(JSON.parse(sent)).toEqual(["d1", "d2", "d3", "d4"]);
 	});
 
 	it("stops with abort, then agent_settled, then a closed stdin, without signalling a child that follows", async () => {
@@ -197,5 +197,5 @@ describe("the run-hold for background work in an RPC child", () => {
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<typeof NativeConfig>()),
-	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]!] }),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
 }));

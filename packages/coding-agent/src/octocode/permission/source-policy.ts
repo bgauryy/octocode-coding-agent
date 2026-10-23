@@ -56,11 +56,14 @@ export function parseSourcePolicy(value: unknown, source: PolicySource): SourceP
 		if (!["deny", "ask", "allow", "defaultMode", "additionalDirectories"].includes(key))
 			result.errors.push(`${source.path}: permissions.${key} is not supported by this policy adapter`);
 	}
-	if (permissions.defaultMode !== undefined) {
-		if (["default", "manual", "acceptEdits", "dontAsk"].includes(String(permissions.defaultMode)))
-			result.defaultMode =
-				permissions.defaultMode === "manual" ? "default" : (permissions.defaultMode as SourcePermissionMode);
-		else result.errors.push(`${source.path}: unsupported source permission mode ${String(permissions.defaultMode)}`);
+	const mode = permissions.defaultMode;
+	if (mode !== undefined) {
+		if (typeof mode === "string" && ["default", "manual", "acceptEdits", "dontAsk"].includes(mode))
+			result.defaultMode = mode === "manual" ? "default" : (mode as SourcePermissionMode);
+		else
+			result.errors.push(
+				`${source.path}: unsupported source permission mode ${typeof mode === "string" ? mode : JSON.stringify(mode)}`,
+			);
 	}
 	if (permissions.additionalDirectories !== undefined) {
 		const dirs = permissions.additionalDirectories;
@@ -89,8 +92,8 @@ export function parseSourcePolicy(value: unknown, source: PolicySource): SourceP
 			}
 			const [, tool, specifier] = parsed;
 			if (
-				(tool!.startsWith("mcp__") && specifier !== undefined) ||
-				(behavior === "allow" && tool!.includes("*") && !/^mcp__[^*]+__[^]*$/.test(tool!))
+				(tool.startsWith("mcp__") && specifier !== undefined) ||
+				(behavior === "allow" && tool.includes("*") && !/^mcp__[^*]+__[^]*$/.test(tool))
 			) {
 				result.errors.push(`${source.path}: unsupported permissions.${behavior} rule`);
 				continue;
@@ -98,13 +101,13 @@ export function parseSourcePolicy(value: unknown, source: PolicySource): SourceP
 			if (
 				behavior !== "allow" &&
 				specifier &&
-				primaryParameter(tool!, specifier.split(":", 1)[0]!.trim()) &&
+				primaryParameter(tool, specifier.split(":", 1)[0].trim()) &&
 				specifier.includes(":")
 			) {
 				result.errors.push(`${source.path}: primary-content parameter selector is ignored; use the tool's rule syntax`);
 				continue;
 			}
-			result.rules.push({ behavior, tool: tool!, specifier, source });
+			result.rules.push({ behavior, tool: tool, specifier, source });
 		}
 	}
 	return result;
@@ -217,7 +220,7 @@ function operations(invocation: ToolInvocation): Operation[] {
 	if (invocation.toolName === "agent")
 		return [
 			{
-				name: input.type === "task" ? "Agent" : `agent.${String(input.type ?? "unknown")}`,
+				name: input.type === "task" ? "Agent" : `agent.${typeof input.type === "string" ? input.type : "unknown"}`,
 				input: isRecord(input.input) ? input.input : input,
 			},
 		];
@@ -278,7 +281,7 @@ function pathMatch(rule: Rule, target: string, cwd: string): boolean | undefined
 		const requestedMatch = matches(anchor, requested);
 		let resolvedMatch = matches(anchor, actual) || matches(realCandidate(anchor), actual);
 		if (!resolvedMatch && rule.behavior !== "allow" && (specifier.startsWith("/") || specifier.startsWith("~/"))) {
-			const magic = pattern.search(/[*?\[\\]/);
+			const magic = pattern.search(/[*?[\\]/);
 			if (magic < 0) resolvedMatch = realCandidate(path.resolve(anchor, pattern)) === actual;
 			else {
 				const slash = pattern.lastIndexOf("/", magic);
@@ -316,24 +319,24 @@ function match(rule: Rule, operation: Operation, cwd: string): boolean | undefin
 			if (pattern.startsWith("*.")) return host.endsWith(pattern.slice(1)) && host !== pattern.slice(2);
 			const labels = pattern.split("."),
 				actual = host.split(".");
-			return labels.length === actual.length && labels.every((label, index) => wildcard(label, actual[index]!));
+			return labels.length === actual.length && labels.every((label, index) => wildcard(label, actual[index]));
 		} catch {
 			return undefined;
 		}
 	}
 	const parameter = /^([A-Za-z_$][\w$.-]*)\s*:\s*(.*)$/s.exec(specifier);
 	if (parameter && rule.behavior !== "allow" && !specifier.endsWith(":*")) {
-		const key = parameter[1]!.trim();
+		const key = parameter[1].trim();
 		if (primaryParameter(rule.tool, key)) return false;
 		const value = operation.input[key];
-		return ["string", "number", "boolean"].includes(typeof value) && wildcard(parameter[2]!.trim(), String(value));
+		return ["string", "number", "boolean"].includes(typeof value) && wildcard(parameter[2].trim(), String(value));
 	}
 	if (rule.tool === "Bash" || rule.tool === "PowerShell") {
 		const command = operation.input.command;
 		if (typeof command !== "string") return undefined;
 		// PowerShell needs its own AST and source matching rules.
 		if (rule.tool === "PowerShell") return undefined;
-		let pattern = specifier.endsWith(":*") ? `${specifier.slice(0, -2)} *` : specifier;
+		const pattern = specifier.endsWith(":*") ? `${specifier.slice(0, -2)} *` : specifier;
 		const projected = operation.shellCommand
 			? bashCandidates(operation.shellCommand, rule.behavior)
 			: {
@@ -453,7 +456,7 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 			}));
 		});
 	}
-	const results = calls.map((operation) => {
+	const results = calls.map((operation): SourceDecision => {
 		for (const behavior of ["deny", "ask", "allow"] as const) {
 			for (const rule of policy.rules.filter((rule) => rule.behavior === behavior)) {
 				const matched = match(rule, operation, cwd);
@@ -461,15 +464,15 @@ export function evaluateSourcePolicy(policy: SourcePolicy, invocation: ToolInvoc
 					return {
 						decision: behavior,
 						message: `Claude permission ${behavior}: ${rule.source.path} (${rule.tool})`,
-					} as SourceDecision;
+					};
 				if (matched === undefined && behavior !== "allow")
 					return {
 						decision: "unsupported",
 						message: `Unsupported applicable Claude permission rule in ${rule.source.path} (${rule.tool})`,
-					} as SourceDecision;
+					};
 			}
 		}
-		return { decision: "none" } as SourceDecision;
+		return { decision: "none" };
 	});
 	results.push(...targetDecisions.filter((decision) => decision.decision !== "none"));
 	let decision: SourceDecision =

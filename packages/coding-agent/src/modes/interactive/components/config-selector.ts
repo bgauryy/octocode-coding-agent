@@ -533,8 +533,8 @@ class ResourceList implements Component, Focusable {
 		const settings =
 			scope === "project" ? this.settingsManager.getProjectSettings() : this.settingsManager.getGlobalSettings();
 
-		const arrayKey = item.resourceType as "extensions" | "skills" | "prompts" | "themes";
-		const current = (settings[arrayKey] ?? []) as string[];
+		const arrayKey = item.resourceType;
+		const current = settings[arrayKey] ?? [];
 
 		// Generate pattern for this resource
 		const pattern = this.getResourcePattern(item);
@@ -598,8 +598,8 @@ class ResourceList implements Component, Focusable {
 		}
 
 		// Get the resource array for this type
-		const arrayKey = item.resourceType as "extensions" | "skills" | "prompts" | "themes";
-		const current = (pkg[arrayKey] ?? []) as string[];
+		const arrayKey = item.resourceType;
+		const current = pkg[arrayKey] ?? [];
 
 		// Generate pattern relative to package root
 		const pattern = this.getPackageResourcePattern(item);
@@ -668,7 +668,7 @@ class ResourceList implements Component, Focusable {
 	}
 
 	private setProjectTopLevelOverride(item: ResourceItem, state: ProjectOverrideState): boolean {
-		const current = (this.settingsManager.getProjectSettings()[item.resourceType] ?? []) as string[];
+		const current = this.settingsManager.getProjectSettings()[item.resourceType] ?? [];
 		const pattern = this.isInheritedGlobalItem(item) ? item.path : this.getResourcePatternForScope(item, "project");
 		const patterns = this.getTopLevelOverridePatterns(item, "project");
 		const updated = current.filter((entry) => {
@@ -716,9 +716,7 @@ class ResourceList implements Component, Focusable {
 			packages[pkgIndex] = pkg;
 		}
 		const pattern = this.getPackageResourcePattern(item);
-		const updated = ((pkg[item.resourceType] ?? []) as string[]).filter(
-			(entry) => this.getPatternEntryTarget(entry) !== pattern,
-		);
+		const updated = (pkg[item.resourceType] ?? []).filter((entry) => this.getPatternEntryTarget(entry) !== pattern);
 		if (state !== "inherit") updated.push(`${state === "load" ? "+" : "-"}${pattern}`);
 		(pkg as Record<string, unknown>)[item.resourceType] = updated.length > 0 ? updated : undefined;
 		if (!RESOURCE_TYPES.some((key) => (pkg as Record<string, unknown>)[key] !== undefined)) {
@@ -741,7 +739,7 @@ class ResourceList implements Component, Focusable {
 		if (this.writeScope !== "project") return "inherit";
 		if (item.metadata.origin === "top-level") {
 			return this.getOverrideStateFromEntries(
-				(this.settingsManager.getProjectSettings()[item.resourceType] ?? []) as string[],
+				this.settingsManager.getProjectSettings()[item.resourceType] ?? [],
 				this.getTopLevelOverridePatterns(item, "project"),
 				false,
 			);

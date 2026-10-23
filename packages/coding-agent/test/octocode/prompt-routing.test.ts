@@ -146,6 +146,6 @@ describe("registerTurnSetup routing and child trim", () => {
 		});
 		expect(prompt).toContain("<description>Instructions for research");
 		expect(prompt).toContain("when the task matches its description");
-		expect(childSkills([skill("x")])[0]!.description).toBe(skill("x").description);
+		expect(childSkills([skill("x")])[0].description).toBe(skill("x").description);
 	});
 });

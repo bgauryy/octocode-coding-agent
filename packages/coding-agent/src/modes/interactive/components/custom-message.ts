@@ -1,6 +1,5 @@
 import type { TextContent } from "@octocodeai/octocode-ai";
-import type { Component } from "@octocodeai/octocode-tui";
-import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
+import { type Component, Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
@@ -10,7 +9,7 @@ import { getMarkdownTheme, theme } from "../theme/theme.ts";
  * Uses distinct styling to differentiate from user messages.
  */
 export class CustomMessageComponent extends Container {
-	private message: CustomMessage<unknown>;
+	private message: CustomMessage;
 	private customRenderer?: MessageRenderer;
 	private box: Box;
 	private customComponent?: Component;
@@ -19,7 +18,7 @@ export class CustomMessageComponent extends Container {
 	private outputPad: number;
 
 	constructor(
-		message: CustomMessage<unknown>,
+		message: CustomMessage,
 		customRenderer?: MessageRenderer,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		outputPad = 1,

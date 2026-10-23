@@ -1,4 +1,5 @@
 // NEVER convert to top-level imports - breaks browser/Vite builds
+/* oxlint-disable typescript/consistent-type-imports, no-useless-concat -- import() types and split "node:" specifiers keep browser bundlers from resolving Node modules */
 let _existsSync: typeof import("node:fs").existsSync | null = null;
 let _homedir: typeof import("node:os").homedir | null = null;
 let _join: typeof import("node:path").join | null = null;
@@ -12,13 +13,13 @@ const NODE_PATH_SPECIFIER = "node:" + "path";
 
 // Eagerly load in Node.js/Bun environment only
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
-	dynamicImport(NODE_FS_SPECIFIER).then((m) => {
+	void dynamicImport(NODE_FS_SPECIFIER).then((m) => {
 		_existsSync = (m as typeof import("node:fs")).existsSync;
 	});
-	dynamicImport(NODE_OS_SPECIFIER).then((m) => {
+	void dynamicImport(NODE_OS_SPECIFIER).then((m) => {
 		_homedir = (m as typeof import("node:os")).homedir;
 	});
-	dynamicImport(NODE_PATH_SPECIFIER).then((m) => {
+	void dynamicImport(NODE_PATH_SPECIFIER).then((m) => {
 		_join = (m as typeof import("node:path")).join;
 	});
 }

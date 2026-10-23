@@ -116,7 +116,7 @@ describe("archive segments", () => {
 			modifiedFiles: ["src/b.ts"],
 			messages: 12,
 		});
-		expect(one!.topics).toEqual([]);
+		expect(one.topics).toEqual([]);
 		expect(two).toMatchObject({ n: 2, entry: "e2", tldr: "two", modifiedFiles: [], to: "2026-05-01T11:30:00Z" });
 		expect(readSegments("inky-kraken")).toEqual(readSegments());
 		expect(readSegments("other-owl")).toEqual([]);
@@ -174,7 +174,7 @@ describe("archive segments", () => {
 		expect(rows).toHaveLength(3);
 		expect(rows[1]).toContain("| 2 | ? → ? | 0 | unknown | unreadable header |");
 		expect(rows[1]).toContain("2-broken.md");
-		expect(segmentLine(readSegments()[1]!)).toContain("unreadable header");
+		expect(segmentLine(readSegments()[1])).toContain("unreadable header");
 	});
 
 	it("records the branch leaf in the header and the library row, so segments of different branches differ", () => {
@@ -217,7 +217,7 @@ describe("archive segments", () => {
 	it("reads a multi-byte character that straddles a read chunk intact", () => {
 		const readFiles = Array.from({ length: 2_000 }, (_, i) => `src/日本語/ファイル-${i}.ts`);
 		writeSegment(segment({ readFiles }), "body");
-		expect(readSegments()[0]!.readFiles).toEqual(readFiles);
+		expect(readSegments()[0].readFiles).toEqual(readFiles);
 	});
 
 	it("shows terminal controls and bidi overrides in the header as escapes, and keeps the header one line per field", () => {
@@ -239,14 +239,14 @@ describe("archive segments", () => {
 
 	it("describes a segment on one line", () => {
 		writeSegment(segment({ tldr: "line one\nline two" }), "body");
-		expect(segmentLine(readSegments()[0]!)).toBe(
+		expect(segmentLine(readSegments()[0])).toBe(
 			"#1 · 2026-05-01 10:00 → 2026-05-01 11:30 · 150k tokens · line one line two",
 		);
 	});
 
 	it("reads a header larger than one read chunk, and a file with no messages heading", () => {
 		writeSegment(segment({ readFiles: Array.from({ length: 2_000 }, (_, i) => `src/dir/file-${i}.ts`) }), "body");
-		expect(readSegments()[0]!.readFiles).toHaveLength(2_000);
+		expect(readSegments()[0].readFiles).toHaveLength(2_000);
 		fs.writeFileSync(
 			path.join(archiveFolder(), "2-x.md"),
 			`${fs.readFileSync(segmentPath(1)!, "utf8").split("\n## Messages\n")[0]}\n`,

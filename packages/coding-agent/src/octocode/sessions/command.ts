@@ -159,7 +159,7 @@ export function registerSessionsCommand(
 			if (!ctx.hasUI)
 				return say(
 					ctx,
-					[`Sessions (${scope}), newest first:`, ...lines.map((line, i) => `${line}\n    ${rows[i]!.info.id}`)].join(
+					[`Sessions (${scope}), newest first:`, ...lines.map((line, i) => `${line}\n    ${rows[i].info.id}`)].join(
 						"\n",
 					),
 				);

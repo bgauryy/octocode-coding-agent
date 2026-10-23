@@ -131,7 +131,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		// Any failed prompt fails the run, in either mode; text mode also reports it on stderr.
 		const lastAssistant = (): AssistantMessage | undefined => {
 			const last = session.state.messages[session.state.messages.length - 1];
-			return last?.role === "assistant" ? (last as AssistantMessage) : undefined;
+			return last?.role === "assistant" ? last : undefined;
 		};
 		const failed = (message: AssistantMessage | undefined): boolean =>
 			message?.stopReason === "error" || message?.stopReason === "aborted";

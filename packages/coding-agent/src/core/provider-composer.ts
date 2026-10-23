@@ -183,7 +183,7 @@ function applyModelOverride(model: Model<Api>, override: ModelsJsonModelOverride
 		thinkingLevelMap: override.thinkingLevelMap
 			? { ...model.thinkingLevelMap, ...override.thinkingLevelMap }
 			: model.thinkingLevelMap,
-		input: (override.input as ("text" | "image")[] | undefined) ?? model.input,
+		input: override.input ?? model.input,
 		inputLimits: mergeInputLimits(model.inputLimits, override.inputLimits),
 		cost: override.cost
 			? {
@@ -231,12 +231,12 @@ function modelFromJson(
 	return {
 		id: definition.id,
 		name: definition.name ?? definition.id,
-		api: api as Api,
+		api: api,
 		provider: providerId,
 		baseUrl,
 		reasoning: definition.reasoning ?? false,
 		thinkingLevelMap: definition.thinkingLevelMap,
-		input: (definition.input ?? ["text"]) as ("text" | "image")[],
+		input: definition.input ?? ["text"],
 		inputLimits: definition.inputLimits,
 		cost: definition.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		promptCache: definition.promptCache,
@@ -290,12 +290,12 @@ function extensionModelFromDefinition(
 	const baseUrl = definition.baseUrl ?? config.baseUrl ?? defaults?.baseUrl;
 	if (!baseUrl) throw new Error(`Provider ${providerId}: "baseUrl" is required when defining custom models.`);
 	if (definition.type === "image") {
-		return { ...definition, api: api as ImageApi, provider: providerId, baseUrl, headers: undefined };
+		return { ...definition, api: api, provider: providerId, baseUrl, headers: undefined };
 	}
 	if (definition.type === "classifier") {
-		return { ...definition, api: api as ClassifierApi, provider: providerId, baseUrl, headers: undefined };
+		return { ...definition, api: api, provider: providerId, baseUrl, headers: undefined };
 	}
-	return { ...definition, api: api as Api, provider: providerId, baseUrl, headers: undefined };
+	return { ...definition, api: api, provider: providerId, baseUrl, headers: undefined };
 }
 
 function applyModelsJson(
@@ -477,7 +477,7 @@ function composeApiKeyAuth(
 				result = await inherited?.resolve(input);
 			}
 			if (!result) return undefined;
-			const explicitEnv = { ...(input.credential?.env ?? {}), ...(result.env ?? {}) };
+			const explicitEnv = { ...input.credential?.env, ...result.env };
 			const headerEnv = await configContextEnv(Object.values(rawHeaders ?? {}), input.ctx, explicitEnv);
 			const headers = resolveHeadersOrThrow(rawHeaders, `provider "${providerId}"`, headerEnv);
 			return { ...result, auth: withConfiguredAuth(result.auth, headers, authHeader) };
@@ -593,18 +593,14 @@ export function composeModelProvider(
 	): AssistantMessageEventStream =>
 		lazyStream(model, async () => {
 			if (extension?.streamSimple && model.api === extension.api) {
-				return extension.streamSimple(model, context, options as SimpleStreamOptions);
+				return extension.streamSimple(model, context, options);
 			}
 			if (base && supportsBaseApi(model)) {
-				return simple
-					? base.streamSimple(model, context, options as SimpleStreamOptions)
-					: base.stream(model, context, options);
+				return simple ? base.streamSimple(model, context, options) : base.stream(model, context, options);
 			}
 			const api = getApiProvider(model.api);
 			if (!api) throw new Error(`No API provider registered for api: ${model.api}`);
-			return simple
-				? api.streamSimple(model, context, options as SimpleStreamOptions)
-				: api.stream(model, context, options);
+			return simple ? api.streamSimple(model, context, options) : api.stream(model, context, options);
 		});
 
 	const provider: Provider = {

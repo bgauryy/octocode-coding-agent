@@ -59,7 +59,7 @@ describe("model selector", () => {
 	it("uses the configured save binding", async () => {
 		setKeybindings(new KeybindingsManager({ "app.models.save": "ctrl+r" }));
 		harness = await createHarness();
-		const currentModel = harness.getModel()!;
+		const currentModel = harness.getModel();
 		const saveDefault = vi.fn();
 		const selector = new ModelSelectorComponent(
 			createFakeTui(),
