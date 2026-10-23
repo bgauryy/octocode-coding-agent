@@ -44,6 +44,8 @@ export const CLEAR_AT_LEAST_TOKENS = 20_000;
 /**
  * Octocode's read-only tools and `web` (and every Octocode MCP tool, `isOctocodeTool`): a result is fetched again by repeating
  * the call. Never `file` or `agent`; `bash` only for a read-only command whose output was spilled to a file (`spilledBash`).
+ * `read`, `grep`, `find` and `ls` are no longer Octocode tools; they stay for resumed transcripts of other hosts that
+ * hold their results, and for custom tools that still use those names.
  */
 const CLEARABLE_TOOLS: ReadonlySet<string> = new Set(["read", "grep", "find", "ls", "web"]);
 

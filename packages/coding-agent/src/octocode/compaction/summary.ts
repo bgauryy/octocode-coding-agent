@@ -1,17 +1,30 @@
 import { UsagePersistenceError } from "../../core/usage-totals.ts";
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
-import { CheckpointPersistenceError, compact, persistCheckpointText } from "../../core/compaction/index.ts";
+import {
+	type CompactionPreparation,
+	type CompactionResult,
+	CheckpointPersistenceError,
+	compact,
+	persistCheckpointText,
+} from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
-import { saveFullOutput } from "../shared/spill.ts";
 import { CHARS_PER_TOKEN } from "../shared/tokens.ts";
 import { contentText, errorMessage, escapeRegExp, isRecord } from "../shared/util.ts";
-import { archivePointer, fullTextIn, TLDR_HEADING, TOPICS_LABEL } from "./archive.ts";
+import { archivePointer, TLDR_HEADING, TOPICS_LABEL } from "./archive.ts";
+import {
+	SUMMARIZER_RESULT_CHARS,
+	summarizerView,
+	USER_HEADING,
+	USER_MESSAGE_CHARS,
+	USER_MESSAGES_CHARS,
+	userMessagesSection,
+} from "./checkpoint-text.ts";
 import { recordCompactionNote } from "./record.ts";
 import {
 	carriedSavedResults,
@@ -22,6 +35,8 @@ import {
 	withoutSavedResults,
 } from "./saved-results.ts";
 import { sharedSummary } from "./shared-summary.ts";
+
+export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSAGES_CHARS, userMessagesSection };
 
 /**
  * The compaction summary. Octocode's own summary (goal, constraints, progress, decisions, next steps, critical context, file
@@ -34,11 +49,6 @@ import { sharedSummary } from "./shared-summary.ts";
  * compactions), and the transcript that still holds every detail. Any failure returns nothing, and Octocode writes its default summary.
  * (Octocode's default summary has none of these additions.)
  */
-
-/** The user's own messages kept after the summary, newest first, up to about 15k tokens in all (their words are the one record the summary cannot rebuild)... */
-export const USER_MESSAGES_CHARS = 60_000;
-/** A larger message moves whole to a persisted checkpoint reference instead of being cut. */
-export const USER_MESSAGE_CHARS = 6_000;
 
 /**
  * Characters a compaction add-on may take of the window it lands in: `share` of what is left after Octocode's reserve, never
@@ -58,7 +68,6 @@ export function windowBudget(
 /** Of the room after the reserve, the kept user messages take at most this share (a tenth: the summary and restored files need the rest). */
 export const USER_MESSAGES_SHARE = 0.1;
 
-const USER_HEADING = "## User Messages (verbatim, oldest first)";
 const RECOVERY_HEADING = "## Recovery";
 
 /** Appended to Octocode's summarization prompt (after its fixed sections, as "Additional focus"). */
@@ -130,16 +139,6 @@ export function splitSummary(summary: string): SplitSummary {
 }
 
 /**
- * User text made inert inside the section: its own `<user-message>` tags and a line starting like the section heading
- * get a backslash, so a pasted summary or a quote of this feature cannot split or fake the section.
- */
-function inertUserText(text: string): string {
-	return text
-		.replace(/<(\/?)user-message>/g, "<\\$1user-message>")
-		.replace(/^## User Messages/gm, "\\## User Messages");
-}
-
-/**
  * A skill Octocode expanded into the user message (`/skill:name args` becomes `<skill name="…" location="…">body</skill>`
  * then the args): the body is a file the next model can read again, not the user's words.
  */
@@ -157,39 +156,6 @@ export function userText(message: unknown): string | undefined {
 		: text.replace(SKILL_BLOCK, (_, name: string, location: string) => `[skill ${name} loaded from ${location}]`);
 }
 
-type SaveText = (text: string) => string | undefined;
-
-function savedReference(text: string, save: SaveText): string {
-	const file = save(text);
-	if (!file) throw new CheckpointPersistenceError("Cannot persist complete compaction content.");
-	return `[Complete text saved at ${file}; search it and read only relevant bounded line ranges for the original content.]`;
-}
-
-/** Keep whole messages or a reference to their complete persisted text, including inherited messages. */
-export function userMessagesSection(
-	earlier: readonly string[],
-	omittedBefore: number,
-	added: readonly string[],
-	budget = { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS },
-	segment?: number,
-	save: SaveText = (text) => saveFullOutput(text, "checkpoint-user-messages"),
-): string {
-	const all = [...earlier, ...added.map(inertUserText)];
-	if (all.length === 0) return "";
-	const render = (messages: readonly string[], omitted: number) => {
-		const note =
-			omitted > 0 ? `\nEarlier user messages not kept here: ${omitted} (${fullTextIn(segment, true)} has them).` : "";
-		return `\n\n${USER_HEADING}${note}\n${messages.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`;
-	};
-	const whole = render(all, omittedBefore);
-	if (whole.length <= budget.total && all.every((message) => message.length <= budget.perMessage)) return whole;
-	const reference = savedReference(whole, save);
-	const section = render([reference], omittedBefore);
-	if (section.length > budget.total)
-		throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
-	return section;
-}
-
 /**
  * Octocode carries the file lists of the previous summary forward only when Octocode wrote it; this summary is a hook's, so its
  * lists (the same `readFiles`/`modifiedFiles` details) are added back to the preparation here (in place).
@@ -204,27 +170,6 @@ export function carryFileLists(
 		Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 	for (const file of strings(previous.details.readFiles)) preparation.fileOps.read.add(file);
 	for (const file of strings(previous.details.modifiedFiles)) preparation.fileOps.edited.add(file);
-}
-
-/** Longer tool results are saved whole and represented by a bounded reference for the standalone summarizer. */
-export const SUMMARIZER_RESULT_CHARS = 2_000;
-/** Save complete long tool results before replacing them with a summarizer reference. */
-export function summarizerView<T>(
-	messages: readonly T[],
-	_segment?: number,
-	save: SaveText = (text) => saveFullOutput(text, "checkpoint-tool-result"),
-): T[] {
-	return messages.map((message) => {
-		if (!isRecord(message) || message.role !== "toolResult" || !Array.isArray(message.content)) return message;
-		const content = message.content as unknown[];
-		const text = contentText(content);
-		if (text.length <= SUMMARIZER_RESULT_CHARS) return message;
-		const reference = savedReference(text, save);
-		if (reference.length > SUMMARIZER_RESULT_CHARS)
-			throw new CheckpointPersistenceError("The summarizer budget cannot hold a complete-text reference.");
-		const others = content.filter((part) => !(isRecord(part) && part.type === "text"));
-		return { ...message, content: [{ type: "text", text: reference }, ...others] };
-	});
 }
 
 /** The cache-sharing request was unusable: the summary is written as a standalone request, which bills the whole input. */
@@ -249,6 +194,30 @@ export function summaryMethodOf(details: unknown): string | undefined {
 	const method =
 		isRecord(details) && isRecord(details[SUMMARY_METHOD_DETAILS]) ? details[SUMMARY_METHOD_DETAILS].method : undefined;
 	return typeof method === "string" ? method : undefined;
+}
+
+/** The model's summary of one input, kept so a failure after the paid call does not repeat it. */
+interface PaidSummary {
+	key: string;
+	result: CompactionResult;
+	method: { method: string; reason?: string };
+}
+
+/** The last paid summary of each session (by its session manager). */
+const paid = new WeakMap<object, PaidSummary>();
+
+/** What a summary call depends on: the model and the span it summarizes. */
+function paidKey(model: Model<Api>, preparation: CompactionPreparation): string {
+	return JSON.stringify([
+		model.provider,
+		model.id,
+		preparation.firstKeptEntryId,
+		preparation.tokensBefore,
+		preparation.isSplitTurn,
+		preparation.messagesToSummarize.length,
+		preparation.turnPrefixMessages.length,
+		preparation.previousSummary ?? null,
+	]);
 }
 
 /** Octocode's compaction result, or undefined to let Octocode write its default summary (the reason is recorded in the session). */
@@ -280,7 +249,9 @@ export async function writeSummary(
 		const instructions = SUMMARY_FOCUS;
 		// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
 		const segment = nextSegment();
-		const saveText = (text: string) => persistCheckpointText(text, ctx.sessionManager.getSessionFile());
+		// An in-memory session has no file to save to: long texts stay inline, cut with a marker.
+		const sessionFile = ctx.sessionManager.getSessionFile();
+		const saveText = sessionFile ? (text: string) => persistCheckpointText(text, sessionFile) : null;
 		// The model updates only its own part of the previous summary; code carries the user messages and the note.
 		const previous =
 			event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
@@ -290,40 +261,51 @@ export async function writeSummary(
 			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment, saveText),
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
 		};
-		// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
-		// holds; on another (a downshift) or when that fails, as a standalone request that pays for the whole input.
-		let fallback =
-			summaryModel === undefined
-				? "the cache-sharing request was cancelled"
-				: `the summary ran on ${model.id}, the model before a downshift, not the session's own`;
-		const shared =
-			summaryModel === undefined
-				? await sharedSummary(
-						pi,
-						event,
-						ctx,
-						model,
-						instructions,
-						(reason, userChoice) => {
-							fallback = reason;
-							if (!userChoice) notifyStandalone(ctx, reason);
-						},
-						recordUsage,
-					)
-				: undefined;
-		const result =
-			shared ??
-			(await compact(
-				preparation,
-				model,
-				undefined,
-				undefined,
-				instructions,
-				event.signal,
-				pi.getThinkingLevel(),
-				stream,
-			));
-		const method = shared ? { method: "cache-shared" } : { method: "standalone", reason: fallback };
+		const key = paidKey(model, event.preparation);
+		let paidSummary = paid.get(ctx.sessionManager);
+		if (paidSummary?.key !== key) {
+			// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
+			// holds; on another (a downshift) or when that fails, as a standalone request that pays for the whole input.
+			let fallback =
+				summaryModel === undefined
+					? "the cache-sharing request was cancelled"
+					: `the summary ran on ${model.id}, the model before a downshift, not the session's own`;
+			const shared =
+				summaryModel === undefined
+					? await sharedSummary(
+							pi,
+							event,
+							ctx,
+							model,
+							instructions,
+							(reason, userChoice) => {
+								fallback = reason;
+								if (!userChoice) notifyStandalone(ctx, reason);
+							},
+							recordUsage,
+						)
+					: undefined;
+			const written =
+				shared ??
+				(await compact(
+					preparation,
+					model,
+					undefined,
+					undefined,
+					instructions,
+					event.signal,
+					pi.getThinkingLevel(),
+					stream,
+				));
+			// Kept until the same input is summarized again: a failure after this call must not make the next turn pay again.
+			paidSummary = {
+				key,
+				result: written,
+				method: shared ? { method: "cache-shared" } : { method: "standalone", reason: fallback },
+			};
+			paid.set(ctx.sessionManager, paidSummary);
+		}
+		const { result, method } = paidSummary;
 		const added = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].flatMap(
 			(message) => userText(message) ?? [],
 		);
@@ -370,7 +352,8 @@ export async function writeSummary(
 		if (error instanceof CheckpointPersistenceError || error instanceof UsagePersistenceError) {
 			recordCompactionNote(pi, "checkpoint-not-saved", error.message);
 			if (ctx.hasUI) notify(ctx.ui, error.message, "error");
-			return { cancel: true };
+			// Not the user's cancel: a failure, so the automatic failure limit counts it.
+			return { cancel: true, failure: error.message };
 		}
 		if (event.signal.aborted) return undefined;
 		recordCompactionNote(pi, "default-summary", `Octocode's compaction summary failed (${errorMessage(error)})`);

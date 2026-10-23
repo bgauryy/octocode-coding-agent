@@ -86,9 +86,18 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 const BACKLOG_ENTITIES_CEILING = 3_000;
 // Delegation guidance on parallel work, shared contracts, named skills and report acceptance (+~400 measured characters).
 // Children save far more: their skill descriptions and the Octocode docs block are dropped (outside this fake host).
-const MAIN_CEILING = 20_300;
+// 20_900 (B15, measured 20_701): commit 5630993 already measured 20_570; +37 for the bash read fallback that replaced the
+// removed read tool (`rg`, `fd`, `sed -n`), +94 for the browser profile description in the `Use when…; returns…` shape
+// the other profiles use (the main session lists profile descriptions). Capability text added by B15 (Octocode deferred
+// tool names, MCP server index, context notices) is not in this fake host: it is measured with the real assembled prompt.
+// 21_400 (measured 21_163 after trimming the new descriptions): +193 file for line+sha anchored edits, +153 bash for the
+// opt-in verification receipt (`verify`), +268 agent for bash-write reservations in coordinate and the subagent stop and
+// overlap contract (agent lifecycle signals RFC). All three were requested features; their descriptions were shortened.
+const MAIN_CEILING = 21_400;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
-const SPECIALIST_CEILING = 13_900;
+// 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
+// 14_600 (measured 14_356): the same file, bash and coordinate additions.
+const SPECIALIST_CEILING = 14_600;
 
 describe("prompt size", () => {
 	it("main session", async () => {

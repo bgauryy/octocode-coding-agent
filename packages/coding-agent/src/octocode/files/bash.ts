@@ -31,6 +31,15 @@ import {
 	movedResult,
 	orphanNotice,
 } from "./bash/results.ts";
+import {
+	beginVerification,
+	finishVerification,
+	pendingVerification,
+	readableLog,
+	verificationJson,
+	verificationLine,
+	verificationSchema,
+} from "./bash/verification.ts";
 
 export { DEFAULT_BASH_TIMEOUT, effectiveTimeout, MAX_FOREGROUND_TIMEOUT } from "./bash/results.ts";
 
@@ -49,6 +58,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 	job: Type.String({ description: "Job id, for `/jobs kill <id>`" }),
 	pid: Type.Number({ description: "Process group leader" }),
 	log: Type.String({ description: "Log file with the combined output" }),
+	verification: Type.Optional(verificationSchema),
 });
 
 /** A command starting with `sleep` is stopped at its deadline, not moved to the background (as Claude Code does). */
@@ -88,7 +98,7 @@ export function registerBashTool(
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
 					display: true,
-					details: { id: job.id, log: job.log },
+					details: { id: job.id, log: job.log, ...(job.verification ? { verification: job.verification } : {}) },
 				},
 				{ triggerTurn: wake, deliverAs: "followUp" },
 			);
@@ -100,6 +110,7 @@ export function registerBashTool(
 		showJobs();
 		// Reported at session_shutdown already, while the session could still record it.
 		if (reportedAtShutdown.has(job)) return;
+		if (job.verification) job.verification = finishVerification(job.verification, exit, job);
 		// A stop the user asked for is recorded for the model without starting a turn.
 		report(job, exit, !closing && job.stopped !== "user");
 	};
@@ -134,7 +145,9 @@ export function registerBashTool(
 		for (const job of running) {
 			job.stopped ??= reason;
 			reportedAtShutdown.add(job);
-			report(job, { code: null, signal: null, seconds: wholeSeconds(now - job.startedAt) }, false);
+			const exit = { code: null, signal: null, seconds: wholeSeconds(now - job.startedAt) };
+			if (job.verification) job.verification = pendingVerification(job.verification, job);
+			report(job, exit, false);
 		}
 		if (reason === "reload") jobs.noteReload(running);
 		// A job that exited just before reports its own status once its last output drained (within the drain time).
@@ -184,7 +197,12 @@ export function registerBashTool(
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined
-				? { outputSchema: Type.Union([builtin.outputSchema, BACKGROUND_OUTPUT]) }
+				? {
+						outputSchema: Type.Union([
+							Type.Intersect([builtin.outputSchema, Type.Object({ verification: Type.Optional(verificationSchema) })]),
+							BACKGROUND_OUTPUT,
+						]),
+					}
 				: {}),
 			// `cmd | tail` alone exits with tail's status, so a failing build would read as passing; each call returns up to 50 KB.
 			promptGuidelines: [
@@ -209,32 +227,50 @@ export function registerBashTool(
 							"Start the command and return at once; its exit arrives later as a message. For servers, watchers and long builds",
 					}),
 				),
+				verify: Type.Optional(
+					Type.Boolean({
+						description:
+							"Record a verification receipt tied to the current edits; a zero exit proves only that the command succeeded.",
+					}),
+				),
 			}),
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 				current = ctx;
 				const settings = { ...settingsFor(ctx), type: params.type ?? "bash" };
+				const verification = params.verify
+					? beginVerification(params.command, ctx.cwd, ctx.sessionManager.getSessionId())
+					: undefined;
 				if (params.background) {
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
 						env: bashSessionEnv(ctx),
 						shell: settings,
+						verification,
 					});
+					if (verification) verification.startedAt = job.startedAt;
 					const timeout = job.timeout;
 					showJobs();
 					const text = [
 						`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, stopped after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
 						...jobLines(job, ctx.cwd),
+						...(verification ? [verificationLine(verification)] : []),
 					].join("\n");
 					return {
 						content: [{ type: "text" as const, text }],
-						structuredContent: { job: job.id, pid: job.pid, log: job.log },
-						details: { job: job.id, pid: job.pid, log: job.log },
+						structuredContent: {
+							job: job.id,
+							pid: job.pid,
+							log: job.log,
+							...(verification ? { verification: verificationJson(verification) } : {}),
+						},
+						details: { job: job.id, pid: job.pid, log: job.log, ...(verification ? { verification } : {}) },
 					};
 				}
 				const { seconds: timeout, clamped } = effectiveTimeout(params.timeout);
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
+				let endedBy: NodeJS.Signals | null = null;
 				// A command still running at its deadline becomes a background job (see `adoptAtDeadline`).
 				let adopted: BashJob | undefined;
 				const run = createBashToolDefinition(process.cwd(), {
@@ -249,10 +285,14 @@ export function registerBashTool(
 						SLEEP_COMMAND.test(params.command)
 							? undefined
 							: (child, output, startedAt) => {
-									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, { output, startedAt });
+									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, { output, startedAt, verification });
+									if (verification) verification.startedAt = startedAt;
 									showJobs();
 									return adopted;
 								},
+						(signalCode) => {
+							endedBy = signalCode;
+						},
 					),
 				});
 				try {
@@ -274,24 +314,53 @@ export function registerBashTool(
 						? { ...raw, content: [{ type: "text" as const, text: `${contentText(raw.content)}\n\n${notes}` }] }
 						: raw;
 					const details: BashDetails = { ...result.details };
-					if (!details.fullOutputPath) return { ...result, details };
+					const completed = (value: typeof result, finalDetails: BashDetails) => {
+						if (!verification) return { ...value, details: finalDetails };
+						const output = value.structuredContent;
+						const exitCode = isRecord(output) && typeof output.exit_code === "number" ? output.exit_code : null;
+						verification.output.complete = !finalDetails.truncation || !!finalDetails.fullOutputPath;
+						const receipt = finishVerification(verification, {
+							code: exitCode,
+							signal: endedBy,
+							seconds:
+								isRecord(output) && typeof output.wall_time_seconds === "number"
+									? output.wall_time_seconds
+									: (Date.now() - verification.startedAt) / 1000,
+						});
+						receipt.output.log = finalDetails.fullOutputPath;
+						receipt.output.logAvailable = finalDetails.fullOutputPath
+							? readableLog(finalDetails.fullOutputPath)
+							: undefined;
+						receipt.output.complete &&= !finalDetails.fullOutputPath || receipt.output.logAvailable === true;
+						return {
+							...value,
+							content: [
+								{ type: "text" as const, text: `${contentText(value.content)}\n\n${verificationLine(receipt)}` },
+							],
+							structuredContent: { ...(isRecord(output) ? output : {}), verification: verificationJson(receipt) },
+							details: { ...finalDetails, verification: receipt },
+						};
+					};
+					if (!details.fullOutputPath) return completed(result, details);
 					const moved = adoptFullOutput(contentText(result.content), details.fullOutputPath, jobs.logDir());
-					if (!moved.path) return { ...result, details };
+					if (!moved.path) return completed(result, details);
 					const output = result.structuredContent;
 					const structured =
 						isRecord(output) && output.full_output_path
 							? { structuredContent: { ...output, full_output_path: moved.path } }
 							: {};
-					return {
-						...result,
-						...structured,
-						content: [{ type: "text" as const, text: moved.text }],
-						details: { ...details, fullOutputPath: moved.path },
-					};
+					return completed(
+						{
+							...result,
+							...structured,
+							content: [{ type: "text" as const, text: moved.text }],
+						},
+						{ ...details, fullOutputPath: moved.path },
+					);
 				} catch (error) {
 					const full = adoptFullOutput(errorMessage(error), spilled, jobs.logDir());
 					const message = full.text;
-					if (adopted) return movedResult(message, adopted, timeout, clamped, ctx.cwd, full.path);
+					if (adopted) return movedResult(message, adopted, timeout, clamped, ctx.cwd, full.path, verification);
 					if (!/Command timed out after/.test(message))
 						throw new Error(clamped ? `${message}\n\n(${CLAMP_NOTE})` : message);
 					const how = clamped

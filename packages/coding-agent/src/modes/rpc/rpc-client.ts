@@ -55,6 +55,11 @@ export class RpcClient {
 		return this.connection.onEvent(listener);
 	}
 
+	/** Observe process failure or stop once per run; a closed run immediately reports its error. */
+	onClose(listener: (error: Error) => void): () => void {
+		return this.connection.onClose(listener);
+	}
+
 	/** Subscribe to UI requests separately from session events. */
 	onExtensionUIRequest(listener: (request: RpcExtensionUIRequest) => void): () => void {
 		return this.connection.onExtensionUIRequest(listener);
@@ -72,9 +77,7 @@ export class RpcClient {
 		return this.connection.getStderr();
 	}
 
-	// =========================================================================
 	// Command Methods
-	// =========================================================================
 
 	/**
 	 * Send a prompt to the agent.
@@ -137,6 +140,11 @@ export class RpcClient {
 	async getState(): Promise<RpcSessionState> {
 		const response = await this.send({ type: "get_state" });
 		return this.getData(response);
+	}
+
+	/** Persist a new session before its first prompt. */
+	async persistSession(): Promise<void> {
+		await this.send({ type: "persist_session" });
 	}
 
 	/**

@@ -18,12 +18,29 @@ import { normalizeToolResultImages } from "../../utils/tool-result-images.ts";
 import type { ExecuteToolOptions } from "../extensions/index.ts";
 import { NestedToolCallRunner } from "../nested-tool-calls.ts";
 import { combineUsage } from "../usage-totals.ts";
-import type { SessionInternals } from "./host.ts";
+import type { SessionInternals, SessionPublic } from "./host.ts";
 import { findLastAssistantMessage } from "./messages.ts";
 
 export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"> {
 	limitsModel(): Model<any> | undefined;
 	getCallableTools(): AgentTool[];
+}
+
+/**
+ * The error a call to an undeclared tool gets when the session knows the tool: a deferred tool is loaded with
+ * `tool_search` (when it is active), any other registered tool is switched off for this session. Unknown names keep
+ * the agent's default. Each text keeps the default's `Tool <name> not found` prefix, which consumers match.
+ */
+export function unknownToolMessage(
+	session: Pick<SessionPublic, "getAllTools" | "getActiveToolNames">,
+	name: string,
+): string | undefined {
+	const tool = session.getAllTools().find((candidate) => candidate.name === name);
+	if (!tool) return undefined;
+	const active = session.getActiveToolNames();
+	if (tool.exposure === "deferred" && !active.includes(name) && active.includes("tool_search"))
+		return `Tool ${name} not found: it is not loaded yet. Call tool_search with query "${name}" to load it, then call it again.`;
+	return `Tool ${name} not found: it is not active in this session. Use another tool, or ask the user to enable it.`;
 }
 
 export class SessionToolCalls {
@@ -46,13 +63,15 @@ export class SessionToolCalls {
 	 */
 	install(): void {
 		const agent = this.host.session.agent;
-		agent.beforeToolCall = (context) => this._beforeToolCall(context);
+		agent.beforeToolCall = (context, signal) => this._beforeToolCall(context, signal);
 		agent.afterToolCall = (context) => this._afterToolCall(context);
+		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name);
 	}
 
 	/** `tool_call` handlers. `parentToolCallId` is set for calls another tool made. */
 	private async _beforeToolCall(
 		{ toolCall, args }: BeforeToolCallContext,
+		signal?: AbortSignal,
 		parentToolCallId?: string,
 	): Promise<BeforeToolCallResult | undefined> {
 		const runner = this.host.session.extensionRunner;
@@ -61,13 +80,16 @@ export class SessionToolCalls {
 		}
 
 		try {
-			return await runner.emitToolCall({
-				type: "tool_call",
-				toolName: toolCall.name,
-				toolCallId: toolCall.id,
-				...(parentToolCallId ? { parentToolCallId } : {}),
-				input: args as Record<string, unknown>,
-			});
+			return await runner.emitToolCall(
+				{
+					type: "tool_call",
+					toolName: toolCall.name,
+					toolCallId: toolCall.id,
+					...(parentToolCallId ? { parentToolCallId } : {}),
+					input: args as Record<string, unknown>,
+				},
+				signal,
+			);
 		} catch (err) {
 			if (err instanceof Error) {
 				throw err;
@@ -152,7 +174,7 @@ export class SessionToolCalls {
 						messages: session.agent.state.messages,
 						tools: session.agent.state.tools,
 					},
-					beforeToolCall: (context) => this._beforeToolCall(context, parentId),
+					beforeToolCall: (context, callSignal) => this._beforeToolCall(context, callSignal, parentId),
 					afterToolCall: (context) => this._afterToolCall(context, parentId),
 					signal,
 					onUpdate,

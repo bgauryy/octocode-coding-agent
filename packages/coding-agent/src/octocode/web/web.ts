@@ -132,7 +132,7 @@ export function registerWebTool(pi: ExtensionAPI, permission: Permission): void 
 			promptSnippet: "Read a public URL or search the web",
 			promptGuidelines: [
 				"Use web for public sources; for GitHub repositories and packages, prefer a dedicated research tool when one is active. Read the source behind a search snippet before relying on its claim.",
-				"Cite source URLs. When static text cannot answer the question, inspect the rendered page with `browser`, or delegate to a browser-capable profile when `browser` is not active; read saved output by relevant ranges rather than fetching it again.",
+				"Cite source URLs. When static text cannot answer the question, use `browser` if it is active. Read saved output by relevant ranges rather than fetching it again.",
 			],
 			parameters: Type.Object({
 				url: Type.Optional(Type.String({ description: "Public http(s) page to read; omit query" })),

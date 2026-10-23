@@ -4,6 +4,41 @@ Octocode's permission owner decides whether an action needs approval. These chec
 
 Set `OCTOCODE_PERMISSION` to `manual`, `workspace` or `full` at startup; the default is `full`. `/permissions` manages native approvals. The [native mode table](../src/octocode/permission/mode.ts) defines which action classes ask in each mode. Reservations, protected state, file review and other tool invariants remain in their owning tools.
 
+A mode change that makes some action ask where it was allowed clears the session grants and stops every running subagent; their stop reports name the reason, the last activity and the files each changed. In an interactive session `/permissions <mode>` and the editor's cycle shortcut first name the running subagents and ask; declining keeps the current mode. Without a UI the change applies at once. Widening never asks.
+
+## Subagents and shared git state
+
+A subagent that works in the shared working tree (started without `isolate: true`) is refused shell commands that change git state other agents share: `git add`, `git rm`, `git stash` (except `list`, `show` and `create`), `git commit`, `git reset`, `git restore`, and `git checkout -- <path>`, `git checkout <ref> -- <path>` or `git checkout .`. Dry runs (`-n`, `--dry-run`) are allowed. The refusal tells the agent to leave git state to its parent and report the files it changed. The check is an invariant in the `tool_call` pipeline ([`permission/git-state.ts`](../src/octocode/permission/git-state.ts)), before hooks and the permission mode, so `full` mode, a hook or a source allow cannot lift it; a command a hook rewrites is checked again.
+
+The check reads the command's words past wrappers (`env`, `timeout`, `sudo`), `VAR=value`, command chains, `eval`, and the scripts of `bash -c`, a heredoc or `echo … | sh` ([`permission/shell/git-state.ts`](../src/octocode/permission/shell/git-state.ts)). Like the destructive-command check, it is a guard against mistakes rather than a security boundary: quoting and variable tricks can get past it. An isolated subagent works in its own worktree and keeps these commands; the main session is unaffected.
+
+## MCP tools
+
+Each MCP tool call is classified from the annotations its server declares ([`gate/classify.ts`](../src/octocode/permission/gate/classify.ts), [`mode.ts`](../src/octocode/permission/mode.ts)):
+
+| Server declares | Class | `manual` | `workspace` | `full` |
+|---|---|---|---|---|
+| `readOnlyHint: true` without `destructiveHint: true` | none (a read of another repository's session history still asks) | allowed | allowed | allowed |
+| `destructiveHint: true` | `mcp.destructive` | asks | asks | allowed |
+| Anything else, including no annotations | `mcp.write` | asks | allowed | allowed |
+
+The default mode is `full`, so by default no MCP call asks, destructive ones included. A session grant covers one tool name.
+
+The hints come from the server. The MCP specification tells clients to treat annotations as untrusted unless the server is trusted, and Octocode does not verify them: a server that marks a writing tool `readOnlyHint: true` skips the ask even in `manual`. Choose `manual` or `workspace` only for servers you would trust to describe their own tools, and note that an instruction such as "call only read-only MCP tools" is text the gate cannot enforce. A call the [provenance check](../src/octocode/permission/provenance.ts) flags still asks in `manual` and `workspace`; `full` records it.
+
+### Hook-initiated MCP calls
+
+A hook that calls an MCP tool (`mcp_tool`, see [hooks](hooks.md)) passes the same permission step as a model call: the classes above, provenance, hook asks and the read-only role refusals. A refused call fails the hook with the reason. Two parts of the `tool_call` pipeline do not apply: PreToolUse hooks and extension `tool_call` handlers do not run for the hook's own call, because they would run the same hook again. The MCP owner also refuses a tool that is hidden by `toolExposure` or that its server no longer offers. In `manual` and `workspace` the user may be asked while the hook waits; the hook's timeout keeps running. Two cases are not gated, to avoid waiting on themselves: a `PermissionRequest` hook (it answers an ask, so it cannot ask) and a hook call made while another hook call is being decided (for example a `Notification` hook fired by that ask), which is refused. Hook configuration is trust-gated like a command hook. The implementation is [`hooks/mcp-gate.ts`](../src/octocode/hooks/mcp-gate.ts).
+
+## Read-only roles
+
+A subagent whose profile sets `readOnly: true` (the bundled `reviewer`, `researcher` and `browser`) runs with `OCTOCODE_SUBAGENT` and `OCTOCODE_READ_ONLY` in its environment. The permission gate refuses its changes in every mode, `full` included, before any dialog ([`permission/read-only-role.ts`](../src/octocode/permission/read-only-role.ts)):
+
+- `file`, `edit` and `write` may change only the child's scratch folder, `.octocode/tmp/`, and Markdown documents under `.octocode/` (not `.octocode/skills/`, which later sessions load).
+- `bash` is refused when the shell parser ([`permission/shell/mutation.ts`](../src/octocode/permission/shell/mutation.ts)) shows a change inside the workspace outside those places, or cannot tell where a command writes. PowerShell is allowed only for commands the read-only list recognizes.
+
+This is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen. MCP tools are not restricted by it. For the roles themselves see [native features](native-features.md#configuration).
+
 ## Claude permission-rule preview
 
 `OCTOCODE_HOOKS_COMPAT=1` enables the developing Claude permission-rule adapter in native sessions. Rules apply independently of `OCTOCODE_HOOKS`; disabling executable hooks does not disable these restrictions. Child sessions inherit this distinction. Hook-based approval additionally needs [hook execution](hooks.md#permission-request-preview).

@@ -16,7 +16,8 @@ import { recordedLocalReads } from "../shared/local-reads.ts";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
 import { patchChanges, validateFileInput } from "../shared/file-input.ts";
 import { askReview } from "./review.ts";
-import { type FileGuard, returnedContent } from "./tool/guard.ts";
+import { bashReads } from "./bash-reads.ts";
+import { BASH_READER, type FileGuard, returnedContent } from "./tool/guard.ts";
 import { inspectQueryBatch, preparePatch } from "./tool/prepare.ts";
 import {
 	changePurpose,
@@ -27,15 +28,17 @@ import {
 	type PreparedChange,
 } from "./tool/queries.ts";
 import { runQuery } from "./tool/run.ts";
+import { formatFeedback, inspectMutations } from "./feedback/diagnostics.ts";
+import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./feedback/parse.ts";
 
-export { CORE_READER, FileGuard, LOCAL_FETCH_READER, type Reader, returnedContent } from "./tool/guard.ts";
+export { BASH_READER, FileGuard, LOCAL_FETCH_READER, type Reader, returnedContent } from "./tool/guard.ts";
 export { copiedElision, formatOutcomes } from "./tool/queries.ts";
 
 /**
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
- * reasoning line. Edits and writes run through Octocode's own engines (exact-match
+ * reasoning line. Edits and writes run through the engines of `tool/apply.ts` (exact-match
  * replacement, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
- * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch`, or changed by this
+ * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (while that server is unavailable: printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
  * tool, that changed on disk since then must be read again before a write or delete; an edit re-validates each oldText
  * against the current content and applies when each still matches exactly once. A file whose earlier read left the
  * context (compaction, a branch switch, a rewind that restored it) must be read again before
@@ -57,6 +60,7 @@ export function registerFileTool(
 	permission: Permission,
 	checkpoints?: Checkpoints,
 	replacementOwner?: FileReplacementOwner,
+	feedback?: { enabled: boolean },
 ): void {
 	pi.registerTool(
 		timedTool(
@@ -68,7 +72,7 @@ export function registerFileTool(
 					"Read existing files first. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll). Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
-					"Use file for authored changes; batch related files when useful. Run formatters, generators and builds with bash, then inspect their changes.",
+					"Use file for authored changes; batch related files when useful. After a formatter or generator rewrites files, inspect its changes.",
 				],
 				parameters: Params,
 				// `file` calls run one at a time (the guard, review dialog and checkpoints are shared); other tools batched beside
@@ -211,6 +215,7 @@ export function registerFileTool(
 								reviewQueries,
 								request.signal,
 								systemLines(request, permission.mode),
+								{ toolCallId: request.toolCallId ?? id, toolName: "file" },
 							);
 							if (answer === "cancelled") return undefined;
 							if (answer === "session") return "kind";
@@ -241,6 +246,13 @@ export function registerFileTool(
 						? await preparePatch(canonical, params.reasoning ?? "Apply patch", guard, ctx, signal, permission, id)
 						: undefined;
 					if (prepared) queries = prepared.map((item) => item.query);
+					const parseBefore = feedback?.enabled
+						? await captureParseBefore(
+								queries.map((query) => canonicalPath(resolveToolPath(ctx.cwd, query.path))),
+								ctx,
+								signal,
+							)
+						: new Map();
 					for (const [index, query] of queries.entries()) {
 						const note = rejected.get(index);
 						const skip = rejected.has(index)
@@ -261,7 +273,6 @@ export function registerFileTool(
 							skipped ??
 								(await runQuery(
 									query,
-									index,
 									id,
 									guard,
 									ctx,
@@ -272,7 +283,7 @@ export function registerFileTool(
 									sourceBatch ? (effectivePrepared ?? originalInspection!.prepared)[index].canonicalPath : undefined,
 								)),
 						);
-						if (canonical && !outcomes.at(-1)!.ok) throw new Error(formatOutcomes(outcomes));
+						if (canonical && !outcomes.at(-1)!.ok) break;
 						if (prepared) {
 							const target = canonicalPath(resolveToolPath(ctx.cwd, query.path));
 							const digest = query.type === "delete" ? null : sha256(Buffer.from(query.content ?? ""));
@@ -280,10 +291,22 @@ export function registerFileTool(
 								if (canonicalPath(resolveToolPath(ctx.cwd, next.query.path)) === target) next.digest = digest;
 						}
 					}
-					if (outcomes.every((outcome) => !outcome.ok)) throw new Error(formatOutcomes(outcomes));
+					const receipts = outcomes.flatMap((outcome) => (outcome.receipt ? [outcome.receipt] : []));
+					const diagnostics = feedback?.enabled && receipts.length ? await inspectMutations(receipts, ctx, signal) : [];
+					const parseFeedback =
+						feedback?.enabled && receipts.length ? await inspectParseAfter(receipts, parseBefore, ctx, signal) : [];
+					const isError = (canonical && !outcomes.at(-1)!.ok) || outcomes.every((outcome) => !outcome.ok);
+					if (isError && !receipts.length) throw new Error(formatOutcomes(outcomes));
+					const report = formatOutcomes(outcomes);
 					return {
-						content: [{ type: "text" as const, text: formatOutcomes(outcomes) }],
-						details: { outcomes },
+						content: [
+							{
+								type: "text" as const,
+								text: `${report}${diagnostics.length ? `\n${formatFeedback(diagnostics)}` : ""}${parseFeedback.length ? `\n${formatParseFeedback(parseFeedback)}` : ""}`,
+							},
+						],
+						details: { outcomes, receipts, diagnostics, parseFeedback },
+						...(isError ? { isError: true } : {}),
 					};
 				},
 				renderCall: renderFileCall,
@@ -301,5 +324,12 @@ export function registerFileTool(
 		const view = readView(event.toolName, event.input, event.content, event.details);
 		for (const file of readPaths(event.toolName, event.input, ctx.cwd))
 			guard.record(file, known, view?.whole !== true, view?.lines);
+		// With Octocode's readers unavailable the model reads with bash; only its plain file printers count (`bashReads`).
+		if (guard.reader !== BASH_READER || event.toolName !== "bash") return;
+		const { command, background } = event.input;
+		if (typeof command !== "string" || background === true) return;
+		const details = isRecord(event.details) ? event.details : {};
+		const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
+		for (const read of bashReads(command, ctx.cwd, cut)) guard.record(read.file, undefined, !read.whole, read.lines);
 	});
 }

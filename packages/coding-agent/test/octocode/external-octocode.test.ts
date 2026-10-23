@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type ApiOperations, OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
+import { MAX_FRAME_BYTES } from "../../src/octocode/api/protocol.ts";
 import { apiDir, writeRecord } from "../../src/octocode/api/registry.ts";
 import { OctocodeBackend } from "../../src/octocode/external/octocode.ts";
 import { fakePi } from "./fake-pi.ts";
@@ -53,6 +54,20 @@ async function boot(http = false, operations: ApiOperations = {}) {
 }
 
 describe("native external Octocode adapter", () => {
+	it("names a local refusal before the send not-sent and does not stay owned by it", async () => {
+		const { backend, fake, settle } = await boot();
+		// Over the frame limit: refused by the client before a byte is sent.
+		const error = await backend
+			.prompt("x".repeat(MAX_FRAME_BYTES + 1), { timeoutMs: 1000, key: "big" })
+			.catch((e) => e);
+		expect(error).toMatchObject({ execution: "not-sent" });
+		expect(fake.sent).toHaveLength(0);
+		const next = backend.prompt("small", { timeoutMs: 1000, key: "small" });
+		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
+		await settle();
+		await expect(next).resolves.toMatchObject({ text: "finished" });
+	});
+
 	it.each([false, true])("waits for run settlement through the real transport (HTTP=%s)", async (http) => {
 		const { backend, fake, settle } = await boot(http);
 		const result = backend.prompt("run this", { timeoutMs: 1000, key: "one" });

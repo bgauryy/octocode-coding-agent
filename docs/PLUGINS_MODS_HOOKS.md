@@ -37,7 +37,7 @@ Skill discovery advertises the name, description and path; full instructions are
 
 ### Extensions: executable runtime integrations
 
-Native extensions use the existing loader and API. They can listen to events without enabling command hooks. Discovery accepts direct modules and directory entry points such as `index.ts`/`index.js` or native package declarations. Plugin and skill markers now prevent implicit directory entry discovery. Explicit native package declarations or directly supplied module files still enter the executable loader.
+Native extensions use the existing loader and API. They can listen to events without enabling command hooks. Discovery rules, including the plugin and skill marker rule, are stated once in [extension directory discovery](../packages/coding-agent/docs/extensions.md#extension-directory-discovery). Explicit native package declarations or directly supplied module files still enter the executable loader.
 
 ### Hooks: event contracts and execution
 

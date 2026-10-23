@@ -1,12 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
+import { projectMcpConfigPaths } from "../../../core/mcp-config-paths.ts";
 import { sha256 } from "../atomic.ts";
 import { projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 
-/** Every existing trust-gated project file, sorted: the same paths the hooks, profile and skill loaders read. */
+/** The project MCP definition files the MCP loader reads from `cwd`; each can start a stdio command. */
+export function projectMcpFiles(cwd: string): string[] {
+	return projectMcpConfigPaths(cwd).filter(isFile).map(realPath);
+}
+
+/** Every existing trust-gated project file, sorted: the same paths the hooks, MCP, profile and skill loaders read. */
 export function projectConfigFiles(cwd: string): string[] {
 	const files = [
 		...projectHookFiles(cwd),
+		...projectMcpConfigPaths(cwd),
 		...projectAgentDirs(cwd).flatMap((dir) => listDir(dir).filter((file) => file.endsWith(".md"))),
 		...projectSkillDirs(cwd).flatMap((dir) => skillFiles(dir, true, new Set())),
 	];

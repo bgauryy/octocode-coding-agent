@@ -1,3 +1,4 @@
+import type { McpServerConfig } from "../../../core/mcp-servers.ts";
 import type { SkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -10,6 +11,7 @@ import {
 	CACHE_RETENTION_ENV,
 	HOOKS_ENV,
 	READ_ONLY_ENV,
+	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
 	PARENT_TRANSCRIPT_ENV,
 	PERMISSION_ENV,
@@ -39,6 +41,8 @@ import type { ResultContract } from "../result-schema.ts";
 export interface Identity {
 	resultContract?: ResultContract;
 	skillResources?: SkillResourceSnapshot;
+	/** MCP servers the parent's `mcp` tool added this session (the user confirmed them): the child registers them, and nothing is written to `mcp.json`. */
+	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	cachePreferences?: CachePreferences;
 	id: string;
 	role?: string;
@@ -55,7 +59,12 @@ export interface Identity {
 	/** The parent's Octocode session id: the backlog claims the child may update. */
 	parentSession?: string;
 	parentTranscript?: string;
-	/** The parent's permission mode now, and what its spawn ask granted: the child is never looser than its parent. */
+	/**
+	 * The parent's permission mode now, and what its spawn ask granted. A spawn the user approved in `manual` or
+	 * `workspace` also grants the profile's reach (`file.workspace`, `shell`) for the whole run, which is looser than the
+	 * mode alone: the ask names that reach, so the approval is the consent. Destructive shell, outside changes and
+	 * browser control never pass down this way.
+	 */
 	permission?: { mode: PermissionMode; grants: readonly ActionClass[] };
 	/** The parent can ask a person: the child sends its approval dialogs to the parent (`OCTOCODE_PERMISSION_RELAY`) instead of denying them. */
 	relay?: boolean;
@@ -73,6 +82,7 @@ export function subagentProcessEnv(
 	nonceFile?: string,
 	rolePromptFile?: string,
 	skillSnapshotFile?: string,
+	mcpServersFile?: string,
 ): NodeJS.ProcessEnv {
 	const hooks = base[HOOKS_ENV];
 	const inherited = { ...base };
@@ -80,6 +90,7 @@ export function subagentProcessEnv(
 	const owned = [
 		ROLE_PROMPT_FILE_ENV,
 		SKILL_SNAPSHOT_FILE_ENV,
+		MCP_SESSION_SERVERS_FILE_ENV,
 		HOOKS_ENV,
 		READ_ONLY_ENV,
 		TRUST_ROOT_ENV,
@@ -112,6 +123,7 @@ export function subagentProcessEnv(
 		[SUBAGENT_ENV]: "1",
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
+		...(mcpServersFile ? { [MCP_SESSION_SERVERS_FILE_ENV]: mcpServersFile } : {}),
 		...(profile?.headless === false ? { [BROWSER_VISIBLE_ENV]: "1" } : {}),
 		...(identity ? { [AGENT_ID_ENV]: identity.id } : {}),
 		...(identity?.parentId ? { [PARENT_ID_ENV]: identity.parentId } : {}),

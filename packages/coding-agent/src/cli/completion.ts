@@ -85,7 +85,7 @@ const commands: Record<string, readonly string[]> = {
 	completion: ["bash", "zsh", "fish"],
 };
 const values: Record<string, readonly string[]> = {
-	"--mode": ["text", "json", "rpc"],
+	"--mode": ["text", "json", "rpc", "acp"],
 	"--thinking": VALID_THINKING_LEVELS,
 	"--tui-mode": ["fullscreen", "regular"],
 	"--exposure": exposures,
@@ -126,7 +126,7 @@ const textFlags = new Set([
 	"--timeout",
 	"--min-expiry",
 ]);
-const tools = ["read", "bash", "edit", "write", "grep", "find", "ls", "file", "agent", "backlog", "web", "memory"];
+const tools = ["bash", "file", "agent", "backlog", "web", "memory"];
 
 function fileValues(prefix: string, cwd: string): string[] {
 	const slash = prefix.lastIndexOf("/");

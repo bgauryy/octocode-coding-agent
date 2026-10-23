@@ -9,6 +9,12 @@ export {
 	normalizeGoogleUsage,
 	retryGoogleRequest,
 } from "./google-shared/response.ts";
+export {
+	buildGoogleParams,
+	type GoogleBaseOptions,
+	type GoogleThinkingOptions,
+	resolveGoogleSimpleThinking,
+} from "./google-shared/params.ts";
 export { isThinkingPart, retainThoughtSignature } from "./google-shared/signatures.ts";
 export { type GoogleStreamAdapter, streamGoogle } from "./google-shared/stream.ts";
 export {

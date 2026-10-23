@@ -1,6 +1,7 @@
 import fs, * as importedModule1 from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { type AgentControl, registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -22,7 +23,13 @@ function agentsCommand(pi: Parameters<Subcommands["register"]>[0], control: Agen
 function member(dbFile: string, cwd: string) {
 	const fake = fakePi();
 	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: dbFile });
-	const { reservationGate } = registerCollab(fake.pi, team);
+	// As index.ts wires it: the permission layer's bash parse names the paths a command writes.
+	const { reservationGate } = registerCollab(fake.pi, team, {
+		shellWrites: async (command) => {
+			await shellParserReady();
+			return shellMutation(command).writes;
+		},
+	});
 	// As index.ts wires it: the activity line reaches the team panel.
 	registerActivity(fake.pi, { workingLine: false, onChange: (line) => team.setActivity(line) });
 	agentsCommand(
@@ -107,6 +114,25 @@ describe("team tools on a fake Octocode", () => {
 		expect(await b.gate({ toolName: "edit", input: { path: "@lib/deep/y.ts" } }, b.ctx)).toEqual([
 			expect.objectContaining({ block: true }),
 		]);
+		// A bash command whose parse writes a reserved path is refused like an edit; reads, unreserved writes and unresolved targets pass.
+		for (const command of [
+			"echo x > src/a.ts",
+			"cat in | tee src/a.ts",
+			"sed -i s/a/b/ src/a.ts",
+			"rm -f lib/deep/y.ts",
+			"sh -c 'cp free.ts src/a.ts'",
+		])
+			expect(await b.gate({ toolName: "bash", input: { command } }, b.ctx), command).toEqual([
+				expect.objectContaining({ block: true, reason: expect.stringContaining(`reserved by ${a.team.id}`) }),
+			]);
+		for (const command of [
+			"cat src/a.ts",
+			"echo x > free.ts",
+			"git status",
+			"echo x > $TARGET",
+			"cd /tmp && mv free.ts src/a.ts",
+		])
+			expect(await b.gate({ toolName: "bash", input: { command } }, b.ctx), command).toEqual([undefined]);
 		// `file` is guarded inside the file tool itself; unrelated tools pass.
 		expect(await b.gate({ toolName: "file", input: { queries: [{ path: "src/a.ts" }] } }, b.ctx)).toEqual([undefined]);
 		expect(await b.gate({ toolName: "write", input: { path: "free.ts" } }, b.ctx)).toEqual([undefined]);
@@ -228,8 +254,8 @@ describe("team tools on a fake Octocode", () => {
 		expect(rendered(send.renderCall({ replyTo: 41, message: "m" }, theme, {}))).toBe("○ Send(reply to #41)");
 		const properties = send.parameters.properties;
 		expect(send.parameters.required).toEqual(["message"]);
-		expect(properties.replyRequired.description).toContain("false (the default)");
-		expect(properties.replyRequired.description).toContain("a request (a question or task you need answered)");
+		expect(properties.replyRequired.description).toContain("Default false");
+		expect(properties.replyRequired.description).toContain("a request you need answered");
 		expect(send.description).toMatch(/lingering child resumes on a message/);
 		expect(send.description).not.toContain("cannot receive");
 	});

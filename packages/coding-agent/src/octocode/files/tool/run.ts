@@ -4,20 +4,19 @@ import { generateDiffString, normalizeToLF } from "../../../core/tools/edit-diff
 import { splitBom } from "../../../utils/text.ts";
 import { FileLockReleaseError, withFileWriteLock } from "../../../utils/file-write-lock.ts";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
-import {
-	createEditToolDefinition,
-	createWriteToolDefinition,
-	withFileMutationQueue,
-} from "../../../core/tools/index.ts";
+import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { runsLater, stateFolderRefusal } from "../../permission/gate.ts";
 import { atomicWriteFile, changedOnDisk, sha256, sha256File } from "../../shared/atomic.ts";
 import { notify } from "../../shared/commands.ts";
 import { canonicalPath, isWithin, resolveToolPath, workspaceRoot } from "../../shared/home.ts";
-import { contentText, errorMessage, isRecord } from "../../shared/util.ts";
+import { errorMessage } from "../../shared/util.ts";
 import { type Capture, type Checkpoints, lastUserEntry } from "../checkpoint.ts";
 import { lineCount } from "../coverage.ts";
-import type { QueryOutcome } from "../render.ts";
+import type { MutationReceipt, QueryOutcome } from "../render.ts";
+import { mutationEpoch, recordMutation } from "../feedback/revisions.ts";
+import { applyEdit, applyWrite } from "./apply.ts";
+import { resolveAnchoredEdits } from "./anchored.ts";
 import { type FileGuard, judgeChange, lostAnchor, type WrittenContent } from "./guard.ts";
 import { copiedElision, type FileQuery } from "./queries.ts";
 
@@ -82,6 +81,7 @@ function guardedOperations(
 	initial?: { file: string; data: Buffer },
 	reserved?: () => void,
 	signal?: AbortSignal,
+	onCommit?: (digest: string) => void,
 ) {
 	let read: string | undefined;
 	let written: WrittenContent | undefined;
@@ -113,6 +113,7 @@ function guardedOperations(
 					size: bytes.length,
 					lines: lineCount(bytes),
 				};
+				onCommit?.(written.sha256);
 			} catch (error) {
 				if (error instanceof FileLockReleaseError) {
 					const bytes = Buffer.from(content);
@@ -121,6 +122,7 @@ function guardedOperations(
 						size: bytes.length,
 						lines: lineCount(bytes),
 					};
+					onCommit?.(written.sha256);
 				}
 				throw /changed on disk/.test(errorMessage(error)) ? changedOnDisk(display) : error;
 			}
@@ -134,7 +136,6 @@ function guardedOperations(
 
 export async function runQuery(
 	query: FileQuery,
-	index: number,
 	id: string,
 	guard: FileGuard,
 	ctx: ExtensionToolContext,
@@ -147,10 +148,27 @@ export async function runQuery(
 	const mode = prepared?.mode ?? query.type;
 	const base = { type: mode, path: query.path, reasoning: query.reasoning };
 	const file = resolveToolPath(ctx.cwd, query.path);
+	// Capture before any await: the live extension context may be retired during a committed write's cleanup.
+	const sessionId = ctx.sessionManager?.getSessionId?.() ?? `standalone:${id}`;
 	let capture: Capture | undefined;
 	let operations: ReturnType<typeof guardedOperations> | undefined;
 	let before: Buffer | undefined;
 	let deleted = false;
+	let beforeDigest: string | null = null;
+	let receipt: MutationReceipt | undefined;
+	const committed = (digest: string | null) => {
+		if (receipt) return;
+		receipt = {
+			canonicalPath: canonicalPath(file),
+			toolCallId: id,
+			operation: mode,
+			digest,
+			beforeDigest,
+			sessionId,
+			epoch: mutationEpoch,
+			revision: recordMutation(sessionId),
+		};
+	};
 	try {
 		if (query.type === "edit" && !query.edits?.length) throw new Error("edit needs a non-empty edits array.");
 		if (query.type === "write" && query.content === undefined) throw new Error("write needs content.");
@@ -175,16 +193,18 @@ export async function runQuery(
 			: undefined;
 		before = data;
 		const checked = data ? sha256(data) : null;
+		beforeDigest = checked;
 		if (prepared && checked !== prepared.digest) throw changedOnDisk(query.path);
 		// A write or delete over changed bytes is refused. An edit goes on when every anchor still matches once.
 		const { changed, refusal: unfit } = judgeChange(query.path, mode, inspection, data, checked, guard.reader);
 		if (unfit) throw new Error(unfit);
+		const effective = query.type === "edit" && data ? resolveAnchoredEdits(query, data, guard, file) : query;
 		const lost =
 			!prepared && changed && data
-				? lostAnchor(query.path, query.edits ?? [], data.toString("utf8"), guard.reader)
+				? lostAnchor(query.path, effective.edits ?? [], data.toString("utf8"), guard.reader)
 				: undefined;
 		if (lost) throw new Error(lost);
-		const copied = copiedElision(query, data?.toString("utf8") ?? "");
+		const copied = copiedElision(effective, data?.toString("utf8") ?? "");
 		if (copied) {
 			throw new Error(
 				`The new text contains "${copied}": a placeholder Octocode puts where it cut a tool's output, not file content. Re-read the source and write the full text.`,
@@ -207,6 +227,7 @@ export async function runQuery(
 						reserved();
 						await fs.promises.rm(file);
 						deleted = true;
+						committed(null);
 					},
 					signal,
 				);
@@ -216,32 +237,26 @@ export async function runQuery(
 			return {
 				...base,
 				ok: true,
+				receipt,
 				message: `Deleted ${query.path}${note}${unsaved}`,
 			};
 		}
-		operations = guardedOperations(query.path, checked, data ? { file, data } : undefined, reserved, signal);
-		const tool =
+		operations = guardedOperations(query.path, checked, data ? { file, data } : undefined, reserved, signal, committed);
+		const applied =
 			query.type === "edit"
-				? createEditToolDefinition(ctx.cwd, { operations })
-				: createWriteToolDefinition(ctx.cwd, { operations });
-		const args =
-			query.type === "edit" ? { path: query.path, edits: query.edits } : { path: query.path, content: query.content };
-		const result = await tool.execute(`${id}:${index}`, args as never, signal, undefined, ctx);
+				? await applyEdit(file, query.path, effective.edits ?? [], operations, signal)
+				: await applyWrite(file, query.path, query.content ?? "", operations, signal);
 		const written = operations.written();
 		// An edit over outside changes leaves them unseen: later edits go on, a write or delete needs a fresh read.
 		const lineDelta = recordChange(guard, file, mode, before, written);
 		if (changed) guard.stale(file);
 		const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, written?.sha256);
-		const message = (contentText(result.content).trim() || `${query.type} ${query.path}`) + note + unsaved;
-		const diff =
-			isRecord(result.details) && typeof result.details.diff === "string"
-				? result.details.diff
-				: query.type === "write"
-					? writeDiff(data, query.content)
-					: undefined;
+		const message = (applied.message.trim() || `${query.type} ${query.path}`) + note + unsaved;
+		const diff = applied.diff ?? (query.type === "write" ? writeDiff(data, query.content) : undefined);
 		return {
 			...base,
 			ok: true,
+			receipt,
 			message,
 			...(diff ? { diff } : {}),
 			...(lineDelta !== undefined ? { lineDelta } : {}),
@@ -262,6 +277,7 @@ export async function runQuery(
 		return {
 			...base,
 			ok: false,
+			...(receipt ? { receipt } : {}),
 			message: `${errorMessage(error)}${written || deleted ? " The file was changed; inspect it before retrying." : ""}${note}`,
 		};
 	}

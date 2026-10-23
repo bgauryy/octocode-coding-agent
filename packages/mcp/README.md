@@ -2,7 +2,7 @@
 
 A small, standalone Model Context Protocol client. It does not depend on the official MCP SDK or other Octocode packages.
 
-The package provides a transport-neutral client core, stdio and Streamable HTTP transports, and an in-memory testing transport.
+The package provides a transport-neutral client core, stdio, Streamable HTTP and legacy HTTP+SSE transports, and an in-memory testing transport.
 
 This client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
@@ -28,6 +28,7 @@ await client.close();
 ```
 
 For a remote server, use `new StreamableHttpTransport({ url, headers })`. Fetch can be injected for proxying or custom networking.
+For a server using the older HTTP+SSE transport, use `new LegacySseTransport({ url, headers })` with its SSE URL. It waits for the server's `endpoint` event before posting messages to the advertised same-origin URL. Its GET stream closes with the client; dropped streams are not replayed, and POST requests are not retried after ordinary failures. `endpointTimeoutMs` defaults to 10 seconds. The transport rejects redirects, URL credentials and cross-origin POST endpoints.
 
 ### Tools for an LLM
 
@@ -109,6 +110,8 @@ const { client, connected } = connect();
 await connected;
 ```
 
+`adaptOAuthProvider` is this package's own 401 policy for standalone clients: after a 403 for more scope it steps up silently through the provider's authorization flow. The Octocode host does not use it. It implements the `AuthProvider` interface itself (`extensions/mcp/oauth/auth-provider.ts` in `@octocodeai/octocodecode`) and asks the user to sign in again for more scope.
+
 Inject `McpOAuthStateStore` into `McpOAuthProvider` for durable credentials. The package does not open a browser or choose where credentials are stored.
 
 The OAuth implementation is adapted from the MIT-licensed Model Context Protocol TypeScript SDK v1.29.0. Its license is included under `LICENSES/`.
@@ -125,13 +128,14 @@ An MCP transport owns framing and I/O. It delivers individual JSON-RPC messages 
 - progress notifications and timeout renewal
 - request cancellation
 - Streamable HTTP sessions, the server-to-client GET stream with reconnection, and resumption of dropped response streams with `Last-Event-ID`
+- Legacy HTTP+SSE sessions with one GET stream and a same-origin POST endpoint supplied by the server
 - stdio shutdown per the spec (close stdin, then SIGTERM, then SIGKILL), applied to the server's whole process group
 - server `ping` and `roots/list` requests
 - logging and tool-list-change notifications through the generic notification API
 - OAuth protected-resource and authorization-server discovery
 - PKCE authorization code flow, dynamic client registration, token refresh (one refresh shared by concurrent 401s), and step-up authorization for `insufficient_scope`
 
-Batch JSON-RPC messages, legacy HTTP+SSE, servers, sampling, and tasks are outside the initial core.
+Batch JSON-RPC messages, servers, sampling, and tasks are outside the initial core.
 
 ## Testing
 

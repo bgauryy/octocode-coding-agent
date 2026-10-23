@@ -7,6 +7,7 @@ import { moveFile } from "../../shared/sweep.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { BashJob, OrphanJob } from "../bash-jobs.ts";
 import type { BashDetails } from "../render.ts";
+import { type VerificationReceipt, verificationJson, verificationLine } from "./verification.ts";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */
 
@@ -58,23 +59,32 @@ export function movedResult(
 	clamped: boolean,
 	cwd: string,
 	fullOutputPath?: string,
+	verification?: VerificationReceipt,
 ) {
 	const output = message.replace(/(?:^|\n\n)Command timed out after [\d.]+ seconds$/, "").trimEnd();
 	const moved = [
 		`Did not finish within ${formatDuration(seconds * 1000)}; moved to the background as ${job.id} (pid ${job.pid}), still running. Its exit status and output tail arrive as a message.`,
 		...jobLines(job, cwd),
 	].join("\n");
-	const text = [output, moved, clamped ? `(${CLAMP_NOTE})` : ""].filter((part) => part !== "").join("\n\n");
+	const text = [output, moved, verification ? verificationLine(verification) : "", clamped ? `(${CLAMP_NOTE})` : ""]
+		.filter((part) => part !== "")
+		.join("\n\n");
 	const details: BashDetails = {
 		job: job.id,
 		pid: job.pid,
 		log: job.log,
 		moved: true,
+		...(verification ? { verification } : {}),
 		...(fullOutputPath ? { fullOutputPath } : {}),
 	};
 	return {
 		content: [{ type: "text" as const, text }],
-		structuredContent: { job: job.id, pid: job.pid, log: job.log },
+		structuredContent: {
+			job: job.id,
+			pid: job.pid,
+			log: job.log,
+			...(verification ? { verification: verificationJson(verification) } : {}),
+		},
 		details,
 	};
 }

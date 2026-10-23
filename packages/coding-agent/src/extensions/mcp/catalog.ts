@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Tool } from "@octocodeai/octocode-mcp";
+import { visibleInstructions, visibleTool } from "./sanitize.ts";
 
 /** A connection's validated catalog. Reconnects still fetch before reusing matching definitions. */
 export class McpCatalogCache {
@@ -15,6 +16,9 @@ export class McpCatalogCache {
 		tools: Tool[];
 		instructions: string | undefined;
 	} {
+		// What the server sent is not trusted: its descriptions and instructions are shown with controls visible.
+		tools = tools.map(visibleTool);
+		instructions = visibleInstructions(instructions);
 		const sameServer = isDeepStrictEqual(this.identity, identity);
 		const previous = new Map((sameServer ? this.tools : []).map((tool) => [tool.name, tool]));
 		let next = tools.map((tool) => {

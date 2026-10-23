@@ -128,6 +128,35 @@ describe("the agent tool's goal", () => {
 		expect(shown).toContain(`Done (${id} · 1 tool call`);
 	});
 
+	it("names a live agent with a similar goal in the launch result, and nothing for an unrelated goal", async () => {
+		const s = setup();
+		const live = {
+			id: "snappy-mantle",
+			role: "researcher",
+			pid: 1,
+			status: "working" as const,
+			goal: "audit agent loop + context engineering",
+			joinedAt: 0,
+			updatedAt: Date.now(),
+			toolCalls: 0,
+			input: 0,
+			cacheRead: 0,
+			output: 0,
+			cost: 0,
+			unpriced: false,
+			pending: 0,
+		};
+		const real = s.team.members.bind(s.team);
+		vi.spyOn(s.team, "members").mockImplementation(() => [...real(), live]);
+		const similar = await s.run({ task: "report", goal: "context engineering audit, RFC and fixes", background: true });
+		expect(similar.content[0].text).toContain(
+			"Similar goal already running: snappy-mantle (audit agent loop + context engineering).",
+		);
+		const unrelated = await s.run({ task: "report", goal: "fix flaky tui test", background: true });
+		expect(unrelated.content[0].text).not.toContain("Similar goal");
+		await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
+	});
+
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {
 		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {}))).toBe(
 			`○ Agent(${GOAL})`,

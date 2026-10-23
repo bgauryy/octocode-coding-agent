@@ -248,8 +248,6 @@ export interface ExtensionAPI {
 	 * Set the active tools by name. Unknown and `hidden` tools are ignored. Tools with `deferred` exposure stay callable from programmatic tool callers whether active or not.
 	 */
 	setActiveTools(toolNames: string[]): void;
-	/** Native composition only: apply an additional tool permission filter without changing the requested loadout. */
-	setToolPolicy?(allows: (name: string) => boolean): void;
 
 	/** Get available slash commands in the current session. */
 	getCommands(): SlashCommandInfo[];
@@ -275,6 +273,7 @@ export interface ExtensionAPI {
 	/**
 	 * Set the thinking level (clamped to model capabilities) for the current session without changing the configured default
 	 * for new sessions.
+	 * @deprecated No native feature calls it; it may be removed in a future release.
 	 */
 	setThinkingLevel(level: ThinkingLevel): void;
 
@@ -389,7 +388,10 @@ export interface ExtensionAPI {
 	 */
 	registerVirtualModel<TState = unknown>(model: ExtensionVirtualModel<TState>): void;
 
-	/** Remove a virtual model registered with `registerVirtualModel()`. */
+	/**
+	 * Remove a virtual model registered with `registerVirtualModel()`.
+	 * @deprecated No native feature calls it; it may be removed in a future release.
+	 */
 	unregisterVirtualModel(provider: string, id: string): void;
 
 	/** Shared event bus for extension communication. */

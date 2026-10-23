@@ -36,10 +36,13 @@ export {
 	getSummarizationFailure,
 } from "./summarization.ts";
 export {
+	CHARS_PER_TOKEN,
 	type ContextUsageEstimate,
+	charsToTokens,
 	estimateContextTokens,
 	estimateProjectedContextTokens,
 	estimateTokens,
+	estimateUndeclaredToolTokens,
 	getLastAssistantUsage,
 } from "./tokens.ts";
 

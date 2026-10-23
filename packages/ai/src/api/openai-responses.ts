@@ -1,3 +1,4 @@
+import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
@@ -5,13 +6,17 @@ import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { getClientApiKey, headersToRecord } from "../utils/headers.ts";
 import { requestJsonEventStream } from "../utils/json-event-stream.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { processResponsesStream } from "./openai-responses-shared.ts";
-import { getClientApiKey, getCompat, getConfigurationUpdateEffort } from "./openai-responses/compat.ts";
+import {
+	assertResponsesStreamCompleted,
+	processResponsesStream,
+	stripResponsesStreamScratch,
+} from "./openai-responses-shared.ts";
+import { getCompat, getConfigurationUpdateEffort } from "./openai-responses/compat.ts";
 import { applyServiceTierPricing, buildParams, createRequestHeaders } from "./openai-responses/request.ts";
 import type { OpenAIResponsesOptions, ResponsesRequest } from "./openai-responses/types.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -36,22 +41,8 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 		const compat = getCompat(model);
 		const configurationUpdateEffort = getConfigurationUpdateEffort(model, options, compat);
 		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
+			...createPendingAssistantMessage(model),
 			...(configurationUpdateEffort === undefined ? {} : { providerThinkingLevel: configurationUpdateEffort }),
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "pending",
-			timestamp: Date.now(),
 		};
 
 		try {
@@ -106,26 +97,12 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				request.dispose();
 			}
 
-			if (options?.signal?.aborted) {
-				throw new Error("Request was aborted");
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error("OpenAI Responses stream ended without a stop reason");
-			}
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error(output.errorMessage || "An unknown error occurred");
-			}
+			assertResponsesStreamCompleted(output, options?.signal, "OpenAI Responses");
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) {
-				delete (block as { index?: number }).index;
-				// Streaming scratch buffers are only used during parsing; never persist them.
-				delete (block as { partialJson?: string }).partialJson;
-				delete (block as { customInput?: unknown }).customInput;
-			}
+			stripResponsesStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			const errorMessage = formatProviderError(
 				normalizeProviderError(error),

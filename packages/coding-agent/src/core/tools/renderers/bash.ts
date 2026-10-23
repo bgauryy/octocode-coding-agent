@@ -13,6 +13,7 @@ import { theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { BashToolDetails } from "../bash.ts";
 import { getTextOutput, invalidArgText, startToolTimer, str, toolTimerText } from "../render-utils.ts";
+import { reuseText } from "./output.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
 
 const BASH_PREVIEW_LINES = 5;
@@ -94,9 +95,7 @@ export function createShellRenderers(prompt: string): Pick<ToolDefinition<any, a
 	return {
 		renderCall(args, _theme, context) {
 			startToolTimer(context);
-			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatShellCall(args as { command?: string; timeout?: number } | undefined, prompt));
-			return text;
+			return reuseText(context, formatShellCall(args as { command?: string; timeout?: number } | undefined, prompt));
 		},
 		renderResult(result, options, _theme, context) {
 			const timerText = toolTimerText(context, options.isPartial);

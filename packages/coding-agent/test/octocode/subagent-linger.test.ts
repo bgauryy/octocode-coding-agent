@@ -4,8 +4,11 @@ import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/oc
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
+import { readParked } from "../../src/octocode/subagents/parked.ts";
+import { sessionDir } from "../../src/octocode/shared/home.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
+import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
@@ -32,12 +35,16 @@ afterAll(() => {
 	process.env = savedEnv;
 });
 
-function setup(mode: "manual" | "workspace" | "full" = "workspace") {
+function setup(
+	mode: "manual" | "workspace" | "full" = "workspace",
+	cwd = tmp(),
+	profiles = new Map<string, AgentProfile>(),
+) {
 	const f = fakePi();
 	const team = new Team(f.pi);
 	const permission = fakePermission(mode);
-	const control = registerAgentTool(f.pi, () => new Map(), team, permission);
-	const ctx = fakeCtx({ cwd: tmp() });
+	const control = registerAgentTool(f.pi, () => profiles, team, permission);
+	const ctx = fakeCtx({ cwd });
 	Object.assign(ctx, {
 		model: { provider: "faux", id: "model" },
 		modelRegistry: {
@@ -49,11 +56,11 @@ function setup(mode: "manual" | "workspace" | "full" = "workspace") {
 	});
 	team.start(ctx);
 	const reports = () => f.sent.map((entry) => String(entry.message.content)).filter((text) => text.includes("LINGER"));
-	const start = async (task: string) =>
+	const start = async (task: string, extra: Record<string, unknown> = {}) =>
 		(
 			await f.tools
 				.get("agent")
-				.execute("call-1", { task, goal: "linger test", background: true }, undefined, undefined, ctx)
+				.execute("call-1", { task, goal: "linger test", background: true, ...extra }, undefined, undefined, ctx)
 		).details.id as string;
 	return { f, team, control, ctx, reports, start, permission };
 }
@@ -140,6 +147,127 @@ describe("a background subagent that reported blocked", () => {
 });
 
 describe("a lingering background subagent", () => {
+	it("restores a browser child with a per-call visible-mode override", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const cwd = tmp();
+		const browser: AgentProfile = {
+			name: "browser",
+			description: "browser",
+			prompt: "Browse.",
+			tools: "browser,web",
+			headless: true,
+		};
+		const profiles = new Map([["browser", browser]]);
+		const first = setup("full", cwd, profiles);
+		try {
+			const id = await first.start("linger visible", { profile: "browser", headless: false });
+			await first.control.settle();
+			const saved = JSON.parse(fs.readFileSync(path.join(sessionDir("session-test"), "parked-workers.json"), "utf8"));
+			expect(saved[0].run.profile.headless).toBe(false);
+			const archive = path.join(saved[0].run.identity.scratch, "session");
+			fs.mkdirSync(archive, { recursive: true });
+			fs.writeFileSync(path.join(archive, `2026-01-01T00-00-00-000Z_${id}.jsonl`), "{}\n");
+			first.team.stop();
+			const reopened = setup("full", cwd, profiles);
+			try {
+				await reopened.f.emit("session_start", {}, reopened.ctx);
+				expect(await reopened.team.send(id, "linger visible again", { replyRequired: false })).toHaveProperty(
+					"resumed",
+				);
+				await reopened.control.settle();
+				expect(reopened.reports()[0]).toContain("linger visible again");
+			} finally {
+				await reopened.control.stopAll();
+				reopened.team.stop();
+			}
+		} finally {
+			await first.control.stopAll();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	}, 30_000);
+
+	it("restores a parked worker for the same session and workspace, then resumes only on an explicit follow-up", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const cwd = tmp();
+		const first = setup("full", cwd);
+		try {
+			const id = await first.start("linger before restart");
+			await first.control.settle();
+			// The RPC fixture reports a conversation but does not write its session file in this scenario.
+			const saved = JSON.parse(fs.readFileSync(path.join(sessionDir("session-test"), "parked-workers.json"), "utf8"));
+			const archive = path.join(saved[0].run.identity.scratch, "session");
+			fs.mkdirSync(archive, { recursive: true });
+			const transcript = path.join(archive, `2026-01-01T00-00-00-000Z_${id}.jsonl`);
+			fs.writeFileSync(transcript, "{}\n");
+			expect(readParked("session-test", cwd).map((entry) => entry.run.identity.id)).toContain(id);
+			const registry = path.join(sessionDir("session-test"), "parked-workers.json");
+			fs.writeFileSync(registry, JSON.stringify([{ ...saved[0], until: "not a deadline" }]));
+			expect(readParked("session-test", cwd)).toEqual([]);
+			fs.writeFileSync(registry, JSON.stringify(saved));
+			if (process.platform !== "win32") {
+				const scratch = saved[0].run.identity.scratch as string;
+				const moved = path.join(cwd, "saved-scratch");
+				const original = path.join(cwd, "original-session.jsonl");
+				fs.renameSync(transcript, original);
+				fs.symlinkSync(original, transcript);
+				expect(readParked("session-test", cwd)).toEqual([]);
+				fs.rmSync(transcript);
+				fs.renameSync(original, transcript);
+				fs.renameSync(scratch, moved);
+				fs.symlinkSync(moved, scratch, "dir");
+				expect(readParked("session-test", cwd)).toEqual([]);
+				fs.rmSync(scratch);
+				fs.renameSync(moved, scratch);
+			}
+			first.team.stop();
+			const reopened = setup("full", cwd);
+			try {
+				await reopened.f.emit("session_start", {}, reopened.ctx);
+				expect(reopened.control.background()).toBe(0);
+				expect(await reopened.team.send(id, "linger after restart", { replyRequired: false })).toHaveProperty(
+					"resumed",
+				);
+				await reopened.control.settle();
+				expect(reopened.reports()[0]).toContain("linger after restart");
+				expect(reopened.reports()[0]).toContain(`--session-id ${id}`);
+			} finally {
+				await reopened.control.stopAll();
+				reopened.team.stop();
+			}
+		} finally {
+			await first.control.stopAll();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	}, 30_000);
+
+	it("does not reopen a parked worker in a different workspace or after an explicit stop", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const cwd = tmp();
+		const first = setup("full", cwd);
+		try {
+			const id = await first.start("linger before stop");
+			await first.control.settle();
+			const other = setup("full", tmp());
+			try {
+				await other.f.emit("session_start", {}, other.ctx);
+				expect(await other.team.send(id, "wrong workspace", { replyRequired: false })).toHaveProperty("error");
+			} finally {
+				other.team.stop();
+			}
+			expect(first.control.stop(id, "parent")).toBeUndefined();
+			first.team.stop();
+			const reopened = setup("full", cwd);
+			try {
+				await reopened.f.emit("session_start", {}, reopened.ctx);
+				expect(await reopened.team.send(id, "after stop", { replyRequired: false })).toHaveProperty("error");
+			} finally {
+				reopened.team.stop();
+			}
+		} finally {
+			await first.control.stopAll();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	}, 30_000);
 	it("releases expired continuations without waiting for a message to their names", async () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "1";
 		const t = setup("full");
@@ -230,6 +358,37 @@ describe("a lingering background subagent", () => {
 			expect(await t.team.send(id, "linger fresh approval", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
 			expect(t.reports()).toHaveLength(2);
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	});
+
+	it("keeps pending revival single-flight and refuses it after an explicit stop", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const t = setup("full");
+		try {
+			const id = await t.start("linger before decision");
+			await t.control.settle();
+			t.permission.setMode("manual", t.ctx);
+			let answer!: (choice: string) => void;
+			const select = vi.spyOn(t.ctx.ui, "select").mockImplementationOnce(
+				() =>
+					new Promise<string>((resolve) => {
+						answer = resolve;
+					}),
+			);
+			const pending = t.team.send(id, "linger awaiting approval", { replyRequired: false });
+			await vi.waitFor(() => expect(select).toHaveBeenCalled());
+			await expect(t.team.send(id, "linger concurrent", { replyRequired: false })).rejects.toThrow(
+				"already awaiting permission",
+			);
+			expect(t.control.stop(id, "parent")).toBeUndefined();
+			answer("Allow once");
+			await expect(pending).rejects.toThrow("no longer available");
+			expect(t.control.background()).toBe(0);
+			select.mockRestore();
 		} finally {
 			await t.control.stopAll();
 			t.team.stop();

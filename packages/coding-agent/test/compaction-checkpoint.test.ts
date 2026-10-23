@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { finalizeCompactionResult } from "../src/core/compaction/checkpoint.ts";
+import { CHARS_PER_TOKEN } from "../src/core/compaction/tokens.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 
 const directories: string[] = [];
@@ -71,14 +72,30 @@ describe("final checkpoint budget", () => {
 		).toThrow(/retained context/);
 		expect(entries).toHaveLength(1);
 	});
-	it("does not replace context when durable storage is unavailable", () => {
+	it("does not replace context when durable storage fails", () => {
+		const blocker = sessionFile();
+		fs.writeFileSync(blocker, "not a directory");
 		expect(() =>
 			finalizeCompactionResult(result("x".repeat(40_000)), {
 				branchEntries: branch(),
 				contextWindow: 8000,
 				reserveTokens: 1000,
+				sessionFile: path.join(blocker, "session.jsonl"),
 			}),
 		).toThrow(/persist/);
+	});
+	it("keeps an oversized checkpoint inline, cut with a marker, when the session has no file at all", () => {
+		const summary = `Head of the summary ${"x".repeat(40_000)} tail of the summary`;
+		const finalized = finalizeCompactionResult(result(summary), {
+			branchEntries: branch(),
+			contextWindow: 8000,
+			reserveTokens: 1000,
+		});
+		expect(finalized.summary.startsWith("Head of the summary")).toBe(true);
+		expect(finalized.summary.endsWith("tail of the summary")).toBe(true);
+		expect(finalized.summary).toContain("characters omitted");
+		expect(Math.ceil(finalized.summary.length / CHARS_PER_TOKEN)).toBeLessThanOrEqual(800);
+		expect(finalized.details).toEqual({ readFiles: ["a.ts"] });
 	});
 	it("keeps a fitting checkpoint unchanged", () => {
 		const original = result("Small checkpoint");

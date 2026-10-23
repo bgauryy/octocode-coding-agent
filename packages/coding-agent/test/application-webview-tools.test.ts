@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ApplicationStream } from "@octocodeai/octocode-webview/application-stream";
 import {
 	ApplicationProjection,
@@ -7,6 +10,9 @@ import {
 } from "@octocodeai/octocode-webview/app/live/model";
 import { afterEach, expect, it } from "vitest";
 import { getApplicationPort } from "../src/core/application/index.ts";
+import { createBashTool } from "../src/core/tools/index.ts";
+import { createReadTool } from "./fixtures/read-tool.ts";
+import { createWriteTool } from "./fixtures/write-tool.ts";
 import { createHarness, type Harness } from "./test-harness.ts";
 
 /**
@@ -14,20 +20,22 @@ import { createHarness, type Harness } from "./test-harness.ts";
  * stream and projection turn them into what the activity feed and terminal transcript show.
  */
 let harness: Harness | undefined;
-afterEach(() => harness?.cleanup());
+let workDir: string | undefined;
+afterEach(() => {
+	harness?.cleanup();
+	if (workDir) rmSync(workDir, { recursive: true, force: true });
+});
 
 const SECRET = `ghp_${"a1B2c3D4e5".repeat(4)}`;
 
 it("renders every built-in tool call with its argument label, status and output", async () => {
+	const cwd = (workDir = mkdtempSync(join(tmpdir(), "webview-tools-")));
 	harness = await createHarness({
+		// The session's own tools are bash only; `read` and `write` are test fixtures that stand in for other hosts' tools.
+		baseToolsOverride: { bash: createBashTool(cwd), read: createReadTool(cwd), write: createWriteTool(cwd) },
 		responses: [
 			{ toolCalls: [{ id: "write", name: "write", args: { path: "notes.txt", content: "alpha\nbeta\n" } }] },
 			{ toolCalls: [{ id: "read", name: "read", args: { path: "notes.txt" } }] },
-			{
-				toolCalls: [
-					{ id: "edit", name: "edit", args: { path: "notes.txt", edits: [{ oldText: "beta", newText: "gamma" }] } },
-				],
-			},
 			{ toolCalls: [{ id: "bash-ok", name: "bash", args: { command: "printf 'one\\ntwo\\n'" } }] },
 			{ toolCalls: [{ id: "bash-fail", name: "bash", args: { command: "echo broken >&2; exit 3" } }] },
 			{ toolCalls: [{ id: "secret", name: "bash", args: { command: `echo ${SECRET} >/dev/null` } }] },
@@ -58,7 +66,6 @@ it("renders every built-in tool call with its argument label, status and output"
 	expect(entries.map((entry) => [entry.command.split(" ")[0], entry.status])).toEqual([
 		["write", "done"],
 		["read", "done"],
-		["edit", "done"],
 		["bash", "done"],
 		["bash", "failed"],
 		["bash", "done"],
@@ -66,14 +73,13 @@ it("renders every built-in tool call with its argument label, status and output"
 	]);
 	expect(byCommand("write notes.txt")).toHaveLength(1);
 	expect(byCommand("read notes.txt")[0].output).toContain("alpha");
-	expect(byCommand("edit notes.txt")[0].output.length).toBeGreaterThan(0);
 	expect(byCommand("bash printf")[0].output).toBe("one\ntwo");
 	expect(byCommand("bash echo broken")[0].output).toContain("exited with code 3");
 	expect(byCommand("read missing.txt")[0].output.length).toBeGreaterThan(0);
 
 	// Arguments are labelled through the host's redaction: a token in a command never reaches the browser.
 	expect(JSON.stringify(frames)).not.toContain(SECRET);
-	expect(entries[5].command).toMatch(/^bash echo /);
+	expect(entries[4].command).toMatch(/^bash echo /);
 
 	const cards = events.filter((event) => event.type.startsWith("tool.")).map(activityCard);
 	expect(cards.map((card) => card.title)).toContain("bash printf 'one\\ntwo\\n'");

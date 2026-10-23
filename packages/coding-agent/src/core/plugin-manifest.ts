@@ -1,6 +1,8 @@
+import { createHash, type Hash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { stripBom } from "../utils/text.ts";
+import { isRecord } from "../utils/guards.ts";
 
 export interface PluginManifest {
 	protocol: "claude" | "codex";
@@ -12,9 +14,6 @@ export interface PluginManifest {
 	metadata: Record<string, unknown>;
 	settings: Record<string, unknown>;
 }
-
-const object = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 export function isPluginIdentifier(value: unknown): value is string {
 	return (
@@ -56,7 +55,7 @@ export function discoverPluginManifests(
 		try {
 			const source = resolvePluginPath(root, entry);
 			const value: unknown = JSON.parse(stripBom(readFileSync(source, "utf8")));
-			if (!object(value)) throw new Error("manifest must be an object");
+			if (!isRecord(value)) throw new Error("manifest must be an object");
 			return { present: true, value, source };
 		} catch (error) {
 			errors.push(`${entry}: ${String(error)}`);
@@ -91,12 +90,12 @@ export function discoverPluginManifests(
 	if (portable.present) {
 		if (!portable.value) return { manifests, errors };
 		const extensions = portable.value.extensions;
-		const inline = object(extensions) ? extensions["com.openai"] : undefined;
-		if (inline !== undefined && !object(inline)) {
+		const inline = isRecord(extensions) ? extensions["com.openai"] : undefined;
+		if (inline !== undefined && !isRecord(inline)) {
 			errors.push(`${portable.source}: extensions.com.openai must be an object`);
 			return { manifests, errors };
 		}
-		if (object(inline)) add("codex", "portable", portable.value, inline, [portable.source!]);
+		if (isRecord(inline)) add("codex", "portable", portable.value, inline, [portable.source!]);
 		else {
 			const overlay = read("./.codex-plugin/plugin.json");
 			if (!overlay.present || overlay.value)
@@ -110,4 +109,39 @@ export function discoverPluginManifests(
 		if (codex.value) add("codex", "codex", codex.value, codex.value, [codex.source!]);
 	}
 	return { manifests, errors };
+}
+
+export interface ConfiguredPluginResolution {
+	manifest?: PluginManifest;
+	/** Declaration errors reported by manifest discovery; they do not stop resolution. */
+	errors: string[];
+	/** Why no manifest resolved: a relative path or no manifest for the configured protocol. */
+	failure?: string;
+}
+
+/**
+ * Resolve the manifest of a configured plugin entry for its protocol. Shared by skill, hook and MCP activation so each
+ * applies the same absolute-path check, discovery and protocol match. Discovery itself may throw.
+ */
+export function resolveConfiguredPlugin(entry: {
+	path: string;
+	protocol: PluginManifest["protocol"];
+}): ConfiguredPluginResolution {
+	if (!path.isAbsolute(entry.path)) return { errors: [], failure: "Plugin path must be absolute" };
+	const discovery = discoverPluginManifests(entry.path, { protocol: entry.protocol });
+	const manifest = discovery.manifests.find((item) => item.protocol === entry.protocol);
+	return {
+		errors: discovery.errors,
+		...(manifest ? { manifest } : { failure: `No valid ${entry.protocol} plugin manifest found` }),
+	};
+}
+
+/**
+ * Start an approval fingerprint with the plugin identity and the text of every manifest source. Callers append the
+ * declarations they review. Stored in user settings: the hashed bytes must not change.
+ */
+export function startPluginFingerprint(manifest: PluginManifest): Hash {
+	const hash = createHash("sha256").update(JSON.stringify([manifest.root, manifest.protocol, manifest.name]));
+	for (const source of manifest.sources) hash.update(JSON.stringify([source, readFileSync(source, "utf8")]));
+	return hash;
 }

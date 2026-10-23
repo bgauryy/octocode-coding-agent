@@ -6,25 +6,6 @@ import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-cop
 import { getCompat } from "./compat.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-	if (!headers) return false;
-	const expected = name.toLowerCase();
-	for (const [key, value] of Object.entries(headers)) {
-		if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-	}
-	return false;
-}
-
-export function getClientApiKey(
-	provider: string,
-	apiKey: string | undefined,
-	headers: ProviderHeaders | undefined,
-): string {
-	if (apiKey) return apiKey;
-	if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization")) return "unused";
-	throw new Error(`No API key for provider: ${provider}`);
-}
-
 export function createClient(
 	model: Model<"openai-completions">,
 	context: TranscriptContext,

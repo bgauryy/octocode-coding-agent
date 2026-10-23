@@ -9,6 +9,7 @@ import { setGlobalTheme } from "./theme-global.ts";
 import { getBuiltinThemes, loadTheme, loadThemeFromPath, loadThemeJson, registeredThemes } from "./theme-loader.ts";
 /** The schema that validates this shape lives in `theme-schema.ts`; importing the type is free. */
 import type { ThemeColorValue as ColorValue } from "./theme-schema.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 export { SYSTEM_THEME_NAME } from "./system-theme.ts";
 
@@ -94,7 +95,7 @@ export function setTheme(name: string, enableWatcher: boolean = false): { succes
 		// Don't start watcher for fallback theme
 		return {
 			success: false,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		};
 	}
 }

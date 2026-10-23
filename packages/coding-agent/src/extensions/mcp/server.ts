@@ -24,10 +24,6 @@ export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
 	direct: "declared to the model like built-in tools",
 };
 
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function firstLine(text: string): string {
 	return text.split("\n", 1)[0] ?? "";
 }

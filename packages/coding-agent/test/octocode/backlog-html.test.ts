@@ -221,10 +221,14 @@ describe("backlog html page", () => {
 		expect(csp).toContain("default-src 'none'");
 		expect(csp).toContain("script-src 'unsafe-inline'");
 		expect(csp).toContain("style-src 'unsafe-inline'");
+		expect(csp).toContain("img-src data:");
 		expect(csp).not.toMatch(/https?:|\*/);
 		expect(html).toContain("prefers-color-scheme: dark");
 		// The inline script carries React DOM's namespace URIs and error links as plain strings; the markup has no URL.
-		const markup = html.replace(/<script>[\s\S]*?<\/script>/, "<script></script>");
+		// The one link is the inline favicon, a data URI that loads nothing.
+		const icons = html.match(/<link rel="icon" type="image\/png" href="data:image\/png;base64,[A-Za-z0-9+/=]+">/g);
+		expect(icons).toHaveLength(1);
+		const markup = html.replace(/<script>[\s\S]*?<\/script>/, "<script></script>").replace(icons![0], "");
 		expect(markup).not.toMatch(/https?:\/\//);
 		expect(markup).not.toMatch(/<(?:link|iframe|form|object|embed)\b|\bsrc=/);
 		expect(html).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|import\(/);

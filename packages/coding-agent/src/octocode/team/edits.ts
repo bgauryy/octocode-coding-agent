@@ -40,15 +40,16 @@ export class EditLog {
 
 	/**
 	 * Files agents changed in the last `withinMs`, newest first, one row per file (its latest change and the count),
-	 * optionally only under `prefixes` (workspace-relative, `/`-separated).
+	 * optionally only under `prefixes` (workspace-relative, `/`-separated) and only by `agent`.
 	 */
-	changes(options: { withinMs: number; prefixes?: string[] }, now = Date.now()): Change[] {
+	changes(options: { withinMs: number; prefixes?: string[]; agent?: string }, now = Date.now()): Change[] {
 		// SQLite takes the bare columns from the row holding MAX(at): the latest agent and tool per file.
+		const byAgent = options.agent === undefined ? "" : " AND agent = ?";
 		const rows = this.db
 			.prepare(
-				"SELECT path, agent, tool, MAX(at) AS at, COUNT(*) AS count FROM edits WHERE workspace = ? AND at > ? GROUP BY path ORDER BY at DESC, path",
+				`SELECT path, agent, tool, MAX(at) AS at, COUNT(*) AS count FROM edits WHERE workspace = ? AND at > ?${byAgent} GROUP BY path ORDER BY at DESC, path`,
 			)
-			.all(this.workspace, now - options.withinMs) as Row[];
+			.all(this.workspace, now - options.withinMs, ...(options.agent === undefined ? [] : [options.agent])) as Row[];
 		const prefixes = options.prefixes?.map((prefix) => prefix.replace(/\/+$/, ""));
 		const under = (file: string) =>
 			!prefixes?.length || prefixes.some((prefix) => prefix === "" || file === prefix || file.startsWith(`${prefix}/`));

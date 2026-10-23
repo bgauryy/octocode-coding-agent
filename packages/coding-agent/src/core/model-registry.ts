@@ -29,6 +29,7 @@ import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocod
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 export type { ProviderConfigInput } from "./provider-composer.ts";
 export type ResolvedRequestAuth =
@@ -106,7 +107,7 @@ export class ModelRegistry {
 			};
 		} catch (error) {
 			const cause = error instanceof Error ? error.cause : undefined;
-			const message = cause instanceof Error ? cause.message : error instanceof Error ? error.message : String(error);
+			const message = cause instanceof Error ? cause.message : errorMessage(error);
 			return {
 				ok: false,
 				error:

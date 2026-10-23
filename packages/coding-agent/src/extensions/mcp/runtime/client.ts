@@ -16,12 +16,51 @@ import {
 } from "@octocodeai/octocode-mcp";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { VERSION } from "../../../config.ts";
+import { visibleControls } from "../../../octocode/shared/sanitize.ts";
+import { cutText } from "../../../octocode/shared/util.ts";
 import type { McpServerLog } from "../log.ts";
 
 export const DEFAULT_TIMEOUT_SECONDS = 60;
-const STDERR_TAIL_CHARS = 2_000;
+/** The default bound on one request of a server, shared with the built-in Octocode server (`octocode/mcp/client.ts`). */
+export const DEFAULT_TIMEOUT_MS = DEFAULT_TIMEOUT_SECONDS * 1000;
+/** Characters of a stdio server's stderr a connection error shows (its end). */
+export const STDERR_TAIL_CHARS = 2_000;
 /** Delays between attempts to connect to an HTTP server that failed with a transient error. */
 export const CONNECT_RETRY_DELAYS_MS = [250, 1_000];
+
+/** Failed connection attempts in a row that still retry at once; later ones wait, so a server that dies on start is not respawned for every call. */
+const FREE_CONNECT_FAILURES = 2;
+const CONNECT_BACKOFF_MS = 5_000;
+const CONNECT_BACKOFF_MAX_MS = 60_000;
+
+/** The pause after repeated connection failures of one server. A successful connection or an explicit reconnect clears it. */
+export class ConnectBackoff {
+	private failures = 0;
+	private lastFailureAt = 0;
+
+	failed(now = Date.now()): void {
+		this.failures++;
+		this.lastFailureAt = now;
+	}
+
+	reset(): void {
+		this.failures = 0;
+	}
+
+	get count(): number {
+		return this.failures;
+	}
+
+	/** Milliseconds until the next attempt is allowed; 0 when it may start now. */
+	remainingMs(now = Date.now()): number {
+		if (this.failures <= FREE_CONNECT_FAILURES) return 0;
+		const delay = Math.min(
+			CONNECT_BACKOFF_MS * 2 ** (this.failures - FREE_CONNECT_FAILURES - 1),
+			CONNECT_BACKOFF_MAX_MS,
+		);
+		return Math.max(0, this.lastFailureAt + delay - now);
+	}
+}
 
 /**
  * `disconnected`: the connection dropped (for example the stdio server exited); the next call
@@ -29,21 +68,44 @@ export const CONNECT_RETRY_DELAYS_MS = [250, 1_000];
  */
 export type ServerState = "connecting" | "connected" | "disconnected" | "needs-auth" | "failed" | "closed";
 
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 /** Network failures and overloaded or restarting servers, which are worth another attempt. */
-export function isTransientError(error: unknown): boolean {
+function isTransientError(error: unknown): boolean {
 	if (error instanceof McpHttpError) {
 		return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status !== 501);
 	}
 	return error instanceof TypeError;
 }
 
-/** The end of a stdio server's stderr, for connection errors. */
+/**
+ * The end of a stdio server's stderr, for connection errors. It is untrusted text that reaches the
+ * terminal and the model, so control characters show as escapes.
+ */
 export function stderrTail(transport: StdioTransport | undefined): string | undefined {
-	return transport?.stderr.trim().slice(-STDERR_TAIL_CHARS) || undefined;
+	return stderrReport(transport)?.tail;
+}
+
+/** A stdio server's stderr as untrusted text (control characters shown as escapes): all of it, and its end. */
+export function stderrReport(transport: StdioTransport | undefined): { text: string; tail: string } | undefined {
+	if (!transport) return undefined;
+	const text = visibleControls(transport.stderr).trim();
+	const tail = cutText(text, STDERR_TAIL_CHARS, { chars: true, tail: true });
+	return tail ? { text, tail } : undefined;
+}
+
+/**
+ * Follows `notifications/tools/list_changed` of `client`: `refresh()` while `isCurrent()`, otherwise (the client is still
+ * connecting) the change is remembered; `changedDuringConnect()` tells whether to list again once it connected.
+ */
+export function trackToolListChanges(
+	client: McpClient,
+	options: { isCurrent: () => boolean; refresh: () => void },
+): { changedDuringConnect: () => boolean } {
+	let changed = false;
+	client.onNotification("notifications/tools/list_changed", () => {
+		if (options.isCurrent()) options.refresh();
+		else changed = true;
+	});
+	return { changedDuringConnect: () => changed };
 }
 
 /** Servers that do not implement `resources/templates/list` have no templates. */
@@ -102,12 +164,13 @@ export function createMcpClient(
 	cwd: string,
 	timeoutMs: number,
 	log: McpServerLog | undefined,
+	/** For the built-in server: its own client name and version, and no `roots` capability. */
+	options: { clientInfo?: { name: string; version: string }; roots?: boolean } = {},
 ): { client: McpClient; closeClient: () => Promise<void> } {
 	const client = new McpClient({
-		name: "octocode",
-		version: VERSION,
+		...(options.clientInfo ?? { name: "octocode", version: VERSION }),
 		requestTimeoutMs: timeoutMs,
-		roots: [{ uri: pathToFileURL(cwd).href, name: basename(cwd) }],
+		...(options.roots === false ? {} : { roots: [{ uri: pathToFileURL(cwd).href, name: basename(cwd) }] }),
 	});
 	if (log) {
 		client.onNotification("notifications/message", (params) => log.write(name, params));

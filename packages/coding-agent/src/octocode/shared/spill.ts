@@ -34,7 +34,7 @@ export function saveFullOutput(text: string, label: string): string | undefined 
 }
 
 /** Writes `data` owner-only to a new `<session folder>/output/<label>-<timestamp>-<n>.<extension>`; undefined on failure. */
-function saveTimestamped(data: string | Uint8Array, label: string, extension: string): string | undefined {
+export function saveTimestamped(data: string | Uint8Array, label: string, extension: string): string | undefined {
 	try {
 		const file = path.join(sessionOutputDir("output"), `${spillLabel(label)}-${Date.now()}-${++written}.${extension}`);
 		fs.writeFileSync(file, data, { flag: "wx", mode: PRIVATE_FILE_MODE });
@@ -78,21 +78,37 @@ export function saveContentCopy(content: string | Uint8Array, label: string, ext
 	);
 }
 
+/** What `spillOutput` made of a text. */
+export interface SpilledOutput {
+	/** The text itself when it fits; else its head and tail with a note naming the full copy. */
+	text: string;
+	truncated: boolean;
+	/** Where the whole text was saved; undefined when it fits or could not be saved. */
+	file?: string;
+}
+
 /**
- * Keeps a model-facing result inside Octocode's per-result budget without losing it: text that fits comes back unchanged;
- * longer text is saved whole to a file and replaced by its head (about 70% of the budget) and tail (about 30%) plus a
- * note naming the file. When the file cannot be written, falls back to `capOutput` and says so. Never throws.
+ * Keeps a model-facing text inside a budget without losing it: text that fits comes back unchanged; longer text is saved
+ * whole (`save`, default `saveFullOutput`) and replaced by its head (about 70% of the budget) and tail (about 30%) plus a
+ * note naming the file. When the file cannot be written, falls back to `capOutput` and says so. Never throws. Both MCP
+ * paths use it with their own budgets.
  */
-export function capOutputToFile(
+export function spillOutput(
 	text: string,
-	options: { label: string; maxBytes?: number; maxLines?: number },
-): string {
+	options: {
+		label: string;
+		maxBytes?: number;
+		maxLines?: number;
+		save?: (text: string, label: string) => string | undefined;
+	},
+): SpilledOutput {
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const whole = truncateHead(text, { maxBytes, maxLines });
-	if (!whole.truncated) return text;
-	const file = saveFullOutput(text, options.label);
-	if (!file) return `${capOutput(text, maxBytes, maxLines)}\n[full output could not be saved]`;
+	if (!whole.truncated) return { text, truncated: false };
+	const file = (options.save ?? saveFullOutput)(text, options.label);
+	if (!file)
+		return { text: `${capOutput(text, maxBytes, maxLines)}\n[full output could not be saved]`, truncated: true };
 	const bytes = Math.max(maxBytes - NOTE_BYTES, 64);
 	const lines = Math.max(maxLines - NOTE_LINES, 2);
 	const head = headPreview(text, Math.floor(bytes * 0.7), Math.max(Math.floor(lines * 0.7), 1));
@@ -109,10 +125,21 @@ export function capOutputToFile(
 		omitted > 0
 			? `[… ${omitted} line${omitted === 1 ? "" : "s"} omitted …] ${read}`
 			: `[… ${formatSize(Math.max(whole.totalBytes - shownBytes, 0))} omitted …]`;
-	return (
-		`${head.text}\n\n${gap}\n\n${tail.text}\n\n` +
-		`[Output trimmed: showing ${trimmedCounts(shownLines, whole.totalLines, shownBytes, whole.totalBytes)}. Full output: ${shortPath(file)}; search it or read it by line range.]`
-	);
+	return {
+		text:
+			`${head.text}\n\n${gap}\n\n${tail.text}\n\n` +
+			`[Output trimmed: showing ${trimmedCounts(shownLines, whole.totalLines, shownBytes, whole.totalBytes)}. Full output: ${shortPath(file)}; search it or read it by line range.]`,
+		truncated: true,
+		file,
+	};
+}
+
+/** `spillOutput` for callers that need only the text. */
+export function capOutputToFile(
+	text: string,
+	options: { label: string; maxBytes?: number; maxLines?: number },
+): string {
+	return spillOutput(text, options).text;
 }
 
 /** Whole leading lines within the budget; the head of the first line when it alone is over the byte budget. */

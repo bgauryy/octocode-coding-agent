@@ -55,7 +55,12 @@ export {
 	type ToolAnnotations,
 	type ToolExecution,
 } from "./protocol/types.ts";
-export { StdioTransport, type StdioTransportOptions } from "./transports/stdio.ts";
+export {
+	DEFAULT_INHERITED_ENV_VARS,
+	getDefaultEnvironment,
+	StdioTransport,
+	type StdioTransportOptions,
+} from "./transports/stdio.ts";
 export {
 	McpAuthRequiredError,
 	McpHttpError,
@@ -63,6 +68,7 @@ export {
 	StreamableHttpTransport,
 	type StreamableHttpTransportOptions,
 } from "./transports/streamable-http.ts";
+export { LegacySseTransport, type LegacySseTransportOptions } from "./transports/legacy-sse.ts";
 export type {
 	McpTransport,
 	McpTransportCloseListener,

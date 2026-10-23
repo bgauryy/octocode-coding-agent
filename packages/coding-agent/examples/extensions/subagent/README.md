@@ -2,7 +2,7 @@
 
 This regression fixture demonstrates subprocess delegation through the extension API. Native sessions already provide the unified `agent` tool and [specialist profiles](../../../docs/instructions.md); installing this fixture is unnecessary.
 
-Its sample agents use the older core tool names (`read`, `grep`, `find`, `ls`). Those names are not registered in native sessions. Adapt the tool lists to the child runtime before using the fixture outside its tests.
+Its sample agents declare `tools: bash`, which exists in native sessions, and do their searching and reading through shell commands such as `rg`, `fd` and `git`. The older core tool names (`read`, `grep`, `find`, `ls`) are not registered natively; use `file`, `bash` or the Octocode local-search tools when you write agents for the child runtime.
 
 ## Features
 
@@ -75,21 +75,25 @@ When running interactively, the tool prompts for confirmation before running pro
 ## Usage
 
 ### Single agent
+
 ```
 Use scout to find all authentication code
 ```
 
 ### Parallel execution
+
 ```
 Run 2 scouts in parallel: one to find models, one to find providers
 ```
 
 ### Chained workflow
+
 ```
 Use a chain: first have scout find the read tool, then have planner suggest improvements
 ```
 
 ### Workflow prompts
+
 ```
 /implement add Redis caching to the session store
 /scout-and-plan refactor auth to support OAuth
@@ -98,26 +102,29 @@ Use a chain: first have scout find the read tool, then have planner suggest impr
 
 ## Tool Modes
 
-| Mode | Parameter | Description |
-|------|-----------|-------------|
-| Single | `{ agent, task }` | One agent, one task |
+| Mode     | Parameter          | Description                                            |
+| -------- | ------------------ | ------------------------------------------------------ |
+| Single   | `{ agent, task }`  | One agent, one task                                    |
 | Parallel | `{ tasks: [...] }` | Multiple agents run concurrently (max 8, 4 concurrent) |
-| Chain | `{ chain: [...] }` | Sequential with `{previous}` placeholder |
+| Chain    | `{ chain: [...] }` | Sequential with `{previous}` placeholder               |
 
 ## Output Display
 
 **Collapsed view** (default):
+
 - Status icon (✓/✗/⏳) and agent name
 - Last 5-10 items (tool calls and text)
 - Usage stats: `3 turns ↑input ↓output RcacheRead WcacheWrite $cost ctx:contextTokens model`
 
 **Expanded view** (Ctrl+O):
+
 - Full task text
 - All tool calls with formatted arguments
 - Final output rendered as Markdown
 - Per-task usage (for chain/parallel)
 
 **Parallel mode streaming**:
+
 - Shows all tasks with live status (⏳ running, ✓ done, ✗ failed)
 - Updates as each task makes progress
 - Shows "2/3 done, 1 running" status
@@ -125,10 +132,9 @@ Use a chain: first have scout find the read tool, then have planner suggest impr
 - Returns failure diagnostics from stderr/error messages when a child exits before producing output
 
 **Tool call formatting** (mimics built-in tools):
+
 - `$ command` for bash
-- `read ~/path:1-10` for read
-- `grep /pattern/ in ~/path` for grep
-- etc.
+- the tool name and a preview of its arguments for any other tool
 
 ## Agent Definitions
 
@@ -138,7 +144,7 @@ Agents are markdown files with YAML frontmatter:
 ---
 name: my-agent
 description: What this agent does
-tools: read, grep, find, ls
+tools: bash
 model: claude-haiku-4-5
 ---
 
@@ -148,6 +154,7 @@ System prompt for the agent goes here.
 When `model` is omitted, the subagent inherits the dispatching session's active model and thinking level.
 
 **Locations:**
+
 - `~/.octocode/octocodecode/agents/*.md` - User-level (always loaded)
 - `.octocode/agents/*.md` - Project-level (only with `agentScope: "project"` or `"both"`)
 
@@ -155,19 +162,19 @@ Project agents override user agents with the same name when `agentScope: "both"`
 
 ## Sample Agents
 
-| Agent | Purpose | Model | Tools |
-|-------|---------|-------|-------|
-| `scout` | Fast codebase recon | Haiku | read, grep, find, ls, bash |
-| `planner` | Implementation plans | Sonnet | read, grep, find, ls |
-| `reviewer` | Code review | Sonnet | read, grep, find, ls, bash |
-| `worker` | General-purpose | Sonnet | (all default) |
+| Agent      | Purpose              | Model  | Tools         |
+| ---------- | -------------------- | ------ | ------------- |
+| `scout`    | Fast codebase recon  | Haiku  | bash          |
+| `planner`  | Implementation plans | Sonnet | bash          |
+| `reviewer` | Code review          | Sonnet | bash          |
+| `worker`   | General-purpose      | Sonnet | (all default) |
 
 ## Workflow Prompts
 
-| Prompt | Flow |
-|--------|------|
-| `/implement <query>` | scout → planner → worker |
-| `/scout-and-plan <query>` | scout → planner |
+| Prompt                          | Flow                       |
+| ------------------------------- | -------------------------- |
+| `/implement <query>`            | scout → planner → worker   |
+| `/scout-and-plan <query>`       | scout → planner            |
 | `/implement-and-review <query>` | worker → reviewer → worker |
 
 ## Error Handling

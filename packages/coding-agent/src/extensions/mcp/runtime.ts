@@ -1,7 +1,7 @@
 /**
- * The part of the MCP integration that talks to servers: connections, transports, and OAuth
- * sign-in. It pulls in the MCP client, so index.ts loads it through runtime.lazy.ts only when a
- * server is configured.
+ * The part of the MCP integration that talks to servers: connections and transports. It pulls in
+ * the MCP client, so sessions load it (through connection-factory.ts and runtime.lazy.ts) only when
+ * a server is configured. OAuth sign-in lives in oauth.ts and the server log in log.ts.
  */
 
 import {
@@ -34,10 +34,10 @@ import {
 } from "./runtime/auth.ts";
 import {
 	CONNECT_RETRY_DELAYS_MS,
+	ConnectBackoff,
 	connectWithRetries,
 	createMcpClient,
-	DEFAULT_TIMEOUT_SECONDS,
-	errorMessage,
+	DEFAULT_TIMEOUT_MS,
 	listTemplates,
 	listTemplatesPage,
 	type McpRequestHost,
@@ -45,12 +45,13 @@ import {
 	runRequest,
 	type ServerState,
 	stderrTail,
+	trackToolListChanges,
 } from "./runtime/client.ts";
+import { firstLine } from "./server.ts";
 import type { McpTransportFactory } from "./runtime/transport.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import type { McpToolCaller } from "./tools.ts";
 
-export { McpServerLog } from "./log.ts";
-export { McpOAuthCredentialStore, McpSignInCancelledError, signInMcpServer } from "./oauth.ts";
 export { createDefaultTransport, type McpTransportFactory } from "./runtime/transport.ts";
 
 /** One configured server. Reconnects lazily when a call finds the connection gone. */
@@ -78,6 +79,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	private readonly retiring = new RetiringClients();
 	/** Aborted by `close()`; cancels a connect in progress, including the wait between retries. */
 	private readonly shutdown = new AbortController();
+	/** Pauses new attempts after repeated failures to connect. */
+	private readonly backoff = new ConnectBackoff();
 	/** Stderr of the last stdio server that failed to connect. */
 	private stderrTail: string | undefined;
 	private readonly cwd: string;
@@ -129,7 +132,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	get timeoutMs(): number {
-		return (this.entry.config.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+		return this.entry.config.timeout === undefined ? DEFAULT_TIMEOUT_MS : this.entry.config.timeout * 1000;
 	}
 
 	/** Server URL when the server authenticates with OAuth. */
@@ -145,6 +148,13 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		const unavailable = unavailableError(this.entry, this.stopped, this.closed);
 		if (unavailable) return Promise.reject(unavailable);
 		if (this.client?.connectionState === "connected") return Promise.resolve(this.client);
+		const wait = this.opening ? 0 : this.backoff.remainingMs();
+		if (wait > 0)
+			return Promise.reject(
+				new Error(
+					`MCP server "${this.entry.name}" failed to connect ${this.backoff.count} times in a row (${firstLine(this.error ?? "unknown error")}); it is not started again for ${Math.ceil(wait / 1000)}s. Restart it to try now.`,
+				),
+			);
 		this.opening ??= this.open().finally(() => {
 			this.opening = undefined;
 		});
@@ -200,6 +210,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	/** Connect again with fresh credentials, for example after signing in. */
 	async reconnect(): Promise<void> {
 		this.stopped = false;
+		this.backoff.reset();
 		await this.opening?.catch(() => undefined);
 		if (this.client) await this.dropClient(this.client);
 		await this.getClient();
@@ -276,10 +287,9 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, this.timeoutMs, this.log);
 		signal.addEventListener("abort", closeClient, { once: true });
 		let transport: McpTransport | undefined;
-		let listChangedDuringConnect = false;
-		client.onNotification("notifications/tools/list_changed", () => {
-			if (this.client === client) void this.refreshTools(client);
-			else listChangedDuringConnect = true;
+		const listChanges = trackToolListChanges(client, {
+			isCurrent: () => this.client === client,
+			refresh: () => void this.refreshTools(client),
 		});
 		try {
 			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
@@ -291,11 +301,12 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			if (signal.aborted) throw new Error("stopped while connecting");
 			if (client.connectionState !== "connected") throw new Error("connection closed during setup");
 			this.client = client;
+			this.backoff.reset();
 			this.hasResources = client.serverCapabilities?.resources !== undefined;
 			this.state = "connected";
 			this.error = undefined;
 			this.publishCatalog(client, tools);
-			if (listChangedDuringConnect) await this.refreshTools(client);
+			if (listChanges.changedDuringConnect()) await this.refreshTools(client);
 			this.changed();
 			return client;
 		} catch (error) {
@@ -313,6 +324,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			return new Error(signInRequiredMessage(this.entry));
 		}
 		this.withdrawCatalog();
+		if (!this.closed) this.backoff.failed();
 		this.state = this.closed ? "closed" : "failed";
 		this.error = this.stderrTail ? `${errorMessage(error)}\n${this.stderrTail}` : errorMessage(error);
 		this.changed();

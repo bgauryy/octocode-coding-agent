@@ -3,7 +3,7 @@
  */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
-import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
+import { getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import type { Usage } from "@octocodeai/octocode-ai/compat";
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry, SessionProjection } from "../session-manager.ts";
@@ -128,7 +128,20 @@ export function estimateProjectedContextTokens(
 	return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
 }
 
-const ESTIMATED_IMAGE_CHARS = 4800;
+/**
+ * Characters per token for every estimate that has no tokenizer: the context, what compaction adds back and the fixed
+ * request. Prose runs near four, but code, paths and JSON (most of a tool result, a restored file or a tool schema)
+ * tokenize nearer three, so three keeps estimates on the safe side. Core and the Octocode add-ons share this one ratio.
+ */
+export const CHARS_PER_TOKEN = 3;
+
+/** Tokens for `chars` characters by `CHARS_PER_TOKEN`, rounded up. */
+export function charsToTokens(chars: number): number {
+	return Math.ceil(chars / CHARS_PER_TOKEN);
+}
+
+/** An image counts as 1,200 tokens. */
+const ESTIMATED_IMAGE_CHARS = 1200 * CHARS_PER_TOKEN;
 
 function estimateTextAndImageContentChars(content: string | Array<{ type: string; text?: string }>): number {
 	if (typeof content === "string") {
@@ -147,7 +160,7 @@ function estimateTextAndImageContentChars(content: string | Array<{ type: string
 }
 
 /**
- * Estimate token count for a message using chars/4 heuristic.
+ * Estimate token count for a message using the shared `CHARS_PER_TOKEN` heuristic.
  * This is conservative (overestimates tokens).
  */
 export function estimateTokens(message: AgentMessage): number {
@@ -163,13 +176,13 @@ export function estimateTokens(message: AgentMessage): number {
 				}
 			}
 			if (system.toolsAdded) chars += JSON.stringify(system.toolsAdded).length;
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 		case "user": {
 			chars = estimateTextAndImageContentChars(
 				(message as { content: string | Array<{ type: string; text?: string }> }).content,
 			);
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 		case "assistant": {
 			const assistant = message;
@@ -182,23 +195,42 @@ export function estimateTokens(message: AgentMessage): number {
 					chars += block.name.length + JSON.stringify(block.arguments).length;
 				}
 			}
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 		case "custom":
 		case "toolResult": {
 			chars = estimateTextAndImageContentChars(message.content);
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 		case "bashExecution": {
 			chars = message.command.length + message.output.length;
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 		case "branchSummary":
 		case "compactionSummary": {
 			chars = message.summary.length;
-			return Math.ceil(chars / 4);
+			return charsToTokens(chars);
 		}
 	}
 
 	return 0;
+}
+
+/**
+ * Tokens of the declarations of `tools` that the transcript's system messages do not declare yet. The loop declares a
+ * loadout change in the request that carries it, after the pre-request estimate, and a provider's usage counts only the
+ * declarations of the last response, so the estimate adds these. Declared tools are already part of the system message.
+ */
+export function estimateUndeclaredToolTokens(
+	messages: AgentMessage[],
+	tools: ReadonlyArray<{ name: string; description?: string; parameters?: unknown }>,
+	hidden: ReadonlySet<string> = new Set(),
+): number {
+	const declared = new Set(getCurrentTools(messages).map((tool) => tool.name));
+	let chars = 0;
+	for (const tool of tools) {
+		if (declared.has(tool.name) || hidden.has(tool.name)) continue;
+		chars += JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }).length;
+	}
+	return charsToTokens(chars);
 }

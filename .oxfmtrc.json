@@ -11,8 +11,11 @@
 		"**/node_modules/",
 		"**/coverage/",
 		"**/*.generated.ts",
+		"packages/ai/src/providers/*.models.ts",
 		"packages/ai/src/providers/data/",
 		"packages/coding-agent/src/core/export-html/vendor/",
+		"packages/coding-agent/src/core/export-html/template.html",
+		"packages/coding-agent/src/core/export-html/template.css",
 		"**/fixtures/",
 		".yarn/",
 		"yarn.lock"

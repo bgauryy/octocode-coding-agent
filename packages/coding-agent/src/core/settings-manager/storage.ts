@@ -10,6 +10,7 @@ import { deepMergeObjects, isMergeableObject } from "./merge.ts";
 export type SettingsScope = "global" | "project";
 
 export interface SettingsManagerCreateOptions {
+	/** Whether project settings load and project resources are trusted. Default: false; pass true only after the user or host decided. */
 	projectTrusted?: boolean;
 }
 

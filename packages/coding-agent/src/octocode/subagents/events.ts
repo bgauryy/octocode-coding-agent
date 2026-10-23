@@ -1,6 +1,7 @@
 import type { Usage } from "@octocodeai/octocode-ai";
 import { NEEDS_APPROVAL } from "../permission/ask.ts";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
 import { Thought, thoughtGist } from "../shared/thought.ts";
 import { addUsage, contentText, emptyUsage, finiteNumber, isRecord, toolHint } from "../shared/util.ts";
@@ -151,8 +152,11 @@ export type ChildEffect =
 	| { kind: "close" }
 	/** The run is over (`agent_settled`); `aborted` is what the child said, before the lifecycle weighs a stall. */
 	| { kind: "settled"; aborted: boolean }
-	/** A message that is not the child's own reply (its prompt, a team message) reached it. */
-	| { kind: "incoming"; role: unknown }
+	/**
+	 * A message that is not the child's own reply (its prompt, a team message) reached it. `job`: the first line of the
+	 * notice when it is the child's own background bash job ending (`shared/messages.ts` `JOB_TYPE`).
+	 */
+	| { kind: "incoming"; role: unknown; job?: string }
 	/** An assistant reply ended: the report tracker reads its text. */
 	| { kind: "answer"; text: string | undefined; stopReason: unknown; errorMessage: unknown };
 
@@ -353,7 +357,9 @@ export function reduceEvent(
 				progress({});
 			}
 		}
-		return [...effects, { kind: "incoming", role: message.role }];
+		const job =
+			message.customType === JOB_TYPE ? visibleControls(contentText(message.content).split("\n", 1)[0] ?? "") : "";
+		return [...effects, { kind: "incoming", role: message.role, ...(job ? { job } : {}) }];
 	}
 	addUsage(state.usage, message.usage);
 	delete state.notices.lastError;

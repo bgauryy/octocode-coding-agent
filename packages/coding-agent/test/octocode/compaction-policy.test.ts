@@ -27,6 +27,7 @@ describe("idle continuation", () => {
 describe("turn_end", () => {
 	it("never edits the context of a turn the provider accepted, however large and old its results", async () => {
 		const handlers = new Map<string, Handler>();
+		const sendMessage = vi.fn(async () => undefined);
 		const pi = {
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
@@ -34,6 +35,7 @@ describe("turn_end", () => {
 			},
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
+			sendMessage,
 		} as unknown as ExtensionAPI;
 		const guard = { restore: vi.fn(), forget: vi.fn() };
 		registerCompaction(pi, guard as unknown as FileGuard);
@@ -101,6 +103,12 @@ describe("turn_end", () => {
 		};
 		expect(await handlers.get("turn_end")!(event, ctx)).toBeUndefined();
 		expect(guard.forget).not.toHaveBeenCalled();
+		// The context at 95% gets one usage notice as a new message; nothing already sent changes.
+		expect(sendMessage).toHaveBeenCalledTimes(1);
+		expect(sendMessage.mock.calls[0]).toMatchObject([
+			{ customType: "octocode-context-usage", display: false },
+			{ triggerTurn: false },
+		]);
 	});
 
 	it("keeps active refresh decisions but stops idle headless refreshes", async () => {
@@ -185,6 +193,7 @@ describe("context edits", () => {
 			cwd: "/repo",
 			modelRegistry: { getAll: () => [model], find: () => model, getCachePolicy: fakeCachePolicy },
 			sessionManager: { getSessionId: () => "s1", getBranch: () => [] },
+			getContextUsage: () => undefined,
 		};
 		const picture = (index: number) => [
 			{

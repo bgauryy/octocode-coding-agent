@@ -170,3 +170,24 @@ describe("core tools of a subagent profile", () => {
 		}
 	});
 });
+
+describe("a project profile that replaces an earlier one", () => {
+	it("is reported, with the file and what it replaced; user-level overrides stay quiet", () => {
+		const root = fs.realpathSync(tmp());
+		const home = tmp();
+		const body = (name: string) => `---\nname: ${name}\n---\nPrompt`;
+		fs.mkdirSync(path.join(root, ".git"));
+		fs.mkdirSync(path.join(root, ".octocode", "agents"), { recursive: true });
+		fs.writeFileSync(path.join(root, ".octocode", "agents", "reviewer.md"), body("reviewer"));
+		fs.writeFileSync(path.join(root, ".octocode", "agents", "mine.md"), body("mine"));
+		const shadowed: Array<[string, string, string]> = [];
+		const profiles = loadProfiles(root, home, true, {}, undefined, (name, file, replaced) =>
+			shadowed.push([name, file, replaced]),
+		);
+		expect(profiles.get("reviewer")?.prompt).toBe("Prompt");
+		expect(shadowed).toEqual([["reviewer", path.join(root, ".octocode", "agents", "reviewer.md"), "bundled"]]);
+		const quiet: string[] = [];
+		loadProfiles(root, home, false, {}, undefined, (name) => quiet.push(name));
+		expect(quiet).toEqual([]);
+	});
+});

@@ -7,6 +7,7 @@ import { canonicalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { atomicWriteFileSync } from "../utils/atomic-file.ts";
 import { projectMcpConfigPaths } from "./mcp-config-paths.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 export type ProjectTrustDecision = boolean | null;
 
@@ -116,7 +117,7 @@ function readTrustFileEntries(path: string): { data: TrustFile; legacy: Record<s
 	try {
 		parsed = JSON.parse(stripBom(readFileSync(path, "utf-8")));
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		throw new Error(`Failed to read trust store ${path}: ${message}`);
 	}
 

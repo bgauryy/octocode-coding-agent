@@ -3,9 +3,9 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionContext } from "../../core/extensions/types.ts";
 import { mcpNamespace } from "../../core/mcp-servers.ts";
-import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
+import { activateDiscovery, canDiscoverTools, TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
 import { getMcpToolExposure } from "./config.ts";
-import { configuredExposures, exposureOf, prefersDeferred, resolveMcpExposure } from "./exposure.ts";
+import { configuredExposures, exposureOf } from "./exposure.ts";
 import { createMcpResourceToolDefinitions } from "./resources.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled, type McpServer } from "./server.ts";
@@ -24,13 +24,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		...(description ? { description } : {}),
 		...(connection.instructions ? { instructions: connection.instructions } : {}),
 	};
-	const automaticExposure = resolveMcpExposure(
-		"auto",
-		state.automaticCatalog(),
-		state.selectedModel,
-		pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools),
-		prefersDeferred(server, entry.config),
-	);
+	const automaticExposure = state.automaticExposure(entry);
 	const resolvedExposure = (tool: string) => {
 		const requested = getMcpToolExposure(entry.config, tool, server);
 		return requested === "auto" ? automaticExposure : requested;
@@ -108,18 +102,14 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		}
 	}
 	if (connection.tools.some((tool) => resolvedExposure(tool.name) === "deferred")) {
-		const active = pi.getActiveTools();
-		if (
-			!active.includes(TOOL_SEARCH_TOOL_NAME) &&
-			pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)
-		)
-			pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
+		activateDiscovery(pi);
 	}
 	syncResourceTools(state);
 }
 
 /** Make a disabled server's tools unreachable. */
 export function hideTools(state: McpExtensionState, server: string): void {
+	state.resetAutomaticExposure(server);
 	for (const name of state.serverTools.get(server) ?? []) {
 		const definition = state.definitions.get(name);
 		if (definition && definition.exposure !== "hidden") {
@@ -169,19 +159,12 @@ export function syncResourceTools(state: McpExtensionState): void {
 /** Activate discovery only for deferred catalogs. */
 export function ensureDiscoveryActive(state: McpExtensionState, ctx: ExtensionContext): void {
 	const { pi } = state;
-	const hasSearch = pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools);
+	const hasSearch = canDiscoverTools(pi);
 	const needsSearch = state.servers.some(
 		(server) =>
 			isEnabled(server) &&
 			[...configuredExposures(server.entry)].some(
-				(exposure) =>
-					resolveMcpExposure(
-						exposure,
-						state.automaticCatalog(),
-						state.selectedModel,
-						hasSearch,
-						prefersDeferred(server.entry.name, server.entry.config),
-					) === "deferred",
+				(exposure) => (exposure === "auto" ? state.automaticExposure(server.entry) : exposure) === "deferred",
 			),
 	);
 	if (!needsSearch) return;

@@ -1,6 +1,9 @@
 import { type JsonObject, validateToolArguments, type Tool } from "@octocodeai/octocode-ai";
 import { rewriteClaudeBash } from "../shared/claude-bash.ts";
 import { stateFolderRefusal, shellTargetAccess } from "./file-access.ts";
+import { isolatedMainTree, isolatedTreeRefusal } from "./isolated-tree.ts";
+import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
+import { shellParserReady } from "./shell/mutation.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
 import type {
 	ExtensionContext,
@@ -55,6 +58,8 @@ interface PermissionGateOptions {
 	annotations: (toolName: string) => ToolAnnotations | undefined;
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
 	powershell?: (command: string) => Promise<boolean>;
+	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
+	env?: NodeJS.ProcessEnv;
 	replacement?: {
 		definition: (name: string) => Tool | undefined;
 		refresh: (ctx: ExtensionContext) => Promise<void>;
@@ -89,6 +94,15 @@ export function permissionGate(options: PermissionGateOptions) {
 					});
 					return { block: true, reason: source.message };
 				}
+			}
+			// A read-only role (`readOnly: true` profile) is refused changes in every mode, before any dialog; so is an
+			// isolated child (`isolate: true`) that would change the parent's main tree.
+			if (readOnlyRole(options.env) || isolatedMainTree(ctx.cwd, options.env)) await shellParserReady();
+			const roleRefusal =
+				readOnlyRoleRefusal(event, ctx.cwd, options.env) ?? isolatedTreeRefusal(event, ctx.cwd, options.env);
+			if (roleRefusal) {
+				permission.refused([`${event.toolName} ${args(input)}`], roleRefusal, event.toolName);
+				return { block: true, reason: roleRefusal };
 			}
 			const target = CHANGE_TOOLS.has(event.toolName) ? optionalString(input.path) : undefined;
 			const refused =
@@ -172,6 +186,10 @@ export function permissionGate(options: PermissionGateOptions) {
 							if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");
 							const reservation = await owner.reserved(candidate, ctx);
 							if (reservation?.block) throw new Error(reservation.reason ?? "Replacement target is reserved");
+							const roleRefused =
+								readOnlyRoleRefusal(candidate, ctx.cwd, options.env) ??
+								isolatedTreeRefusal(candidate, ctx.cwd, options.env);
+							if (roleRefused) throw new Error(roleRefused);
 							const classified = classify(candidate, ctx, annotations, false);
 							if (!classified) throw new Error("Cannot classify Bash replacement");
 							const candidateHit = provenance.check(candidate, ctx);

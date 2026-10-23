@@ -66,6 +66,15 @@ describe("buildSystemPrompt", () => {
 		},
 	);
 
+	test("keeps the tool list and docs section free of restated rules", () => {
+		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash"], toolSnippets: { bash: "Run." } });
+		expect(prompt).not.toContain("other custom tools");
+		expect(prompt.match(/Read the documentation that defines/g)).toBeNull();
+		expect(prompt.match(/follow \.md cross-references/g)).toHaveLength(1);
+		// SDK sessions without an `octocode` section keep the core communication floor.
+		expect(prompt).toContain("- Be concise in your responses");
+	});
+
 	describe("empty tools", () => {
 		test("shows (none) for empty tools list", () => {
 			const prompt = buildSystemPrompt({
@@ -128,37 +137,16 @@ describe("buildSystemPrompt", () => {
 	});
 
 	describe("default tools", () => {
-		test("includes all default tools when snippets are provided", () => {
+		test("includes the default tool when its snippet is provided", () => {
 			const prompt = buildSystemPrompt({
-				toolSnippets: {
-					read: "Read file contents",
-					bash: "Execute bash commands",
-					edit: "Make surgical edits",
-					write: "Create or overwrite files",
-				},
+				toolSnippets: { bash: "Execute bash commands" },
 				contextFiles: [],
 				skills: [],
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("- read:");
-			expect(prompt).toContain("- bash:");
-			expect(prompt).toContain("- edit:");
-			expect(prompt).toContain("- write:");
-		});
-
-		test.each([
-			[["powershell"], "Use PowerShell for file operations"],
-			[["bash", "powershell"], "Use bash or PowerShell for file operations"],
-		] as const)("uses shell-specific guidance for %j", (selectedTools, expected) => {
-			const prompt = buildSystemPrompt({
-				selectedTools: [...selectedTools],
-				contextFiles: [],
-				skills: [],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toContain(expected);
+			expect(prompt).toContain("- bash: Execute bash commands");
+			expect(prompt).toContain("Use bash for file operations like ls, rg, find");
 		});
 
 		test("instructs models to resolve Octocode docs and examples under absolute base paths", () => {
@@ -245,6 +233,21 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<available_skills>");
 			expect(prompt).toContain("<name>test-skill</name>");
 			expect(prompt).toContain("Use bash to load a skill's file");
+		});
+
+		test("names a deferred Octocode reader and keeps skills when it is the only reader", () => {
+			const build = (selectedTools: string[]) =>
+				buildSystemPrompt({
+					selectedTools,
+					deferredTools: ["mcp__octocode__localFetch"],
+					contextFiles: [],
+					skills: [testSkill],
+					cwd: process.cwd(),
+				});
+			expect(build(["tool_search"])).toContain("<available_skills>");
+			expect(build(["tool_search"])).toContain("Use Octocode localFetch (or localGetFileContent)");
+			expect(build(["bash", "tool_search"])).toContain("Use Octocode localFetch (or localGetFileContent)");
+			expect(build(["bash", "tool_search"])).not.toContain("Use bash to load a skill's file");
 		});
 
 		test("omits skills without read or bash", () => {

@@ -9,6 +9,7 @@ import { canonicalPath, isWithin, resolveToolPath, workspaceRoot } from "../../s
 import { transformPatch, type ParsedPatch } from "../../shared/codex-patch/patch.ts";
 import { type FileGuard, judgeChange, lostAnchor, staleRefusal } from "./guard.ts";
 import { copiedElision, type FileQuery, type PreparedChange } from "./queries.ts";
+import { resolveAnchoredEdits } from "./anchored.ts";
 import { workspaceRefusal } from "./run.ts";
 
 /** Checks a whole batch before any of it is applied: a Codex patch's operations, or a batch of queries under review. */
@@ -167,12 +168,13 @@ export async function inspectQueryBatch(
 		const judged = judgeChange(query.path, query.type, inspection, data, digest, guard.reader);
 		if (judged.refusal) throw new Error(judged.refusal);
 		if (query.type === "edit") {
+			const resolved = data ? resolveAnchoredEdits(query, data, guard, file) : query;
 			if (judged.changed) {
-				const lost = lostAnchor(query.path, query.edits ?? [], data?.toString("utf8") ?? "", guard.reader);
+				const lost = lostAnchor(query.path, resolved.edits ?? [], data?.toString("utf8") ?? "", guard.reader);
 				if (lost) throw new Error(lost);
 			}
 			const content = splitBom(data?.toString("utf8") ?? "").text;
-			applyEditsToNormalizedContent(normalizeToLF(content), query.edits ?? [], query.path);
+			applyEditsToNormalizedContent(normalizeToLF(content), resolved.edits ?? [], query.path);
 		}
 		const copied = copiedElision(query, data?.toString("utf8") ?? "");
 		if (copied) throw new Error(`The new text contains "${copied}": an output-cut placeholder, not file content.`);

@@ -1,27 +1,8 @@
-import * as os from "node:os";
-import { pathToFileURL } from "node:url";
-import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
-import { getCapabilities, getImageDimensions, hyperlink, imageFallback } from "@octocodeai/octocode-tui";
+import { getCapabilities, getImageDimensions, imageFallback } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
-import { resolvePath } from "../../utils/paths.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
-
-export function shortenPath(path: unknown): string {
-	if (typeof path !== "string") return "";
-	const home = os.homedir();
-	if (path.startsWith(home)) {
-		return `~${path.slice(home.length)}`;
-	}
-	return path;
-}
-
-export function linkPath(styledText: string, rawPath: string, cwd: string): string {
-	if (!getCapabilities().hyperlinks) return styledText;
-	const absolutePath = resolvePath(rawPath, cwd);
-	return hyperlink(styledText, pathToFileURL(absolutePath).href);
-}
 
 export function str(value: unknown): string | null {
 	if (typeof value === "string") return value;
@@ -29,30 +10,8 @@ export function str(value: unknown): string | null {
 	return null;
 }
 
-function parseLineNumber(value: unknown): number | undefined {
-	if (typeof value === "string" && value.trim() !== "") value = Number(value);
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-/** Format finite numbers or numeric strings as a read line range, omitting malformed ranges. */
-export function formatReadLineRange(offset: unknown, limit: unknown): string {
-	// Strict schemas represent omitted optional arguments as null.
-	if (offset == null && limit == null) return "";
-	const start = offset == null ? 1 : parseLineNumber(offset);
-	if (start === undefined) return "";
-	if (limit == null) return `:${start}`;
-	const count = parseLineNumber(limit);
-	if (count === undefined) return "";
-	const end = start + count - 1;
-	return `:${start}${end ? `-${end}` : ""}`;
-}
-
 export function replaceTabs(text: string): string {
 	return text.replace(/\t/g, "   ");
-}
-
-export function normalizeDisplayText(text: string): string {
-	return text.replace(/\r/g, "");
 }
 
 export function getTextOutput(
@@ -80,11 +39,6 @@ export function getTextOutput(
 
 	return output;
 }
-
-export type ToolRenderResultLike<TDetails> = {
-	content: (TextContent | ImageContent)[];
-	details: TDetails;
-};
 
 const COLLAPSED_ARGS_CHARS = 100;
 
@@ -167,16 +121,4 @@ export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPart
 
 export function invalidArgText(theme: Theme): string {
 	return theme.fg("error", "[invalid arg]");
-}
-
-export function renderToolPath(
-	rawPath: string | null,
-	theme: Theme,
-	cwd: string,
-	options?: { emptyFallback?: string },
-): string {
-	if (rawPath === null) return invalidArgText(theme);
-	const value = rawPath || options?.emptyFallback;
-	if (!value) return theme.fg("toolOutput", "...");
-	return linkPath(theme.fg("accent", shortenPath(value)), value, cwd);
 }

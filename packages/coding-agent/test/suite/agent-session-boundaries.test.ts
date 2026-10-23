@@ -101,7 +101,7 @@ describe("AgentSession actionable boundaries", () => {
 		const requests: string[] = [];
 		const instruction = "EXACT-REPLACEMENT-INSTRUCTION ".repeat(100);
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 2_000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1_200, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(pi) => {
@@ -155,7 +155,7 @@ describe("AgentSession actionable boundaries", () => {
 		const requests: string[] = [];
 		const instruction = "EXACT-UNSENT-INSTRUCTION ".repeat(100);
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 2_000, maxTokens: 100 }],
+			models: [{ id: "faux-1", contextWindow: 1_500, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(pi) => {

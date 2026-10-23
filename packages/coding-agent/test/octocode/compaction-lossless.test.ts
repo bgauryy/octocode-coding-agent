@@ -43,7 +43,7 @@ describe("lossless compaction references", () => {
 		expect(view[0].content[0].text).toContain("/durable/tool.txt");
 		expect(messages[0].content[0].text).toBe(original);
 	});
-	it("cancels compaction rather than falling back when full tool evidence cannot be persisted", async () => {
+	it("keeps the evidence inline, cut with a marker, when the session has no file to persist it in; the messages stay whole", async () => {
 		const messages = [{ role: "toolResult", content: [{ type: "text", text: "complete evidence ".repeat(1000) }] }];
 		const pi = {
 			getThinkingLevel: () => "off",
@@ -54,20 +54,36 @@ describe("lossless compaction references", () => {
 		};
 		const event = {
 			signal: new AbortController().signal,
-			preparation: { messagesToSummarize: messages, turnPrefixMessages: [], settings: { reserveTokens: 1000 } },
+			preparation: {
+				firstKeptEntryId: "kept",
+				tokensBefore: 10,
+				isSplitTurn: false,
+				messagesToSummarize: messages,
+				turnPrefixMessages: [],
+				fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+				settings: { reserveTokens: 1000 },
+			},
 			branchEntries: [],
 		};
 		const ctx = {
-			model: { id: "test" },
+			model: { id: "test", provider: "p", api: "x", maxTokens: 1000, contextWindow: 100_000 },
 			hasUI: false,
 			sessionManager: { getSessionFile: () => undefined },
 			modelRegistry: {
-				streamSimple: () => {
-					throw new Error("provider must not be called");
-				},
+				streamSimple: () => ({
+					result: async () => ({
+						role: "assistant",
+						content: [{ type: "text", text: "## Goal\nsummary" }],
+						stopReason: "stop",
+						usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+						timestamp: 0,
+					}),
+				}),
 			},
 		};
-		expect(await writeSummary(pi as never, event as never, ctx as never)).toEqual({ cancel: true });
+		const out = await writeSummary(pi as never, event as never, ctx as never, ctx.model as never);
+		expect(out?.cancel).toBeUndefined();
+		expect(out?.compaction?.summary).toContain("## Goal\nsummary");
 		expect(messages[0].content[0].text).toBe("complete evidence ".repeat(1000));
 	});
 });

@@ -1,10 +1,11 @@
-/** The default transports: stdio for command servers and streamable HTTP for URL servers. */
+/** Default transports: stdio for commands, streamable HTTP for URLs, and legacy SSE when selected. */
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
 	type AuthProvider,
 	type McpTransport,
+	LegacySseTransport,
 	StdioTransport,
 	StreamableHttpTransport,
 } from "@octocodeai/octocode-mcp";
@@ -33,11 +34,14 @@ export function createDefaultTransport(
 ): McpTransport {
 	const { config, name } = entry;
 	if ("url" in config) {
-		return new StreamableHttpTransport({
+		const options = {
 			url: config.url,
-			headers: resolveHeadersOrThrow(config.headers, `MCP server "${name}"`),
+			headers: config.literalHeaders
+				? { ...config.headers }
+				: resolveHeadersOrThrow(config.headers, `MCP server "${name}"`),
 			authProvider,
-		});
+		};
+		return config.type === "sse" ? new LegacySseTransport(options) : new StreamableHttpTransport(options);
 	}
 	const env: Record<string, string> = {};
 	for (const [key, value] of Object.entries(config.env ?? {})) {

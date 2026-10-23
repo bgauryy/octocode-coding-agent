@@ -15,7 +15,8 @@ import { createSyntheticSourceInfo, getSyntheticPathSource, isSyntheticPath } fr
 import { time } from "../timings.ts";
 import { ProjectTrustStore } from "../trust-manager.ts";
 import { createExtensionAPI } from "./loader/api.ts";
-import { discoverExtensionsInDir, resolveExtensionEntries } from "./loader/discovery.ts";
+import type { HostModuleSpecifier } from "./host-modules.ts";
+import { discoverExtensionsInDir } from "./loader/discovery.ts";
 import { createExtensionRuntime } from "./loader/runtime.ts";
 import type { Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult } from "./types.ts";
 
@@ -48,9 +49,9 @@ function getVirtualModules(): Promise<Record<string, unknown>> {
  * Get aliases for jiti (used in built Node.js mode).
  * In compiled binary mode, virtualModules is used instead.
  */
-let _aliases: Record<string, string> | null = null;
+let _aliases: Record<HostModuleSpecifier, string> | null = null;
 
-function getAliases(): Record<string, string> {
+function getAliases(): Record<HostModuleSpecifier, string> {
 	if (_aliases) return _aliases;
 
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -350,13 +351,6 @@ export async function discoverAndLoadExtensions(
 	for (const p of configuredPaths) {
 		const resolved = resolvePath(p, resolvedCwd, { normalizeUnicodeSpaces: true });
 		if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-			// Check for package.json with pi manifest or index.ts
-			const entries = resolveExtensionEntries(resolved);
-			if (entries) {
-				addPaths(entries);
-				continue;
-			}
-			// No explicit entries - discover individual files in directory
 			addPaths(discoverExtensionsInDir(resolved));
 			continue;
 		}

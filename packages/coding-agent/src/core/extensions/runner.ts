@@ -339,8 +339,8 @@ export class ExtensionRunner {
 		return dispatchToolResult(this.host, event);
 	}
 
-	emitToolCall(event: Types.ToolCallEvent): Promise<Types.ToolCallEventResult | undefined> {
-		return dispatchToolCall(this.host, event);
+	emitToolCall(event: Types.ToolCallEvent, signal?: AbortSignal): Promise<Types.ToolCallEventResult | undefined> {
+		return dispatchToolCall(this.host, event, signal);
 	}
 
 	emitUserBash(event: Types.UserBashEvent): Promise<Types.UserBashEventResult | undefined> {

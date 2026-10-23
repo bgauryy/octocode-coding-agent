@@ -62,7 +62,7 @@ describe("tool renderer examples", () => {
 		try {
 			return {
 				systemPrompt: session.systemPrompt,
-				editToolDefinition: session.getToolDefinition("edit"),
+				bashToolDefinition: session.getToolDefinition("bash"),
 			};
 		} finally {
 			session.dispose();
@@ -73,12 +73,12 @@ describe("tool renderer examples", () => {
 		{
 			name: "built-in tool renderer",
 			extensionPath: join(examplesDir, "built-in-tool-renderer.ts"),
-			tools: ["read", "bash", "edit", "write"],
+			tools: ["bash"],
 		},
 		{
 			name: "minimal mode",
 			extensionPath: join(examplesDir, "minimal-mode.ts"),
-			tools: ["read", "bash", "write", "edit", "find", "grep", "ls"],
+			tools: ["bash"],
 		},
 	])("keeps the system prompt unchanged for the $name example", async ({ extensionPath, tools }) => {
 		const baseline = await getSessionState(undefined, tools);
@@ -87,21 +87,21 @@ describe("tool renderer examples", () => {
 		expect(withRenderer.systemPrompt).toBe(baseline.systemPrompt);
 	});
 
-	it("keeps minimal mode's edit tool in the default shell", async () => {
-		const minimalMode = await getSessionState(join(examplesDir, "minimal-mode.ts"), ["edit"]);
-		const editToolDefinition = minimalMode.editToolDefinition;
-		if (!editToolDefinition) throw new Error("minimal mode did not register the edit tool");
-		const { renderShell: _renderShell, ...defaultShellDefinition } = editToolDefinition;
+	it("keeps minimal mode's bash tool in the default shell", async () => {
+		const minimalMode = await getSessionState(join(examplesDir, "minimal-mode.ts"), ["bash"]);
+		const bashToolDefinition = minimalMode.bashToolDefinition;
+		if (!bashToolDefinition) throw new Error("minimal mode did not register the bash tool");
+		const { renderShell: _renderShell, ...defaultShellDefinition } = bashToolDefinition;
 
-		expect(renderEditTool(editToolDefinition, tempDir)).toEqual(renderEditTool(defaultShellDefinition, tempDir));
+		expect(renderBashTool(bashToolDefinition, tempDir)).toEqual(renderBashTool(defaultShellDefinition, tempDir));
 	});
 });
 
-function renderEditTool(definition: ToolDefinition, cwd: string): string[] {
+function renderBashTool(definition: ToolDefinition, cwd: string): string[] {
 	const component = new ToolExecutionComponent(
-		"edit",
-		"edit-shell-test",
-		{ path: "notes.txt", oldText: "before", newText: "after" },
+		"bash",
+		"bash-shell-test",
+		{ command: "echo after" },
 		{},
 		definition,
 		{ requestRender() {} } as unknown as TUI,

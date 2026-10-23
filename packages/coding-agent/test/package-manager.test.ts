@@ -83,7 +83,7 @@ describe("DefaultPackageManager", () => {
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
 
-		settingsManager = SettingsManager.inMemory();
+		settingsManager = SettingsManager.inMemory({}, { projectTrusted: true });
 		packageManager = new DefaultPackageManager({
 			cwd: tempDir,
 			agentDir,
@@ -500,7 +500,7 @@ Content`,
 			try {
 				const cwd = join(tempDir, "scratch", "nested");
 				const localAgentDir = join(tempDir, ".octocode", "agent");
-				const localSettingsManager = SettingsManager.inMemory();
+				const localSettingsManager = SettingsManager.inMemory({}, { projectTrusted: true });
 				mkdirSync(cwd, { recursive: true });
 				mkdirSync(localAgentDir, { recursive: true });
 
@@ -725,9 +725,12 @@ Content`,
 
 	describe("npmCommand", () => {
 		it("should use npmCommand argv for npm installs", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "node@20", "--", "npm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "node@20", "--", "npm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -769,9 +772,12 @@ Content`,
 		});
 
 		it("should use bun --cwd for npm package installs", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "bun@1", "--", "bun"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "bun@1", "--", "bun"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -909,9 +915,12 @@ Content`,
 
 		it("should prefer the package manager after a separator over the outer executable", () => {
 			// Regression for #9863.
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["npm", "exec", "--", "pnpm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["npm", "exec", "--", "pnpm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -931,9 +940,12 @@ Content`,
 
 		it("should detect pnpm through a corepack wrapper without a separator", async () => {
 			// Regression for #9863.
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["corepack", "pnpm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["corepack", "pnpm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -969,9 +981,12 @@ Content`,
 		});
 
 		it("should disable peer installation for git package dependencies with bun", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["bun"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["bun"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1086,9 +1101,12 @@ Content`,
 		});
 
 		it("should disable peer installation through wrapped pnpm when updating git dependencies", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "node@20", "--", "pnpm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "node@20", "--", "pnpm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1136,9 +1154,12 @@ Content`,
 		});
 
 		it("should use npmCommand argv for npm root lookup and invalidate cached root when npmCommand changes", () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "node@20", "--", "npm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "node@20", "--", "npm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1175,10 +1196,13 @@ Content`,
 		});
 
 		it("should install user npm packages into the pi-managed npm root", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["pnpm"],
-				packages: ["npm:pnpm-pkg"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["pnpm"],
+					packages: ["npm:pnpm-pkg"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1222,10 +1246,13 @@ Content`,
 		});
 
 		it("should load legacy pnpm global package paths from pnpm list output", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["pnpm"],
-				packages: ["npm:pnpm-pkg"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["pnpm"],
+					packages: ["npm:pnpm-pkg"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1265,9 +1292,12 @@ Content`,
 		});
 
 		it("should resolve wrapped pnpm global package paths from pnpm list output", () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "node@20", "--", "pnpm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "node@20", "--", "pnpm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -1291,9 +1321,12 @@ Content`,
 		});
 
 		it("should ignore malformed legacy pnpm global package lists", () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["pnpm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["pnpm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,
@@ -2778,9 +2811,12 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 		});
 
 		it("should use npmCommand argv for npm update checks", async () => {
-			settingsManager = SettingsManager.inMemory({
-				npmCommand: ["mise", "exec", "node@20", "--", "npm"],
-			});
+			settingsManager = SettingsManager.inMemory(
+				{
+					npmCommand: ["mise", "exec", "node@20", "--", "npm"],
+				},
+				{ projectTrusted: true },
+			);
 			packageManager = new DefaultPackageManager({
 				cwd: tempDir,
 				agentDir,

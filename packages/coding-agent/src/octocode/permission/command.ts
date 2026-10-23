@@ -79,7 +79,7 @@ export function registerPermissionCommand(
 	provenanceSize: () => number,
 ): void {
 	const select = async (mode: PermissionMode, ctx: ExtensionContext): Promise<void> => {
-		permission.setMode(mode, ctx);
+		if (!(await permission.chooseMode(mode, ctx))) return say(ctx, `Permission mode stays ${permission.mode}.`);
 		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode}. ${modeSummary(mode)}`);
 	};
 

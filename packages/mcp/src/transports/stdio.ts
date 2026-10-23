@@ -1,7 +1,13 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import crossSpawn from "cross-spawn";
-import { type JsonRpcMessage, McpConnectionClosedError, parseJsonRpcMessage } from "../protocol/jsonrpc.ts";
+import {
+	JSON_RPC_ERROR_CODES,
+	type JsonRpcId,
+	type JsonRpcMessage,
+	McpConnectionClosedError,
+	parseJsonRpcMessage,
+} from "../protocol/jsonrpc.ts";
 import { DEFAULT_MAX_MESSAGE_BYTES, type McpTransport, TransportEvents } from "./transport.ts";
 
 const DEFAULT_MAX_STDERR_BYTES = 64 * 1024;
@@ -9,6 +15,45 @@ const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 /** How long a server gets to exit on its own after stdin closes, before it is sent SIGTERM. */
 const STDIN_CLOSE_GRACE_MS = 500;
 const USE_PROCESS_GROUPS = process.platform !== "win32";
+
+/**
+ * Variables a server inherits unless `inheritEnv` is set: the allow-list of the MCP TypeScript SDK's
+ * `getDefaultEnvironment` (`packages/client/src/client/stdio.ts`), so secrets in the host environment stay out.
+ */
+export const DEFAULT_INHERITED_ENV_VARS =
+	process.platform === "win32"
+		? [
+				"APPDATA",
+				"COMSPEC",
+				"HOMEDRIVE",
+				"HOMEPATH",
+				"LOCALAPPDATA",
+				"PATH",
+				"PATHEXT",
+				"PROCESSOR_ARCHITECTURE",
+				"PROGRAMDATA",
+				"PROGRAMFILES",
+				"PROGRAMFILES(X86)",
+				"PROGRAMW6432",
+				"SYSTEMDRIVE",
+				"SYSTEMROOT",
+				"TEMP",
+				"USERNAME",
+				"USERPROFILE",
+				"WINDIR",
+			]
+		: ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
+
+/** The host's environment reduced to `DEFAULT_INHERITED_ENV_VARS` (exported functions are skipped, as the SDK does). */
+export function getDefaultEnvironment(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const key of DEFAULT_INHERITED_ENV_VARS) {
+		const value = source[key];
+		if (value === undefined || value.startsWith("()")) continue;
+		env[key] = value;
+	}
+	return env;
+}
 
 /** Process groups of running servers, killed if the host exits without closing them. */
 const liveProcessGroups = new Set<number>();
@@ -49,11 +94,37 @@ function installExitHook(): void {
 	});
 }
 
+/** How much of an oversized message is searched for its top-level `id`. */
+const OVERSIZE_PROBE_BYTES = 4096;
+const ID_VALUE = '(-?\\d+|"(?:[^"\\\\]|\\\\.)*")';
+const LEADING_ID = new RegExp(`^\\s*\\{\\s*(?:"jsonrpc"\\s*:\\s*"[^"]*"\\s*,\\s*)?"id"\\s*:\\s*${ID_VALUE}\\s*[,}]`);
+/** A request or notification, not a response: `method` leads the message, after an optional `jsonrpc` and `id`. */
+const REQUEST_START = new RegExp(
+	`^\\s*\\{\\s*(?:"jsonrpc"\\s*:\\s*"[^"]*"\\s*,\\s*)?(?:"id"\\s*:\\s*${ID_VALUE}\\s*,\\s*)?"method"`,
+);
+const TRAILING_ID = new RegExp(`,\\s*"id"\\s*:\\s*${ID_VALUE}\\s*\\}\\s*$`);
+
+/** The id of a response from the start or end of its text; only a top-level `id` member there counts. */
+function responseId(start: string, end: string | undefined): JsonRpcId | undefined {
+	const raw = LEADING_ID.exec(start)?.[1] ?? (end === undefined ? undefined : TRAILING_ID.exec(end)?.[1]);
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw) as JsonRpcId;
+	} catch {
+		return undefined;
+	}
+}
+
 export interface StdioTransportOptions {
 	command: string;
 	args?: readonly string[];
 	cwd?: string;
+	/** Variables for the server, over the inherited ones. */
 	env?: Record<string, string>;
+	/**
+	 * `true`: the server inherits the whole host environment (tokens included). Default `false`: only
+	 * `DEFAULT_INHERITED_ENV_VARS`; `env` adds to them. Use an absolute command or pass `PATH` yourself to change `PATH`.
+	 */
 	inheritEnv?: boolean;
 	stderr?: "pipe" | "inherit";
 	onStderr?: (chunk: string) => void;
@@ -72,6 +143,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 	private stderrBuffer = Buffer.alloc(0);
 	private started = false;
 	private closed = false;
+	/** Ids of requests sent and not yet answered: an oversized response fails its request instead of stalling it. */
+	private readonly outstanding = new Set<JsonRpcId>();
 
 	constructor(options: StdioTransportOptions) {
 		super();
@@ -90,7 +163,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		if (this.started) throw new Error("MCP stdio transport already started");
 		if (this.closed) throw new McpConnectionClosedError();
 		this.started = true;
-		const env = this.options.inheritEnv === false ? { ...this.options.env } : { ...process.env, ...this.options.env };
+		const inherited = this.options.inheritEnv === true ? { ...process.env } : getDefaultEnvironment();
+		const env = { ...inherited, ...this.options.env };
 		const child = crossSpawn(this.options.command, this.options.args ?? [], {
 			cwd: this.options.cwd,
 			env,
@@ -121,6 +195,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			}
 			this.stdoutBuffer = Buffer.alloc(0);
 			this.discardingLine = false;
+			this.outstanding.clear();
 			this.emitClose();
 		});
 
@@ -145,6 +220,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		const stdin = this.child?.stdin;
 		if (!this.started || this.closed || !stdin?.writable) throw new McpConnectionClosedError();
 		const payload = `${JSON.stringify(message)}\n`;
+		if ("method" in message && "id" in message && message.id !== undefined) this.outstanding.add(message.id);
 		await new Promise<void>((resolve, reject) => {
 			stdin.write(payload, (error) => (error ? reject(error) : resolve()));
 		});
@@ -189,9 +265,10 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			if (newline < 0) {
 				if (this.discardingLine) this.stdoutBuffer = Buffer.alloc(0);
 				else if (this.stdoutBuffer.length > maxMessageBytes) {
+					const head = this.stdoutBuffer.subarray(0, OVERSIZE_PROBE_BYTES);
 					this.stdoutBuffer = Buffer.alloc(0);
 					this.discardingLine = true;
-					this.emitError(new Error(`MCP stdio message exceeds ${maxMessageBytes} bytes`));
+					this.rejectOversized(head, undefined, maxMessageBytes);
 				}
 				return;
 			}
@@ -202,17 +279,45 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 				continue;
 			}
 			if (line.length > maxMessageBytes) {
-				this.emitError(new Error(`MCP stdio message exceeds ${maxMessageBytes} bytes`));
+				this.rejectOversized(
+					line.subarray(0, OVERSIZE_PROBE_BYTES),
+					line.subarray(-OVERSIZE_PROBE_BYTES),
+					maxMessageBytes,
+				);
 				continue;
 			}
 			const text = line.toString("utf8").replace(/\r$/, "");
 			if (!text.trim()) continue;
 			try {
-				this.emitMessage(parseJsonRpcMessage(JSON.parse(text)));
+				const message = parseJsonRpcMessage(JSON.parse(text));
+				if (!("method" in message)) this.outstanding.delete(message.id);
+				this.emitMessage(message);
 			} catch (error) {
 				this.emitError(error);
 			}
 		}
+	}
+
+	/**
+	 * Reports a dropped oversized message and, when it was the response to a request, answers that request with an
+	 * error at once (otherwise it would wait out its timeout). The id comes from the head or tail of the message;
+	 * without one, a lone outstanding request is the only candidate.
+	 */
+	private rejectOversized(head: Buffer, tail: Buffer | undefined, maxMessageBytes: number): void {
+		const message = `MCP stdio message exceeds ${maxMessageBytes} bytes`;
+		this.emitError(new Error(message));
+		const start = head.toString("utf8");
+		if (REQUEST_START.test(start)) return;
+		const id = responseId(start, tail?.toString("utf8"));
+		const target =
+			id !== undefined && this.outstanding.has(id)
+				? id
+				: id === undefined && this.outstanding.size === 1
+					? [...this.outstanding][0]
+					: undefined;
+		if (target === undefined) return;
+		this.outstanding.delete(target);
+		this.emitMessage({ jsonrpc: "2.0", id: target, error: { code: JSON_RPC_ERROR_CODES.internalError, message } });
 	}
 
 	private handleStderr(chunk: Buffer | string): void {

@@ -1,12 +1,10 @@
-import { adoptSkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
 import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
 import { formatDuration, shortPath } from "../../shared/format.ts";
-import { PRIVATE_FILE_MODE, privateDir, sessionOutputDir } from "../../shared/home.ts";
+import { sessionOutputDir } from "../../shared/home.ts";
 import { adoptTree, groupAlive, groupStartTimes, prepareTree, sameProcess, stopTree } from "../../shared/process.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
@@ -23,12 +21,14 @@ import { ChildRelay, type RelayHost } from "../relay.ts";
 import { ReportTracker } from "../report.ts";
 import { unavailableResult } from "../result-schema.ts";
 import { type Identity, subagentProcessEnv, writeNonceFile } from "./env.ts";
+import { prepareChildResourceFiles, removeChildResourceFiles, type ChildResourceFiles } from "./handoff-files.ts";
 import {
 	ABORT_SETTLE_MS,
 	EXIT_GRACE_MS,
 	exitReason,
 	LOAD_ERROR,
 	MAX_EVENT_BYTES,
+	NO_ANSWER,
 	StartupError,
 	SUBAGENT_STOP_GRACE_MS,
 	type SubagentOutcome,
@@ -36,7 +36,7 @@ import {
 	USER_STOP_GRACE_MS,
 	WATCHDOG,
 } from "./outcome.ts";
-import { childSession, reportDir } from "./session.ts";
+import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
 
 /**
@@ -77,38 +77,11 @@ export async function runChild(
 	if (signal?.aborted) throw new Error("Subagent cancelled");
 	// The team signs the user's messages to this child with the nonce for as long as the child runs.
 	// The secret reaches the child through an owner-only file, never its environment or arguments (`PERMISSION_NONCE_FILE_ENV`).
-	let skillSnapshotFile: string | undefined;
+	let resources: ChildResourceFiles = {};
 	let nonceFile: string | undefined;
 	let vouched: (() => void) | undefined;
 	try {
-		if (identity.resultContract) {
-			const session = childSession(identity);
-			fs.mkdirSync(session.dir, { recursive: true, mode: 0o700 });
-			const file = path.join(session.dir, "result-schema-v1.json");
-			const snapshot = JSON.stringify({
-				version: 1,
-				schemaHash: identity.resultContract.hash,
-				schema: identity.resultContract.schema,
-			});
-			try {
-				fs.writeFileSync(file, snapshot, { flag: "wx", mode: PRIVATE_FILE_MODE });
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "EEXIST" || fs.readFileSync(file, "utf8") !== snapshot)
-					throw new Error("Subagent result schema snapshot could not be persisted unchanged", { cause: error });
-			}
-		}
-		if (identity.skillResources) {
-			adoptSkillResourceSnapshot(identity.skillResources);
-			const directory = privateDir(identity.scratch ?? reportDir(identity.id) ?? sessionOutputDir("output"));
-			const file = path.join(directory, `skills-${randomBytes(16).toString("hex")}.json`);
-			const fd = fs.openSync(file, "wx", PRIVATE_FILE_MODE);
-			skillSnapshotFile = file;
-			try {
-				fs.writeFileSync(fd, JSON.stringify(identity.skillResources));
-			} finally {
-				fs.closeSync(fd);
-			}
-		}
+		resources = prepareChildResourceFiles(identity);
 		const rolePromptFile = profile?.prompt ? writeRolePrompt(profile.prompt, sessionOutputDir("output")) : undefined;
 		const nonce = randomBytes(16).toString("hex");
 		nonceFile = writeNonceFile(nonce, identity.id);
@@ -122,7 +95,15 @@ export async function runChild(
 			// Detached on POSIX so the child leads a process group: cancelling kills its whole tree (MCP servers, Chrome, bash).
 			const child = spawn(command, [...prefix, ...args], {
 				cwd,
-				env: subagentProcessEnv(profile, process.env, identity, nonceFile, rolePromptFile, skillSnapshotFile),
+				env: subagentProcessEnv(
+					profile,
+					process.env,
+					identity,
+					nonceFile,
+					rolePromptFile,
+					resources.skillSnapshotFile,
+					resources.mcpServersFile,
+				),
 				stdio: ["pipe", "pipe", "pipe"],
 				detached: process.platform !== "win32",
 			});
@@ -167,7 +148,9 @@ export async function runChild(
 			let stopped: Promise<void> | undefined;
 			const abort = () => {
 				relay.cancelAll();
-				stopped ??= stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS);
+				stopped ??= stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS).catch(
+					() => undefined,
+				);
 			};
 			signal?.addEventListener("abort", abort, { once: true });
 			// Watchdog: a child stuck on a stalled model stream emits nothing; stop it instead of spinning forever.
@@ -242,7 +225,7 @@ export async function runChild(
 						onSettled?.();
 						return closeInput();
 					case "incoming":
-						return report.incoming(effect.role);
+						return report.incoming(effect.role, effect.job);
 					case "answer":
 						return report.answer(effect.text, effect.stopReason, effect.errorMessage);
 				}
@@ -295,7 +278,7 @@ export async function runChild(
 				clearInterval(watchdog);
 				// What the child left in its own process group (an MCP server, a dev server, a Chrome) dies with the run, and
 				// before the run settles: the caller removes the child's worktree next, and a holder must not outlive that.
-				if (leftBehind(child.pid)) stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS);
+				if (leftBehind(child.pid)) stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS).catch(() => undefined);
 				exitGrace = setTimeout(() => settle(code, exitSignal), EXIT_GRACE_MS);
 			});
 			child.on("close", (code, exitSignal) => settle(code, exitSignal));
@@ -311,7 +294,16 @@ export async function runChild(
 				stderr.close();
 				const saved = savedNotices(state, outputDir);
 				if (saved) progress({ usage: state.usage, notices: saved });
-				const { text: finalText, body: lastProgress, pointer, error, answered, outcome, structured } = report.result();
+				const {
+					text: finalText,
+					body: lastProgress,
+					pointer,
+					error,
+					answered,
+					outcome,
+					outcomeSource,
+					structured,
+				} = report.result();
 				if (streamFailure) reject(streamFailure);
 				// A child stopped while settling after its answer still delivers that answer.
 				else if (stalled && !answered) reject(stalled);
@@ -342,7 +334,7 @@ export async function runChild(
 						? state.notices.lastError
 							? `Subagent stopped: ${state.notices.lastError}`
 							: "Subagent cancelled before its run settled"
-						: error;
+						: (error ?? (answered ? undefined : NO_ANSWER));
 					resolve({
 						text: finalText,
 						...(identity.resultContract
@@ -354,7 +346,7 @@ export async function runChild(
 								}
 							: {}),
 						usage: state.usage,
-						...(outcome ? { outcome } : {}),
+						...(outcome ? { outcome, outcomeSource } : {}),
 						...(failure ? { error: failure } : {}),
 					});
 				}
@@ -374,7 +366,7 @@ export async function runChild(
 		} catch {
 			process.stderr.write("Unable to release a subagent permission handoff\n");
 		}
-		for (const file of [nonceFile, skillSnapshotFile]) {
+		for (const file of [nonceFile]) {
 			if (!file) continue;
 			try {
 				fs.rmSync(file, { force: true });
@@ -382,5 +374,6 @@ export async function runChild(
 				process.stderr.write("Unable to remove a private subagent handoff file\n");
 			}
 		}
+		removeChildResourceFiles(resources);
 	}
 }

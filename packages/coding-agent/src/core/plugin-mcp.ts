@@ -1,18 +1,21 @@
-import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { stripBom } from "../utils/text.ts";
 import { repoKey } from "../octocode/shared/home.ts";
 import { validateMcpServerConfig, mcpNamespace, type McpServerConfig } from "./mcp-servers.ts";
 import { pluginContext } from "./plugin-context.ts";
-import { discoverPluginManifests, resolvePluginPath, type PluginManifest } from "./plugin-manifest.ts";
+import {
+	resolveConfiguredPlugin,
+	resolvePluginPath,
+	startPluginFingerprint,
+	type PluginManifest,
+} from "./plugin-manifest.ts";
 import { configuredPlugins } from "./plugin-settings.ts";
 import type { Settings } from "./settings-manager.ts";
+import { isRecord } from "../utils/guards.ts";
 
 type PluginEntry = NonNullable<Settings["plugins"]>[number];
 type Server = { name: string; config: McpServerConfig };
-const object = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Read and fingerprint declarations without connecting servers or running package code. */
 export function inspectPluginMcp(entry: PluginEntry): {
@@ -26,21 +29,16 @@ export function inspectPluginMcp(entry: PluginEntry): {
 		errors: [],
 	};
 	try {
-		if (!path.isAbsolute(entry.path)) throw new Error("Plugin path must be absolute");
-		const discovery = discoverPluginManifests(entry.path, {
-			protocol: entry.protocol,
-		});
-		result.errors.push(...discovery.errors);
-		const manifest = discovery.manifests.find((item) => item.protocol === entry.protocol);
-		if (!manifest) throw new Error(`No valid ${entry.protocol} plugin manifest found`);
+		const { manifest, errors, failure } = resolveConfiguredPlugin(entry);
+		result.errors.push(...errors);
+		if (!manifest) throw new Error(failure);
 		result.manifest = manifest;
-		const hash = createHash("sha256").update(JSON.stringify([manifest.root, manifest.protocol, manifest.name]));
-		for (const source of manifest.sources) hash.update(JSON.stringify([source, readFileSync(source, "utf8")]));
+		const hash = startPluginFingerprint(manifest);
 		const servers = new Map<string, McpServerConfig>();
 		const add = (value: unknown, source: string) => {
-			if (!object(value)) throw new Error(`${source}: expected an MCP server map`);
+			if (!isRecord(value)) throw new Error(`${source}: expected an MCP server map`);
 			for (const [name, raw] of Object.entries(value)) {
-				if (!object(raw)) throw new Error(`${source}: server ${name} must be an object`);
+				if (!isRecord(raw)) throw new Error(`${source}: server ${name} must be an object`);
 				const fields = ["type", "command", "args", "env", "cwd", "url", "headers"];
 				const extra = Object.keys(raw).filter((key) => !fields.includes(key));
 				if (extra.length) throw new Error(`${source}: unsupported server ${name} fields: ${extra.join(", ")}`);
@@ -66,7 +64,7 @@ export function inspectPluginMcp(entry: PluginEntry): {
 			const text = readFileSync(source, "utf8");
 			hash.update(JSON.stringify([source, text]));
 			const value: unknown = JSON.parse(stripBom(text));
-			if (!object(value) || !object(value.mcpServers)) throw new Error(`${source}: expected an mcpServers object`);
+			if (!isRecord(value) || !isRecord(value.mcpServers)) throw new Error(`${source}: expected an mcpServers object`);
 			add(value.mcpServers, source);
 		};
 		const declared = manifest.settings.mcpServers;
@@ -91,7 +89,7 @@ function expand(value: unknown, variables: Record<string, string>): unknown {
 	if (typeof value === "string")
 		return value.replace(/\$\{([^}]+)\}/g, (placeholder, key: string) => variables[key] ?? placeholder);
 	if (Array.isArray(value)) return value.map((item) => expand(item, variables));
-	if (object(value))
+	if (isRecord(value))
 		return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, expand(item, variables)]));
 	return value;
 }

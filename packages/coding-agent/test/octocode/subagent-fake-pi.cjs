@@ -461,6 +461,18 @@ async function scenario() {
 		emit(say("FULL REPORT"));
 		emit({ type: "message_end", message: { role: "custom", content: "Background bash job finished" } });
 		emit(say("That job was my coverage rerun; findings unchanged."));
+	} else if (task.startsWith("job follow-up")) {
+		// The child reported, then its own background bash job ended and woke it (`octocode-bash-job`, as files/bash.ts sends it).
+		emit(say("done: build started and checks pass"));
+		emit({
+			type: "message_end",
+			message: {
+				role: "custom",
+				customType: "octocode-bash-job",
+				content: "Background bash 1 finished after 4m00s: yarn build\nLog: bash-1.log\nok",
+			},
+		});
+		emit(say(task.includes("fails") ? "failed: the build broke" : "The build finished cleanly; nothing changes."));
 	} else if (task.startsWith("grants")) {
 		emit(say(`mode=${process.env.OCTOCODE_PERMISSION ?? ""} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ""}`));
 	} else if (task.startsWith("denied")) {

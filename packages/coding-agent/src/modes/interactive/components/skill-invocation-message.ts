@@ -1,68 +1,42 @@
-import { Box, Container, Markdown, type MarkdownTheme, MouseRegion, Text } from "@octocodeai/octocode-tui";
+import { type Container, Markdown, type MarkdownTheme, Text } from "@octocodeai/octocode-tui";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
 
 /**
- * Component that renders a skill invocation message with collapsed/expanded state.
- * Uses same background color as custom messages for visual consistency.
+ * Renders a skill invocation block, collapsed to one line until clicked or expanded.
  * Only renders the skill block itself - user message is rendered separately.
  */
-export class SkillInvocationMessageComponent extends Box {
-	private expanded = false;
-	private skillBlock: ParsedSkillBlock;
-	private markdownTheme: MarkdownTheme;
+export class SkillInvocationMessageComponent extends CollapsibleMessageComponent {
+	private readonly skillBlock: ParsedSkillBlock;
+	private readonly markdownTheme: MarkdownTheme;
 
 	constructor(skillBlock: ParsedSkillBlock, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {
-		super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+		super(outputPad);
 		this.skillBlock = skillBlock;
 		this.markdownTheme = markdownTheme;
 		this.updateDisplay();
 	}
 
-	setExpanded(expanded: boolean): void {
-		this.expanded = expanded;
-		this.updateDisplay();
-	}
-
-	setOutputPad(outputPad: number): void {
-		this.setPaddingX(outputPad);
-	}
-
-	override invalidate(): void {
-		super.invalidate();
-		this.updateDisplay();
-	}
-
-	private updateDisplay(): void {
-		this.clear();
-		const content = new Container();
-
-		if (this.expanded) {
-			// Expanded: label + skill name header + full content
-			const label = theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`);
-			content.addChild(new Text(label, 0, 0));
-			const header = `**${this.skillBlock.name}**\n\n`;
+	protected renderContent(content: Container, expanded: boolean): void {
+		if (expanded) {
+			content.addChild(new Text(theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`), 0, 0));
 			content.addChild(
-				new Markdown(header + this.skillBlock.content, 0, 0, this.markdownTheme, {
+				new Markdown(`**${this.skillBlock.name}**\n\n${this.skillBlock.content}`, 0, 0, this.markdownTheme, {
 					color: (text: string) => theme.fg("customMessageText", text),
 				}),
 			);
 		} else {
-			// Collapsed: single line - [skill] name (hint to expand)
-			const line =
-				theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
-				theme.fg("customMessageText", this.skillBlock.name) +
-				theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
-			content.addChild(new Text(line, 0, 0));
+			content.addChild(
+				new Text(
+					theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
+						theme.fg("customMessageText", this.skillBlock.name) +
+						theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`),
+					0,
+					0,
+				),
+			);
 		}
-
-		this.addChild(
-			new MouseRegion(content, (event) => {
-				if (event.type !== "click" || event.button !== "left") return undefined;
-				this.setExpanded(!this.expanded);
-				return { handled: true };
-			}),
-		);
 	}
 }

@@ -2,11 +2,12 @@
 
 import type { ExtensionContext } from "../../core/extensions/types.ts";
 import { hasDirectTools } from "./exposure.ts";
-import type { McpSignInPrompt } from "./oauth.ts";
+import { McpSignInCancelledError, type McpSignInPrompt, signInMcpServer } from "./oauth.ts";
 import { saveConfig } from "./persistence.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type { McpServerConnection } from "./runtime.ts";
-import { errorMessage, isEnabled, type McpServer } from "./server.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { ensureDiscoveryActive, hideTools, registerTools } from "./tool-registry.ts";
 
@@ -40,19 +41,17 @@ async function createConnection(
 	isCurrent: () => boolean,
 ): Promise<McpServerConnection | undefined> {
 	const { options } = state;
-	const runtime = await loadMcpRuntime();
+	const { createServerConnection } = await loadMcpRuntime();
 	if (!isCurrent()) return undefined;
-	const connection: McpServerConnection = new runtime.McpServerConnection({
+	const connection = createServerConnection({
 		entry: server.entry,
 		cwd: state.sessionCwd,
-		createTransport: (entry, cwd, auth) => {
-			const prepared = options.prepareLaunch?.(entry, cwd) ?? entry;
-			state.preparedLaunches.set(connection, structuredClone(prepared));
-			return (options.createTransport ?? runtime.createDefaultTransport)(prepared, cwd, auth);
-		},
-		credentials: state.getCredentials(runtime),
+		createTransport: options.createTransport,
+		prepareLaunch: options.prepareLaunch,
+		onLaunch: (launched, prepared) => state.preparedLaunches.set(launched, prepared),
+		credentials: state.getCredentials(),
 		providerToken: async (provider) => state.modelRegistry?.getApiKeyForProvider(provider),
-		log: state.getServerLog(runtime),
+		log: state.getServerLog(),
 		onTools: (connection) => {
 			if (isCurrent()) {
 				for (const current of state.connections())
@@ -127,23 +126,37 @@ export async function waitForServers(
 /**
  * The first prompt waits for servers whose tools are declared to the model, so they are declared
  * in its first request, but not indefinitely: a slow or hanging server must not hold up the
- * prompt. Other servers are waited for when a script or search needs them.
+ * prompt. Servers with only deferred tools get a short grace (`deferredGraceMs`), so the section
+ * lists their tools when they connect quickly; otherwise they are listed by name and waited for
+ * when a tool_search needs them.
  */
 export async function waitForDirectServers(state: McpExtensionState, ctx: ExtensionContext): Promise<void> {
 	if (state.waitedForStartup) return;
 	state.waitedForStartup = true;
-	const ready = state.servers.flatMap((server) =>
-		isEnabled(server) && hasDirectTools(server.entry) && server.ready ? [server.ready] : [],
-	);
-	if (ready.length === 0) return;
-	let timer: NodeJS.Timeout | undefined;
-	const finished = await Promise.race([
-		Promise.all(ready).then(() => true),
-		new Promise<boolean>((resolve) => {
-			timer = setTimeout(() => resolve(false), state.startupWaitMs);
-		}),
+	const readyOf = (direct: boolean) =>
+		state.servers.flatMap((server) =>
+			isEnabled(server) && hasDirectTools(server.entry) === direct && server.ready ? [server.ready] : [],
+		);
+	const direct = readyOf(true);
+	const deferred = state.deferredGraceMs > 0 ? readyOf(false) : [];
+	if (direct.length === 0 && deferred.length === 0) return;
+	const waitFor = async (ready: Promise<unknown>[], ms: number): Promise<boolean> => {
+		if (ready.length === 0) return true;
+		let timer: NodeJS.Timeout | undefined;
+		const finished = await Promise.race([
+			Promise.all(ready).then(() => true),
+			new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), ms);
+			}),
+		]);
+		clearTimeout(timer);
+		return finished;
+	};
+	// Both waits run together, so the grace never adds to the direct wait; only the direct wait reports.
+	const [finished] = await Promise.all([
+		waitFor(direct, state.startupWaitMs),
+		waitFor(deferred, state.deferredGraceMs),
 	]);
-	clearTimeout(timer);
 	if (!finished) {
 		ctx.ui.notify("MCP servers are still connecting; their tools become available once connected.", "info");
 	}
@@ -159,13 +172,12 @@ export async function signIn(
 	const connection = server.connection;
 	const url = connection?.oauthUrl;
 	if (!connection || !url) return `MCP server "${server.entry.name}" does not use OAuth.`;
-	const runtime = await loadMcpRuntime();
 	const signal = cancel ? AbortSignal.any([state.session.signal, cancel]) : state.session.signal;
 	try {
 		await state.track(
-			runtime.signInMcpServer({
+			signInMcpServer({
 				serverUrl: url,
-				store: state.getCredentials(runtime).forServer(server.entry.name, url),
+				store: state.getCredentials().forServer(server.entry.name, url),
 				settings: connection.oauthSettings(),
 				challenge: connection.challenge,
 				prompt,
@@ -173,7 +185,7 @@ export async function signIn(
 			}),
 		);
 	} catch (error) {
-		if (error instanceof runtime.McpSignInCancelledError) return "Sign-in cancelled.";
+		if (error instanceof McpSignInCancelledError) return "Sign-in cancelled.";
 		return `Sign-in failed: ${errorMessage(error)}`;
 	}
 	// The challenge that asked for this sign-in (for example for more scope) is answered.
@@ -190,7 +202,7 @@ export async function signOut(state: McpExtensionState, server: McpServer): Prom
 	const connection = server.connection;
 	const url = connection?.oauthUrl;
 	if (!connection || !url) return false;
-	const removed = state.getCredentials(await loadMcpRuntime()).remove(server.entry.name, url);
+	const removed = state.getCredentials().remove(server.entry.name, url);
 	await connection.signOut();
 	return removed;
 }

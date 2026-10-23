@@ -121,6 +121,11 @@ export class SessionManager implements SessionManagerApi {
 		persistence.persistEntry(this.state, entry);
 	}
 
+	/** Explicitly make an empty session discoverable before any conversation entries exist. */
+	materialize(): void {
+		persistence.materializeSession(this.state);
+	}
+
 	appendMessage(message: Message | CustomMessage | BashExecutionMessage): string {
 		return appends.appendMessage(this.state, message);
 	}
@@ -264,7 +269,6 @@ export class SessionManager implements SessionManagerApi {
 		return buildSessionTree(this.getEntries(), this.state.labelsById, this.state.labelTimestampsById);
 	}
 
-	// =========================================================================
 	// Branching
 	// =========================================================================
 

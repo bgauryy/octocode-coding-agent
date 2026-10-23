@@ -1,22 +1,30 @@
-import { mcpNamespace } from "../../core/mcp-servers.ts";
+import { mcpNamespace, OCTOCODE_SERVER } from "../../core/mcp-servers.ts";
 import type { McpServerEntry } from "./config.ts";
-import { hasIndirectTools } from "./exposure.ts";
+import { hasDirectTools, hasIndirectTools } from "./exposure.ts";
 
-/** Name of the system prompt section that lists the servers whose tools are not declared. */
+/** Name of the system prompt section that lists the session's MCP servers. */
 export const MCP_SERVERS_SECTION = "mcp_servers";
-/** Characters of a server description in the section, as Codex allows for deferred namespaces. */
+/** Characters of a server summary in the section, as Codex allows for deferred namespaces. */
 const MAX_SERVER_DESCRIPTION_CHARS = 250;
+/** Characters of a server's instructions in the section; Codex asks servers to keep their first 512 self-contained. */
+const MAX_SERVER_INSTRUCTIONS_CHARS = 512;
+/** Tool names listed per server before the rest are counted; tool_search still finds them. */
+const MAX_LISTED_TOOLS = 40;
 /**
- * Characters of the whole section. Descriptions shrink to fit; when the server lines alone do not
- * fit, the last servers are left out and counted in a closing line.
+ * Characters of the whole section. Instructions shrink first, then summaries and tool lists; when the server lines
+ * alone do not fit, the last servers are left out and counted in a closing line.
  */
-export const MAX_SERVERS_SECTION_CHARS = 4096;
+export const MAX_SERVERS_SECTION_CHARS = 6144;
 
-/** The section's first line. It explains only the ways of reaching tools that the listed servers use. */
-function serversSectionIntro(reaches: ReadonlySet<string>): string {
-	let intro = "MCP servers whose tools are not declared to you.";
-	if (reaches.has("tool_search")) intro += " Load the tools of `tool_search` servers with `tool_search`.";
-	return intro;
+/** What the `mcp_servers` section needs of a server. */
+export interface McpServerListing {
+	entry: McpServerEntry;
+	connection?: { instructions?: string };
+	/**
+	 * The server's registered tools once it connected: the full names of those `tool_search` loads, and how many are
+	 * declared directly. Before it connects, its configured exposures decide how it is listed.
+	 */
+	tools?: { deferred: readonly string[]; direct: number };
 }
 
 function truncate(text: string, max: number): string {
@@ -24,47 +32,101 @@ function truncate(text: string, max: number): string {
 	return max <= 1 ? "" : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** What the `mcp_servers` section needs of a server. */
-export interface McpServerListing {
-	entry: McpServerEntry;
-	connection?: { instructions?: string };
+const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/**
+ * The server's summary (the configured description, else the first line of its instructions) and the rest of its
+ * instructions, so neither repeats the other.
+ */
+function serverText(server: McpServerListing): { summary: string; instructions: string } {
+	const description = server.entry.config.description?.trim();
+	const instructions = server.connection?.instructions?.trim() ?? "";
+	if (description)
+		return { summary: oneLine(description.split("\n", 1)[0] ?? ""), instructions: oneLine(instructions) };
+	const [first = "", ...rest] = instructions.split("\n");
+	return { summary: oneLine(first), instructions: oneLine(rest.join("\n")) };
 }
 
-/** First line of the configured description, or of the server instructions once connected. */
-function serverSummary(server: McpServerListing): string {
-	const text = server.entry.config.description?.trim() || server.connection?.instructions || "";
-	return (text.split("\n", 1)[0] ?? "").trim();
+/** How the model reaches the server's tools: `tool_search` when some are loaded on demand, else `declared`. */
+function reachOf(server: McpServerListing): "tool_search" | "declared" | undefined {
+	if (server.tools) {
+		if (server.tools.deferred.length > 0) return "tool_search";
+		return server.tools.direct > 0 ? "declared" : undefined;
+	}
+	if (hasIndirectTools(server.entry)) return "tool_search";
+	return hasDirectTools(server.entry) ? "declared" : undefined;
+}
+
+interface Limits {
+	summary: number;
+	instructions: number;
+	tools: number;
 }
 
 /**
- * The `mcp_servers` section: every enabled server with deferred tools, with how its
- * tools are reached and a one-line summary. The model learns of the servers from it, before discovery loads individual tools. Undefined when there are no such servers.
+ * The `mcp_servers` section: every enabled server, how its tools are reached, a one-line summary, the names of the
+ * tools `tool_search` loads (the server's prefix left out), and an excerpt of its instructions. The model learns of the
+ * servers and their tools from it before discovery loads any. Undefined when there are no servers to list.
+ *
+ * The `octocode` server is left out: the `octocode` section carries its whole instructions and the names of its tools
+ * that `tool_search` loads (`octocodePrompt`), because the automatic server registers its tools after this is built.
  */
 export function renderServersSection(servers: readonly McpServerListing[]): string | undefined {
 	const listed = servers
-		.filter((server) => server.entry.config.enabled !== false && hasIndirectTools(server.entry))
+		.filter(
+			(server) =>
+				server.entry.name !== OCTOCODE_SERVER && server.entry.config.enabled !== false && reachOf(server) !== undefined,
+		)
 		.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
 	if (listed.length === 0) return undefined;
-	const reaches = listed.map(() => "tool_search");
-	const intro = serversSectionIntro(new Set(reaches));
+	const reaches = listed.map((server) => reachOf(server)!);
+	const intro = reaches.includes("tool_search")
+		? "MCP servers in this session. Tools of `declared` servers are in your tool list. Load a `tool_search` server's tools with `tool_search` (a tool name or capability), then call them."
+		: "MCP servers in this session. Their tools are in your tool list.";
 	const heads = listed.map((server, index) => `- ${mcpNamespace(server.entry.name)} (${reaches[index]})`);
-	const discovery = "tool_search";
-	const omitted = (count: number) =>
-		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with ${discovery}`] : [];
-	// Characters of the intro, the first `kept` server lines without descriptions, and the omission line.
-	const size = (kept: number) => [intro, ...heads.slice(0, kept), ...omitted(listed.length - kept)].join("\n").length;
-	let kept = listed.length;
-	while (kept > 0 && size(kept) > MAX_SERVERS_SECTION_CHARS) kept--;
-	// Each description also takes a ": " separator.
-	const perServer =
-		kept === 0
-			? 0
-			: Math.min(MAX_SERVER_DESCRIPTION_CHARS, Math.floor((MAX_SERVERS_SECTION_CHARS - size(kept)) / kept) - 2);
-	const lines = listed.slice(0, kept).map((server, index) => {
-		const summary = perServer > 0 ? truncate(serverSummary(server), perServer) : "";
-		return summary ? `${heads[index]}: ${summary}` : heads[index];
+	const texts = listed.map(serverText);
+	const toolNames = listed.map((server) => {
+		const prefix = `${mcpNamespace(server.entry.name)}__`;
+		return (server.tools?.deferred ?? []).map((name) => (name.startsWith(prefix) ? name.slice(prefix.length) : name));
 	});
-	return [intro, ...lines, ...omitted(listed.length - kept)].join("\n");
+	const omitted = (count: number) =>
+		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with tool_search`] : [];
+	const render = (kept: number, limits: Limits): string => {
+		const lines = listed.slice(0, kept).flatMap((_, index) => {
+			const summary = truncate(texts[index].summary, limits.summary);
+			const names = toolNames[index];
+			const shown = names.slice(0, limits.tools);
+			const more = names.length - shown.length;
+			const instructions = truncate(texts[index].instructions, limits.instructions);
+			return [
+				summary ? `${heads[index]}: ${summary}` : heads[index],
+				...(shown.length > 0
+					? [`  tool_search loads: ${shown.join(", ")}${more > 0 ? `, … ${more} more` : ""}`]
+					: names.length > 0
+						? [`  tool_search loads ${names.length} tools`]
+						: []),
+				...(instructions ? [`  instructions: ${instructions}`] : []),
+			];
+		});
+		return [intro, ...lines, ...omitted(listed.length - kept)].join("\n");
+	};
+	// Shrink the optional parts in order until the section fits; the server lines and tool counts stay longest.
+	const steps: Limits[] = [
+		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: MAX_SERVER_INSTRUCTIONS_CHARS, tools: MAX_LISTED_TOOLS },
+		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: 200, tools: MAX_LISTED_TOOLS },
+		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: 0, tools: MAX_LISTED_TOOLS },
+		{ summary: 120, instructions: 0, tools: 12 },
+		{ summary: 60, instructions: 0, tools: 0 },
+		{ summary: 0, instructions: 0, tools: 0 },
+	];
+	for (const limits of steps) {
+		const text = render(listed.length, limits);
+		if (text.length <= MAX_SERVERS_SECTION_CHARS) return text;
+	}
+	const bare = steps.at(-1)!;
+	let kept = listed.length;
+	while (kept > 0 && render(kept, bare).length > MAX_SERVERS_SECTION_CHARS) kept--;
+	return render(kept, bare);
 }
 
 /**

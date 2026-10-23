@@ -1,7 +1,8 @@
 import { LATEST_PROTOCOL_VERSION, type JsonRpcMessage } from "@octocodeai/octocode-mcp";
 import { createInMemoryTransportPair } from "@octocodeai/octocode-mcp/testing";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
-import { McpOAuthCredentialStore, McpServerConnection } from "../src/extensions/mcp/runtime.ts";
+import { McpOAuthCredentialStore } from "../src/extensions/mcp/oauth.ts";
+import { McpServerConnection } from "../src/extensions/mcp/runtime.ts";
 import { describe, expect, it, vi } from "vitest";
 import { McpCatalogCache } from "../src/extensions/mcp/catalog.ts";
 

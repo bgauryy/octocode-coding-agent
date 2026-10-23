@@ -2,13 +2,14 @@ import { constants, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { basename, join, parse, resolve } from "node:path";
 import { assertSessionCwdExists, MissingSessionCwdError } from "../session-cwd.ts";
 import { SessionManager } from "../session-manager.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** The file to import is not a usable session; nothing was copied and the current session is unchanged. */
 export class SessionImportInvalidError extends Error {
 	readonly filePath: string;
 
 	constructor(filePath: string, cause: unknown) {
-		super(`Not a session file: ${filePath} (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
+		super(`Not a session file: ${filePath} (${errorMessage(cause)})`, { cause });
 		this.name = "SessionImportInvalidError";
 		this.filePath = filePath;
 	}

@@ -6,12 +6,9 @@
 
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { isRecord } from "../../utils/guards.ts";
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function formatData(data: unknown): string {
 	if (typeof data === "string") return data;
@@ -23,7 +20,7 @@ function formatData(data: unknown): string {
 }
 
 /** Format one `notifications/message` from `server` as a log line; continuation lines are indented. */
-export function formatMcpLogMessage(server: string, params: unknown, now: Date = new Date()): string {
+function formatMcpLogMessage(server: string, params: unknown, now: Date = new Date()): string {
 	const message = isRecord(params) ? params : { data: params };
 	const level = typeof message.level === "string" ? message.level : "info";
 	const logger = typeof message.logger === "string" && message.logger ? ` ${message.logger}:` : "";

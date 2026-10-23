@@ -27,8 +27,10 @@ import {
 	unpricedModel,
 } from "../shared/util.ts";
 import { type Ask, asksNote, UserQuestions } from "../team/asks.ts";
+import { getMcpAddedServers } from "../../extensions/mcp/session-servers.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "../team/identity.ts";
 import { AgentsView } from "../team/panel.ts";
+import { launchOverlap } from "../team/overlap.ts";
 import type { Team } from "../team/session.ts";
 import { teamWorkspace } from "../team/store.ts";
 import { type AgentRuns, claimRun, joinTeam, maxSubagents, planRun, type Run, Slots } from "./claim.ts";
@@ -74,6 +76,7 @@ import {
 	sessionNote,
 } from "./render.ts";
 import { type Shot, saveShot, shotsDir } from "./screenshots.ts";
+import { stopFacts } from "./stop-facts.ts";
 import {
 	createWorktree,
 	describePrune,
@@ -93,6 +96,8 @@ export interface AgentControl {
 	settle(): Promise<unknown>;
 	/** Background subagents running now (a session switch would stop them). */
 	background(): number;
+	/** Names of the subagents running now, foreground and background (a narrowing permission change stops them). */
+	running(): string[];
 	/**
 	 * Session shutdown's first step: stops every background subagent and waits (bounded) for their reports. Idempotent.
 	 * `reason`: the shutdown's (`reload`, `quit`…), named in the reports of the runs it stopped.
@@ -123,8 +128,12 @@ class Isolation {
 	}
 
 	/** Creates the worktree and returns the child's cwd. The worktree is its own git root: the child stays on this team. */
-	async start(ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">, identity: Identity): Promise<string> {
-		this.worktree = await createWorktree(ctx.cwd, this.id);
+	async start(
+		ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+		identity: Identity,
+		workingCopy = false,
+	): Promise<string> {
+		this.worktree = await createWorktree(ctx.cwd, this.id, undefined, workingCopy);
 		identity.workspace = teamWorkspace(ctx.cwd);
 		// The worktree is a different root, so no stored decision matches it: hand down only a decision this session made.
 		if (projectTrustNow(ctx) === true) identity.trustRoot = identity.workspace;
@@ -354,6 +363,8 @@ function startBackground(
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
+			const source = outcome.error ? undefined : outcome.outcomeSource;
+			if (source) details.outcomeSource = source;
 			if (outcome.structured) details.structured = outcome.structured;
 			const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 			const stats = [
@@ -392,6 +403,7 @@ function startBackground(
 					id: identity.id,
 					status: outcome.error ? "failed" : "done",
 					...(reported ? { outcome: reported } : {}),
+					...(source ? { outcomeSource: source } : {}),
 					summary,
 					durationMs,
 					...shown,
@@ -410,7 +422,7 @@ function startBackground(
 			reports.add({
 				// A stop someone asked for is the parent's own word; any other cause (a crash, a stall) quotes the child's output.
 				content: by
-					? `Background subagent ${who} ${reason}${note}${reachable}`
+					? `Background subagent ${who} ${reason}${by === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${note}${reachable}`
 					: reportMessage(
 							`Background subagent ${who} stopped`,
 							[errorMessage(error), ...noticeLines(details)].join("\n\n"),
@@ -431,7 +443,25 @@ function startBackground(
 			background.delete(identity.id);
 			runs.changed();
 		}
-	})();
+	})().catch((error: unknown) => {
+		// Something in the report path itself threw: the parent still learns that the run is over, and `done` never rejects.
+		try {
+			reports.add({
+				content: `Background subagent ${who} ended, but its report could not be built: ${errorMessage(error)}`,
+				details: {
+					id: identity.id,
+					status: "failed",
+					outcome: "failed",
+					summary: `Failed: ${firstLine(errorMessage(error))}`,
+					durationMs: Date.now() - details.startedAt,
+					...shown,
+				},
+				wake: true,
+			});
+		} catch {
+			// The session is gone; the child's scratch folder still holds what it wrote.
+		}
+	});
 }
 
 /**
@@ -492,7 +522,7 @@ async function runForeground(
 	try {
 		outcome = await launch(controller.signal);
 	} catch (error) {
-		const note = `${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
+		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
 		throw note ? new Error(`${errorMessage(reason)}${note}`) : reason;
 	} finally {
@@ -511,6 +541,7 @@ async function runForeground(
 	details.status = "done";
 	const reported = outcome.outcome;
 	if (reported) details.outcome = reported;
+	if (outcome.outcomeSource) details.outcomeSource = outcome.outcomeSource;
 	const heading = reported ? `Subagent ${identity.id} reported ${reported}:\n` : "";
 	const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
 	return {
@@ -556,6 +587,8 @@ export function registerAgentTool(
 	});
 	// When this session asked the user: an answer the parent gives right after one may be the user's.
 	const questions = new UserQuestions();
+	// Live agent and goal pairs the launch result already named (`team/overlap.ts`): each is named once.
+	const overlapWarned = new Set<string>();
 	pi.on("tool_execution_start", async (event) => {
 		if (event.toolName === "askUser") questions.begin(event.toolCallId);
 		return undefined;
@@ -584,41 +617,47 @@ export function registerAgentTool(
 	const withLaunch = (signal?: AbortSignal) =>
 		signal ? AbortSignal.any([signal, launching.signal]) : launching.signal;
 	// Finished background runs still reachable (OCTOCODE_SUBAGENT_LINGER_SECONDS): a message resumes their saved conversation.
-	const lingering = new Lingering(runs, permission, withLaunch, (run, ctx, { text, message }) => {
-		const details = runDetails(run);
-		const track = tracker(run.identity, details, modelLookup(ctx));
-		const session = childSession(run.identity);
-		const args = buildAgentArgs(run.profile, run.route.model, session, []);
-		const host = relayHost(ctx);
-		const launch = (signal: AbortSignal) =>
-			record(
+	const lingering = new Lingering(
+		runs,
+		permission,
+		withLaunch,
+		(run, ctx, { text, message }) => {
+			const details = runDetails(run);
+			const track = tracker(run.identity, details, modelLookup(ctx));
+			const session = childSession(run.identity);
+			const args = buildAgentArgs(run.profile, run.route.model, session, []);
+			const host = relayHost(ctx);
+			const launch = (signal: AbortSignal) =>
+				record(
+					run,
+					details,
+					session,
+					runSubagent(
+						message,
+						args,
+						ctx.cwd,
+						run.profile,
+						run.identity,
+						signal,
+						track(undefined),
+						undefined,
+						undefined,
+						host,
+					),
+				);
+			startBackground(
+				runs,
 				run,
 				details,
-				session,
-				runSubagent(
-					message,
-					args,
-					ctx.cwd,
-					run.profile,
-					run.identity,
-					signal,
-					track(undefined),
-					undefined,
-					undefined,
-					host,
-				),
+				text,
+				launch,
+				() => Promise.resolve("").finally(run.release),
+				ctx.sessionManager.getSessionId(),
+				lingering.window(run, ctx),
 			);
-		startBackground(
-			runs,
-			run,
-			details,
-			text,
-			launch,
-			() => Promise.resolve("").finally(run.release),
-			ctx.sessionManager.getSessionId(),
-			lingering.window(run, ctx),
-		);
-	});
+		},
+		getProfiles,
+	);
 	const late = new LateReports(runs);
 	const stopRuns = async (by: string): Promise<void> => {
 		// Wait (bounded) for stopped children to file their reports; a named stop files them without starting a turn.
@@ -653,13 +692,14 @@ export function registerAgentTool(
 		runs.reports.persist();
 		// A child still closing keeps its entry (and its slot) until it exits; its report waits for this session's next start.
 		runs.session += 1;
-		lingering.forgetAll();
+		lingering.close();
 		panel.stop(ctx);
 	});
 	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
 	pi.on("session_start", async (_event, ctx) => {
+		lingering.reopen(ctx);
 		panel.start(ctx);
-		runs.reports.start(ctx.sessionManager);
+		runs.reports.start(ctx.sessionManager, () => ctx.isIdle());
 		await late.start(ctx.sessionManager.getSessionId());
 		// Off the start path: it lists and deletes directories.
 		const root = scratchRoot(ctx.cwd);
@@ -684,30 +724,29 @@ export function registerAgentTool(
 			label: "Agent",
 			description:
 				"Delegate a self-contained task to a fresh Octocode session that does not inherit this conversation. " +
-				`Foreground calls return the report; background calls return the agent's name and its report arrives later. At most ${maxSubagents()} run at once; a call past that waits for one to finish. ` +
-				"Long reports name their file. Never poll or sleep for reports. " +
+				`Foreground calls return the report; background calls return the agent's name and the report arrives later. At most ${maxSubagents()} run at once; more wait. ` +
+				"Never poll or sleep for reports. " +
 				"A subagent updates only backlog items you claimed: claim one first and name its id in the task.",
-			promptSnippet: "Delegate bounded work to a subagent",
 			parameters: Type.Object({
 				skills: Type.Optional(
 					Type.Array(Type.String(), {
 						description:
-							"Skill command names: omit to inherit the loaded catalog; [] disables skills. Name required workflows in task. Instructions load on demand.",
+							"Skill command names: omit to inherit the loaded catalog; [] disables skills. Name required workflows in task.",
 					}),
 				),
 				goal: Type.String({ description: GOAL_DESCRIPTION }),
 				task: Type.String({
 					description:
-						"Task contract: objective; inputs (paths, evidence and decisions the subagent cannot infer); constraints (bounded scope, existing authorization, budget when costly); output; Definition of Done",
+						"Task contract: objective; inputs the subagent cannot infer (paths, evidence, decisions); constraints (scope, authorization, budget); output; Definition of Done",
 				}),
 				profile: Type.Optional(
 					Type.String({
-						description: "Profile name from the active Profiles list; omit for a general-purpose subagent",
+						description: "Profile from the active Profiles list; omit for general-purpose",
 					}),
 				),
 				headless: Type.Optional(
 					Type.Boolean({
-						description: "Browser profile: true=headless (default), false=visible Chrome with persistent logins",
+						description: "Browser profile: true headless (default); false visible Chrome with persistent logins",
 					}),
 				),
 				model: Type.Optional(
@@ -719,31 +758,37 @@ export function registerAgentTool(
 				resultSchema: Type.Optional(
 					Type.Record(Type.String(), Type.Unknown(), {
 						description:
-							"Optional bounded JSON Schema for the child's final marked JSON result; the host validates it and returns the verdict in details. Supported keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric and length bounds.",
+							"Bounded JSON Schema for the child's final marked JSON result; the verdict returns in details. Keywords: type, properties, required, additionalProperties, items, enum, const, description, numeric and length bounds.",
 					}),
 				),
 				background: Type.Optional(
 					Type.Boolean({
-						description:
-							"Return at once for long or parallel work. `agent` with type `message` redirects it; `agent` with type `coordinate` and action `stop` ends it",
+						description: "Return at once for long or parallel work; message redirects it, coordinate stop ends it",
 					}),
 				),
 				collaborate: Type.Optional(
 					Type.Boolean({
 						description:
-							"true on each call of subagents that must coordinate directly (shared contracts; name each one's owner in the tasks, RACI); false for independent tasks",
+							"true on each call of subagents that must coordinate directly (name each one's owner in the tasks); false for independent tasks",
 					}),
 				),
 				isolate: Type.Optional(
 					Type.Boolean({
 						description:
-							"Work in a private git worktree; changes land on refs/octocode/pi/<id>, not in this tree. The report names the ref: ask the user to run `/agents merge <id>` to bring them in",
+							"Work in a private git worktree; changes land on refs/octocode/pi/<id>, not in this tree; the report names the ref and the user runs `/agents merge <id>`",
+					}),
+				),
+				workingCopy: Type.Optional(
+					Type.Boolean({
+						description:
+							"With isolate: start from a snapshot of tracked and non-ignored untracked files; only the child's delta is exported, and conflicts keep the worktree for review.",
 					}),
 				),
 			}),
 			async execute(id, params, signal, onUpdate, ctx) {
 				const launchSignal = withLaunch(signal);
 				launchSignal.throwIfAborted();
+				if (params.workingCopy && !params.isolate) throw new Error("workingCopy requires isolate: true.");
 				const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 				const goal = checkGoal(params.goal);
 				const skillResources = pi.getSkillResourceSnapshot(params.skills);
@@ -774,7 +819,11 @@ export function registerAgentTool(
 				const run = claimed;
 				if (resultContract) run.identity.resultContract = resultContract;
 				run.identity.skillResources = skillResources;
-				// A child cannot ask anyone: it also gets every kind the user allowed for this session.
+				// Servers the model added with `mcp` (the user confirmed each) reach the child as a transient file.
+				const addedServers = getMcpAddedServers(pi.events);
+				if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
+				// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
+				// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
 				run.identity.permission = {
 					mode: permission.mode,
 					grants: [...new Set([...grants, ...permission.childGrants()])],
@@ -790,10 +839,10 @@ export function registerAgentTool(
 				};
 				let handedOff = false;
 				try {
-					const cwd = params.isolate ? await isolation.start(ctx, run.identity) : ctx.cwd;
+					const cwd = params.isolate ? await isolation.start(ctx, run.identity, params.workingCopy) : ctx.cwd;
 					launchSignal.throwIfAborted();
 					const worktree = isolation.worktree;
-					const warning = `${worktree?.warning ? `\n\n${worktree.warning}` : ""}${run.teamNote}`;
+					const warning = `${worktree?.warning ? `\n\n${worktree.warning}` : ""}${run.teamNote}${launchOverlap(team, run.identity.id, goal, overlapWarned)}`;
 					const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
 					const library = existingLibrary();
 					const browserMode = run.profile?.headless;
@@ -880,6 +929,7 @@ export function registerAgentTool(
 		// Reports still inside their batching window go out now: a held headless run hands them to its next turn.
 		settle: () => Promise.all([...background.values()].map((entry) => entry.done)).then(() => runs.reports.flush()),
 		background: () => background.size,
+		running: () => [...runs.foreground.keys(), ...background.keys()],
 		stopAll,
 		command: agentsCommand(team, background, runs.foreground, questions),
 	};

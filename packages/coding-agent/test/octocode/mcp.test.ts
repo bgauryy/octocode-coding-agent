@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	configuredOctocodeServer,
-	fallbackReader,
 	OCTOCODE_MCP_SPEC,
 	OctocodeMcp,
 	reconnectOctocodeMcp,
@@ -20,10 +19,13 @@ import {
 	toToolResult,
 } from "../../src/octocode/mcp/tools.ts";
 import { isOctocodeTool } from "../../src/octocode/shared/octocode-tools.ts";
+import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
 import { noisyPng, pixelSize, tmp } from "./helpers.ts";
 
 const ECHO = path.join(import.meta.dirname, "fixtures", "echo-mcp.mjs");
+const PROGRESS = path.join(import.meta.dirname, "fixtures", "progress-mcp.mjs");
+const progressServer = (cwd: string) => ({ command: process.execPath, args: [PROGRESS], cwd, env: {} });
 const echo = (cwd: string) => ({ command: process.execPath, args: [ECHO], cwd, env: {} });
 const exits = (cwd: string, stderr = "kaboom") => ({
 	command: process.execPath,
@@ -71,6 +73,29 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
+describe("Octocode MCP calls", () => {
+	it("forwards the server's progress to the tool's updates, so it renews the idle timeout", async () => {
+		const { fake, ctx, mcp } = session(progressServer);
+		await mcp.start(ctx);
+		await mcp.ready(ctx);
+		const updates: Array<{ content: Array<{ text?: string }> }> = [];
+		await fake.tools
+			.get("mcp__octocode__progress")!
+			.execute("call-1", {}, undefined, (update: { content: Array<{ text?: string }> }) => updates.push(update), ctx);
+		expect(updates.map((update) => update.content[0].text)).toEqual(["halfway"]);
+		await mcp.close();
+	});
+
+	it("starts the built-in server with the host environment, which carries its tokens", async () => {
+		vi.stubEnv("OCTOCODE_TEST_HOST_TOKEN", "from-host");
+		const { call, ctx, mcp } = session(progressServer);
+		await mcp.start(ctx);
+		await mcp.ready(ctx);
+		expect(text(await call("hostenv", { name: "OCTOCODE_TEST_HOST_TOKEN" }))).toBe("from-host");
+		await mcp.close();
+	});
+});
+
 describe("Octocode MCP launch and ownership", () => {
 	it("launches the bundled octocode-mcp with the workspace allowed", () => {
 		const launch = octocodeLaunch("/work/app", { OCTOCODE_HOME: "/h/.octocode" }, "/x/octocode-mcp/bin.js");
@@ -78,10 +103,27 @@ describe("Octocode MCP launch and ownership", () => {
 			command: process.execPath,
 			args: ["/x/octocode-mcp/bin.js"],
 			cwd: "/work/app",
-			env: { WORKSPACE_ROOT: "/work/app", ALLOWED_PATHS: "/work/app,/h/.octocode" },
+			env: { WORKSPACE_ROOT: "/work/app", ALLOWED_PATHS: "/work/app,/h/.octocode/agent/sessions" },
 		});
 		// The real bundled bin resolves (octocode-mcp is a dependency).
 		expect(fs.existsSync(octocodeLaunch("/w").args[0])).toBe(true);
+	});
+
+	it("keeps Octocode's home state (trust store, credentials, database) out of the readers' roots", () => {
+		const home = "/h/.octocode";
+		const { env } = octocodeLaunch("/work/app", { OCTOCODE_HOME: home }, "/x/bin.js", ["/skills/review"]);
+		const roots = env.ALLOWED_PATHS.split(",");
+		expect(roots).toEqual(["/work/app", `${home}/agent/sessions`, "/skills/review"]);
+		expect(roots).not.toContain(home);
+		// Spilled output and bash logs, which the model reads back, are under the session folders.
+		expect(path.join(home, "pi-trust.json").startsWith(`${roots[1]}${path.sep}`)).toBe(false);
+	});
+
+	it("turns off project language-server config for an untrusted project only", () => {
+		const trusted = octocodeLaunch("/w", {}, "/x/bin.js", [], true);
+		const untrusted = octocodeLaunch("/w", {}, "/x/bin.js", [], false);
+		expect(trusted.env).not.toHaveProperty("OCTOCODE_TRUST_PROJECT_LSP_CONFIG");
+		expect(untrusted.env.OCTOCODE_TRUST_PROJECT_LSP_CONFIG).toBe("false");
 	});
 
 	it("runs the octocode-mcp range of package.json: the dependency and the npx fallback share it", () => {
@@ -93,6 +135,15 @@ describe("Octocode MCP launch and ownership", () => {
 		if (range.startsWith("file:"))
 			expect(() => octocodeLaunch("/w", {}, "")).toThrow("local octocode-mcp build is missing");
 		else expect(octocodeLaunch("/w", {}, "")).toMatchObject({ command: "npx", args: ["-y", `octocode-mcp@${range}`] });
+	});
+
+	it("refuses the npx fallback in an untrusted project", () => {
+		const range = OCTOCODE_MCP_SPEC.slice("octocode-mcp@".length);
+		if (range.startsWith("file:")) return;
+		expect(() => octocodeLaunch("/w", {}, "", [], false)).toThrow(/npx fallback runs only in a trusted project/);
+		expect(octocodeLaunch("/w", {}, "", [], true).command).toBe("npx");
+		// An installed server needs no fallback, whatever the trust.
+		expect(octocodeLaunch("/w", {}, "/x/bin.js", [], false).args).toEqual(["/x/bin.js"]);
 	});
 
 	it("reads an octocode entry from Octocode's mcp.json, the trusted project file replacing the global one", () => {
@@ -126,6 +177,7 @@ describe("Octocode MCP launch and ownership", () => {
 		const agentDir = tmp();
 		const cwd = tmp();
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
+		vi.stubEnv("OCTOCODE_HOME", tmp());
 		fs.mkdirSync(path.join(cwd, ".octocode"));
 		const projectConfig = path.join(cwd, ".octocode", "mcp.json");
 		const global = { command: "octocode-mcp", enabled: false, env: { TEST: "kept" } };
@@ -143,6 +195,9 @@ describe("Octocode MCP launch and ownership", () => {
 			enabled: true,
 			toolExposure: { localFetch: "direct" },
 		});
+		// Changed project content is not trusted until /trust records it: the global entry still owns.
+		expect(mcp.owner(ctx)).toEqual({ by: "user", enabled: false });
+		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		expect(mcp.owner(ctx)).toEqual({ by: "user", enabled: true });
 		expect(configuredOctocodeServer(cwd, false, agentDir)).toEqual(global);
 		writeProject({ command: "replacement" });
@@ -493,6 +548,17 @@ describe("Octocode MCP client", () => {
 		await fake.emit("session_shutdown", {}, ctx);
 		expect(mcp.status().state).toBe("closed");
 	});
+
+	it("reports that the local readers are unavailable when the server is off, so the file tool credits bash reads", async () => {
+		const fake = fakePi();
+		const reports: boolean[] = [];
+		registerOctocodeMcp(fake.pi, undefined, true, (unavailable) => reports.push(unavailable));
+		const ctx = fakeCtx({ cwd: tmp() });
+		vi.stubEnv("OCTOCODE_MCP", "0");
+		await fake.emit("session_start", {}, ctx);
+		expect(reports.at(-1)).toBe(true);
+		await fake.emit("session_shutdown", {}, ctx);
+	});
 });
 
 describe("native discovery for deferred tools", () => {
@@ -534,6 +600,38 @@ describe("native discovery for deferred tools", () => {
 	}, 60_000);
 });
 
+describe("Octocode MCP restarts for skill folders", () => {
+	it("restarts only when the readable folders change, and not while a call runs", async () => {
+		const fake = fakePi();
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
+		let folders = ["/skills/a", "/skills/b"];
+		const mcp = new OctocodeMcp(fake.pi, {
+			env: {},
+			connectWaitMs: 20_000,
+			skillDirectories: () => folders,
+		});
+		try {
+			await mcp.start(ctx);
+			await mcp.ready(ctx);
+			const pid = mcp.status().pid;
+			expect(pid).toBeDefined();
+			// The same folders in another order, or listed twice, change nothing the server may read.
+			folders = ["/skills/b", "/skills/a", "/skills/a"];
+			await mcp.ready(ctx);
+			expect(mcp.status().pid).toBe(pid);
+			// A new folder restarts it.
+			folders = ["/skills/a", "/skills/b", "/skills/c"];
+			await mcp.ready(ctx);
+			await vi.waitFor(() => expect(mcp.status().pid).not.toBe(pid));
+			const second = mcp.status().pid;
+			await mcp.ready(ctx);
+			expect(mcp.status().pid).toBe(second);
+		} finally {
+			await mcp.close();
+		}
+	}, 60_000);
+});
+
 describe("/mcp reconnect octocode", () => {
 	it("restarts the server Octocode runs and reports its state", async () => {
 		const { ctx, mcp } = session(echo);
@@ -560,10 +658,18 @@ describe("Octocode tool results and rendering", () => {
 		annotations: { readOnlyHint: true, title: "x" },
 	};
 	const binding = {
-		prefix: "mcp__octocode__",
 		namespace: { name: "mcp__octocode" },
 		call: async () => ({ content: [{ type: "text" as const, text: "ok" }] }),
 	};
+
+	it("applies the generic path's name and schema rules to the server's tools", () => {
+		const odd = octocodeToolDefinition({ name: "odd-tool.v2", inputSchema: {} }, binding);
+		expect(odd.name).toBe("mcp__octocode__odd_tool_v2");
+		expect(odd.parameters).toMatchObject({ type: "object", properties: {} });
+		expect(octocodeToolDefinition(tool, binding).name).toBe("mcp__octocode__localFetch");
+		const long = octocodeToolDefinition({ name: "x".repeat(80), inputSchema: { type: "object" } }, binding);
+		expect(long.name.length).toBeLessThanOrEqual(64);
+	});
 
 	it("gives a page over 20 KB to the model whole: no cut, no marker, non-ASCII intact", async () => {
 		const page = `${"- row: héllo wörld — 日本語\n".repeat(1_100)}  next:\n    continueChars: { charOffset: 20000 }\n${"- last row ✓\n".repeat(300)}`;
@@ -884,32 +990,5 @@ describe("Octocode result sanitizing", () => {
 		expect(JSON.stringify(result.content)).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u202a-\u202e\u200b-\u200d\ufeff]/u);
 		// Raw CR never stands alone: only the CR of a CRLF pair, which the terminal draws as a line break, is left.
 		expect((result.content[0] as { text: string }).text.replaceAll("\r\n", "")).not.toContain("\r");
-	});
-});
-
-describe("fallback reader when Octocode's local readers are unavailable", () => {
-	it("activates core read only while needed, and never removes a read the user chose", () => {
-		const { pi } = fakePi();
-		pi.registerTool({ name: "file" } as never);
-		pi.registerTool({ name: "read", defaultActive: false } as never);
-		const sync = fallbackReader(pi);
-		sync(true);
-		expect(pi.getActiveTools()).toEqual(["file", "read"]);
-		sync(true);
-		expect(pi.getActiveTools()).toEqual(["file", "read"]);
-		sync(false);
-		expect(pi.getActiveTools()).toEqual(["file"]);
-		// The user turned read on themselves: the fallback does not own it.
-		pi.setActiveTools(["file", "read"]);
-		sync(true);
-		sync(false);
-		expect(pi.getActiveTools()).toEqual(["file", "read"]);
-	});
-
-	it("does nothing when core read is not registered", () => {
-		const { pi } = fakePi();
-		pi.registerTool({ name: "file" } as never);
-		fallbackReader(pi)(true);
-		expect(pi.getActiveTools()).toEqual(["file"]);
 	});
 });

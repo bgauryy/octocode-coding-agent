@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { Tool } from "@octocodeai/octocode-mcp";
-import { CONFIG_DIR_NAME } from "../../config.ts";
-import { globalMcpConfigPaths, projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
+import {
+	globalMcpConfigPath,
+	globalMcpConfigPaths,
+	projectMcpConfigPath,
+	projectMcpConfigPaths,
+} from "../../core/mcp-config-paths.ts";
 import type { McpExposure } from "../../core/mcp-servers.ts";
 
 export type McpToolListing = Pick<Tool, "name" | "description" | "inputSchema"> & { exposure: McpExposure };
@@ -16,8 +19,8 @@ export function formatMcpTool(tool: McpToolListing, schema = false): string {
 
 /** Configuration locations only; inspecting them never connects a server or reads credentials. */
 export function getMcpConfigLocations(agentDir: string, cwd: string, projectTrusted: boolean) {
-	const globalWrite = join(agentDir, "mcp.json");
-	const projectWrite = join(cwd, CONFIG_DIR_NAME, "mcp.json");
+	const globalWrite = globalMcpConfigPath(agentDir);
+	const projectWrite = projectMcpConfigPath(cwd);
 	return {
 		globalWrite,
 		projectWrite,

@@ -6,8 +6,19 @@ import { canonicalizePath, resolvePath } from "../../utils/paths.ts";
 import { stripBom } from "../../utils/text.ts";
 import type { EventBus } from "../event-bus.ts";
 import { loadExtensionFromFactory, loadExtensionsCached } from "../extensions/loader.ts";
-import type { Extension, ExtensionRuntime, InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
-import { DefaultPackageManager, type ResolvedPaths, type ResolvedResource } from "../package-manager.ts";
+import type {
+	Extension,
+	ExtensionFactory,
+	ExtensionRuntime,
+	InlineExtension,
+	LoadExtensionsResult,
+} from "../extensions/types.ts";
+import {
+	DefaultPackageManager,
+	type PathMetadata,
+	type ResolvedPaths,
+	type ResolvedResource,
+} from "../package-manager.ts";
 import { loadConfiguredPluginMcp } from "../plugin-mcp.ts";
 import { SettingsManager } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX, isSyntheticPath } from "../source-info.ts";
@@ -18,6 +29,7 @@ import {
 	mergeExtensionWarnings,
 	omitReplacedExtensions,
 } from "./extension-sets.ts";
+import { collectEnabledResources } from "./enabled-resources.ts";
 import { mergePaths } from "./paths.ts";
 
 /** The resource loader configuration that extension loading reads; fixed after construction. */
@@ -46,7 +58,11 @@ export class ExtensionSetLoader {
 		this.config = config;
 	}
 
-	async loadCurrentExtensionSet(options: { includeInlineFactories: boolean }): Promise<LoadExtensionsResult> {
+	/**
+	 * The extension set loaded before project trust resolves. Selection uses `collectEnabledResources`, like the final
+	 * pass, so both passes agree on which settings or CLI entry supplies a path's metadata.
+	 */
+	async loadCurrentExtensionSet(): Promise<LoadExtensionsResult> {
 		const resolvedPaths = await this.resolveResources();
 		const cliExtensionPaths = await this.config.packageManager.resolveExtensionSources(
 			this.config.additionalExtensionPaths,
@@ -54,27 +70,18 @@ export class ExtensionSetLoader {
 				temporary: true,
 			},
 		);
-		const enabledExtensions = resolvedPaths.extensions.filter((r) => r.enabled).map((r) => r.path);
-		const cliEnabledExtensions = cliExtensionPaths.extensions.filter((r) => r.enabled).map((r) => r.path);
+		const metadataByPath = new Map<string, PathMetadata>();
+		const enabled = collectEnabledResources(resolvedPaths, cliExtensionPaths, metadataByPath);
 		// Built-in extensions wait for the final pass: project settings can disable them, and a loaded
 		// extension cannot be unloaded.
 		const extensionPaths = (
 			this.config.noExtensions
-				? cliEnabledExtensions
-				: mergePaths(this.config.cwd, cliEnabledExtensions, enabledExtensions)
+				? enabled.cliExtensions
+				: mergePaths(this.config.cwd, enabled.cliExtensions, enabled.extensions)
 		).filter((path) => !path.startsWith(BUILTIN_PATH_PREFIX));
-		const metadataByPath = new Map(
-			[...resolvedPaths.extensions, ...cliExtensionPaths.extensions].map((resource) => [
-				resource.path,
-				resource.metadata,
-			]),
-		);
 		const packageWarnings = collectExtensionPackageWarnings(extensionPaths, metadataByPath);
 		const extensionsResult = await loadExtensionsCached(extensionPaths, this.config.cwd, this.config.eventBus);
 		mergeExtensionWarnings(extensionsResult, packageWarnings);
-		if (!options.includeInlineFactories) {
-			return extensionsResult;
-		}
 
 		const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 		extensionsResult.extensions.push(...inlineExtensions.extensions);
@@ -141,6 +148,19 @@ export class ExtensionSetLoader {
 		return resolved;
 	}
 
+	/** Build one extension from a factory under `path`, applying the visibility flags that are set. */
+	private async loadFactory(
+		factory: ExtensionFactory,
+		path: string,
+		runtime: ExtensionRuntime,
+		flags: { hidden?: boolean; replaceable?: boolean } = {},
+	): Promise<Extension> {
+		const extension = await loadExtensionFromFactory(factory, this.config.cwd, this.config.eventBus, runtime, path);
+		if (flags.hidden !== undefined) extension.hidden = flags.hidden;
+		if (flags.replaceable !== undefined) extension.replaceable = flags.replaceable;
+		return extension;
+	}
+
 	private resolveExtensionLoadPath(path: string): string {
 		return isSyntheticPath(path) ? path : resolvePath(path, this.config.cwd, { normalizeUnicodeSpaces: true });
 	}
@@ -164,16 +184,12 @@ export class ExtensionSetLoader {
 				continue;
 			}
 			try {
-				const extension = await loadExtensionFromFactory(
-					builtin.factory,
-					this.config.cwd,
-					this.config.eventBus,
-					result.runtime,
-					path,
+				result.extensions.push(
+					await this.loadFactory(builtin.factory, path, result.runtime, {
+						hidden: true,
+						replaceable: builtin.replaceable === true,
+					}),
 				);
-				extension.hidden = true;
-				extension.replaceable = builtin.replaceable === true;
-				result.extensions.push(extension);
 			} catch (error) {
 				result.errors.push({
 					path,
@@ -222,17 +238,16 @@ export class ExtensionSetLoader {
 		for (const error of pluginMcp.errors) inlineExtensions.errors.push({ path: "settings.plugins", error });
 		if (pluginMcp.servers.length) {
 			try {
-				const extension = await loadExtensionFromFactory(
-					(pi) => {
-						for (const server of pluginMcp.servers) pi.registerMcpServer(server.name, server.config);
-					},
-					this.config.cwd,
-					this.config.eventBus,
-					remainingExtensions.runtime,
-					"<inline:plugin-mcp>",
+				orderedExtensions.push(
+					await this.loadFactory(
+						(pi) => {
+							for (const server of pluginMcp.servers) pi.registerMcpServer(server.name, server.config);
+						},
+						"<inline:plugin-mcp>",
+						remainingExtensions.runtime,
+						{ hidden: true },
+					),
 				);
-				extension.hidden = true;
-				orderedExtensions.push(extension);
 			} catch (error) {
 				inlineExtensions.errors.push({
 					path: "settings.plugins",
@@ -273,15 +288,14 @@ export class ExtensionSetLoader {
 		const errors: Array<{ path: string; error: string }> = [];
 
 		if (this.config.nativeFeatures) {
-			const native = await loadExtensionFromFactory(
-				(pi) => octocode(pi, { mcp: !this.config.disabledBuiltinExtensions.has("mcp") }),
-				this.config.cwd,
-				this.config.eventBus,
-				runtime,
-				"<inline:octocode>",
+			extensions.push(
+				await this.loadFactory(
+					(pi) => octocode(pi, { mcp: !this.config.disabledBuiltinExtensions.has("mcp") }),
+					"<inline:octocode>",
+					runtime,
+					{ hidden: true },
+				),
 			);
-			native.hidden = true;
-			extensions.push(native);
 		}
 
 		for (const [index, input] of this.config.extensionFactories.entries()) {
@@ -289,16 +303,12 @@ export class ExtensionSetLoader {
 			const factory = isNamed ? input.factory : input;
 			const extensionPath = `<inline:${isNamed ? input.name : index + 1}>`;
 			try {
-				const extension = await loadExtensionFromFactory(
-					factory,
-					this.config.cwd,
-					this.config.eventBus,
-					runtime,
-					extensionPath,
+				extensions.push(
+					await this.loadFactory(factory, extensionPath, runtime, {
+						hidden: isNamed && input.hidden,
+						replaceable: isNamed && input.replaceable === true,
+					}),
 				);
-				extension.hidden = isNamed && input.hidden;
-				extension.replaceable = isNamed && input.replaceable === true;
-				extensions.push(extension);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "failed to load extension";
 				errors.push({ path: extensionPath, error: message });

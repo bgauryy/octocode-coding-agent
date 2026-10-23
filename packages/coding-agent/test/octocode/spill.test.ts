@@ -13,7 +13,9 @@ import {
 	saveImageFile,
 	saveNamedContent,
 	spillLabel,
+	spillOutput,
 } from "../../src/octocode/shared/spill.ts";
+import { convertMcpResult } from "../../src/extensions/mcp/tools.ts";
 import { saveMessageFile, spillIntact } from "../../src/octocode/team/spill.ts";
 import { noisyPng, pixelSize, tmp } from "./helpers.ts";
 
@@ -210,5 +212,23 @@ describe("named content files", () => {
 		expect(spillIntact(`head\n[Full message (3 characters): ${path.join(path.dirname(file), "other.txt")}]`)).toBe(
 			false,
 		);
+	});
+});
+
+describe("spillOutput shared by both MCP paths", () => {
+	it("reports the saved file and leaves fitting text alone", () => {
+		expect(spillOutput("short", { label: "x" })).toEqual({ text: "short", truncated: false });
+		const spilled = spillOutput(manyLines(5000), { label: "x" });
+		expect(spilled.truncated).toBe(true);
+		expect(fs.readFileSync(spilled.file!, "utf8")).toBe(manyLines(5000));
+	});
+
+	it("saves a generic MCP result's full text in the session output folder, owner-only", async () => {
+		const converted = await convertMcpResult("docs", "big", { content: [{ type: "text", text: manyLines(5000) }] });
+		const file = converted.details.fullOutputPath!;
+		expect(file.startsWith(fs.realpathSync(home)) || file.startsWith(home)).toBe(true);
+		expect(fs.readFileSync(file, "utf8")).toBe(manyLines(5000));
+		expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+		expect((converted.content[0] as { text: string }).text).toContain(`Full output: `);
 	});
 });

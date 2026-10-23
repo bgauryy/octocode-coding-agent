@@ -4,6 +4,7 @@ import { type AuthStatus, configuredRequestAuthStatus } from "../provider-compos
 import type { RuntimeCredentials } from "../runtime-credentials.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeSnapshot } from "./types.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /**
  * The model runtime's availability snapshot: which models are usable, which providers have auth, and the latest
@@ -74,7 +75,7 @@ export class ModelAvailability {
 		const effectiveSignal = operationSignal(signal);
 		return this.runAvailabilityRefresh(seq, errorSeq, effectiveSignal).catch((error) => {
 			if (errorSeq === this.availabilityErrorSeq && !effectiveSignal.aborted) {
-				this.availabilityError = error instanceof Error ? error.message : String(error);
+				this.availabilityError = errorMessage(error);
 			}
 			throw error;
 		});
@@ -127,7 +128,7 @@ export class ModelAvailability {
 				errorSeq === this.availabilityErrorSeq &&
 				!signal.aborted
 			) {
-				this.availabilityError = error instanceof Error ? error.message : String(error);
+				this.availabilityError = errorMessage(error);
 			}
 			throw error;
 		}
@@ -142,7 +143,7 @@ export class ModelAvailability {
 				return available;
 			} catch (error) {
 				if (errorSeq === this.availabilityErrorSeq && !options?.signal?.aborted) {
-					this.availabilityError = error instanceof Error ? error.message : String(error);
+					this.availabilityError = errorMessage(error);
 				}
 				throw error;
 			}

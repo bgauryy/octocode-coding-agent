@@ -18,6 +18,7 @@ import { stripJsonComments } from "../utils/json.ts";
 import { normalizePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
 const SamplingParamsByThinkingLevelSchema = Type.Object(
@@ -180,20 +181,14 @@ export class ModelConfig {
 			content = await readFile(path, "utf-8");
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return new ModelConfig(new Map());
-			return new ModelConfig(
-				new Map(),
-				`Failed to load models.json: ${error instanceof Error ? error.message : String(error)}\n\nFile: ${path}`,
-			);
+			return new ModelConfig(new Map(), `Failed to load models.json: ${errorMessage(error)}\n\nFile: ${path}`);
 		}
 
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(stripJsonComments(stripBom(content)));
 		} catch (error) {
-			return new ModelConfig(
-				new Map(),
-				`Failed to parse models.json: ${error instanceof Error ? error.message : String(error)}\n\nFile: ${path}`,
-			);
+			return new ModelConfig(new Map(), `Failed to parse models.json: ${errorMessage(error)}\n\nFile: ${path}`);
 		}
 
 		if (!validateModelsConfig.Check(parsed)) {

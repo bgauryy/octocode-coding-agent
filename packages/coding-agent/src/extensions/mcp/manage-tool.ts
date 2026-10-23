@@ -32,7 +32,7 @@ export interface McpManageOperations {
 }
 
 /** A restart this soon after the previous one of the same server is refused, so a confused loop cannot thrash it. */
-export const MCP_RESTART_COOLDOWN_MS = 10_000;
+const MCP_RESTART_COOLDOWN_MS = 10_000;
 
 const ConfigSchema = Type.Object(
 	{
@@ -40,8 +40,12 @@ const ConfigSchema = Type.Object(
 		args: Type.Optional(Type.Array(Type.String())),
 		env: Type.Optional(Type.Record(Type.String(), Type.String())),
 		cwd: Type.Optional(Type.String()),
-		url: Type.Optional(Type.String({ description: "Endpoint of a Streamable HTTP server" })),
+		url: Type.Optional(Type.String({ description: "HTTP or legacy SSE endpoint" })),
+		type: Type.Optional(Type.Unsafe<"http" | "sse" | "stdio">({ type: "string", enum: ["http", "sse", "stdio"] })),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+		literalHeaders: Type.Optional(
+			Type.Boolean({ description: "Send HTTP/SSE header values literally without environment or command resolution" }),
+		),
 	},
 	{ additionalProperties: false, description: "For add: command (and args, env, cwd) or url (and headers)" },
 );
@@ -51,6 +55,15 @@ const ManageSchema = Type.Object({
 	server: Type.Optional(Type.String({ description: "Server name; every intent but list needs it" })),
 	config: Type.Optional(ConfigSchema),
 });
+
+/** What the user confirms: where the server runs or connects, and the names (never the values) of the env and headers it is given. */
+function describeNewServer(config: McpServerConfig): string {
+	const target = "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" ");
+	const names = (label: string, record: Record<string, string> | undefined) =>
+		record && Object.keys(record).length > 0 ? `\n${label}: ${Object.keys(record).join(", ")}` : "";
+	const cwd = "cwd" in config && config.cwd ? `\nWorking directory: ${config.cwd}` : "";
+	return `${target}${cwd}${"url" in config ? names("Headers", config.headers) : names("Environment variables", config.env)}`;
+}
 
 const describe = (server: ManagedMcpServer): string =>
 	`${server.name}: ${server.state}${server.origin === "configured" ? "" : ` (${server.origin})`}${
@@ -127,10 +140,9 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 						throw new Error(
 							"Adding an MCP server needs the user's confirmation, and this session cannot ask. Ask the user to add it with /mcp or `octocode mcp add`.",
 						);
-					const target = "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" ");
 					const confirmed = await ctx.ui.confirm(
 						"Add MCP server?",
-						`The agent wants to add "${name}" for this session: ${target}`,
+						`The agent wants to add "${name}" for this session: ${describeNewServer(config)}`,
 					);
 					if (!confirmed) throw new Error(`The user declined adding MCP server "${name}".`);
 					operations.add(name, config);

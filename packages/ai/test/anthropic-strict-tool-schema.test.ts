@@ -68,7 +68,7 @@ async function captureFirstTool(tool: Tool): Promise<NonNullable<AnthropicToolPa
 }
 
 describe("Anthropic strict tool schemas", () => {
-	it("only sends the full input schema for strict JSON-schema tools", async () => {
+	it("only sends the full input schema, annotations included, for strict JSON-schema tools", async () => {
 		const legacyParameters = Type.Object(
 			{ value: Type.String() },
 			{ additionalProperties: false, title: "LookupInput" },
@@ -79,6 +79,8 @@ describe("Anthropic strict tool schemas", () => {
 			type: "object",
 			properties: legacyParameters.properties,
 			required: legacyParameters.required,
+			// The structural keywords stay (`$defs` for `$ref`s, `additionalProperties`); annotations like `title` do not.
+			additionalProperties: false,
 		});
 
 		const strictTool = await captureFirstTool(

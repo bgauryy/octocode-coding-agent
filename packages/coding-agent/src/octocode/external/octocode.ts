@@ -167,6 +167,9 @@ export class OctocodeBackend implements ExternalBackend {
 			};
 		} catch (error) {
 			const data = error instanceof ApiCallError && isRecord(error.data) ? error.data : {};
+			// A local refusal before the send (an oversized frame, a bad timeout) names itself; nothing is running for it.
+			const local = !(error instanceof ApiCallError) ? (error as { execution?: unknown }).execution : undefined;
+			if (local === "not-sent") this.owned = undefined;
 			if (
 				error instanceof ApiCallError &&
 				error.code !== ERR.timeout &&
@@ -176,6 +179,7 @@ export class OctocodeBackend implements ExternalBackend {
 			if (error instanceof Error) {
 				const execution =
 					data.execution ??
+					local ??
 					(error instanceof ApiCallError && error.code === ERR.timeout
 						? "accepted"
 						: attempted

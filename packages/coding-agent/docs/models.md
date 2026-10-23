@@ -81,7 +81,7 @@ To route a built-in provider through a proxy, set only its `baseUrl`. Its models
 
 Use `instructionCacheRetention` and `cacheRetention` to select instruction and history preferences in settings or provider/model configuration. See [Prompt caching](prompt-caching.md) for supported durations, recommended configurations, precedence and diagnostics. `promptCache` below describes warming lifetimes; it does not select retention or enable unsupported API fields.
 
-Use `inputLimits.images.resize` to control how Octocode encodes new image attachments, `read` results, and tool-result images before storing them in conversation history:
+Use `inputLimits.images.resize` to control how Octocode encodes new image attachments and tool-result images before storing them in conversation history:
 
 ```json
 {

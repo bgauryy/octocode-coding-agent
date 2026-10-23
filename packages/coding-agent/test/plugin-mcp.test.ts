@@ -171,6 +171,7 @@ it("connects a reviewed plugin server through the MCP owner and makes it callabl
 			input: {},
 			signal: new AbortController().signal,
 			waitForConnection: true,
+			authorize: async () => {},
 		});
 		expect(result.content).toEqual([{ type: "text", text: '{"decision":"block","reason":"plugin policy"}' }]);
 		expect(mcpNamespace("plugin:review-kit:check")).toBe("mcp__plugin_review-kit_check");
@@ -266,6 +267,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 			input: {},
 			signal: new AbortController().signal,
 			waitForConnection: true,
+			authorize: async () => {},
 		});
 		expect(result.content).toEqual([{ type: "text", text: "built-in owner reached" }]);
 	} finally {

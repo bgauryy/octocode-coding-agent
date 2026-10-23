@@ -7,6 +7,13 @@ import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
 import { HOME_NAMES, octocodeHome, repoKey } from "../shared/home.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import { errorMessage } from "../shared/util.ts";
+import {
+	recoverWorktreeBase,
+	saveWorkerRef,
+	snapshotWorkingCopy,
+	validateSnapshot,
+	workerDeltaCommit,
+} from "./worktree-snapshot.ts";
 
 /**
  * Git worktree isolation for implementer subagents, adapted from the native host's worker worktrees: each isolated
@@ -47,6 +54,8 @@ export interface Worktree {
 	path: string;
 	/** The commit the worktree started from. */
 	base: string;
+	/** A private commit capturing the parent's working files when explicitly requested. */
+	snapshot?: string;
 	/** Where the subagent runs: the worktree, at the same subdirectory as the parent's cwd. */
 	cwd: string;
 	/** Set when the main tree had uncommitted changes, which the worktree does not see. */
@@ -72,26 +81,38 @@ function repoRoot(cwd: string): string {
 	return root;
 }
 
-/** Creates a detached worktree at HEAD for `agentId`. Refuses outside a git repository or before the first commit. */
-export async function createWorktree(cwd: string, agentId: string, home = octocodeHome()): Promise<Worktree> {
+/** Creates a detached worktree at HEAD, or at an explicit snapshot of the current working files. */
+export async function createWorktree(
+	cwd: string,
+	agentId: string,
+	home = octocodeHome(),
+	workingCopy = false,
+): Promise<Worktree> {
 	if (!ID_PATTERN.test(agentId)) throw new Error(`Invalid agent id "${agentId}"`);
 	const repo = repoRoot(cwd);
 	const base = await quiet(git(repo, ["rev-parse", "--verify", "HEAD"]));
 	if (!base) throw new Error("isolate needs at least one commit to start the worktree from.");
-	const dirty = await git(repo, ["status", "--porcelain"]);
+	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain"]);
 	const dir = worktreesDir(repo, home);
 	const worktree = path.join(dir, agentId);
 	fs.mkdirSync(dir, { recursive: true });
 	// Never reuse a kept worktree's id: overwriting (then removing) its record would hide it from prune and reports.
 	if (fs.existsSync(worktree) || fs.existsSync(`${worktree}.json`))
 		throw new Error(`A worktree for ${agentId} already exists at ${worktree}; start the agent again for a new id.`);
+	const snapshot = workingCopy ? await snapshotWorkingCopy(repo, base) : undefined;
 	// The owner record lets a later session prune worktrees whose parent process died.
 	atomicWriteFileSync(
 		`${worktree}.json`,
-		JSON.stringify({ owners: [owner(process.pid)], repo, base, createdAt: Date.now() }),
+		JSON.stringify({
+			owners: [owner(process.pid)],
+			repo,
+			base,
+			...(snapshot ? { snapshot } : {}),
+			createdAt: Date.now(),
+		}),
 	);
 	try {
-		await git(repo, ["worktree", "add", "--detach", worktree, base]);
+		await git(repo, ["worktree", "add", "--detach", worktree, snapshot ?? base]);
 	} catch (error) {
 		fs.rmSync(`${worktree}.json`, { force: true });
 		throw error;
@@ -104,8 +125,9 @@ export async function createWorktree(cwd: string, agentId: string, home = octoco
 		repo,
 		path: worktree,
 		base,
+		...(snapshot ? { snapshot } : {}),
 		cwd: childCwd,
-		...(dirty
+		...(dirty && !snapshot
 			? { warning: "The main tree has uncommitted changes; the isolated subagent starts from HEAD without them." }
 			: {}),
 	};
@@ -155,12 +177,14 @@ const UNREADABLE_GRACE_MS = 60_000;
  * owner record, and the error names where it is.
  */
 export async function finishWorktree(
-	worktree: Pick<Worktree, "agentId" | "repo" | "path" | "base">,
+	worktree: Pick<Worktree, "agentId" | "repo" | "path" | "base" | "snapshot">,
 ): Promise<WorktreeResult> {
 	if (!fs.existsSync(worktree.path)) {
 		await removeWorktree(worktree);
 		return {};
 	}
+	if (fs.lstatSync(worktree.path).isSymbolicLink())
+		throw new Error(`Worktree path is a symbolic link: ${worktree.path}`);
 	let result: WorktreeResult;
 	try {
 		result = await saveChanges(worktree);
@@ -173,7 +197,9 @@ export async function finishWorktree(
 	return result;
 }
 
-async function saveChanges(worktree: Pick<Worktree, "agentId" | "repo" | "path" | "base">): Promise<WorktreeResult> {
+async function saveChanges(
+	worktree: Pick<Worktree, "agentId" | "repo" | "path" | "base" | "snapshot">,
+): Promise<WorktreeResult> {
 	if (await git(worktree.path, ["status", "--porcelain"])) {
 		await git(worktree.path, ["add", "-A"]);
 		const identity = (await quiet(git(worktree.path, ["config", "user.email"])))
@@ -195,41 +221,15 @@ async function saveChanges(worktree: Pick<Worktree, "agentId" | "repo" | "path" 
 			throw new Error("Uncommitted changes remain after the commit");
 	}
 	const head = await git(worktree.path, ["rev-parse", "HEAD"]);
-	const base = worktree.base || (await recoverBase(worktree.repo, head));
-	if (head === base) return {};
-	const ref = await saveRef(worktree.repo, `${REF_PREFIX}${worktree.agentId}`, head);
-	return { ref, stat: await git(worktree.repo, ["diff", "--stat", base, head]) };
-}
-
-/**
- * The start commit of a worktree whose owner record was unreadable: where its head meets the main tree's HEAD. Without
- * one there is no safe diff or ref, so the worktree is kept (and nothing is written) rather than saved under a guess.
- */
-async function recoverBase(repo: string, head: string): Promise<string> {
-	const main = await quiet(git(repo, ["rev-parse", "HEAD"]));
-	const base = main && (await quiet(git(repo, ["merge-base", head, main])));
-	if (!base) throw new Error("its owner record is unreadable and its start commit could not be found");
-	return base;
-}
-
-/**
- * Creates `ref` (or `ref-2`, `ref-3`, … when taken) at `head`; never overwrites an unmerged ref of an earlier agent with the same id.
- * Only a candidate that exists makes it try the next name: any other git failure (a lock, permissions, a damaged repository) is reported with git's own message.
- */
-async function saveRef(repo: string, ref: string, head: string): Promise<string> {
-	for (let n = 1; n <= 100; n++) {
-		const candidate = n === 1 ? ref : `${ref}-${n}`;
-		try {
-			// An empty old value makes update-ref fail when the ref already exists.
-			await git(repo, ["update-ref", candidate, head, ""]);
-			return candidate;
-		} catch (error) {
-			if ((await quiet(git(repo, ["rev-parse", "--verify", "--quiet", candidate]))) === undefined) {
-				throw new Error(`Could not save the subagent's changes under ${candidate}: ${errorMessage(error)}`);
-			}
-		}
-	}
-	throw new Error(`Could not save the subagent's changes: ${ref} and its fallbacks are taken.`);
+	const base = worktree.base || (await recoverWorktreeBase(worktree.repo, head));
+	await validateSnapshot(worktree.repo, base, worktree.snapshot, head);
+	if (head === (worktree.snapshot ?? base)) return {};
+	const delta = worktree.snapshot
+		? await workerDeltaCommit(worktree.repo, base, worktree.snapshot, head, worktree.agentId)
+		: head;
+	if (delta === base) return {};
+	const ref = await saveWorkerRef(worktree.repo, `${REF_PREFIX}${worktree.agentId}`, delta);
+	return { ref, stat: await git(worktree.repo, ["diff", "--stat", base, delta]) };
 }
 
 async function removeWorktree(worktree: Pick<Worktree, "repo" | "path">): Promise<void> {
@@ -337,8 +337,9 @@ async function pruneDir(repo: string, dir: string): Promise<PruneReport> {
 	await releaseDeadClaims(dir, fs.readdirSync(dir), CLAIM_MARKER);
 	for (const entry of fs.readdirSync(dir)) {
 		if (!entry.endsWith(".json")) continue;
+		if (fs.lstatSync(path.join(dir, entry)).isSymbolicLink()) continue;
 		const agentId = entry.slice(0, -".json".length);
-		let record: { owners?: unknown; base?: unknown } = {};
+		let record: { owners?: unknown; repo?: unknown; base?: unknown; snapshot?: unknown } = {};
 		try {
 			record = JSON.parse(fs.readFileSync(path.join(dir, entry), "utf8")) as typeof record;
 		} catch {
@@ -362,8 +363,11 @@ async function pruneDir(repo: string, dir: string): Promise<PruneReport> {
 			repo,
 			path: path.join(dir, agentId),
 			base: typeof record.base === "string" ? record.base : "",
+			snapshot: typeof record.snapshot === "string" ? record.snapshot : undefined,
 		};
 		try {
+			if (record.repo !== undefined && record.repo !== repo)
+				throw new Error("Worktree owner record names a different repository");
 			const { ref } = await finishWorktree(worktree);
 			fs.rmSync(claimed, { force: true });
 			report.saved.push({ agentId, ...(ref ? { ref } : {}) });

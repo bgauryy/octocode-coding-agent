@@ -56,7 +56,8 @@ export function registerMemory(
 				pinned: !options.isSubagent,
 			});
 			if (!injection) return undefined;
-			store.markUsed(injection.ids);
+			// Counted as used once the message is committed (`message_end`), not when it is offered: a prompt that never runs
+			// does not use its memories.
 			return {
 				message: {
 					customType: MEMORY_MESSAGE_TYPE,
@@ -68,6 +69,18 @@ export function registerMemory(
 		} catch {
 			// A missing or foreign agent DB never blocks a prompt; the tool and command report the error.
 			return undefined;
+		}
+	});
+
+	pi.on("message_end", async (event, ctx) => {
+		const { message } = event;
+		if (message.role !== "custom" || message.customType !== MEMORY_MESSAGE_TYPE) return;
+		const ids = (message.details as { ids?: unknown } | undefined)?.ids;
+		if (!Array.isArray(ids)) return;
+		try {
+			storeFor(ctx).markUsed(ids.filter((id): id is number => typeof id === "number"));
+		} catch {
+			// A missing agent DB never blocks a turn.
 		}
 	});
 

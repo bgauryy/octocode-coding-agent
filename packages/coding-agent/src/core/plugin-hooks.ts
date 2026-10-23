@@ -1,9 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { stripBom } from "../utils/text.ts";
 import { discoverPluginComponents } from "./plugin-components.ts";
-import { discoverPluginManifests, type PluginManifest } from "./plugin-manifest.ts";
+import { resolveConfiguredPlugin, startPluginFingerprint, type PluginManifest } from "./plugin-manifest.ts";
 import type { Settings } from "./settings-manager.ts";
 
 interface PluginHookInspection {
@@ -17,17 +15,13 @@ interface PluginHookInspection {
 export function inspectPluginHooks(entry: NonNullable<Settings["plugins"]>[number]): PluginHookInspection {
 	const result: PluginHookInspection = { definitions: [], errors: [] };
 	try {
-		if (!path.isAbsolute(entry.path)) throw new Error("Plugin path must be absolute");
-		const discovery = discoverPluginManifests(entry.path, { protocol: entry.protocol });
-		result.errors.push(...discovery.errors);
-		const manifest = discovery.manifests.find((m) => m.protocol === entry.protocol);
-		if (!manifest) throw new Error(`No valid ${entry.protocol} plugin manifest found`);
+		const { manifest, errors, failure } = resolveConfiguredPlugin(entry);
+		result.errors.push(...errors);
+		if (!manifest) throw new Error(failure);
 		result.manifest = manifest;
 		const components = discoverPluginComponents(manifest);
 		result.errors.push(...components.errors);
-		const hash = createHash("sha256");
-		hash.update(JSON.stringify([manifest.root, manifest.protocol, manifest.name]));
-		for (const source of manifest.sources) hash.update(JSON.stringify([source, readFileSync(source, "utf8")]));
+		const hash = startPluginFingerprint(manifest);
 		for (const [index, component] of components.hooks.entries()) {
 			const source = component.kind === "path" ? component.path : `${manifest.sources.at(-1)}#hooks[${index}]`;
 			const text = component.kind === "path" ? readFileSync(component.path, "utf8") : JSON.stringify(component.value);

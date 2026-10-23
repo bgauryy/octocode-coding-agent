@@ -241,7 +241,7 @@ describe("SettingsManager", () => {
 			writeFileSync(globalSettingsPath, "{ invalid global json");
 			writeFileSync(projectSettingsPath, "{ invalid project json");
 
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 			const errors = manager.drainErrors();
 
 			expect(errors).toHaveLength(2);
@@ -335,7 +335,7 @@ describe("SettingsManager", () => {
 			// Delete the .pi folder that beforeEach created
 			rmSync(join(projectDir, ".octocode"), { recursive: true });
 
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 
 			// .pi folder should NOT exist yet
 			expect(existsSync(join(projectDir, ".octocode"))).toBe(false);
@@ -397,7 +397,7 @@ describe("SettingsManager", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ httpIdleTimeoutMs: 300000 }));
 			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ httpIdleTimeoutMs: 0 }));
 
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 
 			expect(manager.getHttpIdleTimeoutMs()).toBe(0);
 		});
@@ -635,11 +635,16 @@ describe("SettingsManager", () => {
 		it("loads global defaults and lets project settings replace them", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultTools: ["read", "bash"] }));
 
-			expect(SettingsManager.create(projectDir, agentDir).getDefaultTools()).toEqual(["read", "bash"]);
+			expect(SettingsManager.create(projectDir, agentDir, { projectTrusted: true }).getDefaultTools()).toEqual([
+				"read",
+				"bash",
+			]);
 
 			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ defaultTools: ["grep"] }));
 
-			expect(SettingsManager.create(projectDir, agentDir).getDefaultTools()).toEqual(["grep"]);
+			expect(SettingsManager.create(projectDir, agentDir, { projectTrusted: true }).getDefaultTools()).toEqual([
+				"grep",
+			]);
 		});
 
 		it("preserves an empty tool list", () => {
@@ -649,9 +654,10 @@ describe("SettingsManager", () => {
 
 		it("applies +name and -name to the default selection", () => {
 			expect(SettingsManager.inMemory({ defaultTools: ["+codemode", "-write"] }).getDefaultTools()).toEqual([
-				"read",
 				"bash",
-				"edit",
+				"codemode",
+			]);
+			expect(SettingsManager.inMemory({ defaultTools: ["+codemode", "-bash"] }).getDefaultTools()).toEqual([
 				"codemode",
 			]);
 			expect(SettingsManager.inMemory({ defaultTools: ["read", "+grep", "+read"] }).getDefaultTools()).toEqual([
@@ -667,7 +673,7 @@ describe("SettingsManager", () => {
 				JSON.stringify({ defaultTools: ["-codemode", "+tool_search"] }),
 			);
 
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 			expect(manager.getDefaultTools()).toEqual(["read", "bash", "tool_search"]);
 
 			manager.applyOverrides({ defaultTools: ["+codemode"] });
@@ -677,11 +683,8 @@ describe("SettingsManager", () => {
 		it("applies project modifiers to the built-in defaults without a global setting", () => {
 			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ defaultTools: ["+codemode"] }));
 
-			expect(SettingsManager.create(projectDir, agentDir).getDefaultTools()).toEqual([
-				"read",
+			expect(SettingsManager.create(projectDir, agentDir, { projectTrusted: true }).getDefaultTools()).toEqual([
 				"bash",
-				"edit",
-				"write",
 				"codemode",
 			]);
 		});
@@ -703,7 +706,7 @@ describe("SettingsManager", () => {
 		it("should return project sessionDir, overriding global", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ sessionDir: "/global/sessions" }));
 			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ sessionDir: "./sessions" }));
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 			expect(manager.getSessionDir()).toBe("./sessions");
 		});
 

@@ -3,8 +3,9 @@ import path from "node:path";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { agentModes, agentOperation } from "../../src/octocode/agent-tool.ts";
-import { completedLocalReads, snapshotLocalReads } from "../../src/octocode/shared/local-reads.ts";
+import { appendReadDigests, completedLocalReads, snapshotLocalReads } from "../../src/octocode/shared/local-reads.ts";
 import { seenFiles } from "../../src/octocode/files/reads.ts";
+import { registerReadReceipts } from "../../src/octocode/files/read-receipts.ts";
 import { FileGuard } from "../../src/octocode/files/tool.ts";
 import { shellScript } from "../../src/octocode/files/bash-jobs.ts";
 import { ReadReports } from "../../src/octocode/subagents/handoff.ts";
@@ -18,6 +19,64 @@ const output = (file: string, content: string, extra: object = {}) => ({
 });
 
 describe("local MCP read evidence", () => {
+	it("cleans rejected read snapshots at execution end without discarding successful results", async () => {
+		const cwd = fs.realpathSync(tmp());
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one\n");
+		const fake = fakePi();
+		const snapshots = registerReadReceipts(fake.pi);
+		const read = await snapshotLocalReads(tool, { queries: [{ path: file }] }, cwd);
+		snapshots.set("blocked", read);
+		await fake.emit("tool_execution_end", { toolCallId: "blocked", isError: true }, { cwd });
+		expect(snapshots.has("blocked")).toBe(false);
+		snapshots.set("successful", read);
+		await fake.emit("tool_execution_end", { toolCallId: "successful", isError: false }, { cwd });
+		expect(snapshots.has("successful")).toBe(true);
+		const results = await fake.emit(
+			"tool_result",
+			{
+				toolCallId: "successful",
+				isError: false,
+				content: [{ type: "text", text: "read" }],
+				structuredContent: output(file, "1\tone\n", { totalLines: 1 }),
+			},
+			{ cwd },
+		);
+		expect(snapshots.has("successful")).toBe(false);
+		expect(results[0]).toMatchObject({ details: { localReads: [{ file, whole: true }] } });
+	});
+
+	it("shows only complete credited source digests without altering original content", async () => {
+		const cwd = fs.realpathSync(tmp());
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one\n");
+		const before = await snapshotLocalReads(tool, { queries: [{ path: file }] }, cwd);
+		const reads = await completedLocalReads(before, output(file, "1\tone\n", { totalLines: 1 }), cwd);
+		const content = [{ type: "text" as const, text: "original reader response" }];
+		const visible = appendReadDigests(content, reads);
+		expect(content).toEqual([{ type: "text", text: "original reader response" }]);
+		expect(visible).toHaveLength(2);
+		expect(visible[1]).toEqual({
+			type: "text",
+			text: `Whole-source SHA-256 for optional anchored edits:\nsourceSha256=${reads[0].sha256} path=${JSON.stringify(file)}`,
+		});
+		expect(appendReadDigests(content, [...reads, ...reads])).toEqual(visible);
+	});
+
+	it("does not disclose digests for partial, nested, truncated or nontext results", async () => {
+		const cwd = fs.realpathSync(tmp());
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one\ntwo\n");
+		const before = await snapshotLocalReads(tool, { queries: [{ path: file }] }, cwd);
+		const whole = await completedLocalReads(before, output(file, "1\tone\n2\ttwo\n", { totalLines: 2 }), cwd);
+		const partial = await completedLocalReads(before, output(file, "2\ttwo\n", { totalLines: 2 }), cwd);
+		const content = [{ type: "text" as const, text: "reader response" }];
+		expect(appendReadDigests(content, partial)).toEqual(content);
+		expect(appendReadDigests(content, whole, { nested: true })).toEqual(content);
+		expect(appendReadDigests(content, whole, { truncated: true })).toEqual(content);
+		expect(appendReadDigests([{ type: "image" as const }], whole)).toEqual([{ type: "image" }]);
+	});
+
 	it("records complete numbered reads and restores their coverage from history", async () => {
 		const cwd = tmp();
 		const file = path.join(fs.realpathSync(cwd), "a.txt");

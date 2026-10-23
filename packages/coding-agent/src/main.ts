@@ -147,6 +147,20 @@ export async function main(args: string[], options?: MainOptions) {
 		process.exit(0);
 	}
 
+	if (parsed.mode === "acp") {
+		if (parsed.help) {
+			printHelp();
+			return;
+		}
+		if (options?.extensionFactories?.length)
+			throw new Error(
+				"ACP workers require file-based extensions; inline extension factories cannot cross process boundaries.",
+			);
+		const { acpWorkerArguments, runAcpMode } = await import("./modes/acp/acp-mode.ts");
+		await runAcpMode(acpWorkerArguments(args, parsed));
+		return;
+	}
+
 	if (parsed.export) {
 		let result: string;
 		try {

@@ -4,7 +4,7 @@ import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { PackageSource } from "../settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { addAutoDiscoveredResources } from "./auto-discovery.ts";
-import { collectAutoSkillEntries } from "./discovery.ts";
+import { collectSkillEntries } from "./discovery.ts";
 import { getGitInstallPath, installGit } from "./git.ts";
 import { getNpmInstallPath, installedNpmMatchesConfiguredVersion, installNpm } from "./npm.ts";
 import { applyAutoloadDisabledPatterns, getOverridePatterns, isEnabledByOverrides } from "./patterns.ts";
@@ -93,7 +93,7 @@ export async function resolvePackages(
 	addAutoDiscoveredResources(host, accumulator, globalSettings, projectSettings, globalBaseDir, projectBaseDir);
 
 	if (host.builtinSkillsDir) {
-		const paths = collectAutoSkillEntries(host.builtinSkillsDir, "octocode");
+		const paths = collectSkillEntries(host.builtinSkillsDir, "octocode");
 		const projectOverrides = applyAutoloadDisabledPatterns(
 			paths,
 			getOverridePatterns(projectSettings.skills ?? []),

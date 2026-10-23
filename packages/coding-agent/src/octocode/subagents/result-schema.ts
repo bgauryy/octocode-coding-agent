@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "../shared/atomic.ts";
 import { Value } from "typebox/value";
 import type { TSchema } from "typebox";
 
@@ -174,9 +174,7 @@ export function admitResultSchema(input: unknown): ResultContract {
 	checkSchema(schema);
 	freezeJson(schema);
 	// TypeBox's Value.Check handles the admitted JSON Schema keywords without coercion.
-	const hash = createHash("sha256")
-		.update(`octocode-result-schema/v1\n${canonical(schema)}`)
-		.digest("hex");
+	const hash = sha256(`octocode-result-schema/v1\n${canonical(schema)}`);
 	return Object.freeze({ schema: schema, hash });
 }
 

@@ -1,4 +1,4 @@
-import type { McpHookCaller } from "../../extensions/mcp/hook-caller.ts";
+import type { BoundMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
 import { type HookMcp, HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
 import { errorMessage, isRecord, stringOrEmpty } from "../shared/util.ts";
 
@@ -27,7 +27,7 @@ export async function runMcpHook(
 	hook: HookMcp,
 	payload: Record<string, unknown>,
 	signal: AbortSignal | undefined,
-	call: McpHookCaller | undefined,
+	call: BoundMcpHookCaller | undefined,
 ): Promise<HookRun> {
 	const empty: HookRun = {
 		code: null,

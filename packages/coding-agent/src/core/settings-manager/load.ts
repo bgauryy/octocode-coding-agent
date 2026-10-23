@@ -6,7 +6,7 @@ import type { SettingsScope, SettingsStorage } from "./storage.ts";
 export function loadSettingsFromStorage(
 	storage: SettingsStorage,
 	scope: SettingsScope,
-	projectTrusted = true,
+	projectTrusted = false,
 ): Settings {
 	if (scope === "project" && !projectTrusted) {
 		return {};
@@ -32,7 +32,7 @@ export function loadSettingsFromStorage(
 export function tryLoadSettingsFromStorage(
 	storage: SettingsStorage,
 	scope: SettingsScope,
-	projectTrusted = true,
+	projectTrusted = false,
 ): { settings: Settings; error: Error | null } {
 	try {
 		return { settings: loadSettingsFromStorage(storage, scope, projectTrusted), error: null };

@@ -3,13 +3,10 @@
 import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../../../utils/open-browser.ts";
 import type { McpServerEntry } from "../config.ts";
-import {
-	type McpOAuthCredentialStore,
-	type McpServerConnection,
-	McpSignInCancelledError,
-	signInMcpServer,
-} from "../runtime.ts";
-import { errorMessage, type McpCommandOptions } from "./shared.ts";
+import { type McpOAuthCredentialStore, McpSignInCancelledError, signInMcpServer } from "../oauth.ts";
+import type { McpServerConnection } from "../runtime.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import type { McpCommandOptions } from "./shared.ts";
 
 export async function login(
 	entry: McpServerEntry,

@@ -204,8 +204,13 @@ describe("pending reports", () => {
 			const original = report("retry");
 			queue.add(original);
 			queue.flush();
-			await vi.advanceTimersByTimeAsync(60_000);
+			// Three quick retries (1 s, 2 s, 4 s) leave the report pending, not stranded: slow ones follow.
+			await vi.advanceTimersByTimeAsync(10_000);
 			expect(send).toHaveBeenCalledTimes(4);
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(send).toHaveBeenCalledTimes(5);
+			await vi.advanceTimersByTimeAsync(10 * 60_000);
+			expect(send).toHaveBeenCalledTimes(7);
 			expect(new Set(send.mock.calls.map(([message]) => (message.details as { reportId: string }).reportId)).size).toBe(
 				1,
 			);
@@ -217,6 +222,51 @@ describe("pending reports", () => {
 		} finally {
 			queue.persist();
 			vi.useRealTimers();
+		}
+	});
+
+	it("finds receipts by reading only complete lines the transcript gained, and starts over when it shrinks", () => {
+		const f = fakePi();
+		const dir = tmp();
+		const file = path.join(dir, "session.jsonl");
+		const receipt = (id: string) =>
+			JSON.stringify({ type: "custom_message", customType: "octocode-agent-result", details: { reportId: id } });
+		fs.writeFileSync(file, `${JSON.stringify({ type: "session" })}\n`);
+		const queue = new ReportQueue(f.pi, 60_000);
+		queue.start({ getSessionFile: () => file, getEntries: () => [] });
+		queue.pendingDir = path.join(dir, "reports");
+		try {
+			const pending = (id: string) => {
+				queue.add({ ...report(id), reportId: id });
+				return fs.readdirSync(queue.pendingDir!).length;
+			};
+			expect(pending("one")).toBe(1);
+			// A line still being written is not a receipt yet.
+			fs.appendFileSync(file, receipt("one"));
+			queue.recorded();
+			expect(fs.readdirSync(queue.pendingDir)).toHaveLength(1);
+			fs.appendFileSync(file, "\n");
+			queue.recorded();
+			expect(fs.readdirSync(queue.pendingDir)).toHaveLength(0);
+			// A receipt written after the last scan is found without rereading the earlier text.
+			expect(pending("two")).toBe(1);
+			const read = vi.spyOn(fs, "readSync");
+			const previousSize = fs.statSync(file).size;
+			fs.appendFileSync(file, `${receipt("two")}\n`);
+			queue.recorded();
+			expect(fs.readdirSync(queue.pendingDir)).toHaveLength(0);
+			// readSync(fd, buffer, bufferOffset, length, filePosition): inspect the new bytes only.
+			const readArguments: readonly unknown[] = read.mock.calls[0];
+			expect(readArguments[3]).toBe(Buffer.byteLength(`${receipt("two")}\n`));
+			expect(readArguments[4]).toBe(previousSize);
+			read.mockRestore();
+			// A transcript replaced by a shorter one is scanned from its start.
+			expect(pending("three")).toBe(1);
+			fs.writeFileSync(file, `${receipt("three")}\n`);
+			queue.recorded();
+			expect(fs.readdirSync(queue.pendingDir)).toHaveLength(0);
+		} finally {
+			queue.persist();
 		}
 	});
 

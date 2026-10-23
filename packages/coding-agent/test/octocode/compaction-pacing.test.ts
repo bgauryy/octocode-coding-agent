@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { estimateTokens } from "../../src/core/compaction/index.ts";
 import {
 	contextTokens,
 	needsDownshiftCompaction,
@@ -73,8 +74,12 @@ describe("downshift compaction", () => {
 			sessionManager: { buildSessionProjection: () => projection },
 		});
 		expect(contextTokens(ctx(42) as never)).toBe(42);
-		expect(contextTokens(ctx(null) as never)).toBe(Math.ceil(4_000 / CHARS_PER_TOKEN) + 100_000);
-		expect(contextTokens(ctx(null) as never, 3_000)).toBe(Math.ceil(7_000 / CHARS_PER_TOKEN) + 100_000);
+		expect(contextTokens(ctx(null) as never)).toBe(
+			Math.ceil(4_000 / CHARS_PER_TOKEN) + Math.ceil(400_000 / CHARS_PER_TOKEN),
+		);
+		expect(contextTokens(ctx(null) as never, 3_000)).toBe(
+			Math.ceil(7_000 / CHARS_PER_TOKEN) + Math.ceil(400_000 / CHARS_PER_TOKEN),
+		);
 		expect(contextTokens(ctx(42) as never, 3_000)).toBe(42);
 		expect(
 			needsDownshiftCompaction(
@@ -84,6 +89,26 @@ describe("downshift compaction", () => {
 				16_384,
 			),
 		).toBe(true);
+	});
+});
+
+describe("context estimate without a count", () => {
+	it("does not count the system prompt and tool definitions twice when the transcript holds them", () => {
+		const system = {
+			role: "system",
+			content: "",
+			sections: { base: "b".repeat(3_000) },
+			toolsAdded: [{ name: "read", description: "d".repeat(600), parameters: {} }],
+			timestamp: 0,
+		};
+		const user = { role: "user", content: "x".repeat(300), timestamp: 0 };
+		const ctx = {
+			getContextUsage: () => undefined,
+			getSystemPrompt: () => "y".repeat(3_000),
+			sessionManager: { buildSessionProjection: () => ({ entries: [{ messages: [system, user] }] }) },
+		};
+		const held = estimateTokens(system as never) + estimateTokens(user as never);
+		expect(contextTokens(ctx as never, 5_000)).toBe(held);
 	});
 });
 

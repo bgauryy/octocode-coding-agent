@@ -6,12 +6,13 @@ import * as bundledPiTui from "@octocodeai/octocode-tui";
 import * as bundledTypebox from "typebox";
 import * as bundledTypeboxCompile from "typebox/compile";
 import * as bundledTypeboxValue from "typebox/value";
+import type { HostModuleSpecifier } from "./host-modules.ts";
 // This import is safe because loader.ts exports are not re-exported from index.ts.
 // Extensions can therefore import from @octocodeai/octocodecode.
 import * as bundledPiCodingAgent from "../../index.ts";
 
 /** Modules available to extensions in source and compiled binary runtimes. */
-export const VIRTUAL_MODULES: Record<string, unknown> = {
+export const VIRTUAL_MODULES: Record<HostModuleSpecifier, unknown> = {
 	typebox: bundledTypebox,
 	"typebox/compile": bundledTypeboxCompile,
 	"typebox/value": bundledTypeboxValue,

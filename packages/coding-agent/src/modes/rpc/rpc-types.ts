@@ -6,71 +6,22 @@
  */
 
 import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import type { ImageContent, Model } from "@octocodeai/octocode-ai";
+import type { Model } from "@octocodeai/octocode-ai";
 import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
+import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
+import type { Static } from "typebox";
+import type { RpcCommandSchema } from "./rpc-command-schema.ts";
 
 // ============================================================================
 // RPC Commands (stdin)
 // ============================================================================
 
-export type RpcCommand =
-	// Prompting
-	| { id?: string; type: "prompt"; message: string; images?: ImageContent[]; streamingBehavior?: "steer" | "followUp" }
-	| { id?: string; type: "steer"; message: string; images?: ImageContent[] }
-	| { id?: string; type: "follow_up"; message: string; images?: ImageContent[] }
-	| { id?: string; type: "abort" }
-	| { id?: string; type: "clear_queue" }
-	| { id?: string; type: "new_session"; parentSession?: string }
-
-	// State
-	| { id?: string; type: "get_state" }
-
-	// Model
-	| { id?: string; type: "set_model"; provider: string; modelId: string }
-	| { id?: string; type: "cycle_model" }
-	| { id?: string; type: "get_available_models" }
-
-	// Thinking
-	| { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
-	| { id?: string; type: "cycle_thinking_level" }
-	| { id?: string; type: "get_available_thinking_levels" }
-
-	// Queue modes
-	| { id?: string; type: "set_steering_mode"; mode: "all" | "one-at-a-time" }
-	| { id?: string; type: "set_follow_up_mode"; mode: "all" | "one-at-a-time" }
-
-	// Compaction
-	| { id?: string; type: "compact" }
-
-	// Retry
-	| { id?: string; type: "set_auto_retry"; enabled: boolean }
-	| { id?: string; type: "abort_retry" }
-
-	// Bash
-	| { id?: string; type: "bash"; command: string; excludeFromContext?: boolean }
-	| { id?: string; type: "abort_bash" }
-
-	// Session
-	| { id?: string; type: "get_session_stats" }
-	| { id?: string; type: "export_html"; outputPath?: string }
-	| { id?: string; type: "switch_session"; sessionPath: string }
-	| { id?: string; type: "fork"; entryId: string }
-	| { id?: string; type: "clone" }
-	| { id?: string; type: "get_fork_messages" }
-	| { id?: string; type: "get_entries"; since?: string }
-	| { id?: string; type: "get_tree" }
-	| { id?: string; type: "get_last_assistant_text" }
-	| { id?: string; type: "set_session_name"; name: string }
-
-	// Messages
-	| { id?: string; type: "get_messages" }
-
-	// Commands (available for invocation via prompt)
-	| { id?: string; type: "get_commands" };
+/** The command union is derived from the validation schema, so the two cannot drift apart. */
+export type RpcCommand = Static<typeof RpcCommandSchema>;
 
 // ============================================================================
 // RPC Slash Command (for get_commands response)
@@ -227,6 +178,7 @@ export type RpcResponse =
 			data: { text: string | null };
 	  }
 	| { id?: string; type: "response"; command: "set_session_name"; success: true }
+	| { id?: string; type: "response"; command: "persist_session"; success: true }
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }
@@ -249,7 +201,15 @@ export type RpcResponse =
 
 /** Emitted when an extension needs user input */
 export type RpcExtensionUIRequest =
-	| { type: "extension_ui_request"; id: string; method: "select"; title: string; options: string[]; timeout?: number }
+	| {
+			type: "extension_ui_request";
+			id: string;
+			method: "select";
+			title: string;
+			options: string[];
+			timeout?: number;
+			permission?: ExtensionUIPermissionRequest;
+	  }
 	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }
 	| {
 			type: "extension_ui_request";

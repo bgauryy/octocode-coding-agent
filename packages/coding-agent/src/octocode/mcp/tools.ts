@@ -1,12 +1,13 @@
 import fs from "node:fs";
-import { type CallToolResult, type Tool, toLlmContent } from "@octocodeai/octocode-mcp";
+import { type CallToolResult, type ProgressNotification, type Tool, toLlmContent } from "@octocodeai/octocode-mcp";
 import type {
 	AgentToolResult,
 	ToolAnnotations as PiToolAnnotations,
 	ToolDefinition,
 } from "../../core/extensions/index.ts";
+import { createMcpToolName, toParameters } from "../../extensions/mcp/tools.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
-import { isDirectResearchTool } from "../shared/octocode-tools.ts";
+import { isDirectResearchTool, OCTOCODE_SERVER } from "../shared/octocode-tools.ts";
 import { clip, queryTarget, resultBlock, resultText, timedTool, timingOf, toolHeader } from "../shared/render.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { boundImagePart, capOutputToFile, saveFullOutput } from "../shared/spill.ts";
@@ -16,13 +17,21 @@ import { type ImageLimits, imageLimits } from "../shared/vision.ts";
 /** What the extension registers a server's tool as. */
 interface ToolBinding {
 	exposure?: "direct" | "deferred";
-	/** Octocode's tool name prefix for the server, `mcp__octocode__`. */
-	prefix: string;
 	/** The tools' namespace: the server's name and its instructions. */
 	namespace: NonNullable<ToolDefinition["namespace"]>;
-	call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult>;
+	call(
+		name: string,
+		args: Record<string, unknown>,
+		signal?: AbortSignal,
+		onProgress?: (progress: ProgressNotification) => void,
+	): Promise<CallToolResult>;
 	/** The text the turn's results have put in the context so far; every result of one assistant message shares it. */
 	budget?: TurnBudget;
+}
+
+/** What the extension registers one of the server's tools as: the generic path's name rules (charset, length) apply here too. */
+export function octocodeToolName(tool: string): string {
+	return createMcpToolName(OCTOCODE_SERVER, tool);
 }
 
 /** Hints the server gave about the tool, as Octocode's annotations (booleans only: nothing else is a hint). */
@@ -210,7 +219,7 @@ function callSummary(args: unknown): { summary: string; queries: string[] } {
  */
 export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDefinition {
 	const hints = annotations(tool);
-	const name = `${binding.prefix}${tool.name}`;
+	const name = octocodeToolName(tool.name);
 	// Local readers send structured evidence even when their server omits an output schema.
 	const outputSchema = tool.outputSchema ?? (LOCAL_READ_TOOLS.has(name) ? {} : undefined);
 	const declaresOutput = outputSchema !== undefined;
@@ -218,7 +227,8 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 		name,
 		label: tool.title?.trim() || tool.name,
 		description: tool.description?.trim() || tool.title?.trim() || `Octocode tool ${tool.name}`,
-		parameters: tool.inputSchema,
+		// The generic path's schema rules apply: an object schema with `type` and `properties`.
+		parameters: toParameters(tool.inputSchema),
 		...(declaresOutput ? { outputSchema: outputSchema } : {}),
 		exposure: isDirectResearchTool(name) ? "direct" : (binding.exposure ?? "direct"),
 		namespace: binding.namespace,
@@ -238,10 +248,14 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 				...timingOf(result.details),
 			});
 		},
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			return toToolResult(
 				tool.name,
-				await binding.call(tool.name, isRecord(params) ? params : {}, signal),
+				await binding.call(tool.name, isRecord(params) ? params : {}, signal, (progress) => {
+					const total = progress.total === undefined ? "" : `/${progress.total}`;
+					const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
+					onUpdate?.({ content: [{ type: "text", text }], details: { tool: tool.name } });
+				}),
 				declaresOutput,
 				imageLimits(ctx.model),
 				binding.budget,

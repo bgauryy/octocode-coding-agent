@@ -6,6 +6,7 @@ import {
 	ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
 	ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../../env-api-keys.ts";
+import { hasProviderHeader } from "../../utils/headers.ts";
 import type { Model, ProviderEnv, ProviderHeaders } from "../../types.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
@@ -26,21 +27,12 @@ function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): 
 	return mergeHeaders({ "User-Agent": getPiUserAgent() }, ...headerSources);
 }
 
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-	if (!headers) return false;
-	const expected = name.toLowerCase();
-	for (const [key, value] of Object.entries(headers)) {
-		if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-	}
-	return false;
-}
-
 function hasRequestAuth(apiKey: string | undefined, headers: ProviderHeaders | undefined): boolean {
 	return (
 		!!apiKey ||
-		hasHeader(headers, "authorization") ||
-		hasHeader(headers, "x-api-key") ||
-		hasHeader(headers, "cf-aig-authorization")
+		hasProviderHeader(headers, "authorization") ||
+		hasProviderHeader(headers, "x-api-key") ||
+		hasProviderHeader(headers, "cf-aig-authorization")
 	);
 }
 

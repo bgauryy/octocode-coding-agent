@@ -1,18 +1,15 @@
 import {
-	type Component,
-	Container,
+	type Container,
 	type Focusable,
 	type SelectItem,
 	SelectList,
 	Spacer,
 	Text,
 	type TUI,
-	truncateToWidth,
-	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
-import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
+import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { LlamaModelInfo, LlamaProgress } from "./client.ts";
@@ -58,19 +55,6 @@ function selectTheme(theme: Theme) {
 		scrollInfo: (text: string) => theme.fg("dim", text),
 		noMatch: (text: string) => theme.fg("warning", text),
 	};
-}
-
-function frame(theme: Theme, title: string, body: Component[], footer?: string): Container {
-	const container = new Container();
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-	container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-	for (const child of body) container.addChild(child);
-	if (footer) {
-		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("dim", footer), 1, 0));
-	}
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-	return container;
 }
 
 export interface LlamaUi {
@@ -280,9 +264,7 @@ class LlamaView implements LlamaUi, Focusable {
 	}
 
 	render(width: number): string[] {
-		return this.content
-			.render(width)
-			.map((line) => (visibleWidth(line) > width ? truncateToWidth(line, width, "") : line));
+		return renderClipped(this.content, width);
 	}
 
 	invalidate(): void {
@@ -291,18 +273,7 @@ class LlamaView implements LlamaUi, Focusable {
 }
 
 export async function showLlamaUi(ctx: ExtensionCommandContext, run: (ui: LlamaUi) => Promise<void>): Promise<void> {
-	await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
-		const view = new LlamaView(tui, theme, keybindings);
-		void (async () => {
-			try {
-				await run(view);
-			} catch (error) {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-			}
-			done();
-		})();
-		return view;
-	});
+	await runInView<LlamaView>(ctx, (tui, theme, keybindings) => new LlamaView(tui, theme, keybindings), run);
 }
 
 export async function runWithProgress<T>(

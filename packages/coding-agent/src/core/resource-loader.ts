@@ -14,7 +14,7 @@ import { DefaultPackageManager, type PathMetadata } from "./package-manager.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import type { LoadSkillsResult } from "./skills.ts";
-import { BUILTIN_PATH_PREFIX, type SourceInfo } from "./source-info.ts";
+import { BUILTIN_PATH_PREFIX } from "./source-info.ts";
 import { resetTimings } from "./timings.ts";
 import {
 	type BuiltinExtension,
@@ -209,7 +209,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		// extensions/packages out while still loading user/global and temporary CLI extensions.
 		this.settingsManager.setProjectTrusted(false);
 		await this.settingsManager.reload();
-		return this.extensionLoader.loadCurrentExtensionSet({ includeInlineFactories: true });
+		return this.extensionLoader.loadCurrentExtensionSet();
 	}
 
 	async reload(options?: ResourceLoaderReloadOptions): Promise<void> {
@@ -243,7 +243,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const enabled = collectEnabledResources(resolvedPaths, cliExtensionPaths, metadataByPath);
 
 		const extensionPaths = (
-			this.noExtensions ? enabled.cliExtensions : this.mergePaths(enabled.cliExtensions, enabled.extensions)
+			this.noExtensions ? enabled.cliExtensions : mergePaths(this.cwd, enabled.cliExtensions, enabled.extensions)
 		).filter(
 			(path) =>
 				!path.startsWith(BUILTIN_PATH_PREFIX) ||
@@ -255,7 +255,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		mergeExtensionWarnings(extensionsResult, packageWarnings);
 		for (const p of this.additionalExtensionPaths) {
 			if (isLocalPath(p)) {
-				const resolved = this.resolveResourcePath(p);
+				const resolved = resolveResourcePath(this.cwd, p);
 				if (!existsSync(resolved)) {
 					extensionsResult.errors.push({
 						path: resolved,
@@ -306,8 +306,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private applyExtensionSourceInfo(extensions: Extension[], metadataByPath: Map<string, PathMetadata>): void {
 		for (const extension of extensions) {
 			extension.sourceInfo =
-				this.findSourceInfoForPath(extension.path, undefined, metadataByPath) ??
-				this.getDefaultSourceInfoForPath(extension.path);
+				findSourceInfoForPath(this.roots(), extension.path, undefined, metadataByPath) ??
+				getDefaultSourceInfoForPath(this.roots(), extension.path);
 			for (const command of extension.commands.values()) {
 				command.sourceInfo = extension.sourceInfo;
 			}
@@ -319,25 +319,5 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	private roots(): ResourceRoots {
 		return { cwd: this.cwd, agentDir: this.agentDir };
-	}
-
-	private findSourceInfoForPath(
-		resourcePath: string,
-		extraSourceInfos?: Map<string, SourceInfo>,
-		metadataByPath?: Map<string, PathMetadata>,
-	): SourceInfo | undefined {
-		return findSourceInfoForPath(this.roots(), resourcePath, extraSourceInfos, metadataByPath);
-	}
-
-	private getDefaultSourceInfoForPath(filePath: string): SourceInfo {
-		return getDefaultSourceInfoForPath(this.roots(), filePath);
-	}
-
-	private mergePaths(primary: string[], additional: string[]): string[] {
-		return mergePaths(this.cwd, primary, additional);
-	}
-
-	private resolveResourcePath(p: string): string {
-		return resolveResourcePath(this.cwd, p);
 	}
 }

@@ -8,6 +8,7 @@ import {
 	withVirtualModels,
 } from "../virtual-models.ts";
 import type { RegisteredVirtualModel } from "./types.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /**
  * The provider layers the model runtime composes into its Models collection: built-in providers, native extension
@@ -63,7 +64,7 @@ export class ProviderLayers {
 			this.compositionErrors.delete(providerId);
 			return provider;
 		} catch (error) {
-			this.compositionErrors.set(providerId, error instanceof Error ? error.message : String(error));
+			this.compositionErrors.set(providerId, errorMessage(error));
 			return base;
 		}
 	}

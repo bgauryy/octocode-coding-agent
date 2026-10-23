@@ -49,8 +49,28 @@ describe("read-only subagent roles", () => {
 			return Object.values(event.systemPromptOptions.sections).join("\n");
 		};
 		const reviewer = await policy(true);
-		expect(reviewer).toContain("Investigate and report; do not modify the repository.");
+		expect(reviewer).toContain("Investigate and report; do not modify repository source.");
 		expect(reviewer).not.toContain("Make the smallest complete change");
 		expect(await policy(false)).toContain("Make the smallest complete change");
+	});
+
+	it("does not infer a read-only role from a main session without file tools", async () => {
+		for (const selectedTools of [["bash"], ["debug"]]) {
+			const fake = fakePi();
+			registerTurnSetup(fake.pi, {
+				isSubagent: false,
+				profiles: () => new Map(),
+				octocode: fakeOctocode({ by: "off" }).mcp,
+			});
+			const event = {
+				systemPromptOptions: { sections: {} as Record<string, string>, selectedTools },
+			};
+			await fake.emit("before_agent_start", event, {});
+			const prompt = event.systemPromptOptions.sections.octocode;
+			expect(prompt).toContain("Make the smallest complete change");
+			expect(prompt).not.toContain("Investigate and report; do not modify repository source");
+			expect(prompt).not.toContain("Run only read-only commands");
+			if (selectedTools[0] === "debug") expect(prompt).not.toContain("Search with bash");
+		}
 	});
 });

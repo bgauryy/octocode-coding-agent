@@ -50,33 +50,31 @@ export function registerSendMessageTool(
 			name: "sendMessage",
 			label: "Send message",
 			description:
-				"Send steering, questions or evidence to a teammate or your session tree. Delivery is queued; unread departures are reported. A lingering child resumes on a message; otherwise start a new task. Long messages include a file path to the full text.",
-			promptSnippet: "Message a subagent or teammate",
+				"Send steering, questions or evidence to a teammate or your session tree. Delivery is queued; unread departures are reported. A lingering child resumes on a message; otherwise start a new task.",
 			promptGuidelines: [
 				"Send self-contained blockers, decisions or evidence that change the next step. Skip acknowledgements and completion pings; reports arrive automatically.",
 			],
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
-						description: 'Agent id, role, "parent" or "all" (session tree). replyTo alone targets the original sender.',
+						description: 'Agent id, role, "parent" or "all"; omit with replyTo to answer its sender.',
 					}),
 				),
-				message: Type.String({ description: "The message text" }),
+				message: Type.String(),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description:
-							"true: a request (a question or task you need answered); wakes an idle recipient. false (the default): an FYI, no reply needed",
+						description: "true: a request you need answered; wakes an idle recipient. Default false: an FYI",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message number to answer; no to needed. Wakes the asker.",
+						description: "Message number to answer; wakes the asker.",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: cancel your child's current step and continue with this message. Default false: deliver at its next step.",
+							"true: cancel your child's current step and continue with this message. Default: deliver at its next step.",
 					}),
 				),
 			}),

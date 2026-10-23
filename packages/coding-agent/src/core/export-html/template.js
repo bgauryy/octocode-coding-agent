@@ -544,29 +544,8 @@
 	// TREE DISPLAY TEXT (pure data -> string)
 	// ============================================================
 
-	function shortenPath(p) {
-		if (typeof p !== "string") return "";
-		if (p.startsWith("/Users/")) {
-			const parts = p.split("/");
-			if (parts.length > 2) return "~" + p.slice(("/Users/" + parts[2]).length);
-		}
-		if (p.startsWith("/home/")) {
-			const parts = p.split("/");
-			if (parts.length > 2) return "~" + p.slice(("/home/" + parts[2]).length);
-		}
-		return p;
-	}
-
 	function formatToolCall(name, args) {
 		switch (name) {
-			case "read": {
-				const path = shortenPath(String(args.path || args.file_path || ""));
-				return `[read: ${path}${formatReadLineRange(args.offset, args.limit)}]`;
-			}
-			case "write":
-				return `[write: ${shortenPath(String(args.path || args.file_path || ""))}]`;
-			case "edit":
-				return `[edit: ${shortenPath(String(args.path || args.file_path || ""))}]`;
 			case "bash": {
 				const rawCmd = String(args.command || "");
 				const cmd = rawCmd
@@ -575,12 +554,6 @@
 					.slice(0, 50);
 				return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
 			}
-			case "grep":
-				return `[grep: /${args.pattern || ""}/ in ${shortenPath(String(args.path || "."))}]`;
-			case "find":
-				return `[find: ${args.pattern || ""} in ${shortenPath(String(args.path || "."))}]`;
-			case "ls":
-				return `[ls: ${shortenPath(String(args.path || "."))}]`;
 			default: {
 				const argsStr = JSON.stringify(args).slice(0, 40);
 				return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? "..." : ""}]`;
@@ -828,58 +801,6 @@
 		return null;
 	}
 
-	// Mirrors ../tools/render-utils.ts.
-	function parseLineNumber(value) {
-		if (typeof value === "string" && value.trim() !== "") value = Number(value);
-		return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-	}
-
-	function formatReadLineRange(offset, limit) {
-		if (offset == null && limit == null) return "";
-		const start = offset == null ? 1 : parseLineNumber(offset);
-		if (start === undefined) return "";
-		if (limit == null) return `:${start}`;
-		const count = parseLineNumber(limit);
-		if (count === undefined) return "";
-		const end = start + count - 1;
-		return `:${start}${end ? `-${end}` : ""}`;
-	}
-
-	function getLanguageFromPath(filePath) {
-		const ext = filePath.split(".").pop()?.toLowerCase();
-		const extToLang = {
-			ts: "typescript",
-			tsx: "typescript",
-			js: "javascript",
-			jsx: "javascript",
-			py: "python",
-			rb: "ruby",
-			rs: "rust",
-			go: "go",
-			java: "java",
-			c: "c",
-			cpp: "cpp",
-			h: "c",
-			hpp: "cpp",
-			cs: "csharp",
-			php: "php",
-			sh: "bash",
-			bash: "bash",
-			zsh: "bash",
-			sql: "sql",
-			html: "html",
-			css: "css",
-			scss: "scss",
-			json: "json",
-			yaml: "yaml",
-			yml: "yaml",
-			xml: "xml",
-			md: "markdown",
-			dockerfile: "dockerfile",
-		};
-		return extToLang[ext];
-	}
-
 	function findToolResult(toolCallId) {
 		for (const entry of entries) {
 			if (entry.type === "message" && entry.message.role === "toolResult") {
@@ -959,26 +880,6 @@
 			return textBlocks.map((c) => c.text).join("\n");
 		};
 
-		const getResultImages = () => {
-			if (!result) return [];
-			return result.content.filter((c) => c.type === "image");
-		};
-
-		const renderResultImages = () => {
-			const images = getResultImages();
-			if (images.length === 0) return "";
-			return (
-				'<div class="tool-images">' +
-				images
-					.map(
-						(img) =>
-							`<img src="data:${escapeHtml(img.mimeType || "image/png")};base64,${escapeHtml(img.data || "")}" class="tool-image" />`,
-					)
-					.join("") +
-				"</div>"
-			);
-		};
-
 		// Calls this tool made to other tools (for example from another tool), recorded without results.
 		const renderNestedCalls = () => {
 			const nested = result?.nestedCalls;
@@ -1009,80 +910,6 @@
 				if (result) {
 					const output = getResultText().trim();
 					if (output) html += formatExpandableOutput(output, 5);
-				}
-				break;
-			}
-			case "read": {
-				const filePath = str(args.file_path ?? args.path);
-				const readLineRange = formatReadLineRange(args.offset, args.limit);
-				let pathHtml = filePath === null ? invalidArg : escapeHtml(shortenPath(filePath || ""));
-				if (filePath !== null && readLineRange) {
-					pathHtml += `<span class="line-numbers">${escapeHtml(readLineRange)}</span>`;
-				}
-
-				html += `<div class="tool-header"><span class="tool-name">read</span> <span class="tool-path">${pathHtml}</span></div>`;
-				if (result) {
-					html += renderResultImages();
-					const output = getResultText();
-					const lang = filePath ? getLanguageFromPath(filePath) : null;
-					if (output) html += formatExpandableOutput(output, 10, lang);
-				}
-				break;
-			}
-			case "write": {
-				const filePath = str(args.file_path ?? args.path);
-				const content = str(args.content);
-
-				html += `<div class="tool-header"><span class="tool-name">write</span> <span class="tool-path">${filePath === null ? invalidArg : escapeHtml(shortenPath(filePath || ""))}</span>`;
-				if (content !== null && content) {
-					const lines = content.split("\n");
-					if (lines.length > 10) html += ` <span class="line-count">(${lines.length} lines)</span>`;
-				}
-				html += "</div>";
-
-				if (content === null) {
-					html += `<div class="tool-error">[invalid content arg - expected string]</div>`;
-				} else if (content) {
-					const lang = filePath ? getLanguageFromPath(filePath) : null;
-					html += formatExpandableOutput(content, 10, lang);
-				}
-				if (result) {
-					const output = getResultText().trim();
-					if (output) html += `<div class="tool-output"><div>${escapeHtml(output)}</div></div>`;
-				}
-				break;
-			}
-			case "edit": {
-				const filePath = str(args.file_path ?? args.path);
-				html += `<div class="tool-header"><span class="tool-name">edit</span> <span class="tool-path">${filePath === null ? invalidArg : escapeHtml(shortenPath(filePath || ""))}</span></div>`;
-
-				if (result?.details?.diff) {
-					const diffLines = result.details.diff.split("\n");
-					html += '<div class="tool-diff">';
-					for (const line of diffLines) {
-						const cls = line.match(/^\+/) ? "diff-added" : line.match(/^-/) ? "diff-removed" : "diff-context";
-						html += `<div class="${cls}">${escapeHtml(replaceTabs(line))}</div>`;
-					}
-					html += "</div>";
-				} else if (result) {
-					const output = getResultText().trim();
-					if (output) html += `<div class="tool-output"><pre>${escapeHtml(output)}</pre></div>`;
-				}
-				break;
-			}
-			case "ls": {
-				const dirPath = str(args.path);
-				const limit = args.limit;
-
-				let pathHtml = dirPath === null ? invalidArg : escapeHtml(shortenPath(dirPath || "."));
-				if (limit !== undefined) {
-					pathHtml += ` <span class="line-count">(limit ${escapeHtml(String(limit))})</span>`;
-				}
-
-				html += `<div class="tool-header"><span class="tool-name">ls</span> <span class="tool-path">${pathHtml}</span></div>`;
-				if (result) {
-					const output = getResultText().trim();
-					if (output) html += formatExpandableOutput(output, 20);
 				}
 				break;
 			}

@@ -1,3 +1,4 @@
+import { StringEnum } from "@octocodeai/octocode-ai";
 import { type Static, Type } from "typebox";
 import { Check } from "typebox/value";
 
@@ -8,15 +9,9 @@ export const promptTimeoutValid = (ms: number): boolean =>
 
 export const ExternalParamsSchema = Type.Object(
 	{
-		action: Type.Union([
-			Type.Literal("list"),
-			Type.Literal("connect"),
-			Type.Literal("prompt"),
-			Type.Literal("cancel"),
-			Type.Literal("disconnect"),
-		]),
+		action: StringEnum(["list", "connect", "prompt", "cancel", "disconnect"] as const),
 		id: Type.Optional(Type.String()),
-		transport: Type.Optional(Type.Union([Type.Literal("acp"), Type.Literal("octocode")])),
+		transport: Type.Optional(StringEnum(["acp", "octocode"] as const)),
 		vendor: Type.Optional(Type.String()),
 		command: Type.Optional(Type.String()),
 		args: Type.Optional(Type.Array(Type.String())),

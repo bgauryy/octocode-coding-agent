@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentContext, AgentMessage, PrepareNextTurnContext } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
-import { estimateProjectedContextTokens, shouldCompact } from "../compaction/index.ts";
+import { estimateProjectedContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
 import { convertToLlm } from "../messages.ts";
 import type { SessionProjection } from "../session-manager.ts";
 import { normalizeBuildSystemPromptOptions } from "../system-prompt.ts";
@@ -33,11 +33,11 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 function exceedsCompactionThreshold(host: AgentHooksHost, model: Model<any>, projection: SessionProjection): boolean {
 	if (model.contextWindow <= 0) return false;
 	const { session } = host;
-	return shouldCompact(
-		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens,
-		model.contextWindow,
-		session.settingsManager.getCompactionSettings(session.model),
-	);
+	// The estimate also counts tools the transcript does not declare yet: this request will.
+	const tokens =
+		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
+		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations);
+	return shouldCompact(tokens, model.contextWindow, session.settingsManager.getCompactionSettings(session.model));
 }
 
 async function compactBeforeNextAssistantResponse(host: AgentHooksHost, context: AgentContext): Promise<AgentContext> {
@@ -183,6 +183,8 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 		// the projection.
 		if (exceedsCompactionThreshold(host, route.model, projection)) {
 			await host.runAutoCompaction("threshold", false, route.model);
+			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
+			// wraps runs twice for this request and must give the same answer for the same input.
 			({ previous, context } = await prepare());
 		}
 		return {

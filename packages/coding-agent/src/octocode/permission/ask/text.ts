@@ -75,7 +75,17 @@ export async function selectAnswer(
 	relay: boolean,
 	nonce: string,
 ): Promise<Answer> {
-	const options = request.signal ? { signal: request.signal } : undefined;
+	const options = {
+		...(request.signal ? { signal: request.signal } : {}),
+		permission: {
+			toolCallId: request.invocation?.toolCallId ?? request.toolCallId,
+			toolName: request.invocation?.toolName,
+			action: request.action,
+			targets: [...request.what],
+			allowOnce: ALLOW_ONCE,
+			rejectOnce: DENY,
+		},
+	};
 	const forced = forcingReasons(mode, request).length > 0;
 	const kind = !forced && request.action && !request.also?.length ? kindOption(request.action) : undefined;
 	const grant = forced ? undefined : request.grant;

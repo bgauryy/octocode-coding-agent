@@ -10,12 +10,29 @@ export const LOCAL_READ_TOOLS = new Set([
 	`${OCTOCODE_TOOL_PREFIX}localGetFileContent`,
 ]);
 
-interface LocalRead {
+export interface LocalRead {
 	file: string;
 	sha256: string;
 	size: number;
 	whole: boolean;
 	lines?: readonly [number, number];
+}
+
+/** Add copyable source identities to the model's visible result, without changing the server's structured data. */
+export function appendReadDigests<T extends { type: string }>(
+	content: readonly T[],
+	reads: readonly LocalRead[],
+	options: { nested?: boolean; truncated?: boolean } = {},
+): Array<T | { type: "text"; text: string }> {
+	if (options.nested || options.truncated || !content.some((part) => part.type === "text")) return [...content];
+	const sources = new Map<string, string>();
+	for (const read of reads) {
+		if (read.whole && path.isAbsolute(read.file) && /^[a-f0-9]{64}$/.test(read.sha256))
+			sources.set(read.file, read.sha256);
+	}
+	if (!sources.size) return [...content];
+	const lines = [...sources].map(([file, digest]) => `sourceSha256=${digest} path=${JSON.stringify(file)}`);
+	return [...content, { type: "text", text: `Whole-source SHA-256 for optional anchored edits:\n${lines.join("\n")}` }];
 }
 
 type Snapshot = { sha256: string; size: number; mtimeMs: number; ctimeMs: number };

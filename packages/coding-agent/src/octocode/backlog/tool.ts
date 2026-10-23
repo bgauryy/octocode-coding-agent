@@ -7,6 +7,7 @@ import { storedText, visibleControls } from "../shared/sanitize.ts";
 import { contentText, textResult } from "../shared/util.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { itemDetail, itemLine } from "./format.ts";
+import { entityFields, SUBAGENT_REFUSED_ADD } from "./tool-schema.ts";
 import { type Item, PRIORITIES, refuseSecrets, STATES, type State } from "./store.ts";
 
 const DEFAULT_LIST_LIMIT = 20;
@@ -52,10 +53,10 @@ function backlogPrompt(subagent: boolean): {
 			: "An item another running session holds takes only notes. ") +
 		"Start needs reason/goal; done needs completion. Use version for edits. Secrets are refused.";
 	const ops =
-		"list/get: read work and history; follow Next for more. " +
+		"list/get: read; follow Next for more. " +
 		(subagent
-			? "add: propose an item; update: ongoing/done or progress notes"
-			: "add: propose; update: edit, claim with ongoing, or append notes; remove: delete only duplicates or user-requested items without retained history");
+			? "add: propose; update: ongoing/done or notes"
+			: "add: propose; update: edit, claim (ongoing) or add notes; remove: only duplicates or user-requested items without history");
 	return {
 		description,
 		ops,
@@ -89,19 +90,14 @@ export function registerBacklogTool(
 				label: "Backlog",
 				...prompt,
 				parameters: Type.Object({
-					...EntityFields,
-					dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Prerequisite IDs; [] clears." })),
+					...entityFields(subagent),
 					op: StringEnum(
 						subagent
 							? (["list", "get", "add", "update"] as const)
 							: (["list", "get", "add", "update", "remove"] as const),
 						{ description: ops },
 					),
-					id: Type.Optional(
-						Type.String({
-							description: `${subagent ? "get/update" : "get/update/remove"}: item id, e.g. "B12"`,
-						}),
-					),
+					id: Type.Optional(Type.String({ description: `${subagent ? "get/update" : "get/update/remove"}: item id` })),
 					title: Type.Optional(Type.String({ description: `${subagent ? "add" : "add/update"}: one-line summary` })),
 					goal: Type.Optional(
 						Type.String({
@@ -110,19 +106,19 @@ export function registerBacklogTool(
 								: "add/update: Definition of Done, checkable; add needs it",
 						}),
 					),
-					paths: Type.Optional(Type.Array(Type.String(), { description: `files, dirs or components affected` })),
-					why: Type.Optional(Type.String({ description: `why it matters` })),
+					paths: Type.Optional(Type.Array(Type.String(), { description: "files, dirs or components affected" })),
+					why: Type.Optional(Type.String({ description: "why it matters" })),
 					evidence: Type.Optional(
-						Type.Array(Type.String(), { description: `observations: paths, measurements, links` }),
+						Type.Array(Type.String(), { description: "observations: paths, measurements, links" }),
 					),
-					plan: Type.Optional(Type.String({ description: `approach and steps` })),
-					body: Type.Optional(Type.String({ description: `anything else; update replaces the whole text` })),
+					plan: Type.Optional(Type.String({ description: "approach and steps" })),
+					body: Type.Optional(
+						Type.String({ description: subagent ? "anything else" : "anything else; update replaces the whole text" }),
+					),
 					state: Type.Optional(
 						subagent
 							? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
-							: StringEnum(STATES, {
-									description: "add: initial state (default backlog); update: new state",
-								}),
+							: StringEnum(STATES, { description: "add: initial (default backlog); update: new" }),
 					),
 					priority: Type.Optional(
 						StringEnum(PRIORITIES, {
@@ -130,9 +126,7 @@ export function registerBacklogTool(
 						}),
 					),
 					tags: Type.Optional(
-						Type.Array(Type.String(), {
-							description: `${subagent ? "add" : "add/update"}: short labels, e.g. ["docs"]`,
-						}),
+						Type.Array(Type.String(), { description: `${subagent ? "add" : "add/update"}: short labels` }),
 					),
 					from: Type.Optional(
 						Type.String({
@@ -149,15 +143,9 @@ export function registerBacklogTool(
 						Type.Array(StringEnum(STATES), { description: "list: states to show (default ongoing, todo)" }),
 					),
 					limit: Type.Optional(
-						Type.Integer({
-							description: `list/get: page size (items default ${DEFAULT_LIST_LIMIT}, notes default 10)`,
-						}),
+						Type.Integer({ description: `list/get: page size (items ${DEFAULT_LIST_LIMIT}, notes 10)` }),
 					),
-					offset: Type.Optional(
-						Type.Integer({
-							description: "list/get: items or newest notes to skip; copy from Next (default 0)",
-						}),
-					),
+					offset: Type.Optional(Type.Integer({ description: "list/get: skip; copy from Next" })),
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
@@ -256,6 +244,11 @@ export function registerBacklogTool(
 		}
 		if (params.op === "add") {
 			if (!params.title?.trim()) throw new Error("add needs a title.");
+			const refused = SUBAGENT_REFUSED_ADD.filter((key) => subagent && params[key] !== undefined);
+			if (refused.length)
+				throw new Error(
+					`A subagent proposal cannot set ${refused.join(", ")}: put the details in body or ask your parent.`,
+				);
 			// A subagent proposes; the user or the parent accepts.
 			const wanted = subagent ? "backlog" : (params.state ?? "backlog");
 			// Creation, initial claim/completion and notes commit together in the store.

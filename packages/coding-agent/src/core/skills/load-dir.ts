@@ -9,6 +9,7 @@ import { parseCodexSkillMetadata } from "../codex-skill-metadata.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "../source-info.ts";
 import type { LoadSkillsFromDirOptions, LoadSkillsResult, Skill, SkillFrontmatter } from "./identity.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -185,7 +186,7 @@ export function loadSkillsFromDirInternal(
 		// The skills found before the failure stay loaded; the warning says which directory was cut short.
 		diagnostics.push({
 			type: "warning",
-			message: `Could not read skill directory: ${error instanceof Error ? error.message : String(error)}`,
+			message: `Could not read skill directory: ${errorMessage(error)}`,
 			path: dir,
 		});
 	}

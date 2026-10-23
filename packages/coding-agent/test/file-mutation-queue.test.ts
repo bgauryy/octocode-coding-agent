@@ -2,9 +2,26 @@ import { access, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createEditTool } from "../src/core/tools/edit.ts";
 import { withFileMutationQueue } from "../src/core/tools/file-mutation-queue.ts";
-import { createWriteTool } from "../src/core/tools/write.ts";
+import { applyEdit, applyWrite, type ChangeOperations } from "../src/octocode/files/tool/apply.ts";
+
+type Edits = Array<{ oldText: string; newText: string }>;
+
+/** The `file` tool's edit engine over `operations`; the ones a case does not use are never called. */
+function createEditTool(_cwd: string, { operations }: { operations: Partial<ChangeOperations> }) {
+	return {
+		execute: (_id: string, input: { path: string; edits: Edits }, signal?: AbortSignal) =>
+			applyEdit(input.path, input.path, input.edits, operations as ChangeOperations, signal),
+	};
+}
+
+/** The `file` tool's write engine over `operations`. */
+function createWriteTool(_cwd: string, { operations }: { operations: Partial<ChangeOperations> }) {
+	return {
+		execute: (_id: string, input: { path: string; content: string }, signal?: AbortSignal) =>
+			applyWrite(input.path, input.path, input.content, operations as ChangeOperations, signal),
+	};
+}
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -98,7 +115,7 @@ describe("withFileMutationQueue", () => {
 	});
 });
 
-describe("built-in edit and write tools", () => {
+describe("file tool edit and write engines", () => {
 	it("preserves both parallel edits on the same file", async () => {
 		const dir = await createTempDir();
 		const filePath = join(dir, "parallel-edit.txt");

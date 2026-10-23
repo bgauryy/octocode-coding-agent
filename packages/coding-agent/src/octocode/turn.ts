@@ -44,6 +44,14 @@ export function registerTurnSetup(
 			indirect.length > 0 ||
 			(owner.by === "user" && owner.enabled && canReachMcp(available));
 		const instructions = octocode ? (options.octocode.instructions ?? octocodeNamespaceInstructions(pi)) : undefined;
+		// Every deferred Octocode tool, loaded or not, so loading one does not change the section.
+		const deferredTools = available.includes("tool_search")
+			? pi
+					.getAllTools()
+					.filter((tool) => isOctocodeTool(tool.name) && tool.exposure === "deferred")
+					.map((tool) => tool.name.replace(/^mcp__octocode__/, ""))
+					.sort()
+			: [];
 		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 		const canWrite = !readOnlyRole && ["file", "write", "edit"].some((name) => selected.includes(name));
 		const profiles = [...options.profiles().values()];
@@ -57,11 +65,13 @@ export function registerTurnSetup(
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
 			canWrite,
+			readOnlyRole,
 			canSave: ["file", "write", "edit"].some((name) => selected.includes(name)),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: available.some((name) => name.startsWith("mcp__") || name === "mcp" || name === "tool_search"),
 			...(octocode && instructions ? { octocodeInstructions: instructions } : {}),
+			...(octocode && deferredTools.length > 0 ? { octocodeDeferredTools: deferredTools } : {}),
 			// Subagent-only, and the same for every child of one run mode: nothing per-child may enter the prompt.
 			...(options.isSubagent && envFlag(process.env, AGENT_COLLABORATE_ENV) ? { collaborate: true } : {}),
 		};
@@ -89,11 +99,11 @@ export function registerTurnSetup(
 	};
 }
 
-/** The server instructions an Octocode server from the user's mcp.json gave its tools' namespace, if any. */
 /** Whether this session can reach MCP tools at all: declared, through discovery or from scripts. */
 const canReachMcp = (available: readonly string[]): boolean =>
 	available.some((name) => name.startsWith("mcp__") || name === "tool_search");
 
+/** The server instructions an Octocode server from the user's mcp.json gave its tools' namespace, if any. */
 function octocodeNamespaceInstructions(pi: Pick<ExtensionAPI, "getAllTools">): string | undefined {
 	const text = pi.getAllTools().find((tool) => isOctocodeTool(tool.name) && tool.namespace?.instructions)
 		?.namespace?.instructions;

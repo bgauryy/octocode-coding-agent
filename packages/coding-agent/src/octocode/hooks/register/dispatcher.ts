@@ -1,4 +1,3 @@
-import { getMcpHookCaller } from "../../../extensions/mcp/hook-caller.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
@@ -9,6 +8,7 @@ import type { registerBackgroundHooks } from "../background.ts";
 import { limitCodexContext } from "../context-limit.ts";
 import { commandsFor, type HookHandler, hookLabel, type HookEvent, hookIdentity } from "../config.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
+import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
 import { capContext, failureOf, type HookVerdict, interpret, runHook } from "../runner.ts";
 import {
@@ -175,7 +175,7 @@ export function createDispatcher(
 					ctx.cwd,
 					env,
 					signal,
-					getMcpHookCaller(pi.events),
+					boundMcpHookCaller(pi.events, ctx, event),
 					hook.type === "prompt" ? createPromptEvaluator(ctx) : undefined,
 				),
 			);

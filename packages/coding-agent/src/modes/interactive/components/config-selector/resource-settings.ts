@@ -1,6 +1,11 @@
 import { dirname, join, relative } from "node:path";
 import { CONFIG_DIR_NAME } from "../../../../config.ts";
 import type { PackageSource, SettingsManager } from "../../../../core/settings-manager.ts";
+import {
+	isOverridePattern,
+	overridePatternTarget,
+	withTogglePattern,
+} from "../../../../core/package-manager/patterns.ts";
 import { canonicalizePath, isLocalPath, resolvePath } from "../../../../utils/paths.ts";
 import {
 	type ProjectOverrideState,
@@ -47,22 +52,7 @@ export class ResourceSettings {
 		const arrayKey = item.resourceType;
 		const current = settings[arrayKey] ?? [];
 
-		// Generate pattern for this resource
-		const pattern = this.getResourcePattern(item);
-		const disablePattern = `-${pattern}`;
-		const enablePattern = `+${pattern}`;
-
-		// Filter out existing patterns for this resource
-		const updated = current.filter((p) => {
-			const stripped = p.startsWith("!") || p.startsWith("+") || p.startsWith("-") ? p.slice(1) : p;
-			return stripped !== pattern;
-		});
-
-		if (enabled) {
-			updated.push(enablePattern);
-		} else {
-			updated.push(disablePattern);
-		}
+		const updated = withTogglePattern(current, this.getResourcePattern(item), enabled);
 
 		if (scope === "project") {
 			if (arrayKey === "extensions") {
@@ -112,22 +102,8 @@ export class ResourceSettings {
 		const arrayKey = item.resourceType;
 		const current = pkg[arrayKey] ?? [];
 
-		// Generate pattern relative to package root
-		const pattern = this.getPackageResourcePattern(item);
-		const disablePattern = `-${pattern}`;
-		const enablePattern = `+${pattern}`;
-
-		// Filter out existing patterns for this resource
-		const updated = current.filter((p) => {
-			const stripped = p.startsWith("!") || p.startsWith("+") || p.startsWith("-") ? p.slice(1) : p;
-			return stripped !== pattern;
-		});
-
-		if (enabled) {
-			updated.push(enablePattern);
-		} else {
-			updated.push(disablePattern);
-		}
+		// Pattern relative to the package root
+		const updated = withTogglePattern(current, this.getPackageResourcePattern(item), enabled);
 
 		(pkg as Record<string, unknown>)[arrayKey] = updated.length > 0 ? updated : undefined;
 
@@ -157,9 +133,8 @@ export class ResourceSettings {
 		const pattern = this.isInheritedGlobalItem(item) ? item.path : this.getResourcePatternForScope(item, "project");
 		const patterns = this.getTopLevelOverridePatterns(item, "project");
 		const updated = current.filter((entry) => {
-			const target = this.getPatternEntryTarget(entry);
-			if ((entry.startsWith("!") || entry.startsWith("+") || entry.startsWith("-")) && patterns.has(target))
-				return false;
+			const target = overridePatternTarget(entry);
+			if (isOverridePattern(entry) && patterns.has(target)) return false;
 			return !(state === "inherit" && this.isInheritedGlobalItem(item) && target === pattern);
 		});
 		if (state !== "inherit") {
@@ -201,7 +176,7 @@ export class ResourceSettings {
 			packages[pkgIndex] = pkg;
 		}
 		const pattern = this.getPackageResourcePattern(item);
-		const updated = (pkg[item.resourceType] ?? []).filter((entry) => this.getPatternEntryTarget(entry) !== pattern);
+		const updated = (pkg[item.resourceType] ?? []).filter((entry) => overridePatternTarget(entry) !== pattern);
 		if (state !== "inherit") updated.push(`${state === "load" ? "+" : "-"}${pattern}`);
 		(pkg as Record<string, unknown>)[item.resourceType] = updated.length > 0 ? updated : undefined;
 		if (!RESOURCE_TYPES.some((key) => (pkg as Record<string, unknown>)[key] !== undefined)) {
@@ -248,7 +223,7 @@ export class ResourceSettings {
 		if (entries.length === 0 && emptyArrayIsUnload) return "unload";
 		let state: ProjectOverrideState = "inherit";
 		for (const entry of entries) {
-			if (!patterns.has(this.getPatternEntryTarget(entry))) continue;
+			if (!patterns.has(overridePatternTarget(entry))) continue;
 			if (entry.startsWith("!") || entry.startsWith("-")) state = "unload";
 			else state = "load";
 		}
@@ -315,10 +290,6 @@ export class ResourceSettings {
 				targetScope,
 			),
 		);
-	}
-
-	private getPatternEntryTarget(entry: string): string {
-		return entry.startsWith("!") || entry.startsWith("+") || entry.startsWith("-") ? entry.slice(1) : entry;
 	}
 
 	private getResourceItemKey(item: ResourceItem): string {

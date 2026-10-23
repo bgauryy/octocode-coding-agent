@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createReadTool } from "../src/core/tools/read.ts";
+import { createReadTool } from "./fixtures/read-tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
 

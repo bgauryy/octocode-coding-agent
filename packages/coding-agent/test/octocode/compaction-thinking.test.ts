@@ -64,6 +64,17 @@ describe("stale thinking after a compaction", () => {
 		expect(stripStaleThinking(branched)).toBe(branched);
 	});
 
+	it("keeps the thinking of a turn stamped the same millisecond as the summary, and of a turn with no timestamp", () => {
+		const tie = assistant(T + 100, thinking("tie"), call("c0"));
+		const unstamped = { role: "assistant", content: [thinking("unstamped"), call("c9")] };
+		const messages = [summary(T + 100), tie, unstamped, ...kept];
+		const out = stripStaleThinking(messages);
+		// Only the turns provably older than the summary lose their thinking; a tie keeps it (the safe side of the rule).
+		expect(thinkingOf(out)).toEqual(["tie", "unstamped"]);
+		expect(out[1]).toBe(tie);
+		expect(out[2]).toBe(unstamped);
+	});
+
 	it("matters only for a model that binds thinking to its prefix (octocode-ai sends drop_block for it)", () => {
 		expect(bindsThinkingToPrefix({ compat: { supportsMidConvoEffort: true } })).toBe(true);
 		expect(bindsThinkingToPrefix({ compat: {} })).toBe(false);

@@ -1,4 +1,4 @@
-import type { AutocompleteProvider, AutocompleteSuggestions } from "../../autocomplete.ts";
+import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "../../autocomplete.ts";
 import { isWhitespaceChar } from "../../utils.ts";
 import { SelectList } from "../select-list.ts";
 import {
@@ -62,25 +62,34 @@ export class EditorAutocomplete {
 	): SelectList {
 		const layout = prefix.startsWith("/") ? SLASH_COMMAND_SELECT_LIST_LAYOUT : undefined;
 		const list = new SelectList(items, this.autocompleteMaxVisible, this.theme.selectList, layout);
-		list.onSelect = (selected) => {
-			if (!this.autocompleteProvider) return;
-			this.host.pushUndoSnapshot();
-			this.host.lastAction = null;
-			const result = this.autocompleteProvider.applyCompletion(
-				this.host.state.lines,
-				this.host.state.cursorLine,
-				this.host.state.cursorCol,
-				selected,
-				this.autocompletePrefix,
-			);
-			this.host.state.lines = result.lines;
-			this.host.state.cursorLine = result.cursorLine;
-			this.host.setCursorCol(result.cursorCol);
-			this.cancelAutocomplete();
-			this.host.notifyChange();
-			this.continueCommandCompletion();
-		};
+		list.onSelect = (selected) => this.acceptCompletion(selected);
 		return list;
+	}
+
+	/** Replaces the completed prefix with `item` as one undo step; false when there is no provider. */
+	insertCompletion(item: AutocompleteItem, prefix: string): boolean {
+		if (!this.autocompleteProvider) return false;
+		this.host.pushUndoSnapshot();
+		this.host.lastAction = null;
+		const result = this.autocompleteProvider.applyCompletion(
+			this.host.state.lines,
+			this.host.state.cursorLine,
+			this.host.state.cursorCol,
+			item,
+			prefix,
+		);
+		this.host.state.lines = result.lines;
+		this.host.state.cursorLine = result.cursorLine;
+		this.host.setCursorCol(result.cursorCol);
+		return true;
+	}
+
+	/** Inserts the chosen item, closes the list and continues with the next slash-command argument. */
+	acceptCompletion(item: AutocompleteItem): void {
+		if (!this.insertCompletion(item, this.autocompletePrefix)) return;
+		this.cancelAutocomplete();
+		this.host.notifyChange();
+		this.continueCommandCompletion();
 	}
 
 	continueCommandCompletion(): void {
@@ -220,19 +229,7 @@ export class EditorAutocomplete {
 		}
 
 		if (options.force && options.explicitTab && suggestions.items.length === 1) {
-			const item = suggestions.items[0];
-			this.host.pushUndoSnapshot();
-			this.host.lastAction = null;
-			const result = this.autocompleteProvider.applyCompletion(
-				this.host.state.lines,
-				this.host.state.cursorLine,
-				this.host.state.cursorCol,
-				item,
-				suggestions.prefix,
-			);
-			this.host.state.lines = result.lines;
-			this.host.state.cursorLine = result.cursorLine;
-			this.host.setCursorCol(result.cursorCol);
+			this.insertCompletion(suggestions.items[0], suggestions.prefix);
 			this.host.notifyChange();
 			this.host.requestRender();
 			return;

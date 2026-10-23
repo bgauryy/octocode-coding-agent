@@ -6,7 +6,7 @@ import path from "node:path";
 import { fauxAssistantMessage, getCurrentSystemPrompt } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createReadTool } from "../src/core/tools/read.ts";
+import { createReadTool } from "./fixtures/read-tool.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createHarness, getMessageText } from "./suite/harness.ts";
 

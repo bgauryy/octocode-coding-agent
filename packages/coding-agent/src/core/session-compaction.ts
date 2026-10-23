@@ -75,6 +75,8 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		});
 
 		if (result?.cancel) {
+			// A failure reported through the hook is not a cancel: it counts toward the automatic failure limit.
+			if ("failure" in result && result.failure) throw new Error(result.failure);
 			run.outcome.cancelledByExtension = true;
 			throw new Error("Compaction cancelled");
 		}

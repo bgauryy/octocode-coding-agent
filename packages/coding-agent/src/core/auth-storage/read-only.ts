@@ -6,6 +6,7 @@ import { normalizePath } from "../../utils/paths.ts";
 import { stripBom } from "../../utils/text.ts";
 import { isCommandConfigValue, resolveConfigValue } from "../resolve-config-value.ts";
 import type { AuthStorageData } from "./backends.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export class ReadOnlyAuthStorage implements CredentialStore {
 	private readonly authPath: string;
@@ -26,7 +27,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 				this.data = {};
 				return this.data;
 			}
-			throw new Error(`Failed to read auth.json: ${error instanceof Error ? error.message : String(error)}`);
+			throw new Error(`Failed to read auth.json: ${errorMessage(error)}`);
 		}
 
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {

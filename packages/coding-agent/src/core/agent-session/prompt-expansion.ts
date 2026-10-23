@@ -16,6 +16,7 @@ import { getSkillCommands } from "../skill-commands.ts";
 import { selectExplicitSkills } from "../skill-mentions.ts";
 import { explicitSkillIdentity } from "../skills.ts";
 import type { SessionInternals } from "./host.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 // ============================================================================
 // Skill Block Parsing
@@ -69,7 +70,7 @@ export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: 
 		runner.emitError({
 			extensionPath: `command:${commandName}`,
 			event: "command",
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return true;
 	}
@@ -189,7 +190,7 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 		session.extensionRunner.emitError({
 			extensionPath: skill.filePath,
 			event: "skill_expansion",
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return text; // Return original on error
 	}
@@ -250,7 +251,7 @@ export function expandMentionSkills(host: ExpansionHost, text: string, expandedP
 			session.extensionRunner.emitError({
 				extensionPath: identity.canonicalPath,
 				event: "skill_expansion",
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}

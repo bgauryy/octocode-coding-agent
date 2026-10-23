@@ -4,7 +4,7 @@ import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { FauxResponseStep } from "@octocodeai/octocode-ai/compat";
 import { expect, it } from "vitest";
-import { createReadToolDefinition } from "../src/core/tools/read.ts";
+import { createReadToolDefinition } from "./fixtures/read-tool.ts";
 import { Checkpoints } from "../src/octocode/files/checkpoint.ts";
 import { FileGuard, registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";

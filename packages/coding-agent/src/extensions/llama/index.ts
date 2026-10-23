@@ -3,6 +3,7 @@ import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl 
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
 import { createLlamaProvider, LLAMA_PROVIDER_ID } from "./provider.ts";
 import { type LlamaUi, runWithProgress, showLlamaUi } from "./ui.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 function modelIsLoaded(model: LlamaModelInfo): boolean {
 	return model.status.value === "loaded" || model.status.value === "sleeping";
@@ -16,7 +17,7 @@ function isConnectionError(error: unknown): boolean {
 
 function connectionErrorMessage(error: unknown): string {
 	if (isConnectionError(error)) return "Could not connect to the server.";
-	return error instanceof Error ? error.message : String(error);
+	return errorMessage(error);
 }
 
 function parseHuggingFaceModel(value: string): { repository: string; quantization?: string } {
@@ -219,7 +220,7 @@ export default function llamaExtension(pi: ExtensionAPI): void {
 					catalog = refreshed;
 					if (actionFailure && !isConnectionError(actionFailure.error)) {
 						const { error } = actionFailure;
-						ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+						ctx.ui.notify(errorMessage(error), "error");
 					}
 				}
 			});

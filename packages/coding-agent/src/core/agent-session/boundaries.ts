@@ -16,10 +16,21 @@ export interface BoundariesHost extends Pick<SessionInternals, "session" | "run"
 	flushPendingCustomMessages(): void;
 }
 
+interface BoundaryProjection {
+	drafts: SessionBoundaryDraft[];
+	leafId: string | null;
+	projection: ReturnType<SessionManager["buildSessionProjection"]>;
+	llmMessages: ReturnType<typeof convertToLlm>;
+	finalRole: string | undefined;
+	contextCanContinue: boolean;
+}
+
 export class SessionBoundaries {
 	private readonly _entryIdsByMessage = new WeakMap<object, string>();
 	private readonly _boundaryDispatchedMessages = new WeakSet<object>();
 	private _lastActivityOutcome: AgentActivityOutcome = "completed";
+	/** The last projection of the branch with its drafts; see `_projectBoundary`. */
+	private _boundaryProjection: BoundaryProjection | undefined;
 
 	private readonly host: BoundariesHost;
 
@@ -110,24 +121,28 @@ export class SessionBoundaries {
 			const entryId = this.findPersistedMessageEntryId(result);
 			return entryId ? [entryId] : [];
 		});
-		const boundary = await runner.emitBoundary(
-			{
-				type: "turn_end",
-				turnIndex: run.turnIndex,
-				message,
-				toolResults,
-				messageEntryId,
-				toolResultEntryIds,
-				outcome: this._lastActivityOutcome,
-			},
-			(entries) => this._buildBoundaryContext(entries, "turn_end"),
-		);
-		this._commitBoundaryDrafts(boundary.entries);
-		if (boundary.continue && !this._buildBoundaryContext([], "turn_end").canContinue) {
-			this._reportInvalidBoundaryContinuation("turn_end");
-			return false;
+		try {
+			const boundary = await runner.emitBoundary(
+				{
+					type: "turn_end",
+					turnIndex: run.turnIndex,
+					message,
+					toolResults,
+					messageEntryId,
+					toolResultEntryIds,
+					outcome: this._lastActivityOutcome,
+				},
+				(entries) => this._buildBoundaryContext(entries, "turn_end"),
+			);
+			this._commitBoundaryDrafts(boundary.entries);
+			if (boundary.continue && !this._buildBoundaryContext([], "turn_end").canContinue) {
+				this._reportInvalidBoundaryContinuation("turn_end");
+				return false;
+			}
+			return boundary.continue;
+		} finally {
+			this._boundaryProjection = undefined;
 		}
-		return boundary.continue;
 	}
 
 	installFinishTurn(): void {
@@ -180,17 +195,45 @@ export class SessionBoundaries {
 		return [...this.host.session.agent.peekQueuedMessages(), ...this.host.pendingCustomMessages()];
 	}
 
+	/**
+	 * Project the branch with the drafts applied. Copying the branch and projecting it is
+	 * O(branch), and a boundary asks for it once per handler and again to check continuation,
+	 * so the result is reused while the drafts and the branch leaf are unchanged. Queue state
+	 * is not part of it and is read fresh by the caller.
+	 */
+	private _projectBoundary(drafts: SessionBoundaryDraft[]): BoundaryProjection {
+		const leafId = this.host.session.sessionManager.getLeafId();
+		const cached = this._boundaryProjection;
+		if (
+			cached &&
+			cached.leafId === leafId &&
+			(cached.drafts === drafts || (cached.drafts.length === 0 && drafts.length === 0))
+		) {
+			return cached;
+		}
+		const projection = this._createBoundaryPreviewManager(drafts).buildSessionProjection();
+		const llmMessages = convertToLlm(projection.messages);
+		const finalRole = llmMessages[llmMessages.length - 1]?.role;
+		const hasNonSystemContext = llmMessages.some((message) => message.role !== "system");
+		const built = {
+			drafts,
+			leafId,
+			projection,
+			llmMessages,
+			finalRole,
+			contextCanContinue: hasNonSystemContext && finalRole !== "assistant",
+		};
+		this._boundaryProjection = built;
+		return built;
+	}
+
 	private _buildBoundaryContext(
 		drafts: SessionBoundaryDraft[],
 		boundary: "turn_end" | "agent_before_settle",
 	): BoundaryContextPreview {
 		const agent = this.host.session.agent;
-		const projection = this._createBoundaryPreviewManager(drafts).buildSessionProjection();
+		const { projection, llmMessages, finalRole, contextCanContinue } = this._projectBoundary(drafts);
 		const pendingMessages = this._getPendingBoundaryMessages();
-		const llmMessages = convertToLlm(projection.messages);
-		const finalRole = llmMessages[llmMessages.length - 1]?.role;
-		const hasNonSystemContext = llmMessages.some((message) => message.role !== "system");
-		const contextCanContinue = hasNonSystemContext && finalRole !== "assistant";
 		const pendingCustomContext = this.host.pendingCustomMessages().length > 0;
 		return {
 			contextEntries: projection.entries,
@@ -241,6 +284,7 @@ export class SessionBoundaries {
 			return shouldContinue;
 		} finally {
 			run.isBeforeSettle = false;
+			this._boundaryProjection = undefined;
 		}
 	}
 }

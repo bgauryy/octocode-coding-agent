@@ -1,18 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stripBom } from "../../utils/text.ts";
+import { HOST_PROVIDED_PACKAGE_NAMES } from "../extensions/host-modules.ts";
 import type { Extension, ExtensionFactory, InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
-
-const HOST_PROVIDED_EXTENSION_PACKAGES = new Set([
-	"@octocodeai/octocode-agent-core",
-	"@octocodeai/octocode-ai",
-	"@octocodeai/octocodecode",
-	"@octocodeai/octocode-tui",
-	"@sinclair/typebox",
-	"typebox",
-]);
 
 export function collectExtensionPackageWarnings(
 	extensionPaths: string[],
@@ -36,7 +28,7 @@ export function collectExtensionPackageWarnings(
 			continue;
 		}
 		const hostDependencies = Object.keys(manifest.dependencies)
-			.filter((name) => HOST_PROVIDED_EXTENSION_PACKAGES.has(name))
+			.filter((name) => HOST_PROVIDED_PACKAGE_NAMES.has(name))
 			.sort();
 		if (hostDependencies.length === 0) continue;
 		warnings.push({

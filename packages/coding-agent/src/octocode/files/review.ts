@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.ts";
 import { kindOption } from "../permission/ask.ts";
 import { foldLines } from "../permission/effect.ts";
 import { plural } from "../shared/render.ts";
@@ -76,9 +77,14 @@ export async function askReview(
 	queries: ChangeQuery[],
 	signal?: AbortSignal,
 	reasonLines: readonly string[] = [],
+	identity: Pick<ExtensionUIPermissionRequest, "toolCallId" | "toolName"> = {},
 ): Promise<Map<number, string | undefined> | "cancelled" | "session"> {
 	const all = (note?: string) => new Map(queries.map((_, index) => [index, note]));
 	const options = signal ? { signal } : undefined;
+	const permission = (targets: string[], allowOnce: string, rejectOnce: string) => ({
+		...options,
+		permission: { ...identity, action: "file.workspace", targets, allowOnce, rejectOnce },
+	});
 	// What changes first, then the system's reason lines (the same card every prompt leads with), then what the agent says.
 	const list = queries
 		.map((query, index) => sanitizeTerminalText(`${index + 1}. ${query.type} ${query.path}`))
@@ -87,7 +93,11 @@ export async function askReview(
 	const choice = await ctx.ui.select(
 		`Apply ${plural(queries.length, "file change")}?\n${[list, ...reasonLines, says].join("\n")}`,
 		[APPLY_ALL, APPLY_SESSION, ...(queries.length > 1 ? [ONE_BY_ONE] : []), REJECT_ALL, REJECT_ALL_NOTE],
-		options,
+		permission(
+			queries.map((query) => `${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`),
+			APPLY_ALL,
+			REJECT_ALL,
+		),
 	);
 	if (choice === undefined || signal?.aborted) return "cancelled";
 	if (choice === APPLY_ALL) return new Map();
@@ -104,7 +114,7 @@ export async function askReview(
 		const decision = await ctx.ui.select(
 			`Change ${index + 1} of ${queries.length}\n${[head, ...reasonLines, ...details].join("\n")}`,
 			[APPLY, REJECT, REJECT_NOTE],
-			options,
+			permission([`${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`], APPLY, REJECT),
 		);
 		if (decision === undefined || signal?.aborted) return "cancelled";
 		if (decision === APPLY) continue;

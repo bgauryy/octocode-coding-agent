@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/extensions/types.ts";
+import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
 import { envFlag, HOOKS_COMPAT_ENV } from "../shared/env.ts";
 import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
@@ -57,7 +58,7 @@ export function registerSourcePolicy(
 		};
 		revision++;
 		onChange?.();
-		pi.setToolPolicy?.((name) => !sourceToolDenied(policy, name));
+		nativeHost(pi).setToolPolicy?.((name) => !sourceToolDenied(policy, name));
 	};
 	const capture = async (ctx: ExtensionContext) => {
 		try {

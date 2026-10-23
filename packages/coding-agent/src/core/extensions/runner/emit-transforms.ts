@@ -24,7 +24,9 @@ import type {
 	UserInputEvent,
 	UserInputEventResult,
 } from "../types.ts";
+import { cloneMessages } from "./clone-messages.ts";
 import { restoreSystemMessages, sameMessages, snapshotEventHandlers } from "./event-handlers.ts";
+import { hasEventHandlers } from "./registrations.ts";
 import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHost } from "./types.ts";
 
 /**
@@ -33,8 +35,13 @@ import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHos
  * handlers then see the full transcript and their output is used as returned.
  */
 export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]): Promise<AgentMessage[]> {
+	// A handler may edit the messages in place, so only a registered one gets an isolated copy;
+	// without one, copying every message (images included) on each request would be wasted work.
+	if (!hasEventHandlers(host.extensions, "context") && !hasEventHandlers(host.extensions, "context_with_system")) {
+		return messages.slice();
+	}
 	const ctx = host.createContext();
-	let currentMessages = structuredClone(messages);
+	let currentMessages = cloneMessages(messages);
 
 	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "context")) {
 		for (const handler of handlers) {

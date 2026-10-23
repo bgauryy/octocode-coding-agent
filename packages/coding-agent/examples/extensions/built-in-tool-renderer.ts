@@ -1,19 +1,18 @@
 /**
  * Built-in Tool Renderer Example - Custom rendering for built-in tools
  *
- * Demonstrates how to override the rendering of built-in tools (read, bash,
- * edit, write) without changing their behavior. Each tool is re-registered
+ * Demonstrates how to override the rendering of a built-in tool (bash, the
+ * core tool of the SDK) without changing its behavior. The tool is re-registered
  * with the same name, delegating execution to the original implementation
  * while providing compact custom renderCall/renderResult functions.
  *
  * This is useful for users who prefer more concise tool output, or who want
- * to highlight specific information (e.g., showing only the diff stats for
- * edit, or just the exit code for bash).
+ * to highlight specific information (e.g., just the exit code for bash).
  *
  * How it works:
  * - registerTool() with the same name as a built-in replaces it entirely
- * - We create the original definitions via createReadToolDefinition(), etc.
- *   and override only their renderers
+ * - We create the original definition via createBashToolDefinition()
+ *   and override only its renderers
  * - renderCall() controls what's shown when the tool is invoked
  * - renderResult() controls what's shown after execution completes
  * - renderShell: "self" lets a tool render its own outer shell instead of
@@ -27,67 +26,10 @@
 
 import { Text } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
-import {
-	createBashToolDefinition,
-	createEditToolDefinition,
-	createReadToolDefinition,
-	createWriteToolDefinition,
-} from "@octocodeai/octocodecode";
+import { createBashToolDefinition } from "@octocodeai/octocodecode";
 
 export default function (octocode: ExtensionAPI) {
 	const cwd = process.cwd();
-
-	// --- Read tool: show path and line count ---
-	const originalRead = createReadToolDefinition(cwd);
-	octocode.registerTool({
-		...originalRead,
-
-		renderCall(args, theme, _context) {
-			let text = theme.fg("toolTitle", theme.bold("read "));
-			text += theme.fg("accent", args.path);
-			if (args.offset || args.limit) {
-				const parts: string[] = [];
-				if (args.offset) parts.push(`offset=${args.offset}`);
-				if (args.limit) parts.push(`limit=${args.limit}`);
-				text += theme.fg("dim", ` (${parts.join(", ")})`);
-			}
-			return new Text(text, 0, 0);
-		},
-
-		renderResult(result, { expanded, isPartial }, theme, _context) {
-			if (isPartial) return new Text(theme.fg("warning", "Reading..."), 0, 0);
-
-			const details = result.details;
-			const content = result.content[0];
-
-			if (content?.type === "image") {
-				return new Text(theme.fg("success", "Image loaded"), 0, 0);
-			}
-
-			if (content?.type !== "text") {
-				return new Text(theme.fg("error", "No content"), 0, 0);
-			}
-
-			const lineCount = content.text.split("\n").length;
-			let text = theme.fg("success", `${lineCount} lines`);
-
-			if (details?.truncation?.truncated) {
-				text += theme.fg("warning", ` (truncated from ${details.truncation.totalLines})`);
-			}
-
-			if (expanded) {
-				const lines = content.text.split("\n").slice(0, 15);
-				for (const line of lines) {
-					text += `\n${theme.fg("dim", line)}`;
-				}
-				if (lineCount > 15) {
-					text += `\n${theme.fg("muted", `... ${lineCount - 15} more lines`)}`;
-				}
-			}
-
-			return new Text(text, 0, 0);
-		},
-	});
 
 	// --- Bash tool: show command and exit code ---
 	const originalBash = createBashToolDefinition(cwd);
@@ -138,88 +80,6 @@ export default function (octocode: ExtensionAPI) {
 			}
 
 			return new Text(text, 0, 0);
-		},
-	});
-
-	// --- Edit tool: show path and diff stats ---
-	const originalEdit = createEditToolDefinition(cwd);
-	octocode.registerTool({
-		...originalEdit,
-
-		renderCall(args, theme, _context) {
-			let text = theme.fg("toolTitle", theme.bold("edit "));
-			text += theme.fg("accent", args.path);
-			return new Text(text, 0, 0);
-		},
-
-		renderResult(result, { expanded, isPartial }, theme, _context) {
-			if (isPartial) return new Text(theme.fg("warning", "Editing..."), 0, 0);
-
-			const details = result.details;
-			const content = result.content[0];
-
-			if (content?.type === "text" && content.text.startsWith("Error")) {
-				return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
-			}
-
-			if (!details?.diff) {
-				return new Text(theme.fg("success", "Applied"), 0, 0);
-			}
-
-			// Count additions and removals from the diff
-			const diffLines = details.diff.split("\n");
-			let additions = 0;
-			let removals = 0;
-			for (const line of diffLines) {
-				if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-				if (line.startsWith("-") && !line.startsWith("---")) removals++;
-			}
-
-			let text = theme.fg("success", `+${additions}`);
-			text += theme.fg("dim", " / ");
-			text += theme.fg("error", `-${removals}`);
-
-			if (expanded) {
-				for (const line of diffLines.slice(0, 30)) {
-					if (line.startsWith("+") && !line.startsWith("+++")) {
-						text += `\n${theme.fg("success", line)}`;
-					} else if (line.startsWith("-") && !line.startsWith("---")) {
-						text += `\n${theme.fg("error", line)}`;
-					} else {
-						text += `\n${theme.fg("dim", line)}`;
-					}
-				}
-				if (diffLines.length > 30) {
-					text += `\n${theme.fg("muted", `... ${diffLines.length - 30} more diff lines`)}`;
-				}
-			}
-
-			return new Text(text, 0, 0);
-		},
-	});
-
-	// --- Write tool: show path and size ---
-	const originalWrite = createWriteToolDefinition(cwd);
-	octocode.registerTool({
-		...originalWrite,
-
-		renderCall(args, theme, _context) {
-			let text = theme.fg("toolTitle", theme.bold("write "));
-			text += theme.fg("accent", args.path);
-			const lineCount = args.content.split("\n").length;
-			text += theme.fg("dim", ` (${lineCount} lines)`);
-			return new Text(text, 0, 0);
-		},
-
-		renderResult(result, { isPartial }, theme, _context) {
-			if (isPartial) return new Text(theme.fg("warning", "Writing..."), 0, 0);
-
-			const content = result.content[0];
-			if (content?.type === "text" && content.text.startsWith("Error")) {
-				return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
-			}
-
-			return new Text(theme.fg("success", "Written"), 0, 0);
 		},
 	});
 }

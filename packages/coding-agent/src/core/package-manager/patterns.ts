@@ -5,11 +5,23 @@ import { toPosixPath } from "../../utils/ignore.ts";
 import { normalizePath } from "../../utils/paths.ts";
 
 function isPattern(s: string): boolean {
-	return s.startsWith("!") || s.startsWith("+") || s.startsWith("-") || s.includes("*") || s.includes("?");
+	return isOverridePattern(s) || hasGlobPattern(s);
 }
 
 export function isOverridePattern(s: string): boolean {
 	return s.startsWith("!") || s.startsWith("+") || s.startsWith("-");
+}
+
+/** The path an entry names, without its `!`, `+` or `-` override prefix. */
+export function overridePatternTarget(entry: string): string {
+	return isOverridePattern(entry) ? entry.slice(1) : entry;
+}
+
+/** `entries` without any entry naming `pattern`, followed by `+pattern` (enabled) or `-pattern` (disabled). */
+export function withTogglePattern(entries: readonly string[], pattern: string, enabled: boolean): string[] {
+	const updated = entries.filter((entry) => overridePatternTarget(entry) !== pattern);
+	updated.push(`${enabled ? "+" : "-"}${pattern}`);
+	return updated;
 }
 
 export function hasGlobPattern(s: string): boolean {
@@ -95,7 +107,7 @@ function matchesAnyExactPattern(filePath: string, patterns: string[], baseDir: s
 }
 
 export function getOverridePatterns(entries: string[]): string[] {
-	return entries.filter((pattern) => pattern.startsWith("!") || pattern.startsWith("+") || pattern.startsWith("-"));
+	return entries.filter(isOverridePattern);
 }
 
 export function isEnabledByOverrides(filePath: string, patterns: string[], baseDir: string): boolean {

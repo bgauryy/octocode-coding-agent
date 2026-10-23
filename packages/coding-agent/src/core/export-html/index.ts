@@ -1,4 +1,5 @@
 import type { AgentState } from "@octocodeai/octocode-agent-core";
+import { OCTOCODE_FAVICON_DATA_URI } from "@octocodeai/octocode-webview";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";
@@ -169,6 +170,7 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 		.replace("{{INFO_BG}}", () => infoBg);
 
 	return template
+		.replace("{{FAVICON}}", () => OCTOCODE_FAVICON_DATA_URI)
 		.replace("{{CSS}}", () => css)
 		.replace("{{JS}}", () => templateJs)
 		.replace("{{SESSION_DATA}}", () => sessionDataBase64)
@@ -177,7 +179,7 @@ function generateHtml(sessionData: SessionData, themeName?: string): string {
 }
 
 /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
-const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
+const TEMPLATE_RENDERED_TOOLS = new Set(["bash"]);
 
 /**
  * Pre-render custom tools to HTML using their TUI renderers.

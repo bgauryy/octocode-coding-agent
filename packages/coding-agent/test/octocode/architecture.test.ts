@@ -59,6 +59,7 @@ const ALLOWED: Record<string, string[]> = {
 	workspace: ["shared", "agentdb", "backlog", "team", "subagents"],
 	memory: ["shared", "agentdb", "permission"],
 	permission: ["shared"],
+	debug: ["shared"],
 };
 
 describe("source layout", () => {

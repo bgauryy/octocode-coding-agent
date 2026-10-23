@@ -6,6 +6,7 @@ import { assertValidSessionId, SessionManager } from "../core/session-manager.ts
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { stopThemeWatcher } from "../modes/interactive/theme/theme.ts";
 import { resolvePath } from "../utils/paths.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 /** Result from resolving a session argument */
 type ResolvedSession =
@@ -107,7 +108,7 @@ export function validateSessionIdFlags(parsed: Args): void {
 	try {
 		assertValidSessionId(parsed.sessionId);
 	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		console.error(chalk.red(`Error: ${message}`));
 		process.exit(1);
 	}
@@ -117,7 +118,7 @@ function openSessionOrExit(path: string, sessionDir?: string): SessionManager {
 	try {
 		return SessionManager.open(path, sessionDir);
 	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		console.error(chalk.red(`Error: ${message}`));
 		process.exit(1);
 	}
@@ -127,7 +128,7 @@ function forkSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string,
 	try {
 		return SessionManager.forkFrom(sourcePath, cwd, sessionDir, { id: sessionId });
 	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		console.error(chalk.red(`Error: ${message}`));
 		process.exit(1);
 	}

@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { nativeHost } from "../src/octocode/shared/host-api.ts";
 import { createEventBus } from "../src/core/event-bus.ts";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
 it("does not let a general extension replace native tool permission policy", async () => {
@@ -7,7 +8,7 @@ it("does not let a general extension replace native tool permission policy", asy
 	await expect(
 		loadExtensionFromFactory(
 			(pi) => {
-				pi.setToolPolicy!(() => true);
+				nativeHost(pi).setToolPolicy!(() => true);
 			},
 			process.cwd(),
 			createEventBus(),

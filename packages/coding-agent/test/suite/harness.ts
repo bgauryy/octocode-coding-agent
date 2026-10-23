@@ -1,4 +1,4 @@
-import { createCodingTools } from "../../src/core/tools/index.ts";
+import { createBashTool } from "../../src/core/tools/index.ts";
 import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
 import type { CompactionSettings } from "../../src/core/compaction/compaction.ts";
 import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } from "../model-runtime-test-utils.ts";
@@ -161,7 +161,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	});
 	fauxProvider.setResponses([]);
 	const model = fauxProvider.getModel();
-	const tools = options.tools ?? (options.builtinCompactionFactories ? createCodingTools(tempDir) : undefined);
+	const tools = options.tools ?? (options.builtinCompactionFactories ? [createBashTool(tempDir)] : undefined);
 	const toolMap = tools ? Object.fromEntries(tools.map((tool) => [tool.name, tool])) : undefined;
 	const withConfiguredAuth = options.withConfiguredAuth ?? true;
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};

@@ -11,6 +11,46 @@ export function getExtensionTempFolder(agentDir: string): string {
 	return tempFolder;
 }
 
+export interface DirectoryEntry {
+	name: string;
+	fullPath: string;
+	/** Path relative to the ignore root, with forward slashes. */
+	relPath: string;
+	isDir: boolean;
+	isFile: boolean;
+}
+
+/**
+ * The visible entries of `dir`: hidden names (and `node_modules` unless `skipNodeModules` is false) are left out,
+ * symbolic links report their target's kind, and broken links are dropped. Throws when `dir` cannot be read.
+ */
+export function readDirectoryEntries(dir: string, root: string, skipNodeModules = true): DirectoryEntry[] {
+	const result: DirectoryEntry[] = [];
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (entry.name.startsWith(".")) continue;
+		if (skipNodeModules && entry.name === "node_modules") continue;
+		const fullPath = join(dir, entry.name);
+		let isDir = entry.isDirectory();
+		let isFile = entry.isFile();
+		if (entry.isSymbolicLink()) {
+			try {
+				const stats = statSync(fullPath);
+				isDir = stats.isDirectory();
+				isFile = stats.isFile();
+			} catch {
+				continue;
+			}
+		}
+		result.push({ name: entry.name, fullPath, relPath: toPosixPath(relative(root, fullPath)), isDir, isFile });
+	}
+	return result;
+}
+
+/** Whether the ignore rules exclude `entry`; directories are matched with a trailing slash. */
+export function isIgnored(ig: IgnoreMatcher, entry: DirectoryEntry): boolean {
+	return ig.ignores(entry.isDir ? `${entry.relPath}/` : entry.relPath);
+}
+
 export function collectFiles(
 	dir: string,
 	filePattern: RegExp,
@@ -26,33 +66,12 @@ export function collectFiles(
 	addIgnoreRules(ig, dir, root);
 
 	try {
-		const entries = readdirSync(dir, { withFileTypes: true });
-		for (const entry of entries) {
-			if (entry.name.startsWith(".")) continue;
-			if (skipNodeModules && entry.name === "node_modules") continue;
-
-			const fullPath = join(dir, entry.name);
-			let isDir = entry.isDirectory();
-			let isFile = entry.isFile();
-
-			if (entry.isSymbolicLink()) {
-				try {
-					const stats = statSync(fullPath);
-					isDir = stats.isDirectory();
-					isFile = stats.isFile();
-				} catch {
-					continue;
-				}
-			}
-
-			const relPath = toPosixPath(relative(root, fullPath));
-			const ignorePath = isDir ? `${relPath}/` : relPath;
-			if (ig.ignores(ignorePath)) continue;
-
-			if (isDir) {
-				files.push(...collectFiles(fullPath, filePattern, skipNodeModules, ig, root));
-			} else if (isFile && filePattern.test(entry.name)) {
-				files.push(fullPath);
+		for (const entry of readDirectoryEntries(dir, root, skipNodeModules)) {
+			if (isIgnored(ig, entry)) continue;
+			if (entry.isDir) {
+				files.push(...collectFiles(entry.fullPath, filePattern, skipNodeModules, ig, root));
+			} else if (entry.isFile && filePattern.test(entry.name)) {
+				files.push(entry.fullPath);
 			}
 		}
 	} catch {
@@ -64,6 +83,10 @@ export function collectFiles(
 
 type SkillDiscoveryMode = "octocode" | "agents";
 
+/**
+ * Skill entries under `dir`: a directory with a `SKILL.md` is one skill and is not searched further; otherwise its
+ * Markdown files (top level in `octocode` mode, nested in `agents` mode) and its subdirectories are searched.
+ */
 export function collectSkillEntries(
 	dir: string,
 	mode: SkillDiscoveryMode,
@@ -78,73 +101,26 @@ export function collectSkillEntries(
 	addIgnoreRules(ig, dir, root);
 
 	try {
-		const dirEntries = readdirSync(dir, { withFileTypes: true });
+		const dirEntries = readDirectoryEntries(dir, root);
+		const skillFile = dirEntries.find(
+			(entry) => entry.name === "SKILL.md" && entry.isFile && !ig.ignores(entry.relPath),
+		);
+		if (skillFile) return [skillFile.fullPath];
 
+		const markdownHere = (mode === "octocode" && dir === root) || (mode === "agents" && dir !== root);
 		for (const entry of dirEntries) {
-			if (entry.name !== "SKILL.md") {
+			if (entry.isFile && markdownHere && entry.name.endsWith(".md") && !ig.ignores(entry.relPath)) {
+				entries.push(entry.fullPath);
 				continue;
 			}
-
-			const fullPath = join(dir, entry.name);
-			let isFile = entry.isFile();
-			if (entry.isSymbolicLink()) {
-				try {
-					isFile = statSync(fullPath).isFile();
-				} catch {
-					continue;
-				}
-			}
-
-			const relPath = toPosixPath(relative(root, fullPath));
-			if (isFile && !ig.ignores(relPath)) {
-				entries.push(fullPath);
-				return entries;
-			}
-		}
-
-		for (const entry of dirEntries) {
-			if (entry.name.startsWith(".")) continue;
-			if (entry.name === "node_modules") continue;
-
-			const fullPath = join(dir, entry.name);
-			let isDir = entry.isDirectory();
-			let isFile = entry.isFile();
-
-			if (entry.isSymbolicLink()) {
-				try {
-					const stats = statSync(fullPath);
-					isDir = stats.isDirectory();
-					isFile = stats.isFile();
-				} catch {
-					continue;
-				}
-			}
-
-			const relPath = toPosixPath(relative(root, fullPath));
-			const shouldIncludeMarkdownFile =
-				isFile &&
-				entry.name.endsWith(".md") &&
-				!ig.ignores(relPath) &&
-				((mode === "octocode" && dir === root) || (mode === "agents" && dir !== root));
-			if (shouldIncludeMarkdownFile) {
-				entries.push(fullPath);
-				continue;
-			}
-
-			if (!isDir) continue;
-			if (ig.ignores(`${relPath}/`)) continue;
-
-			entries.push(...collectSkillEntries(fullPath, mode, ig, root));
+			if (!entry.isDir || isIgnored(ig, entry)) continue;
+			entries.push(...collectSkillEntries(entry.fullPath, mode, ig, root));
 		}
 	} catch {
 		// Ignore errors
 	}
 
 	return entries;
-}
-
-export function collectAutoSkillEntries(dir: string, mode: SkillDiscoveryMode): string[] {
-	return collectSkillEntries(dir, mode);
 }
 
 function findGitRepoRoot(startDir: string): string | null {

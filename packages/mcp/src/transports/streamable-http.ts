@@ -21,6 +21,7 @@ import {
 	McpSessionExpiredError,
 	needsAuthorization,
 	readText,
+	rejectRedirect,
 } from "./streamable-http/http.ts";
 import { consumeSseStream, type StreamCursor } from "./streamable-http/sse.ts";
 import {
@@ -145,8 +146,11 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 				const response = await this.fetch(this.url, {
 					method: "DELETE",
 					headers: this.buildHeaders({}, this.lastToken),
+					redirect: "manual",
+					credentials: "omit",
 					signal: AbortSignal.timeout(1_000),
 				});
+				await rejectRedirect(response, this.url);
 				await discard(response);
 			} catch {}
 		}
@@ -157,9 +161,11 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 	 * Fetch with auth headers. A 401 (or a 403 asking for more scope) is handed to the auth provider
 	 * once, and the request is retried with whatever credentials it left behind.
 	 *
-	 * `signal` only stops dispatch: getting a token or the authorization recovery can take a while, and a
-	 * request its sender gave up on in the meantime must not reach the server. It does not abort the shared
-	 * recovery, which other requests may wait for.
+	 * `signal` stops dispatch: getting a token or the authorization recovery can take a while, and a
+	 * request its sender gave up on in the meantime must not reach the server. Once dispatched, it also aborts
+	 * this request's own fetch (and the response body being read), so a request that timed out or was cancelled does
+	 * not hold its connection until the server answers. It does not abort the shared recovery, which other
+	 * requests may wait for.
 	 */
 	private async authorizedFetch(
 		method: "GET" | "POST",
@@ -174,8 +180,11 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 				method,
 				headers,
 				body: init.body,
-				signal: this.controller.signal,
+				redirect: "manual",
+				credentials: "omit",
+				signal: signal ? AbortSignal.any([this.controller.signal, signal]) : this.controller.signal,
 			});
+			await rejectRedirect(response, this.url);
 			if (attempt > 0 || !onUnauthorized || !needsAuthorization(response)) return response;
 			try {
 				await onUnauthorized({ response, serverUrl: this.url, fetch: this.fetch, token });

@@ -5,6 +5,7 @@ import {
 	type ResizeImageWorkerResponse,
 	resizeImageInProcess,
 } from "./image-resize-core.ts";
+import { errorMessage } from "./guards.ts";
 
 interface ResizeImageWorkerRequest {
 	inputBytes: Uint8Array;
@@ -35,7 +36,7 @@ port.once("message", (message: unknown) => {
 		} catch (error) {
 			const response: ResizeImageWorkerResponse = {
 				type: IMAGE_RESIZE_WORKER_RESPONSE_TYPE,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			};
 			port.postMessage(response);
 		}

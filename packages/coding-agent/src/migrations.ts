@@ -8,6 +8,7 @@ import { dirname, join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir, getBinDir } from "./config.ts";
 import { migrateKeybindingsConfig } from "./core/keybindings.ts";
 import { stripBom } from "./utils/text.ts";
+import { errorMessage } from "./utils/guards.ts";
 
 const MIGRATION_GUIDE_URL =
 	"https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/docs/configuration.md#historical-migrations";
@@ -152,11 +153,7 @@ function migrateCommandsToPrompts(baseDir: string, label: string): boolean {
 			console.log(chalk.green(`Migrated ${label} commands/ → prompts/`));
 			return true;
 		} catch (err) {
-			console.log(
-				chalk.yellow(
-					`Warning: Could not migrate ${label} commands/ to prompts/: ${err instanceof Error ? err.message : String(err)}`,
-				),
-			);
+			console.log(chalk.yellow(`Warning: Could not migrate ${label} commands/ to prompts/: ${errorMessage(err)}`));
 		}
 	}
 	return false;

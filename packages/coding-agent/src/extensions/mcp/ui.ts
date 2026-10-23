@@ -5,7 +5,7 @@
 
 import {
 	type Component,
-	Container,
+	type Container,
 	type Focusable,
 	Input,
 	type SelectItem,
@@ -13,13 +13,11 @@ import {
 	Spacer,
 	Text,
 	type TUI,
-	truncateToWidth,
-	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { AuthUrlComponent } from "../../modes/interactive/components/auth-url.ts";
-import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
+import { frame, renderClipped, runInView } from "../../modes/interactive/components/framed-view.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { getSelectListTheme, type Theme } from "../../modes/interactive/theme/theme.ts";
 
@@ -53,19 +51,6 @@ export interface McpUi {
 	 * cancelled or when `signal` aborts (the browser reached the callback).
 	 */
 	redirectUrl(title: string, authorizationUrl: string, signal: AbortSignal): Promise<string | undefined>;
-}
-
-function frame(theme: Theme, title: string, body: Component[], footer?: string): Container {
-	const container = new Container();
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-	container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-	for (const child of body) container.addChild(child);
-	if (footer) {
-		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("dim", footer), 1, 0));
-	}
-	container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-	return container;
 }
 
 const MAX_VISIBLE_ITEMS = 12;
@@ -226,9 +211,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 	}
 
 	render(width: number): string[] {
-		return this.content
-			.render(width)
-			.map((line) => (visibleWidth(line) > width ? truncateToWidth(line, width, "") : line));
+		return renderClipped(this.content, width);
 	}
 
 	invalidate(): void {
@@ -241,16 +224,9 @@ export async function showMcpManager(
 	ctx: ExtensionCommandContext,
 	manage: (ui: McpUi) => Promise<void>,
 ): Promise<void> {
-	await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
-		const view = new McpManagerView(tui, theme, keybindings);
-		void (async () => {
-			try {
-				await manage(view);
-			} catch (error) {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-			}
-			done();
-		})();
-		return view;
-	});
+	await runInView<McpManagerView>(
+		ctx,
+		(tui, theme, keybindings) => new McpManagerView(tui, theme, keybindings),
+		manage,
+	);
 }

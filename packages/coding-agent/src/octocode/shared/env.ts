@@ -30,6 +30,11 @@ export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
+/** A subagent's own handoff folder (`<workspace>/.octocode/tmp/agents/<id>`): long results go there as files, not into its report. */
+export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
+/** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
+export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
+
 /** Set for an isolated subagent: the parent's repository root, whose stored trust decision the worktree follows. */
 export const TRUST_ROOT_ENV = "OCTOCODE_TRUST_ROOT";
 
@@ -161,3 +166,6 @@ export function envInt(
 }
 
 export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
+
+/** Owner-only file with the MCP servers the parent's `mcp` tool added this session; a child registers them at start (`extensions/mcp/session-servers.ts`). */
+export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

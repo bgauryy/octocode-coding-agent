@@ -1,51 +1,25 @@
-import {
-	type GenerateContentConfig,
-	type GenerateContentParameters,
-	GoogleGenAI,
-	type HttpOptions,
-	ResourceScope,
-	type ThinkingConfig,
-} from "@google/genai";
-import { clampThinkingLevel } from "../models.ts";
+import { GoogleGenAI, type HttpOptions, ResourceScope } from "@google/genai";
 import type {
 	Model,
 	ProviderEnv,
 	ProviderHeaders,
 	SimpleStreamOptions,
 	StreamFunction,
-	StreamOptions,
-	ThinkingBudgets,
 	TranscriptContext,
 } from "../types.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
-import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
-import { getSystemMessageText } from "../utils/text.ts";
-import { getCurrentTools, getInitialSystemMessage } from "../utils/transcript.ts";
-import type { GoogleApiThinkingLevel, ResolvedGoogleThinkingLevel } from "./google-shared.ts";
 import {
-	convertMessages,
-	convertTools,
-	getDisabledGoogleThinkingConfig,
-	resolveGoogleFunctionCallingMode,
-	resolveGoogleThinkingLevel,
-	supportsGoogleStrictToolSampling,
-	toGoogleSdkThinkingLevel,
-	toGoogleThinkingLevel,
-	usesGoogleThinkingLevel,
+	buildGoogleParams,
+	type GoogleBaseOptions,
+	resolveGoogleSimpleThinking,
 	streamGoogle,
 } from "./google-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
-export interface GoogleVertexOptions extends StreamOptions {
-	toolChoice?: "auto" | "none" | "any";
-	thinking?: {
-		enabled: boolean;
-		budgetTokens?: number; // -1 for dynamic, 0 to disable
-		level?: GoogleApiThinkingLevel;
-	};
+export interface GoogleVertexOptions extends GoogleBaseOptions {
 	project?: string;
 	location?: string;
 }
@@ -67,7 +41,7 @@ export const stream: StreamFunction<"google-vertex", GoogleVertexOptions> = (
 			const client = apiKey
 				? createClientWithApiKey(model, apiKey, options?.headers)
 				: createClient(model, resolveProject(options), resolveLocation(options), options?.headers, options?.env);
-			return { client, params: buildParams(model, normalized, options) };
+			return { client, params: buildGoogleParams(model, normalized, options) };
 		},
 	});
 
@@ -76,42 +50,10 @@ export const streamSimple: StreamFunction<"google-vertex", SimpleStreamOptions> 
 	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
-	const base = {
+	return stream(model, context, {
 		...buildBaseOptions(model, context, options, undefined),
 		toolChoice: options?.toolChoice,
-	} satisfies GoogleVertexOptions;
-	if (!options?.reasoning) {
-		return stream(model, context, {
-			...base,
-			thinking: { enabled: false },
-		} satisfies GoogleVertexOptions);
-	}
-
-	const clampedReasoning = clampThinkingLevel(model, options.reasoning);
-	if (clampedReasoning === "off") {
-		return stream(model, context, {
-			...base,
-			thinking: { enabled: false },
-		} satisfies GoogleVertexOptions);
-	}
-	const resolvedLevel = resolveGoogleThinkingLevel(model, clampedReasoning);
-
-	if (usesGoogleThinkingLevel(model)) {
-		return stream(model, context, {
-			...base,
-			thinking: {
-				enabled: true,
-				level: toGoogleThinkingLevel(resolvedLevel),
-			},
-		} satisfies GoogleVertexOptions);
-	}
-
-	return stream(model, context, {
-		...base,
-		thinking: {
-			enabled: true,
-			budgetTokens: getGoogleBudget(model, resolvedLevel, options.thinkingBudgets),
-		},
+		thinking: resolveGoogleSimpleThinking(model, options),
 	} satisfies GoogleVertexOptions);
 };
 
@@ -218,108 +160,4 @@ function resolveLocation(options?: GoogleVertexOptions): string {
 		throw new Error("Vertex AI requires a location. Set GOOGLE_CLOUD_LOCATION or pass location in options.");
 	}
 	return location;
-}
-
-function buildParams(
-	model: Model<"google-vertex">,
-	context: TranscriptContext,
-	options: GoogleVertexOptions = {},
-): GenerateContentParameters {
-	const contents = convertMessages(model, context);
-	const initialSystemMessage = getInitialSystemMessage(context.messages);
-	const currentTools = getCurrentTools(context.messages);
-
-	const generationConfig: GenerateContentConfig = {};
-	if (options.temperature !== undefined) {
-		generationConfig.temperature = options.temperature;
-	}
-	if (options.maxTokens !== undefined) {
-		generationConfig.maxOutputTokens = options.maxTokens;
-	}
-
-	const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
-	const functionCallingMode =
-		currentTools.length > 0
-			? resolveGoogleFunctionCallingMode(currentTools, options.toolChoice, supportsStrictMode)
-			: undefined;
-	const systemInstruction = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
-	const config: GenerateContentConfig = {
-		...(Object.keys(generationConfig).length > 0 && generationConfig),
-		...(systemInstruction && { systemInstruction: sanitizeSurrogates(systemInstruction) }),
-		...(currentTools.length > 0 && {
-			tools: convertTools(currentTools, false, supportsStrictMode),
-		}),
-		...(functionCallingMode !== undefined && {
-			toolConfig: { functionCallingConfig: { mode: functionCallingMode } },
-		}),
-	};
-
-	if (options.thinking?.enabled && model.reasoning) {
-		const thinkingConfig: ThinkingConfig = { includeThoughts: true };
-		if (options.thinking.level !== undefined) {
-			thinkingConfig.thinkingLevel = toGoogleSdkThinkingLevel(options.thinking.level);
-		} else if (options.thinking.budgetTokens !== undefined) {
-			thinkingConfig.thinkingBudget = options.thinking.budgetTokens;
-		}
-		config.thinkingConfig = thinkingConfig;
-	} else if (model.reasoning && options.thinking && !options.thinking.enabled) {
-		config.thinkingConfig = getDisabledGoogleThinkingConfig(model);
-	}
-
-	if (options.signal) {
-		if (options.signal.aborted) {
-			throw new Error("Request aborted");
-		}
-		config.abortSignal = options.signal;
-	}
-
-	const params: GenerateContentParameters = {
-		model: model.id,
-		contents,
-		config,
-	};
-
-	return params;
-}
-
-function getGoogleBudget(
-	model: Model<"google-vertex">,
-	level: ResolvedGoogleThinkingLevel,
-	customBudgets?: ThinkingBudgets,
-): number {
-	if (customBudgets?.[level] !== undefined) {
-		return customBudgets[level];
-	}
-
-	if (model.id.includes("2.5-pro")) {
-		const budgets: Record<ResolvedGoogleThinkingLevel, number> = {
-			minimal: 128,
-			low: 2048,
-			medium: 8192,
-			high: 32768,
-		};
-		return budgets[level];
-	}
-
-	if (model.id.includes("2.5-flash-lite")) {
-		const budgets: Record<ResolvedGoogleThinkingLevel, number> = {
-			minimal: 512,
-			low: 2048,
-			medium: 8192,
-			high: 24576,
-		};
-		return budgets[level];
-	}
-
-	if (model.id.includes("2.5-flash")) {
-		const budgets: Record<ResolvedGoogleThinkingLevel, number> = {
-			minimal: 128,
-			low: 2048,
-			medium: 8192,
-			high: 24576,
-		};
-		return budgets[level];
-	}
-
-	return -1;
 }

@@ -142,6 +142,7 @@ export function foregroundOperations(
 	settings: ShellSettings,
 	onGroup: (pid: number) => void,
 	handoff?: Handoff,
+	onExit?: (signal: NodeJS.Signals | null) => void,
 ): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout, env }) => {
@@ -207,6 +208,7 @@ export function foregroundOperations(
 				const code = await waiter.done;
 				if (signal?.aborted) throw new Error("aborted");
 				if (timedOut) throw new Error(`timeout:${timeout}`);
+				onExit?.(child.signalCode);
 				if (pid) onGroup(pid);
 				// A signal-killed shell has no exit code: the shell convention keeps it from reading as success.
 				return { exitCode: code ?? (child.signalCode ? 128 + (osConstants.signals[child.signalCode] ?? 0) : 1) };

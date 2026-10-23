@@ -17,6 +17,7 @@ import {
 	shellSettings,
 } from "../../src/octocode/files/bash-jobs.ts";
 import { RERUN_HINT } from "../../src/octocode/files/render.ts";
+import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { groupAlive, processAlive } from "../../src/octocode/shared/process.ts";
@@ -64,7 +65,7 @@ describe("bash tool", () => {
 	it("replaces Octocode bash with a schema that has background and a documented deadline", () => {
 		const { tool } = setup();
 		expect(tool.name).toBe("bash");
-		expect(Object.keys(tool.parameters.properties)).toEqual(["type", "command", "timeout", "background"]);
+		expect(Object.keys(tool.parameters.properties)).toEqual(["type", "command", "timeout", "background", "verify"]);
 		expect(tool.promptGuidelines).toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
@@ -76,8 +77,10 @@ describe("bash tool", () => {
 		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
 		expect(tool.parameters.properties.background.description).toContain("long builds");
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
-		const variants = tool.outputSchema.anyOf.map((variant: { properties: object }) => Object.keys(variant.properties));
-		expect(variants).toEqual([expect.arrayContaining(["output", "exit_code"]), ["job", "pid", "log"]]);
+		const [foreground, background] = tool.outputSchema.anyOf;
+		expect(foreground.allOf).toHaveLength(2);
+		expect(Object.keys(foreground.allOf[1].properties)).toEqual(["verification"]);
+		expect(Object.keys(background.properties)).toEqual(["job", "pid", "log", "verification"]);
 	});
 
 	it("runs a foreground command in the session cwd and returns its output", async () => {
@@ -85,6 +88,62 @@ describe("bash tool", () => {
 		const result = await tool.execute("t1", { command: "pwd; echo hi" }, undefined, undefined, ctx);
 		expect(result.content[0].text).toContain(fs.realpathSync(cwd));
 		expect(result.content[0].text).toContain("hi");
+	});
+
+	it("records explicit foreground verification without treating an ordinary command as a check", async () => {
+		const { tool, ctx, cwd } = setup();
+		const plain = await tool.execute("plain", { command: "true" }, undefined, undefined, ctx);
+		expect(plain.structuredContent.verification).toBeUndefined();
+		const result = await tool.execute("check", { command: "exit 3", verify: true }, undefined, undefined, ctx);
+		expect(result.isError).toBe(true);
+		expect(result.structuredContent.verification).toMatchObject({
+			command: "exit 3",
+			cwd,
+			sessionId: "session-test",
+			state: "failed",
+			exitCode: 3,
+			stale: false,
+			output: { complete: true },
+		});
+		expect(result.details.verification).toMatchObject(result.structuredContent.verification);
+		expect(result.content[0].text).toContain("Verification: exit 3");
+	});
+
+	it("marks a background verification stale when a later agent edit commits before completion", async () => {
+		const { tool, ctx, jobs, sent } = setup();
+		const start = await tool.execute(
+			"check",
+			{ command: "sleep 0.3; exit 2", background: true, verify: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(start.structuredContent.verification).toMatchObject({ state: "running", output: { complete: false } });
+		expect(start.content[0].text).toContain("no result yet");
+		recordMutation("session-test");
+		await until(() => sent.length === 1);
+		expect(jobs.jobs.size).toBe(0);
+		expect(sent[0].message.details.verification).toMatchObject({ state: "failed", exitCode: 2, stale: true });
+		expect(sent[0].message.content).toContain("later agent edits invalidate this check");
+		expect(sent[0].message.details.verification.output).toMatchObject({ complete: true, tailIncomplete: false });
+	});
+
+	it("keeps verification pending across a foreground timeout handoff and reports the later failure once", async () => {
+		const { tool, ctx, sent, jobs } = setup();
+		const handoff = await tool.execute(
+			"check",
+			{ command: "echo started; sleep 1.3; exit 4", timeout: 1, verify: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(handoff.structuredContent.verification).toMatchObject({ state: "running", output: { complete: false } });
+		expect(handoff.content[0].text).toContain("no result yet");
+		await until(() => sent.length === 1);
+		expect(sent[0].message.details.verification).toMatchObject({ state: "failed", exitCode: 4 });
+		expect(jobs.jobs.size).toBe(0);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(sent).toHaveLength(1);
 	});
 
 	it("does not start a background command after its request was aborted", async () => {
@@ -478,6 +537,27 @@ describe("bash tool", () => {
 		await Promise.all([...jobs.jobs.values()].map((job) => job.done));
 	});
 
+	it("does not claim complete output in the early shutdown report before pipes drain", async () => {
+		const { tool, jobs, sent, fire, ctx } = setup();
+		await tool.execute(
+			"verify-shutdown",
+			{ command: "echo before; sleep 30", background: true, verify: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await fire("session_shutdown", {}, ctx);
+		expect(sent).toHaveLength(1);
+		const receipt = sent[0].message.details.verification;
+		expect(receipt).toMatchObject({ state: "running", output: { complete: false } });
+		expect(receipt.completedAt).toBeUndefined();
+		expect(receipt.revisionAtCompletion).toBeUndefined();
+		expect(sent[0].message.content).toContain("no result yet");
+		expect(sent[0].message.content).toContain("full output incomplete or unavailable");
+		await Promise.all([...jobs.jobs.values()].map((job) => job.done));
+		expect(sent).toHaveLength(1);
+	});
+
 	it("keeps a job running while children its shell left behind still run, so they stay stoppable", async () => {
 		const jobs = new BashJobs(tmp());
 		let exited = false;
@@ -558,7 +638,7 @@ describe("bash tool", () => {
 		);
 		// One rotation keeps the earlier output in `.1`; nothing is said to be dropped.
 		expect(jobReport(job, { code: 0, signal: null, seconds: 75, logRotations: 1 })).toBe(
-			`Background bash bash-9 finished after 1m15s: make\nLog: job.log\nlog rotated at its size cap: job.log.1 holds the part before this log\n[+1 earlier line in the log]\nlast line`,
+			`Background bash bash-9 finished after 1m15s: make\nLog: job.log\nlog rotated at its size cap: job.log.1 is unavailable; earlier output cannot be recovered\n[+1 earlier line in the log]\nlast line`,
 		);
 		// The tail is the end of the log (not the start of its last few KB), and nothing before it goes uncounted.
 		fs.writeFileSync(log, Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n"));

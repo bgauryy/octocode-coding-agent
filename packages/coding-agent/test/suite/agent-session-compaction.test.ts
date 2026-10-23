@@ -224,7 +224,20 @@ describe("AgentSession compaction characterization", () => {
 	});
 
 	it("checkpoints the replayed system state and folds summarized and retained system patches into it", async () => {
-		const harness = await createHarness();
+		const harness = await createHarness({
+			extensionFactories: [
+				(pi) => {
+					for (const name of ["kept_tool", "retired_tool"])
+						pi.registerTool({
+							name,
+							label: name,
+							description: name,
+							parameters: Type.Object({}),
+							execute: async () => ({ content: [], details: undefined }),
+						});
+				},
+			],
+		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("declared")]);
 		await harness.session.prompt("declare the prompt");
@@ -247,7 +260,7 @@ describe("AgentSession compaction characterization", () => {
 			role: "system",
 			content: "retained instruction",
 			sections: { extra: "<extra>late</extra>" },
-			toolsRemoved: [{ name: "read" }],
+			toolsRemoved: [{ name: "retired_tool" }],
 			timestamp: Date.now(),
 		});
 		harness.sessionManager.appendMessage({
@@ -267,9 +280,7 @@ describe("AgentSession compaction characterization", () => {
 			early: "<early>1</early>",
 			extra: "<extra>late</extra>",
 		});
-		expect(checkpoint.toolsAdded?.map((tool) => tool.name)).toEqual(
-			harness.session.getActiveToolNames().filter((name) => name !== "read" && name !== "bash"),
-		);
+		expect(checkpoint.toolsAdded?.map((tool) => tool.name)).toEqual(["kept_tool"]);
 	});
 
 	it("allows a queued prompt to start when manual compaction ends", async () => {
@@ -518,7 +529,8 @@ describe("AgentSession compaction characterization", () => {
 
 	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
 	it("compacts after an oversized tool result in the same run", async () => {
-		const toolResult = `large-tool-result:${"x".repeat(8000)}`;
+		// About 2,000 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
+		const toolResult = `large-tool-result:${"x".repeat(6000)}`;
 		const largeTool: AgentTool = {
 			name: "large_result",
 			label: "Large result",

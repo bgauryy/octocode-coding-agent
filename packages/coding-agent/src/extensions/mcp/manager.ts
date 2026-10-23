@@ -7,12 +7,12 @@ import { getMcpToolExposure, type McpExposure } from "./config.ts";
 import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { setExposure } from "./persistence.ts";
 import {
 	attentionRank,
 	describeState,
 	describeTransport,
-	errorMessage,
 	EXPOSURE_DESCRIPTIONS,
 	firstLine,
 	isEnabled,

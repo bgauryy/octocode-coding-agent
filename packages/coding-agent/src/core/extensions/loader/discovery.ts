@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import ignore from "ignore";
+import { addIgnoreRules } from "../../../utils/ignore.ts";
 import { hasPluginOrSkillMarker, readExtensionManifest } from "../../extension-manifest.ts";
+import { isIgnored, readDirectoryEntries } from "../../package-manager/discovery.ts";
 
 function isExtensionFile(name: string): boolean {
 	return name.endsWith(".ts") || name.endsWith(".js");
@@ -10,13 +13,13 @@ function isExtensionFile(name: string): boolean {
  * Resolve extension entry points from a directory.
  *
  * Checks for:
- * 1. package.json with "pi.extensions" field -> returns declared paths
- * 2. index.ts or index.js -> returns the index file
+ * 1. package.json whose `octocode` (or legacy `pi`) manifest declares extensions -> returns the declared paths that exist
+ * 2. a plugin or skill marker (see `hasPluginOrSkillMarker`) -> returns no entries (the directory is not an extension)
+ * 3. index.ts or index.js -> returns the index file
  *
  * Returns resolved paths or null if no entry points found.
  */
 export function resolveExtensionEntries(dir: string): string[] | null {
-	// Check for package.json with "octocode" field first
 	const packageJsonPath = path.join(dir, "package.json");
 	if (fs.existsSync(packageJsonPath)) {
 		const manifest = readExtensionManifest(packageJsonPath);
@@ -50,44 +53,38 @@ export function resolveExtensionEntries(dir: string): string[] | null {
 }
 
 /**
- * Discover extensions in a directory.
+ * Discover the extensions under `dir`. SDK discovery and CLI package discovery both use this function.
  *
- * Discovery rules:
- * 1. Direct files: `extensions/*.ts` or `*.js` → load
- * 2. Subdirectory with index: `extensions/* /index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/* /package.json` with "octocode" field → load what it declares
+ * Rules (documented in docs/packages.md, "Extension directory discovery"):
+ * 1. If `dir` itself declares entries (`package.json` manifest or `index.ts`/`index.js`), those are the result.
+ * 2. Otherwise each top-level `*.ts`/`*.js` file is an extension, and each subdirectory contributes what
+ *    {@link resolveExtensionEntries} returns for it.
+ * 3. Dot entries, `node_modules` and paths matched by `.gitignore`/`.ignore`/`.fdignore` are skipped.
  *
- * No recursion beyond one level. Complex packages must use package.json manifest.
+ * No recursion beyond one level.
  */
 export function discoverExtensionsInDir(dir: string): string[] {
-	if (!fs.existsSync(dir)) {
-		return [];
-	}
+	if (!fs.existsSync(dir)) return [];
+
+	const rootEntries = resolveExtensionEntries(dir);
+	if (rootEntries) return rootEntries;
 
 	const discovered: string[] = [];
+	const ig = ignore();
+	addIgnoreRules(ig, dir, dir);
 
 	try {
-		const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-		for (const entry of entries) {
-			const entryPath = path.join(dir, entry.name);
-
-			// 1. Direct files: *.ts or *.js
-			if ((entry.isFile() || entry.isSymbolicLink()) && isExtensionFile(entry.name)) {
-				discovered.push(entryPath);
-				continue;
-			}
-
-			// 2 & 3. Subdirectories
-			if (entry.isDirectory() || entry.isSymbolicLink()) {
-				const entries = resolveExtensionEntries(entryPath);
-				if (entries) {
-					discovered.push(...entries);
-				}
+		for (const entry of readDirectoryEntries(dir, dir)) {
+			if (isIgnored(ig, entry)) continue;
+			if (entry.isFile && isExtensionFile(entry.name)) {
+				discovered.push(entry.fullPath);
+			} else if (entry.isDir) {
+				const entries = resolveExtensionEntries(entry.fullPath);
+				if (entries) discovered.push(...entries);
 			}
 		}
 	} catch {
-		return [];
+		// Unreadable directories contribute nothing.
 	}
 
 	return discovered;

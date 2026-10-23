@@ -5,6 +5,9 @@ import { isRecord } from "../shared/util.ts";
 import { type ApiEvent, CLIENT_MARGIN_MS, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
 import type { InstanceRecord } from "./registry.ts";
 
+/** A call refused before any byte left this process: it can be retried unchanged once its cause is fixed. */
+const notSent = (message: string): Error => Object.assign(new Error(message), { execution: "not-sent" });
+
 /** A failed call, carrying the JSON-RPC code. */
 export class ApiCallError extends Error {
 	readonly code: number;
@@ -42,12 +45,11 @@ export class ApiClient {
 		const timeoutMs = options.timeoutMs ?? WAIT_MS.default + CLIENT_MARGIN_MS.default;
 		const maxMs = WAIT_MS.max + CLIENT_MARGIN_MS.max;
 		if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > maxMs)
-			throw new Error(`API timeoutMs must be from 1 to ${maxMs}`);
-		if (options.signal?.aborted) throw new Error("API call aborted");
+			throw notSent(`API timeoutMs must be from 1 to ${maxMs}`);
+		if (options.signal?.aborted) throw notSent("API call aborted");
 		const request = { jsonrpc: "2.0", id: ++this.next, method, params };
 		const payload = JSON.stringify(request);
-		if (Buffer.byteLength(payload, "utf8") > MAX_FRAME_BYTES)
-			throw new Error("API request exceeds the frame byte limit");
+		if (Buffer.byteLength(payload, "utf8") > MAX_FRAME_BYTES) throw notSent("API request exceeds the frame byte limit");
 		const response = this.instance.socket
 			? await this.overSocket(payload, { ...options, timeoutMs })
 			: await this.overHttp(payload, { ...options, timeoutMs });

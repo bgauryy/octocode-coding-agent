@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -51,6 +53,43 @@ describe("pi mcp", () => {
 
 		const ok = await run(["list"], { fixture: servers.fixture });
 		expect(ok.exitCode).toBe(0);
+	});
+
+	it("sends the stored provider token to auth.provider servers, like a session does", async () => {
+		const authorizations: (string | undefined)[] = [];
+		const gateway = createServer((request, response) => {
+			authorizations.push(request.headers.authorization);
+			request.resume();
+			response.writeHead(401).end();
+		});
+		await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+		const { port } = gateway.address() as AddressInfo;
+		const agentDir = mkdtempSync(join(tmpdir(), "pi-mcp-command-"));
+		dirs.push(agentDir);
+		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ anthropic: { type: "api_key", key: "stored-token" } }));
+		try {
+			const result = await run(
+				["list", "--json"],
+				{ gateway: { url: `http://127.0.0.1:${port}/mcp`, auth: { provider: "anthropic" } } },
+				agentDir,
+			);
+			expect(authorizations).toEqual(["Bearer stored-token"]);
+			const parsed = JSON.parse(result.output) as { servers: { state: string; error?: string }[] };
+			expect(parsed.servers[0].state).toBe("needs-auth");
+		} finally {
+			await new Promise((resolve) => gateway.close(resolve));
+		}
+	});
+
+	it("launches the local octocode server with the roots a session gives it", async () => {
+		const result = await run(["list", "--json"], {
+			octocode: {
+				command: process.execPath,
+				args: ["-e", "process.stderr.write('roots=' + process.env.ALLOWED_PATHS); process.exit(3)"],
+			},
+		});
+		const parsed = JSON.parse(result.output) as { servers: { error?: string }[] };
+		expect(parsed.servers[0].error).toContain(`roots=${result.agentDir},`);
 	});
 
 	it("prints JSON for scripts", async () => {

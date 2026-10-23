@@ -9,14 +9,14 @@ import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "./env.ts";
 import { projectHookFiles } from "./home.ts";
 import { isRecord } from "./util.ts";
 import { describeProjectConfig, startsCommands } from "./trust/describe.ts";
-import { fingerprint, projectConfigFiles, readForFingerprint, realPath } from "./trust/files.ts";
+import { fingerprint, projectConfigFiles, projectMcpFiles, readForFingerprint, realPath } from "./trust/files.ts";
 import { isWorktreeOf, readStore, storeKey, storePath, withFileLock } from "./trust/store.ts";
 
 export { describeProjectConfig } from "./trust/describe.ts";
 export { fingerprint, projectConfigFiles } from "./trust/files.ts";
 
 /**
- * Project files that start commands or steer the agent (Claude Code / Codex / Octocode hooks, `.pi/agents`, `.octocode/agents`, `.claude/skills`, `.octocode/skills`) load only after an explicit trust decision. `ctx.isProjectTrusted()` alone is not one: Octocode (checked
+ * Project files that start commands or steer the agent (Claude Code / Codex / Octocode hooks, project `mcp.json` files, `.pi/agents`, `.octocode/agents`, `.claude/skills`, `.octocode/skills`) load only after an explicit trust decision. `ctx.isProjectTrusted()` alone is not one: Octocode (checked
  * against 0.x `hasTrustRequiringProjectResources`) reports a project trusted when it holds none of *Octocode's* protected
  * resources (`.pi/settings.json`, `.pi/extensions`, `.agents/skills`, …), so a clone with only a `.claude/settings.json`
  * would run its hooks without ever asking. A project is trusted here when the user accepted these exact files: the decision is
@@ -86,8 +86,8 @@ function trustState(
 	for (const [key, entry] of trustMemo) if (now - entry.at >= TRUST_MEMO_MS) trustMemo.delete(key);
 	const sha = fingerprint(files, undefined, read);
 	const state = { value: computeTrust(ctx.cwd, files, sha, trusted, decided, home, read), files, sha };
-	const hookFiles = new Set(projectHookFiles(ctx.cwd).map(realPath));
-	if (!contents && (state.value !== true || !files.some((file) => hookFiles.has(file)))) {
+	const commandFiles = new Set([...projectHookFiles(ctx.cwd).map(realPath), ...projectMcpFiles(ctx.cwd)]);
+	if (!contents && (state.value !== true || !files.some((file) => commandFiles.has(file)))) {
 		trustMemo.set(memoKey, { at: now, state });
 	}
 	return state;
@@ -187,13 +187,13 @@ export function saveDecision(cwd: string, sha: string, trusted: boolean, home?: 
 /** `/trust [off]`: show what the project would run and trust (or distrust) exactly that, then reload. */
 export function registerTrustCommand(commands: Subcommands, home?: string): void {
 	commands.add("trust", {
-		description: "trust [off] — load (or stop loading) this project's hooks, agents and skills",
+		description: "trust [off] — load (or stop loading) this project's hooks, MCP servers, agents and skills",
 		complete: (prefix) => wordCompletions(["off"], prefix),
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			const action = args.trim();
 			if (action !== "" && action !== "off") return say(ctx, "Usage: /trust [off]", "warning");
 			let files = projectConfigFiles(ctx.cwd);
-			if (files.length === 0) return say(ctx, "This project has no hook, agent or skill config to trust.");
+			if (files.length === 0) return say(ctx, "This project has no hook, MCP, agent or skill config to trust.");
 			const off = action === "off";
 			if (!off && !ctx.isProjectTrusted())
 				return say(ctx, "Octocode does not trust this project; run /trust first.", "warning");

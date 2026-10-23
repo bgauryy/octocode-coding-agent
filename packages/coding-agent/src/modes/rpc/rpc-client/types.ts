@@ -12,6 +12,8 @@ export type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T,
 export type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 
 export interface RpcClientOptions {
+	/** Executable and argument prefix for source or standalone CLIs; takes precedence over cliPath. */
+	invocation?: { command: string; args: string[] };
 	/** Path to the CLI entry point (default: searches for dist/cli.js) */
 	cliPath?: string;
 	/** Working directory for the agent */
@@ -24,6 +26,8 @@ export interface RpcClientOptions {
 	model?: string;
 	/** Additional CLI arguments */
 	args?: string[];
+	/** Own the worker's whole process tree; stop gives native cleanup 10 seconds before killing survivors. */
+	ownProcessTree?: boolean;
 }
 
 export interface ModelInfo {

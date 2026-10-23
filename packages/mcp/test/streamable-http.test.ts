@@ -181,6 +181,23 @@ describe("StreamableHttpTransport", () => {
 		} satisfies Partial<McpAuthRequiredError>);
 	});
 
+	it("does not send literal headers to a redirected HTTP endpoint", async () => {
+		const leaked: string[] = [];
+		const destination = await listen(async (request, response) => {
+			leaked.push(String(request.headers["x-client-secret"]));
+			response.end();
+		});
+		const { url } = await startServer(async (request, response) => {
+			await readBody(request);
+			response.writeHead(302, { location: destination }).end();
+		});
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await expect(
+			client.connect(new StreamableHttpTransport({ url, headers: { "x-client-secret": "private" } })),
+		).rejects.toMatchObject({ status: 302 });
+		expect(leaked).toEqual([]);
+	});
+
 	it("fails only the request whose SSE stream breaks", async () => {
 		let releaseSlow = () => {};
 		const slowGate = new Promise<void>((resolve) => {
@@ -475,6 +492,27 @@ describe("StreamableHttpTransport", () => {
 		expect(deletes[0]?.headers["mcp-session-id"]).toBe("session-1");
 	});
 
+	it("does not forward session credentials on a redirected close", async () => {
+		const leaked: string[] = [];
+		const destination = await listen(async (request, response) => {
+			leaked.push(String(request.headers["x-client-secret"]));
+			response.end();
+		});
+		const { url } = await startServer(async (request, response, requests) => {
+			if (request.method === "DELETE") {
+				response.writeHead(302, { location: destination }).end();
+				return;
+			}
+			await protocolHandler(request, response, requests);
+		});
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await client.connect(
+			new StreamableHttpTransport({ url, openGetStream: false, headers: { "x-client-secret": "private" } }),
+		);
+		await client.close();
+		expect(leaked).toEqual([]);
+	});
+
 	// #10188: Cloudflare Workers reject the platform fetch when called with a receiver other than globalThis.
 	it("calls fetch without a receiver", async () => {
 		const realFetch = globalThis.fetch;
@@ -518,6 +556,37 @@ describe("StreamableHttpTransport", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+
+	it("aborts the in-flight POST when the request's signal aborts", async () => {
+		let postAborted = false;
+		let postStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			postStarted = resolve;
+		});
+		const fetch: McpFetch = (input, init) => {
+			const body = JSON.parse(String(init?.body)) as { method: string };
+			if (body.method !== "tools/call") return globalThis.fetch(input, init);
+			postStarted();
+			// The server never answers; only the abort ends the request.
+			return new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener("abort", () => {
+					postAborted = true;
+					reject(init.signal?.reason);
+				});
+			});
+		};
+		const { url } = await startServer(protocolHandler);
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await client.connect(new StreamableHttpTransport({ url, fetch, openGetStream: false }));
+		const controller = new AbortController();
+		const call = client.callTool("echo", {}, { signal: controller.signal });
+		const rejected = expect(call).rejects.toThrow();
+		await started;
+		controller.abort();
+		await rejected;
+		await vi.waitFor(() => expect(postAborted).toBe(true));
+		await client.close();
 	});
 
 	it("classifies an expired established session", async () => {

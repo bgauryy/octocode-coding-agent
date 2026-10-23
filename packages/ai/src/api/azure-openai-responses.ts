@@ -1,3 +1,4 @@
+import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
@@ -6,18 +7,19 @@ import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, Tran
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
-import { headersToRecord } from "../utils/headers.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } from "./azure-openai-config.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
+import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
 import {
+	assertResponsesStreamCompleted,
 	convertResponsesMessages,
 	convertResponsesTools,
 	getResponsesToolSupport,
 	processResponsesStream,
+	stripResponsesStreamScratch,
 } from "./openai-responses-shared.ts";
 import { buildBaseOptions, resolveSamplingParams } from "./simple-options.ts";
 
@@ -51,23 +53,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 	(async () => {
 		const deploymentName = resolveDeploymentName(model, options);
 
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "azure-openai-responses",
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "pending",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createPendingAssistantMessage(model, "azure-openai-responses");
 
 		try {
 			// Create Azure OpenAI client
@@ -85,27 +71,9 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
-			const requestOptions = {
-				...(options?.signal ? { signal: options.signal } : {}),
-				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-				maxRetries: 0,
-			};
-			const { data: openaiStream, response } = await retryProviderRequest(
-				() => client.responses.create(params, requestOptions).withResponse(),
-				{
-					maxRetries: options?.maxRetries,
-					maxRetryDelayMs: options?.maxRetryDelayMs,
-					signal: options?.signal,
-				},
+			const openaiStream = await requestOpenAISdkStream(model, options, (requestOptions) =>
+				client.responses.create(params, requestOptions),
 			);
-			try {
-				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
-			} catch (error) {
-				// Iteration has not started, so the SDK iterator cannot release this response yet.
-				openaiStream.controller.abort();
-				await response.body?.cancel().catch(() => {});
-				throw error;
-			}
 			stream.push({ type: "start", partial: output });
 
 			await processResponsesStream(openaiStream, output, stream, model, {
@@ -113,26 +81,12 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 				grammarToolInputProperties,
 			});
 
-			if (options?.signal?.aborted) {
-				throw new Error("Request was aborted");
-			}
-
-			if (output.stopReason === "pending") {
-				throw new Error("Azure OpenAI Responses stream ended without a stop reason");
-			}
-			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error(output.errorMessage || "An unknown error occurred");
-			}
+			assertResponsesStreamCompleted(output, options?.signal, "Azure OpenAI Responses");
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.content) {
-				delete (block as { index?: number }).index;
-				// Streaming scratch buffers are only used during parsing; never persist them.
-				delete (block as { partialJson?: string }).partialJson;
-				delete (block as { customInput?: unknown }).customInput;
-			}
+			stripResponsesStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatAzureOpenAIError(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });

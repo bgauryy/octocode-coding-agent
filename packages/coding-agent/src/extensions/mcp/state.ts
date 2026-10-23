@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/
 import { mcpNamespace } from "../../core/mcp-servers.ts";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
-import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
+import { canDiscoverTools } from "../tool-search/tool.ts";
 import {
 	getMcpToolExposure,
 	type LoadedMcpConfig,
@@ -17,9 +17,10 @@ import {
 } from "./config.ts";
 import { exposureOf, prefersDeferred, resolveMcpExposure } from "./exposure.ts";
 import { getMcpConfigLocations } from "./inspection.ts";
-import type { McpOAuthCredentialStore } from "./oauth.ts";
-import type * as McpRuntime from "./runtime.ts";
-import type { McpServerConnection, McpServerLog, McpTransportFactory } from "./runtime.ts";
+import { McpServerLog } from "./log.ts";
+import { McpOAuthCredentialStore } from "./oauth.ts";
+import type { McpServerConnection } from "./runtime.ts";
+import type { McpTransportFactory } from "./runtime/transport.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { MCP_STATUS_EVENT, setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
@@ -45,12 +46,22 @@ export interface McpExtensionOptions {
 	/**
 	 * How long the first prompt waits for servers with `direct` tools that are still connecting at
 	 * startup, in milliseconds. Their tools become available when they connect. Other servers are
-	 * waited for when a script or search needs them. Default: 10000.
+	 * waited for when a tool_search needs them. Default: 10000.
 	 */
 	startupWaitMs?: number;
+	/**
+	 * How long the first prompt also waits for servers whose tools are all deferred, in milliseconds, so the
+	 * `mcp_servers` section can list their tools instead of only their names. Counted from the same start as
+	 * `startupWaitMs` and bounded by it. 0 turns it off. Default: 1500.
+	 */
+	deferredGraceMs?: number;
 }
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
+const DEFAULT_DEFERRED_GRACE_MS = 1_500;
+
+const modelKey = (model: Model<any> | undefined): string =>
+	model ? JSON.stringify([model.provider, model.id, model.contextWindow, model.maxTokens, model.compat]) : "";
 
 /**
  * State of one MCP extension instance, shared by its tool registration, connection lifecycle,
@@ -74,6 +85,7 @@ export class McpExtensionState {
 	/** Whether a prompt already waited for the startup connections since the session started. */
 	waitedForStartup = false;
 	readonly startupWaitMs: number;
+	readonly deferredGraceMs: number;
 	/** Working directory of the session, for stdio servers. */
 	sessionCwd = process.cwd();
 	projectTrusted = false;
@@ -96,7 +108,9 @@ export class McpExtensionState {
 	/** Work registered with `track`: manager actions opening or closing connections, and sign-ins. */
 	readonly backgroundActions = new Set<Promise<void>>();
 	readonly listeners = new Set<() => void>();
-	selectedModel: Model<any> | undefined;
+	#selectedModel: Model<any> | undefined;
+	/** Sticky `auto` decisions per server, with what they were decided for. See `automaticExposure`. */
+	private readonly automaticExposures = new Map<string, { key: string; exposure: Exclude<McpExposure, "auto"> }>();
 
 	/** pi tool name to the `<server>\0<tool>` it was assigned to, so names stay unique and stable. */
 	readonly toolOwners = new Map<string, string>();
@@ -120,6 +134,7 @@ export class McpExtensionState {
 		this.pi = pi;
 		this.options = options;
 		this.startupWaitMs = options.startupWaitMs ?? DEFAULT_STARTUP_WAIT_MS;
+		this.deferredGraceMs = Math.min(options.deferredGraceMs ?? DEFAULT_DEFERRED_GRACE_MS, this.startupWaitMs);
 		this.credentials = options.credentials;
 		this.openUrl = options.openUrl ?? openBrowser;
 		this.updateConfig =
@@ -129,6 +144,16 @@ export class McpExtensionState {
 					override: entry.override !== undefined,
 				}));
 		this.session.abort();
+	}
+
+	/** The selected model. A different model or window clears the sticky automatic decisions. */
+	get selectedModel(): Model<any> | undefined {
+		return this.#selectedModel;
+	}
+
+	set selectedModel(model: Model<any> | undefined) {
+		if (modelKey(model) !== modelKey(this.#selectedModel)) this.automaticExposures.clear();
+		this.#selectedModel = model;
 	}
 
 	readonly track = <T>(work: Promise<T>): Promise<T> => {
@@ -167,23 +192,55 @@ export class McpExtensionState {
 		};
 	};
 
-	automaticCatalog() {
-		return this.servers.filter(isEnabled).flatMap(({ entry, connection }) =>
-			(connection?.tools ?? []).filter((tool) => {
-				const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
-				return exposure === "direct" || (exposure === "auto" && !prefersDeferred(entry.name, entry.config));
-			}),
+	/**
+	 * The tools of all enabled servers that count toward automatic exposure: their `direct` tools and their
+	 * `auto` tools, except those of servers that prefer discovery. Their declarations share one context window.
+	 * With `server`, only that server's tools.
+	 */
+	automaticCatalog(server?: string) {
+		return this.servers
+			.filter((candidate) => isEnabled(candidate) && (server === undefined || candidate.entry.name === server))
+			.flatMap(({ entry, connection }) =>
+				(connection?.tools ?? []).filter((tool) => {
+					const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
+					return exposure === "direct" || (exposure === "auto" && !prefersDeferred(entry.name, entry.config));
+				}),
+			);
+	}
+
+	/**
+	 * What `auto` exposure resolves to for a server. A server is decided against the combined catalog of all
+	 * enabled servers, so that small catalogs that together exceed the budget are deferred. The decision then
+	 * sticks for the session: another server connecting or leaving never moves this server's tools between
+	 * direct and deferred, which would change the cached tool declarations in the middle of a conversation.
+	 * It is decided again when the server's own tools change, when discovery becomes available or
+	 * unavailable, and when the selected model changes, since the declarations change then anyway.
+	 */
+	automaticExposure(entry: McpServerEntry): Exclude<McpExposure, "auto"> {
+		const discovery = canDiscoverTools(this.pi);
+		const key = JSON.stringify([this.automaticCatalog(entry.name), discovery]);
+		const decided = this.automaticExposures.get(entry.name);
+		if (decided?.key === key) return decided.exposure;
+		const exposure = resolveMcpExposure(
+			"auto",
+			this.automaticCatalog(),
+			this.selectedModel,
+			discovery,
+			prefersDeferred(entry.name, entry.config),
 		);
+		this.automaticExposures.set(entry.name, { key, exposure });
+		return exposure;
+	}
+
+	/** Forget the sticky automatic decisions, for a server that goes away or a session that starts. */
+	resetAutomaticExposure(server?: string): void {
+		if (server === undefined) this.automaticExposures.clear();
+		else this.automaticExposures.delete(server);
 	}
 
 	effectiveExposure(entry: McpServerEntry, tool?: string): Exclude<McpExposure, "auto"> {
-		return resolveMcpExposure(
-			tool === undefined ? exposureOf(entry) : getMcpToolExposure(entry.config, tool, entry.name),
-			this.automaticCatalog(),
-			this.selectedModel,
-			this.pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools),
-			prefersDeferred(entry.name, entry.config),
-		);
+		const requested = tool === undefined ? exposureOf(entry) : getMcpToolExposure(entry.config, tool, entry.name);
+		return requested === "auto" ? this.automaticExposure(entry) : requested;
 	}
 
 	connections(): McpServerConnection[] {
@@ -214,13 +271,13 @@ export class McpExtensionState {
 		return { servers: registered, overridden: overriddenNames };
 	}
 
-	getCredentials(runtime: typeof McpRuntime): McpOAuthCredentialStore {
-		this.credentials ??= new runtime.McpOAuthCredentialStore();
+	getCredentials(): McpOAuthCredentialStore {
+		this.credentials ??= new McpOAuthCredentialStore();
 		return this.credentials;
 	}
 
-	getServerLog(runtime: typeof McpRuntime): McpServerLog {
-		this.serverLog ??= new runtime.McpServerLog(this.options.logPath ?? join(getAgentDir(), "mcp.log"));
+	getServerLog(): McpServerLog {
+		this.serverLog ??= new McpServerLog(this.options.logPath ?? join(getAgentDir(), "mcp.log"));
 		return this.serverLog;
 	}
 

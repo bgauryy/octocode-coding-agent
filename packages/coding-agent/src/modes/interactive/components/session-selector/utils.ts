@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import * as os from "node:os";
 import { canonicalizePath as _canonicalizePath } from "../../../../utils/paths.ts";
+import { errorMessage } from "../../../../utils/guards.ts";
 
 export function shortenPath(path: string): string {
 	const home = os.homedir();
@@ -67,7 +68,7 @@ export async function deleteSessionFile(
 		await unlink(sessionPath);
 		return { ok: true, method: "unlink" };
 	} catch (err) {
-		const unlinkError = err instanceof Error ? err.message : String(err);
+		const unlinkError = errorMessage(err);
 		const trashErrorHint = getTrashErrorHint();
 		const error = trashErrorHint ? `${unlinkError} (${trashErrorHint})` : unlinkError;
 		return { ok: false, method: "unlink", error };

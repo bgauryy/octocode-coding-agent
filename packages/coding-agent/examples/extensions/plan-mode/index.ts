@@ -19,9 +19,10 @@ import type { ExtensionAPI, ExtensionContext } from "@octocodeai/octocodecode";
 import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.ts";
 
 // Tools
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
-const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
-const PLAN_MODE_DISABLED_TOOLS = new Set<string>(["edit", "write"]);
+const PLAN_MODE_TOOLS = ["bash", "questionnaire"];
+const NORMAL_MODE_TOOLS = ["bash"];
+// `file` is the native session's tool for changing files; `edit` and `write` are the names custom tools commonly use.
+const PLAN_MODE_DISABLED_TOOLS = new Set<string>(["file", "edit", "write"]);
 const PLAN_MANAGED_TOOLS = new Set<string>([...PLAN_MODE_TOOLS, ...NORMAL_MODE_TOOLS]);
 
 interface PlanModeState {

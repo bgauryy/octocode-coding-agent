@@ -31,11 +31,13 @@ import type {
 } from "../../core/extensions/types.ts";
 import { isPluginMcpServerName, READ_MCP_RESOURCE_TOOL } from "../../core/mcp-servers.ts";
 import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../core/tools/render-utils.ts";
-import { formatSize, truncateMiddle } from "../../core/tools/truncate.ts";
+import { formatSize } from "../../core/tools/truncate.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
-import { writeOutputFile } from "../../utils/output-files.ts";
+import { spillOutput, saveTimestamped } from "../../octocode/shared/spill.ts";
 import type { McpExposure } from "./config.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { visibleContent } from "./sanitize.ts";
 
 /** Automatic exposure is resolved by the host; standalone definitions default to direct. */
 export function toToolExposure(exposure: McpExposure): ToolExposure {
@@ -62,10 +64,11 @@ export interface McpToolDetails {
  * Saves the full text of a truncated result, or a binary resource, and returns the file path.
  * `extension` includes the dot, for example `.txt`.
  */
-type McpOutputSaver = (data: string | Uint8Array, extension: string) => Promise<string>;
+type McpOutputSaver = (data: string | Uint8Array, extension: string) => string | undefined;
 
-function saveToTempFile(data: string | Uint8Array, extension: string): Promise<string> {
-	return writeOutputFile("octocode-mcp", extension, data);
+/** Binary resources go to the session's `output/` folder like every other saved result (`spill.ts`). */
+function saveResourceFile(data: string | Uint8Array, extension: string): string | undefined {
+	return saveTimestamped(data, "mcp resource", extension.replace(/^\./, "") || "bin");
 }
 
 export interface McpToolCaller {
@@ -173,29 +176,26 @@ export function createMcpResultSchema(structuredContentSchema: Record<string, un
 }
 
 /**
- * Keep model-facing text within {@link MCP_OUTPUT_MAX_BYTES}. Longer text becomes one text block in
- * Codex's truncation format, followed by the path of the file with the full text; images follow it.
+ * Keep model-facing text within {@link MCP_OUTPUT_MAX_BYTES}. Longer text is saved whole and becomes one text block with its
+ * start and end and the file's path (`spillOutput`, shared with the Octocode server's results, which has its own budget);
+ * images follow it.
  */
-export async function limitMcpContent(
+export function limitMcpContent(
 	content: (TextContent | ImageContent)[],
-	saveOutput: McpOutputSaver = saveToTempFile,
-): Promise<{ content: (TextContent | ImageContent)[]; fullOutputPath?: string }> {
-	const combined = textOf(content);
-	const truncation = truncateMiddle(combined, MCP_OUTPUT_MAX_BYTES);
-	if (!truncation.truncated) return { content };
-	let fullOutputPath: string | undefined;
-	let where: string;
-	try {
-		fullOutputPath = await saveOutput(combined, ".txt");
-		where = `[Full output: ${fullOutputPath} (read it with offset/limit)]`;
-	} catch (error) {
-		where = `[Could not save the full output: ${error instanceof Error ? error.message : String(error)}]`;
-	}
-	const tokens = Math.ceil(truncation.totalBytes / 4);
-	const text = `Warning: truncated output (original token count: ${tokens})\nTotal output lines: ${truncation.totalLines}\n\n${truncation.content}\n\n${where}`;
+	label: string,
+	saveOutput?: McpOutputSaver,
+): { content: (TextContent | ImageContent)[]; fullOutputPath?: string } {
+	const spilled = spillOutput(textOf(content), {
+		label: `mcp ${label}`,
+		maxBytes: MCP_OUTPUT_MAX_BYTES,
+		// The budget is bytes; MCP text has no line limit.
+		maxLines: Number.MAX_SAFE_INTEGER,
+		...(saveOutput ? { save: (text: string) => saveOutput(text, ".txt") } : {}),
+	});
+	if (!spilled.truncated) return { content };
 	return {
-		content: [{ type: "text", text }, ...content.filter((block) => block.type === "image")],
-		...(fullOutputPath ? { fullOutputPath } : {}),
+		content: [{ type: "text", text: spilled.text }, ...content.filter((block) => block.type === "image")],
+		...(spilled.file ? { fullOutputPath: spilled.file } : {}),
 	};
 }
 
@@ -242,10 +242,11 @@ async function blockToContent(
 		if (isTextMimeType(mimeType)) return [{ type: "text", text: data.toString("utf8") }];
 		const kind = `${mimeType ?? "unknown type"}, ${formatSize(data.length)}`;
 		try {
-			const path = await (options.saveOutput ?? saveToTempFile)(data, extensionOf(uri));
-			return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
+			const path = (options.saveOutput ?? saveResourceFile)(data, extensionOf(uri));
+			if (path) return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
+			return [{ type: "text", text: `[Binary resource ${uri} (${kind}) could not be saved]` }];
 		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
+			const reason = errorMessage(error);
 			return [{ type: "text", text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]` }];
 		}
 	}
@@ -258,7 +259,7 @@ export async function toModelContent(
 	blocks: readonly ContentBlock[],
 	options: ConvertMcpResultOptions = {},
 ): Promise<(TextContent | ImageContent)[]> {
-	return (await Promise.all(blocks.map((block) => blockToContent(server, block, options)))).flat();
+	return visibleContent((await Promise.all(blocks.map((block) => blockToContent(server, block, options)))).flat());
 }
 
 /** Convert an MCP result. `isError` results become error results that keep the structured result. */
@@ -270,11 +271,13 @@ export async function convertMcpResult(
 ): Promise<AgentToolResult<McpToolDetails>> {
 	// Without content blocks, toLlmContent falls back to the structured content as JSON.
 	const converted: (TextContent | ImageContent)[] =
-		result.content.length > 0 ? await toModelContent(server, result.content, options) : toLlmContent(result);
+		result.content.length > 0
+			? await toModelContent(server, result.content, options)
+			: visibleContent(toLlmContent(result));
 	if (result.isError && textOf(converted) === "") {
 		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
 	}
-	const { content, fullOutputPath } = await limitMcpContent(converted, options.saveOutput);
+	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, options.saveOutput);
 	const { _meta: _ignored, ...structuredResult } = result;
 	return {
 		content,
@@ -288,7 +291,7 @@ export async function convertMcpResult(
  * Tool input schemas must be objects. MCP servers may omit `type`, and some providers reject object
  * schemas without `properties`.
  */
-function toParameters(schema: Record<string, unknown>): TSchema {
+export function toParameters(schema: Record<string, unknown>): TSchema {
 	return {
 		...schema,
 		type: schema.type ?? "object",

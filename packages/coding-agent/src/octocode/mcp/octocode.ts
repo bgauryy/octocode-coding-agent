@@ -3,19 +3,18 @@ import { isDeepStrictEqual } from "node:util";
 import type { Tool } from "@octocodeai/octocode-mcp";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/extensions/index.ts";
-import { TOOL_SEARCH_TOOL_NAME } from "../../extensions/tool-search/tool.ts";
+import { activateDiscovery, canDiscoverTools } from "../../extensions/tool-search/tool.ts";
 import { loadMcpConfig } from "../../extensions/mcp/config.ts";
 import { type McpServerStatus, setMcpSessionStatus } from "../../extensions/mcp/status.ts";
 import { notify } from "../shared/commands.ts";
 import { envFlag, MCP_ENV } from "../shared/env.ts";
 import { OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX, isDirectResearchTool } from "../shared/octocode-tools.ts";
 import { visibleControls } from "../shared/sanitize.ts";
+import { projectTrustNow } from "../shared/trust.ts";
 import { type Launch, OctocodeServer, type ServerStatus } from "./client.ts";
-import { octocodeToolDefinition, TurnBudget } from "./tools.ts";
-import { activateDiscovery, fallbackReader } from "./octocode/active-tools.ts";
+import { octocodeToolDefinition, octocodeToolName, TurnBudget } from "./tools.ts";
 import { octocodeLaunch } from "./octocode/launch.ts";
 
-export { fallbackReader } from "./octocode/active-tools.ts";
 export { OCTOCODE_MCP_SPEC, octocodeLaunch } from "./octocode/launch.ts";
 
 /**
@@ -39,6 +38,11 @@ const octocodeMcpEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => en
  * The `octocode` entry from the shared MCP loader (global, then trusted project files), which
  * takes precedence over automatic registration; undefined when no valid entry exists.
  */
+/** Whether two folder lists name the same folders, in any order. */
+function sameDirectories(a: readonly string[], b: readonly string[]): boolean {
+	return isDeepStrictEqual([...new Set(a)].sort(), [...new Set(b)].sort());
+}
+
 export function configuredOctocodeServer(
 	cwd: string,
 	projectTrusted: boolean,
@@ -105,11 +109,19 @@ export class OctocodeMcp {
 				options.launch ??
 				((cwd) => {
 					this.launchedSkillDirectories = this.skillDirectories?.() ?? [];
-					return octocodeLaunch(cwd, this.env, undefined, this.launchedSkillDirectories);
+					return octocodeLaunch(
+						cwd,
+						this.env,
+						undefined,
+						this.launchedSkillDirectories,
+						this.ctx?.isProjectTrusted?.() ?? false,
+					);
 				}),
 			clientInfo: { name: "octocodecode", version: options.version ?? "0" },
 			onTools: (tools, instructions) => this.register(tools, instructions),
 			onFailure: (message) => this.notifyFailure(message),
+			onRecovered: (at) =>
+				this.notify(`Octocode MCP connected again at ${new Date(at).toTimeString().slice(0, 5)}; its tools are back.`),
 			onStatus: () => this.onStatus?.(),
 			onRefreshFailure: (message) =>
 				this.notify(
@@ -121,7 +133,10 @@ export class OctocodeMcp {
 	/** The user's `mcp.json` entry wins; else this extension runs the server unless `OCTOCODE_MCP=0`. */
 	owner(ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">): OctocodeOwner {
 		if (!this.enabled) return { by: "off" };
-		const configured = configuredOctocodeServer(ctx.cwd, ctx.isProjectTrusted?.() ?? false);
+		// A project entry counts only under the content trust that loads other project MCP servers (`extensions/mcp-trust.ts`).
+		const core = ctx.isProjectTrusted?.() ?? false;
+		const trusted = core && projectTrustNow({ cwd: ctx.cwd, isProjectTrusted: () => core }) === true;
+		const configured = configuredOctocodeServer(ctx.cwd, trusted);
 		if (configured) return { by: "user", enabled: configured.enabled !== false };
 		return { by: octocodeMcpEnabled(this.env) ? "extension" : "off" };
 	}
@@ -138,11 +153,13 @@ export class OctocodeMcp {
 	/** Waits for the server to connect (see CONNECT_WAIT_MS); false when it is not connected. */
 	async ready(ctx: ExtensionContext): Promise<boolean> {
 		this.ctx = ctx;
-		// Extension-discovered skills arrive after session_start. Refresh roots before their first retrieval.
+		// Extension-discovered skills arrive after session_start. Refresh roots before their first retrieval, but only when the
+		// folders the server may read changed, and not while a call runs: a restart ends it. The next call tries again.
 		if (
 			this.owned.by === "extension" &&
 			this.skillDirectories &&
-			!isDeepStrictEqual(this.launchedSkillDirectories, this.skillDirectories())
+			this.server.idle &&
+			!sameDirectories(this.launchedSkillDirectories, this.skillDirectories())
 		) {
 			await this.server.close();
 			this.server.start(ctx.cwd);
@@ -228,8 +245,7 @@ export class OctocodeMcp {
 	private register(tools: readonly Tool[], instructions: string | undefined): void {
 		this.catalogTools = tools;
 		// Local research tools stay direct (`octocodeToolDefinition`); the rest wait for tool_search when it is available.
-		const discovery =
-			this.pi.getAllTools?.().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools) ?? false;
+		const discovery = canDiscoverTools(this.pi);
 		const exposure = resolveMcpExposure("auto", tools, this.ctx?.model, discovery, true) as "direct" | "deferred";
 		const namespace = {
 			name: OCTOCODE_TOOL_PREFIX.replace(/__$/, ""),
@@ -238,7 +254,7 @@ export class OctocodeMcp {
 		const listed = new Set<string>();
 		let indirect = false;
 		for (const tool of tools) {
-			const name = `${OCTOCODE_TOOL_PREFIX}${tool.name}`;
+			const name = octocodeToolName(tool.name);
 			listed.add(name);
 			const previous = this.registered.get(name);
 			// Octocode rebuilds the complete registry per registration. A reconnect or an unrelated tool change needs no rebuild.
@@ -253,10 +269,9 @@ export class OctocodeMcp {
 			}
 			this.hidden.delete(name);
 			const definition = octocodeToolDefinition(tool, {
-				prefix: OCTOCODE_TOOL_PREFIX,
 				exposure,
 				namespace,
-				call: (name, args, signal) => this.server.call(name, args, signal),
+				call: (name, args, signal, onProgress) => this.server.call(name, args, signal, onProgress),
 				budget: this.turn,
 			});
 			this.registered.set(definition.name, { tool, definition });
@@ -315,16 +330,13 @@ export function registerOctocodeMcp(
 	enabled = true,
 	onReaders?: (unavailable: boolean) => void,
 ): OctocodeMcp {
-	const syncReader = fallbackReader(pi);
 	const mcp = new OctocodeMcp(pi, {
 		...(version ? { version } : {}),
 		enabled,
 		onStatus: () => {
 			setMcpSessionStatus(pi.events, "native", mcp.sessionStatus());
-			// The file tool credits only reads; without Octocode's local readers, core `read` must stand in.
-			const unavailable = mcp.readersUnavailable();
-			syncReader(unavailable);
-			onReaders?.(unavailable);
+			// The file tool credits only reads; without Octocode's local readers, `bash` reads stand in (`files/bash-reads`).
+			onReaders?.(mcp.readersUnavailable());
 		},
 		skillDirectories: () => pi.getSkillDirectories(),
 		ensureDiscovery: () => activateDiscovery(pi),

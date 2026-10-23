@@ -42,6 +42,15 @@ export class AcpError extends Error {
 	}
 }
 
+/** A prompt refused before anything reached the agent: the model may retry once the cause is gone. */
+export class AcpRefusal extends Error {
+	readonly execution = "not-sent";
+	constructor(message: string) {
+		super(message);
+		this.name = "AcpRefusal";
+	}
+}
+
 function timeoutSignal(timeoutMs: number): AbortSignal {
 	if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2 ** 31 - 1)
 		throw new Error("ACP timeoutMs must be a positive timer duration.");
@@ -187,9 +196,9 @@ export class AcpBackend implements ExternalBackend {
 		text: string,
 		options: { timeoutMs: number; signal?: AbortSignal; key?: string },
 	): Promise<ExternalReply> {
-		if (this.active) throw new Error("ACP session already has an active prompt.");
+		if (this.active) throw new AcpRefusal("ACP session already has an active prompt.");
 		if (!this.connection || this.closing)
-			throw new Error("ACP connection is closed; connect explicitly before sending another prompt.");
+			throw new AcpRefusal("ACP connection is closed; connect explicitly before sending another prompt.");
 		const controller = new AbortController();
 		const signal = AbortSignal.any([
 			this.lifetime.signal,
@@ -197,7 +206,7 @@ export class AcpBackend implements ExternalBackend {
 			timeoutSignal(options.timeoutMs),
 			...(options.signal ? [options.signal] : []),
 		]);
-		signal.throwIfAborted();
+		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
 		const turn: Turn = { controller, signal, chunks: [], updates: [] };
 		this.active = turn;
 		try {

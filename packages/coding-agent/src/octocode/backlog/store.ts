@@ -696,7 +696,12 @@ export class BacklogStore {
 	private validateEntityInput(input: EntityInput): void {
 		if (input.version !== undefined && (!Number.isInteger(input.version) || input.version < 1))
 			throw new BacklogError("Invalid item version.");
-		if (!Value.Check(EntityFieldsSchema, input)) throw new BacklogError("Invalid backlog entity fields.");
+		if (!Value.Check(EntityFieldsSchema, input)) {
+			const first = Value.Errors(EntityFieldsSchema, input)[0];
+			throw new BacklogError(
+				`Invalid backlog entity fields${first ? ` at ${first.instancePath || "/"}: ${first.message}` : ""}.`,
+			);
+		}
 		if (input.completion && !input.completion.operationKey.trim())
 			throw new BacklogError("Completion needs an operationKey.");
 		refuseSecrets({

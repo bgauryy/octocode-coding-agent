@@ -3,8 +3,12 @@
 import { join } from "node:path";
 import chalk from "chalk";
 import { APP_NAME } from "../../../config.ts";
+import { prepareOctocodeSkillLaunch } from "../../../octocode/mcp/skill-paths.ts";
+import { createServerConnection } from "../connection-factory.ts";
 import type { McpServerEntry } from "../config.ts";
-import { createDefaultTransport, type McpOAuthCredentialStore, McpServerConnection, McpServerLog } from "../runtime.ts";
+import { McpServerLog } from "../log.ts";
+import type { McpOAuthCredentialStore } from "../oauth.ts";
+import { storedProviderToken } from "./provider-token.ts";
 
 export const HELP_HINT = chalk.dim(`Use "${APP_NAME} mcp --help" for usage.`);
 
@@ -18,35 +22,31 @@ export interface McpCommandOptions {
 	/** Defaults to console output. */
 	log?: (line: string) => void;
 	error?: (line: string) => void;
+	/** The token of a pi provider. Defaults to the stored `/login` credentials of the agent directory. */
+	providerToken?: (provider: string) => Promise<string | undefined>;
+	/** Defaults to the roots a session gives the local `octocode` server, without skill directories. */
+	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;
 }
 
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
-export function describeTransport(entry: McpServerEntry): string {
-	const { config } = entry;
-	if (!("url" in config)) return config.command;
-	const url = new URL(config.url);
-	url.username = "";
-	url.password = "";
-	url.search = "";
-	url.hash = "";
-	return url.href;
-}
+const providerTokens = new WeakMap<McpCommandOptions, NonNullable<McpCommandOptions["providerToken"]>>();
 
 export function createConnection(
 	entry: McpServerEntry,
 	options: McpCommandOptions,
 	credentials: McpOAuthCredentialStore,
 ) {
-	return new McpServerConnection({
+	let providerToken = options.providerToken ?? providerTokens.get(options);
+	if (!providerToken) {
+		providerToken = storedProviderToken(options.agentDir);
+		providerTokens.set(options, providerToken);
+	}
+	return createServerConnection({
 		entry,
 		cwd: options.cwd,
-		createTransport: createDefaultTransport,
 		credentials,
+		providerToken,
+		prepareLaunch: options.prepareLaunch ?? ((launch, cwd) => prepareOctocodeSkillLaunch(launch, cwd, [])),
 		log: new McpServerLog(join(options.agentDir, "mcp.log")),
-		onTools: () => {},
 	});
 }
 

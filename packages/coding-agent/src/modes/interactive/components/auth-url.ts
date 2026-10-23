@@ -2,6 +2,7 @@ import { Container, hyperlink, Text, type TUI } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /**
  * A sign-in URL with a click hint and a copy hint. Hosts call `copy()` when `app.message.copy` is
@@ -33,7 +34,7 @@ export class AuthUrlComponent extends Container {
 			await copyToClipboard(this.url);
 			this.setHint(theme.fg("success", "Copied URL to clipboard"));
 		} catch (error) {
-			this.setHint(theme.fg("error", error instanceof Error ? error.message : String(error)));
+			this.setHint(theme.fg("error", errorMessage(error)));
 		}
 	}
 }

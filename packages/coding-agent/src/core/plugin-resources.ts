@@ -2,8 +2,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverPluginComponents } from "./plugin-components.ts";
 import {
-	discoverPluginManifests,
 	isPluginIdentifier,
+	resolveConfiguredPlugin,
 	resolvePluginPath,
 	type PluginManifest,
 } from "./plugin-manifest.ts";
@@ -41,18 +41,11 @@ function configuredComponents(
 	)) {
 		if (entry.enabled === false) continue;
 		const error = (message: string) => diagnostics.push({ type: "error", path: entry.path, message });
-		if (!path.isAbsolute(entry.path)) {
-			error("Plugin path must be absolute");
-			continue;
-		}
 		try {
-			const discovery = discoverPluginManifests(entry.path, {
-				protocol: entry.protocol,
-			});
-			for (const message of discovery.errors) error(message);
-			const manifest = discovery.manifests.find((m) => m.protocol === entry.protocol);
+			const { manifest, errors, failure } = resolveConfiguredPlugin(entry);
+			for (const message of errors) error(message);
 			if (!manifest) {
-				error(`No valid ${entry.protocol} plugin manifest found`);
+				error(failure ?? "No valid plugin manifest found");
 				continue;
 			}
 			const identity = `${manifest.protocol}:${manifest.root}`;

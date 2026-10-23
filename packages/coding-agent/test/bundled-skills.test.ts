@@ -4,6 +4,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -16,10 +17,11 @@ import { getBundledSkillsDir } from "../src/config.ts";
 import { DefaultPackageManager } from "../src/core/package-manager.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { loadSkills } from "../src/core/skills.ts";
+import { loadedSkillDirectories, loadSkills } from "../src/core/skills.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import * as nativeExtension from "../src/octocode/index.ts";
+import { prepareOctocodeSkillLaunch } from "../src/octocode/mcp/skill-paths.ts";
 
 describe("bundled public skills", () => {
 	let root: string;
@@ -95,7 +97,8 @@ describe("bundled public skills", () => {
 		}
 	});
 
-	it("keeps Pi fallback and extension-discovered skills ahead of the bundle", async () => {
+	it("lets the bundle replace an installed Pi fallback copy but not an unrelated extension skill", async () => {
+		const bundledResearch = join(getBundledSkillsDir(), "octocode-research", "SKILL.md");
 		const legacy = join(root, "pi-agent");
 		const skillDir = join(legacy, "skills", "octocode-research");
 		mkdirSync(skillDir, { recursive: true });
@@ -109,7 +112,7 @@ describe("bundled public skills", () => {
 		});
 		await loader.reload();
 		expect(loader.getSkills().skills.find((skill) => skill.name === "octocode-research")?.filePath).toBe(
-			join(skillDir, "SKILL.md"),
+			bundledResearch,
 		);
 		const extensionSkill = join(root, "extension-skills", "SKILL.md");
 		mkdirSync(join(root, "extension-skills"));
@@ -118,6 +121,126 @@ describe("bundled public skills", () => {
 			skillPaths: [{ path: extensionSkill, metadata: { source: "extension", scope: "user", origin: "top-level" } }],
 		});
 		expect(loader.getSkills().skills.find((skill) => skill.name === "octocode-roast")?.filePath).toBe(extensionSkill);
+	});
+
+	describe("name collisions with installed copies", () => {
+		const copy = (dir: string, name = "octocode-research", description = "Installed copy") => {
+			mkdirSync(join(dir, name), { recursive: true });
+			writeFileSync(join(dir, name, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\nCopy`);
+			return join(dir, name, "SKILL.md");
+		};
+		const bundled = (name = "octocode-research") => join(getBundledSkillsDir(), name, "SKILL.md");
+		const load = async (settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true })) => {
+			const loader = new DefaultResourceLoader({ cwd, agentDir, noExtensions: true, settingsManager });
+			await loader.reload();
+			return loader;
+		};
+		const winner = (loader: DefaultResourceLoader, name = "octocode-research") =>
+			loader.getSkills().skills.find((skill) => skill.name === name);
+
+		it("lists every bundled skill, once, in a home with no installed copies", async () => {
+			const loader = await load();
+			const names = loader.getSkills().skills.map((skill) => skill.name);
+			const expected = readdirSync(getBundledSkillsDir()).filter((name) =>
+				existsSync(join(getBundledSkillsDir(), name, "SKILL.md")),
+			);
+			expect(names.sort()).toEqual(expected.sort());
+			expect(loader.getSkills().diagnostics).toEqual([]);
+		});
+
+		it("prefers the bundled skill over the copy ~/.agents/skills holds, and says which one won", async () => {
+			const installed = copy(join(root, ".agents", "skills"));
+			const loader = await load();
+			const skill = winner(loader);
+			expect(skill?.filePath).toBe(bundled());
+			expect(skill?.sourceInfo.source).toBe("builtin");
+			expect(loader.getSkills().diagnostics).toContainEqual(
+				expect.objectContaining({
+					type: "collision",
+					collision: expect.objectContaining({ winnerPath: bundled(), loserPath: installed }),
+				}),
+			);
+		});
+
+		it("prefers the bundled skill over the Claude and Codex copies an extension adds", async () => {
+			const claude = copy(join(root, ".claude", "skills"), "octocode-roast");
+			const codex = copy(join(root, ".codex", "skills"), "octocode-architect");
+			vi.stubEnv("CLAUDE_CONFIG_DIR", "");
+			vi.stubEnv("CODEX_HOME", "");
+			const loader = await load();
+			loader.extendResources({
+				skillPaths: [claude, codex].map((path) => ({
+					path,
+					metadata: { source: "extension:skills", scope: "temporary", origin: "top-level" },
+				})),
+			});
+			expect(winner(loader, "octocode-roast")?.filePath).toBe(bundled("octocode-roast"));
+			expect(winner(loader, "octocode-architect")?.filePath).toBe(bundled("octocode-architect"));
+		});
+
+		it("keeps the agent directory, project folders, settings entries and --skill ahead of the bundle", async () => {
+			const agentCopy = copy(join(agentDir, "skills"), "octocode-research");
+			const projectCopy = copy(join(cwd, ".octocode", "skills"), "octocode-roast");
+			const projectAgents = copy(join(cwd, ".agents", "skills"), "octocode-architect");
+			const chosenDir = join(root, ".agents", "skills");
+			const chosen = copy(chosenDir, "octocode-scraping");
+			copy(chosenDir, "octocode-skills");
+			const explicit = copy(join(root, "explicit"), "octocode-documentation");
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({ skills: [join(chosenDir, "octocode-scraping")] }),
+			);
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				noExtensions: true,
+				additionalSkillPaths: [join(root, "explicit", "octocode-documentation")],
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+			});
+			await loader.reload();
+			expect(winner(loader)?.filePath).toBe(agentCopy);
+			expect(winner(loader, "octocode-roast")?.filePath).toBe(projectCopy);
+			expect(winner(loader, "octocode-architect")?.filePath).toBe(projectAgents);
+			expect(winner(loader, "octocode-scraping")?.filePath).toBe(chosen);
+			expect(winner(loader, "octocode-documentation")?.filePath).toBe(explicit);
+			// A sibling in the same folder that no setting names still yields to the bundle.
+			expect(winner(loader, "octocode-skills")?.filePath).toBe(bundled("octocode-skills"));
+		});
+
+		it("prefers a deliberate copy to the bundle even when an installed copy comes first", async () => {
+			copy(join(root, ".agents", "skills"), "octocode-roast");
+			const project = copy(join(cwd, ".claude", "skills"), "octocode-roast", "Project policy");
+			const loader = await load();
+			loader.extendResources({
+				skillPaths: [
+					{ path: project, metadata: { source: "extension:skills", scope: "temporary", origin: "top-level" } },
+				],
+			});
+			expect(winner(loader, "octocode-roast")?.filePath).toBe(project);
+		});
+
+		it("allows the Octocode MCP server to read every bundled skill directory, also beside an installed copy", async () => {
+			copy(join(root, ".agents", "skills"), "octocode-research");
+			const loader = await load();
+			const directories = loadedSkillDirectories(loader.getSkills());
+			const bundleDir = realpathSync(getBundledSkillsDir());
+			for (const name of readdirSync(bundleDir).filter((entry) => existsSync(join(bundleDir, entry, "SKILL.md"))))
+				expect(directories).toContain(join(bundleDir, name));
+			const prepared = prepareOctocodeSkillLaunch(
+				{ name: "octocode", source: "mcp.json", config: { command: "octocode-mcp" } },
+				cwd,
+				directories,
+				{},
+			);
+			const allowed = ("url" in prepared.config ? "" : (prepared.config.env?.ALLOWED_PATHS ?? "")).split(",");
+			expect(allowed).toContain(join(bundleDir, "octocode-research"));
+		});
+
+		it("keeps a user copy of a skill the bundle does not ship", async () => {
+			const own = copy(join(root, ".agents", "skills"), "my-own-skill");
+			const loader = await load();
+			expect(winner(loader, "my-own-skill")?.filePath).toBe(own);
+		});
 	});
 
 	it("still loads explicit paths with no-skills", async () => {

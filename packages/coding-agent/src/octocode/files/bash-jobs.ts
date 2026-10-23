@@ -14,6 +14,7 @@ import { errorMessage, firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
 import type { BashJob, JobExit } from "./bash-jobs/types.ts";
+import type { VerificationReceipt } from "./bash/verification.ts";
 
 export { liveJobFiles, type OrphanJob, reapOrphanJobs } from "./bash-jobs/records.ts";
 export { jobReport, logTail } from "./bash-jobs/report.ts";
@@ -35,7 +36,7 @@ const MAX_JOB_LOG_BYTES = 16 * 1024 * 1024;
 const DRAIN_MS = 1_000;
 /** How often a job whose shell exited checks whether children it left in its group are still running, in ms. */
 const GROUP_POLL_MS = 250;
-export const JOB_TYPE = "octocode-bash-job";
+export { JOB_TYPE } from "../shared/messages.ts";
 
 /** Background shell jobs of one session: each runs in its own process group with output going to a log file. */
 export class BashJobs {
@@ -61,7 +62,13 @@ export class BashJobs {
 			env = bashSessionEnv(undefined),
 			shell: settings = {},
 			maxLogBytes = MAX_JOB_LOG_BYTES,
-		}: { env?: NodeJS.ProcessEnv; shell?: ShellSettings; maxLogBytes?: number } = {},
+			verification,
+		}: {
+			env?: NodeJS.ProcessEnv;
+			shell?: ShellSettings;
+			maxLogBytes?: number;
+			verification?: VerificationReceipt;
+		} = {},
 	): Promise<BashJob> {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
@@ -90,7 +97,7 @@ export class BashJobs {
 			child.stdin?.on("error", () => undefined);
 			child.stdin?.end(script);
 		}
-		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes });
+		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification });
 	}
 
 	/**
@@ -104,10 +111,15 @@ export class BashJobs {
 		command: string,
 		cwd: string,
 		onExit: (job: BashJob, exit: JobExit) => void,
-		{ output, startedAt, maxLogBytes = MAX_JOB_LOG_BYTES }: { output: Buffer; startedAt: number; maxLogBytes?: number },
+		{
+			output,
+			startedAt,
+			maxLogBytes = MAX_JOB_LOG_BYTES,
+			verification,
+		}: { output: Buffer; startedAt: number; maxLogBytes?: number; verification?: VerificationReceipt },
 	): BashJob {
 		if (child.pid === undefined) throw new Error("The command has no process to move");
-		return this.register(child, child.pid, command, cwd, onExit, { maxLogBytes, output, startedAt });
+		return this.register(child, child.pid, command, cwd, onExit, { maxLogBytes, output, startedAt, verification });
 	}
 
 	/** Records and watches a running shell as a job: log, owner record, exit handling. */
@@ -122,7 +134,14 @@ export class BashJobs {
 			maxLogBytes,
 			output: earlier,
 			startedAt = Date.now(),
-		}: { timeout?: number; maxLogBytes: number; output?: Buffer; startedAt?: number },
+			verification,
+		}: {
+			timeout?: number;
+			maxLogBytes: number;
+			output?: Buffer;
+			startedAt?: number;
+			verification?: VerificationReceipt;
+		},
 	): BashJob {
 		const dir = this.logDir();
 		privateDir(dir);
@@ -195,7 +214,7 @@ export class BashJobs {
 				wait();
 			});
 		});
-		const job: BashJob = { id, command, cwd, pid, log, startedAt, ...(timeout ? { timeout } : {}), done };
+		const job: BashJob = { id, command, cwd, pid, log, startedAt, ...(timeout ? { timeout } : {}), verification, done };
 		state.job = job;
 		if (timeout) {
 			timer = setTimeout(() => this.stop(id, "timeout"), timeout * 1000);

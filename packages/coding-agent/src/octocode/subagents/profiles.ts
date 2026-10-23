@@ -28,8 +28,10 @@ export interface AgentProfile {
 	/** True: the child runs the user's command hooks (`OCTOCODE_HOOKS`); by default subagents do not. */
 	hooks?: true;
 	/**
-	 * True: the child investigates and reports without changing source. It keeps `file` for its own reports, so its tools
-	 * cannot say this; its policy does (`OCTOCODE_READ_ONLY`).
+	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
+	 * permission gate enforces it in every mode (`permission/read-only-role.ts`): `file` writes are refused outside its
+	 * scratch folder, `.octocode/tmp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
+	 * the workspace. It is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen.
 	 */
 	readOnly?: true;
 	/** Classes the profile asks the user to allow its child (`permissions:` front matter, only the declarable ones); the spawn prompt lists them. */
@@ -52,7 +54,8 @@ const BUNDLED_DIR = getSubagentsDir();
 
 /**
  * Profiles by name: bundled, user configuration, runtime home, then trusted project.
- * A shared configuration/runtime directory is read once.
+ * A shared configuration/runtime directory is read once. A project file that replaces a profile loaded from an
+ * earlier source (a bundled role included) is reported through `onShadow`: the project's prompt, tools and flags win.
  */
 export function loadProfiles(
 	cwd: string,
@@ -60,14 +63,12 @@ export function loadProfiles(
 	projectTrusted = true,
 	env: NodeJS.ProcessEnv = process.env,
 	onSkip: (file: string, error: unknown) => void = () => undefined,
+	onShadow: (name: string, file: string, replaced: string) => void = () => undefined,
 ): Map<string, AgentProfile> {
 	const profiles = new Map<string, AgentProfile>();
-	const dirs = [
-		BUNDLED_DIR,
-		path.join(nativeAgentDir(home), "agents"),
-		globalPaths(env, home).agents,
-		...(projectTrusted ? projectAgentDirs(cwd) : []),
-	];
+	const loadedFrom = new Map<string, string>();
+	const projectDirs = new Set(projectTrusted ? projectAgentDirs(cwd) : []);
+	const dirs = [BUNDLED_DIR, path.join(nativeAgentDir(home), "agents"), globalPaths(env, home).agents, ...projectDirs];
 	for (const dir of new Set(dirs)) {
 		let files: string[];
 		try {
@@ -79,7 +80,10 @@ export function loadProfiles(
 			// Bad YAML or an unreadable entry skips that profile only; the rest still load.
 			try {
 				const profile = parseProfile(profileFileName(file), fs.readFileSync(path.join(dir, file), "utf8"));
+				const replaced = loadedFrom.get(profile.name);
+				if (replaced && projectDirs.has(dir)) onShadow(profile.name, path.join(dir, file), replaced);
 				profiles.set(profile.name, profile);
+				loadedFrom.set(profile.name, dir === BUNDLED_DIR ? "bundled" : path.join(dir, file));
 			} catch (error) {
 				onSkip(path.join(dir, file), error);
 			}
@@ -235,13 +239,15 @@ export function profileReach(profile: AgentProfile | undefined, defaultTools?: r
 		nativeDefaults;
 	return [
 		...(profileSelectsTool(profile, "file", configured) ? ["file.workspace" as const] : []),
-		...(profileSelectsTool(profile, "bash", configured) ? ["shell" as const] : []),
+		...(profileSelectsTool(profile, "bash", configured) || profileSelectsTool(profile, "debug", configured)
+			? ["shell" as const]
+			: []),
 	];
 }
 
 const REACH_TEXT: Record<string, string> = {
 	"file.workspace": "edit files in the repository",
-	shell: "run shell commands",
+	shell: "run shell commands or debugger operations",
 };
 
 /**

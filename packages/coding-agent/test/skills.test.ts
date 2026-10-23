@@ -384,6 +384,49 @@ describe("skills", () => {
 			const result = formatSkillsForPrompt(skills);
 			expect(result).toBe("");
 		});
+
+		describe("budget", () => {
+			const many = (count: number, description = "d".repeat(200)) =>
+				Array.from({ length: count }, (_, index) =>
+					createTestSkill({
+						name: `skill-${index}`,
+						description,
+						filePath: `/s/skill-${index}/SKILL.md`,
+						baseDir: `/s/skill-${index}`,
+					}),
+				);
+			const entries = (text: string) =>
+				text.slice(text.indexOf("<available_skills>"), text.indexOf("</available_skills>"));
+
+			it("lists everything unchanged within the budget", () => {
+				const result = formatSkillsForPrompt(many(5), "bash");
+				expect((result.match(/<description>/g) ?? []).length).toBe(5);
+				expect(result).not.toContain("to fit the prompt");
+			});
+
+			it("drops descriptions from the last skills first and says so", () => {
+				const result = formatSkillsForPrompt(many(10), "bash", { budgetChars: 2000 });
+				expect(entries(result).length).toBeLessThanOrEqual(2000 + "<available_skills>".length);
+				expect(result).toContain("<name>skill-9</name>");
+				expect(result).toMatch(/<name>skill-0<\/name>\n\s+<description>/);
+				expect(result).toMatch(/<name>skill-9<\/name>\n\s+<location>/);
+				expect(result).toMatch(/To fit the prompt, \d+ skills are listed without a description/);
+			});
+
+			it("names the skills left out when even bare entries do not fit", () => {
+				const result = formatSkillsForPrompt(many(30), "bash", { budgetChars: 1000 });
+				expect(result).toContain("<name>skill-0</name>");
+				expect(result).toMatch(/Not listed, to fit the prompt .*skill-29$/);
+				for (let index = 0; index < 30; index++) expect(result).toContain(`skill-${index}`);
+			});
+
+			it("cuts a description over the Agent Skills limit", () => {
+				const result = formatSkillsForPrompt(many(1, "x".repeat(3000)), "bash");
+				const description = /<description>(.*)<\/description>/.exec(result)?.[1] ?? "";
+				expect(description.length).toBe(1024);
+				expect(description.endsWith("…")).toBe(true);
+			});
+		});
 	});
 
 	describe("loadSkills with options", () => {

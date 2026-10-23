@@ -7,7 +7,7 @@
  * With a `server`, one page is listed and `cursor` continues it; without, every page of every server.
  * MCP App resources (`ui://` URIs and `profile=mcp-app` HTML) are left out, since they are user
  * interfaces for hosts that render them, and so are icons. Read resources become text and images for
- * the model; binary resources are saved to temp files. Scripts get the JSON payloads.
+ * the model; binary resources are saved to temp files.
  */
 
 import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-ai";
@@ -29,6 +29,7 @@ import {
 } from "../../core/mcp-servers.ts";
 import type { McpExposure } from "./config.ts";
 import { limitMcpContent, type McpToolDetails, toModelContent, toToolExposure } from "./tools.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export { LIST_MCP_RESOURCE_TEMPLATES_TOOL, LIST_MCP_RESOURCES_TOOL, READ_MCP_RESOURCE_TOOL };
 
@@ -171,16 +172,12 @@ function stringArgument(params: unknown, key: string): string | undefined {
 	return value.trim() || undefined;
 }
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 async function jsonResult(
 	tool: string,
 	server: string | undefined,
 	payload: Record<string, unknown>,
 ): Promise<{ content: (TextContent | ImageContent)[]; details: McpToolDetails; structuredContent: JsonValue }> {
-	const { content, fullOutputPath } = await limitMcpContent([{ type: "text", text: JSON.stringify(payload) }]);
+	const { content, fullOutputPath } = limitMcpContent([{ type: "text", text: JSON.stringify(payload) }], tool);
 	return {
 		content,
 		details: { server: server ?? "", tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
@@ -319,8 +316,9 @@ export function createMcpResourceToolDefinitions(options: {
 				{ type: "resource" as const, resource: contents },
 			]);
 			const converted = await toModelContent(server.name, blocks);
-			const { content, fullOutputPath } = await limitMcpContent(
+			const { content, fullOutputPath } = limitMcpContent(
 				converted.length > 0 ? converted : [{ type: "text", text: `Resource ${uri} is empty.` }],
+				`${server.name}/${READ_MCP_RESOURCE_TOOL}`,
 			);
 			const contents = result.contents.map(({ _meta: _ignored, ...rest }) => rest);
 			return {

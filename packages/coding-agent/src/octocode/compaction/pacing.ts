@@ -1,7 +1,6 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { estimateTokens } from "../../core/compaction/index.ts";
+import { charsToTokens, estimateTokens } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { CHARS_PER_TOKEN } from "../shared/tokens.ts";
 
 /**
  * When compaction runs, beyond Octocode's threshold: a breaker for compactions that keep refilling the context, and a
@@ -75,8 +74,9 @@ export function toolDefinitionChars(pi: Pick<ExtensionAPI, "getActiveTools" | "g
 
 /**
  * The context's size in tokens: Octocode's count, else (Octocode has none after a compaction until the next reply) an estimate of
- * what the next request carries: the system prompt, the active tool definitions (`toolChars`) and every message in the
- * context, by Octocode's own per-message estimate.
+ * what the next request carries: every message in the context by core's per-message estimate, which already counts the
+ * system message's prompt and declared tools. Only what the transcript does not hold is added: the system prompt when no
+ * system message is there, and the active tool definitions (`toolChars`) when none are declared.
  */
 export function contextTokens(
 	ctx: Pick<ExtensionContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
@@ -86,7 +86,9 @@ export function contextTokens(
 	if (typeof tokens === "number") return tokens;
 	try {
 		const messages = ctx.sessionManager.buildSessionProjection().entries.flatMap((entry) => entry.messages);
-		const fixed = Math.ceil((ctx.getSystemPrompt().length + toolChars) / CHARS_PER_TOKEN);
+		const system = messages.find((message) => message.role === "system");
+		const declaresTools = system?.role === "system" && (system.toolsAdded?.length ?? 0) > 0;
+		const fixed = charsToTokens((system ? 0 : ctx.getSystemPrompt().length) + (declaresTools ? 0 : toolChars));
 		return fixed + messages.reduce((sum, message) => sum + estimateTokens(message), 0);
 	} catch {
 		// Unknown size: `needsDownshiftCompaction` then starts no compaction, and the model switch goes on.

@@ -231,7 +231,8 @@ export function createExtensionAPI(
 			runtime.setActiveTools(toolNames);
 		},
 
-		setToolPolicy(allows) {
+		// Not on the public ExtensionAPI type; see `NativeExtensionAPI` in src/octocode/shared/host-api.ts.
+		setToolPolicy(allows: (name: string) => boolean) {
 			assertActive();
 			if (extension.sourceInfo.path !== NATIVE_FEATURE_PATH)
 				throw new Error("Tool permission policy is owned by native features");

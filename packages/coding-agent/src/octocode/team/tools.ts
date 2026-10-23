@@ -10,8 +10,18 @@ import type {
 import { resolveToolPath } from "../shared/home.ts";
 import { plural, resultBlock, timedTool, timingOf, toolHeader } from "../shared/render.ts";
 import { storedText } from "../shared/sanitize.ts";
-import { contentText, firstLine, isRecord, modelLookup, textResult, unpricedModel } from "../shared/util.ts";
+import {
+	contentText,
+	firstLine,
+	isRecord,
+	modelLookup,
+	optionalString,
+	textResult,
+	unpricedModel,
+} from "../shared/util.ts";
 import { EDIT_RETENTION_MINUTES } from "./edits.ts";
+import { lockAdvice } from "./lock-advice.ts";
+import { teamWorkspace } from "./store.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
@@ -46,21 +56,32 @@ export function registerCollab(
 		stopAgent?: StopAgent;
 		beforeLeave?: (reason: string) => Promise<unknown>;
 		registerTool?: ExtensionAPI["registerTool"];
+		/** The paths a bash command writes, as far as a parse can name them (wired by `index.ts` from the permission layer). */
+		shellWrites?: (command: string) => Promise<string[]>;
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(pi);
 	registerCoordinateTool(pi, team, options.stopAgent, options.registerTool);
 	registerSendMessageTool(pi, team, options.registerTool);
 	registerTeamEvents(pi, team, options.beforeLeave);
-	// Reservations are enforced where the edit happens, so a model that forgot to check still cannot overwrite a peer.
+	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
+	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
+	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
 	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers Octocode's own edit and write.
+	const refusal = (file: string, cwd: string) => team.reservation(resolveToolPath(cwd, file), file);
 	const reservationGate = async (
 		event: ToolCallEvent,
 		ctx: ExtensionContext,
 	): Promise<ToolCallEventResult | undefined> => {
 		if (event.toolName === "file") return undefined;
-		for (const file of mutatedPaths(event.toolName, event.input)) {
-			const reason = team.reservation(resolveToolPath(ctx.cwd, file), file);
+		const command =
+			event.toolName === "bash" ? optionalString((event.input as Record<string, unknown>)?.command) : undefined;
+		const files =
+			command !== undefined && (event.input as Record<string, unknown>).type !== "powershell"
+				? ((await options.shellWrites?.(command)) ?? [])
+				: mutatedPaths(event.toolName, event.input);
+		for (const file of files) {
+			const reason = refusal(file, ctx.cwd);
 			if (reason) return { block: true, reason };
 		}
 		return undefined;
@@ -85,21 +106,18 @@ function registerCoordinateTool(
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"List teammates and reserve files. Reservations reject conflicting guarded file edits; shell commands and unrelated editors do not honor them.",
-			promptSnippet: "List agents, reserve files, see recent changes",
+				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them.",
 			promptGuidelines: [
 				"Before overlapping work: list agents, lock your edit paths, then unlock when done. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
 					description:
-						"list: live agents, their activity and held paths; " +
-						(canStop ? "join: register or update your goal; leave: unregister and release your reservations; " : "") +
-						"lock: reserve paths, all or none; unlock: release the given paths, or all without paths; " +
-						(canStop
-							? "stop: end a background subagent you started (id), killing its process tree; its report says it was stopped; "
-							: "") +
-						"changes: files agents changed recently, newest first, with who and when",
+						"list: live agents and held paths; " +
+						(canStop ? "join: register or update your goal; leave: unregister and release reservations; " : "") +
+						"lock: reserve paths, all or none; unlock: release paths, or all without paths; " +
+						(canStop ? "stop: kill a background subagent you started (id); " : "") +
+						"changes: recent file changes by agents, newest first",
 				}),
 				...(canStop
 					? { id: Type.Optional(Type.String({ description: "stop: id of the background subagent to end" })) }
@@ -109,12 +127,11 @@ function registerCoordinateTool(
 					: {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
-						description:
-							'lock/unlock: files, or "dir/" for a tree; unlock without paths releases all. changes: only files under these paths',
+						description: 'lock/unlock: files, or "dir/" for a tree. changes: only under these paths',
 					}),
 				),
-				withinMinutes: Type.Optional(Type.Integer({ description: "changes: how far back to look (default 60)" })),
-				limit: Type.Optional(Type.Integer({ description: "changes: most files to list (default 20)" })),
+				withinMinutes: Type.Optional(Type.Integer({ description: "changes: window in minutes (default 60)" })),
+				limit: Type.Optional(Type.Integer({ description: "changes: max files (default 20)" })),
 				reason: Type.Optional(Type.String({ description: "lock: what you will change there" })),
 			}),
 			async execute(_id, input, signal, _onUpdate, ctx) {
@@ -132,8 +149,10 @@ function registerCoordinateTool(
 					if (!result.ok) throw new Error(describeConflicts(result.conflicts, now));
 					const total =
 						result.held > result.leases.length ? ` You now hold ${plural(result.held, "reservation")}.` : "";
+					const mine = team.snapshot().members.find((member) => member.id === team.id)?.locks ?? [];
+					const advice = lockAdvice(teamWorkspace(ctx.cwd), mine);
 					return textResult(
-						`Reserved: ${result.leases.map((lease) => (lease.kind === "tree" ? `${lease.path}/` : lease.path)).join(", ")}.${total} Unlock when your edits are done.`,
+						`Reserved: ${result.leases.map((lease) => (lease.kind === "tree" ? `${lease.path}/` : lease.path)).join(", ")}.${total} Unlock when your edits are done.${advice}`,
 						{ summary: `Reserved ${plural(result.leases.length, "path")}` },
 					);
 				} else if (params.action === "unlock") {

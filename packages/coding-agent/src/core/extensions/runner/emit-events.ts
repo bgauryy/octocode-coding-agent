@@ -265,8 +265,17 @@ export async function dispatchToolResult(
 export async function dispatchToolCall(
 	host: RunnerHost,
 	event: ToolCallEvent,
+	signal?: AbortSignal,
 ): Promise<ToolCallEventResult | undefined> {
 	const ctx = host.createContext();
+	// Nested tools may have a shorter deadline than the turn. Permission and hook waits must see it too.
+	if (signal)
+		Object.defineProperty(ctx, "signal", {
+			get: () => {
+				host.assertActive();
+				return signal;
+			},
+		});
 	let result: ToolCallEventResult | undefined;
 
 	for (const { handlers } of snapshotEventHandlers(host.extensions, "tool_call")) {

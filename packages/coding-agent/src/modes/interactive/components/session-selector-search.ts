@@ -1,5 +1,6 @@
 import { fuzzyMatch } from "@octocodeai/octocode-tui";
 import type { SessionInfo } from "../../../core/session-manager.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 export type SortMode = "threaded" | "recent" | "relevance";
 
@@ -51,7 +52,7 @@ function parseSearchQuery(query: string): ParsedSearchQuery {
 		try {
 			return { mode: "regex", tokens: [], regex: new RegExp(pattern, "i") };
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
+			const msg = errorMessage(err);
 			return { mode: "regex", tokens: [], regex: null, error: msg };
 		}
 	}

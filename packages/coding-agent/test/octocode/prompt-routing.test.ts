@@ -21,7 +21,8 @@ describe("Octocode research routing in the policy", () => {
 		const prompt = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
 		expect(prompt).toContain("Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it");
 		expect(prompt).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
-		expect(prompt).toContain("instead of answering from memory or a generic web search");
+		expect(prompt).toContain("instead of answering from memory.");
+		expect(prompt).not.toContain("generic web search");
 		for (const name of ["localSearch", "ghSearchCode", "lspSearch", "structureSearch"])
 			expect(prompt).not.toContain(name);
 	});
@@ -32,13 +33,13 @@ describe("Octocode research routing in the policy", () => {
 
 	it("gives the parent delegation guidance and the child the skill rule", () => {
 		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
-		expect(root).toContain("Keep sequential or coupled work in one agent");
+		expect(root).toContain("Keep coupled work in one agent");
 		expect(root).toContain("`.octocode/<topic>/contract.md`");
-		expect(root).toContain("verify reports against the Definition of Done");
+		expect(root).toContain("check reports against the Definition of Done");
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
-		expect(child).toContain("first load any skill it names");
+		expect(child).toContain("load any named skill first");
 		expect(child).not.toContain("contract.md");
 	});
 });

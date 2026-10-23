@@ -32,6 +32,165 @@ function repo(): string {
 }
 
 describe("isolated subagent worktrees", () => {
+	it("snapshots staged, unstaged and untracked files without changing the parent index, then exports only worker edits", async () => {
+		const dir = repo();
+		const home = tmp();
+		fs.writeFileSync(path.join(dir, "src", "a.txt"), "PARENT\ntwo\n");
+		git(dir, "add", "src/a.txt");
+		fs.writeFileSync(path.join(dir, "src", "a.txt"), "PARENT\nunstaged\n");
+		fs.writeFileSync(path.join(dir, "new.txt"), "untracked baseline\n");
+		fs.writeFileSync(path.join(dir, ".gitignore"), "ignored.txt\n");
+		fs.writeFileSync(path.join(dir, "ignored.txt"), "ignored dependency\n");
+		const staged = git(dir, "diff", "--cached", "--binary");
+		const unstaged = git(dir, "diff", "--binary");
+		const worktree = await createWorktree(dir, "snapshot-1", home, true);
+		expect(fs.readFileSync(path.join(worktree.path, "src", "a.txt"), "utf8")).toBe("PARENT\nunstaged\n");
+		expect(fs.readFileSync(path.join(worktree.path, "new.txt"), "utf8")).toBe("untracked baseline\n");
+		expect(fs.existsSync(path.join(worktree.path, "ignored.txt"))).toBe(false);
+		expect(git(dir, "diff", "--cached", "--binary")).toBe(staged);
+		expect(git(dir, "diff", "--binary")).toBe(unstaged);
+		fs.writeFileSync(path.join(worktree.path, "worker.txt"), "worker result\n");
+		const result = await finishWorktree(worktree);
+		expect(result.ref).toBe("refs/octocode/pi/snapshot-1");
+		expect(git(dir, "show", `${result.ref}:worker.txt`)).toBe("worker result");
+		expect(git(dir, "diff", "--name-only", "HEAD", result.ref!)).toBe("worker.txt");
+		expect(git(dir, "diff", "--cached", "--binary")).toBe(staged);
+		expect(git(dir, "diff", "--binary")).toBe(unstaged);
+		expect(fs.readFileSync(path.join(dir, "new.txt"), "utf8")).toBe("untracked baseline\n");
+	});
+
+	it("refuses a working-copy snapshot before running a custom clean filter", async () => {
+		const dir = repo();
+		const home = tmp();
+		const marker = path.join(home, "filter-ran");
+		fs.writeFileSync(path.join(dir, ".gitattributes"), "*.txt filter=custom\n");
+		git(dir, "config", "filter.custom.clean", `touch ${marker}`);
+		await expect(createWorktree(dir, "snapshot-filter", home, true)).rejects.toThrow(/refuses Git filter/);
+		expect(fs.existsSync(marker)).toBe(false);
+		expect(fs.existsSync(path.join(worktreesDir(dir, home), "snapshot-filter.json"))).toBe(false);
+	});
+
+	it("keeps the worktree when a worker edit of an untracked baseline cannot be exported safely", async () => {
+		const dir = repo();
+		fs.writeFileSync(path.join(dir, "new.txt"), "parent only\n");
+		const worktree = await createWorktree(dir, "snapshot-conflict", tmp(), true);
+		fs.writeFileSync(path.join(worktree.path, "new.txt"), "worker edit\n");
+		await expect(finishWorktree(worktree)).rejects.toThrow(/worktree is kept/);
+		expect(fs.existsSync(worktree.path)).toBe(true);
+		expect(fs.readFileSync(path.join(dir, "new.txt"), "utf8")).toBe("parent only\n");
+		expect(await pendingRefs(dir)).toEqual([]);
+	});
+
+	it("rebases a nonoverlapping worker edit to a tracked dirty file without exporting parent lines", async () => {
+		const dir = repo();
+		fs.writeFileSync(path.join(dir, "src", "a.txt"), "PARENT\ntwo\n");
+		const worktree = await createWorktree(dir, "snapshot-overlap", tmp(), true);
+		fs.writeFileSync(path.join(worktree.path, "src", "a.txt"), "PARENT\ntwo\nworker\n");
+		const result = await finishWorktree(worktree);
+		expect(git(dir, "show", `${result.ref}:src/a.txt`)).toBe("one\ntwo\nworker");
+		expect(fs.readFileSync(path.join(dir, "src", "a.txt"), "utf8")).toBe("PARENT\ntwo\n");
+		const merge = await mergeAgent(dir, "snapshot-overlap");
+		expect(merge.ok).toBe(false);
+		expect(fs.readFileSync(path.join(dir, "src", "a.txt"), "utf8")).toBe("PARENT\ntwo\n");
+	});
+
+	it("treats a captured deletion as baseline, and exports a worker deletion without it", async () => {
+		const dir = repo();
+		fs.writeFileSync(path.join(dir, "keep.txt"), "delete by worker\n");
+		git(dir, "add", "keep.txt");
+		git(dir, "commit", "-q", "-m", "second");
+		fs.rmSync(path.join(dir, "src", "a.txt"));
+		const worktree = await createWorktree(dir, "snapshot-delete", tmp(), true);
+		expect(fs.existsSync(path.join(worktree.path, "src", "a.txt"))).toBe(false);
+		fs.rmSync(path.join(worktree.path, "keep.txt"));
+		const result = await finishWorktree(worktree);
+		expect(git(dir, "diff", "--name-only", "HEAD", result.ref!)).toBe("keep.txt");
+		expect(fs.existsSync(path.join(dir, "keep.txt"))).toBe(true);
+	});
+
+	it("drops an unchanged snapshot on finish and keeps an orphan if its snapshot pointer is unreadable", async () => {
+		const dir = repo();
+		const home = tmp();
+		fs.writeFileSync(path.join(dir, "src", "a.txt"), "dirty\ntwo\n");
+		const unchanged = await createWorktree(dir, "snapshot-cancel", home, true);
+		expect(await finishWorktree(unchanged)).toEqual({});
+		expect(fs.existsSync(unchanged.path)).toBe(false);
+		const orphan = await createWorktree(dir, "snapshot-lost", home, true);
+		fs.writeFileSync(path.join(orphan.path, "worker.txt"), "worker\n");
+		fs.writeFileSync(`${orphan.path}.json`, "");
+		const old = new Date(Date.now() - 120_000);
+		fs.utimesSync(`${orphan.path}.json`, old, old);
+		const pruned = await pruneWorktrees(dir, home);
+		expect(pruned.saved).toEqual([]);
+		expect(pruned.kept[0].error).toContain("snapshot record is unreadable");
+		expect(fs.existsSync(orphan.path)).toBe(true);
+		expect(await pendingRefs(dir)).toEqual([]);
+	});
+
+	it("prunes an orphan from a working-copy snapshot without exporting its parent baseline", async () => {
+		const dir = repo();
+		const home = tmp();
+		fs.writeFileSync(path.join(dir, "parent.txt"), "parent baseline\n");
+		const worktree = await createWorktree(dir, "snapshot-orphan", home, true);
+		fs.writeFileSync(path.join(worktree.path, "worker.txt"), "worker result\n");
+		const meta = `${worktree.path}.json`;
+		const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
+		fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
+		expect(await pruneWorktrees(dir, home)).toEqual({
+			saved: [{ agentId: "snapshot-orphan", ref: "refs/octocode/pi/snapshot-orphan" }],
+			kept: [],
+		});
+		expect(git(dir, "diff", "--name-only", "HEAD", "refs/octocode/pi/snapshot-orphan")).toBe("worker.txt");
+		expect(fs.readFileSync(path.join(dir, "parent.txt"), "utf8")).toBe("parent baseline\n");
+	});
+
+	it("keeps a worktree whose child moved HEAD away from its captured baseline", async () => {
+		const dir = repo();
+		fs.writeFileSync(path.join(dir, "src", "a.txt"), "parent baseline\ntwo\n");
+		const worktree = await createWorktree(dir, "snapshot-reset", tmp(), true);
+		git(worktree.path, "reset", "--hard", worktree.base);
+		fs.writeFileSync(path.join(worktree.path, "worker.txt"), "unrelated result\n");
+		await expect(finishWorktree(worktree)).rejects.toThrow(/no longer descends from its recorded snapshot/);
+		expect(fs.existsSync(worktree.path)).toBe(true);
+		expect(await pendingRefs(dir)).toEqual([]);
+		expect(fs.readFileSync(path.join(dir, "src", "a.txt"), "utf8")).toBe("parent baseline\ntwo\n");
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"retains orphaned snapshot worktrees with malformed owner metadata or a symlinked owner record",
+		async () => {
+			const dir = repo();
+			const home = tmp();
+			fs.writeFileSync(path.join(dir, "src", "a.txt"), "parent baseline\ntwo\n");
+			const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
+			for (const [id, corrupt] of [
+				["wrong-repo", { repo: tmp() }],
+				["wrong-base", { base: "not-an-oid" }],
+				["wrong-snapshot", { snapshot: "not-an-oid" }],
+			] as const) {
+				const worktree = await createWorktree(dir, id, home, true);
+				fs.writeFileSync(path.join(worktree.path, "worker.txt"), "worker\n");
+				const meta = `${worktree.path}.json`;
+				fs.writeFileSync(
+					meta,
+					JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), ...corrupt, owners: [{ pid: dead }] }),
+				);
+			}
+			const symlinked = await createWorktree(dir, "linked-record", home, true);
+			fs.writeFileSync(path.join(symlinked.path, "worker.txt"), "worker\n");
+			const meta = `${symlinked.path}.json`;
+			const moved = path.join(home, "owner-record.json");
+			fs.renameSync(meta, moved);
+			fs.symlinkSync(moved, meta);
+			const pruned = await pruneWorktrees(dir, home);
+			expect(pruned.saved).toEqual([]);
+			expect(pruned.kept.map((item) => item.agentId).sort()).toEqual(["wrong-base", "wrong-repo", "wrong-snapshot"]);
+			for (const id of ["wrong-repo", "wrong-base", "wrong-snapshot", "linked-record"])
+				expect(fs.existsSync(path.join(worktreesDir(dir, home), id))).toBe(true);
+			expect(await pendingRefs(dir)).toEqual([]);
+		},
+	);
+
 	it("lands the change on refs/octocode/pi/<id>, not the main tree, removes the worktree and merges with /agents merge", async () => {
 		const dir = repo();
 		const home = tmp();

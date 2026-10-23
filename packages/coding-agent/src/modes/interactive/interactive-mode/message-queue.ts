@@ -8,6 +8,7 @@ import { stripAnsi } from "../../../utils/ansi.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the message queues. */
 export type MessageQueueHost = Pick<
@@ -49,7 +50,7 @@ export async function queueInteractiveMessage(
 	} catch (error) {
 		if (!accepted) host.editor.setText([text, host.editor.getText()].filter((part) => part.trim()).join("\n\n"));
 		host.showError(
-			`${accepted ? "Message failed" : "Message was not queued; restored to editor"}: ${error instanceof Error ? error.message : String(error)}`,
+			`${accepted ? "Message failed" : "Message was not queued; restored to editor"}: ${errorMessage(error)}`,
 		);
 	}
 	host.updatePendingMessagesDisplay();
@@ -236,7 +237,7 @@ export async function flushCompactionQueue(host: MessageQueueHost, options?: { w
 						.then(
 							() => accept(),
 							(error) => {
-								if (accepted) host.showError(error instanceof Error ? error.message : String(error));
+								if (accepted) host.showError(errorMessage(error));
 								else reject(error);
 							},
 						);
@@ -252,7 +253,7 @@ export async function flushCompactionQueue(host: MessageQueueHost, options?: { w
 	} catch (error) {
 		host.compactionQueuedMessages = [...pending, ...host.compactionQueuedMessages];
 		host.showError(
-			`Could not send ${pending.size} queued message${pending.size === 1 ? "" : "s"}; kept for editing: ${error instanceof Error ? error.message : String(error)}`,
+			`Could not send ${pending.size} queued message${pending.size === 1 ? "" : "s"}; kept for editing: ${errorMessage(error)}`,
 		);
 	}
 	host.updatePendingMessagesDisplay();

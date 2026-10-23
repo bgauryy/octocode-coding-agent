@@ -219,6 +219,11 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "get_session_stats", stats);
 		}
 
+		case "persist_session": {
+			host.session.sessionManager.materialize();
+			return success(id, "persist_session");
+		}
+
 		case "export_html": {
 			const path = await host.session.exportToHtml(command.outputPath);
 			return success(id, "export_html", { path });

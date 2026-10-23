@@ -207,8 +207,8 @@ describe("subagents", () => {
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1" }).OCTOCODE_AGENT_COLLABORATE).toBeUndefined();
 		const child = (collaborate: boolean) =>
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate });
-		expect(child(true)).toMatch(/You are on a team/);
-		expect(child(false)).not.toMatch(/You are on a team/);
+		expect(child(true)).toMatch(/With teammates, send a delta/);
+		expect(child(false)).not.toMatch(/With teammates, send a delta/);
 	});
 
 	it("parses profile frontmatter and builds child pi arguments", () => {

@@ -7,7 +7,7 @@ import { emitSessionShutdownEvent } from "../extensions/runner.ts";
 import { ModelRegistry } from "../model-registry.ts";
 import { defaultToolNames, NATIVE_FEATURE_PATH } from "../native-tools.ts";
 import { applyToolModifiers } from "../settings-manager.ts";
-import { createAllToolDefinitions } from "../tools/index.ts";
+import { createBashToolDefinition } from "../tools/index.ts";
 import { createToolDefinitionFromAgentTool } from "../tools/tool-definition-wrapper.ts";
 import type { SessionExtensionBindings } from "./extension-bindings.ts";
 import type { SessionInternals } from "./host.ts";
@@ -33,7 +33,6 @@ export interface BuildRuntimeOptions {
 
 export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: BuildRuntimeOptions): void {
 	const { session, tools } = host;
-	const autoResizeImages = session.settingsManager.getImageAutoResize();
 	const shellCommandPrefix = session.settingsManager.getShellCommandPrefix();
 	const shellPath = session.settingsManager.getShellPath();
 	const extensionsResult = session.resourceLoader.getExtensions();
@@ -46,10 +45,7 @@ export function buildExtensionRuntime(host: ExtensionRuntimeHost, options: Build
 			)
 		: hasNativeTools
 			? {}
-			: createAllToolDefinitions(host.cwd, {
-					read: { autoResizeImages },
-					bash: { commandPrefix: shellCommandPrefix, shellPath },
-				});
+			: { bash: createBashToolDefinition(host.cwd, { commandPrefix: shellCommandPrefix, shellPath }) };
 
 	tools.setBaseToolDefinitions(
 		new Map(Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition])),

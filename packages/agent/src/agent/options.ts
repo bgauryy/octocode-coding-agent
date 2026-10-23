@@ -29,6 +29,7 @@ export interface AgentOptions {
 	onProviderStreamEvent?: SimpleStreamOptions["onProviderStreamEvent"];
 	beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
+	unknownToolMessage?: (toolName: string) => string | undefined;
 	finishTurn?: FinishTurn;
 	prepareRequest?: PrepareRequest;
 	prepareInput?: PrepareInput;

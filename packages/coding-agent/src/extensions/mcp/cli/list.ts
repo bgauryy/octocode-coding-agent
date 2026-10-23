@@ -1,12 +1,13 @@
 /** `pi mcp list` and `pi mcp tools`: connect to each server and report its state and tools. */
 
-import { join } from "node:path";
 import { APP_NAME } from "../../../config.ts";
-import { DEFAULT_MCP_EXPOSURE } from "../../../core/mcp-servers.ts";
 import { getMcpToolExposure, type LoadedMcpConfig } from "../config.ts";
+import { exposureOf } from "../exposure.ts";
 import { formatMcpTool, type McpToolListing } from "../inspection.ts";
-import type { McpOAuthCredentialStore } from "../runtime.ts";
-import { createConnection, describeTransport, type McpCommandOptions } from "./shared.ts";
+import type { McpOAuthCredentialStore } from "../oauth.ts";
+import { describeTransport, isEnabled } from "../server.ts";
+import { createConnection, type McpCommandOptions } from "./shared.ts";
+import { globalMcpConfigPath, projectMcpConfigPath } from "../../../core/mcp-config-paths.ts";
 
 interface ServerReport {
 	name: string;
@@ -46,8 +47,8 @@ export async function list(
 					scope: entry.scope ?? "global",
 					source: entry.source,
 					...(entry.override ? { override: entry.override, overrideScope: entry.overrideScope ?? "project" } : {}),
-					enabled: entry.config.enabled !== false,
-					exposure: entry.config.exposure ?? DEFAULT_MCP_EXPOSURE,
+					enabled: isEnabled({ entry }),
+					exposure: exposureOf(entry),
 					transport: describeTransport(entry),
 					state: "disabled",
 					tools: [],
@@ -93,7 +94,9 @@ export async function list(
 		return failed ? 1 : 0;
 	}
 	if (reports.length === 0 && loaded.errors.length === 0) {
-		log(`No MCP servers configured. Add them to ${join(options.agentDir, "mcp.json")} or .octocode/mcp.json.`);
+		log(
+			`No MCP servers configured. Add them to ${globalMcpConfigPath(options.agentDir)} or ${projectMcpConfigPath(options.cwd)}.`,
+		);
 	}
 	for (const report of reports) {
 		const state =

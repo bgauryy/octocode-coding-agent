@@ -116,15 +116,85 @@ describe("AgentSession tool orchestration", () => {
 		const plain = await createHarness({ extensionFactories });
 		harnesses.push(plain);
 		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(expect.arrayContaining(["tool_search"]));
-		expect(plain.session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);
+		expect(plain.session.getActiveToolNames()).toEqual(["bash"]);
 
 		// --tools and the defaultTools setting name them explicitly.
-		const allowed = await createHarness({ allowedToolNames: ["read", "tool_search"], extensionFactories });
+		const allowed = await createHarness({ allowedToolNames: ["bash", "tool_search"], extensionFactories });
 		harnesses.push(allowed);
-		expect(allowed.session.getActiveToolNames()).toEqual(["read", "tool_search"]);
+		expect(allowed.session.getActiveToolNames()).toEqual(["bash", "tool_search"]);
 		const initial = await createHarness({ initialActiveToolNames: ["tool_search"], extensionFactories });
 		harnesses.push(initial);
 		expect(initial.session.getActiveToolNames()).toEqual(["tool_search"]);
+	});
+
+	it("cancels a nested permission wait without aborting the parent turn", async () => {
+		const nested = new AbortController();
+		let observed: AbortSignal | undefined;
+		let cancelled = false;
+		let executed = false;
+		let parentAborted: boolean | undefined;
+		const harness = await createHarness({
+			initialActiveToolNames: [],
+			extensionFactories: [
+				(pi) => {
+					pi.registerTool({
+						name: "protected_child",
+						label: "Child",
+						description: "A protected nested tool.",
+						parameters: Type.Object({}),
+						exposure: "deferred",
+						execute: async () => {
+							executed = true;
+							return { content: [], details: {} };
+						},
+					});
+					pi.registerTool({
+						name: "parent",
+						label: "Parent",
+						description: "Call a protected tool with a deadline.",
+						parameters: Type.Object({}),
+						execute: async (_id, _args, signal, _update, ctx) => {
+							const result = await ctx.executeTool("protected_child", {}, { signal: nested.signal });
+							parentAborted = signal?.aborted;
+							return {
+								content: [{ type: "text", text: result.isError ? "cancelled child" : "unexpected" }],
+								details: {},
+							};
+						},
+					});
+					pi.on("tool_call", async (event, ctx) => {
+						if (event.toolName !== "protected_child") return;
+						observed = ctx.signal;
+						await new Promise<void>((resolve) => {
+							const finish = () => {
+								clearTimeout(timer);
+								ctx.signal?.removeEventListener("abort", abort);
+								resolve();
+							};
+							const abort = () => {
+								cancelled = true;
+								finish();
+							};
+							const timer = setTimeout(finish, 200);
+							ctx.signal?.addEventListener("abort", abort, { once: true });
+							queueMicrotask(() => nested.abort());
+						});
+						return { block: true, reason: "Nested permission request cancelled" };
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+		harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("parent", {})], { stopReason: "toolUse" }),
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("go");
+		expect(observed).toBe(nested.signal);
+		expect(cancelled).toBe(true);
+		expect(executed).toBe(false);
+		expect(parentAborted).toBe(false);
 	});
 
 	it("leaves results without nested calls unchanged", async () => {

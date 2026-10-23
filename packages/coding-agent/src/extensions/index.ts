@@ -1,5 +1,6 @@
 import type { InlineExtension } from "../core/extensions/types.ts";
 import llamaExtension from "./llama/index.ts";
+import { trustedMcpOptions } from "./mcp-trust.ts";
 import { createMcpExtension } from "./mcp/index.ts";
 import { prepareOctocodeSkillLaunch } from "../octocode/mcp/skill-paths.ts";
 import toolSearchExtension from "./tool-search/index.ts";
@@ -13,6 +14,7 @@ export const builtInExtensions: InlineExtension[] = [
 		name: "mcp",
 		factory: (pi) =>
 			createMcpExtension({
+				...trustedMcpOptions(pi),
 				prepareLaunch: (entry, cwd) => prepareOctocodeSkillLaunch(entry, cwd, pi.getSkillDirectories()),
 			})(pi),
 		replaceable: true,

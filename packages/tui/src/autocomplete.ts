@@ -174,75 +174,30 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const adjustedAfterCursor =
 			isQuotedPrefix && hasTrailingQuoteInItem && hasLeadingQuoteAfterCursor ? afterCursor.slice(1) : afterCursor;
 
+		const replaceLine = (inserted: string, cursorOffset: number) => {
+			const newLines = [...lines];
+			newLines[cursorLine] = beforePrefix + inserted + adjustedAfterCursor;
+			return { lines: newLines, cursorLine, cursorCol: beforePrefix.length + cursorOffset };
+		};
+
 		// Check if we're completing a slash command (prefix starts with "/" but NOT a file path)
 		// Slash commands are at the start of the line and don't contain path separators after the first /
 		const isSlashCommand = prefix.startsWith("/") && beforePrefix.trim() === "" && !prefix.slice(1).includes("/");
 		if (isSlashCommand) {
-			// This is a command name completion
-			const newLine = `${beforePrefix}/${item.value} ${adjustedAfterCursor}`;
-			const newLines = [...lines];
-			newLines[cursorLine] = newLine;
-
-			return {
-				lines: newLines,
-				cursorLine,
-				cursorCol: beforePrefix.length + item.value.length + 2, // +2 for "/" and space
-			};
+			return replaceLine(`/${item.value} `, item.value.length + 2); // +2 for "/" and space
 		}
 
-		// Check if we're completing a file attachment (prefix starts with "@")
-		if (prefix.startsWith("@")) {
-			// This is a file attachment completion
-			// Don't add space after directories so user can continue autocompleting
-			const isDirectory = item.label.endsWith("/");
-			const suffix = isDirectory ? "" : " ";
-			const newLine = `${beforePrefix + item.value}${suffix}${adjustedAfterCursor}`;
-			const newLines = [...lines];
-			newLines[cursorLine] = newLine;
-
-			const hasTrailingQuote = item.value.endsWith('"');
-			const cursorOffset = isDirectory && hasTrailingQuote ? item.value.length - 1 : item.value.length;
-
-			return {
-				lines: newLines,
-				cursorLine,
-				cursorCol: beforePrefix.length + cursorOffset + suffix.length,
-			};
-		}
-
-		// Check if we're in a slash command context (beforePrefix contains "/command ")
-		const textBeforeCursor = currentLine.slice(0, cursorCol);
-		if (textBeforeCursor.includes("/") && textBeforeCursor.includes(" ")) {
-			// This is likely a command argument completion
-			const newLine = beforePrefix + item.value + adjustedAfterCursor;
-			const newLines = [...lines];
-			newLines[cursorLine] = newLine;
-
-			const isDirectory = item.label.endsWith("/");
-			const hasTrailingQuote = item.value.endsWith('"');
-			const cursorOffset = isDirectory && hasTrailingQuote ? item.value.length - 1 : item.value.length;
-
-			return {
-				lines: newLines,
-				cursorLine,
-				cursorCol: beforePrefix.length + cursorOffset,
-			};
-		}
-
-		// For file paths, complete the path
-		const newLine = beforePrefix + item.value + adjustedAfterCursor;
-		const newLines = [...lines];
-		newLines[cursorLine] = newLine;
-
+		// A directory's closing quote stays after the cursor so the user can continue autocompleting inside it.
 		const isDirectory = item.label.endsWith("/");
-		const hasTrailingQuote = item.value.endsWith('"');
-		const cursorOffset = isDirectory && hasTrailingQuote ? item.value.length - 1 : item.value.length;
+		const valueOffset = isDirectory && item.value.endsWith('"') ? item.value.length - 1 : item.value.length;
 
-		return {
-			lines: newLines,
-			cursorLine,
-			cursorCol: beforePrefix.length + cursorOffset,
-		};
+		// File attachments (`@`) get a trailing space after files but not after directories.
+		if (prefix.startsWith("@") && !isDirectory) {
+			return replaceLine(`${item.value} `, valueOffset + 1);
+		}
+
+		// Command arguments, directory attachments and file paths insert the value alone.
+		return replaceLine(item.value, valueOffset);
 	}
 
 	// Extract @ prefix for fuzzy file suggestions

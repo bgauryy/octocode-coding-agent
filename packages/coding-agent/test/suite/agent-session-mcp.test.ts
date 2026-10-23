@@ -187,6 +187,8 @@ describe("AgentSession MCP integration", () => {
 				(pi: ExtensionAPI) =>
 					createMcpExtension({
 						loadConfig: () => ({ servers: [entry], errors: [], ...configOptions }),
+						// These cases model a deferred server that connects after the first prompt.
+						deferredGraceMs: 0,
 						updateConfig: (_entry, patch) => {
 							saved.push(patch);
 						},
@@ -303,14 +305,13 @@ describe("AgentSession MCP integration", () => {
 	it("keeps MCP tools when --tools names no MCP tool", async () => {
 		for (const exposure of ["deferred"] as const) {
 			const { harness } = await setup(exposure, undefined, {
-				allowedToolNames: ["read", "tool_search"],
+				allowedToolNames: ["bash", "tool_search"],
 				resources: true,
 			});
-			expect(harness.session.getActiveToolNames()).toEqual(["read", "tool_search"]);
+			expect(harness.session.getActiveToolNames()).toEqual(["bash", "tool_search"]);
 			expect(nestedToolNames(harness)).toEqual(
 				expect.arrayContaining(["mcp__docs__search", "mcp__docs__fail", "list_mcp_resources", "read_mcp_resource"]),
 			);
-			expect(harness.session.getAllTools().map((tool) => tool.name)).not.toContain("bash");
 		}
 
 		// A direct MCP tool stays registered but is declared only when --tools names it.
@@ -342,7 +343,7 @@ describe("AgentSession MCP integration", () => {
 
 		// Like `pi --tools read,codemode -c` followed by /tree.
 		const second = await setup("direct", undefined, {
-			allowedToolNames: ["read", "tool_search"],
+			allowedToolNames: ["bash", "tool_search"],
 			sessionManager: first.harness.sessionManager,
 		});
 		const firstAssistant = second.harness.sessionManager
@@ -435,7 +436,7 @@ describe("AgentSession MCP integration", () => {
 		expect(calls).toEqual(["read-file:{}", "read_file:{}"]);
 	});
 
-	it("rejects direct model calls to deferred MCP tools", async () => {
+	it("rejects direct model calls to deferred MCP tools and says how to load them", async () => {
 		const { harness, calls } = await setup("deferred");
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall(createMcpToolName("docs", "search"), { query: "x" })], {
@@ -448,7 +449,9 @@ describe("AgentSession MCP integration", () => {
 
 		const result = toolResult(harness, "mcp__docs__search");
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toBe("Tool mcp__docs__search not found");
+		expect(getMessageText(result)).toBe(
+			'Tool mcp__docs__search not found: it is not loaded yet. Call tool_search with query "mcp__docs__search" to load it, then call it again.',
+		);
 		expect(calls).toEqual([]);
 	});
 
@@ -554,15 +557,16 @@ describe("AgentSession MCP integration", () => {
 		expect(discovery?.description).not.toContain("mcp__docs__fail");
 	});
 
-	it("lists servers by the first line of their instructions without a configured description", async () => {
+	it("lists servers by the first line of their instructions, then their tools and the rest of the instructions", async () => {
 		const { harness } = await setup("deferred", undefined, { instructions: "Docs search.\nLong guidance." });
 		harness.setResponses([fauxAssistantMessage("done")]);
 
 		await harness.session.prompt("go");
 
 		const section = serversSection(harness);
-		expect(section).toContain("- mcp__docs (tool_search): Docs search.\n");
-		expect(section).not.toContain("Long guidance");
+		expect(section).toContain("- mcp__docs (tool_search): Docs search.\n  tool_search loads: ");
+		expect(section).toContain("\n  instructions: Long guidance.\n");
+		expect(section?.match(/Docs search\./g)).toHaveLength(1);
 	});
 
 	it("treats deferred MCP tools as reachable through an active tool_search", async () => {
@@ -604,6 +608,7 @@ describe("AgentSession MCP integration", () => {
 		},
 		initializeDelayMs: number,
 		startupWaitMs?: number,
+		deferredGraceMs = 0,
 	) {
 		const calls: string[] = [];
 		const notifications: string[] = [];
@@ -625,6 +630,7 @@ describe("AgentSession MCP integration", () => {
 						return pair.client;
 					},
 					...(startupWaitMs === undefined ? {} : { startupWaitMs }),
+					deferredGraceMs,
 				}),
 			],
 		});
@@ -645,6 +651,30 @@ describe("AgentSession MCP integration", () => {
 		expect(getAssistantTexts(harness)).toEqual(["ready"]);
 		// Codemode is activated from the config, before the server connects.
 		expect(declaredToolNames(harness)).toEqual(["tool_search"]);
+	});
+
+	it("gives a quick deferred server a grace so the first request lists its tools", async () => {
+		const { harness } = await setupSlow({ instructions: "Slow docs." }, 30, undefined, 1000);
+		harness.setResponses([fauxAssistantMessage("ready")]);
+
+		await harness.session.prompt("start");
+
+		expect(serversSection(harness)).toContain("- mcp__slow (tool_search): Slow docs.");
+		expect(serversSection(harness)).toContain("tool_search loads: search");
+	});
+
+	it("does not delay the first prompt beyond the grace for a hanging deferred server", async () => {
+		const { harness, notifications } = await setupSlow({}, Number.POSITIVE_INFINITY, undefined, 50);
+		harness.setResponses([fauxAssistantMessage("ready")]);
+
+		const started = Date.now();
+		await harness.session.prompt("start");
+
+		expect(Date.now() - started).toBeLessThan(1500);
+		expect(getAssistantTexts(harness)).toEqual(["ready"]);
+		expect(serversSection(harness)).toContain("- mcp__slow (tool_search)\n");
+		// A deferred server is not announced as late: only direct servers are.
+		expect(notifications).toEqual([]);
 	});
 
 	it("keeps the discovery description unchanged when the server connects", async () => {
@@ -691,13 +721,15 @@ describe("AgentSession MCP integration", () => {
 		expect(serversSection(harness)).toContain("- mcp__slow (tool_search): Slow docs.");
 	});
 
-	it("leaves servers with only direct tools out of the servers section", async () => {
-		const { harness } = await setupSlow({ exposure: "direct" }, 0);
+	it("lists servers with only direct tools as declared, with their instructions", async () => {
+		const { harness } = await setupSlow({ exposure: "direct", instructions: "Slow docs.\nSearch, then read." }, 0);
 		harness.setResponses([fauxAssistantMessage("ready")]);
 
 		await harness.session.prompt("start");
 
-		expect(serversSection(harness)).toBeUndefined();
+		const section = serversSection(harness);
+		expect(section).toContain("- mcp__slow (declared): Slow docs.\n  instructions: Search, then read.");
+		expect(section).not.toContain("tool_search loads");
 	});
 
 	it("waits for servers before tool_search searches", async () => {
@@ -934,7 +966,9 @@ describe("AgentSession MCP integration", () => {
 			fauxAssistantMessage("done"),
 		]);
 		await harness.session.prompt("go");
-		expect(getMessageText(toolResult(harness, "tool_search"))).toBe("No matching tools found.");
+		expect(getMessageText(toolResult(harness, "tool_search"))).toBe(
+			"No matching tools found. No tools are waiting to be loaded; your declared tools are all there is.",
+		);
 	});
 });
 
@@ -1080,6 +1114,8 @@ describe("AgentSession MCP tools after resume and reload", () => {
 			createToolSearchExtension(),
 			createMcpExtension({
 				loadConfig: () => ({ servers, errors: [] }),
+				// A deferred server that connects after the first prompt starts.
+				deferredGraceMs: 0,
 				createTransport: (entry) => {
 					connected.push(entry.name);
 					const pair = createFakeServer([], { initializeDelayMs });
@@ -1135,7 +1171,7 @@ describe("AgentSession MCP tools after resume and reload", () => {
 	});
 
 	it.each([
-		["drops", ["read"], false],
+		["drops", ["bash"], false],
 		["keeps", undefined, true],
 	] as const)("%s restored tools when an extension sets the loadout before they register", async (_, loadout, kept) => {
 		const first = await setup();
@@ -1143,7 +1179,7 @@ describe("AgentSession MCP tools after resume and reload", () => {
 
 		// Like plan mode restoring its tools, or an extension adding one to the current loadout.
 		const setLoadout: ExtensionFactory = (pi) => {
-			pi.on("session_start", () => pi.setActiveTools(loadout ? [...loadout] : [...pi.getActiveTools(), "read"]));
+			pi.on("session_start", () => pi.setActiveTools(loadout ? [...loadout] : [...pi.getActiveTools(), "extra_tool"]));
 		};
 		const second = await setup(first.harness.sessionManager, [setLoadout]);
 		await vi.waitFor(() =>

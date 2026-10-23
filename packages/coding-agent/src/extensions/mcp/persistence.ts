@@ -1,7 +1,8 @@
 /** Saves `/mcp` configuration changes and applies exposure changes to the registered tools. */
 
-import type { McpExposure, McpServerConfigPatch } from "./config.ts";
-import { errorMessage, type McpServer } from "./server.ts";
+import { applyMcpServerPatch, type McpExposure, type McpServerConfigPatch } from "./config.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import type { McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { registerTools, syncResourceTools } from "./tool-registry.ts";
 
@@ -30,7 +31,11 @@ export function saveConfig(
 			return `Could not update ${entry.override ?? entry.source}: ${errorMessage(error)}`;
 		}
 	}
-	server.entry = { ...entry, config: { ...entry.config, ...patch } };
+	// The session's copy changes as the file does: a default removes its key (an explicit `auto`
+	// would disable the `octocode` server's direct/deferred split until reload).
+	const config = { ...entry.config };
+	applyMcpServerPatch(config, patch, entry.override !== undefined);
+	server.entry = { ...entry, config };
 	return undefined;
 }
 

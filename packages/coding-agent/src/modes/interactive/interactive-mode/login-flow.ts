@@ -6,6 +6,7 @@ import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "../components/oauth-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the login and logout flows. */
 export type LoginFlowHost = Pick<
@@ -238,7 +239,7 @@ export async function showOAuthSelector(host: LoginFlowHost, mode: "login" | "lo
 	try {
 		providerOptions = await getLogoutProviderOptions(host);
 	} catch (error) {
-		host.showError(`Could not read stored credentials: ${error instanceof Error ? error.message : String(error)}`);
+		host.showError(`Could not read stored credentials: ${errorMessage(error)}`);
 		return;
 	}
 	if (providerOptions.length === 0) {
@@ -271,7 +272,7 @@ export async function showOAuthSelector(host: LoginFlowHost, mode: "login" | "lo
 							: `Removed stored API key for ${providerOption.name}. Environment variables and models.json config are unchanged.`;
 					host.showStatus(message);
 				} catch (error: unknown) {
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					host.showError(
 						error instanceof CredentialSynchronizationError
 							? `Credentials removed for ${providerOption.name}, but local model state could not be synchronized: ${message}`

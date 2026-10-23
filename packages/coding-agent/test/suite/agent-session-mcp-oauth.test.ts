@@ -117,7 +117,9 @@ describe("AgentSession MCP OAuth", () => {
 		expect(notifications.at(-1)).toBe('Signed out of MCP server "issues".');
 		const result = await callWhoami(harness);
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toBe("Tool mcp__issues__whoami not found");
+		expect(getMessageText(result)).toBe(
+			"Tool mcp__issues__whoami not found: it is not active in this session. Use another tool, or ask the user to enable it.",
+		);
 
 		await harness.session.prompt("/mcp login issues");
 		expect(notifications.at(-1)).toBe('Signed in to MCP server "issues" (1 tools).');

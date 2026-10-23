@@ -46,11 +46,11 @@ if [ -n "$OCTOCODE_SESSION_FILE" ]; then
 fi
 ```
 
-These variables are injected into both shell modes of the LLM-callable `bash` tool and the standalone SDK shell tools. They are not injected into user-entered `!` or `!!` commands.
+These variables are injected into both shell modes of the LLM-callable `bash` tool and the standalone SDK `bash` tool. They are not injected into user-entered `!` or `!!` commands.
 
 ### Custom Shell Tools
 
-Tools created with `createBashTool()` or `createPowerShellTool()` expose the session environment by default when registered with Octocode. Injection happens before `spawnHook`, so a hook receives the variables in `ctx.env`:
+Tools created with `createBashTool()` expose the session environment by default when registered with Octocode. Injection happens before `spawnHook`, so a hook receives the variables in `ctx.env`:
 
 ```typescript
 const bashTool = createBashTool(cwd, {
@@ -64,7 +64,7 @@ const bashTool = createBashTool(cwd, {
 Disable session metadata independently of the spawn hook:
 
 ```typescript
-const powershellTool = createPowerShellTool(cwd, {
+const quietBashTool = createBashTool(cwd, {
   exposeSessionEnvironment: false,
   spawnHook: (ctx) => ctx,
 });
@@ -115,6 +115,7 @@ These controls belong to the integrated Octocode features. Child identity, grant
 | `OCTOCODE_MCP` | Set to `0` to disable automatic Octocode research MCP startup; an explicitly configured `octocode` server is managed through [MCP configuration](mcp.md) |
 | `OCTOCODE_HOOKS` | Set to `1` at startup to enable [command hooks](hooks.md); off by default; children also require `hooks: true` in their profile |
 | `OCTOCODE_HOOKS_COMPAT` | Set to `1` for the partial [Claude permission-rule preview](permissions.md#claude-permission-rule-preview); also set `OCTOCODE_HOOKS=1` to execute [source-profile hooks](hooks.md#source-profile-preview). Unset/`0` keeps source rules inactive and legacy hook behavior |
+| `OCTOCODE_EDIT_DIAGNOSTICS` | Bounded post-edit LSP and before/after parser observations; enabled by default, `0` disables them. Receipts and file guards remain active |
 | `OCTOCODE_EXTRA_SKILLS` | Set to `0` to disable extra skill directories |
 | `CLAUDE_CONFIG_DIR` | Select Claude user settings for hook/permission previews and Claude extra skills; project paths remain unchanged. See [hook discovery](hooks.md#discovery) |
 | `CODEX_HOME` | Select an existing Codex user directory for hook preview and extra skills; invalid overrides do not fall back to the default directory |

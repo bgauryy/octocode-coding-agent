@@ -85,7 +85,7 @@ async function executeToolCallsSequential(
 	const finalizedCalls: FinalizedToolCallOutcome[] = [];
 	const messages: ToolResultMessage[] = [];
 
-	for (const toolCall of toolCalls) {
+	for (const [index, toolCall] of toolCalls.entries()) {
 		await emit({
 			type: "tool_execution_start",
 			toolCallId: toolCall.id,
@@ -120,6 +120,12 @@ async function executeToolCallsSequential(
 		messages.push(toolResultMessage);
 
 		if (signal?.aborted) {
+			for (const skipped of await skipRemainingToolCalls(toolCalls.slice(index + 1), emit)) {
+				const skippedMessage = createToolResultMessage(skipped);
+				await emitToolResultMessage(skippedMessage, emit);
+				finalizedCalls.push(skipped);
+				messages.push(skippedMessage);
+			}
 			break;
 		}
 	}
@@ -140,7 +146,7 @@ async function executeToolCallsParallel(
 ): Promise<ExecutedToolCallBatch> {
 	const finalizedCalls: FinalizedToolCallEntry[] = [];
 
-	for (const toolCall of toolCalls) {
+	for (const [index, toolCall] of toolCalls.entries()) {
 		await emit({
 			type: "tool_execution_start",
 			toolCallId: toolCall.id,
@@ -158,6 +164,7 @@ async function executeToolCallsParallel(
 			await emitToolExecutionEnd(finalized, emit);
 			finalizedCalls.push(finalized);
 			if (signal?.aborted) {
+				finalizedCalls.push(...(await skipRemainingToolCalls(toolCalls.slice(index + 1), emit)));
 				break;
 			}
 			continue;
@@ -186,6 +193,7 @@ async function executeToolCallsParallel(
 			return finalized;
 		});
 		if (signal?.aborted) {
+			finalizedCalls.push(...(await skipRemainingToolCalls(toolCalls.slice(index + 1), emit)));
 			break;
 		}
 	}
@@ -204,6 +212,34 @@ async function executeToolCallsParallel(
 		messages,
 		terminate: shouldTerminateToolBatch(orderedFinalizedCalls),
 	};
+}
+
+/**
+ * Record an aborted result for each call the loop did not reach, so every assistant tool call
+ * has a start, an end and a result. Without this the transcript keeps orphaned calls that only
+ * a provider adapter repairs.
+ */
+async function skipRemainingToolCalls(
+	toolCalls: AgentToolCall[],
+	emit: AgentEventSink,
+): Promise<FinalizedToolCallOutcome[]> {
+	const skipped: FinalizedToolCallOutcome[] = [];
+	for (const toolCall of toolCalls) {
+		await emit({
+			type: "tool_execution_start",
+			toolCallId: toolCall.id,
+			toolName: toolCall.name,
+			args: toolCall.arguments,
+		});
+		const finalized: FinalizedToolCallOutcome = {
+			toolCall,
+			result: createErrorToolResult("Operation aborted"),
+			isError: true,
+		};
+		await emitToolExecutionEnd(finalized, emit);
+		skipped.push(finalized);
+	}
+	return skipped;
 }
 
 type FinalizedToolCallEntry = FinalizedToolCallOutcome | (() => Promise<FinalizedToolCallOutcome>);

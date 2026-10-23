@@ -9,6 +9,13 @@ import type { SessionManager } from "../../session-manager.ts";
 import type { BuildSystemPromptOptions, NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
 import type { VirtualModelDefinition } from "../../virtual-models.ts";
 import type {
+	ForkHandler,
+	NavigateTreeHandler,
+	NewSessionHandler,
+	ReloadHandler,
+	SwitchSessionHandler,
+} from "../types/runtime.ts";
+import type {
 	AgentBeforeSettleEvent,
 	BeforeAgentStartCustomEvent,
 	BeforeAgentStartEvent,
@@ -34,7 +41,6 @@ import type {
 	MessageEndEvent,
 	ProjectTrustEvent,
 	ProviderConfig,
-	ReplacedSessionContext,
 	ResourcesDiscoverEvent,
 	SessionBeforeForkResult,
 	SessionBeforeSwitchResult,
@@ -116,28 +122,7 @@ export interface BoundaryDispatchResult {
 	valid: boolean;
 }
 
-export type NewSessionHandler = (options?: {
-	parentSession?: string;
-	setup?: (sessionManager: SessionManager) => Promise<void>;
-	withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-}) => Promise<{ cancelled: boolean }>;
-
-export type ForkHandler = (
-	entryId: string,
-	options?: { position?: "before" | "at"; withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
-) => Promise<{ cancelled: boolean }>;
-
-export type NavigateTreeHandler = (
-	targetId: string,
-	options?: { summarize?: boolean; customInstructions?: string; replaceInstructions?: boolean; label?: string },
-) => Promise<{ cancelled: boolean }>;
-
-export type SwitchSessionHandler = (
-	sessionPath: string,
-	options?: { withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
-) => Promise<{ cancelled: boolean }>;
-
-export type ReloadHandler = () => Promise<void>;
+export type { ForkHandler, NavigateTreeHandler, NewSessionHandler, ReloadHandler, SwitchSessionHandler };
 
 export type ShutdownHandler = () => void;
 

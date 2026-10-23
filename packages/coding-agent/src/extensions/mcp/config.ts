@@ -27,9 +27,13 @@
  */
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { CONFIG_DIR_NAME } from "../../config.ts";
-import { globalMcpConfigPaths, projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
+import { dirname } from "node:path";
+import {
+	globalMcpConfigPath,
+	globalMcpConfigPaths,
+	projectMcpConfigPath,
+	projectMcpConfigPaths,
+} from "../../core/mcp-config-paths.ts";
 import {
 	DEFAULT_MCP_EXPOSURE,
 	type McpExposure,
@@ -40,6 +44,7 @@ import {
 import { hasJsonComments, stripJsonComments } from "../../utils/json.ts";
 import { stripBom } from "../../utils/text.ts";
 import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 export type {
 	McpExposure,
@@ -81,10 +86,6 @@ function isOverride(value: Record<string, unknown>): boolean {
 	return value.command === undefined && value.url === undefined && value.type === undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 interface McpConfigState {
 	servers: Map<string, McpServerEntry>;
 	errors: string[];
@@ -97,7 +98,7 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 	try {
 		parsed = JSON.parse(stripJsonComments(stripBom(readFileSync(path, "utf8"))));
 	} catch (error) {
-		errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+		errors.push(`${path}: ${errorMessage(error)}`);
 		return;
 	}
 	if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
@@ -155,9 +156,9 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
  */
 export function loadMcpConfig(options: { agentDir: string; cwd: string; projectTrusted: boolean }): LoadedMcpConfig {
 	const state: McpConfigState = { servers: new Map(), errors: [] };
-	const globalConfig = join(options.agentDir, "mcp.json");
+	const globalConfig = globalMcpConfigPath(options.agentDir);
 	for (const file of globalMcpConfigPaths(options.agentDir)) readConfigFile(file, "global", state);
-	const projectConfig = options.projectTrusted ? join(options.cwd, CONFIG_DIR_NAME, "mcp.json") : undefined;
+	const projectConfig = options.projectTrusted ? projectMcpConfigPath(options.cwd) : undefined;
 	if (projectConfig) {
 		for (const file of projectMcpConfigPaths(options.cwd)) readConfigFile(file, "project", state);
 	}
@@ -173,6 +174,26 @@ export function loadMcpConfig(options: { agentDir: string; cwd: string; projectT
 export interface McpServerConfigPatch {
 	enabled?: boolean;
 	exposure?: McpExposure;
+}
+
+/**
+ * Apply `patch` to a server's settings, in a file record or in memory, so both end up the same:
+ * defaults remove their key, except in overrides, which keep them since they replace the global
+ * server's.
+ */
+export function applyMcpServerPatch(
+	server: { enabled?: unknown; exposure?: unknown },
+	patch: McpServerConfigPatch,
+	keepDefaults: boolean,
+): void {
+	if (patch.enabled !== undefined) {
+		if (patch.enabled && !keepDefaults) delete server.enabled;
+		else server.enabled = patch.enabled;
+	}
+	if (patch.exposure !== undefined) {
+		if (patch.exposure === DEFAULT_MCP_EXPOSURE && !keepDefaults) delete server.exposure;
+		else server.exposure = patch.exposure;
+	}
 }
 
 /**
@@ -193,15 +214,7 @@ export function updateMcpServerConfig(
 			parsed.mcpServers = { ...servers, [name]: server };
 		}
 		if (!isRecord(server)) throw new Error(`${path} does not define MCP server "${name}"`);
-		const keepDefaults = isOverride(server);
-		if (patch.enabled !== undefined) {
-			if (patch.enabled && !keepDefaults) delete server.enabled;
-			else server.enabled = patch.enabled;
-		}
-		if (patch.exposure !== undefined) {
-			if (patch.exposure === DEFAULT_MCP_EXPOSURE && !keepDefaults) delete server.exposure;
-			else server.exposure = patch.exposure;
-		}
+		applyMcpServerPatch(server, patch, isOverride(server));
 		return true;
 	});
 }

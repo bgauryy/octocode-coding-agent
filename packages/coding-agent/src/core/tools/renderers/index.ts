@@ -7,40 +7,11 @@
  */
 
 import type { ToolRenderers } from "../../extensions/types.ts";
-import type { ToolName } from "../index.ts";
 import { createShellRenderers } from "./bash.ts";
-import { editRenderers } from "./edit.ts";
-import { findRenderers } from "./find.ts";
-import { grepRenderers } from "./grep.ts";
-import { lsRenderers } from "./ls.ts";
-import { readRenderers } from "./read.ts";
-import { writeRenderers } from "./write.ts";
 
 export type { ToolRenderers };
 
-export {
-	createShellRenderers,
-	editRenderers,
-	findRenderers,
-	grepRenderers,
-	lsRenderers,
-	readRenderers,
-	writeRenderers,
-};
-
-/** Renderers for every built-in tool, keyed by tool name. */
-function createAllToolRenderers(): Record<ToolName, ToolRenderers> {
-	return {
-		read: readRenderers,
-		bash: createShellRenderers("$"),
-		powershell: createShellRenderers("PS>"),
-		edit: editRenderers,
-		write: writeRenderers,
-		grep: grepRenderers,
-		find: findRenderers,
-		ls: lsRenderers,
-	};
-}
+export { createShellRenderers };
 
 /**
  * Merge built-in renderers into a tool definition that does not supply its own.
@@ -52,7 +23,8 @@ export function withBuiltInRenderers<TDefinition extends ToolRenderers>(
 	toolName: string,
 	definition: TDefinition | undefined,
 ): TDefinition | ToolRenderers | undefined {
-	const builtIn = createAllToolRenderers()[toolName as ToolName];
+	// `bash` is the only core tool with a renderer; other built-in tools render through the generic renderer.
+	const builtIn = toolName === "bash" ? createShellRenderers("$") : undefined;
 	if (!definition) return builtIn;
 	if (!builtIn) return definition;
 	return {

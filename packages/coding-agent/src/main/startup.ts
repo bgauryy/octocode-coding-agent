@@ -61,7 +61,7 @@ export function resolveAppMode(parsed: Args, stdinIsTTY: boolean, stdoutIsTTY: b
 	return "interactive";
 }
 
-export function toPrintOutputMode(appMode: AppMode): Exclude<Mode, "rpc"> {
+export function toPrintOutputMode(appMode: AppMode): Exclude<Mode, "rpc" | "acp"> {
 	return appMode === "json" ? "json" : "text";
 }
 

@@ -69,7 +69,10 @@ it("retains checkpoint and cancellation semantics after an all-occurrence commit
 		if (to === f.file) controller.abort();
 	});
 	try {
-		await expect(f.edit(true, controller.signal)).rejects.toThrow(/abort[\s\S]*changed/i);
+		const result = await f.edit(true, controller.signal);
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toMatch(/abort[\s\S]*changed/i);
+		expect(result.details.receipts).toHaveLength(1);
 		expect(fs.readFileSync(f.file, "utf8")).toBe("B\nB\n");
 		expect(f.checkpoints.list()).toHaveLength(1);
 	} finally {

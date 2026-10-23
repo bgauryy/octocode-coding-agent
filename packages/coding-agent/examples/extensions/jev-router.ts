@@ -28,7 +28,7 @@ const TERRA = "gpt-5.6-terra";
 const LUNA = "gpt-5.6-luna";
 
 /** Tools whose successful result means implementation has started. */
-const EDIT_TOOLS = new Set(["edit", "write"]);
+const EDIT_TOOLS = new Set(["file", "edit", "write"]);
 
 interface JevState {
 	phase: "planning" | "implementation";

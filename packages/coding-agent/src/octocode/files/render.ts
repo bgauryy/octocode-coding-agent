@@ -17,6 +17,7 @@ import {
 } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { contentText, isRecord } from "../shared/util.ts";
+import type { VerificationReceipt } from "./bash/verification.ts";
 
 /**
  * How the files tools draw: `Bash(cmd)` / `⎿  exit 0 · 12 lines` and the last lines, `File(edit a.ts)` /
@@ -25,6 +26,7 @@ import { contentText, isRecord } from "../shared/util.ts";
 
 /** What a bash result keeps: Octocode's truncation fields and the background job. */
 export interface BashDetails {
+	verification?: VerificationReceipt;
 	truncation?: NonNullable<BashToolDetails>["truncation"];
 	fullOutputPath?: string;
 	job?: string;
@@ -204,6 +206,20 @@ export interface QueryOutcome {
 	diff?: string;
 	/** An applied edit: the change in the file's line count. */
 	lineDelta?: number;
+	/** A filesystem commit, even if a later step made this query fail. */
+	receipt?: MutationReceipt;
+}
+
+export interface MutationReceipt {
+	canonicalPath: string;
+	toolCallId: string;
+	operation: "edit" | "write" | "delete";
+	digest: string | null;
+	/** Digest of bytes this query checked before committing, null for new files. */
+	beforeDigest: string | null;
+	sessionId: string;
+	epoch: string;
+	revision: number;
 }
 
 /** Diff lines shown per file before expanding. */

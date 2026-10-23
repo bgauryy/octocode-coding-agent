@@ -1,4 +1,4 @@
-import { fileChanges } from "../shared/file-input.ts";
+import { mutatedPaths } from "../shared/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
 import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
@@ -215,21 +215,7 @@ export function describeConflicts(conflicts: Array<{ path: string; heldBy: Lease
 	);
 }
 
-const PATH_KEYS = ["path", "filePath"] as const;
-
-/** Files a `file`, `edit` or `write` call is about to change. */
-export function mutatedPaths(toolName: string, input: unknown): string[] {
-	if (typeof input !== "object" || input === null) return [];
-	const record = input as Record<string, unknown>;
-	if (toolName === "edit" || toolName === "write")
-		return PATH_KEYS.flatMap((key) => (typeof record[key] === "string" ? [record[key]] : []));
-	if (toolName !== "file") return [];
-	return fileChanges(record).flatMap((query) =>
-		typeof query === "object" && query !== null && typeof query.path === "string"
-			? [(query as { path: string }).path, ...(typeof query.movePath === "string" ? [query.movePath] : [])]
-			: [],
-	);
-}
+export { mutatedPaths };
 
 /** Whether a lease `kind:key` (see TeamStore.owned) covers the file with comparison key `file`. */
 export function covers(lease: string, file: string): boolean {

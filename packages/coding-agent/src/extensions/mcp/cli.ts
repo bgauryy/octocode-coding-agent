@@ -6,18 +6,18 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME } from "../../config.ts";
-import { projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
+import { globalMcpConfigPath, projectMcpConfigPath, projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
 import { ProjectTrustStore } from "../../core/trust-manager.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
-import { createConnection, errorMessage, HELP_HINT, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { createConnection, HELP_HINT, type McpCommandOptions, parseOptions } from "./cli/shared.ts";
 import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts";
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";
-import { McpOAuthCredentialStore } from "./runtime.ts";
+import { McpOAuthCredentialStore } from "./oauth.ts";
 
 const HELP = `${chalk.bold("Usage:")}
   ${APP_NAME} mcp add <server> [options] -- <command> [args...]
@@ -83,7 +83,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 		return 0;
 	}
 
-	const projectConfig = join(options.cwd, CONFIG_DIR_NAME, "mcp.json");
+	const projectConfig = projectMcpConfigPath(options.cwd);
 	if (command === "add" || command === "remove") {
 		return command === "add"
 			? add(rest, projectConfig, options, log, error)
@@ -159,7 +159,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 					? entry.override!
 					: entry.scope === "project"
 						? entry.source
-						: (loaded.globalConfig ?? join(options.agentDir, "mcp.json"));
+						: (loaded.globalConfig ?? globalMcpConfigPath(options.agentDir));
 			try {
 				updateMcpServerConfig(
 					target,

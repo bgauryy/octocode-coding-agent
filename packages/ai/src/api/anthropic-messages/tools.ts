@@ -76,11 +76,21 @@ export function convertTools(
 				? undefined
 				: resolveJsonSchemaStrictSampling(tool, supportsStrictTools, isAnthropicStrictUnsupportedKeyword);
 		const parameters = getJsonSchemaToolParameters(tool, strict);
-		const schema = parameters as { properties?: unknown; required?: string[] };
+		const schema = parameters as {
+			properties?: unknown;
+			required?: string[];
+			additionalProperties?: unknown;
+			$defs?: unknown;
+			definitions?: unknown;
+		};
+		// `$defs`/`definitions` stay beside `properties`: a `$ref` into them would dangle without them.
 		const legacyInputSchema = {
 			type: "object" as const,
 			properties: schema.properties ?? {},
 			required: schema.required ?? [],
+			...(schema.additionalProperties === undefined ? {} : { additionalProperties: schema.additionalProperties }),
+			...(schema.$defs === undefined ? {} : { $defs: schema.$defs }),
+			...(schema.definitions === undefined ? {} : { definitions: schema.definitions }),
 		};
 		const inputSchema =
 			strict === true

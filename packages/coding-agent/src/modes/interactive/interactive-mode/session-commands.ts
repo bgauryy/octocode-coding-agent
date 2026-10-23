@@ -18,6 +18,7 @@ import { shareSession } from "../session-share.ts";
 import { setRegisteredThemes, theme } from "../theme/theme.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the session slash commands. */
 export type SessionCommandsHost = Pick<
@@ -142,7 +143,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		if (!reloadBoxDismissed) {
 			dismissReloadBox(previousEditor);
 		}
-		host.showError(`Reload failed: ${error instanceof Error ? error.message : String(error)}`);
+		host.showError(`Reload failed: ${errorMessage(error)}`);
 	}
 }
 
@@ -165,9 +166,7 @@ export function maybeSaveImplicitProjectTrustAfterReload(host: SessionCommandsHo
 		host.autoTrustOnReloadCwd = undefined;
 		return true;
 	} catch (error) {
-		host.showWarning(
-			`Could not save project trust after reload: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		host.showWarning(`Could not save project trust after reload: ${errorMessage(error)}`);
 		return false;
 	}
 }
@@ -342,7 +341,7 @@ export async function handleCopyCommand(
 			host.showStatus("Copied last agent message to clipboard");
 		}
 	} catch (error) {
-		host.showError(error instanceof Error ? error.message : String(error));
+		host.showError(errorMessage(error));
 	}
 }
 

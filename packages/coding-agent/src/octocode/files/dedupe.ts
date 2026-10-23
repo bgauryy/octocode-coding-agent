@@ -12,7 +12,7 @@ import { contextMessages, plainText, sessionCleared, toolCallArguments } from ".
  * nothing is lost: the content is in the context above.
  */
 
-/** Tools whose result is the content of a file: Octocode's `read` and Octocode's `localFetch`. */
+/** Tools whose result is the content of a file: Octocode's `localFetch`, and a `read` tool of a resumed transcript or an SDK caller (Octocode itself ships none). */
 const DEDUPED_TOOLS: ReadonlySet<string> = new Set(["read", ...LOCAL_READ_TOOLS]);
 
 /** The note that stands for a repeated result of `toolName` called with `input`. */

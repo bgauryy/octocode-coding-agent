@@ -318,4 +318,10 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * The hook receives the agent abort signal and is responsible for honoring it.
 	 */
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
+
+	/**
+	 * Called when the model calls a tool the request did not declare. Return the error text the model gets instead of
+	 * `Tool <name> not found`, for example how to make the tool available; undefined keeps the default.
+	 */
+	unknownToolMessage?: (toolName: string) => string | undefined;
 }

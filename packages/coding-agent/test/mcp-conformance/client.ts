@@ -15,13 +15,8 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { InMemoryAuthStorageBackend } from "../../src/core/auth-storage.ts";
 import type { McpHttpServerConfig, McpServerEntry } from "../../src/extensions/mcp/config.ts";
-import type { McpSignInPrompt } from "../../src/extensions/mcp/oauth.ts";
-import {
-	createDefaultTransport,
-	McpOAuthCredentialStore,
-	McpServerConnection,
-	signInMcpServer,
-} from "../../src/extensions/mcp/runtime.ts";
+import { McpOAuthCredentialStore, type McpSignInPrompt, signInMcpServer } from "../../src/extensions/mcp/oauth.ts";
+import { createDefaultTransport, McpServerConnection } from "../../src/extensions/mcp/runtime.ts";
 
 /**
  * Sign-ins pi asks the user for are not limited, so a user who keeps approving them would loop

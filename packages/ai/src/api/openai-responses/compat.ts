@@ -1,4 +1,4 @@
-import type { Model, OpenAIResponsesCompat, ProviderHeaders } from "../../types.ts";
+import type { Model, OpenAIResponsesCompat } from "../../types.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
 /**
@@ -12,25 +12,6 @@ export function isChatGPTSignIn(model: Model<"openai-responses">, apiKey: string
 		apiKey !== undefined &&
 		!apiKey.startsWith("sk-")
 	);
-}
-
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-	if (!headers) return false;
-	const expected = name.toLowerCase();
-	for (const [key, value] of Object.entries(headers)) {
-		if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-	}
-	return false;
-}
-
-export function getClientApiKey(
-	provider: string,
-	apiKey: string | undefined,
-	headers: ProviderHeaders | undefined,
-): string {
-	if (apiKey) return apiKey;
-	if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization")) return "unused";
-	throw new Error(`No API key for provider: ${provider}`);
 }
 
 function detectSessionAffinityFormat(model: Pick<Model<"openai-responses">, "provider" | "baseUrl">) {

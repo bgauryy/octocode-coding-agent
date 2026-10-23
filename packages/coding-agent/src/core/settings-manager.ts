@@ -78,7 +78,7 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		globalLoadError: Error | null = null,
 		projectLoadError: Error | null = null,
 		initialErrors: SettingsError[] = [],
-		projectTrusted = true,
+		projectTrusted = false,
 		settingsPaths: SettingsPaths = {},
 	) {
 		const state: SettingsState = {
@@ -132,7 +132,8 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		options: SettingsManagerCreateOptions,
 		settingsPaths: SettingsPaths = {},
 	): SettingsManager {
-		const projectTrusted = options.projectTrusted ?? true;
+		// Untrusted unless the caller established trust: project settings and project resources must not load by default.
+		const projectTrusted = options.projectTrusted ?? false;
 		const globalLoad = tryLoadSettingsFromStorage(storage, "global");
 		const projectLoad = tryLoadSettingsFromStorage(storage, "project", projectTrusted);
 		const initialErrors: SettingsError[] = [];

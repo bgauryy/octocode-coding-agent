@@ -42,8 +42,6 @@ octocode --extension ./hello.ts
 
 Octocode uses `jiti`, so local TypeScript extensions do not need a separate compilation step. Use [Octocode packages](packages.md) for distributed extensions and dependencies.
 
-Plugin or skill markers (`plugin.json`, `.claude-plugin`, `.codex-plugin`, `SKILL.md`) prevent implicit directory entry-point discovery. A hybrid package can explicitly declare native extensions in its `package.json`; a directly supplied module is still a native extension. This keeps plugin/skill discovery separate from executable extension loading.
-
 ## Command names and aliases
 
 Register one canonical command with an optional `aliases` array, as in the example above: `/hello` and `/hi` run the same handler. Arguments follow the command name and are passed to the handler. Command discovery and the terminal picker show the canonical name with its aliases.
@@ -73,6 +71,19 @@ The list follows effective resource loading and overrides. Captured explicit-sel
 ## Add it to Octocode
 
 Place the extension in your user or project extensions directory. Octocode loads direct TypeScript or JavaScript files and subdirectories containing an `index.ts` or `index.js` entry point.
+
+<a id="extension-directory-discovery"></a>
+
+### Extension directory discovery
+
+The CLI resource loader and the SDK function `discoverAndLoadExtensions()` apply the same rules to an extensions directory (`discoverExtensionsInDir()` in the SDK source):
+
+1. If the directory itself has a `package.json` whose `octocode` (or legacy `pi`) manifest lists `extensions`, or an `index.ts`/`index.js`, those entries are the whole result.
+2. Otherwise each top-level `*.ts` or `*.js` file loads, and each subdirectory loads through rule 1 applied to that subdirectory. Discovery does not recurse further.
+3. Dot-prefixed files and directories, `node_modules`, and paths matched by `.gitignore`, `.ignore` or `.fdignore` in the directory are skipped.
+4. **Plugin and skill markers** (`plugin.json`, `.claude-plugin`, `.codex-plugin`, `SKILL.md`) prevent implicit entry-point discovery in a directory. A hybrid package can declare native extensions in its `package.json`; a directly supplied module (`--extension ./file.ts`) is still a native extension. This keeps plugin and skill discovery separate from executable extension loading.
+
+Earlier SDK versions loaded dot-prefixed entries and ignored folders; list such a path explicitly if you need it.
 
 Use a single file for a small extension and a directory for a multi-file implementation. Put npm dependencies in a nearby `package.json`. See Configuration for conventional locations and Settings for additional paths.
 
@@ -406,19 +417,18 @@ Use `ctx.shutdown()` to request an orderly process shutdown.
 
 ## Examples and reference
 
-The checked [extension examples](../examples/extensions/) are the implementation reference. Start with the smallest example matching the behavior you need:
+The checked [extension examples](../examples/extensions/README.md) are the implementation reference; the README lists each one with the test that runs it. Start with the smallest example matching the behavior you need:
 
 | Goal | Start with | Why |
 |---|---|---|
-| Confirm or block tool calls | `permission-gate.ts` | Combines `tool_call`, mode-aware UI, and fail-closed behavior. |
-| Modify prompt sections for a run | `prompt-customizer.ts` | Uses structured prompt options instead of replacing the complete prompt. |
-| Keep branch-aware tool state | `todo.ts` | Reconstructs state from persisted entries and renders it in the TUI. |
-| Register tools after startup | `dynamic-tools.ts` | Shares registration logic between lifecycle and command handlers. |
-| Run cancellable model work from a command | `qna.ts` | Combines nested model calls, cancellation, and custom UI. |
-| Replace the main editor | `modal-editor.ts` | Extends `CustomEditor` while preserving application controls. |
-| Run finalization at shutdown | `auto-commit-on-exit.ts` | Uses the session shutdown hook for finalization work. |
-| Route built-in tools to another machine | `ssh.ts` | Reuses tool operation interfaces instead of recreating tool contracts. |
-| Add OAuth and provider-specific streaming | `custom-provider-gitlab-duo/` | Shows a complete provider integration while delegating supported protocols. |
+| Change how a tool call is displayed | `built-in-tool-renderer.ts`, `minimal-mode.ts` | Re-register a tool with custom `renderCall`/`renderResult` while delegating execution. |
+| Transform or gate user input | `input-transform-streaming.ts` | Uses `input` handlers and `streamingBehavior` to avoid slow work during steering. |
+| Request compaction from an extension | `trigger-compact.ts` | Calls `ctx.compact()` from a token threshold. |
+| React to turns with follow-up work | `git-merge-and-resolve.ts` | Runs after each turn and feeds results back to the agent. |
+| Register a virtual model | `jev-router.ts` | Routes between models and keeps phase state; see [virtual models](virtual-models.md). |
+| Restrict tools and track progress | `plan-mode/` | Selects tools, filters `bash`, and shows a progress widget. |
+| Delegate work to child processes | `subagent/` | Fixture only: native sessions provide the `agent` tool. |
+| Ship an extension with npm dependencies | `with-deps/` | Resolves modules from the extension's own `node_modules`. |
 
 Use [Custom Providers](custom-provider.md) for model-service integrations, [Terminal UI](tui.md) for custom components, and [Octocode Packages](packages.md) to install or distribute extensions with other resources. Use the exported declarations for exact signatures, payloads, and result schemas; this guide focuses on lifecycle choices, composition, and durable implementation patterns.
 

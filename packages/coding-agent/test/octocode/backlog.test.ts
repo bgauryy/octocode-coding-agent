@@ -474,7 +474,7 @@ describe("backlog tool", () => {
 		expect(sub.tool.parameters.properties.op.enum).toEqual(["list", "get", "add", "update"]);
 		expect(sub.tool.parameters.properties.state.enum).toEqual(["ongoing", "done"]);
 		expect(sub.tool.description).toContain("its parent has claimed");
-		expect(sub.tool.parameters.properties.op.description).toContain("propose an item");
+		expect(sub.tool.parameters.properties.op.description).toContain("add: propose");
 		expect(sub.tool.parameters.properties.op.description).not.toContain("remove");
 		expect(sub.tool.promptGuidelines.join(" ")).not.toContain("set it ongoing");
 		expect(await sub.text({ op: "list" })).toBe("B1 [ongoing p2] delegated (parent)\nB2 [todo p2] unrelated");
@@ -492,6 +492,14 @@ describe("backlog tool", () => {
 		await expect(
 			sub.call({ op: "add", why: "Required work", title: "with note", goal: "it works", note: "details" }),
 		).rejects.toThrow("A subagent adds without a note: put the details in body.");
+		// The child schema omits hierarchy, dependencies and links; the tool refuses them with a message naming each.
+		expect(Object.keys(sub.tool.parameters.properties)).not.toEqual(
+			expect.arrayContaining(["parentId", "dependsOn", "links", "reason"]),
+		);
+		expect(sub.tool.parameters.properties).toHaveProperty("completion");
+		await expect(
+			sub.call({ op: "add", title: "linked", goal: "it works", parentId: "B1", links: [], dependsOn: ["B1"] }),
+		).rejects.toThrow("A subagent proposal cannot set parentId, dependsOn, links:");
 		await expect(sub.call({ op: "update", id: "B2", state: "ongoing" })).rejects.toThrow(/not claimed by your parent/);
 		await expect(sub.call({ op: "update", id: "B1", title: "renamed" })).rejects.toThrow(/only the state and notes/);
 		await expect(sub.call({ op: "update", id: "B1", state: "todo" })).rejects.toThrow(/sets only ongoing or done/);
@@ -506,6 +514,33 @@ describe("backlog tool", () => {
 			}),
 		).toBe("Updated B1 [done p2] delegated");
 		await expect(sub.call({ op: "remove", id: "B3" })).rejects.toThrow(/subagent cannot remove/);
+	});
+
+	it("keeps strict link validation in the store behind the compact tool schema", async () => {
+		const t = setup();
+		const target = { resource: "files", repositoryKey: "repo", path: "src/a.ts" };
+		await t.text({ op: "add", title: "linked", goal: "it works", links: [{ relation: "evidence", target }] });
+		await expect(
+			t.call({
+				op: "add",
+				title: "bad",
+				goal: "it works",
+				links: [{ relation: "evidence", target: { resource: "files" } }],
+			}),
+		).rejects.toThrow(/Invalid backlog entity fields at \/links\/0\/target/);
+		await expect(
+			t.call({
+				op: "update",
+				id: "B1",
+				note: "x",
+				completion: {
+					summary: "s",
+					files: [],
+					verification: { status: "passed", summary: "v", extra: 1 },
+					operationKey: "k",
+				},
+			}),
+		).rejects.toThrow(/Invalid backlog entity fields at \/completion\/verification/);
 	});
 
 	it("links follow-ups with from: shows the origin and derived items in get, filters list, and lets a subagent link only on add", async () => {

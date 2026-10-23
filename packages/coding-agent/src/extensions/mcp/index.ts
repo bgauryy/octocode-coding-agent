@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionFactory } from "../../core/extensions/types
 import { registerMcpCommand } from "./command.ts";
 import { registerSessionEvents } from "./events.ts";
 import { registerMcpManageTool } from "./manage-tool-wiring.ts";
+import { registerInheritedMcpServers } from "./session-servers.ts";
 import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
 import { createMcpToolRenderers } from "./tools.ts";
 
@@ -23,6 +24,7 @@ export type { McpExtensionOptions } from "./state.ts";
 export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
 	return (pi: ExtensionAPI) => {
 		const state = new McpExtensionState(pi, options);
+		registerInheritedMcpServers(pi);
 
 		// A resumed session renders calls to MCP tools before their server connected, if it ever does.
 		pi.registerToolRenderer((toolName, next) => {

@@ -3,14 +3,17 @@
 import { isDeepStrictEqual } from "node:util";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionContext } from "../../core/extensions/types.ts";
-import { type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
+import { getMcpToolExposure, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
 import { LIST_MCP_RESOURCE_TEMPLATES_TOOL, LIST_MCP_RESOURCES_TOOL, READ_MCP_RESOURCE_TOOL } from "./resources.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
-import { MCP_SERVERS_SECTION, reachesServer, renderServersSection } from "./section.ts";
-import { errorMessage, isEnabled, type McpServer } from "./server.ts";
+import { mcpNamespace } from "../../core/mcp-servers.ts";
+import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
+import { MCP_SERVERS_SECTION, type McpServerListing, reachesServer, renderServersSection } from "./section.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { ensureDiscoveryActive, hideTools, registerTools } from "./tool-registry.ts";
 
@@ -20,6 +23,52 @@ const RESOURCE_TOOL_NAMES: ReadonlySet<string> = new Set([
 	READ_MCP_RESOURCE_TOOL,
 ]);
 
+/**
+ * The servers as the `mcp_servers` section lists them: this extension's servers with their registered tools once
+ * connected, and the namespaces of MCP tools another part of Octocode registers. (The section leaves out the `octocode`
+ * server, which the `octocode` section indexes.) Deferred tools count only while `tool_search` is active; without it
+ * nothing can load them.
+ */
+export function serverListings(state: McpExtensionState): McpServerListing[] {
+	const { pi } = state;
+	const discovery = pi.getActiveTools().includes(TOOL_SEARCH_TOOL_NAME);
+	const all = pi.getAllTools();
+	const toolsOf = (names: Iterable<string>) => {
+		const named = new Set(names);
+		const tools = all.filter((tool) => named.has(tool.name));
+		return {
+			deferred: discovery ? tools.filter((tool) => tool.exposure === "deferred").map((tool) => tool.name) : [],
+			direct: tools.filter((tool) => tool.exposure === "direct").length,
+		};
+	};
+	const listings: McpServerListing[] = state.servers.map((server) => {
+		const entry = {
+			...server.entry,
+			config: { ...server.entry.config, exposure: state.effectiveExposure(server.entry) },
+		};
+		const registered = server.connection?.state === "connected" ? state.serverTools.get(server.entry.name) : undefined;
+		return { ...server, entry, ...(registered ? { tools: toolsOf(registered) } : {}) };
+	});
+	const owned = new Set(state.servers.map((server) => mcpNamespace(server.entry.name)));
+	const others = new Map<string, { instructions?: string; names: string[] }>();
+	for (const tool of all) {
+		const namespace = tool.namespace;
+		if (!namespace?.name.startsWith("mcp__") || owned.has(namespace.name)) continue;
+		const group = others.get(namespace.name) ?? { instructions: namespace.instructions, names: [] };
+		group.names.push(tool.name);
+		others.set(namespace.name, group);
+	}
+	for (const [namespace, group] of others) {
+		const name = namespace.slice("mcp__".length);
+		listings.push({
+			entry: { name, config: {}, source: "automatic" } as McpServerListing["entry"],
+			...(group.instructions ? { connection: { instructions: group.instructions } } : {}),
+			tools: toolsOf(group.names),
+		});
+	}
+	return listings;
+}
+
 function defaultLoadConfig(ctx: ExtensionContext): LoadedMcpConfig {
 	return loadMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
 }
@@ -28,6 +77,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	const { pi, options } = state;
 
 	pi.on("session_start", (_event, ctx) => {
+		state.resetAutomaticExposure();
 		state.selectedModel = ctx.model;
 		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx);
 		state.configErrors = loaded.errors;
@@ -51,6 +101,18 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			const connection = server.connection;
 			if (!connection || connection.state !== "connected")
 				throw new Error(`MCP server "${request.server}" is not connected`);
+			// The model path's checks: a hidden or no longer offered tool is not callable, and the host authorizes
+			// the registered tool name (its permission gate) before the call reaches the server.
+			const owner = `${server.entry.name}\0${request.tool}`;
+			const toolName = [...state.toolOwners].find(([, value]) => value === owner)?.[0];
+			if (
+				!toolName ||
+				getMcpToolExposure(server.entry.config, request.tool, server.entry.name) === "hidden" ||
+				!connection.tools.some((offered) => offered.name === request.tool)
+			)
+				throw new Error(`MCP tool "${request.server}/${request.tool}" is not available`);
+			await request.authorize({ toolName, input: request.input });
+			callSignal.throwIfAborted();
 			const client = await connection.getClient();
 			callSignal.throwIfAborted();
 			return client.callTool(request.tool, request.input, { signal: callSignal, timeoutMs: connection.timeoutMs });
@@ -61,7 +123,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		state.servers = [...loaded.servers.map((entry) => ({ entry })), ...registered.servers];
 		state.emitChange();
 		// Tool search is activated from the config: the first prompt does not wait for
-		// servers whose tools are not declared to the model, and scripts or searches wait for them.
+		// servers whose tools are not declared to the model, and a tool_search waits for them.
 		ensureDiscoveryActive(state, ctx);
 		const enabled = state.servers.filter(isEnabled);
 		if (enabled.length === 0) {
@@ -93,7 +155,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	// Every prompt lists the servers in the `mcp_servers` section as they are when it starts. Pi
 	// appends the section to the conversation when it changed, for example after a server connected.
 	// The first prompt waits for servers whose tools are declared to the model (`waitForDirectServers`);
-	// other servers are waited for when a script or search needs them (below).
+	// other servers are waited for when a tool_search needs them (below).
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.selectedModel = ctx.model;
 		if (options.prepareLaunch && !ctx.signal?.aborted && !state.session.signal.aborted) {
@@ -113,15 +175,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			if (connection.state === "connected") registerTools(state, connection);
 		ensureDiscoveryActive(state, ctx);
 		const { sections } = event.systemPromptOptions;
-		const section = renderServersSection(
-			state.servers.map((server) => ({
-				...server,
-				entry: {
-					...server.entry,
-					config: { ...server.entry.config, exposure: state.effectiveExposure(server.entry) },
-				},
-			})),
-		);
+		const section = renderServersSection(serverListings(state));
 		if (section) sections[MCP_SERVERS_SECTION] = section;
 		else delete sections[MCP_SERVERS_SECTION];
 	});

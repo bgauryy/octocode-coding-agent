@@ -119,6 +119,8 @@ The mode can be set globally via `toolExecution` in the agent config, or per-too
 
 The `beforeToolCall` hook runs after `tool_execution_start` and validated argument parsing. It can block execution and attach `terminate: true` to the blocked result. The `afterToolCall` hook runs after tool execution finishes and before `tool_execution_end` and final tool result message events are emitted.
 
+A call to a tool the request did not declare never reaches the hooks; it gets the error `Tool <name> not found`. Set `unknownToolMessage(name)` (an `Agent` field, constructor option or loop config) to return a different error text, for example how to load the tool; return `undefined` to keep the default.
+
 Tools, blocked `beforeToolCall` results, and `afterToolCall` overrides can return `terminate: true` to hint that the automatic follow-up LLM call should be skipped. The loop only stops early when every finalized tool result in that batch sets `terminate: true`. Mixed batches continue normally.
 
 When you use the `Agent` class, assistant `message_end` processing is treated as a barrier before tool preflight begins. That means `beforeToolCall` sees agent state that already includes the assistant message that requested the tool call.
@@ -133,7 +135,7 @@ agent.prepareRequest = async ({ context }) => ({
 });
 ```
 
-`prepareRequest` does not poll queues. Steering queued while it runs waits for the next normal steering poll.
+`prepareRequest` does not poll queues. Steering queued while it runs waits for the next normal steering poll. A hook that `AgentSession` wraps can run twice for one request, when a virtual model's routing triggers an automatic compaction between the two; keep it free of side effects that cannot repeat.
 
 `finishTurn` runs after the assistant and all tool results are finalized, but before `turn_end`. It runs for normal, error, and aborted responses:
 

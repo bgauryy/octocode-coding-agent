@@ -1,3 +1,4 @@
+import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { BedrockRuntimeClient, ConversationRole, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -49,23 +50,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 	const normalizedContext = collapseSystemMessages(context);
 
 	(async () => {
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: "bedrock-converse-stream",
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "pending",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createPendingAssistantMessage(model, "bedrock-converse-stream");
 
 		const blocks = output.content as Block[];
 

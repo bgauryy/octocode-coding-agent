@@ -1,3 +1,28 @@
+/** Evidence about one explicitly requested check, not an assertion that the workspace is correct. */
+export interface VerificationReceipt {
+	command: string;
+	cwd: string;
+	startedAt: number;
+	completedAt?: number;
+	state: "running" | "finished" | "failed" | "stopped";
+	exitCode?: number | null;
+	signal?: NodeJS.Signals | null;
+	elapsedSeconds?: number;
+	output: {
+		complete: boolean;
+		log?: string;
+		logAvailable?: boolean;
+		archiveAvailable?: boolean;
+		tailIncomplete?: boolean;
+		rotations?: number;
+	};
+	sessionId: string;
+	mutationEpoch: string;
+	revisionAtLaunch: number;
+	revisionAtCompletion?: number;
+	stale: boolean;
+}
+
 /** A background job and how it ended. */
 
 export interface BashJob {
@@ -8,6 +33,7 @@ export interface BashJob {
 	pid: number;
 	log: string;
 	startedAt: number;
+	verification?: VerificationReceipt;
 	/** Seconds after which the job is stopped; unset: it runs until it exits, is stopped, or the session ends. */
 	timeout?: number;
 	/** Why the extension stopped it, when it did. */

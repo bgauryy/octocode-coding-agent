@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createReadTool } from "../src/core/tools/read.ts";
+import { createReadTool } from "./fixtures/read-tool.ts";
 import type { InlineExtension } from "../src/index.ts";
 import { createHarness } from "./suite/harness.ts";
 

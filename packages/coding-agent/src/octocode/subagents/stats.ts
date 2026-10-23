@@ -14,9 +14,11 @@ interface ProfileStats {
 	foreground: number;
 	background: number;
 	outcomes: Record<StatsOutcome, number>;
-	/** Runs that ended on their own (not failed, not stopped) and named an outcome, of those that ended on their own. */
+	/** Runs that ended on their own (not failed, not stopped) and named an outcome as their first word, of those that ended on their own. */
 	ended: number;
 	named: number;
+	/** Runs whose outcome came from a labelled last line (`outcome: done`) instead of the first word. */
+	trailing: number;
 	tokens: number;
 	cost: number;
 	/** Some run's usage came from a model without pricing (it is missing from `cost`). */
@@ -39,6 +41,7 @@ const emptyStats = (profile: string): ProfileStats => ({
 	outcomes: { done: 0, partial: 0, blocked: 0, failed: 0, unknown: 0 },
 	ended: 0,
 	named: 0,
+	trailing: 0,
 	tokens: 0,
 	cost: 0,
 	unpriced: false,
@@ -84,10 +87,12 @@ function tokensOf(run: Run): number {
 const costOf = (run: Run): number =>
 	isRecord(run.usage?.cost) ? num(run.usage.cost.total) : run.usage ? 0 : num(run.details.cost);
 
-function outcomeOf(details: Record<string, unknown>): { outcome: StatsOutcome; named: boolean } {
+/** A run's outcome; `named`: stated as the first word (a run recorded before sources were kept counts as first). */
+function outcomeOf(details: Record<string, unknown>): { outcome: StatsOutcome; named: boolean; trailing: boolean } {
 	const word = REPORT_STATUSES.find((status) => status === details.outcome);
-	if (word) return { outcome: word, named: true };
-	return { outcome: details.status === "failed" ? "failed" : "unknown", named: false };
+	const trailing = Boolean(word) && details.outcomeSource === "last";
+	if (word) return { outcome: word, named: !trailing, trailing };
+	return { outcome: details.status === "failed" ? "failed" : "unknown", named: false, trailing: false };
 }
 
 function compactionsOf(details: Record<string, unknown>): number {
@@ -115,11 +120,12 @@ export function agentStats(entries: readonly unknown[]): ProfileStats[] {
 		stats.runs++;
 		if (run.foreground) stats.foreground++;
 		else stats.background++;
-		const { outcome, named } = outcomeOf(details);
+		const { outcome, named, trailing } = outcomeOf(details);
 		stats.outcomes[outcome]++;
 		if (details.status === "done") {
 			stats.ended++;
 			if (named) stats.named++;
+			if (trailing) stats.trailing++;
 		}
 		stats.tokens += tokensOf(run);
 		stats.cost += costOf(run);
@@ -151,7 +157,7 @@ function describe(stats: ProfileStats): string[] {
 	const cost = formatCost(stats) || (stats.runs > 0 && !stats.unpriced ? "≈$0" : "cost n/a");
 	return [
 		`${stats.profile} — ${plural(stats.runs, "run")} (${split})`,
-		`  outcomes: done ${outcomes.done} · partial ${outcomes.partial} · blocked ${outcomes.blocked} · failed ${outcomes.failed} · unknown ${outcomes.unknown} · outcome word ${compliance}`,
+		`  outcomes: done ${outcomes.done} · partial ${outcomes.partial} · blocked ${outcomes.blocked} · failed ${outcomes.failed} · unknown ${outcomes.unknown} · outcome word ${compliance}${stats.trailing ? ` · trailing outcome ${stats.trailing}` : ""}`,
 		`  tokens: ${formatTokens(stats.tokens)} total · ${formatTokens(Math.round(stats.tokens / stats.runs))} avg${cold}`,
 		`  cost ${cost} · ${plural(stats.asks, "ask")} · ${plural(stats.startupFailures, "startup failure")} · ${plural(stats.compactions, "compaction")}`,
 	];

@@ -20,15 +20,46 @@ const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_L
 /** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
 const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
 
-/**
- * The outcome word a report starts with, or undefined when it does not start with one (an unknown outcome, never a
- * failure). Case and light markup around the word (`**Blocked**:`, `done.`) do not matter, and one `Report:`,
- * `Status:` or `Outcome:` label may come first (`**Report: partial.**`).
- */
-export function reportStatus(text: string | undefined): ReportStatus | undefined {
-	const first = (text ?? "").trimStart().replace(OUTCOME_LABEL, "").split(/\s/, 1)[0] ?? "";
-	const word = first.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();
+const statusWord = (token: string): ReportStatus | undefined => {
+	const word = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();
 	return REPORT_STATUSES.find((status) => status === word);
+};
+
+/**
+ * `Done with the audit, but blocked by X`: an outcome word that is plain prose (no punctuation after it) and whose line
+ * names another outcome. Neither reading is safe, so the report names none (unknown, never a failure).
+ */
+function contradicted(token: string, rest: string): boolean {
+	if (/[^\p{L}]$/u.test(token) || !/^[ \t]*[\p{L}\p{N}]/u.test(rest)) return false;
+	const line = rest.split("\n", 1)[0] ?? "";
+	return line.split(/[^\p{L}]+/u).some((word) => statusWord(word) !== undefined);
+}
+
+/** Where a report named its outcome: its first word (the preferred form) or a labelled last line. */
+export type OutcomeSource = "first" | "last";
+
+/**
+ * A report's outcome and where it stands, or undefined when it names none (an unknown outcome, never a failure). The
+ * first word counts first: case and light markup around it (`**Blocked**:`, `done.`) do not matter, and one `Report:`,
+ * `Status:` or `Outcome:` label may come before it (`**Report: partial.**`). Otherwise the last non-empty line counts
+ * when it is exactly such a label and one outcome word (`outcome: done`), so trailing prose never matches.
+ */
+export function reportOutcome(text: string | undefined): { status: ReportStatus; source: OutcomeSource } | undefined {
+	const body = (text ?? "").trim();
+	const lead = body.replace(OUTCOME_LABEL, "");
+	const token = lead.split(/\s/, 1)[0] ?? "";
+	const first = statusWord(token);
+	if (first && !contradicted(token, lead.slice(token.length))) return { status: first, source: "first" };
+	const last = body.split("\n").at(-1)?.trim() ?? "";
+	if (!OUTCOME_LABEL.test(last)) return undefined;
+	const rest = last.replace(OUTCOME_LABEL, "").trim();
+	const status = /\s/.test(rest) ? undefined : statusWord(rest);
+	return status ? { status, source: "last" } : undefined;
+}
+
+/** The outcome a report names (`reportOutcome`), without where it stands. */
+export function reportStatus(text: string | undefined): ReportStatus | undefined {
+	return reportOutcome(text)?.status;
 }
 
 interface ReportHead {
@@ -82,11 +113,15 @@ export class ReportTracker {
 	private sectionStart = 0;
 	private fresh = true;
 	private failure: string | undefined;
-	private outcome: ReportStatus | undefined;
+	private outcome: { status: ReportStatus; source: OutcomeSource } | undefined;
 	private file: string | undefined;
 	private partialFile: string | undefined;
 	private spillFailed = false;
 	private structured: StructuredResultV1 | undefined;
+	/** The notice of the child's own background job that woke it after it reported: the next section is a follow-up. */
+	private job: string | undefined;
+	/** The outcome before the current section: what a follow-up that names none keeps. */
+	private prior: { status: ReportStatus; source: OutcomeSource } | undefined;
 	private readonly resultContract?: ResultContract;
 
 	private readonly scratch?: string;
@@ -95,9 +130,11 @@ export class ReportTracker {
 		this.resultContract = resultContract;
 	}
 
-	incoming(role: unknown): void {
+	/** A message reached the child; `job`: the notice line when it is the child's own background job ending. */
+	incoming(role: unknown, job?: string): void {
 		if (role === "user" || role === "custom") {
 			this.fresh = true;
+			this.job = role === "custom" && job && this.sections > 0 ? job : undefined;
 			if (this.resultContract) this.structured = unavailableResult(this.resultContract);
 		}
 	}
@@ -131,9 +168,13 @@ export class ReportTracker {
 			}
 			return;
 		}
-		this.outcome = reportStatus(text);
-		const signature = createHash("sha512").update(text).digest("hex");
 		const append = this.fresh || this.sections === 0;
+		// One task, one report: the answer to the child's own job notice extends the report it already gave, and keeps that
+		// report's outcome unless it names a new one. A new task (a message from the parent) is judged on its own.
+		const followUp = this.job;
+		if (append) this.prior = this.outcome;
+		this.outcome = reportOutcome(text) ?? (followUp ? this.prior : undefined);
+		const signature = createHash("sha512").update(text).digest("hex");
 		if (append && signature === this.signature) {
 			this.fresh = false;
 			return;
@@ -143,7 +184,7 @@ export class ReportTracker {
 			this.sectionStart = this.full.bytes;
 			this.sections++;
 		}
-		const section = `${this.sections > 1 ? SEPARATOR : ""}${text}`;
+		const section = `${this.sections > 1 ? SEPARATOR : ""}${followUp ? `Follow-up to the report above (${followUp}):\n` : ""}${text}`;
 		const whole = appendHead(this.before, section);
 		const capped = headPreview(whole);
 		try {
@@ -180,6 +221,7 @@ export class ReportTracker {
 		pointer?: string;
 		error?: string;
 		outcome?: ReportStatus;
+		outcomeSource?: OutcomeSource;
 		answered: boolean;
 		structured?: StructuredResultV1;
 	} {
@@ -202,7 +244,7 @@ export class ReportTracker {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,
 			body,
 			...(pointer ? { pointer } : {}),
-			...(this.outcome ? { outcome: this.outcome } : {}),
+			...(this.outcome ? { outcome: this.outcome.status, outcomeSource: this.outcome.source } : {}),
 			...(this.failure ? { error: this.failure } : {}),
 			...(this.resultContract ? { structured: this.structured ?? unavailableResult(this.resultContract) } : {}),
 			answered: true,

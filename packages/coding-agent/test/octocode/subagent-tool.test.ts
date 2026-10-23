@@ -408,7 +408,8 @@ describe("agent tool with a scripted pi child", () => {
 		expect(limited.content[0].text).toContain("Model output limit reached; the report is incomplete");
 		expect(limited.content[0].text).toContain("Partial answer:\nunfinished findings");
 		const silent = await s.run({ task: "silent run" });
-		expect(silent.content[0].text).toBe("(subagent returned no text)");
+		expect(silent).toMatchObject({ isError: true, details: { status: "failed", outcome: "failed" } });
+		expect(silent.content[0].text).toMatch(/failed: Subagent ended without a final answer/);
 	});
 
 	it("passes the browser mode to each child without changing the shared profile or role instructions", async () => {
@@ -592,6 +593,26 @@ describe("agent tool with a scripted pi child", () => {
 		});
 		expect(report.details).not.toHaveProperty("firstTurnTokens");
 		s.sent.length = 0;
+	});
+
+	it("still tells the parent when building its background report throws twice", async () => {
+		const add = vi.spyOn(ReportQueue.prototype, "add");
+		add.mockImplementationOnce(() => {
+			throw new Error("report path broke");
+		});
+		add.mockImplementationOnce(() => {
+			throw new Error("stop report broke too");
+		});
+		try {
+			await s.run({ task: "report from the background", background: true });
+			await vi.waitFor(() => expect(add).toHaveBeenCalledTimes(3), { timeout: 10_000 });
+			const fallback = add.mock.calls[2][0];
+			expect(fallback.content).toContain("its report could not be built: stop report broke too");
+			expect(fallback.details).toMatchObject({ status: "failed", outcome: "failed" });
+			expect(fallback.wake).toBe(true);
+		} finally {
+			add.mockRestore();
+		}
 	});
 
 	it("runs in the background, delivers the answer as a message, and /agents kill stops one", async () => {
@@ -837,6 +858,21 @@ describe("agent tool with a scripted pi child", () => {
 });
 
 describe("isolated subagents and /agents merge", () => {
+	it("requires isolation for a working-copy snapshot and leaves a dirty parent untouched", async () => {
+		const dir = repo();
+		const s = setup(dir);
+		await expect(s.run({ task: "report quickly", workingCopy: true })).rejects.toThrow(
+			"workingCopy requires isolate: true",
+		);
+		fs.writeFileSync(path.join(dir, "parent.txt"), "dirty parent\n");
+		const result = await s.run({ task: "edit a file", isolate: true, workingCopy: true });
+		const id = result.details.id as string;
+		expect(result.content[0].text).toContain(`/agents merge ${id}`);
+		expect(fs.readFileSync(path.join(dir, "parent.txt"), "utf8")).toBe("dirty parent\n");
+		expect(fs.existsSync(path.join(dir, "child.txt"))).toBe(false);
+		expect(git(dir, "diff", "--name-only", "HEAD", `refs/octocode/pi/${id}`)).toBe("child.txt");
+	}, 30_000);
+
 	it("lands the child's edits on its ref and merges them with /agents merge", async () => {
 		const dir = repo();
 		const s = setup(dir);

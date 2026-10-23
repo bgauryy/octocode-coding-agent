@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { withFileMutationQueue } from "../../src/core/tools/index.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
@@ -46,9 +47,13 @@ describe("file cancellation around filesystem mutations", () => {
 							? { edits: [{ oldText: "original", newText: "changed" }] }
 							: {}),
 				};
-				await expect(tool.execute("cleanup-failure", { queries: [query] }, undefined, undefined, ctx)).rejects.toThrow(
-					/file was changed/i,
-				);
+				const revision = currentMutationRevision(ctx.sessionManager.getSessionId());
+				const result = await tool.execute("cleanup-failure", { queries: [query] }, undefined, undefined, ctx);
+				expect(result.isError).toBe(true);
+				expect(result.content[0].text).toMatch(/file was changed/i);
+				expect(result.details.receipts).toMatchObject([
+					{ canonicalPath: file, operation: type, toolCallId: "cleanup-failure", revision: revision + 1 },
+				]);
 				expect(checkpoints.list()).toHaveLength(1);
 				if (type === "delete") expect(fs.existsSync(file)).toBe(false);
 				else {
@@ -107,9 +112,10 @@ describe("file cancellation around filesystem mutations", () => {
 					reasoning: "replace it",
 					...(type === "write" ? { content: "changed" } : { edits: [{ oldText: "original", newText: "changed" }] }),
 				};
-				await expect(
-					tool.execute("cancel-write", { queries: [query] }, controller.signal, undefined, ctx),
-				).rejects.toThrow(/abort[\s\S]*The file was changed/i);
+				const result = await tool.execute("cancel-write", { queries: [query] }, controller.signal, undefined, ctx);
+				expect(result.isError).toBe(true);
+				expect(result.content[0].text).toMatch(/abort[\s\S]*The file was changed/i);
+				expect(result.details.receipts).toHaveLength(1);
 				expect(fs.readFileSync(file, "utf8")).toBe("changed");
 				expect(checkpoints.list()).toHaveLength(1);
 				expect(guard.check(file, "edit", file)).toBeUndefined();

@@ -58,7 +58,7 @@ export default function (octocode: ExtensionAPI) {
 - `contextWindow` and `maxTokens` are shown before the first response. Unset limits are unknown.
 - `input` lists the input types offered for selection. It defaults to text and images; physical models without image support receive placeholders.
 
-Registration follows the same queuing and reload rules as `octocode.registerProvider()`. Registering the same provider and ID again replaces the virtual model. `octocode.unregisterVirtualModel(provider, id)` removes it; `octocode.unregisterProvider()` does not. SDK code can register one without an extension: `modelRuntime.registerVirtualModel(definition)`.
+Registration follows the same queuing and reload rules as `octocode.registerProvider()`. Registering the same provider and ID again replaces the virtual model. `octocode.unregisterVirtualModel(provider, id)` (deprecated and possibly removed in a future release) removes it; `octocode.unregisterProvider()` does not. SDK code can register one without an extension: `modelRuntime.registerVirtualModel(definition)`.
 
 ## Route requests
 

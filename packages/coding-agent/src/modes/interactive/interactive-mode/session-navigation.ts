@@ -14,6 +14,7 @@ import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts"
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the session navigation selectors. */
 export type SessionNavigationHost = Pick<
@@ -70,7 +71,7 @@ export function showUserMessageSelector(host: SessionNavigationHost): void {
 					host.editor.setText(result.selectedText ?? "");
 					host.showStatus("Forked to new session");
 				} catch (error: unknown) {
-					host.showError(error instanceof Error ? error.message : String(error));
+					host.showError(errorMessage(error));
 				}
 			},
 			() => {
@@ -100,7 +101,7 @@ export async function handleCloneCommand(host: SessionNavigationHost): Promise<v
 		host.editor.setText("");
 		host.showStatus("Cloned to new session");
 	} catch (error: unknown) {
-		host.showError(error instanceof Error ? error.message : String(error));
+		host.showError(errorMessage(error));
 	}
 }
 
@@ -218,7 +219,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 					host.showStatus("Navigated to selected point");
 					void host.flushCompactionQueue({ willRetry: false });
 				} catch (error) {
-					host.showError(error instanceof Error ? error.message : String(error));
+					host.showError(errorMessage(error));
 				} finally {
 					if (showingSummaryIndicator) {
 						host.clearStatusIndicator("branchSummary");
@@ -246,7 +247,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 				await copyToClipboard(text);
 				host.showStatus("Copied selected message to clipboard");
 			} catch (error) {
-				host.showError(error instanceof Error ? error.message : String(error));
+				host.showError(errorMessage(error));
 			}
 		};
 		return { component: selector, focus: selector };

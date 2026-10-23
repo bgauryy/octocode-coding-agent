@@ -25,7 +25,7 @@ describe("configured Octocode skill roots", () => {
 			env: {
 				KEEP: "value",
 				WORKSPACE_ROOT: "/explicit/workspace",
-				ALLOWED_PATHS: `${dir},/native/home,${canonical}`,
+				ALLOWED_PATHS: `${dir},/native/home/agent/sessions,${canonical}`,
 			},
 		});
 		expect(original.config).toEqual({

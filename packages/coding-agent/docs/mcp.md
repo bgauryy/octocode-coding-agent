@@ -1,6 +1,6 @@
 # MCP Servers
 
-Octocode connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio or streamable HTTP and makes their tools and resources available to the model.
+Octocode connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio, streamable HTTP, or legacy SSE and makes their tools and resources available to the model.
 
 ## Quick setup
 
@@ -39,7 +39,7 @@ With the default home, Octocode reads global MCP files in this order, from lowes
 4. `~/.octocode/agent/mcp.json`
 5. `~/.octocode/octocodecode/mcp.json` (the canonical writable file)
 
-An explicit `OCTOCODE_HOME`, `OCTOCODE_CODING_AGENT_DIR`, or custom SDK agent directory isolates configuration: only that agent directory's `mcp.json` is loaded globally. Project configuration is read only after project trust is granted. From lowest to highest priority, it reads `.pi/mcp.json`, `.mcp.json`, `.agents/mcp.json`, and `.octocode/mcp.json` in the session directory. A full transport entry replaces an earlier entry with the same name; credentials from a replaced transport are not merged.
+An explicit `OCTOCODE_HOME`, `OCTOCODE_CODING_AGENT_DIR`, or custom SDK agent directory isolates configuration: only that agent directory's `mcp.json` is loaded globally. Project configuration is read only after project trust is granted, and only while `/trust`'s record of these files' exact content matches: a server added or an entry edited after you trusted the project stays unloaded, and a notice says to run `/trust`. A default SDK `SettingsManager` treats the project as untrusted, so an SDK session loads no project MCP files unless the host passes `projectTrusted: true`. From lowest to highest priority, it reads `.pi/mcp.json`, `.mcp.json`, `.agents/mcp.json`, and `.octocode/mcp.json` in the session directory. A full transport entry replaces an earlier entry with the same name; credentials from a replaced transport are not merged.
 
 All these files use the common `mcpServers` JSON object. Line comments and trailing commas are accepted. `.mcp.json` lets a project share configuration with Claude Code; `.agents/mcp.json` is also accepted by Octocode, but is not an MCP protocol standard. Octocode does not automatically execute server configurations from unrelated desktop or editor profiles. Use the conversion table below for those clients.
 
@@ -75,16 +75,16 @@ The format matches other MCP clients:
 
 Stdio servers use `command`, `args`, `env`, and `cwd`. Relative `cwd` values resolve against the session directory. A leading `~/` in `command`, an argument, or `cwd` names the home directory.
 
-For a local server named `octocode`, native sessions supply workspace and loaded-skill path defaults unless `ALLOWED_PATHS` is explicit in configuration or the process environment. These launch defaults do not rewrite files. See [skill access](skills.md#understand-how-skills-load).
+For a local server named `octocode`, native sessions supply workspace and loaded-skill path defaults unless `ALLOWED_PATHS` is explicit in configuration or the process environment. These launch defaults do not rewrite files. See [skill access](skills.md#understand-how-skills-load). The automatic Octocode server restarts when skills discovered later change the folders it may read (the same folders in another order change nothing), and not while one of its calls runs. If the installed `octocode-mcp` is missing, the automatic server falls back to `npx` only in a trusted project, because `npx` could otherwise start a package from the project's `node_modules`.
 
-HTTP servers use `url`, `headers`, and `oauth` (see [Authenticate with OAuth](#authenticate-with-oauth)). The legacy SSE transport is not supported.
+URL servers use streamable HTTP by default. For an older MCP SSE endpoint, set `"type": "sse"` with the endpoint in `url`; the server advertises its same-origin message endpoint over the event stream. Both URL transports support `headers`, `oauth` (see [Authenticate with OAuth](#authenticate-with-oauth)), and `auth` (see [Use a provider login](#use-a-provider-login)).
 
 Both server types support:
 
 - `timeout`: per-request timeout in seconds (default 60). Progress notifications reset it.
 - `enabled`: defaults to `true`. Set `false` to keep the entry without connecting to it.
 - `exposure` and `toolExposure`: control how tools reach the model (see [Control tool exposure](#control-tool-exposure)).
-- `inheritEnv`: stdio only; defaults to `true`. Set `false` to pass only `env`. Use an absolute command path or supply `PATH` explicitly. This controls environment inheritance, not OS sandboxing.
+- `inheritEnv`: stdio only; defaults to `false`. A stdio server receives only a minimal host environment (HOME, LOGNAME, PATH, SHELL, TERM, USER, the MCP SDK allow-list, with a Windows set on Windows) plus the configured `env` (`$VAR` values still resolve). Set `true` to pass the whole host environment, tokens included. Use an absolute command path or supply `PATH` explicitly. This controls environment inheritance, not OS sandboxing.
 - `description`: what the server offers, in a sentence. It lists the server in the system prompt (see [Control tool exposure](#control-tool-exposure)), tool search ranks the server's tools by it. Without it, the first line of the server instructions is used once the server connects.
 
 Keep personal servers and servers with credentials in the user-level file. Use the project file only for servers the project requires, and only in trusted projects.
@@ -92,10 +92,10 @@ Keep personal servers and servers with credentials in the user-level file. Use t
 ### Configuration rules
 
 - Server names may contain only letters, digits, `_`, and `-`. Tools are named `mcp__<server>__<tool>`, with every character other than letters, digits, and `_` replaced by `_`; tools of a server whose names then collide all get a hash suffix. Server names that differ only in `-` and `_` count as the same server. Conflicting names in one file are rejected; later files override earlier aliases, and a `mcp.json` server overrides a registered one.
-- `type` is optional. A `command` selects stdio and a `url` selects streamable HTTP. When present, `type` must be `stdio`, `http`, or `streamable-http`.
-- `sse` is rejected. Servers that document an SSE endpoint often also provide streamable HTTP, commonly at `/mcp` instead of `/sse`.
+- `type` is optional. A `command` selects stdio and a `url` selects streamable HTTP. Set `"type": "sse"` for a legacy SSE URL; `http` and `streamable-http` select streamable HTTP.
 - `command` is one executable and `args` contains its arguments. It is not a shell command string.
 - `env` and `headers` values can use environment variables such as `${GITHUB_TOKEN}`. They can also run a command with `!command`, but the command must make up the whole value, for example `"Authorization": "!echo Bearer $(gh auth token)"`.
+- For an HTTP or SSE server, `"literalHeaders": true` sends the configured header strings verbatim; `${NAME}` and `!command` then remain literal text. This is useful when a host integration has already supplied header values. The default is `false`.
 - Invalid entries are reported and skipped without preventing other servers from connecting.
 
 `octocode mcp add` and `octocode mcp remove` cover common changes from a shell. See MCP commands for their options.
@@ -131,10 +131,10 @@ The `mcp` tool lets the model check and recover the servers of its own session w
 | `list`, `status` | State, tool count and last error of every server, or of `server` |
 | `connect`, `restart` | Start a stopped or failed server, or restart a running one. A second restart of the same server within 10 seconds is refused. |
 | `stop` | Stop `server` for the rest of the session and remove its tools; `connect` starts it again |
-| `add` | Run a new server for this session from `config` (`command`, `args`, `env`, `cwd`, or `url`, `headers`). The user confirms the command or URL first; a session that cannot ask the user refuses. |
+| `add` | Run a new server for this session from `config` (`command`, `args`, `env`, `cwd`, or `url`, `headers`). The user confirms first: the dialog shows the command or URL, the working directory, and the names (never the values) of the environment variables or headers; a session that cannot ask the user refuses. |
 | `remove` | Remove a server that `add` started |
 
-A subagent acts on its own MCP connections, never on its parent's. Servers from configuration files are not removed; the user disables them with `/mcp disable`. The tool belongs to the default tool selection like a built-in tool: `--no-builtin-tools`, a `defaultTools` setting or a `--tools` list without `mcp` leaves it out.
+A subagent acts on its own MCP connections, never on its parent's. A subagent started after a server was added with `add` also runs that server (the user's confirmation covers it): the parent passes the definition through an owner-only temporary file that is removed when the run ends, so it appears in the child's `mcp_servers` section and tools like any other server, and nothing is written to `mcp.json`. A server stopped or removed beforehand is not passed on, and servers added later reach only subagents started after that. Servers from configuration files are not removed; the user disables them with `/mcp disable`. The tool belongs to the default tool selection like a built-in tool: `--no-builtin-tools`, a `defaultTools` setting or a `--tools` list without `mcp` leaves it out.
 
 ### Diagnose connection problems
 
@@ -142,11 +142,11 @@ Run `octocode mcp list` to connect to every enabled server and print its state, 
 
 Octocode reports configuration errors, failed connections, and required sign-ins once after startup. Server logging notifications are appended to `<agent directory>/mcp.log` as `<time> [<server>] <level> <logger>: <message>`. The file moves to `mcp.log.1` after it grows past 5 MB.
 
-Octocode connects enabled servers in the background. The first prompt waits up to 10 seconds for `direct` and `auto` catalogs. A native tool call waits for its server; scoped `tool_search` waits for its namespace, while unscoped discovery and resource calls wait for all relevant servers. HTTP network errors and transient statuses (408, 429, and 5xx) are retried twice. Dropped connections reconnect on the next call. Tool-list changes register new tools and make withdrawn tools unreachable.
+Octocode connects enabled servers in the background. The first prompt waits up to 10 seconds for `direct` and `auto` catalogs, and up to 1.5 seconds more in parallel for servers whose tools are all `deferred`, so a fast one lists its tool names in the first `mcp_servers` section; a slower one is listed by name only until the next prompt, and a hanging one never holds the prompt longer than that. A native tool call waits for its server; scoped `tool_search` waits for its namespace, while unscoped discovery and resource calls wait for all relevant servers. HTTP network errors and transient statuses (408, 429, and 5xx) are retried twice. Dropped connections reconnect on the next call. A server that fails to connect three times in a row (for example a stdio command that exits at once) is not started again for a growing pause (5 s doubling to 60 s): its calls fail at once with an error that says so, until the pause ends or the server is restarted. Tool-list changes register new tools and make withdrawn tools unreachable.
 
 When an HTTP session expires, Octocode retries once with a new session. Calls already using the old connection can finish before its transport closes. Stopping the server or closing the agent session also closes these retired connections, even if their calls are still pending.
 
-Stdio is language-independent: `command` may be a native executable, a Python interpreter with the script in `args`, a Node process, or a container launcher. Arguments are passed as an array without a shell. To restrict filesystem or network access, configure an OS sandbox/container launcher as the command; the host does not silently add one. `inheritEnv: false` limits inherited credentials but does not isolate files or the network.
+Stdio is language-independent: `command` may be a native executable, a Python interpreter with the script in `args`, a Node process, or a container launcher. Arguments are passed as an array without a shell. To restrict filesystem or network access, configure an OS sandbox/container launcher as the command; the host does not silently add one. The default minimal environment limits inherited credentials but does not isolate files or the network.
 
 Stopping a stdio server closes its stdin, sends SIGTERM, then sends SIGKILL to its process group. This also stops servers launched through wrappers such as `npx` or `uvx`.
 
@@ -181,7 +181,7 @@ Remote servers that use OAuth, such as Sentry, need no credentials in `mcp.json`
 
 When the server rejects an unauthenticated connection, `/mcp` shows that it needs sign-in. Select "Sign in", run `/mcp login sentry`, or run `octocode mcp login sentry`. Octocode opens the authorization page and waits for approval. If the browser runs on another machine, such as over SSH, paste its redirected URL into the sign-in screen. A running session uses the new credentials on its next turn.
 
-Octocode registers itself with the authorization server, stores tokens in `<agent directory>/mcp-auth.json`, and refreshes access tokens when they expire or the server rejects them. If a server later requests additional scope, Octocode asks for sign-in again. Signing out deletes the stored credentials.
+Octocode registers itself with the authorization server, stores tokens in `<agent directory>/mcp-auth.json`, and refreshes access tokens when they expire or the server rejects them. If a server later requests additional scope, Octocode asks for sign-in again; the standalone `@octocodeai/octocode-mcp` package's `adaptOAuthProvider` steps up silently instead, and Octocode does not use it. Signing out deletes the stored credentials.
 
 Credentials belong to a server name and URL. Servers with the same URL under different names, such as one per account, sign in separately; servers with the same name and URL in different `mcp.json` files share one sign-in.
 
@@ -241,22 +241,40 @@ Octocode finds the authorization server through the server's protected resource 
 
 Octocode uses that document instead of discovery and trusts it as configured, so only point it at a document you trust. The URL must use HTTPS, except on `localhost`, `127.0.0.1`, or `[::1]`.
 
+## Use a provider login
+
+A server that accepts the token of a model provider you signed in to with `/login` can use it instead of OAuth, for example a gateway in front of that provider:
+
+```json
+{
+  "mcpServers": {
+    "gateway": { "url": "https://gateway.example/mcp", "auth": { "provider": "gateway" } }
+  }
+}
+```
+
+Octocode sends the provider's current token as `Authorization: Bearer <token>` on every request, so refreshes of the login apply without a reconnect. The token is not stored in `mcp.json` or `mcp-auth.json`. If the server rejects it, the server shows as needing sign-in and the error names `/login <provider>`. The same applies to `octocode mcp list`, which reads the credentials of the agent directory.
+
+`auth` is the credential routing: the token goes to the server's `url`. For that reason it is accepted only in the global `mcp.json`: a project file that sets it is reported and skipped, so a repository cannot choose where a credential is sent, and it cannot replace a global server that uses `auth`. The `url` must use HTTPS, except on `localhost`, `127.0.0.1`, or `[::1]`. A server with `auth` does not use OAuth, and an `Authorization` header is not needed.
+
 ## Control tool exposure
 
 Each server tool is registered as `mcp__<server>__<tool>`. The server's `exposure` determines how the model reaches it:
 
 | Exposure | Behavior | Typical use |
 |---|---|---|
-| `auto` (default) | Small catalogs are direct. Automatic catalogs are considered together with explicit direct catalogs across enabled configured servers. Automatic tools are deferred when that combined estimate reaches 10% of the model window remaining after its maximum output reserve, only when native tool loading and discovery are available; unsupported transports stay direct. The estimate uses serialized catalog bytes divided by four. | Automatic exposure without requiring scripts. |
+| `auto` (default) | Small catalogs are direct. Automatic tools are deferred when the estimate for the combined catalog of all enabled servers (their direct tools plus their automatic tools) reaches 10% of the model window remaining after its maximum output reserve, only when native tool loading and discovery are available; unsupported transports stay direct. Each server's decision is made when it connects and then holds for the session, so another server connecting or leaving never moves its tools between direct and deferred mid-session. The estimate uses serialized catalog bytes divided by four. | Automatic exposure. |
 | `deferred` | Not declared until `tool_search` loads a match for the next model call. | MCP tools called directly after discovery. |
 | `direct` | Declared to the model like a built-in tool. | Small, frequently used tool sets. |
 | `hidden` | Registered but unreachable. | Servers or tools that should remain unavailable. |
 
 Legacy `codemode` and `codemode-deferred` exposure values load as `deferred`. The executor has been removed; see [migration](codemode.md).
 
-Servers with `deferred` tools are listed in the `mcp_servers` section of the system prompt, with how their tools are reached and one line from the configured `description` or, once connected, from the server instructions. Octocode updates the section when a prompt starts, after waiting for servers with `direct` tools. When it changed, for example because a server connected and its summary became available, Octocode appends the new section to the conversation instead of changing tool declarations, so earlier messages stay cached. The `namespace` option of `tool_search` accepts the server name or its MCP namespace.
+Every enabled server except `octocode` is listed in the `mcp_servers` section of the system prompt: how its tools are reached (`declared` or `tool_search`), one line from the configured `description` or else from the server instructions, the names of the tools `tool_search` loads (without the `mcp__<server>__` prefix; deferred tools count only while `tool_search` is active), and up to 512 characters of the rest of the server instructions. The section stays within 6,144 characters: instructions shrink first, then summaries and tool lists, then the last servers are counted in a closing line. The `octocode` server is indexed in the `octocode` section instead, which carries its whole instructions and names its deferred tools. Octocode updates the section when a prompt starts, after waiting for servers with `direct` tools; a deferred server that is still connecting is listed by name until a later prompt. When the section changed, for example because a server connected, Octocode appends the new section to the conversation instead of changing tool declarations, so earlier messages stay cached. The `namespace` option of `tool_search` accepts the server name or its MCP namespace.
 
-With `auto`, Octocode evaluates the catalog when it connects or changes and when the selected model changes. Explicit `direct`, `deferred`, and `hidden` settings override this policy. Octocode activates `tool_search` when tools are deferred. The model searches for a capability (optionally passing `namespace` to target one server without waiting for the others), receives the matching schemas, then calls the named MCP tools directly through the normal validation, permission and cancellation pipeline. To make the model see a tool without searching, give it `direct` exposure with `toolExposure`.
+A `tool_search` query that names a deferred tool exactly (full or short name) loads it first. The result lists the loaded tools, names matching tools that are already loaded, and, when nothing matches, the namespaces that still have tools to load. A call to a deferred tool before it is loaded fails without reaching the server; the error keeps the `Tool <name> not found` prefix and tells the model to load it with `tool_search` first.
+
+With `auto`, Octocode decides a server's tools when it connects, when its own tools change, and when the selected model changes (which decides every server again); in between the decision is kept. Explicit `direct`, `deferred`, and `hidden` settings override this policy. Octocode activates `tool_search` when tools are deferred. The model searches for a capability (optionally passing `namespace` to target one server without waiting for the others), receives the matching schemas, then calls the named MCP tools directly through the normal validation, permission and cancellation pipeline. To make the model see a tool without searching, give it `direct` exposure with `toolExposure`.
 
 The `octocode` server has a default split. Without an `exposure` of its own, its local research tools are `direct`: `localFetch`, `localSearch`, `structureSearch`, `astSearch` and `lspSearch`, plus the older names `localGetFileContent`, `localSearchCode`, `localFindFiles`, `localViewStructure` and `lspGetSemantics` if an older server offers them. Its GitHub and package tools are `deferred` whenever `tool_search` is available, whatever the catalog size or the model's native tool loading, and `direct` otherwise. On a model without native tool loading, the first `tool_search` load of one of them rewrites the cached prompt once, instead of every request carrying their schemas. Octocode search tools that are declared or loadable through `tool_search` replace the system prompt's generic rule to search with bash, so loading one does not change the rules. The automatic Octocode server and an `octocode` entry in `mcp.json` behave the same. Subagents declare the same local tools, because their profiles name them. An `exposure` on the server entry applies to every tool and replaces the split; a `toolExposure` entry changes one tool, for example `"toolExposure": {"lspSearch": "deferred"}`. The file guard counts a `localFetch` read as evidence for a later `file` change only when the model called it directly, not when another tool called it.
 
@@ -286,7 +304,7 @@ Tools loaded by `tool_search` are recorded in the transcript. Their declarations
 
 If explicitly deferred tools have no active discovery tool, Octocode warns that they cannot be called. Enable `tool_search` or choose `direct` exposure.
 
-Text results over 20 KB reach the model with their middle removed around a `…N chars truncated…` marker. The full text is saved to a temporary file named in the result.
+Both paths save an oversized text whole in the session's `output/` folder (owner-only; the same helper as other tools' saved output) and show its start and end around an omission note that names the file, so it can be searched or read by line range. They differ in budget: text results from configured servers keep about 20 KB, with no per-message total. The built-in Octocode server lets each text part keep up to 60,000 characters and one assistant message up to 200,000 characters of MCP text results, with the overflow recoverable from an archive, because it pages its own output.
 
 MCP results retain text, image, structured data, and error information. Unsupported binary resources are saved to files. The host renders results and preserves them in session history independently of the server connection.
 
@@ -298,19 +316,21 @@ When a connected server offers [resources](https://modelcontextprotocol.io/speci
 
 - `list_mcp_resources` lists resources as JSON: `{ server?, resources: [{ server, uri, name, ... }], nextCursor? }`. With `server`, it lists one page; `cursor` continues with the next page. Without `server`, it lists every resource from every server.
 - `list_mcp_resource_templates` lists URI templates for resources the servers do not list directly.
-- `read_mcp_resource` reads a resource by `server` and `uri`. Text reaches the model as text and images as images. Other binary resources are saved to temporary files, and the model receives the path. Scripts receive `{ server, uri, contents }`.
+- `read_mcp_resource` reads a resource by `server` and `uri`. Text reaches the model as text and images as images. Other binary resources are saved to temporary files, and the model receives the path.
 
 These tools reach every enabled, non-hidden server with resources. Their exposure is the widest exposure among those servers: `direct`, then `deferred`. Resource links in tool results identify `read_mcp_resource` and the server.
 
 Resources for MCP Apps, identified by `ui://` URIs or `text/html;profile=mcp-app`, are omitted because Octocode does not render them. Resource icons are also omitted.
 
-Reading and listing resources is retried once after a transient HTTP error (408, 429, or 5xx). Tool calls are not retried because the server may already have performed them.
+Reading and listing resources is retried once after a transient HTTP error (408, 429, or 5xx). Tool calls are not retried after a transient HTTP error because the server may already have performed them. The one exception is an expired HTTP session (a 404 for a session the server no longer knows): the server did not run the request, so Octocode retries it once on a new session.
 
 ## Permissions
 
-Every MCP call passes through Octocode's tool pipeline. Extension `tool_call` and `tool_result` handlers, including permission gates, therefore apply to MCP tools. Nested calls made by extensions retain `parentToolCallId`.
+Every MCP call the model makes passes through Octocode's tool pipeline. Extension `tool_call` and `tool_result` handlers, including permission gates, therefore apply to MCP tools. Nested calls made by extensions retain `parentToolCallId`.
 
-`octocode.getAllTools()` reports the annotations declared by each server: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. Permission extensions can use these hints to decide which calls require confirmation (see [Tool exposure](extensions.md#tool-exposure)). Resource tools are marked read-only.
+A call made by an `mcp_tool` [hook](hooks.md) does not go through that pipeline, because the hook's own PreToolUse hooks and extension handlers would run for it again. It is still checked: the MCP owner refuses a tool that is hidden or no longer offered, and Octocode's permission gate decides it like a model call (see [Hook-initiated MCP calls](permissions.md#hook-initiated-mcp-calls)). An extension that needs to see these calls cannot observe them through `tool_call`.
+
+`octocode.getAllTools()` reports the annotations declared by each server: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. Permission extensions can use these hints to decide which calls require confirmation (see [Tool exposure](extensions.md#tool-exposure)). Octocode's own permission gate does so too: it skips the ask in `manual` for a tool the server marks `readOnlyHint: true`, although the MCP specification says clients must treat these hints as untrusted, and in the default `full` mode no MCP call asks. See [MCP tools](permissions.md#mcp-tools). Resource tools are marked read-only.
 
 ## Extensions and SDK
 
@@ -322,7 +342,9 @@ Changes to enabled state or exposure apply only to the current session. A file-c
 
 ### Replace the built-in MCP support
 
-An installed extension that registers `/mcp`, such as `pi-mcp-adapter`, replaces the built-in MCP support for sessions. Octocode then does not read `mcp.json` or connect its servers in a session, and `/mcp` belongs to the extension. Remove the extension to restore the built-in behavior. To disable built-in MCP support without a replacement, disable `mcp` under Built-in in `octocode config`, or set `"extensions": ["-builtin:mcp"]` in settings. `--no-mcp` disables it for one run.
+An installed extension that registers `/mcp`, such as `pi-mcp-adapter`, replaces the built-in MCP support for sessions. The built-in extension then does not connect the servers of `mcp.json`, and `/mcp` belongs to the extension. Remove the extension to restore the built-in behavior. To disable built-in MCP support without a replacement, disable `mcp` under Built-in in `octocode config`, or set `"extensions": ["-builtin:mcp"]` in settings. `--no-mcp` disables it for one run.
+
+The native Octocode extension is not replaceable and still reads `mcp.json` to decide who runs the `octocode` server: with a valid `octocode` entry it does not start the automatic server and leaves that entry to whichever MCP support is installed, and without one it starts the automatic server unless `OCTOCODE_MCP=0`.
 
 An extension that registers `tool_search` similarly replaces the built-in tool with that name. Octocode activates the replacement for MCP servers and waits for the servers its calls need only when it declares [`reachesTools`](extensions.md#tool-exposure). Shell-level `octocode mcp` commands always use the built-in implementation.
 

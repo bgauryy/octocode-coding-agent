@@ -1,5 +1,4 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
-import { formatReadLineRange } from "../../../../core/tools/render-utils.ts";
 import { theme } from "../../theme/theme.ts";
 import type { ToolCallInfo } from "./types.ts";
 
@@ -242,30 +241,12 @@ export function hasTextContent(content: unknown): boolean {
 }
 
 export function formatToolCall(name: string, args: Record<string, unknown>): string {
-	const shortenPath = (p: string): string => {
-		const home = process.env.HOME || process.env.USERPROFILE || "";
-		if (home && p.startsWith(home)) return `~${p.slice(home.length)}`;
-		return p;
-	};
-
 	const text = (...values: unknown[]): string => {
 		for (const value of values) if (typeof value === "string" && value) return value;
 		return "";
 	};
 
 	switch (name) {
-		case "read": {
-			const path = shortenPath(text(args.path, args.file_path));
-			return `[read: ${path}${formatReadLineRange(args.offset, args.limit)}]`;
-		}
-		case "write": {
-			const path = shortenPath(text(args.path, args.file_path));
-			return `[write: ${path}]`;
-		}
-		case "edit": {
-			const path = shortenPath(text(args.path, args.file_path));
-			return `[edit: ${path}]`;
-		}
 		case "bash": {
 			const rawCmd = text(args.command);
 			const cmd = rawCmd
@@ -273,20 +254,6 @@ export function formatToolCall(name: string, args: Record<string, unknown>): str
 				.trim()
 				.slice(0, 50);
 			return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
-		}
-		case "grep": {
-			const pattern = text(args.pattern);
-			const path = shortenPath(text(args.path) || ".");
-			return `[grep: /${pattern}/ in ${path}]`;
-		}
-		case "find": {
-			const pattern = text(args.pattern);
-			const path = shortenPath(text(args.path) || ".");
-			return `[find: ${pattern} in ${path}]`;
-		}
-		case "ls": {
-			const path = shortenPath(text(args.path) || ".");
-			return `[ls: ${path}]`;
 		}
 		default: {
 			// Custom tool - show name and truncated JSON args

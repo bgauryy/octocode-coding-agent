@@ -81,6 +81,40 @@ describe("mcp tool", () => {
 		expect(operations.add).toHaveBeenCalledWith("notes", { command: "notes-mcp", args: ["--stdio"] });
 	});
 
+	it("names the env, headers and working directory it asks the user to confirm, never their values", async () => {
+		const { run, confirm } = setup();
+		await run({
+			intent: "add",
+			server: "notes",
+			config: { command: "notes-mcp", cwd: "/work", env: { API_KEY: "secret-value", MODE: "x" } },
+		});
+		expect(confirm).toHaveBeenLastCalledWith(
+			"Add MCP server?",
+			'The agent wants to add "notes" for this session: notes-mcp\nWorking directory: /work\nEnvironment variables: API_KEY, MODE',
+		);
+		await run({
+			intent: "add",
+			server: "remote",
+			config: { url: "https://example.com/mcp", headers: { Authorization: "Bearer secret-value" } },
+		});
+		expect(confirm).toHaveBeenLastCalledWith(
+			"Add MCP server?",
+			'The agent wants to add "remote" for this session: https://example.com/mcp\nHeaders: Authorization',
+		);
+	});
+
+	it("accepts an explicit legacy SSE session server with literal headers", async () => {
+		const { run, operations } = setup();
+		const config = {
+			type: "sse",
+			url: "https://example.com/events",
+			literalHeaders: true,
+			headers: { Authorization: "Bearer literal" },
+		};
+		await run({ intent: "add", server: "events", config });
+		expect(operations.add).toHaveBeenCalledWith("events", config);
+	});
+
 	it("refuses an invalid or duplicate add before asking", async () => {
 		const { run, confirm } = setup();
 		await expect(run({ intent: "add", server: "docs", config: { command: "x" } })).rejects.toThrow("already exists");

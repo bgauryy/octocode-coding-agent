@@ -3,7 +3,7 @@ import { completeCli, shellCompletion } from "../src/cli/completion.ts";
 
 describe("CLI value completion", () => {
 	it("offers valid enum values and preserves comma-separated tool selections", () => {
-		expect(completeCli(["--mode", ""])).toEqual(["text", "json", "rpc"]);
+		expect(completeCli(["--mode", ""])).toEqual(["text", "json", "rpc", "acp"]);
 		expect(completeCli(["--thinking", "hi"])).toEqual(["high"]);
 		expect(completeCli(["--tui-mode", ""])).toEqual(["fullscreen", "regular"]);
 		expect(completeCli(["--tools", "read,ba"])).toContain("read,bash");

@@ -104,42 +104,13 @@ export function handleEditorInput(editor: EditorModel, data: string): void {
 
 		if (kb.matches(data, "tui.input.tab")) {
 			const selected = editor.autocomplete.autocompleteList.getSelectedItem();
-			if (selected && editor.autocomplete.autocompleteProvider) {
-				editor.pushUndoSnapshot();
-				editor.lastAction = null;
-				const result = editor.autocomplete.autocompleteProvider.applyCompletion(
-					editor.state.lines,
-					editor.state.cursorLine,
-					editor.state.cursorCol,
-					selected,
-					editor.autocomplete.autocompletePrefix,
-				);
-				editor.state.lines = result.lines;
-				editor.state.cursorLine = result.cursorLine;
-				editor.setCursorCol(result.cursorCol);
-				editor.autocomplete.cancelAutocomplete();
-				editor.notifyChange();
-				editor.autocomplete.continueCommandCompletion();
-			}
+			if (selected) editor.autocomplete.acceptCompletion(selected);
 			return;
 		}
 
 		if (kb.matches(data, "tui.select.confirm")) {
 			const selected = editor.autocomplete.autocompleteList.getSelectedItem();
-			if (selected && editor.autocomplete.autocompleteProvider) {
-				editor.pushUndoSnapshot();
-				editor.lastAction = null;
-				const result = editor.autocomplete.autocompleteProvider.applyCompletion(
-					editor.state.lines,
-					editor.state.cursorLine,
-					editor.state.cursorCol,
-					selected,
-					editor.autocomplete.autocompletePrefix,
-				);
-				editor.state.lines = result.lines;
-				editor.state.cursorLine = result.cursorLine;
-				editor.setCursorCol(result.cursorCol);
-
+			if (selected && editor.autocomplete.insertCompletion(selected, editor.autocomplete.autocompletePrefix)) {
 				if (editor.autocomplete.autocompletePrefix.startsWith("/")) {
 					editor.autocomplete.cancelAutocomplete();
 					// Fall through to submit

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -13,6 +14,8 @@ beforeEach(() => {
 	process.env.OCTOCODE_HOME = tmp();
 	process.env.OCTOCODE_HOOKS = "1";
 	delete process.env.OCTOCODE_SUBAGENT;
+	// Hook discovery reads user-level files such as ~/.codex/hooks.json, which must not reach these tests.
+	vi.spyOn(os, "homedir").mockReturnValue(tmp());
 });
 afterEach(() => {
 	vi.restoreAllMocks();

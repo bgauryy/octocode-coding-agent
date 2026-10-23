@@ -17,12 +17,25 @@ import type { KeybindingsManager } from "../../keybindings.ts";
 // UI Context
 // ============================================================================
 
+/** A permission decision carried by a select dialog; values name its existing single-use choices. */
+export interface ExtensionUIPermissionRequest {
+	toolCallId?: string;
+	toolName?: string;
+	action?: string;
+	/** The exact commands, paths or other effects the host is asking about. */
+	targets: string[];
+	allowOnce: string;
+	rejectOnce: string;
+}
+
 /** Options for extension UI dialogs. */
 export interface ExtensionUIDialogOptions {
 	/** AbortSignal to programmatically dismiss the dialog. */
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */
 	timeout?: number;
+	/** Select dialogs only: transports may expose these choices as a permission request. */
+	permission?: ExtensionUIPermissionRequest;
 }
 
 /** Placement for extension widgets. */

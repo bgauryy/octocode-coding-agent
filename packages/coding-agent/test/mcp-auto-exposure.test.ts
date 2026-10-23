@@ -1,6 +1,9 @@
 import type { Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
+import type { ExtensionAPI } from "../src/core/extensions/types.ts";
 import { prefersDeferred, resolveMcpExposure } from "../src/extensions/mcp/exposure.ts";
+import type { McpServer } from "../src/extensions/mcp/server.ts";
+import { McpExtensionState } from "../src/extensions/mcp/state.ts";
 
 const model = (compat: Record<string, boolean | undefined> = {}) => ({ contextWindow: 1000, compat }) as Model<any>;
 const small = [{ name: "read", inputSchema: { type: "object" as const } }];
@@ -45,5 +48,75 @@ describe("automatic MCP exposure", () => {
 		expect(prefersDeferred("octocode", { exposure: "direct" })).toBe(false);
 		expect(prefersDeferred("octocode", { exposure: "auto" })).toBe(false);
 		expect(prefersDeferred("docs", {})).toBe(false);
+	});
+});
+
+describe("automatic exposure across servers", () => {
+	const tools = (count: number) =>
+		Array.from({ length: count }, (_, index) => ({ name: `tool${index}`, inputSchema: { type: "object" as const } }));
+	const server = (name: string, count: number): McpServer =>
+		({
+			entry: { name, config: { command: "x" }, source: "test" },
+			connection: { tools: tools(count), state: "connected" },
+		}) as unknown as McpServer;
+	const selected = { ...model({ supportsToolSearch: true }), contextWindow: 1000, maxTokens: 500 };
+
+	const piWithSearch = () =>
+		({
+			getAllTools: () => [{ name: "tool_search", reachesTools: true }],
+			events: { on: () => () => {} },
+		}) as unknown as ExtensionAPI;
+
+	it("decides a connecting server against the combined catalog, without flipping servers already decided", () => {
+		const state = new McpExtensionState(piWithSearch(), {});
+		state.selectedModel = selected;
+		const first = server("first", 1);
+		state.servers = [first];
+		const before = state.effectiveExposure(first.entry);
+		expect(before).toBe("direct");
+
+		// Together the catalogs reach the 10% window: the newcomer is deferred, `first` stays direct.
+		const second = server("second", 6);
+		state.servers = [first, second];
+		expect(state.effectiveExposure(first.entry)).toBe(before);
+		expect(state.effectiveExposure(second.entry)).toBe("deferred");
+		expect(state.automaticCatalog("first")).toHaveLength(1);
+		expect(state.automaticCatalog()).toHaveLength(7);
+
+		state.servers = [first];
+		expect(state.effectiveExposure(first.entry)).toBe(before);
+	});
+
+	it("decides small catalogs together when their combined declarations exceed the budget", () => {
+		const state = new McpExtensionState(piWithSearch(), {});
+		state.selectedModel = selected;
+		const [first, second] = [server("first", 3), server("second", 3)];
+		state.servers = [first, second];
+		expect(state.effectiveExposure(first.entry)).toBe("deferred");
+		expect(state.effectiveExposure(second.entry)).toBe("deferred");
+	});
+
+	it("decides again when the model changes, but not when the same model is selected again", () => {
+		const state = new McpExtensionState(piWithSearch(), {});
+		state.selectedModel = selected;
+		const [first, second] = [server("first", 1), server("second", 4)];
+		state.servers = [first];
+		expect(state.effectiveExposure(first.entry)).toBe("direct");
+		state.servers = [first, second];
+		state.selectedModel = { ...selected };
+		expect(state.effectiveExposure(first.entry)).toBe("direct");
+		state.selectedModel = { ...selected, id: "other" };
+		expect(state.effectiveExposure(first.entry)).toBe("deferred");
+		expect(state.effectiveExposure(second.entry)).toBe("deferred");
+	});
+
+	it("decides a server again when its own tools change", () => {
+		const state = new McpExtensionState(piWithSearch(), {});
+		state.selectedModel = selected;
+		const first = server("first", 1);
+		state.servers = [first];
+		expect(state.effectiveExposure(first.entry)).toBe("direct");
+		state.servers = [server("first", 6)];
+		expect(state.effectiveExposure(first.entry)).toBe("deferred");
 	});
 });

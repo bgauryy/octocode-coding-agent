@@ -22,7 +22,7 @@ describe("cache configuration", () => {
 		expect(process.env.OCTOCODE_CACHE_RETENTION).toBeUndefined();
 	});
 	it("persists settings and applies session overrides without changing stored preferences", async () => {
-		const manager = SettingsManager.inMemory();
+		const manager = SettingsManager.inMemory({}, { projectTrusted: true });
 		manager.setCachePreference("cacheRetention", "long");
 		await manager.flush();
 		manager.reload();
@@ -42,7 +42,7 @@ describe("cache configuration", () => {
 				);
 			},
 		};
-		const trusted = SettingsManager.fromStorage(storage);
+		const trusted = SettingsManager.fromStorage(storage, { projectTrusted: true });
 		expect(trusted.getCachePreferences()).toEqual({ cacheRetention: "short", instructionCacheRetention: "short" });
 		expect(trusted.getSettings().instructionCacheRetention).toBe("short");
 		const untrusted = SettingsManager.fromStorage(storage, { projectTrusted: false });

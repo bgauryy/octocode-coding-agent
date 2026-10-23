@@ -14,6 +14,7 @@ import { BrowserTool, registerBrowserTool } from "./browser/tool.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./compaction/archive-tool.ts";
 import { registerCompaction } from "./compaction/register.ts";
+import { registerDebugTool } from "./debug/tool.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { externalPermissionDialog } from "./external/permission-dialog.ts";
 import { registerExternal } from "./external/register.ts";
@@ -21,9 +22,9 @@ import { registerBashTool } from "./files/bash.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadDedupe } from "./files/dedupe.ts";
-import { completedLocalReads, type snapshotLocalReads } from "./shared/local-reads.ts";
+import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
-import { CORE_READER, FileGuard, LOCAL_FETCH_READER, registerFileTool } from "./files/tool.ts";
+import { BASH_READER, FileGuard, LOCAL_FETCH_READER, registerFileTool } from "./files/tool.ts";
 import { registerHooks, registerHooksCommand } from "./hooks/register.ts";
 import { reconnectOctocodeMcp, registerOctocodeMcp } from "./mcp/octocode.ts";
 import { registerMemory } from "./memory/register.ts";
@@ -33,6 +34,8 @@ import { registerPermissionCommand } from "./permission/command.ts";
 import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
+import { shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
+import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerSessions } from "./sessions/register.ts";
 import { notify, Subcommands } from "./shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "./shared/env.ts";
@@ -42,7 +45,7 @@ import { withDialog } from "./shared/locks.ts";
 import { EXTERNAL_SENDER, type MessageEnvelope } from "./shared/messages.ts";
 import { plural, stopRowTimers } from "./shared/render.ts";
 import { projectTrust, registerTrustCommand } from "./shared/trust.ts";
-import { errorMessage, firstLine, isRecord, MINUTE_MS, settleWithin } from "./shared/util.ts";
+import { errorMessage, firstLine, MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { windowsTree } from "./shared/winhelper.ts";
 import { registerSkills } from "./skills.ts";
 import { statusCommand } from "./status-command.ts";
@@ -91,7 +94,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	/** Why each profile file was refused at load (`loadProfiles`' `onSkip`), by file name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
 	const octocodeMcp = registerOctocodeMcp(pi, packageVersion(), options.mcp !== false, (unavailable) => {
-		guard.reader = unavailable ? CORE_READER : LOCAL_FETCH_READER;
+		guard.reader = unavailable ? BASH_READER : LOCAL_FETCH_READER;
 	});
 	const unregisterMcpReconnect = registerMcpReconnect(pi.events, "octocode", reconnectOctocodeMcp(octocodeMcp));
 	pi.on("session_shutdown", async () => {
@@ -111,28 +114,24 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		// Restore points older than a week go; off the start path, and never an error for the session.
 		void pruneSnapshots(ctx.cwd);
 	});
-	const localReads = new Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>();
-	pi.on("tool_result", async (event, ctx) => {
-		const snapshots = localReads.get(event.toolCallId);
-		localReads.delete(event.toolCallId);
-		const details = isRecord(event.details) ? event.details : {};
-		if (!snapshots || event.isError || details.outputTruncated || details.fullOutputPath) return;
-		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd);
-		if (reads.length) return { details: { ...details, localReads: reads } };
-	});
-	pi.on("session_shutdown", () => {
-		localReads.clear();
-	});
+	const localReads = registerReadReceipts(pi);
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	pi.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 
 	guard.reservedBy = (file) => team.reservation(file, file);
 	const checkpoints = new Checkpoints();
-	registerFileTool(pi, guard, permission, checkpoints, {
-		enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
-		committed: (id, input) => hooks.fileInputCommitted(id, input),
-		refresh: (ctx) => sourcePolicy.refresh(ctx),
-	});
+	registerFileTool(
+		pi,
+		guard,
+		permission,
+		checkpoints,
+		{
+			enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
+			committed: (id, input) => hooks.fileInputCommitted(id, input),
+			refresh: (ctx) => sourcePolicy.refresh(ctx),
+		},
+		{ enabled: envFlag(process.env, "OCTOCODE_EDIT_DIAGNOSTICS", true) },
+	);
 	// Octocode's bash with a foreground deadline and background jobs.
 	const jobs = registerBashTool(pi, commands);
 	let agents: AgentControl | undefined;
@@ -183,11 +182,16 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	commands.add("status", statusCommand(pi));
 	registerWebTool(pi, permission);
 	registerBrowserTool(pi, new BrowserTool(permission));
+	registerDebugTool(pi);
 	const agentTool = agentModes();
 	const collab = registerCollab(pi, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
+		shellWrites: async (command) => {
+			await shellParserReady();
+			return shellMutation(command).writes;
+		},
 	});
 	if (!isSubagent) {
 		registerPermissionCommand(commands, permission, () => provenance.size());
@@ -203,6 +207,8 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 			agentTool.collect,
 		);
 		commands.add("agents", agents.command);
+		// A user's narrowing mode change names the running subagents it would stop and asks first.
+		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
 		registerModelsCommand(commands, () => profiles);
 	}
 	registerSkills(pi);
@@ -317,10 +323,20 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		guard.restore(contextReads(ctx));
 		const skipped: string[] = [];
 		refused = new Map();
-		profiles = loadProfiles(ctx.cwd, undefined, await projectTrust(ctx), process.env, (file, error) => {
-			skipped.push(`${file}: ${errorMessage(error)}`);
-			refused.set(profileFileName(file), errorMessage(error));
-		});
+		const shadowed: string[] = [];
+		profiles = loadProfiles(
+			ctx.cwd,
+			undefined,
+			await projectTrust(ctx),
+			process.env,
+			(file, error) => {
+				skipped.push(`${file}: ${errorMessage(error)}`);
+				refused.set(profileFileName(file), errorMessage(error));
+			},
+			(name, file, replaced) => shadowed.push(`${name}: ${file} replaces ${replaced}`),
+		);
+		if (shadowed.length > 0 && interactive(ctx, isSubagent))
+			notify(ctx.ui, `Project subagent profiles replace profiles loaded earlier:\n${shadowed.join("\n")}`, "warning");
 		if (skipped.length > 0 && interactive(ctx, isSubagent))
 			notify(ctx.ui, `Skipped subagent profiles that could not be read:\n${skipped.join("\n")}`, "warning");
 		const ignored = [...profiles.values()].filter((profile) => profile.ignoredPermissions?.length);

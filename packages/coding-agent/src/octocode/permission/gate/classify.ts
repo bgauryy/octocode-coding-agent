@@ -8,9 +8,9 @@ import { runsLater } from "../file-access.ts";
 import type { PermissionRequest } from "../request.ts";
 import { catastrophicCommand, SHELL_TOOLS, simpleCommand } from "../shell.ts";
 
-/** Octocode's tools that read a path: `read` takes `path`; `grep`, `find` and `ls` default to the working directory. */
+/** Tools named like the removed core readers (Octocode ships none now) that a custom tool or SDK caller may still register: `read` takes `path`; `grep`, `find` and `ls` default to the working directory. They stay classified so a same-named tool cannot read outside the workspace unasked. */
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
-/** Octocode's own file changers (active with `--tools edit,write`); Octocode's `file` tool checks itself. */
+/** Same-named custom file changers (Octocode ships no `edit` or `write`); Octocode's `file` tool checks itself. */
 export const CHANGE_TOOLS = new Set(["edit", "write"]);
 /** Browser actions that act on the page; the others read the page or manage tabs. `navigate`, `tab` with a `url` and `upload` are checked by the browser tool, which knows the host and the paths. */
 const BROWSER_ACTS = new Set(["click", "hover", "drag", "type", "fill", "press", "download", "dialog"]);
@@ -65,6 +65,11 @@ function classOf(
 		const root = workspaceRoot(cwd);
 		return { file, root, inside: root !== undefined && isWithin(file, root) };
 	};
+	// Inspection can execute adapter getters; all debugger operations share process authorization.
+	if (tool === "debug")
+		return input.action === "terminate"
+			? undefined
+			: { action: "shell", title: "Run this debugger operation?", what: [args(input), `cwd: ${cwd}`] };
 	if (SHELL_TOOLS.has(tool)) {
 		const command = optionalString(input.command) ?? "";
 		const simple = simpleCommand(command);

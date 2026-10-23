@@ -126,6 +126,16 @@ describe("agent stats", () => {
 		expect(renderStats([])).toBe("No subagent runs in this session yet.");
 	});
 
+	it("records a trailing-line outcome apart from first-word compliance", () => {
+		const stats = agentStats([
+			report({ id: "a", profile: "x", status: "done", outcome: "done", outcomeSource: "last" }, "1"),
+			report({ id: "b", profile: "x", status: "done", outcome: "done", outcomeSource: "first" }, "2"),
+		]);
+		expect(stats[0].outcomes.done).toBe(2);
+		expect([stats[0].ended, stats[0].named, stats[0].trailing]).toEqual([2, 1, 1]);
+		expect(renderStats(stats)).toContain("outcome word 50% · trailing outcome 1");
+	});
+
 	it("shows cost n/a when nothing was priced", () => {
 		const text = renderStats(
 			agentStats([foreground({ id: "b", profile: "general", status: "done", unpriced: true }, usage(10, 10, 0, 0, 0))]),

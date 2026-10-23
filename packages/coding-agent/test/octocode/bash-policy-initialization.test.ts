@@ -15,6 +15,7 @@ vi.mock("../../src/octocode/permission/bash-syntax.ts", () => ({
 vi.mock("../../src/octocode/shared/trust.ts", () => ({
 	projectTrustForContents: async () => true,
 }));
+import { nativeHost } from "../../src/octocode/shared/host-api.ts";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 const roots: string[] = [];
@@ -32,7 +33,7 @@ function fixture(enabled = true) {
 	const file = path.join(home, ".claude/settings.json");
 	const write = (permissions: unknown) => fs.writeFileSync(file, JSON.stringify({ permissions }));
 	const fake = fakePi();
-	fake.pi.setToolPolicy = vi.fn();
+	nativeHost(fake.pi).setToolPolicy = vi.fn();
 	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: enabled ? "1" : "0" }, home);
 	return { owner, write, ctx: fakeCtx({ cwd: root, hasUI: false }), fake };
 }
@@ -72,7 +73,7 @@ it("holds concurrent refreshes behind initialization and captures changed bytes 
 	});
 	await Promise.resolve();
 	expect(settled).toBe(false);
-	expect(f.fake.pi.setToolPolicy).not.toHaveBeenCalled();
+	expect(nativeHost(f.fake.pi).setToolPolicy).not.toHaveBeenCalled();
 	f.write({ deny: ["Bash"] });
 	release();
 	await Promise.all([first, second]);

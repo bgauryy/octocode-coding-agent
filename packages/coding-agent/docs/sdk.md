@@ -112,6 +112,8 @@ Each boundary can be supplied explicitly:
 - `resourceLoader` supplies extensions, skills, prompt templates, themes, and context files.
 - `tools`, `noTools`, `excludeTools`, and `customTools` control the active tool set.
 
+Project trust: a `SettingsManager` that was not told the project is trusted treats it as untrusted. The default `SettingsManager.create(cwd, agentDir)`, and so a default `createAgentSession`, therefore loads no project settings, project MCP servers (`.octocode/mcp.json` and the other project MCP files) or other trust-gated project resources, and refuses to write project settings. Pass `SettingsManager.create(cwd, agentDir, { projectTrusted: true })` only after your application established trust, or `SettingsManager.createForStartup(cwd, agentDir)` to follow the user's saved `/trust` decision. The CLI resolves trust itself and is unchanged. Earlier versions treated an unspecified project as trusted.
+
 `cwd` and `agentDir` select workspace and user resources. See [configuration locations and precedence](../../../CONFIGURATIONS.md). When supplying a loader or settings manager, construct it with the same directories as the session.
 
 Use `DefaultResourceLoader` when you want standard discovery with selected overrides. Its `nativeFeatures` option defaults to `true`, so CLI and default SDK sessions both load native Octocode features and the built-in extensions. Set `nativeFeatures: false` on the loader for a host that supplies its own tool policy; it is not a `createAgentSession()` option. Supply a custom `ResourceLoader` when the host owns resource storage and discovery completely.
@@ -124,7 +126,7 @@ Inline extension factories can be supplied through `DefaultResourceLoader.extens
 
 A named entry with `builtin: true` supplies the code of a `builtin:<name>` extension, which loads like a configured extension file. It loads by default, is listed in `octocode config`, and is disabled by `-builtin:<name>` in the `extensions` setting or by `noExtensions`; `additionalExtensionPaths: ["builtin:<name>"]` loads it explicitly. It loads after project trust is resolved, so it cannot handle `project_trust`. The standard loader's built-in extensions use this form.
 
-`discoverAndLoadExtensions(paths, cwd, agentDir?, eventBus?, { projectTrusted? })` loads extensions without a resource loader: global extensions, the given paths and, for a trusted project, `.octocode/extensions/` in `cwd`. Without `projectTrusted` it reads the user's saved trust decision, so an untrusted checkout's extension code does not run; pass `projectTrusted: true` only after your application has established trust.
+`discoverAndLoadExtensions(paths, cwd, agentDir?, eventBus?, { projectTrusted? })` loads extensions without a resource loader: global extensions, the given paths and, for a trusted project, `.octocode/extensions/` in `cwd`. Directories are scanned with the [CLI discovery rules](extensions.md#extension-directory-discovery) (dot entries, `node_modules`, ignored paths and plugin/skill-marker directories are skipped). Without `projectTrusted` it reads the user's saved trust decision, so an untrusted checkout's extension code does not run; pass `projectTrusted: true` only after your application has established trust.
 
 ### MCP
 
@@ -134,6 +136,12 @@ MCP defaults to automatic exposure: small catalogs are direct, and large catalog
 
 MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Connections may continue in the background; calls wait for the servers they need. On shutdown, emit `session_shutdown` before disposing the session, as in the opening example. See [MCP](mcp.md) for configuration and lifecycle.
 
+## Process clients
+
+The exported `RpcClient` controls an Octocode RPC subprocess. Its `invocation: { command, args }` option supplies an executable and argument prefix before RPC flags, taking precedence over `cliPath`. `onClose(listener)` reports unexpected exit and explicit stop, so hosts can settle pending work; remove listeners with the returned unsubscribe function. See the [RPC client types](../src/modes/rpc/rpc-client/types.ts).
+
+`ownProcessTree: true` makes the client own the worker and its descendants, using the existing process-tree cleanup with a ten-second graceful shutdown period. Ordinary RPC clients retain their existing direct-process stop behavior. [Inbound ACP](acp.md) enables tree ownership and runs one RPC worker per ACP session; its broker is a CLI adapter, not an additional exported SDK session factory.
+
 <a id="exports"></a>
 
 ## Resources
@@ -142,5 +150,5 @@ MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Co
 - [Configuration](configuration.md) explains normal discovery; the generated [settings schema](../schemas/settings.schema.json) describes settings.
 - [Session storage](#session-storage) covers persistence and the source contracts.
 - [Extensions](extensions.md), [Skills](skills.md), and [Prompt Templates](prompt-templates.md) document resources supplied through a `ResourceLoader`.
-- [Extension fixtures](../examples/README.md) demonstrate API behavior used in regression tests.
+- [Extension fixtures](../examples/extensions/README.md) demonstrate API behavior used in regression tests.
 - [`CreateAgentSessionOptions`](../src/core/sdk.ts) and [`AgentSession`](../src/core/agent-session.ts) define the current SDK surface.

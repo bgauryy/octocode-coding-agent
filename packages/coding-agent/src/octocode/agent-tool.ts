@@ -25,7 +25,9 @@ export function agentModes() {
 				description:
 					"Choose type and supply its arguments in input. " +
 					entries.map(([type, tool]) => `${type}: ${tool.description}`).join("\n"),
-				promptSnippet: "Delegate work, coordinate agents and exchange messages",
+				promptSnippet: modes.has("task")
+					? "Delegate work, coordinate agents and exchange messages"
+					: "Coordinate agents and exchange messages",
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
 				parameters: Type.Object(
 					{

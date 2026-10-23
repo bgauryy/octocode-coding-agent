@@ -16,11 +16,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import {
-	createReadToolDefinition,
-	createEditToolDefinition,
-	createWriteToolDefinition,
-} from "../../src/core/tools/index.ts";
+import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -155,11 +151,7 @@ async function startSession(
 		sessionManager: SessionManager.inMemory(cwd),
 		...(options.legacyTools
 			? {
-					customTools: [
-						createReadToolDefinition(cwd),
-						createEditToolDefinition(cwd),
-						createWriteToolDefinition(cwd),
-					] as unknown as ToolDefinition[],
+					customTools: [createReadToolDefinition(cwd)] as unknown as ToolDefinition[],
 				}
 			: {}),
 		...(options.tools ? { tools: options.tools } : {}),
@@ -710,20 +702,6 @@ describe("request too large (HTTP 413)", () => {
 		expect(last.role).toBe("assistant");
 		expect(last.content.map((part) => part.text).join("")).toBe("looked at the newest image");
 	}, 60_000);
-});
-
-describe("with a tool allowlist that leaves out file", () => {
-	let s: Awaited<ReturnType<typeof startSession>>;
-	beforeAll(async () => {
-		s = await startSession(OCTOCODE_OFF, { legacyTools: true, tools: ["read", "bash", "edit", "write"] });
-	}, 60_000);
-	afterAll(() => s.dispose());
-
-	it("keeps Octocode edit and write, so the agent can still change files", async () => {
-		const turn = (await s.run("hi", [say("ok")])).at(-1)!;
-		expect(turn.tools).toEqual(expect.arrayContaining(["read", "bash", "edit", "write"]));
-		expect(turn.tools).not.toContain("file");
-	});
 });
 
 describe("a subagent session with visible browser and MCP enabled", () => {

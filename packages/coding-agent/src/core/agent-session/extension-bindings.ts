@@ -25,6 +25,7 @@ import type { AbortReason, SessionInternals } from "./host.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { ExtensionBindings } from "./types.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export interface ExtensionBindingsHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	readonly tools: SessionToolLoadout;
@@ -191,7 +192,7 @@ export class SessionExtensionBindings {
 						runner.emitError({
 							extensionPath: "<runtime>",
 							event: "send_message",
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					});
 					return sending;
@@ -201,7 +202,7 @@ export class SessionExtensionBindings {
 						runner.emitError({
 							extensionPath: "<runtime>",
 							event: "send_user_message",
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					});
 				},

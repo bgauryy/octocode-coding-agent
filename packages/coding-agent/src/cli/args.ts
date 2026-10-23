@@ -7,7 +7,7 @@ import { getToolListError, type TuiMode } from "../core/settings-manager.ts";
 
 export { printHelp } from "./args/help.ts";
 
-export type Mode = "text" | "json" | "rpc";
+export type Mode = "text" | "json" | "rpc" | "acp";
 
 export interface Args {
 	provider?: string;
@@ -95,14 +95,14 @@ export function parseArgs(args: string[]): Args {
 		} else if (arg === "--mode") {
 			const mode = args[i + 1];
 			if (mode === undefined || mode.startsWith("-")) {
-				result.diagnostics.push({ type: "error", message: "--mode requires text, json, or rpc" });
+				result.diagnostics.push({ type: "error", message: "--mode requires text, json, rpc, or acp" });
 				continue;
 			}
 			i++;
-			if (mode !== "text" && mode !== "json" && mode !== "rpc") {
+			if (mode !== "text" && mode !== "json" && mode !== "rpc" && mode !== "acp") {
 				result.diagnostics.push({
 					type: "error",
-					message: `Invalid mode "${mode}". Valid values: text, json, rpc`,
+					message: `Invalid mode "${mode}". Valid values: text, json, rpc, acp`,
 				});
 				continue;
 			}

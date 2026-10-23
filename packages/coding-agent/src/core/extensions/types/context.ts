@@ -65,7 +65,7 @@ export interface ExtensionContext {
 	isIdle(): boolean;
 	/** Whether project-local trust is active for this context. */
 	isProjectTrusted(): boolean;
-	/** The current abort signal, or undefined when the agent is not streaming. */
+	/** The call's abort signal in tool_call handlers; otherwise the current turn's signal, if streaming. */
 	signal: AbortSignal | undefined;
 	/** Abort the current agent operation */
 	abort(reason?: "interrupted" | "internal"): void;

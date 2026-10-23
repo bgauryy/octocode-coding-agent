@@ -1,6 +1,6 @@
 import type { McpServerEntry } from "../../extensions/mcp/config.ts";
-import { octocodeHome } from "../shared/home.ts";
 import { OCTOCODE_SERVER } from "../shared/octocode-tools.ts";
+import { octocodeAllowedPaths } from "./octocode/launch.ts";
 
 /** Supply default roots only for the configured local Octocode server; explicit policy always wins. */
 export function prepareOctocodeSkillLaunch(
@@ -23,7 +23,7 @@ export function prepareOctocodeSkillLaunch(
 			env: {
 				...(env.WORKSPACE_ROOT === undefined ? { WORKSPACE_ROOT: cwd } : {}),
 				...entry.config.env,
-				ALLOWED_PATHS: [...new Set([cwd, octocodeHome(env), ...skillDirectories])].join(","),
+				ALLOWED_PATHS: octocodeAllowedPaths(cwd, skillDirectories, env),
 			},
 		},
 	};

@@ -1,3 +1,4 @@
+import { isRecord } from "../utils/guards.ts";
 /**
  * MCP server configuration and the servers extensions register with `pi.registerMcpServer()`.
  *
@@ -86,7 +87,7 @@ export interface McpStdioServerConfig extends McpServerConfigBase {
 	args?: string[];
 	/** Values may reference environment variables (`${NAME}`) or commands (`!cmd`). */
 	env?: Record<string, string>;
-	/** Inherit the host environment. Set false to pass only the configured env. Default: true. */
+	/** Inherit the whole host environment. Default: false (minimal allow-list plus configured env). */
 	inheritEnv?: boolean;
 	/** Relative paths resolve against the session working directory. */
 	cwd?: string;
@@ -134,17 +135,19 @@ export interface McpOAuthConfig {
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
 /** Whether a redirect URI can be served by pi's loopback callback server. */
-export function isLoopbackRedirectUri(value: string): boolean {
+function isLoopbackRedirectUri(value: string): boolean {
 	if (!URL.canParse(value)) return false;
 	const url = new URL(value);
 	return url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname) && url.search === "" && url.hash === "";
 }
 
 export interface McpHttpServerConfig extends McpServerConfigBase {
-	type?: "http";
+	type?: "http" | "sse";
 	url: string;
 	/** Values may reference environment variables (`${NAME}`) or commands (`!cmd`). */
 	headers?: Record<string, string>;
+	/** Send configured header values verbatim, without environment or command resolution. Default: false. */
+	literalHeaders?: boolean;
 	oauth?: McpOAuthConfig;
 	/**
 	 * Send the token of a pi provider (`/login <provider>`) instead of using OAuth. Not allowed in project
@@ -163,10 +166,6 @@ export const isPluginMcpServerName = (name: string): boolean => PLUGIN_SERVER_NA
 export function mcpNamespace(server: string): string {
 	if (isPluginMcpServerName(server)) return `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 	return `mcp__${server.replace(/-/g, "_")}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -306,14 +305,23 @@ export function validateMcpServerConfig(name: string, raw: unknown): McpServerCo
 	if (timeout !== undefined && (typeof timeout !== "number" || !(timeout > 0))) {
 		return `server "${name}": timeout must be a positive number of seconds`;
 	}
-	if (type === "sse") return `server "${name}": legacy SSE transport is not supported; use the streamable HTTP URL`;
-
-	if (typeof value.url === "string" && (type === undefined || type === "http" || type === "streamable-http")) {
+	if (
+		typeof value.url === "string" &&
+		(type === undefined || type === "http" || type === "streamable-http" || type === "sse")
+	) {
 		if (!URL.canParse(value.url) || !/^https?:$/.test(new URL(value.url).protocol)) {
 			return `server "${name}": url must be an http or https URL`;
 		}
+		if (type === "sse") {
+			const url = new URL(value.url);
+			if (url.username || url.password || url.hash)
+				return `server "${name}": SSE url must not contain credentials or a fragment`;
+		}
 		if (value.headers !== undefined && !isStringRecord(value.headers)) {
 			return `server "${name}": headers must map names to strings`;
+		}
+		if (value.literalHeaders !== undefined && typeof value.literalHeaders !== "boolean") {
+			return `server "${name}": literalHeaders must be a boolean`;
 		}
 		const oauthError = validateOAuth(value.oauth);
 		if (oauthError) return `server "${name}": ${oauthError}`;
@@ -341,7 +349,7 @@ export function validateMcpServerConfig(name: string, raw: unknown): McpServerCo
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;
 		return value as unknown as McpStdioServerConfig;
 	}
-	return `server "${name}" needs either "command" (stdio) or "url" (streamable HTTP)`;
+	return `server "${name}" needs either "command" (stdio) or "url" (HTTP or SSE)`;
 }
 
 /** A server an extension registered with `pi.registerMcpServer()`. */

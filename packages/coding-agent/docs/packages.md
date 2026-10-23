@@ -54,7 +54,7 @@ my-octocode-package/
 └── themes/
 ```
 
-Without an `octocode` manifest, Octocode discovers TypeScript and JavaScript extensions, skill directories, Markdown prompts, and JSON themes from those directories.
+Without an `octocode` manifest, Octocode discovers TypeScript and JavaScript extensions, skill directories, Markdown prompts, and JSON themes from those directories. Extension discovery follows the [extension directory discovery rules](extensions.md#extension-directory-discovery).
 
 Use an explicit manifest when resources live elsewhere or need filtering:
 
@@ -85,6 +85,7 @@ Octocode supplies these packages to extensions and skills:
 - `@octocodeai/octocodecode`
 - `@octocodeai/octocode-tui`
 - `typebox`
+- `@sinclair/typebox`
 
 Declare the host-provided packages listed above in `peerDependencies` with a `"*"` range and do not bundle them. Octocode suppresses automatic peer installation for managed npm packages and git packages installed with npm, pnpm, or Bun. Local packages are not installed or modified, so their dependency tree remains the package author's responsibility.
 

@@ -32,7 +32,12 @@ describe("DefaultResourceLoader", () => {
 
 	describe("reload", () => {
 		it("should initialize with empty results before reload", () => {
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 
 			expect(loader.getExtensions().extensions).toEqual([]);
 			expect(loader.getSkills().skills).toEqual([]);
@@ -49,7 +54,12 @@ describe("DefaultResourceLoader", () => {
 			);
 			writeFileSync(join(extensionsDir, "project-extension.ts"), "export default function() {}");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getExtensions().extensions).toHaveLength(1);
@@ -71,7 +81,7 @@ describe("DefaultResourceLoader", () => {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }),
+				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }, { projectTrusted: true }),
 			});
 			await loader.reload();
 
@@ -96,7 +106,7 @@ describe("DefaultResourceLoader", () => {
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }),
+				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }, { projectTrusted: true }),
 			});
 
 			await expect(loader.reload()).rejects.toThrow(SyntaxError);
@@ -114,7 +124,12 @@ description: A test skill
 Skill content here.`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { skills } = loader.getSkills();
@@ -134,7 +149,12 @@ Skill content here.`,
 			);
 			writeFileSync(join(skillDir, "EFFICIENCY.md"), "No frontmatter here");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { skills, diagnostics } = loader.getSkills();
@@ -153,7 +173,12 @@ description: A test prompt
 Prompt content.`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { prompts } = loader.getPrompts();
@@ -168,7 +193,12 @@ Prompt content.`,
 			writeFileSync(invalidPromptPath, "---\ndescription: Broken: unquoted colon\n---\nDo something.\n");
 			writeFileSync(join(promptsDir, "valid.md"), "Valid prompt content.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { prompts, diagnostics } = loader.getPrompts();
@@ -229,7 +259,12 @@ Project skill`,
 			}
 			writeFileSync(projectThemePath, JSON.stringify(baseTheme, null, 2));
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const prompt = loader.getPrompts().prompts.find((p) => p.name === "commit");
@@ -260,7 +295,12 @@ Project skill`,
 			symlinkSync(sharedExtDir, join(agentDir, "extensions"), "dir");
 			symlinkSync(sharedExtDir, join(cwd, ".octocode", "extensions"), "dir");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const extensionsResult = loader.getExtensions();
@@ -301,7 +341,12 @@ export default function(pi) {
 }`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload({
 				resolveProjectTrust: async ({ extensionsResult }) => {
 					expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([join(userExtDir, "user.ts")]);
@@ -351,7 +396,12 @@ export default function(pi) {
 }`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const extensionsResult = loader.getExtensions();
@@ -384,7 +434,7 @@ export default function(pi) {
 		});
 
 		it("should honor overrides for auto-discovered resources", async () => {
-			const settingsManager = SettingsManager.inMemory();
+			const settingsManager = SettingsManager.inMemory({}, { projectTrusted: true });
 			settingsManager.setExtensionPaths(["-extensions/disabled.ts"]);
 			settingsManager.setSkillPaths(["-skills/skip-skill"]);
 			settingsManager.setPromptTemplatePaths(["-prompts/skip.md"]);
@@ -430,7 +480,12 @@ Content`,
 		it("should discover AGENTS.md context files", async () => {
 			writeFileSync(join(cwd, "AGENTS.md"), "# Project Guidelines\n\nBe helpful.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { agentsFiles } = loader.getAgentsFiles();
@@ -446,7 +501,12 @@ Content`,
 			writeFileSync(join(nestedCwd, "AGENTS.md"), "service instructions");
 			writeFileSync(join(nestedCwd, "AGENTS.override.md"), "service override");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd: nestedCwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(nestedCwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd: nestedCwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getAgentsFiles().agentsFiles).toEqual([
@@ -462,7 +522,12 @@ Content`,
 			writeFileSync(join(cwd, "CLAUDE.md"), "Fallback instructions");
 			const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getAgentsFiles().agentsFiles).toContainEqual({
@@ -479,7 +544,13 @@ Content`,
 			writeFileSync(join(cwd, "AGENTS.md"), "# Project Guidelines\n\nBe helpful.");
 			writeFileSync(join(cwd, "CLAUDE.md"), "# Claude Guidelines\n\nBe helpful.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir, noContextFiles: true });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+				noContextFiles: true,
+			});
 			await loader.reload();
 
 			const { agentsFiles } = loader.getAgentsFiles();
@@ -491,7 +562,12 @@ Content`,
 			mkdirSync(piDir, { recursive: true });
 			writeFileSync(join(piDir, "SYSTEM.md"), "You are a helpful assistant.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getSystemPrompt()).toBe("You are a helpful assistant.");
@@ -546,7 +622,12 @@ Project skill content`,
 			mkdirSync(piDir, { recursive: true });
 			writeFileSync(join(piDir, "APPEND_SYSTEM.md"), "Additional instructions.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getAppendSystemPrompt()).toContain("Additional instructions.");
@@ -560,7 +641,12 @@ Project skill content`,
 			mkdirSync(piDir, { recursive: true });
 			writeFileSync(systemPromptPath, "Project system prompt.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getSystemPrompt()).toBe("Project system prompt.");
@@ -571,7 +657,12 @@ Project skill content`,
 			const systemPromptPath = join(agentDir, "SYSTEM.md");
 			writeFileSync(systemPromptPath, "Global system prompt.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getSystemPrompt()).toBe("Global system prompt.");
@@ -580,6 +671,7 @@ Project skill content`,
 
 		it("does not expose literal system prompt text as a source", async () => {
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -596,6 +688,7 @@ Project skill content`,
 			writeFileSync(systemPromptPath, "Custom system prompt.");
 
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -613,7 +706,12 @@ Project skill content`,
 			mkdirSync(piDir, { recursive: true });
 			writeFileSync(appendSystemPromptPath, "Project append prompt.");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			expect(loader.getAppendSystemPrompt()).toEqual(["Project append prompt."]);
@@ -622,6 +720,7 @@ Project skill content`,
 
 		it("does not expose literal append system prompt text as a source", async () => {
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -638,6 +737,7 @@ Project skill content`,
 			writeFileSync(appendSystemPromptPath, "Custom append prompt.");
 
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -658,7 +758,12 @@ Project skill content`,
 				writeFileSync(join(host, name, "SKILL.md"), `---\nname: ${name}\ndescription: Test skill\n---\nBody`);
 			}
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: ["!hidden"] }));
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 			loader.extendResources({
 				skillPaths: [{ path: host, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }],
@@ -677,6 +782,7 @@ Project skill content`,
 				writeFileSync(file, `---\nname: ${name}\ndescription: Test skill\n---\nInstructions`);
 			}
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -721,7 +827,12 @@ description: Extra prompt
 Extra prompt content`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			loader.extendResources({
@@ -775,7 +886,12 @@ description: File URL skill
 Extra content`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			loader.extendResources({
@@ -865,7 +981,7 @@ Extension prompt content`,
 				nativeFeatures: false,
 				cwd,
 				agentDir,
-				settingsManager: SettingsManager.inMemory({ packages: ["npm:metadata-pkg"] }),
+				settingsManager: SettingsManager.inMemory({ packages: ["npm:metadata-pkg"] }, { projectTrusted: true }),
 			});
 			await loader.reload();
 
@@ -913,6 +1029,7 @@ Extension prompt content`,
 			const explicit = join(tempDir, "candidate", "review");
 			skill(explicit, "explicit copy");
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -936,7 +1053,12 @@ Extension prompt content`,
 			skill(join(cwd, ".octocode", "skills", "review"), "project copy");
 			const sub = join(cwd, "packages", "a");
 			mkdirSync(sub, { recursive: true });
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd: sub, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(sub, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd: sub,
+				agentDir,
+			});
 			await loader.reload();
 			const { skills } = loader.getSkills();
 			expect(skills.find((loaded) => loaded.name === "review")?.description).toBe("project copy");
@@ -957,7 +1079,13 @@ description: A test skill
 Content`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir, noSkills: true });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+				noSkills: true,
+			});
 			await loader.reload();
 
 			const { skills } = loader.getSkills();
@@ -977,6 +1105,7 @@ Content`,
 			);
 
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1001,6 +1130,7 @@ Content`,
 				disableModelInvocation: false,
 			};
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1018,6 +1148,7 @@ Content`,
 
 		it("should apply systemPromptOverride", async () => {
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1067,7 +1198,12 @@ export default function(pi: ExtensionAPI) {
 }`,
 			);
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+			});
 			await loader.reload();
 
 			const { errors } = loader.getExtensions();
@@ -1118,6 +1254,7 @@ export default function(pi: ExtensionAPI) {
 			);
 
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1158,6 +1295,7 @@ export default function(pi: ExtensionAPI) {
 			);
 
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1198,6 +1336,7 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1222,6 +1361,7 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1247,6 +1387,7 @@ export default function(pi: ExtensionAPI) {
 			// A project override gives the built-in project scope, which must not move it ahead.
 			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1263,6 +1404,7 @@ export default function(pi: ExtensionAPI) {
 		it("should disable built-in extensions with noExtensions unless loaded with -e builtin:<name>", async () => {
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,
@@ -1291,6 +1433,7 @@ export default function(pi: ExtensionAPI) {
 			);
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 				nativeFeatures: false,
 				cwd,
 				agentDir,

@@ -1,8 +1,10 @@
 /** Connects the model's `mcp` tool to this session's servers. */
 
+import type { McpServerConfig } from "../../core/mcp-servers.ts";
 import { reconnect } from "./connections.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
 import { describeState } from "./server.ts";
+import { registerMcpAddedServers } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { getMcpReconnect, getMcpSessionStatus } from "./status.ts";
 import { ensureDiscoveryActive, hideTools } from "./tool-registry.ts";
@@ -11,7 +13,11 @@ import { ensureDiscoveryActive, hideTools } from "./tool-registry.ts";
 export function registerMcpManageTool(state: McpExtensionState): void {
 	const { pi } = state;
 	/** Servers the `mcp` tool added for this session; only these can be removed through it. */
-	const addedHere = new Set<string>();
+	const addedHere = new Map<string, McpServerConfig>();
+	// Subagents started later inherit the added servers that still run (`session-servers.ts`); a stopped one stays out.
+	registerMcpAddedServers(pi.events, () =>
+		Object.fromEntries([...addedHere].filter(([name]) => !state.findServer(name)?.connection?.isStopped)),
+	);
 	// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
 	pi.registerTool({
 		defaultActive: false,
@@ -55,7 +61,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 				return undefined;
 			},
 			add: (name, config) => {
-				addedHere.add(name);
+				addedHere.set(name, config);
 				pi.registerMcpServer(name, config);
 			},
 			remove: async (name) => {

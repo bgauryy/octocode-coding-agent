@@ -14,6 +14,7 @@ import type {
 import { ThemedText } from "../components/themed-text.ts";
 import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the extension UI context and shortcuts. */
 export type ExtensionContextHost = Pick<
@@ -108,7 +109,7 @@ export function setupExtensionShortcuts(host: ExtensionContextHost, extensionRun
 			if (matchesKey(data, shortcutStr)) {
 				// Run handler async, don't block input
 				Promise.resolve(shortcut.handler(createContext())).catch((err) => {
-					host.showError(`Shortcut handler error: ${err instanceof Error ? err.message : String(err)}`);
+					host.showError(`Shortcut handler error: ${errorMessage(err)}`);
 				});
 				return true;
 			}

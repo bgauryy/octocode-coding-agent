@@ -43,8 +43,8 @@ type AgentFrontmatter = {
  *
  * Both spellings are valid YAML and both are in use:
  *
- *     tools: read, bash        # string
- *     tools: [read, bash]      # array
+ *     tools: bash, web         # string
+ *     tools: [bash, web]       # array
  *
  * so accept either. Anything else (a number, a map, a nested list) yields no
  * tools rather than throwing: this runs inside agent discovery, where a single

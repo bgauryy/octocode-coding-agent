@@ -4,6 +4,8 @@ import path from "node:path";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { buildSessionProjection, type CompactionEntry, type SessionEntry } from "../session-manager.ts";
 import { type CompactionResult, estimateProjectedContextTokens } from "./compaction.ts";
+import { clipWithMarker } from "./inline.ts";
+import { CHARS_PER_TOKEN, charsToTokens } from "./tokens.ts";
 
 export class CheckpointPersistenceError extends Error {}
 
@@ -66,11 +68,24 @@ export function finalizeCompactionResult(
 			"Compaction cannot fit the retained context and a checkpoint in the target window.",
 		);
 	}
-	if (Math.ceil(result.summary.length / 4) <= summaryBudget && projectedTokens(result.summary) <= available)
+	if (charsToTokens(result.summary.length) <= summaryBudget && projectedTokens(result.summary) <= available)
 		return result;
+	if (!options.sessionFile) {
+		// An in-memory session keeps nothing on disk: the summary stays inline, cut to fit, with a marker.
+		let keep = Math.min(result.summary.length, summaryBudget * CHARS_PER_TOKEN);
+		for (let attempt = 0; attempt < 8 && keep > 0; attempt++) {
+			const summary = clipWithMarker(result.summary, keep);
+			const over = projectedTokens(summary) - available;
+			if (charsToTokens(summary.length) <= summaryBudget && over <= 0) return { ...result, summary };
+			keep -= Math.max(CHARS_PER_TOKEN, Math.max(over, 0) * CHARS_PER_TOKEN);
+		}
+		throw new CheckpointPersistenceError(
+			"Compaction cannot fit the retained context and a shortened checkpoint in the target window.",
+		);
+	}
 	const file = persistCheckpointText(result.summary, options.sessionFile);
 	const summary = `The complete context checkpoint is saved at ${file}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.`;
-	if (Math.ceil(summary.length / 4) > summaryBudget || projectedTokens(summary) > available) {
+	if (charsToTokens(summary.length) > summaryBudget || projectedTokens(summary) > available) {
 		throw new CheckpointPersistenceError(
 			"Compaction cannot fit the retained context and its checkpoint reference in the target window.",
 		);

@@ -11,7 +11,7 @@ export interface BuildSystemPromptOptions {
 	customPrompt?: string;
 	/** Exact full prompt replacement set by a before_agent_start handler. */
 	forceSystemPrompt?: string;
-	/** Tools to include in prompt. Default: [read, bash, edit, write]. */
+	/** Tools to include in prompt. Default: [bash]. */
 	selectedTools?: string[];
 	/**
 	 * Selected tools whose declarations requests leave out (`prepareLoadout` hidden declarations).
@@ -67,7 +67,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 	return {
 		customPrompt: input.customPrompt,
 		forceSystemPrompt: input.forceSystemPrompt,
-		selectedTools: [...(input.selectedTools ?? ["read", "bash", "edit", "write"])],
+		selectedTools: [...(input.selectedTools ?? ["bash"])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		deferredTools: [...(input.deferredTools ?? [])],
 		toolSnippets: { ...input.toolSnippets },
@@ -107,31 +107,19 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	const hasBash = selectedTools.includes("bash");
-	const hasPowerShell = selectedTools.includes("powershell");
-	const hasGrep = selectedTools.includes("grep");
-	const hasFind = selectedTools.includes("find");
-	const hasLs = selectedTools.includes("ls");
 	const hasLocalSearch = [...selectedTools, ...deferredTools].some((name) =>
 		/^mcp__octocode__(localSearch|localSearchCode|structureSearch|astSearch|lspSearch|localFindFiles|localViewStructure)$/.test(
 			name,
 		),
 	);
 
-	if ((hasBash || hasPowerShell) && !hasGrep && !hasFind && !hasLs && !hasLocalSearch) {
-		if (hasBash && hasPowerShell) {
-			addRule("Use bash or PowerShell for file operations like listing, searching, and finding files");
-		} else if (hasPowerShell) {
-			addRule("Use PowerShell for file operations like listing, searching, and finding files");
-		} else {
-			addRule("Use bash for file operations like ls, rg, find");
-		}
-	}
+	if (selectedTools.includes("bash") && !hasLocalSearch) addRule("Use bash for file operations like ls, rg, find");
 
 	for (const name of selectedTools) {
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
+	// The floor for SDK sessions that carry no `octocode` section; Octocode's Communication policy refines, not replaces, these.
 	addRule("Be concise in your responses");
 	addRule("Show file paths clearly when working with files");
 	return rules.map((rule) => `- ${rule}`).join("\n");
@@ -171,7 +159,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		const visibleTools = declaredTools.filter((name) => !!toolSnippets[name]);
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
-		promptSections.tools = `${tools}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
+		promptSections.tools = tools;
 		promptSections.rules = buildRules(declaredTools, deferredTools, toolGuidelines, promptGuidelines);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
@@ -179,15 +167,18 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 - Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
 - When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
 - When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), Octocode packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), non-LLM models (docs/models.md)
-- When working on Octocode topics, read the docs and examples, and follow .md cross-references before implementing
-- Read the documentation that defines the behavior you need; follow links when they resolve a task dependency. Read a complete section when its conditions or exceptions affect the change.`;
+- When working on Octocode topics, read the docs and examples that define the behavior, and follow .md cross-references that resolve a task dependency before implementing; read a complete section when its conditions or exceptions affect the change.`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
+	// Octocode ships no `read` tool, but an extension or SDK caller may register one under that name.
+	// A deferred Octocode reader counts like a declared one: tool_search loads it, as the rules above assume.
 	const readers = ["read", "bash"] as const;
-	const skillFileReadTool = selectedTools.some((tool) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool))
+	const skillFileReadTool = [...selectedTools, ...deferredTools].some((tool) =>
+		/^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool),
+	)
 		? "octocode"
 		: (readers.find((tool) => declaredTools.includes(tool)) ??
 			(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined));

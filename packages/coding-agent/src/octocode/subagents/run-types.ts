@@ -59,6 +59,8 @@ export interface RunDetails {
 	fallback?: string;
 	/** The latest completed report's outcome; absent while running or when that report names none. */
 	outcome?: ReportStatus;
+	/** Where that report named it: its first word (the contract's form) or a labelled last line; `/agents stats` counts both. */
+	outcomeSource?: "first" | "last";
 	/** Host-validated final JSON result, if the caller requested a result contract. */
 	structured?: StructuredResultV1;
 	/** The subagent's latest screenshot, saved to this path. */
@@ -79,6 +81,8 @@ export interface ResultDetails {
 	status: "done" | "failed" | "stopped";
 	/** The latest completed report's outcome (`failed` for a failed run); absent when it names none. */
 	outcome?: ReportStatus;
+	/** As in `RunDetails`. */
+	outcomeSource?: "first" | "last";
 	/** Immutable contract hash and host validation verdict; valid data is available to the caller. */
 	structured?: StructuredResultV1;
 	/** The `⎿` line, e.g. `Done (name · 4 tool calls · ↑12k ↓2k · ≈$0.12 · 38s)`. */

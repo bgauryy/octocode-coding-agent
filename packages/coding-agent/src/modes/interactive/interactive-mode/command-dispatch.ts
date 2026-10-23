@@ -8,6 +8,7 @@ import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-comman
 import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 export type CommandDispatchHost = Pick<
@@ -229,7 +230,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			try {
 				await runBuiltinCommand(host, builtin.name, parsed.args);
 			} catch (error) {
-				host.showError(error instanceof Error ? error.message : String(error));
+				host.showError(errorMessage(error));
 			}
 			return;
 		}

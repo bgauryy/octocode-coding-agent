@@ -20,6 +20,9 @@ export const EXIT_GRACE_MS = 1_000;
 /** A model stream silent this long has stalled; busy time is bounded by each call's own deadline, else 15 minutes (bash's default). */
 export const WATCHDOG: WatchdogLimits = { idleMs: 10 * 60_000, busyMs: 15 * 60_000 };
 
+/** The error of a child that exited cleanly without a final answer: a no-op run is a failure, not a finished task. */
+export const NO_ANSWER = "Subagent ended without a final answer (it exited cleanly with no text)";
+
 /** Why a child ended without a usable answer: its exit code, or the signal that killed it. */
 export function exitReason(code: number | null, signal: NodeJS.Signals | null): string {
 	return code === null && signal ? `was killed by ${signal}` : `exited with code ${code ?? "unknown"}`;
@@ -29,6 +32,8 @@ export interface SubagentOutcome {
 	text: string;
 	structured?: StructuredResultV1;
 	outcome?: ReportStatus;
+	/** Where the report named `outcome`: its first word or a labelled last line. */
+	outcomeSource?: "first" | "last";
 	usage: Usage;
 	/** Set when the child's model call failed (stopReason error/aborted). */
 	error?: string;

@@ -114,6 +114,20 @@ export function rewriteSessionFile(state: SessionState): void {
 	atomicWriteFileSync(state.sessionFile, state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
 }
 
+/** Explicitly persist an empty session for clients that expose reloadable IDs before the first prompt. */
+export function materializeSession(state: SessionState): void {
+	if (!state.persist || !state.sessionFile) throw new Error("Session persistence is disabled");
+	if (state.persistenceFailure) throw state.persistenceFailure;
+	if (state.flushed) return;
+	try {
+		writeNewSessionFile(state.sessionFile, state.fileEntries);
+		state.flushed = true;
+	} catch (error) {
+		state.persistenceFailure = error instanceof Error ? error : new Error(String(error));
+		throw state.persistenceFailure;
+	}
+}
+
 /**
  * A new session file is created only once the session contains a user or assistant message.
  * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and

@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { adoptTree, prepareTree, stopTree } from "../../../octocode/shared/process.ts";
 import type { JsonAgentSessionEvent } from "../../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
@@ -18,6 +19,10 @@ export class RpcConnection {
 	private requestId = 0;
 	private stderr = "";
 	private exitError: Error | null = null;
+	private closeListeners = new Set<(error: Error) => void>();
+	private stopping?: Promise<void>;
+	private starting = false;
+	private generation = 0;
 	private options: RpcClientOptions;
 
 	constructor(options: RpcClientOptions) {
@@ -28,13 +33,26 @@ export class RpcConnection {
 	 * Start the RPC agent process.
 	 */
 	async start(): Promise<void> {
-		if (this.process) {
+		if (this.process || this.starting) {
 			throw new Error("Client already started");
 		}
+		this.starting = true;
+		try {
+			await this.startProcess();
+		} finally {
+			this.starting = false;
+		}
+	}
 
+	private async startProcess(): Promise<void> {
+		const generation = this.generation;
 		this.exitError = null;
+		this.stderr = "";
 
-		const cliPath = this.options.cliPath ?? "dist/cli.js";
+		const invocation = this.options.invocation ?? {
+			command: "node",
+			args: [this.options.cliPath ?? "dist/cli.js"],
+		};
 		const args = ["--mode", "rpc"];
 
 		if (this.options.provider) {
@@ -47,37 +65,39 @@ export class RpcConnection {
 			args.push(...this.options.args);
 		}
 
-		const childProcess = spawn("node", [cliPath, ...args], {
+		if (this.options.ownProcessTree) await prepareTree();
+		if (generation !== this.generation) throw new Error("Agent process stopped");
+		const childProcess = spawn(invocation.command, [...invocation.args, ...args], {
 			cwd: this.options.cwd,
 			env: { ...process.env, ...this.options.env },
 			stdio: ["pipe", "pipe", "pipe"],
+			detached: this.options.ownProcessTree === true && process.platform !== "win32",
 		});
 		this.process = childProcess;
+		if (this.options.ownProcessTree) adoptTree(childProcess.pid);
 
 		// Collect stderr for debugging
 		childProcess.stderr?.on("data", (data) => {
-			this.stderr += data.toString();
+			// Keep a bounded diagnostic tail; streamed stderr remains complete.
+			this.stderr = (this.stderr + data.toString()).slice(-65_536);
 			process.stderr.write(data);
 		});
 
 		childProcess.once("exit", (code, signal) => {
 			if (this.process !== childProcess) return;
 			const error = this.createProcessExitError(code, signal);
-			this.exitError = error;
-			this.rejectPendingRequests(error);
+			this.closed(error);
 		});
 		childProcess.once("error", (error) => {
 			if (this.process !== childProcess) return;
 			const processError = new Error(`Agent process error: ${error.message}. Stderr: ${this.stderr}`);
-			this.exitError = processError;
-			this.rejectPendingRequests(processError);
+			this.closed(processError);
 		});
 		childProcess.stdin?.on("error", (error) => {
 			if (this.process !== childProcess) return;
 			const stdinError =
 				this.exitError ?? new Error(`Agent process stdin error: ${error.message}. Stderr: ${this.stderr}`);
-			this.exitError = stdinError;
-			this.rejectPendingRequests(stdinError);
+			this.closed(stdinError);
 		});
 
 		// Set up strict JSONL reader for stdout.
@@ -88,9 +108,10 @@ export class RpcConnection {
 		// Wait a moment for process to initialize
 		await new Promise((resolve) => setTimeout(resolve, 100));
 
-		if (this.process.exitCode !== null) {
-			const error = this.exitError ?? this.createProcessExitError(this.process.exitCode, this.process.signalCode);
-			this.exitError = error;
+		if (this.exitError) throw this.exitError;
+		if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
+			const error = this.createProcessExitError(childProcess.exitCode, childProcess.signalCode);
+			this.closed(error);
 			throw error;
 		}
 	}
@@ -99,27 +120,65 @@ export class RpcConnection {
 	 * Stop the RPC agent process.
 	 */
 	async stop(): Promise<void> {
-		if (!this.process) return;
-
-		this.stopReadingStdout?.();
-		this.stopReadingStdout = null;
-		this.process.kill("SIGTERM");
-
-		// Wait for process to exit
-		await new Promise<void>((resolve) => {
-			const timeout = setTimeout(() => {
-				this.process?.kill("SIGKILL");
-				resolve();
-			}, 1000);
-
-			this.process?.on("exit", () => {
-				clearTimeout(timeout);
-				resolve();
+		if (this.stopping) return this.stopping;
+		this.generation++;
+		const child = this.process;
+		if (!child) return;
+		// Defer callbacks until stopping is assigned, so an onClose handler may safely call stop again.
+		this.stopping = Promise.resolve()
+			.then(async () => {
+				this.closed(new Error("Agent process stopped"));
+				this.stopReadingStdout?.();
+				this.stopReadingStdout = null;
+				// Native shutdown can wait five seconds for subagents, then close MCP and shell jobs. The
+				// shared owner snapshots detached descendants before TERM and bounds its post-KILL wait too.
+				if (this.options.ownProcessTree) await stopTree(child.pid, 10_000);
+				else
+					await new Promise<void>((resolve) => {
+						if (child.exitCode !== null || child.signalCode !== null || !child.pid) return resolve();
+						let force: ReturnType<typeof setTimeout> | undefined;
+						const done = () => {
+							clearTimeout(timeout);
+							clearTimeout(force);
+							child.off("exit", done);
+							resolve();
+						};
+						const timeout = setTimeout(() => {
+							child.kill("SIGKILL");
+							force = setTimeout(done, 1000);
+						}, 1000);
+						child.once("exit", done);
+						child.kill("SIGTERM");
+					});
+				child.stdin?.destroy();
+				child.stdout?.destroy();
+				child.stderr?.destroy();
+				if (this.process === child) this.process = null;
+			})
+			.finally(() => {
+				this.stopping = undefined;
 			});
-		});
+		return this.stopping;
+	}
 
-		this.process = null;
-		this.pendingRequests.clear();
+	/** Includes explicit stop; listeners registered after closure immediately receive that run's error. */
+	onClose(listener: (error: Error) => void): () => void {
+		this.closeListeners.add(listener);
+		if (this.exitError) listener(this.exitError);
+		return () => this.closeListeners.delete(listener);
+	}
+
+	private closed(error: Error): void {
+		if (this.exitError) return;
+		this.exitError = error;
+		this.rejectPendingRequests(error);
+		for (const listener of Array.from(this.closeListeners)) {
+			try {
+				listener(error);
+			} catch (listenerError) {
+				console.error("RPC close listener failed", listenerError);
+			}
+		}
 	}
 
 	/**
@@ -167,19 +226,28 @@ export class RpcConnection {
 	 * Resolves when agent_settled event is received.
 	 */
 	waitForIdle(timeout = 60000): Promise<void> {
+		if (this.exitError) return Promise.reject(this.exitError);
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
-				unsubscribe();
+				cleanup();
 				reject(new Error(`Timeout waiting for agent to become idle. Stderr: ${this.stderr}`));
 			}, timeout);
 
 			const unsubscribe = this.onEvent((event) => {
 				if (event.type === "agent_settled") {
-					clearTimeout(timer);
-					unsubscribe();
+					cleanup();
 					resolve();
 				}
 			});
+			const unsubscribeClose = this.onClose((error) => {
+				cleanup();
+				reject(error);
+			});
+			function cleanup() {
+				clearTimeout(timer);
+				unsubscribe();
+				unsubscribeClose();
+			}
 		});
 	}
 
@@ -187,21 +255,30 @@ export class RpcConnection {
 	 * Collect events until agent becomes idle.
 	 */
 	collectEvents(timeout = 60000): Promise<JsonAgentSessionEvent[]> {
+		if (this.exitError) return Promise.reject(this.exitError);
 		return new Promise((resolve, reject) => {
 			const events: JsonAgentSessionEvent[] = [];
 			const timer = setTimeout(() => {
-				unsubscribe();
+				cleanup();
 				reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
 			}, timeout);
 
 			const unsubscribe = this.onEvent((event) => {
 				events.push(event);
 				if (event.type === "agent_settled") {
-					clearTimeout(timer);
-					unsubscribe();
+					cleanup();
 					resolve(events);
 				}
 			});
+			const unsubscribeClose = this.onClose((error) => {
+				cleanup();
+				reject(error);
+			});
+			function cleanup() {
+				clearTimeout(timer);
+				unsubscribe();
+				unsubscribeClose();
+			}
 		});
 	}
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
 import { capOutput } from "../../src/octocode/shared/util.ts";
-import { ReportTracker, reportStatus } from "../../src/octocode/subagents/report.ts";
+import { ReportTracker, reportOutcome, reportStatus } from "../../src/octocode/subagents/report.ts";
 import { tmp } from "./helpers.ts";
 
 describe("the outcome word a report starts with", () => {
@@ -20,6 +20,8 @@ describe("the outcome word a report starts with", () => {
 		["**Report**: Failed - tests red", "failed"],
 		["report:\ndone", "done"],
 		["  Outcome : DONE.", "done"],
+		["Done with the audit and the fixes", "done"],
+		["Done. Fixed the failing test", "done"],
 	])("reads %j as %s", (text, status) => expect(reportStatus(text)).toBe(status));
 
 	it.each([
@@ -38,7 +40,40 @@ describe("the outcome word a report starts with", () => {
 		["Summary: done"],
 		["Report: Status: done"],
 		["Reporting: done"],
+		["Done with the audit, but blocked by the missing fixture"],
+		["Partial progress, tests failed"],
 	])("treats %j as unknown, never a failure", (text) => expect(reportStatus(text)).toBeUndefined());
+});
+
+describe("a trailing outcome line", () => {
+	it.each([
+		["Fixed the parser.\n\noutcome: done", "done"],
+		["Two of three.\n**Outcome:** partial.\n\n", "partial"],
+		["Needs a decision\nStatus: BLOCKED", "blocked"],
+		["Tests red.\nReport: failed", "failed"],
+	])("reads %j from its last line", (text, status) => {
+		expect(reportOutcome(text)).toEqual({ status, source: "last" });
+		expect(reportStatus(text)).toBe(status);
+	});
+
+	it("prefers the first word when both are present", () => {
+		expect(reportOutcome("partial: two of three\n\noutcome: done")).toEqual({ status: "partial", source: "first" });
+		expect(reportOutcome("done")).toEqual({ status: "done", source: "first" });
+	});
+
+	it.each([
+		["Fixed it.\nthe outcome was done earlier"],
+		["Fixed it.\ndone"],
+		["Fixed it.\noutcome: not done yet"],
+		["Fixed it.\noutcome: done\nThen more prose."],
+		["Fixed it.\nSummary: done"],
+	])("treats %j as unknown", (text) => expect(reportOutcome(text)).toBeUndefined());
+
+	it("reaches the tracker's result with its source", () => {
+		const report = new ReportTracker();
+		report.answer("All fixed and verified.\n\noutcome: done", "stop");
+		expect(report.result()).toMatchObject({ outcome: "done", outcomeSource: "last" });
+	});
 });
 
 describe("a failed reply's error message", () => {

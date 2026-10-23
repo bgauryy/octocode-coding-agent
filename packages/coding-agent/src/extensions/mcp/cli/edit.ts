@@ -1,11 +1,12 @@
 /** `pi mcp add` and `pi mcp remove`: edit the global or project `mcp.json`. */
 
-import { join } from "node:path";
 import { APP_NAME } from "../../../config.ts";
+import { globalMcpConfigPath } from "../../../core/mcp-config-paths.ts";
 import { validateMcpServerConfig } from "../../../core/mcp-servers.ts";
 import { ProjectTrustStore } from "../../../core/trust-manager.ts";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
-import { errorMessage, HELP_HINT, type McpCommandOptions, parseOptions } from "./shared.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import { HELP_HINT, type McpCommandOptions, parseOptions } from "./shared.ts";
 
 /** Parse `KEY=VALUE` pairs of a repeatable option into a record. */
 function parsePairs(option: string, pairs: string[] | undefined, error: (line: string) => void) {
@@ -118,7 +119,7 @@ export function add(
 	}
 
 	const project = values.has("local");
-	const path = project ? projectConfig : join(options.agentDir, "mcp.json");
+	const path = project ? projectConfig : globalMcpConfigPath(options.agentDir);
 	const scope = project ? "project" : "global";
 	let replaced: boolean;
 	try {
@@ -156,7 +157,7 @@ export function remove(
 		return 1;
 	}
 	const project = parsed.values.has("local");
-	const globalConfig = join(options.agentDir, "mcp.json");
+	const globalConfig = globalMcpConfigPath(options.agentDir);
 	const path = project ? projectConfig : globalConfig;
 	const scope = project ? "project" : "global";
 	let removed: boolean;

@@ -55,10 +55,13 @@ export const LOCAL_FETCH_READER: Reader = {
 	name: "localFetch",
 	range: (from, to) => `ranges=["${from}-${to}"]`,
 };
-/** The core reader, active when Octocode's local readers are not (the MCP server is off or failed to start). */
-export const CORE_READER: Reader = {
-	name: "read",
-	range: (from, to) => `offset=${from}, limit=${to - from + 1}`,
+/**
+ * The reader while Octocode's local readers are unavailable (the MCP server is off or failed to start): `bash`, whose reads
+ * of a file count when they are a plain `cat`, `head`, `tail -n +N` or `sed -n 'A,Bp'` (`files/bash-reads`).
+ */
+export const BASH_READER: Reader = {
+	name: "bash",
+	range: (from, to) => `sed -n '${from},${to}p' <file>`,
 };
 
 export function lostAnchor(
@@ -132,8 +135,16 @@ export class FileGuard {
 	readonly #changed = new Set<string>();
 	/** Set by the team layer: why another agent's reservation forbids changing `file`, if it does. */
 	reservedBy: ((file: string) => string | undefined) | undefined;
-	/** The reader refusals name: Octocode's MCP owner switches it to core `read` while its local readers are unavailable. */
+	/** The reader refusals name: Octocode's MCP owner switches it to `BASH_READER` while its local readers are unavailable. */
 	reader: Reader = LOCAL_FETCH_READER;
+
+	/** A digest only when the current context contains a complete read of this source. */
+	wholeReadDigest(file: string): string | undefined {
+		const real = canonicalPath(file);
+		if (this.#reread.has(real) || this.#changed.has(real)) return undefined;
+		const seen = this.#seen.get(real);
+		return seen?.partial ? undefined : seen?.sha256;
+	}
 
 	/**
 	 * Remember the file as read now (stat only). `known`: its content digest when the caller has it (kept if the size

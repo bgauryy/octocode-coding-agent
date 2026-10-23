@@ -34,7 +34,11 @@ describe("configured plugin skill activation", () => {
 		async (protocol) => {
 			const f = fixture(protocol);
 			fs.writeFileSync(path.join(f.plugin, "index.ts"), 'throw new Error("plugin index must not execute")');
-			const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+				...f,
+				nativeFeatures: false,
+			});
 			await loader.reload();
 			expect(loader.getSkills().skills.map((s) => s.name)).toContain("review-kit:review");
 			expect(loader.getExtensions().extensions).toEqual([]);
@@ -54,7 +58,11 @@ describe("configured plugin skill activation", () => {
 				path.join(f.plugin, "skills/review/SKILL.md"),
 				"---\nuser-invocable: OFF\ndisable-model-invocation: YES\n---\nReview the staged changes.\nMore detail.",
 			);
-			const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+				...f,
+				nativeFeatures: false,
+			});
 			await loader.reload();
 			if (protocol === "claude")
 				expect(loader.getSkills().skills).toContainEqual(
@@ -74,7 +82,7 @@ describe("configured plugin skill activation", () => {
 		fs.writeFileSync(path.join(f.agentDir, "settings.json"), "{}");
 		fs.mkdirSync(path.join(f.cwd, ".octocode"));
 		fs.writeFileSync(path.join(f.cwd, ".octocode/settings.json"), JSON.stringify(f.settings));
-		const settingsManager = SettingsManager.create(f.cwd, f.agentDir);
+		const settingsManager = SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true });
 		settingsManager.setProjectTrusted(false);
 		const loader = new DefaultResourceLoader({ ...f, settingsManager, nativeFeatures: false });
 		await loader.reload();
@@ -86,7 +94,11 @@ describe("configured plugin skill activation", () => {
 		fs.mkdirSync(outside);
 		fs.writeFileSync(path.join(outside, "SKILL.md"), "---\nname: escaped\ndescription: Outside.\n---\noutside");
 		fs.symlinkSync(outside, path.join(f.plugin, "skills/escape"));
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await loader.reload();
 		expect(loader.getSkills().skills).toEqual([]);
 		expect(loader.getSkills().diagnostics).toContainEqual(
@@ -104,7 +116,11 @@ describe("configured plugin skill activation", () => {
 	)("reports malformed plugin settings without rejecting reload: %j", async ({ plugins }) => {
 		const f = fixture("claude");
 		fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify({ plugins }));
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await expect(loader.reload()).resolves.toBeUndefined();
 		expect(loader.getSkills().skills).toEqual([]);
 		expect(loader.getSkills().diagnostics).toContainEqual(
@@ -114,7 +130,11 @@ describe("configured plugin skill activation", () => {
 	it("rejects contained directory cycles before recursive skill loading", async () => {
 		const f = fixture("claude");
 		fs.symlinkSync(path.join(f.plugin, "skills"), path.join(f.plugin, "skills/loop"));
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await loader.reload();
 		expect(loader.getSkills().skills).toEqual([]);
 		expect(loader.getSkills().diagnostics).toContainEqual(
@@ -134,7 +154,11 @@ describe("configured plugin skill activation", () => {
 				},
 			}),
 		);
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await loader.reload();
 		const loaded = loader.getPrompts();
 		expect(loaded.prompts.map((p) => p.name)).toEqual(["review-kit:about"]);
@@ -156,7 +180,11 @@ describe("configured plugin skill activation", () => {
 			path.join(f.plugin, "commands/review.md"),
 			"---\ndescription: Review\narguments: [file, branch]\n---\n$0 | $1 | $file | $branch | $ARGUMENTS",
 		);
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await loader.reload();
 		expect(expandPromptTemplate('/review-kit:review "a file"  main', loader.getPrompts().prompts)).toBe(
 			'a file | main | a file | main | "a file"  main',
@@ -166,10 +194,19 @@ describe("configured plugin skill activation", () => {
 		const f = fixture("claude");
 		fs.mkdirSync(path.join(f.plugin, "commands"));
 		fs.writeFileSync(path.join(f.plugin, "commands/about.md"), "---\ndescription: About\n---\nAbout $ARGUMENTS");
-		const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+		});
 		await loader.reload();
 		expect(loader.getPrompts().prompts.map((p) => p.name)).toEqual(["review-kit:about"]);
-		const disabled = new DefaultResourceLoader({ ...f, nativeFeatures: false, noPromptTemplates: true });
+		const disabled = new DefaultResourceLoader({
+			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+			...f,
+			nativeFeatures: false,
+			noPromptTemplates: true,
+		});
 		await disabled.reload();
 		expect(disabled.getPrompts().prompts).toEqual([]);
 		fs.symlinkSync(path.join(f.plugin, ".claude-plugin/plugin.json"), path.join(f.plugin, "commands/metadata.md"));
@@ -195,7 +232,11 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 	fs.writeFileSync(path.join(f.plugin, "commands/data.md"), "${CLAUDE_PLUGIN_DATA} | $0");
 	const entry = { ...f.settings.plugins[0], hooksFingerprint: inspectPluginHooks(f.settings.plugins[0]).fingerprint };
 	fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify({ plugins: [entry] }));
-	const loader = new DefaultResourceLoader({ ...f, nativeFeatures: false });
+	const loader = new DefaultResourceLoader({
+		settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
+		...f,
+		nativeFeatures: false,
+	});
 	await loader.reload();
 	const hooks = loadHooks(f.cwd, false, undefined, { sourceProfiles: true, plugins: [entry] });
 	const data = commandsFor(hooks.config, "PreToolUse", ["Bash"])[0]?.plugin?.data;

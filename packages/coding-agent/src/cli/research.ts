@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { getResearchCliInvocation } from "../config.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 export function runResearchCommand(args: string[]): boolean {
 	const [kind, ...rest] = args;
@@ -30,7 +31,7 @@ export function runResearchCommand(args: string[]): boolean {
 			process.exitCode = code ?? (signal ? 128 + constants.signals[signal] : 1);
 		});
 	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
+		console.error(errorMessage(error));
 		process.exitCode = 1;
 	}
 	return true;

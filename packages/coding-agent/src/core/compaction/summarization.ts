@@ -159,41 +159,8 @@ export async function completeSummarization(
  * Generate a summary of the conversation using the LLM.
  * If previousSummary is provided, uses the update prompt to merge.
  */
-export async function generateSummary(
-	currentMessages: AgentMessage[],
-	model: Model<any>,
-	// Unused. Kept for existing callers; summaries use the model's output limit (#9512).
-	_reserveTokens: number | undefined,
-	apiKey: string | undefined,
-	headers?: Record<string, string>,
-	signal?: AbortSignal,
-	customInstructions?: string,
-	previousSummary?: string,
-	thinkingLevel?: ThinkingLevel,
-	streamFn?: StreamFn,
-	env?: Record<string, string>,
-	retry?: RetryPolicy,
-	callbacks?: RetryCallbacks,
-	sessionId?: string,
-): Promise<string> {
-	return (
-		await generateSummaryWithUsage(
-			currentMessages,
-			model,
-			_reserveTokens,
-			apiKey,
-			headers,
-			signal,
-			customInstructions,
-			previousSummary,
-			thinkingLevel,
-			streamFn,
-			env,
-			retry,
-			callbacks,
-			sessionId,
-		)
-	).text;
+export async function generateSummary(...args: Parameters<typeof generateSummaryWithUsage>): Promise<string> {
+	return (await generateSummaryWithUsage(...args)).text;
 }
 
 /** Build the provider context for a standalone summary request. */

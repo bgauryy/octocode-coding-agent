@@ -8,7 +8,7 @@ import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
 import {
-	CORE_READER,
+	BASH_READER,
 	FileGuard,
 	formatOutcomes,
 	LOCAL_FETCH_READER,
@@ -39,17 +39,17 @@ describe("file tool", () => {
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 	});
 
-	it("names the reader the session actually has: core `read` when Octocode's local readers are unavailable", () => {
+	it("names the reader the session actually has: bash when Octocode's local readers are unavailable", () => {
 		const dir = tmp();
 		const file = path.join(dir, "a.txt");
 		fs.writeFileSync(file, "one\ntwo\nthree\nfour");
 		const guard = new FileGuard();
-		guard.reader = CORE_READER;
-		expect(guard.check(file, "edit", "a.txt")).toMatch(/was not read in this session\. Read it with `read`/);
+		guard.reader = BASH_READER;
+		expect(guard.check(file, "edit", "a.txt")).toMatch(/was not read in this session\. Read it with `bash`/);
 		guard.record(file, undefined, true, [1, 2]);
-		expect(guard.check(file, "write", "a.txt")).toMatch(/Read the rest with `read` \(offset=3, limit=2\)/);
+		expect(guard.check(file, "write", "a.txt")).toMatch(/Read the rest with `bash` \(sed -n '3,4p' <file>\)/);
 		fs.writeFileSync(file, "changed");
-		expect(guard.check(file, "delete", "a.txt")).toMatch(/Read it again with `read`/);
+		expect(guard.check(file, "delete", "a.txt")).toMatch(/Read it again with `bash`/);
 		expect(new FileGuard().reader).toBe(LOCAL_FETCH_READER);
 	});
 

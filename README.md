@@ -50,6 +50,7 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 
 ## Documentation
 
+- [Feature architecture and flows](docs/FEATURES.md)
 - [Documentation index](packages/coding-agent/docs/index.md)
 - [Agent guide and runtime references](packages/coding-agent/README.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)

@@ -10,6 +10,7 @@ import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { keyDisplayText } from "./components/keybinding-hints.ts";
 import { theme } from "./theme/theme.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export interface InteractiveTuiOptions {
 	readonly tuiMode: "regular" | "fullscreen";
@@ -47,7 +48,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 					await copyToClipboard(text);
 					return true;
 				} catch (error) {
-					return error instanceof Error ? error.message : String(error);
+					return errorMessage(error);
 				}
 			},
 		});

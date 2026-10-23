@@ -14,7 +14,7 @@
 		"build:native:darwin": "yarn workspace @octocodeai/octocode-tui run build:native:darwin",
 		"build:native:linux": "yarn workspace @octocodeai/octocode-tui run build:native:linux",
 		"build:native:win32": "yarn workspace @octocodeai/octocode-tui run build:native:win32",
-		"check": "tsc --noEmit && yarn run lint && yarn run format:check && yarn run check:browser-smoke && yarn run check:workspace && yarn run check:boundaries",
+		"check": "tsc --noEmit && yarn run lint && yarn run format:check && yarn run check:browser-smoke && yarn run check:workspace && yarn run check:favicon && yarn run check:boundaries",
 		"lint": "oxlint packages scripts && node scripts/check-max-lines-baseline.mjs",
 		"lint:fix": "oxlint packages scripts --fix",
 		"audit": "yarn npm audit --recursive --environment production --severity moderate",
@@ -48,6 +48,8 @@
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
 		"generate:workspace": "node scripts/build-workspace-state.mjs",
 		"check:workspace": "node scripts/build-workspace-state.mjs --check",
+		"generate:favicon": "node scripts/generate-favicon.mjs",
+		"check:favicon": "node scripts/generate-favicon.mjs --check",
 		"check:boundaries": "node scripts/check-package-boundaries.mjs"
 	},
 	"devDependencies": {

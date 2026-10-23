@@ -27,6 +27,7 @@ import {
 import type { SessionInternals } from "./host.ts";
 import { buildToolDefinitionRegistry } from "./tool-definitions.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export interface ToolLoadoutOptions {
 	customTools?: ToolDefinition[];
@@ -242,7 +243,7 @@ export class SessionToolLoadout {
 					this.host.session.extensionRunner.emitError({
 						extensionPath: sourceInfo.path,
 						event: "prepare_loadout",
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				}

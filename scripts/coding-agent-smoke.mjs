@@ -37,7 +37,8 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		writeFileSync(
 			entry,
 			`import assert from "node:assert/strict";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAgentSession, SessionManager, ModelRuntime } from "${codingAgentName}";
 import octocode from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/octocode/index.js")).href)};
@@ -58,6 +59,10 @@ assert.ok(getCliInvocation().prefix.some((argument) => argument.endsWith("dist/b
 ${
 	strictRuntime
 		? `assert.ok(existsSync(getBundledSkillsDir()), "research skills are packaged");
+assert.ok(
+	readdirSync(getBundledSkillsDir()).some((name) => existsSync(join(getBundledSkillsDir(), name, "SKILL.md"))),
+	"the bundled skills the agent lists by default are packaged",
+);
 for (const kind of ["research", "native"]) assert.ok(existsSync(getResearchCliInvocation(kind).prefix[0]), kind + " entry is packaged");
 `
 		: ""

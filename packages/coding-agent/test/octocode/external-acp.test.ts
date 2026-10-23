@@ -198,11 +198,17 @@ describe("external ACP backend over SDK stdio", () => {
 		const { backend, journal } = await connect("wait");
 		const first = backend.prompt("first", { timeoutMs: WORK_MS }).catch((error: unknown) => error);
 		await waitForPrompt(journal);
-		await expect(backend.prompt("second", { timeoutMs: WORK_MS })).rejects.toThrow("already has an active prompt");
+		await expect(backend.prompt("second", { timeoutMs: WORK_MS })).rejects.toMatchObject({
+			message: expect.stringContaining("already has an active prompt"),
+			execution: "not-sent",
+		});
 		await backend.cancel();
 		expect(await first).toBeInstanceOf(AcpError);
 		expect(entries(journal).filter((entry) => entry.event === "prompt")).toHaveLength(1);
-		await expect(backend.prompt("retry", { timeoutMs: WORK_MS })).rejects.toThrow("closed");
+		await expect(backend.prompt("retry", { timeoutMs: WORK_MS })).rejects.toMatchObject({
+			message: expect.stringContaining("closed"),
+			execution: "not-sent",
+		});
 	});
 
 	it("timeouts preserve partial evidence, report uncertainty, and kill owned descendants without replay", async () => {

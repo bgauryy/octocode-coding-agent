@@ -42,6 +42,43 @@ export type SessionRenderHost = Pick<
 	| "updateEditorBorderColor"
 >;
 
+/** Interactive-mode members needed to show a tool call. */
+type ToolExecutionHost = Pick<
+	InteractiveModeHost,
+	| "chatContainer"
+	| "getRegisteredToolDefinition"
+	| "outputPad"
+	| "sessionManager"
+	| "settingsManager"
+	| "toolOutputExpanded"
+	| "ui"
+>;
+
+/** Adds a tool call component to the chat, expanded to match the current tool-output setting. */
+export function addToolExecution(
+	host: ToolExecutionHost,
+	toolName: string,
+	toolCallId: string,
+	args: unknown,
+): ToolExecutionComponent {
+	const component = new ToolExecutionComponent(
+		toolName,
+		toolCallId,
+		args,
+		{
+			showImages: host.settingsManager.getShowImages(),
+			imageWidthCells: host.settingsManager.getImageWidthCells(),
+			outputPad: host.outputPad,
+		},
+		host.getRegisteredToolDefinition(toolName),
+		host.ui,
+		host.sessionManager.getCwd(),
+	);
+	component.setExpanded(host.toolOutputExpanded);
+	host.chatContainer.addChild(component);
+	return component;
+}
+
 export function renderSessionItems(
 	host: SessionRenderHost,
 	items: readonly RenderSessionItem[],
@@ -81,21 +118,7 @@ export function renderSessionItems(
 			// Render tool call components
 			for (const content of message.content) {
 				if (content.type === "toolCall") {
-					const component = new ToolExecutionComponent(
-						content.name,
-						content.id,
-						content.arguments,
-						{
-							showImages: host.settingsManager.getShowImages(),
-							imageWidthCells: host.settingsManager.getImageWidthCells(),
-							outputPad: host.outputPad,
-						},
-						host.getRegisteredToolDefinition(content.name),
-						host.ui,
-						host.sessionManager.getCwd(),
-					);
-					component.setExpanded(host.toolOutputExpanded);
-					host.chatContainer.addChild(component);
+					const component = addToolExecution(host, content.name, content.id, content.arguments);
 
 					if (message.stopReason === "aborted" || message.stopReason === "error") {
 						let errorMessage: string;

@@ -15,8 +15,25 @@ import type {
 	ToolInfo,
 	ToolNamespace,
 } from "../../core/extensions/types.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 export const TOOL_SEARCH_TOOL_NAME = "tool_search";
+
+/** Whether a registered `tool_search` can load deferred tools, so deferred exposure is usable. */
+export function canDiscoverTools(pi: Partial<Pick<ExtensionAPI, "getAllTools">>): boolean {
+	return pi.getAllTools?.().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools) ?? false;
+}
+
+/** Activates `tool_search` for deferred tools when it is registered and can reach them. */
+export function activateDiscovery(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools" | "getAllTools">): void {
+	try {
+		const active = pi.getActiveTools();
+		if (active.includes(TOOL_SEARCH_TOOL_NAME) || !canDiscoverTools(pi)) return;
+		pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
+	} catch {
+		// The session is shutting down or not bound yet; the next registration retries.
+	}
+}
 const DEFAULT_TOOL_SEARCH_LIMIT = 8;
 
 /** A tool as the ranker sees it: its name and the text built by {@link createToolSearchDocument}. */
@@ -80,15 +97,11 @@ export function tokenize(text: string): string[] {
 		.map(stem);
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /** Schema descriptions and property names, recursively. */
 function schemaText(schema: unknown, parts: string[]): void {
-	if (!isObject(schema)) return;
+	if (!isRecord(schema)) return;
 	if (typeof schema.description === "string") parts.push(schema.description);
-	if (isObject(schema.properties)) {
+	if (isRecord(schema.properties)) {
 		for (const [name, property] of Object.entries(schema.properties)) {
 			parts.push(name);
 			schemaText(property, parts);
@@ -197,35 +210,98 @@ function isSearchable(exposure: ToolExposure): boolean {
 	return exposure === "deferred";
 }
 
+interface SearchOutcome {
+	loaded: ToolSearchResultTool[];
+	/** Matching deferred tools that are active already. */
+	alreadyLoaded: string[];
+	/** Namespaces with tools left to load, and how many each has. */
+	searchable: Map<string, number>;
+}
+
+/** Whether `name` is the tool's full name, or its name after the namespace prefix (`mcp__server__`). */
+function namesTool(tool: Pick<ToolInfo, "name" | "namespace">, name: string): boolean {
+	const prefix = tool.namespace?.name ? `${tool.namespace.name}__` : undefined;
+	return tool.name === name || (prefix !== undefined && tool.name === `${prefix}${name}`);
+}
+
 /**
  * Rank the searchable tools that are not active yet and activate the matches, so the next model
- * call declares them. Activation is recorded in the transcript like any tool change.
+ * call declares them; a tool the query names exactly comes first. Activation is recorded in the transcript like any
+ * tool change. Also reports matching tools that are loaded already and what is left to search, for the result text.
  */
 function searchAndLoad(
 	tools: NonNullable<ToolSearchToolOptions["tools"]>,
 	query: string,
 	limit: number,
 	namespace?: string,
-): ToolSearchResultTool[] {
+): SearchOutcome {
 	const active = tools.getActiveTools();
-	const candidates = tools
+	const inScope = tools
 		.getAllTools()
 		.filter(
 			(tool) =>
 				isSearchable(tool.exposure) &&
-				!active.includes(tool.name) &&
 				(namespace === undefined ||
 					[tool.namespace?.name, ...(tool.namespace?.aliases ?? [])].some(
 						(name) => name !== undefined && normalizeNamespace(name) === normalizeNamespace(namespace),
 					)),
 		);
-	const documents = candidates.map((tool) => createToolSearchDocument(tool, tool.namespace));
-	const matches = new Bm25Ranker().rank(query, documents, limit);
-	if (matches.length > 0) tools.setActiveTools([...active, ...matches.map((match) => match.name)]);
-	return matches.map((match) => ({
-		name: match.name,
-		description: candidates.find((tool) => tool.name === match.name)?.description ?? "",
-	}));
+	const candidates = inScope.filter((tool) => !active.includes(tool.name));
+	const ranker = new Bm25Ranker();
+	const named = candidates.filter((tool) => namesTool(tool, query.trim())).map((tool) => tool.name);
+	const ranked = ranker
+		.rank(
+			query,
+			candidates.map((tool) => createToolSearchDocument(tool, tool.namespace)),
+			limit,
+		)
+		.map((match) => match.name);
+	const matches = [...new Set([...named, ...ranked])].slice(0, limit);
+	if (matches.length > 0) tools.setActiveTools([...active, ...matches]);
+	const loadedBefore = inScope.filter((tool) => active.includes(tool.name));
+	const alreadyLoaded = [
+		...loadedBefore.filter((tool) => namesTool(tool, query.trim())).map((tool) => tool.name),
+		...ranker
+			.rank(
+				query,
+				loadedBefore.map((tool) => createToolSearchDocument(tool, tool.namespace)),
+				limit,
+			)
+			.map((match) => match.name),
+	];
+	const searchable = new Map<string, number>();
+	for (const tool of candidates) {
+		const key = tool.namespace?.name ?? "other";
+		searchable.set(key, (searchable.get(key) ?? 0) + 1);
+	}
+	return {
+		loaded: matches.map((name) => ({
+			name,
+			description: candidates.find((tool) => tool.name === name)?.description ?? "",
+		})),
+		alreadyLoaded: [...new Set(alreadyLoaded)],
+		searchable,
+	};
+}
+
+/** The result text: what loaded, what was loaded already, or, when nothing matched, what is left to search. */
+function resultText(query: string, outcome: SearchOutcome): string {
+	const { loaded, alreadyLoaded, searchable } = outcome;
+	const already = alreadyLoaded.length > 0 ? [`Already loaded, call directly: ${alreadyLoaded.join(", ")}`] : [];
+	if (loaded.length > 0)
+		return [
+			`Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:`,
+			...loaded.map((tool) => `- ${tool.name}: ${tool.description.trim().split(/\r?\n/)[0]}`),
+			...already,
+		].join("\n");
+	if (already.length > 0) return already[0];
+	if (searchable.size === 0)
+		return "No matching tools found. No tools are waiting to be loaded; your declared tools are all there is.";
+	const namespaces = [...searchable]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, count]) => `${name} (${count} tool${count === 1 ? "" : "s"})`)
+		.join(", ");
+	return `No matching tools found for ${JSON.stringify(query.trim())}. Searchable: ${namespaces}. Retry with a tool name from the mcp_servers section, other capability words, or a namespace.`;
 }
 
 /**
@@ -255,14 +331,13 @@ export function createToolSearchToolDefinition(
 			if (namespace !== undefined && !namespace.trim()) throw new Error("namespace must not be empty");
 			const max = limit ?? DEFAULT_TOOL_SEARCH_LIMIT;
 			if (!Number.isInteger(max) || max <= 0) throw new Error("limit must be a positive integer");
-			const tools = options.tools ? searchAndLoad(options.tools, query, max, namespace) : [];
-			const text =
-				tools.length === 0
-					? "No matching tools found."
-					: `Loaded ${tools.length} tool${tools.length === 1 ? "" : "s"}. They are available from your next call:\n${tools
-							.map((tool) => `- ${tool.name}: ${tool.description.trim().split(/\r?\n/)[0]}`)
-							.join("\n")}`;
-			return { content: [{ type: "text", text }], details: { loaded: tools.map((tool) => tool.name) } };
+			const outcome: SearchOutcome = options.tools
+				? searchAndLoad(options.tools, query, max, namespace)
+				: { loaded: [], alreadyLoaded: [], searchable: new Map() };
+			return {
+				content: [{ type: "text", text: resultText(query, outcome) }],
+				details: { loaded: outcome.loaded.map((tool) => tool.name) },
+			};
 		},
 	};
 }

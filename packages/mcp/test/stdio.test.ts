@@ -1,11 +1,97 @@
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { McpClient, StdioTransport } from "../src/index.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getDefaultEnvironment, McpClient, StdioTransport } from "../src/index.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/stdio-server.mjs", import.meta.url));
 const stubborn = fileURLToPath(new URL("./fixtures/stubborn-server.mjs", import.meta.url));
 
+/** A server that answers `initialize`, then answers `tools/call` with a result far above the transport's limit. */
+function oversizedServer(idFirst: boolean, split: boolean): string {
+	return `
+		let buffered = "";
+		process.stdin.on("data", (chunk) => {
+			buffered += chunk;
+			const lines = buffered.split("\\n");
+			buffered = lines.pop();
+			for (const line of lines) answer(line);
+		});
+		function answer(line) {
+			const m = JSON.parse(line);
+			if (m.id === undefined) return;
+			if (m.method === "initialize") {
+				const result = { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "big", version: "1" } };
+				return process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result }) + "\\n");
+			}
+			const result = { content: [{ type: "text", text: "x".repeat(8000) }] };
+			const text = JSON.stringify(${idFirst} ? { jsonrpc: "2.0", id: m.id, result } : { jsonrpc: "2.0", result, id: m.id }) + "\\n";
+			if (!${split}) return process.stdout.write(text);
+			process.stdout.write(text.slice(0, 5000));
+			setTimeout(() => process.stdout.write(text.slice(5000)), 30);
+		}`;
+}
+
 describe("StdioTransport", () => {
+	describe("environment", () => {
+		const childEnv = async (options: { env?: Record<string, string>; inheritEnv?: boolean }) => {
+			const transport = new StdioTransport({
+				command: process.execPath,
+				args: ["-e", "process.stderr.write(JSON.stringify(process.env))"],
+				...options,
+			});
+			const closed = new Promise<void>((resolve) => transport.onClose(resolve));
+			await transport.start();
+			await closed;
+			return JSON.parse(transport.stderr) as Record<string, string>;
+		};
+		beforeEach(() => {
+			process.env.MCP_TEST_SECRET = "s3cret";
+		});
+		afterEach(() => {
+			delete process.env.MCP_TEST_SECRET;
+		});
+
+		it("keeps host secrets out by default and adds the explicit env", async () => {
+			const env = await childEnv({ env: { EXPLICIT: "yes" } });
+			expect(env.EXPLICIT).toBe("yes");
+			expect(env).not.toHaveProperty("MCP_TEST_SECRET");
+			expect(env.PATH).toBe(process.env.PATH);
+		});
+
+		it("treats inheritEnv false like the default", async () => {
+			expect(await childEnv({ inheritEnv: false })).not.toHaveProperty("MCP_TEST_SECRET");
+		});
+
+		it("inherits the whole host environment when asked, with the explicit env on top", async () => {
+			const env = await childEnv({ inheritEnv: true, env: { MCP_TEST_SECRET: "override" } });
+			expect(env.MCP_TEST_SECRET).toBe("override");
+			expect(env.PATH).toBe(process.env.PATH);
+			expect(Object.keys(env).length).toBeGreaterThan(Object.keys(getDefaultEnvironment()).length);
+		});
+	});
+
+	describe("oversized responses", () => {
+		it.each([
+			["leading id", true, false],
+			["trailing id", false, false],
+			["leading id across writes", true, true],
+			["trailing id across writes", false, true],
+		])("fail their request at once (%s)", async (_name, idFirst, split) => {
+			const transport = new StdioTransport({
+				command: process.execPath,
+				args: ["-e", oversizedServer(idFirst, split)],
+				maxMessageBytes: 2000,
+				closeTimeoutMs: 100,
+			});
+			transport.onError(() => {});
+			const client = new McpClient({ name: "stdio-test", version: "1.0.0", requestTimeoutMs: 30_000 });
+			await client.connect(transport);
+			const started = Date.now();
+			await expect(client.callTool("big", {})).rejects.toThrow("exceeds 2000 bytes");
+			expect(Date.now() - started).toBeLessThan(5_000);
+			await client.close();
+		});
+	});
+
 	it("drops an oversized message to its end and keeps reading the next one", async () => {
 		// The oversized line arrives in two writes, so the transport overflows before it sees the newline.
 		const script = `

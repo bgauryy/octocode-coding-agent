@@ -245,6 +245,9 @@ export async function authorizeMcp(provider: OAuthClientProvider, options: OAuth
  * tokens, a second refresh with the old refresh token would fail and discard the new grant. A 403 asking
  * for more scope shares only another step-up: a refresh keeps the granted scope, and a step-up skips the
  * refresh token, so neither can stand in for the other.
+ *
+ * Public API for standalone clients (see the README). The Octocode host has its own `AuthProvider` with a different
+ * step-up policy (it asks the user to sign in again) and does not call this.
  */
 export function adaptOAuthProvider(provider: OAuthClientProvider): AuthProvider {
 	let refreshing: Promise<void> | undefined;

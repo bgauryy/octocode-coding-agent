@@ -21,10 +21,12 @@ import {
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
+import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
 import { error } from "./rpc-mode/responses.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 // Re-export types for consumers
 export type {
@@ -175,13 +177,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		try {
 			parsed = JSON.parse(line);
 		} catch (parseError: unknown) {
-			output(
-				error(
-					undefined,
-					"parse",
-					`Failed to parse command: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-				),
-			);
+			output(error(undefined, "parse", `Failed to parse command: ${errorMessage(parseError)}`));
 			await waitForRawStdoutBackpressure();
 			return;
 		}
@@ -197,6 +193,12 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			return;
 		}
 
+		const validation = validateRpcCommand(parsed);
+		if (!validation.ok) {
+			output(error(validation.id, validation.commandType, validation.message));
+			await waitForRawStdoutBackpressure();
+			return;
+		}
 		const command = parsed as RpcCommand;
 		try {
 			const response = await handleCommand(command);
@@ -206,9 +208,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			}
 			await checkShutdownRequested();
 		} catch (commandError: unknown) {
-			output(
-				error(command.id, command.type, commandError instanceof Error ? commandError.message : String(commandError)),
-			);
+			output(error(command.id, command.type, errorMessage(commandError)));
 			await waitForRawStdoutBackpressure();
 		}
 	};

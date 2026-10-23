@@ -50,6 +50,13 @@ export function discard(response: Response): Promise<void> {
 	return response.body?.cancel().catch(() => {}) ?? Promise.resolve();
 }
 
+/** A credentialed MCP request must never follow a server-selected destination. */
+export async function rejectRedirect(response: Response, url: URL): Promise<void> {
+	if (!response.redirected && (!response.url || new URL(response.url).origin === url.origin)) return;
+	await discard(response);
+	throw new Error("MCP HTTP response redirected outside its configured endpoint");
+}
+
 /**
  * The body as text, reading at most `maxBytes`: a longer body is cancelled, then refused, or cut at the limit with
  * `truncate`. A plain `response.text()` would buffer whatever the server sends.

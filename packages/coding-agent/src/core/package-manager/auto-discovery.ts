@@ -1,11 +1,8 @@
 import { dirname, join, resolve } from "node:path";
+import { discoverExtensionsInDir } from "../extensions/loader/discovery.ts";
 import type { SettingsManager } from "../settings-manager.ts";
-import { collectAutoExtensionEntries, collectAutoPromptEntries, collectAutoThemeEntries } from "./auto-entries.ts";
-import {
-	collectAncestorAgentsSkillDirs,
-	collectAncestorProjectSkillDirs,
-	collectAutoSkillEntries,
-} from "./discovery.ts";
+import { collectAutoPromptEntries, collectAutoThemeEntries } from "./auto-entries.ts";
+import { collectAncestorAgentsSkillDirs, collectAncestorProjectSkillDirs, collectSkillEntries } from "./discovery.ts";
 import { isEnabledByOverrides } from "./patterns.ts";
 import { addResource, getTargetMap } from "./resources.ts";
 import {
@@ -86,7 +83,7 @@ export function addAutoDiscoveredResources(
 		// Project extensions from .octocode/
 		addResources(
 			"extensions",
-			collectAutoExtensionEntries(projectDirs.extensions),
+			discoverExtensionsInDir(projectDirs.extensions),
 			projectMetadata,
 			projectOverrides.extensions,
 			projectBaseDir,
@@ -95,7 +92,7 @@ export function addAutoDiscoveredResources(
 		// Project skills from .octocode/
 		addResources(
 			"skills",
-			collectAutoSkillEntries(projectDirs.skills, "octocode"),
+			collectSkillEntries(projectDirs.skills, "octocode"),
 			projectMetadata,
 			projectOverrides.skills,
 			projectBaseDir,
@@ -105,7 +102,7 @@ export function addAutoDiscoveredResources(
 			const baseDir = dirname(skillsDir);
 			addResources(
 				"skills",
-				collectAutoSkillEntries(skillsDir, "octocode"),
+				collectSkillEntries(skillsDir, "octocode"),
 				{ ...projectMetadata, baseDir },
 				projectOverrides.skills,
 				baseDir,
@@ -122,7 +119,7 @@ export function addAutoDiscoveredResources(
 		};
 		addResources(
 			"skills",
-			collectAutoSkillEntries(agentsSkillsDir, "agents"),
+			collectSkillEntries(agentsSkillsDir, "agents"),
 			agentsMetadata,
 			projectOverrides.skills,
 			agentsBaseDir,
@@ -149,7 +146,7 @@ export function addAutoDiscoveredResources(
 	// User extensions from ~/.octocode/agent/
 	addResources(
 		"extensions",
-		collectAutoExtensionEntries(userDirs.extensions),
+		discoverExtensionsInDir(userDirs.extensions),
 		userMetadata,
 		userOverrides.extensions,
 		globalBaseDir,
@@ -158,7 +155,7 @@ export function addAutoDiscoveredResources(
 	// User skills from ~/.octocode/agent/
 	addResources(
 		"skills",
-		collectAutoSkillEntries(userDirs.skills, "octocode"),
+		collectSkillEntries(userDirs.skills, "octocode"),
 		userMetadata,
 		userOverrides.skills,
 		globalBaseDir,
@@ -172,7 +169,7 @@ export function addAutoDiscoveredResources(
 	};
 	addResources(
 		"skills",
-		collectAutoSkillEntries(userAgentsSkillsDir, "agents"),
+		collectSkillEntries(userAgentsSkillsDir, "agents"),
 		userAgentsMetadata,
 		userOverrides.skills,
 		userAgentsBaseDir,

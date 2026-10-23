@@ -14,6 +14,7 @@ import {
 import { type CreateAgentSessionOptions, type CreateAgentSessionResult, createAgentSession } from "./sdk.ts";
 import type { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -159,7 +160,7 @@ export async function createAgentSessionServices(
 		try {
 			modelRuntime.registerProvider(name, config);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			diagnostics.push({
 				type: "error",
 				message: `Extension "${extensionPath}" error: ${message}`,
@@ -171,7 +172,7 @@ export async function createAgentSessionServices(
 		try {
 			modelRuntime.registerNativeProvider(provider);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			diagnostics.push({
 				type: "error",
 				message: `Extension "${extensionPath}" error: ${message}`,
@@ -183,7 +184,7 @@ export async function createAgentSessionServices(
 		try {
 			modelRuntime.registerVirtualModel(definition);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			diagnostics.push({
 				type: "error",
 				message: `Extension "${extensionPath}" error: ${message}`,

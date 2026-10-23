@@ -15,6 +15,7 @@ import { errorMessage, isRecord } from "../shared/util.ts";
 import { ArchiveCapture, deliverArchivePointer, forkLineage, sessionRecordOf, summaryLabel } from "./archive.ts";
 import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { clearColdResults } from "./clearing.ts";
+import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
 	contextTokens,
@@ -74,6 +75,11 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	pi.on("turn_end", async (event, ctx) => {
 		lifetimes.observe(pi, ctx, event.message, cacheEnv(ctx));
 		thrash.turnEnded();
+		noticeContextUsage(
+			pi,
+			ctx,
+			event.context.contextEntries.flatMap((entry) => entry.messages.map((message) => ({ message }))),
+		);
 		const current = ctx.sessionManager.getSessionId();
 		if (current !== session) {
 			session = current;
@@ -161,7 +167,6 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 		ctx.compact({
 			onError: () => {
 				downshiftFrom = undefined;
-				return downshiftFrom;
 			},
 		});
 	});

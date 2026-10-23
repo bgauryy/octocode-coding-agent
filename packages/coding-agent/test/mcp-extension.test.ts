@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type JsonRpcMessage,
+	LegacySseTransport,
 	LATEST_PROTOCOL_VERSION,
 	McpAuthRequiredError,
 	McpHttpError,
 	McpSessionExpiredError,
+	StreamableHttpTransport,
 } from "@octocodeai/octocode-mcp";
 import { createInMemoryTransportPair, type InMemoryTransport } from "@octocodeai/octocode-mcp/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,12 +24,9 @@ import {
 	updateMcpServerConfig,
 } from "../src/extensions/mcp/config.ts";
 import { MAX_SERVERS_SECTION_CHARS, renderServersSection } from "../src/extensions/mcp/index.ts";
-import {
-	createDefaultTransport,
-	McpOAuthCredentialStore,
-	McpServerConnection,
-	McpServerLog,
-} from "../src/extensions/mcp/runtime.ts";
+import { McpServerLog } from "../src/extensions/mcp/log.ts";
+import { McpOAuthCredentialStore } from "../src/extensions/mcp/oauth.ts";
+import { createDefaultTransport, McpServerConnection } from "../src/extensions/mcp/runtime.ts";
 import { convertMcpResult, createMcpResultSchema, createMcpToolName } from "../src/extensions/mcp/tools.ts";
 
 // Config values are resolved at connect time, so the literal reference must survive loading.
@@ -101,6 +100,40 @@ describe("MCP config", () => {
 		return { agentDir, cwd };
 	}
 
+	it("validates SSE and literal headers, preserving literal values at transport creation", () => {
+		expect(validateMcpServerConfig("legacy", { type: "sse", url: "https://user@example.com/events" })).toContain(
+			"SSE url must not contain credentials",
+		);
+		expect(
+			validateMcpServerConfig("legacy", { type: "sse", url: "https://example.com/events", literalHeaders: "yes" }),
+		).toContain("literalHeaders must be a boolean");
+		const config = validateMcpServerConfig("legacy", {
+			type: "sse",
+			url: "https://example.com/events",
+			literalHeaders: true,
+			headers: { Authorization: TOKEN_HEADER, "X-Command": "!false" },
+		});
+		expect(typeof config).toBe("object");
+		if (typeof config === "string") return;
+		const legacy = createDefaultTransport({ name: "legacy", source: "test", config }, process.cwd(), undefined);
+		expect(legacy).toBeInstanceOf(LegacySseTransport);
+		expect((legacy as LegacySseTransport).options.headers).toEqual({
+			Authorization: TOKEN_HEADER,
+			"X-Command": "!false",
+		});
+		const standard = createDefaultTransport(
+			{
+				name: "remote",
+				source: "test",
+				config: { url: "https://example.com/mcp", literalHeaders: true, headers: { Authorization: TOKEN_HEADER } },
+			},
+			process.cwd(),
+			undefined,
+		);
+		expect(standard).toBeInstanceOf(StreamableHttpTransport);
+		expect((standard as StreamableHttpTransport).options.headers).toEqual({ Authorization: TOKEN_HEADER });
+	});
+
 	it("persists explicit script exposure and Octocode's deferred override across reload", () => {
 		const paths = setup({ mcpServers: { docs: { command: "x" }, octocode: { command: "x" } } }, {});
 		const file = join(paths.agentDir, "mcp.json");
@@ -142,12 +175,12 @@ describe("MCP config", () => {
 			["shared", "project", { command: "project-cmd", exposure: "direct" }],
 			["remote", "global", { url: "https://example.com/mcp", headers: { Authorization: TOKEN_HEADER } }],
 			["off", "global", { command: "x", enabled: false }],
+			["legacy", "global", { type: "sse", url: "https://example.com/sse" }],
 		]);
-		expect(trusted.errors).toHaveLength(4);
+		expect(trusted.errors).toHaveLength(3);
 		expect(trusted.errors[0]).toContain('server "bad" needs either "command"');
-		expect(trusted.errors[1]).toContain("legacy SSE transport is not supported");
-		expect(trusted.errors[2]).toContain('server "badUrl": url must be an http or https URL');
-		expect(trusted.errors[3]).toContain('invalid server name "bad name"');
+		expect(trusted.errors[1]).toContain('server "badUrl": url must be an http or https URL');
+		expect(trusted.errors[2]).toContain('invalid server name "bad name"');
 
 		// Untrusted projects cannot add or override servers, since stdio servers run commands.
 		const untrusted = loadMcpConfig({ ...paths, projectTrusted: false });
@@ -422,7 +455,7 @@ describe("MCP tools", () => {
 
 	it("points resource links to read_mcp_resource and saves binary resources", async () => {
 		const saved: [string | Uint8Array, string][] = [];
-		const saveOutput = async (data: string | Uint8Array, extension: string) => {
+		const saveOutput = (data: string | Uint8Array, extension: string) => {
 			saved.push([data, extension]);
 			return `/tmp/saved${extension}`;
 		};
@@ -460,9 +493,9 @@ describe("MCP tools", () => {
 		expect(saved).toEqual([[Buffer.from("%PDF"), ".pdf"]]);
 	});
 
-	it("cuts the middle of model-facing text over 20KB and keeps the full result for scripts", async () => {
+	it("saves model-facing text over 20KB whole, shows its start and end, and keeps the full result for scripts", async () => {
 		const saved: (string | Uint8Array)[] = [];
-		const saveOutput = async (data: string | Uint8Array) => {
+		const saveOutput = (data: string | Uint8Array) => {
 			saved.push(data);
 			return "/tmp/full.txt";
 		};
@@ -473,14 +506,12 @@ describe("MCP tools", () => {
 		const converted = await convertMcpResult("docs", "snapshot", result, { saveOutput });
 		expect(converted.content).toHaveLength(2);
 		const text = (converted.content[0] as { text: string }).text;
-		// Codex's format: a header, the start and end of the text, then the file with the full text.
+		// The shared spill format: the start, an omission note, the end, then the file with the full text.
+		expect(text).toMatch(/^line 1\nline 2\n/);
+		expect(text).toMatch(/\[… \d+ lines omitted …\]/);
 		expect(text).toMatch(
-			new RegExp(
-				`^Warning: truncated output \\(original token count: ${Math.ceil(full.length / 4)}\\)\nTotal output lines: 3000\n\nline 1\nline 2\n`,
-			),
+			/line 3000\n\n\[Output trimmed: showing .* of 3000 lines.*Full output: \/tmp\/full\.txt; search it or read it by line range\.\]$/,
 		);
-		expect(text).toMatch(/…\d+ chars truncated…/);
-		expect(text.endsWith("line 3000\n\n[Full output: /tmp/full.txt (read it with offset/limit)]")).toBe(true);
 		expect(Buffer.byteLength(text)).toBeLessThan(21 * 1024);
 		expect(converted.content[1]).toEqual(image);
 		expect(converted.details).toEqual({ server: "docs", tool: "snapshot", fullOutputPath: "/tmp/full.txt" });
@@ -596,6 +627,35 @@ describe("MCP connections", () => {
 		const started = Date.now();
 		await expect(call).rejects.toThrow();
 		expect(Date.now() - started).toBeLessThan(2_000);
+	});
+
+	it("does not respawn a stdio server that keeps failing to start on every call", async () => {
+		const failing = () => {
+			const transport = createTransport();
+			transport.start = async () => {
+				throw new Error("exec failed");
+			};
+			return transport;
+		};
+		const { connection, opened } = connect({ name: "dies", config: { command: "unused" }, source: "test" }, [
+			failing,
+			failing,
+			failing,
+			() => createTransport(),
+		]);
+		// The first two failures retry at once.
+		for (let call = 0; call < 2; call++)
+			await expect(connection.callTool("echo", {}, {})).rejects.toThrow("exec failed");
+		expect(opened()).toBe(2);
+		// Later calls get a clear error without a new process, until the pause ends or the server is restarted.
+		await expect(connection.callTool("echo", {}, {})).rejects.toThrow("exec failed");
+		expect(opened()).toBe(3);
+		await expect(connection.callTool("echo", {}, {})).rejects.toThrow(/failed to connect 3 times in a row.*Restart it/);
+		expect(opened()).toBe(3);
+		await connection.reconnect();
+		expect(opened()).toBe(4);
+		await expect(connection.callTool("echo", {}, {})).resolves.toMatchObject({ content: [{ text: "ok" }] });
+		await connection.close();
 	});
 
 	it("stops a transport whose start is hung and can reconnect afterwards", async () => {
@@ -1027,11 +1087,54 @@ describe("MCP servers section", () => {
 			{ entry: server("plain", undefined, "deferred").entry, connection: { instructions: "From instructions." } },
 		]);
 		expect(section?.split("\n").slice(1)).toEqual([
+			"- mcp__direct (declared): Declared.",
 			"- mcp__docs (tool_search): Docs search.",
 			"- mcp__later (tool_search)",
 			"- mcp__plain (tool_search): From instructions.",
 		]);
-		expect(renderServersSection([server("direct", "Declared.", "direct")])).toBeUndefined();
+		expect(renderServersSection([server("direct", "Declared.", "direct")])).toBe(
+			"MCP servers in this session. Their tools are in your tool list.\n- mcp__direct (declared): Declared.",
+		);
+	});
+
+	it("names the tools tool_search loads and the rest of the server instructions", () => {
+		const section = renderServersSection([
+			{
+				entry: server("docs", undefined, "deferred").entry,
+				connection: { instructions: "Docs search.\nSearch first, then\n  fetch a page." },
+				tools: { deferred: ["mcp__docs__search", "mcp__docs__fetch"], direct: 0 },
+			},
+			{
+				entry: server("api", "API calls.", "direct").entry,
+				connection: { instructions: "Call get before put." },
+				tools: { deferred: [], direct: 2 },
+			},
+			// Its instructions and tools are in the `octocode` section.
+			{ entry: server("octocode").entry, tools: { deferred: ["mcp__octocode__ghSearchCode"], direct: 5 } },
+			// Connected without tools: nothing to reach.
+			{ entry: server("empty", undefined, "deferred").entry, tools: { deferred: [], direct: 0 } },
+		]);
+		expect(section?.split("\n")).toEqual([
+			expect.stringContaining("Load a `tool_search` server's tools with `tool_search`"),
+			"- mcp__api (declared): API calls.",
+			"  instructions: Call get before put.",
+			"- mcp__docs (tool_search): Docs search.",
+			"  tool_search loads: search, fetch",
+			"  instructions: Search first, then fetch a page.",
+		]);
+	});
+
+	it("drops instructions before tool names and summaries when the section is full", () => {
+		const servers = Array.from({ length: 12 }, (_, index) => ({
+			entry: server(`server${index}`, "s".repeat(200), "deferred").entry,
+			connection: { instructions: "i".repeat(2000) },
+			tools: { deferred: [`mcp__server${index}__find`], direct: 0 },
+		}));
+		const section = renderServersSection(servers) ?? "";
+		expect(section.length).toBeLessThanOrEqual(MAX_SERVERS_SECTION_CHARS);
+		expect(section).toContain("- mcp__server11 (tool_search): sss");
+		expect(section).toContain("  tool_search loads: find");
+		expect(section).not.toContain("iiii".repeat(60));
 	});
 
 	it("shortens descriptions to fit the size limit", () => {
@@ -1040,10 +1143,11 @@ describe("MCP servers section", () => {
 		expect(section.length).toBeLessThanOrEqual(MAX_SERVERS_SECTION_CHARS);
 		expect(section.split("\n")).toHaveLength(41);
 		expect(section).toContain("- mcp__server39 (tool_search): x");
+		expect(section).not.toContain("x".repeat(250));
 	});
 
 	it("leaves out the last servers when their names alone do not fit", () => {
-		const servers = Array.from({ length: 200 }, (_, index) =>
+		const servers = Array.from({ length: 300 }, (_, index) =>
 			server(`server-with-a-long-name-${index}`, "desc", "deferred"),
 		);
 		const section = renderServersSection(servers) ?? "";
@@ -1051,7 +1155,7 @@ describe("MCP servers section", () => {
 		const lines = section.split("\n");
 		expect(lines.at(-1)).toMatch(/^- … \d+ more servers; find their tools with tool_search$/);
 		const omitted = Number(/(\d+) more/.exec(lines.at(-1) ?? "")?.[1]);
-		expect(lines.length - 2 + omitted).toBe(200);
+		expect(lines.length - 2 + omitted).toBe(300);
 	});
 });
 

@@ -8,7 +8,5 @@ export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
 export const AGENT_GOAL_ENV = "OCTOCODE_AGENT_GOAL";
 /** Set in a subagent started with `collaborate`: it works with its sibling subagents, not only for its parent. */
 export const AGENT_COLLABORATE_ENV = "OCTOCODE_AGENT_COLLABORATE";
-/** A subagent's own handoff folder (`<workspace>/.octocode/tmp/agents/<id>`): long results go there as files, not into its report. */
-export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
-/** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
-export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
+/** Defined in `shared/env.ts` so the permission layer can read them without importing team code. */
+export { AGENT_SCRATCH_ENV, TEAM_WORKSPACE_ENV } from "../../shared/env.ts";

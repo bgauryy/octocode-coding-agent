@@ -1,10 +1,10 @@
 # Plan Mode Extension
 
-This regression fixture demonstrates plan extraction, tool selection and progress widgets through the extension API. It disables the older core `edit` and `write` tools and filters calls to `bash`. Other tools stay active, including native `file` and MCP tools, so this fixture does not enforce a session-wide read-only boundary.
+This regression fixture demonstrates plan extraction, tool selection and progress widgets through the extension API. It disables the native `file` tool (and custom tools named `edit` or `write`) and filters calls to `bash`. Other tools stay active, including MCP tools, so this fixture does not enforce a session-wide read-only boundary.
 
 ## Features
 
-- **Built-in write tools disabled**: Disables edit/write while preserving other active tools
+- **File-changing tools disabled**: Disables `file` (and custom `edit`/`write`) while preserving other active tools
 - **Bash allowlist**: Filters shell commands using the fixture's command matcher
 - **Plan extraction**: Extracts numbered steps from `Plan:` sections
 - **Progress tracking**: Widget shows completion status during execution
@@ -37,12 +37,14 @@ Plan:
 ## How It Works
 
 ### Plan Mode
-- Built-in edit/write tools disabled
+
+- `file` (and custom `edit`/`write`) tools disabled
 - Other active tools remain available
 - Bash commands filtered through allowlist
 - Agent is instructed to produce a plan; the tool filter only covers the tools listed above
 
 ### Execution Mode
+
 - Full tool access restored
 - Agent executes steps in order
 - `[DONE:n]` markers track completion
@@ -51,6 +53,7 @@ Plan:
 ### Command Allowlist
 
 Commands recognized by the allowlist:
+
 - File inspection: `cat`, `head`, `tail`, `less`, `more`
 - Search: `grep`, `find`, `rg`, `fd`
 - Directory: `ls`, `pwd`, `tree`
@@ -59,6 +62,7 @@ Commands recognized by the allowlist:
 - System info: `uname`, `whoami`, `date`, `uptime`
 
 Blocked commands:
+
 - File modification: `rm`, `mv`, `cp`, `mkdir`, `touch`
 - Git write: `git add`, `git commit`, `git push`
 - Package install: `npm install`, `yarn add`, `pip install`

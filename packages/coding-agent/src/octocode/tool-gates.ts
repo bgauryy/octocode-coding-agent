@@ -1,13 +1,18 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/extensions/index.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { type GateVerdict, permissionGate } from "./permission/gate.ts";
+import { gitStateGate } from "./permission/git-state.ts";
 import type { createProvenance } from "./permission/provenance.ts";
 import type { registerSourcePolicy } from "./permission/source-policy-loader.ts";
+import { registerHookMcpGate } from "./hooks/mcp-gate.ts";
 import { userBashGate } from "./permission/user-bash.ts";
 import type { registerHooks } from "./hooks/register.ts";
+import { envFlag, SUBAGENT_ENV } from "./shared/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
+import { TEAM_WORKSPACE_ENV } from "./team/store/env.ts";
 import type { registerCollab } from "./team/tools.ts";
 import type { registerActivity } from "./ui/activity.ts";
 
@@ -22,14 +27,17 @@ export interface ToolGatesOptions {
 	activity: ReturnType<typeof registerActivity>;
 	/** Local-read snapshots by tool call id, for the `tool_result` handler in `index.ts`. */
 	localReads: Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>;
+	/** Says whether this process is a subagent in the shared tree (`permission/git-state.ts`); `process.env` by default. */
+	env?: NodeJS.ProcessEnv;
 }
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
 	pi: ExtensionAPI,
-	{ permission, provenance, annotations, collab, hooks, sourcePolicy, activity, localReads }: ToolGatesOptions,
+	{ permission, provenance, annotations, collab, hooks, sourcePolicy, activity, localReads, env }: ToolGatesOptions,
 ): void {
-	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (reservations) and user
+	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
+	// tree leaves git state alone, then reservations) and user
 	// hooks come first: user hooks spawn processes, so they run only for calls the reservation gate lets through; the
 	// permission gate checks last (a hook's `ask` is handed to it), so the user is never asked about a call a hook would
 	// deny. A refusal by an earlier gate is audited here; the permission gate audits its own. Octocode runs no call of a batch
@@ -48,21 +56,49 @@ export function registerToolGates(
 				);
 			return verdict;
 		};
+	// Only an isolated run's parent hands its child the team workspace (`subagents/tool.ts` `Isolation`): its cwd is a private worktree.
+	const scope = env ?? process.env;
+	const gitState = gitStateGate({
+		subagent: envFlag(scope, SUBAGENT_ENV),
+		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
+	});
+	// The invariants again for a command a hook rewrote.
+	const invariants: Gate = async (event, ctx) => (await gitState?.(event, ctx)) ?? collab.reservationGate(event, ctx);
+	const permissionStep: Gate = (event, ctx, prior) =>
+		permissionGate({
+			permission,
+			provenance,
+			annotations,
+			replacement: {
+				definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
+				refresh: (ctx) => sourcePolicy.refresh(ctx),
+				reserved: invariants,
+			},
+		})(agentOperation(event), ctx, prior, event);
 	const gates: Gate[] = [
+		...(gitState ? [audited(gitState)] : []),
 		audited(collab.reservationGate),
 		audited(hooks.preToolUse),
-		(event, ctx, prior) =>
-			permissionGate({
-				permission,
-				provenance,
-				annotations,
-				replacement: {
-					definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
-					refresh: (ctx) => sourcePolicy.refresh(ctx),
-					reserved: collab.reservationGate,
-				},
-			})(agentOperation(event), ctx, prior, event),
+		(event, ctx, prior) => permissionStep(event, ctx, prior),
 	];
+	// An `mcp_tool` hook's call is a tool call too (`hooks/mcp-gate.ts`): it passes the permission step, which audits its own
+	// refusals. The earlier gates are skipped: PreToolUse hooks would run for the hook's own call and recurse.
+	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
+	// call made while a hook call is being decided is refused.
+	let hookCalls = 0;
+	const deciding = new AsyncLocalStorage<true>();
+	registerHookMcpGate(pi.events, async (call, ctx) => {
+		if (deciding.getStore()) return "a hook MCP call made while another is being decided is refused";
+		await sourcePolicy.refresh(ctx);
+		const event: ToolCallEvent = {
+			type: "tool_call",
+			toolCallId: `hook-mcp-${++hookCalls}`,
+			toolName: call.toolName,
+			input: call.input,
+		};
+		const verdict = await deciding.run(true, () => permissionStep(event, ctx));
+		return verdict?.block ? (verdict.reason ?? "blocked") : undefined;
+	});
 	pi.on("tool_call", async (event, ctx) => {
 		const started = Date.now();
 		await sourcePolicy.refresh(ctx);
@@ -73,7 +109,7 @@ export function registerToolGates(
 				const verdict = await gate(event, ctx, prior);
 				if (verdict?.block) return verdict;
 				if (verdict?.rewritten) {
-					const reserved = await audited(collab.reservationGate)(event, ctx);
+					const reserved = await audited(invariants)(event, ctx);
 					if (reserved?.block) return reserved;
 				}
 				if (verdict?.ask) prior = { ask: verdict.ask };

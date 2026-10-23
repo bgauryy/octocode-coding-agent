@@ -1,15 +1,16 @@
+import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type OpenAI from "openai";
 import { clampThinkingLevel } from "../models.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, ThinkingContent } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { getClientApiKey } from "../utils/headers.ts";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { createClient, getClientApiKey } from "./openai-completions/client.ts";
+import { createClient } from "./openai-completions/client.ts";
+import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
 import { getCompat } from "./openai-completions/compat.ts";
 import { buildParams } from "./openai-completions/params.ts";
 import {
@@ -32,23 +33,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 	const normalizedContext = resolveTranscript(context, getCompat(model).supportsMidConvoSystemMessages);
 
 	(async () => {
-		const output: AssistantMessage = {
-			role: "assistant",
-			content: [],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "pending",
-			timestamp: Date.now(),
-		};
+		const output: AssistantMessage = createPendingAssistantMessage(model);
 
 		// `reasoning_details` are replay metadata, not user-visible stream deltas.
 		// Keep them in memory during streaming and serialize once when the block is finalized.
@@ -80,27 +65,9 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			if (nextParams !== undefined) {
 				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
 			}
-			const requestOptions = {
-				...(options?.signal ? { signal: options.signal } : {}),
-				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-				maxRetries: 0,
-			};
-			const { data: openaiStream, response } = await retryProviderRequest(
-				() => client.chat.completions.create(params, requestOptions).withResponse(),
-				{
-					maxRetries: options?.maxRetries,
-					maxRetryDelayMs: options?.maxRetryDelayMs,
-					signal: options?.signal,
-				},
+			const openaiStream = await requestOpenAISdkStream(model, options, (requestOptions) =>
+				client.chat.completions.create(params, requestOptions),
 			);
-			try {
-				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
-			} catch (error) {
-				// Iteration has not started, so the SDK iterator cannot release this response yet.
-				openaiStream.controller.abort();
-				await response.body?.cancel().catch(() => {});
-				throw error;
-			}
 			stream.push({ type: "start", partial: output });
 
 			const processor = createCompletionsChunkProcessor(

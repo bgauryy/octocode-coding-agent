@@ -223,16 +223,37 @@ export class Permission {
 		this.#trail.flush();
 	}
 
-	/** Changes the mode (the user's choice: by command or editor shortcut). */
+	#confirmStop?: (ctx: ExtensionContext, mode: PermissionMode) => Promise<boolean>;
+	/** Asked before a user's mode change that clears the grants, which stops every delegated run (`stop-confirm.ts`). */
+	setConfirmStop(confirm: (ctx: ExtensionContext, mode: PermissionMode) => Promise<boolean>): void {
+		this.#confirmStop = confirm;
+	}
+
+	/** Whether `mode` asks for some action the current mode allows: the change clears the grants. */
+	#narrows(mode: PermissionMode): boolean {
+		return ACTION_CLASSES.some((action) => decide(this.#mode, action) === "allow" && decide(mode, action) === "ask");
+	}
+
+	/** The user's mode change (command or editor shortcut): a narrowing one asks `confirmStop` first; false when declined (the mode stays). */
+	async chooseMode(mode: PermissionMode, ctx: ExtensionContext): Promise<boolean> {
+		if (mode !== this.#mode && this.#narrows(mode) && this.#confirmStop && !(await this.#confirmStop(ctx, mode))) {
+			this.paint(ctx);
+			return false;
+		}
+		this.setMode(mode, ctx);
+		return true;
+	}
+
+	/** Changes the mode at once, without `confirmStop` (`chooseMode` is the user's path). */
 	setMode(mode: PermissionMode, ctx: ExtensionContext): void {
 		if (mode === this.#mode) {
 			this.paint(ctx);
 			return;
 		}
 		const from = this.#mode;
+		const narrows = this.#narrows(mode);
 		this.#mode = mode;
-		if (ACTION_CLASSES.some((action) => decide(from, action) === "allow" && decide(mode, action) === "ask"))
-			this.clearGrants();
+		if (narrows) this.clearGrants();
 		else this.#invalidate();
 		this.paint(ctx);
 		this.#trail.record({ action: "mode", what: [`${from} → ${mode}`], allowed: true, via: "user" });
@@ -250,9 +271,9 @@ export class Permission {
 		);
 	}
 
-	/** The editor shortcut: the next mode in `PERMISSION_CYCLE`, wrapping to the first. */
-	cycle(ctx: ExtensionContext): void {
-		this.setMode(PERMISSION_CYCLE[(PERMISSION_CYCLE.indexOf(this.#mode) + 1) % PERMISSION_CYCLE.length], ctx);
+	/** The editor shortcut: the next mode in `PERMISSION_CYCLE`, wrapping to the first, through `chooseMode`. */
+	cycle(ctx: ExtensionContext): Promise<boolean> {
+		return this.chooseMode(PERMISSION_CYCLE[(PERMISSION_CYCLE.indexOf(this.#mode) + 1) % PERMISSION_CYCLE.length], ctx);
 	}
 
 	/** Session grants, as `action: label`. */

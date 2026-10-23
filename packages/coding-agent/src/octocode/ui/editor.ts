@@ -20,7 +20,8 @@ type Paint = Pick<Theme, "fg">;
 /** What the editor needs from the permission state: the live mode and the Shift+Tab step. */
 interface EditorPermission {
 	readonly mode: PermissionMode;
-	cycle(ctx: ExtensionContext): void;
+	/** May wait for a confirmation (`Permission.chooseMode`); the editor does not wait for it. */
+	cycle(ctx: ExtensionContext): unknown;
 }
 
 /** Columns the closed box takes: `│ ` on the left and ` │` on the right. */
@@ -197,7 +198,7 @@ export function registerEditor(pi: ExtensionAPI, permission: EditorPermission): 
 			// Preserve the editor object: Octocode copies its native action handlers and appearance onto this instance.
 			editor.handleInput = (data) => {
 				if (keybindings.matches(data, "app.permission.cycle")) {
-					if (!isKeyRelease(data) && !isKeyRepeat(data)) permission.cycle(context);
+					if (!isKeyRelease(data) && !isKeyRepeat(data)) void permission.cycle(context);
 					return;
 				}
 				if (keybindings.matches(data, "app.thinking.toggle")) {

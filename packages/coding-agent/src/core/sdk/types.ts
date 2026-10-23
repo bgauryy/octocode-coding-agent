@@ -61,7 +61,7 @@ export interface CreateAgentSessionOptions {
 	/** Session manager. Default: SessionManager.create(cwd) */
 	sessionManager?: SessionManager;
 
-	/** Settings manager. Default: SettingsManager.create(cwd, agentDir) */
+	/** Settings manager. Default: SettingsManager.create(cwd, agentDir), which treats the project as untrusted. */
 	settingsManager?: SettingsManager;
 	/** Session start event metadata for extension runtime startup. */
 	sessionStartEvent?: SessionStartEvent;

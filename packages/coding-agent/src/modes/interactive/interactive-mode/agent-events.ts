@@ -7,9 +7,9 @@ import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
-import { ToolExecutionComponent } from "../components/tool-execution.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
+import { addToolExecution } from "./session-render.ts";
 
 /** Interactive-mode members used by the agent event handler, including those its run-state events use. */
 export type AgentEventsHost = Pick<
@@ -191,21 +191,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				for (const content of host.streamingMessage.content) {
 					if (content.type === "toolCall") {
 						if (!host.pendingTools.has(content.id)) {
-							const component = new ToolExecutionComponent(
-								content.name,
-								content.id,
-								content.arguments,
-								{
-									showImages: host.settingsManager.getShowImages(),
-									imageWidthCells: host.settingsManager.getImageWidthCells(),
-									outputPad: host.outputPad,
-								},
-								host.getRegisteredToolDefinition(content.name),
-								host.ui,
-								host.sessionManager.getCwd(),
-							);
-							component.setExpanded(host.toolOutputExpanded);
-							host.chatContainer.addChild(component);
+							const component = addToolExecution(host, content.name, content.id, content.arguments);
 							host.pendingTools.set(content.id, component);
 						} else {
 							const component = host.pendingTools.get(content.id);
@@ -270,21 +256,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			if (event.parentToolCallId) break;
 			let component = host.pendingTools.get(event.toolCallId);
 			if (!component) {
-				component = new ToolExecutionComponent(
-					event.toolName,
-					event.toolCallId,
-					event.args,
-					{
-						showImages: host.settingsManager.getShowImages(),
-						imageWidthCells: host.settingsManager.getImageWidthCells(),
-						outputPad: host.outputPad,
-					},
-					host.getRegisteredToolDefinition(event.toolName),
-					host.ui,
-					host.sessionManager.getCwd(),
-				);
-				component.setExpanded(host.toolOutputExpanded);
-				host.chatContainer.addChild(component);
+				component = addToolExecution(host, event.toolName, event.toolCallId, event.args);
 				host.pendingTools.set(event.toolCallId, component);
 			}
 			component.markExecutionStarted();

@@ -19,9 +19,15 @@ export const QuerySchema = Type.Object({
 		Type.Array(
 			Type.Object({
 				oldText: Type.String({
-					description: "Exact text; unique unless replaceAll is true",
+					description: "Exact text; with line, the whole original line without its terminator",
 				}),
 				newText: Type.String({ description: "Replacement text" }),
+				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),
+				sourceSha256: Type.Optional(
+					Type.String({
+						description: "SHA-256 of the whole file as read; needs line",
+					}),
+				),
 				replaceAll: Type.Optional(
 					Type.Boolean({
 						description: "All non-overlapping matches; default false.",

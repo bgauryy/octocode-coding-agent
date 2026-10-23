@@ -8,7 +8,7 @@ Follow the [root setup instructions](../../README.md#run-from-source) for prereq
 
 Native sessions read source files through Octocode MCP local tools, use `file` for guarded writes, edits and deletions, and `bash` for shell commands and background jobs. The unified `agent` tool handles delegation, external agents and team communication. `web` provides search and retrieval; the `browser` specialist handles browser interaction. Native features also include checkpoints, memory, backlog, hooks and session recovery. Run `/help` to discover commands available in the current session.
 
-Native sessions do not register separate `read`, `edit`, `write`, `grep`, `find`, `ls` or `powershell` tools. PowerShell uses `bash` with `type: "powershell"`. Low-level SDK factories remain available to custom runtimes that disable native features; third-party extensions can register their own tools.
+Octocode ships no separate `read`, `edit`, `write`, `grep`, `find`, `ls` or `powershell` tools. PowerShell uses `bash` with `type: "powershell"`. The only core tool, and the only SDK tool factory, is `bash` (`createBashTool()` and `createBashToolDefinition()`); third-party extensions and SDK callers register their own tools.
 
 See [native features](docs/native-features.md) for ownership and migration details and the [documentation index](docs/index.md) for configuration, providers, extensions and embedding.
 

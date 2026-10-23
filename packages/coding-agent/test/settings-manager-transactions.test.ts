@@ -81,7 +81,7 @@ describe("settings file transactions", () => {
 
 	it("does not create configuration directories for a read-only startup load", () => {
 		const { agentDir, projectDir } = paths();
-		SettingsManager.create(projectDir, agentDir);
+		SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 		expect(existsSync(agentDir)).toBe(false);
 		expect(existsSync(join(projectDir, ".octocode"))).toBe(false);
 	});
@@ -95,7 +95,7 @@ describe("settings file transactions", () => {
 			const settingsPath =
 				scope === "global" ? join(agentDir, "settings.json") : join(projectDir, ".octocode", "settings.json");
 			writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
-			const manager = SettingsManager.create(projectDir, agentDir);
+			const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 			writeFileSync(settingsPath, "");
 
 			if (scope === "global") manager.setTheme("light");

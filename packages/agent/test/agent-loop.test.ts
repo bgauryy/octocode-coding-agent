@@ -2276,6 +2276,23 @@ describe("runToolCall", () => {
 		expect(hookCalls).toEqual(["before a", "after a", "before c", "before e", "after e"]);
 	});
 
+	it("lets the host explain a call to an undeclared tool", async () => {
+		const options = {
+			tools: [echo],
+			assistantMessage,
+			context: { messages: [] },
+			unknownToolMessage: (name: string) => (name === "later" ? "Tool later is not loaded; load it first." : undefined),
+		};
+		expect(await runToolCall(call("a", "later", {}), options)).toMatchObject({
+			result: { content: [{ type: "text", text: "Tool later is not loaded; load it first." }] },
+			isError: true,
+		});
+		expect(await runToolCall(call("b", "missing", {}), options)).toMatchObject({
+			result: { content: [{ type: "text", text: "Tool missing not found" }] },
+			isError: true,
+		});
+	});
+
 	it("lets afterToolCall replace structured content and drops it when only content is replaced", async () => {
 		const redacted = [{ type: "text" as const, text: "redacted" }];
 		const results = [

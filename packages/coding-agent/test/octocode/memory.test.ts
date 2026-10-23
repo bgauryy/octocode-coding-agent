@@ -615,7 +615,11 @@ describe("memory auto-injection", () => {
 			[project.id, global.id].sort((x, y) => x - y),
 		);
 		expect(result.message.content.startsWith(MEMORY_HEADER)).toBe(true);
+		// Offered, not yet committed: not used.
+		expect(store.get(project.id)?.useCount).toBe(0);
+		await fake.fire("message_end", { message: { role: "custom", ...result.message } }, ctx);
 		expect(store.get(project.id)?.useCount).toBe(1);
+		expect(store.get(global.id)?.useCount).toBe(1);
 		branch.push({ type: "custom_message", ...result.message });
 		expect(await fake.fire("before_agent_start", { prompt: "checkpoints again" }, ctx)).toBeUndefined();
 	});

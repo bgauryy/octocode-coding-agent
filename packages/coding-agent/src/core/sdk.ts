@@ -22,19 +22,7 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
 import { applyToolModifiers, getToolListError, isToolModifier, SettingsManager } from "./settings-manager.ts";
 import { time } from "./timings.ts";
-import {
-	createBashTool,
-	createCodingTools,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createPowerShellTool,
-	createReadOnlyTools,
-	createReadTool,
-	createWriteTool,
-	withFileMutationQueue,
-} from "./tools/index.ts";
+import { createBashTool, withFileMutationQueue } from "./tools/index.ts";
 import { getBranchSelection } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
@@ -61,17 +49,8 @@ export type { Tool } from "./tools/index.ts";
 
 export {
 	withFileMutationQueue,
-	// Tool factories (for custom cwd)
-	createCodingTools,
-	createReadOnlyTools,
-	createReadTool,
+	// Tool factory (for custom cwd)
 	createBashTool,
-	createEditTool,
-	createWriteTool,
-	createGrepTool,
-	createFindTool,
-	createLsTool,
-	createPowerShellTool,
 };
 
 // Helper Functions
@@ -109,7 +88,7 @@ function getDefaultAgentDir(): string {
  * await loader.reload();
  * const { session } = await createAgentSession({
  *   model: myModel,
- *   tools: ["read", "bash"],
+ *   tools: ["bash"],
  *   resourceLoader: loader,
  *   sessionManager: SessionManager.inMemory(),
  * });

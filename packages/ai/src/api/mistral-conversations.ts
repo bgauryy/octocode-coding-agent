@@ -1,5 +1,6 @@
+import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { clampThinkingLevel } from "../models.ts";
-import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
+import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { resolveTranscript } from "../utils/transcript.ts";
@@ -25,7 +26,7 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 	const normalizedContext = resolveTranscript(context, model.compat?.supportsMidConvoSystemMessages);
 
 	(async () => {
-		const output = createOutput(model);
+		const output = createPendingAssistantMessage(model);
 
 		try {
 			const apiKey = options?.apiKey;
@@ -108,23 +109,3 @@ export const streamSimple: StreamFunction<"mistral-conversations", SimpleStreamO
 		reasoningEffort: reasoningEffort as MistralReasoningEffort | undefined,
 	} satisfies MistralOptions);
 };
-
-function createOutput(model: Model<"mistral-conversations">): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [],
-		api: model.api,
-		provider: model.provider,
-		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "pending",
-		timestamp: Date.now(),
-	};
-}

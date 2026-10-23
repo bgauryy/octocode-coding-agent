@@ -3,6 +3,7 @@ import { formatDuration, shortPath } from "../../shared/format.ts";
 import { visibleControls, withoutColors } from "../../shared/sanitize.ts";
 import { cutText, firstLine } from "../../shared/util.ts";
 import type { BashJob, JobExit } from "./types.ts";
+import { verificationLine } from "../bash/verification.ts";
 
 /** The report a finished job sends: how it ended and the tail of its log. */
 
@@ -63,6 +64,7 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 					: exit.code !== null
 						? `failed with exit code ${exit.code}`
 						: `ended by ${exit.signal ?? "an error"}`;
+	const available = fs.existsSync(job.log);
 	const { text, earlier } = logTail(job.log);
 	// Logs hold raw terminal output. Colors are dropped (as Octocode's bash does; the log keeps them); every other control
 	// character shows as a visible escape, so nothing is hidden from the model.
@@ -72,12 +74,15 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 		? `log stopped at ${exit.logStopped.bytes} bytes: ${exit.logStopped.error}; later output was not recorded`
 		: "";
 	// Rotation keeps one older file: the first rotation leaves the earlier output in `.1`, a later one replaces it.
+	const archived = job.verification?.output.archiveAvailable ?? fs.existsSync(`${job.log}.1`);
 	const rotated = exit.logRotations
-		? `log rotated at its size cap${exit.logRotations > 1 ? ` ${exit.logRotations} times` : ""}: ${shortPath(`${job.log}.1`, job.cwd)} holds the part before this log${exit.logRotations > 1 ? "; output before that was dropped and cannot be recovered" : ""}`
+		? `log rotated at its size cap${exit.logRotations > 1 ? ` ${exit.logRotations} times` : ""}: ${shortPath(`${job.log}.1`, job.cwd)} ${archived ? "holds the part before this log" : "is unavailable; earlier output cannot be recovered"}${exit.logRotations > 1 ? "; output before that was dropped and cannot be recovered" : ""}`
 		: "";
 	return [
 		`Background bash ${job.id} ${how} after ${formatDuration(exit.seconds * 1000)}: ${cutText(firstLine(job.command), 120, { chars: true })}`,
 		`Log: ${shortPath(job.log, job.cwd)}`,
+		job.verification ? verificationLine(job.verification) : "",
+		!available ? "Log unavailable; output could not be inspected" : "",
 		rotated,
 		stopped,
 		before,

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getModel } from "@octocodeai/octocode-ai/compat";
@@ -7,36 +7,33 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createAllToolDefinitions, createAllTools } from "../src/core/tools/index.ts";
+import { createBashTool, createBashToolDefinition } from "../src/core/tools/index.ts";
 import { wrapToolDefinition } from "../src/core/tools/tool-definition-wrapper.ts";
 
-const strictToolNames = ["read", "bash", "powershell", "edit", "write"] as const;
+const strictToolNames = ["bash"] as const;
+const definitionFor = (cwd: string) => ({ bash: createBashToolDefinition(cwd) });
 
 describe("strict built-in tools", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	it.each([undefined, "0", "1"])("prefers strict sampling with OCTOCODE_EXPERIMENTAL=%s", (experimental) => {
 		vi.stubEnv("OCTOCODE_EXPERIMENTAL", experimental);
-		const definitions = createAllToolDefinitions(process.cwd());
-		const tools = createAllTools(process.cwd());
+		const definitions = definitionFor(process.cwd());
+		const tools = { bash: createBashTool(process.cwd()) };
 		for (const name of strictToolNames) {
 			expect(definitions[name].constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 			expect(tools[name].constrainedSampling).toEqual(definitions[name].constrainedSampling);
 		}
-		for (const name of ["grep", "find", "ls"] as const) {
-			expect(definitions[name].constrainedSampling).toBeUndefined();
-		}
 		// Strictness is a provider-side conversion, not a change to the execution schema.
-		expect(definitions.read.parameters.required).toEqual(["path"]);
 		expect(definitions.bash.parameters.required).toEqual(["command"]);
 	});
 
 	it("preserves explicit opt-outs when wrapping definitions for execution", () => {
-		const definitions = createAllToolDefinitions(process.cwd());
+		const definitions = definitionFor(process.cwd());
 		for (const name of strictToolNames) {
 			const definition = definitions[name];
 			const override = { ...definition, constrainedSampling: false as const };
-			expect(wrapToolDefinition(override).constrainedSampling).toBe(false);
+			expect(wrapToolDefinition(override as never).constrainedSampling).toBe(false);
 			expect(override.execute).toBe(definition.execute);
 			expect(override.prepareArguments).toBe(definition.prepareArguments);
 			expect(override.renderCall).toBe(definition.renderCall);
@@ -46,7 +43,7 @@ describe("strict built-in tools", () => {
 		}
 	});
 
-	it.each([{ activeTools: [] }, { activeTools: ["read"] }, { activeTools: [...strictToolNames] }])(
+	it.each([{ activeTools: [] }, { activeTools: [...strictToolNames] }])(
 		"allows extensions to re-register tools without strict sampling: $activeTools",
 		async ({ activeTools }) => {
 			const cwd = mkdtempSync(join(tmpdir(), "pi-non-strict-tools-"));
@@ -64,9 +61,9 @@ describe("strict built-in tools", () => {
 				extensionFactories: [
 					(pi) => {
 						pi.on("session_start", () => {
-							const definitions = createAllToolDefinitions(cwd);
+							const definitions = definitionFor(cwd);
 							for (const name of strictToolNames) {
-								pi.registerTool({ ...definitions[name], constrainedSampling: false });
+								pi.registerTool({ ...definitions[name], constrainedSampling: false } as never);
 							}
 							pi.setActiveTools(activeTools);
 						});
@@ -94,11 +91,10 @@ describe("strict built-in tools", () => {
 					for (const tool of session.agent.state.tools) {
 						expect(tool.constrainedSampling).toBe(false);
 					}
-					if (activeTools.includes("read")) {
-						writeFileSync(join(cwd, "sample.txt"), "still works");
-						const read = session.agent.state.tools.find((tool) => tool.name === "read")!;
-						const result = await read.execute("read-test", { path: "sample.txt" });
-						expect(result.content).toEqual([{ type: "text", text: "still works" }]);
+					if (activeTools.includes("bash")) {
+						const bash = session.agent.state.tools.find((tool) => tool.name === "bash")!;
+						const result = await bash.execute("bash-test", { command: "echo still works" });
+						expect(result.content).toEqual([{ type: "text", text: "still works\n" }]);
 					}
 				} finally {
 					session.dispose();

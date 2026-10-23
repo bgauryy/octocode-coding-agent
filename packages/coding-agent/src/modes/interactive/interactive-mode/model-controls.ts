@@ -14,6 +14,7 @@ import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { ANTHROPIC_SUBSCRIPTION_AUTH_WARNING, isAnthropicSubscriptionAuthKey } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the model and thinking controls. */
 export type ModelControlsHost = Pick<
@@ -60,7 +61,7 @@ export async function cycleModel(host: ModelControlsHost, direction: "forward" |
 			void host.maybeWarnAboutAnthropicSubscriptionAuth(result.model);
 		}
 	} catch (error) {
-		host.showError(error instanceof Error ? error.message : String(error));
+		host.showError(errorMessage(error));
 	}
 }
 
@@ -88,7 +89,7 @@ export function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLeve
 		host.updateEditorBorderColor();
 		host.showStatus(persist ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
 	} catch (error) {
-		host.showError(error instanceof Error ? error.message : String(error));
+		host.showError(errorMessage(error));
 	}
 }
 
@@ -128,7 +129,7 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 			host.showStatus(`Model: ${model.id}`);
 			void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 		} catch (error) {
-			host.showError(error instanceof Error ? error.message : String(error));
+			host.showError(errorMessage(error));
 		}
 		return;
 	}
@@ -165,7 +166,7 @@ export async function findExactModelMatch(
 		host.showWarning(
 			timedOut
 				? "Model refresh timed out; searching cached models."
-				: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`,
+				: `Could not refresh model catalogs: ${errorMessage(error)}`,
 		);
 	} finally {
 		clearTimeout(timeout);
@@ -217,7 +218,7 @@ export function showModelSelector(host: ModelControlsHost, initialSearchInput?: 
 				void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 			} catch (error) {
 				done();
-				host.showError(error instanceof Error ? error.message : String(error));
+				host.showError(errorMessage(error));
 			}
 		};
 		const defaultProvider = host.settingsManager.getDefaultProvider();
@@ -345,7 +346,7 @@ export function showModelsSelector(host: ModelControlsHost): void {
 				selector.setRefreshStatus(
 					timedOut
 						? "Model refresh timed out; showing cached models."
-						: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`,
+						: `Could not refresh model catalogs: ${errorMessage(error)}`,
 					"warning",
 				);
 				host.ui.requestRender();

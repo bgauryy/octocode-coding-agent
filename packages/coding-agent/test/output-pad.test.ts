@@ -1,9 +1,8 @@
-import { type Component, TuiMainScreen } from "@octocodeai/octocode-tui";
+import { type Component, Text, TuiMainScreen } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
-import { createEditToolDefinition } from "../src/core/tools/edit.ts";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
@@ -18,6 +17,18 @@ const tool: ToolDefinition = {
 	description: "custom tool",
 	parameters: Type.Any(),
 	execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+};
+
+/** A tool that draws its own outer shell, like a renderer that returns a complete block. */
+const selfRenderedTool: ToolDefinition = {
+	...tool,
+	name: "self_rendered",
+	label: "self_rendered",
+	renderShell: "self",
+	// A self-rendered tool applies the padding itself.
+	renderCall: (_args, _theme, context) => new Text("self_rendered file.txt", context.outputPad, 0),
+	renderResult: (result, _options, _theme, context) =>
+		new Text(result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n"), context.outputPad, 0),
 };
 
 type OutputPaddedComponent = Component & { setOutputPad(outputPad: number): void };
@@ -49,18 +60,18 @@ const components: Array<{ name: string; create: (outputPad: number) => OutputPad
 	{ name: "tool execution", create: (outputPad) => createTool(tool, outputPad) },
 	{ name: "tool execution without a definition", create: (outputPad) => createTool(undefined, outputPad) },
 	{
-		name: "self-rendered edit result",
+		name: "self-rendered tool result",
 		create: (outputPad) => {
 			const component = new ToolExecutionComponent(
-				"edit",
+				"self_rendered",
 				"id",
-				{ path: "file.txt", edits: [{ oldText: "old", newText: "new" }] },
+				{ path: "file.txt" },
 				{ outputPad },
-				createEditToolDefinition("/"),
+				selfRenderedTool,
 				ui,
 				"/",
 			);
-			component.updateResult({ content: [{ type: "text", text: "Could not find old text" }], isError: true });
+			component.updateResult({ content: [{ type: "text", text: "Could not find the text" }], isError: true });
 			return component;
 		},
 	},

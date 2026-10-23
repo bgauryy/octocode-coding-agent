@@ -48,7 +48,7 @@ export function resolveToolPath(cwd: string, raw: string): string {
 	return resolveToCwd(raw, cwd);
 }
 
-/** Legacy core read paths; native MCP reads carry verified metadata from shared/local-reads. */
+/** Paths of a `read` tool call, from a transcript of another host or an SDK caller's own `read` tool; native MCP reads carry verified metadata from shared/local-reads. */
 export function readPaths(toolName: string, input: Record<string, unknown>, cwd: string): string[] {
 	return toolName === "read" && typeof input.path === "string" ? [resolveReadPath(input.path, cwd)] : [];
 }

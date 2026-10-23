@@ -14,6 +14,7 @@ import { explicitSkillIdentity, loadSkills, loadSkillsFromDir } from "../skills.
 import { createSourceInfo, isSyntheticPath, type SourceInfo } from "../source-info.ts";
 import type { EnabledResourcePaths } from "./enabled-resources.ts";
 import { mergePaths, resolveResourcePath } from "./paths.ts";
+import { skillPathPrecedence } from "./skill-precedence.ts";
 import { findSourceInfoForPath, getDefaultSourceInfoForPath, type ResourceRoots } from "./source-info.ts";
 import { dedupePrompts, dedupeThemes, loadThemes } from "./themes.ts";
 import type { DefaultResourceLoaderOptions, ResourceExtensionPaths } from "./types.ts";
@@ -202,6 +203,12 @@ export class ResourceCollections {
 						Number(metadataByPath?.get(a)?.source === "builtin") - Number(metadataByPath?.get(b)?.source === "builtin"),
 				),
 				includeDefaults: false,
+				precedence: (path) =>
+					skillPathPrecedence(path, {
+						metadataByPath,
+						extensionPaths: new Set([...this.extensionSkillSourceInfos.keys()].map((key) => resolve(key))),
+						agentDir: this.config.agentDir,
+					}),
 			});
 		}
 		if (!this.config.noSkills) {

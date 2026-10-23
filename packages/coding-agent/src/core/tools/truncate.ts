@@ -99,6 +99,38 @@ export function formatSize(bytes: number): string {
 	}
 }
 
+/** The limits and content size, or the whole content as the result when it fits both limits. */
+function measureForTruncation(
+	content: string,
+	options: TruncationOptions,
+):
+	| { untruncated: TruncationResult }
+	| { maxLines: number; maxBytes: number; totalBytes: number; lines: string[]; totalLines: number } {
+	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
+	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+	const totalBytes = Buffer.byteLength(content, "utf-8");
+	const lines = splitLinesForCounting(content);
+	const totalLines = lines.length;
+	if (totalLines <= maxLines && totalBytes <= maxBytes) {
+		return {
+			untruncated: {
+				content,
+				truncated: false,
+				truncatedBy: null,
+				totalLines,
+				totalBytes,
+				outputLines: totalLines,
+				outputBytes: totalBytes,
+				lastLinePartial: false,
+				firstLineExceedsLimit: false,
+				maxLines,
+				maxBytes,
+			},
+		};
+	}
+	return { maxLines, maxBytes, totalBytes, lines, totalLines };
+}
+
 /**
  * Truncate content from the head (keep first N lines/bytes).
  * Suitable for file reads where you want to see the beginning.
@@ -107,29 +139,9 @@ export function formatSize(bytes: number): string {
  * returns empty content with firstLineExceedsLimit=true.
  */
 export function truncateHead(content: string, options: TruncationOptions = {}): TruncationResult {
-	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
-	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-
-	const totalBytes = Buffer.byteLength(content, "utf-8");
-	const lines = splitLinesForCounting(content);
-	const totalLines = lines.length;
-
-	// Check if no truncation needed
-	if (totalLines <= maxLines && totalBytes <= maxBytes) {
-		return {
-			content,
-			truncated: false,
-			truncatedBy: null,
-			totalLines,
-			totalBytes,
-			outputLines: totalLines,
-			outputBytes: totalBytes,
-			lastLinePartial: false,
-			firstLineExceedsLimit: false,
-			maxLines,
-			maxBytes,
-		};
-	}
+	const measured = measureForTruncation(content, options);
+	if ("untruncated" in measured) return measured.untruncated;
+	const { maxLines, maxBytes, totalBytes, lines, totalLines } = measured;
 
 	// Check if first line alone exceeds byte limit
 	const firstLineBytes = Buffer.byteLength(lines[0], "utf-8");
@@ -197,29 +209,9 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
  * May return partial first line if the last line of original content exceeds byte limit.
  */
 export function truncateTail(content: string, options: TruncationOptions = {}): TruncationResult {
-	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
-	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-
-	const totalBytes = Buffer.byteLength(content, "utf-8");
-	const lines = splitLinesForCounting(content);
-	const totalLines = lines.length;
-
-	// Check if no truncation needed
-	if (totalLines <= maxLines && totalBytes <= maxBytes) {
-		return {
-			content,
-			truncated: false,
-			truncatedBy: null,
-			totalLines,
-			totalBytes,
-			outputLines: totalLines,
-			outputBytes: totalBytes,
-			lastLinePartial: false,
-			firstLineExceedsLimit: false,
-			maxLines,
-			maxBytes,
-		};
-	}
+	const measured = measureForTruncation(content, options);
+	if ("untruncated" in measured) return measured.untruncated;
+	const { maxLines, maxBytes, totalBytes, lines, totalLines } = measured;
 
 	// Work backwards from the end
 	const outputLinesArr: string[] = [];

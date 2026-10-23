@@ -4,6 +4,7 @@ import { Container, type Focusable, fuzzyFilter, Input, Spacer, Text, type TUI }
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { HuggingFaceModel } from "../huggingface.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 function compactCount(value: number): string {
 	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
@@ -143,7 +144,7 @@ export class HuggingFaceSearch extends Container implements Focusable {
 		} catch (error) {
 			if (this.closed || request.signal.aborted || this.query !== query) return;
 			this.results = [];
-			this.status = error instanceof Error ? error.message : String(error);
+			this.status = errorMessage(error);
 			this.filterResults();
 		} finally {
 			if (this.request === request) this.request = undefined;

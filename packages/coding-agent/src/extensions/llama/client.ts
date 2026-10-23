@@ -1,3 +1,4 @@
+import { sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
 type LlamaModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping";
 
 export interface LlamaModelInfo {
@@ -66,21 +67,7 @@ function linkSignal(source: AbortSignal | undefined, target: AbortController): (
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) {
-			reject(signal.reason ?? new Error("Cancelled"));
-			return;
-		}
-		const abort = () => {
-			clearTimeout(timeout);
-			reject(signal?.reason ?? new Error("Cancelled"));
-		};
-		const timeout = setTimeout(() => {
-			signal?.removeEventListener("abort", abort);
-			resolve();
-		}, ms);
-		signal?.addEventListener("abort", abort, { once: true });
-	});
+	return sleepUnlessAborted(ms, signal, () => signal?.reason ?? new Error("Cancelled"));
 }
 
 function parseLoadProgress(data: unknown): LlamaProgress | undefined {

@@ -3,7 +3,11 @@ import type * as Sqlite from "node:sqlite";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "../../core/tools/index.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { redactSecrets } from "./sanitize.ts";
+
+/** Shared type guard and error text; `utils/guards.ts` owns them. */
+export { errorMessage, isRecord } from "../../utils/guards.ts";
 
 /** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
 export function loadSqlite(): typeof Sqlite {
@@ -225,10 +229,6 @@ export const stringList = (value: unknown): string[] | undefined =>
 /** `text` as a regular-expression source that matches it literally. */
 export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export const MINUTE_MS = 60_000;
 export const HOUR_MS = 60 * MINUTE_MS;
 export const DAY_MS = 24 * HOUR_MS;
@@ -242,10 +242,6 @@ const STALE_SESSION = "stale after session replacement";
 /** Whether `error` says a session context is stale (Octocode gives no error class for it). */
 export function isStaleSessionError(error: unknown): boolean {
 	return errorMessage(error).includes(STALE_SESSION);
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

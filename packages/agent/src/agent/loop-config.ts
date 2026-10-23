@@ -13,6 +13,7 @@ export type AgentLoopHost = Pick<
 	| "onProviderStreamEvent"
 	| "beforeToolCall"
 	| "afterToolCall"
+	| "unknownToolMessage"
 	| "finishTurn"
 	| "prepareRequest"
 	| "prepareInput"
@@ -52,6 +53,7 @@ export function createAgentLoopConfig(
 		toolExecution: agent.toolExecution,
 		beforeToolCall: agent.beforeToolCall,
 		afterToolCall: agent.afterToolCall,
+		unknownToolMessage: agent.unknownToolMessage,
 		finishTurn: agent.finishTurn,
 		prepareRequest: agent.prepareRequest,
 		prepareInput: agent.prepareInput,

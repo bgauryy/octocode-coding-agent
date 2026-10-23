@@ -23,6 +23,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 ## Tools and customization
 
 - [MCP](mcp.md)
+- [Optional native debugger](debugging.md)
 - [Extensions](extensions.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
@@ -34,10 +35,12 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Keybindings](keybindings.md)
 - [Terminal UI](tui.md)
 - [SDK](sdk.md)
+- [Agent Client Protocol: expose Octocode to editors](acp.md)
 
 ## Architecture
 
 - [Application and interface boundaries](../../../docs/INTERFACE_ARCHITECTURE.md)
+- [Native feature architecture and flows](../../../docs/FEATURES.md)
 - [Shared entities and contracts](../../../docs/ENTITIES.md)
 - [Data and presentation architecture](../../../docs/DATA_PRESENTATION.md)
 - [Browser workspace review](../../../docs/WEBVIEW_REVIEW.md)

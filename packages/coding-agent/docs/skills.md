@@ -44,7 +44,9 @@ Use relative paths from the skill directory when referring to bundled files. Oct
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
-When a task matches, the model reads `SKILL.md` and follows its instructions. Native sessions use Octocode `localFetch` for this (or `localGetFileContent` with an older server). Skills do not register an executable tool for each workflow. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use a skill command when you need to load it explicitly.
+The skill entries share a budget of 8,000 characters (about 1% of a 200k-token window). A description longer than the 1,024-character limit is cut. When the entries do not fit, descriptions are dropped from the last skills first and the prompt says how many skills are listed without one; if the bare entries still do not fit, the last skills are named on one line without an entry. SDK callers can change the budget with the `budgetChars` option of `formatSkillsForPrompt`.
+
+When a task matches, the model reads `SKILL.md` and follows its instructions. Native sessions use Octocode `localFetch` for this (or `localGetFileContent` with an older server), also when `localFetch` is deferred and loaded through `tool_search`. Skills do not register an executable tool for each workflow. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use a skill command when you need to load it explicitly.
 
 The automatically managed Octocode MCP server allows reads inside each loaded skill's directory, including its references and assets. These resource roots include model-only skills and eligible path-selection candidates hidden by a name collision; they do not depend on slash-command visibility. Native sessions apply the same launch defaults to a configured local stdio server named `octocode` when neither its configuration nor the process environment sets `ALLOWED_PATHS`. The defaults are transient; configuration files stay unchanged. An explicit `ALLOWED_PATHS` wins, including an empty value. HTTP servers and custom SDK MCP factories keep their own access policy.
 
@@ -96,7 +98,16 @@ Inheritance supplies instructions and reference roots. It does not activate exec
 
 All public Octocode skills ship with the installed research CLI and are available automatically, including their scripts, references, and assets. Startup reads the installed files without downloading or copying skills into your home directory. Standalone releases include the same collection beside the executable. Updating Octocode updates these defaults.
 
-Your configured, project, user, and Pi fallback skills take precedence over bundled skills with the same name. Existing symlink deduplication still applies. `--no-skills` disables automatic discovery, including the bundle; explicitly supplied skill paths still load. SDK embeddings setting `nativeFeatures: false` on `DefaultResourceLoader` do not load the Octocode bundle.
+When two skills share a name, the bundled skill beats a user-level copy another tool installed, so the agent gets the version this build ships. `npx octocode skill install` writes such copies into `~/.agents/skills/`, `~/.claude/skills/` and `~/.pi/agent/skills/` (also `$CODEX_HOME/skills/`); the same-name copy there is skipped and the bundled one is listed. Everything you chose on purpose beats the bundle, and wins over those copies too:
+
+1. `--skill` paths and SDK `additionalSkillPaths`.
+2. Entries of the `skills` setting that name a path, and skills from installed packages.
+3. Project folders: `.octocode/skills/`, `.agents/skills/` and, in a trusted project, `.claude/skills/`.
+4. The agent directory's own `skills/` folder (`~/.octocode/agent/skills/`, or the directory `OCTOCODE_HOME` / the SDK `agentDir` selects).
+5. The bundle.
+6. User-level copies in `~/.agents/skills/`, `~/.claude/skills/`, `$CODEX_HOME/skills/` and the Pi fallback folders.
+
+To keep your own version of a bundled skill, put it in the agent directory or the project, or list its path in `skills`. Names the bundle does not ship are unaffected, and between two skills that are not bundled the first found still wins. A skipped copy appears in the collapsed skill conflicts line at startup (expand it for paths and sources). The bundled files must stay readable by the Octocode MCP server: its allowed roots include every loaded bundled skill directory. Existing symlink deduplication still applies, so an install that links to the bundled files lists them once. `--no-skills` disables automatic discovery, including the bundle; explicitly supplied skill paths still load. SDK embeddings setting `nativeFeatures: false` on `DefaultResourceLoader` do not load the Octocode bundle.
 
 Use the existing `skills` setting to disable bundled defaults, for example `"skills": ["!octocode-roast"]`, or `"skills": ["!octocode-*"]` for the collection. These patterns also apply to matching auto-discovered skills, including the native host folders below and skill folders that extensions add. A trusted project can override a global exclusion with an exact entry such as `"skills": ["+octocode-roast/SKILL.md"]`.
 
@@ -104,7 +115,7 @@ Place the skill in your user or project skills directory. Directories containing
 
 Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists. From a subdirectory of a repository, the root's `.octocode/skills/` is loaded as a project folder as well, so it keeps precedence over user skills.
 
-Native sessions add the folders other agents use, so one install works everywhere: `~/.claude/skills/` without its `synced/` subtree, `$CODEX_HOME/skills/` (default `~/.codex/skills/`), and, after the project is trusted with `/trust`, `.claude/skills/` from the working directory up to the repository root. These host folders load after every folder above, so a same-name skill there loses with a collision warning. `OCTOCODE_EXTRA_SKILLS=0` turns them off.
+Native sessions add the folders other agents use, so one install works everywhere: `~/.claude/skills/` without its `synced/` subtree, `$CODEX_HOME/skills/` (default `~/.codex/skills/`), and, after the project is trusted with `/trust`, `.claude/skills/` from the working directory up to the repository root. These host folders load after every folder above, so a same-name skill there loses with a collision warning, except that the user-level `~/.claude/skills/` and `$CODEX_HOME/skills/` copies of a bundled skill yield to the bundle (see above). `OCTOCODE_EXTRA_SKILLS=0` turns them off.
 
 Extra user skill discovery honors `CLAUDE_CONFIG_DIR/skills` and `CODEX_HOME/skills` when those environment variables are set. Claude skills retain their description fallback, argument syntax and boolean parsing under a custom directory, including when discovery filters out the `synced/` subtree. Codex canonicalizes its selected home and requires it to exist. Missing or invalid selected homes do not fall back to another user profile; project roots and their trust checks are unchanged. These settings select local discovery paths, not vendor credentials or cloud connections.
 

@@ -4,7 +4,7 @@ import { parseFrontmatter } from "../../../utils/frontmatter.ts";
 import { projectHookFiles } from "../home.ts";
 import { sanitizeTerminalText } from "../sanitize.ts";
 import { isRecord } from "../util.ts";
-import { projectConfigFiles, readText, realPath } from "./files.ts";
+import { projectConfigFiles, projectMcpFiles, readText, realPath } from "./files.ts";
 
 /** Files listed without commands (agents, skills) past this many are summarized; command lines are never cut. */
 const MAX_PLAIN_FILES = 40;
@@ -91,10 +91,10 @@ function envSent(server: Record<string, unknown>): string | undefined {
 		: undefined;
 }
 
-/** Some hooks file among `files` (Claude Code, Codex, Octocode hooks) holds a command, URL or args to run. */
+/** Some hooks or MCP file among `files` (Claude Code, Codex, Octocode hooks; project `mcp.json`) holds a command, URL or args to run. */
 export function startsCommands(cwd: string, files: string[], read: (file: string) => string = readText): boolean {
-	const hooks = new Set(projectHookFiles(cwd).map(realPath));
-	return files.some((file) => hooks.has(file) && commandsIn(executableConfig(file, read)).length > 0);
+	const gated = new Set([...projectHookFiles(cwd).map(realPath), ...projectMcpFiles(cwd)]);
+	return files.some((file) => gated.has(file) && commandsIn(executableConfig(file, read)).length > 0);
 }
 
 function executableConfig(file: string, read: (file: string) => string = readText): unknown {

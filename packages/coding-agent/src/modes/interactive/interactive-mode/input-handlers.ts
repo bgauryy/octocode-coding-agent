@@ -12,6 +12,7 @@ import { extensionForImageMimeType, readClipboardImage } from "../../../utils/cl
 import { editInExternalEditor } from "../external-editor.ts";
 import { quoteIfNeeded } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the editor key handlers. */
 export type InputHandlersHost = Pick<
@@ -169,7 +170,7 @@ export async function handleClipboardPaste(host: InputHandlersHost): Promise<voi
 			host.ui.requestRender();
 		}
 	} catch (error) {
-		host.showError(`Failed to paste from clipboard: ${error instanceof Error ? error.message : String(error)}`);
+		host.showError(`Failed to paste from clipboard: ${errorMessage(error)}`);
 	}
 }
 

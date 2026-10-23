@@ -1,6 +1,7 @@
 import { lstatSync, statSync } from "node:fs";
 import path from "node:path";
 import { type PluginManifest, resolvePluginPath } from "./plugin-manifest.ts";
+import { isRecord } from "../utils/guards.ts";
 
 type PluginComponent = { kind: "path"; path: string } | { kind: "inline"; value: Record<string, unknown> };
 type PluginCommand =
@@ -10,9 +11,6 @@ type PluginCommand =
 			name: string;
 			definition: Record<string, unknown>;
 	  };
-
-const object = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Normalize component declarations without loading instructions or executing plugin code. */
 export function discoverPluginComponents(manifest: PluginManifest): {
@@ -64,10 +62,10 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 
 	const commands: PluginCommand[] = [];
 	if (manifest.protocol === "claude") {
-		if (object(settings.commands)) {
+		if (isRecord(settings.commands)) {
 			for (const [name, definition] of Object.entries(settings.commands)) {
 				if (
-					!object(definition) ||
+					!isRecord(definition) ||
 					"source" in definition === "content" in definition ||
 					("source" in definition ? typeof definition.source !== "string" : typeof definition.content !== "string")
 				) {
@@ -114,12 +112,12 @@ export function discoverPluginComponents(manifest: PluginManifest): {
 	if (settings.hooks !== undefined) {
 		const entries = Array.isArray(settings.hooks) ? settings.hooks : [settings.hooks];
 		const mixedCodex =
-			manifest.protocol === "codex" && !entries.every((entry) => typeof entry === "string") && !entries.every(object);
+			manifest.protocol === "codex" && !entries.every((entry) => typeof entry === "string") && !entries.every(isRecord);
 		if (mixedCodex) errors.push(`${manifest.name}: hooks: Codex requires a homogeneous path or inline-object array`);
 		else
 			for (const entry of entries) {
-				if (object(entry)) {
-					if (manifest.protocol === "codex" && !object(entry.hooks)) {
+				if (isRecord(entry)) {
+					if (manifest.protocol === "codex" && !isRecord(entry.hooks)) {
 						errors.push(`${manifest.name}: hooks: Codex inline declarations require a hooks wrapper`);
 						continue;
 					}

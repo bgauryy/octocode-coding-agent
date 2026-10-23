@@ -13,7 +13,7 @@ export type { HookRun } from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 export type { HookVerdict } from "./contracts.ts";
 import { runMcpHook } from "./mcp.ts";
-import type { McpHookCaller } from "../../extensions/mcp/hook-caller.ts";
+import type { BoundMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
 import { runHttpHook } from "./http.ts";
 import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -34,7 +34,7 @@ export function runHook(
 	cwd: string,
 	env: NodeJS.ProcessEnv = {},
 	signal?: AbortSignal,
-	mcp?: McpHookCaller,
+	mcp?: BoundMcpHookCaller,
 	evaluate?: PromptEvaluator,
 ): Promise<HookRun> {
 	if (hook.configurationError)
