@@ -83,9 +83,7 @@ export function noticeLines(details: Pick<RunDetails, "compactions" | "notices">
 		...(more > 0 ? [rest] : []),
 		...(failure ? [`latest compaction failure: ${failure}`] : []),
 	];
-	return lines.length > 0
-		? ["Notices from the subagent (it has no screen):", ...lines.map((line) => `- ${line}`)]
-		: [];
+	return lines.length > 0 ? ["Notices from the subagent (it has no screen):", ...lines.map((line) => `- ${line}`)] : [];
 }
 
 /** Where the child's archive of compacted history is, for the parent's report (empty when it never compacted). */

@@ -386,6 +386,78 @@ describe("MCP OAuth", () => {
 		expect(provider.tokenSet?.access_token).toBe("a1");
 	});
 
+	// The step-up lands either before the refresh starts or while its token request is in flight.
+	it.each([0, 10])("keeps a refresh and a step-up apart when they overlap (step-up after %ims)", async (delay) => {
+		const provider = new TestOAuthProvider("http://127.0.0.1/callback");
+		provider.client = { client_id: "client" };
+		provider.tokenSet = { access_token: "a1", refresh_token: "r1", token_type: "Bearer", scope: "repo" };
+		const origin = await listen(async (request, response, serverOrigin) => {
+			const url = new URL(request.url ?? "/", serverOrigin);
+			response.setHeader("content-type", "application/json");
+			if (url.pathname === "/.well-known/oauth-authorization-server") {
+				response.end(
+					JSON.stringify({
+						issuer: serverOrigin,
+						authorization_endpoint: `${serverOrigin}/authorize`,
+						token_endpoint: `${serverOrigin}/token`,
+						response_types_supported: ["code"],
+					}),
+				);
+				return;
+			}
+			if (url.pathname === "/token") {
+				await readBody(request);
+				await new Promise((resolve) => setTimeout(resolve, 30));
+				response.end(JSON.stringify({ access_token: "a2", refresh_token: "r2", token_type: "Bearer", scope: "repo" }));
+				return;
+			}
+			response.statusCode = 404;
+			response.end();
+		});
+		const auth = adaptOAuthProvider(provider);
+		const challenge = (status: number, header: string) => ({
+			response: new Response(null, { status, headers: { "www-authenticate": header } }),
+			serverUrl: new URL(`${origin}/mcp`),
+			fetch,
+			token: "a1",
+		});
+		const refresh = auth.onUnauthorized?.(challenge(401, "Bearer"));
+		await new Promise((resolve) => setTimeout(resolve, delay));
+		const stepUp = auth.onUnauthorized?.(challenge(403, 'Bearer error="insufficient_scope", scope="admin"'));
+		// A refresh keeps the old scope, so the step-up still needs the user; the 401 needs only the refresh.
+		await expect(stepUp).rejects.toBeInstanceOf(McpOAuthAuthorizationRequiredError);
+		await expect(refresh).resolves.toBeUndefined();
+		expect(provider.tokenSet?.access_token).toBe("a2");
+		expect(provider.authorizationUrl?.searchParams.get("scope")).toBe("repo admin");
+	});
+
+	it("keeps storing credentials after one failed save", async () => {
+		const store = new MemoryOAuthStateStore();
+		let failNext = true;
+		const flaky = {
+			load: () => store.load(),
+			save: (state: Parameters<MemoryOAuthStateStore["save"]>[0]) => {
+				if (failNext) {
+					failNext = false;
+					throw new Error("disk full");
+				}
+				store.save(state);
+			},
+		};
+		const provider = new McpOAuthProvider({
+			serverUrl: "https://one.example/mcp",
+			redirectUrl: "http://127.0.0.1/callback",
+			clientMetadata: { client_name: "test" },
+			store: flaky,
+			onRedirect: () => {},
+		});
+		await expect(provider.saveTokens({ access_token: "lost", token_type: "Bearer" })).rejects.toThrow("disk full");
+		// The failure belongs to that save; later reads and saves work.
+		expect(await provider.tokens()).toBeUndefined();
+		await provider.saveTokens({ access_token: "kept", token_type: "Bearer" });
+		expect((await provider.tokens())?.access_token).toBe("kept");
+	});
+
 	it("binds persisted credentials to the exact MCP server URL", async () => {
 		const store = new MemoryOAuthStateStore();
 		const first = new McpOAuthProvider({
@@ -518,9 +590,7 @@ describe("MCP OAuth", () => {
 			};
 			return authorizeMcp(provider, { serverUrl: `${origin}/mcp`, authorizationCode: code, iss });
 		};
-		await expect(exchange("other", "https://attacker.example", false)).rejects.toBeInstanceOf(
-			OAuthIssuerMismatchError,
-		);
+		await expect(exchange("other", "https://attacker.example", false)).rejects.toBeInstanceOf(OAuthIssuerMismatchError);
 		await expect(exchange("missing", undefined, true)).rejects.toBeInstanceOf(OAuthIssuerMismatchError);
 		expect(await exchange("matching", origin, true)).toBe("AUTHORIZED");
 		// Servers that do not promise the parameter may omit it.

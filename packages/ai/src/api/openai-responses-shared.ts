@@ -390,9 +390,7 @@ export function convertResponsesMessages<TApi extends Api>(
 							id: itemId,
 							call_id: callId,
 							name: toolCall.name,
-							input: sanitizeSurrogates(
-								getGrammarToolInput(toolCall.name, toolCall.arguments, customInputProperty),
-							),
+							input: sanitizeSurrogates(getGrammarToolInput(toolCall.name, toolCall.arguments, customInputProperty)),
 							...(isSameModel && toolCall.namespace !== undefined ? { namespace: toolCall.namespace } : {}),
 						} satisfies ResponseOutputItem);
 					} else {
@@ -408,11 +406,7 @@ export function convertResponsesMessages<TApi extends Api>(
 				}
 			}
 			if (output.length === 0) continue;
-			if (
-				options?.configurationUpdateEffort !== undefined &&
-				isSameModel &&
-				msg.providerThinkingLevel !== undefined
-			) {
+			if (options?.configurationUpdateEffort !== undefined && isSameModel && msg.providerThinkingLevel !== undefined) {
 				pushConfigurationUpdate(msg.providerThinkingLevel);
 			}
 			messages.push(...output);
@@ -803,11 +797,7 @@ export async function processResponsesStream<TApi extends Api>(
 					partial: output,
 				});
 				outputSlots.delete(event.output_index);
-			} else if (
-				item.type === "function_call" &&
-				slot?.type === "toolCall" &&
-				slot.block.partialJson !== undefined
-			) {
+			} else if (item.type === "function_call" && slot?.type === "toolCall" && slot.block.partialJson !== undefined) {
 				Object.assign(slot.block, parseToolCallArguments(item.arguments || slot.block.partialJson));
 				if (item.namespace !== undefined) slot.block.namespace = item.namespace;
 				// Finalize in-place and strip the scratch buffer so replay only

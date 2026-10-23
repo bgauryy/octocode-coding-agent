@@ -34,7 +34,9 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath) {
 			throw new Error("Installed Octocode package is missing bundled subagent profiles");
 		}
 		if (existsSync(join(packageDir, "src"))) throw new Error("Installed Octocode must not depend on source files");
-		writeFileSync(entry, `import assert from "node:assert/strict";
+		writeFileSync(
+			entry,
+			`import assert from "node:assert/strict";
 import { existsSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createAgentSession, SessionManager, ModelRuntime } from "${codingAgentName}";
@@ -53,7 +55,8 @@ assert.equal(mcpLaunch.command, process.execPath, "installed MCP runs without np
 assert.ok(existsSync(mcpLaunch.args[0]), "MCP executable exists");
 assert.equal(realpathSync(getSubagentsDir()), realpathSync(${JSON.stringify(profileDir)}));
 assert.ok(getCliInvocation().prefix.some((argument) => argument.endsWith("dist/bundle/cli.js")));
-`);
+`,
+		);
 		execFileSync(runtime, [entry], { cwd: directory, env, stdio: ["inherit", "pipe", "pipe"], timeout: 30_000 });
 		for (const cli of new Set([manifest.bin.octocode, "dist/cli.js"])) {
 			const output = execFileSync(runtime, [join(packageDir, cli), "--version"], {

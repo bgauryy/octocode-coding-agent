@@ -60,7 +60,7 @@ describe("issue #7193 extension event-bus lifecycle", () => {
 		expect(await emit()).toEqual({ extension: 1, host: 1 });
 		await harness.session.reload();
 		expect(() => firstApi?.getCommands()).toThrow("stale after session replacement or reload");
-	expect(() => firstApi?.getSkillDirectories()).toThrow("stale after session replacement or reload");
+		expect(() => firstApi?.getSkillDirectories()).toThrow("stale after session replacement or reload");
 		expect(await emit()).toEqual({ extension: 1, host: 1 });
 		await harness.session.reload();
 		expect(await emit()).toEqual({ extension: 1, host: 1 });

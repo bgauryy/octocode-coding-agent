@@ -15,14 +15,21 @@ function fixture(text: string) {
 	fs.writeFileSync(file, text);
 	return file;
 }
-afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+	for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("streamed text windows", () => {
 	it("preserves exact truncation and counts across UTF-8 chunks, empty lines and range boundaries", async () => {
 		for (const text of ["", "a\n", "\n\n", "a\r\nb\r\n", "🙂é文".repeat(30_000) + "\nend", "line\n".repeat(10_000)]) {
 			const file = fixture(text);
 			const lines = text.split("\n");
-			for (const [offset, limit] of [[1, undefined], [1, 1], [2, 3], [2001, 5]] as const) {
+			for (const [offset, limit] of [
+				[1, undefined],
+				[1, 1],
+				[2, 3],
+				[2001, 5],
+			] as const) {
 				const result = await readTextWindow(file, offset, limit);
 				const selected = lines.slice(offset - 1, limit === undefined ? undefined : offset - 1 + limit).join("\n");
 				expect(result.truncation).toEqual(truncateHead(selected));
@@ -45,13 +52,21 @@ describe("streamed text windows", () => {
 describe("directory continuations", () => {
 	it("pages through the byte cap without dropping or repeating entries", async () => {
 		const entries = Array.from({ length: 400 }, (_, i) => `${i.toString().padStart(4, "0")}-${"x".repeat(180)}`);
-		const tool = createLsTool("/", { operations: {
-			exists: () => true, stat: () => ({ isDirectory: () => false }), readdir: () => entries,
-		} });
+		const tool = createLsTool("/", {
+			operations: {
+				exists: () => true,
+				stat: () => ({ isDirectory: () => false }),
+				readdir: () => entries,
+			},
+		});
 		// The root is a directory, while each entry is a file.
-		const directoryTool = createLsTool("/", { operations: {
-			exists: () => true, stat: (file) => ({ isDirectory: () => file === "/" }), readdir: () => entries,
-		} });
+		const directoryTool = createLsTool("/", {
+			operations: {
+				exists: () => true,
+				stat: (file) => ({ isDirectory: () => file === "/" }),
+				readdir: () => entries,
+			},
+		});
 		const first = await directoryTool.execute("ls", { limit: 400 });
 		const next = first.details!.nextOffset!;
 		expect(next).toBeGreaterThan(0);

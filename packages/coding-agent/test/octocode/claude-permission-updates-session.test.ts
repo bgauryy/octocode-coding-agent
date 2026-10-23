@@ -26,46 +26,30 @@ it("Claude session allow update approves only the next matching invocation", asy
 	});
 	try {
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		expect(f.inputs()).toHaveLength(1);
 		fs.writeFileSync(
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		expect(f.inputs()).toHaveLength(1);
 		await f.run("bash", { command: "node -p 43" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.inputs()).toHaveLength(2);
 	} finally {
 		await f.close();
 	}
 });
 
-const update = (
-	type: string,
-	ruleContent: string,
-	behavior = "allow",
-	destination = "session",
-) => ({
+const update = (type: string, ruleContent: string, behavior = "allow", destination = "session") => ({
 	type,
 	rules: [{ toolName: "Bash", ruleContent }],
 	behavior,
 	destination,
 });
-async function sequenceCase(
-	outputs: unknown[],
-	commands: string[],
-	expected: boolean[],
-	hooks: number,
-) {
+async function sequenceCase(outputs: unknown[], commands: string[], expected: boolean[], hooks: number) {
 	const f = await fixture("claude");
 	try {
 		fs.writeFileSync(
@@ -134,10 +118,7 @@ it("session replace rules removes the old grant while retaining the replacement 
 });
 for (const reversed of [false, true])
 	it(`same-list rule order is preserved: remove first ${reversed}`, async () => {
-		const updates = [
-			update("addRules", "node -p 42"),
-			update("removeRules", "node -p 42"),
-		];
+		const updates = [update("addRules", "node -p 42"), update("removeRules", "node -p 42")];
 		if (reversed) updates.reverse();
 		await sequenceCase(
 			[decision({ behavior: "allow", updatedPermissions: updates })],
@@ -165,10 +146,7 @@ it("a malformed later update invalidates the whole approval without partial publ
 		[
 			decision({
 				behavior: "allow",
-				updatedPermissions: [
-					update("addRules", "node -p 42"),
-					{ type: "unknown", destination: "session" },
-				],
+				updatedPermissions: [update("addRules", "node -p 42"), { type: "unknown", destination: "session" }],
 			}),
 		],
 		["node -p 41", "node -p 42"],
@@ -182,38 +160,30 @@ for (const destination of ["session", "userSettings", "localSettings"]) {
 		const f = await fixture("claude", {
 			output: decision({
 				behavior: "allow",
-				updatedPermissions: [
-					update("addRules", "node -p 42", "allow", destination),
-				],
+				updatedPermissions: [update("addRules", "node -p 42", "allow", destination)],
 			}),
 		});
 		try {
 			await f.run("bash", { command: "node -p 41" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			fs.writeFileSync(
 				path.join(f.root, "hook.cjs"),
 				`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 			);
 			await f.run("bash", { command: "node -p 42" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			await f.restart();
 			await f.run("bash", { command: "node -p 42" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: destination === "session" });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({
+				isError: destination === "session",
+			});
 			expect(f.inputs()).toHaveLength(destination === "session" ? 2 : 1);
 			if (destination !== "session") {
 				const settings =
 					destination === "userSettings"
 						? path.join(f.configDir, "settings.json")
 						: path.join(f.cwd, ".claude/settings.local.json");
-				expect(
-					JSON.parse(fs.readFileSync(settings, "utf8")).permissions.allow,
-				).toContain("Bash(node -p 42)");
+				expect(JSON.parse(fs.readFileSync(settings, "utf8")).permissions.allow).toContain("Bash(node -p 42)");
 			}
 		} finally {
 			await f.close();
@@ -232,17 +202,13 @@ it("source-denied replacement cannot retain its otherwise valid update", async (
 	});
 	try {
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		fs.writeFileSync(
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.inputs()).toHaveLength(2);
 	} finally {
 		await f.close();
@@ -255,9 +221,7 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 		projectTrusted: false,
 		output: decision({
 			behavior: "allow",
-			updatedPermissions: [
-				update("addRules", "node -p 42", "allow", "projectSettings"),
-			],
+			updatedPermissions: [update("addRules", "node -p 42", "allow", "projectSettings")],
 		}),
 	});
 	try {
@@ -283,21 +247,15 @@ it("writing project permissions cannot trust unrelated project hooks", async () 
 		);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
-		expect(
-			JSON.parse(fs.readFileSync(config, "utf8")).permissions.allow,
-		).toContain("Bash(node -p 42)");
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
+		expect(JSON.parse(fs.readFileSync(config, "utf8")).permissions.allow).toContain("Bash(node -p 42)");
 		fs.writeFileSync(
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.inputs()).toHaveLength(2);
 		expect(fs.existsSync(marker)).toBe(false);
 	} finally {
@@ -323,9 +281,7 @@ it("cancellation before a held update reply publishes no session grant", async (
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.inputs()).toHaveLength(2);
 	} finally {
 		await f.close();
@@ -336,16 +292,12 @@ it("session acceptEdits update allows a later workspace Write without another ho
 	const f = await fixture("claude", {
 		output: decision({
 			behavior: "allow",
-			updatedPermissions: [
-				{ type: "setMode", mode: "acceptEdits", destination: "session" },
-			],
+			updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
 		}),
 	});
 	try {
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		await f.run("file", {
 			queries: [
 				{
@@ -356,9 +308,7 @@ it("session acceptEdits update allows a later workspace Write without another ho
 				},
 			],
 		});
-		expect(fs.readFileSync(path.join(f.cwd, "mode.txt"), "utf8")).toBe(
-			"MODE_WRITE",
-		);
+		expect(fs.readFileSync(path.join(f.cwd, "mode.txt"), "utf8")).toBe("MODE_WRITE");
 		expect(f.inputs()).toHaveLength(1);
 	} finally {
 		await f.close();
@@ -391,9 +341,7 @@ for (const [name, types, allowed] of [
 				`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const p=${JSON.stringify(f.capture)};const first=!fs.existsSync(p);fs.appendFileSync(p,s+'\\n');console.log(JSON.stringify(first?${JSON.stringify(output)}:{}));});`,
 			);
 			await f.run("bash", { command: "node -p 41" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			await f.run("file", {
 				queries: [
 					{
@@ -433,9 +381,7 @@ it("a canceled losing handler cannot publish its permission updates", async () =
 		);
 		await f.session.reload();
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		const pid = Number(fs.readFileSync(started, "utf8"));
 		expect(() => process.kill(pid, 0)).toThrow();
 		fs.writeFileSync(loser, "console.log('{}');");
@@ -444,9 +390,7 @@ it("a canceled losing handler cannot publish its permission updates", async () =
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.inputs()).toHaveLength(2);
 	} finally {
 		await f.close();
@@ -473,24 +417,18 @@ it("a trusted project permission update authorizes its next matching command", a
 		projectTrusted: true,
 		output: decision({
 			behavior: "allow",
-			updatedPermissions: [
-				update("addRules", "node -p 42", "allow", "projectSettings"),
-			],
+			updatedPermissions: [update("addRules", "node -p 42", "allow", "projectSettings")],
 		}),
 	});
 	try {
 		await f.run("bash", { command: "node -p 41" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		fs.writeFileSync(
 			path.join(f.root, "hook.cjs"),
 			`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 		);
 		await f.run("bash", { command: "node -p 42" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		expect(f.inputs()).toHaveLength(1);
 	} finally {
 		await f.close();
@@ -506,9 +444,7 @@ it.skipIf(process.getuid?.() === 0)(
 			hold: true,
 			output: decision({
 				behavior: "allow",
-				updatedPermissions: [
-					update("addRules", "node -p 42", "allow", "projectSettings"),
-				],
+				updatedPermissions: [update("addRules", "node -p 42", "allow", "projectSettings")],
 			}),
 		});
 		const directory = path.join(f.cwd, ".claude"),
@@ -520,17 +456,10 @@ it.skipIf(process.getuid?.() === 0)(
 			const pending = f.run("bash", { command: "node -p 41" });
 			await vi.waitFor(() => expect(f.inputs()).toHaveLength(1));
 			fs.chmodSync(directory, 0o555);
-			expect(() =>
-				fs.writeFileSync(
-					path.join(directory, "permission-write-probe"),
-					"must not write",
-				),
-			).toThrow();
+			expect(() => fs.writeFileSync(path.join(directory, "permission-write-probe"), "must not write")).toThrow();
 			fs.writeFileSync(path.join(f.root, "release"), "release");
 			await pending;
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(fs.readFileSync(config, "utf8")).toBe(original);
 			fs.chmodSync(directory, mode);
 			fs.writeFileSync(
@@ -538,9 +467,7 @@ it.skipIf(process.getuid?.() === 0)(
 				`const fs=require('node:fs');let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(f.capture)},s+'\\n');console.log('{}');});`,
 			);
 			await f.run("bash", { command: "node -p 42" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(f.inputs()).toHaveLength(1);
 		} finally {
 			fs.chmodSync(directory, mode);
@@ -556,9 +483,7 @@ for (const standalone of [false, true]) {
 			fileWriteTool: standalone,
 			output: decision({
 				behavior: "allow",
-				updatedPermissions: [
-					update("addRules", "node -p 42", "allow", "userSettings"),
-				],
+				updatedPermissions: [update("addRules", "node -p 42", "allow", "userSettings")],
 			}),
 		});
 		let release!: () => void;
@@ -579,20 +504,14 @@ for (const standalone of [false, true]) {
 			let contended = false;
 			const observer = vi
 				.spyOn(lockfile, "lock")
-				.mockImplementation(
-					async (...args: Parameters<typeof lockfile.lock>) => {
-						try {
-							return await originalLock(...args);
-						} catch (error) {
-							if (
-								args[0] === target &&
-								(error as NodeJS.ErrnoException).code === "ELOCKED"
-							)
-								contended = true;
-							throw error;
-						}
-					},
-				);
+				.mockImplementation(async (...args: Parameters<typeof lockfile.lock>) => {
+					try {
+						return await originalLock(...args);
+					} catch (error) {
+						if (args[0] === target && (error as NodeJS.ErrnoException).code === "ELOCKED") contended = true;
+						throw error;
+					}
+				});
 			restoreObserver = () => observer.mockRestore();
 			const command = "printf MUST_NOT_RUN > raced-effect.txt";
 			pending = standalone
@@ -603,11 +522,7 @@ for (const standalone of [false, true]) {
 				path.join(f.cwd, ".claude/settings.json"),
 				JSON.stringify({
 					permissions: {
-						deny: [
-							standalone
-								? "Write(./raced-effect.txt)"
-								: "Bash(printf MUST_NOT_RUN*)",
-						],
+						deny: [standalone ? "Write(./raced-effect.txt)" : "Bash(printf MUST_NOT_RUN*)"],
 					},
 				}),
 			);
@@ -615,9 +530,7 @@ for (const standalone of [false, true]) {
 			await held;
 			await pending;
 			expect(fs.existsSync(path.join(f.cwd, "raced-effect.txt"))).toBe(false);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			release?.();
 			await held;
@@ -632,9 +545,7 @@ it("cancellation while a real settings write waits prevents publication and comm
 	const f = await fixture("claude", {
 		output: decision({
 			behavior: "allow",
-			updatedPermissions: [
-				update("addRules", "node -p 42", "allow", "userSettings"),
-			],
+			updatedPermissions: [update("addRules", "node -p 42", "allow", "userSettings")],
 		}),
 	});
 	let release!: () => void;
@@ -660,11 +571,7 @@ it("cancellation while a real settings write waits prevents publication and comm
 				try {
 					return await originalLock(...args);
 				} catch (error) {
-					if (
-						args[0] === target &&
-						(error as NodeJS.ErrnoException).code === "ELOCKED"
-					)
-						contended = true;
+					if (args[0] === target && (error as NodeJS.ErrnoException).code === "ELOCKED") contended = true;
 					throw error;
 				}
 			});

@@ -9,7 +9,14 @@ import { atomicWriteFile, atomicWriteFileSync } from "../shared/atomic.ts";
 import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
-import { canonicalPath, privateDir, readPaths, sessionDir, workspacePaths, workspaceScratchDir } from "../shared/home.ts";
+import {
+	canonicalPath,
+	privateDir,
+	readPaths,
+	sessionDir,
+	workspacePaths,
+	workspaceScratchDir,
+} from "../shared/home.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
 import { sweepStaleOutputs } from "../shared/sweep.ts";
 import { DAY_MS, isRecord } from "../shared/util.ts";
@@ -153,7 +160,19 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 			continue;
 		}
 		try {
-			const report = JSON.parse(await fsp.readFile(claim, "utf8")) as Report;
+			const value: unknown = JSON.parse(await fsp.readFile(claim, "utf8"));
+			if (
+				!isRecord(value) ||
+				typeof value.content !== "string" ||
+				typeof value.wake !== "boolean" ||
+				!isRecord(value.details) ||
+				typeof value.details.id !== "string" ||
+				typeof value.details.summary !== "string" ||
+				!["done", "failed", "stopped"].includes(String(value.details.status)) ||
+				(value.reportId !== undefined && (typeof value.reportId !== "string" || !value.reportId))
+			)
+				throw new Error("Invalid pending subagent report");
+			const report = value as unknown as Report;
 			if (report.reportId === undefined) {
 				report.reportId = crypto.randomUUID();
 				await atomicWriteFile(claim, JSON.stringify(report), undefined, { mode: 0o600 });
@@ -302,7 +321,23 @@ export class ReportQueue {
 		const batch = this.queued.filter((report) => report.reportId && this.pending.has(report.reportId));
 		this.queued = [];
 		const wake = batch.some((report) => report.wake);
+		const last = batch.at(-1);
+		if (wake && last && !last.wake) {
+			// The final send carries the whole batch's wake, including on retry or recovery.
+			last.wake = true;
+			const claim = claims.get(last);
+			if (claim) {
+				try {
+					const saved = JSON.parse(fs.readFileSync(claim.claim, "utf8")) as Report;
+					atomicWriteFileSync(claim.claim, JSON.stringify({ ...saved, wake: true }), { mode: 0o600 });
+				} catch {
+					// Keep live delivery working if recovery storage became unavailable.
+				}
+			}
+		}
 		batch.forEach((report, index) => {
+			// A send may synchronously end or replace the session; the remaining batch then belongs to recovery.
+			if (!report.reportId || this.pending.get(report.reportId) !== report) return;
 			try {
 				// followUp: read once the current turn ends; triggerTurn wakes an idle parent, once per batch.
 				const sending = this.pi.sendMessage(
@@ -314,7 +349,8 @@ export class ReportQueue {
 					},
 					{ triggerTurn: wake && index === batch.length - 1, deliverAs: "followUp" },
 				);
-				if (sending && typeof sending.then === "function") void Promise.resolve(sending).catch(() => this.retry(report));
+				if (sending && typeof sending.then === "function")
+					void Promise.resolve(sending).catch(() => this.retry(report));
 			} catch {
 				// The session ended before the subagent finished: the report waits for the next start.
 				this.retain(report);
@@ -328,18 +364,31 @@ export class ReportQueue {
 		const id = report.reportId;
 		if (!id || this.pending.get(id) !== report) return;
 		this.recorded();
-		if (!this.pending.has(id) || this.session?.getEntries().some(entry =>
-			entry.type === "custom_message" && entry.customType === RESULT_TYPE &&
-			isRecord(entry.details) && entry.details.reportId === id)) return;
+		if (
+			!this.pending.has(id) ||
+			this.session
+				?.getEntries()
+				.some(
+					(entry) =>
+						entry.type === "custom_message" &&
+						entry.customType === RESULT_TYPE &&
+						isRecord(entry.details) &&
+						entry.details.reportId === id,
+				)
+		)
+			return;
 		const retry = this.retries.get(id) ?? { attempts: 0 };
 		if (retry.timer || retry.attempts >= 3) return;
 		retry.attempts++;
-		retry.timer = setTimeout(() => {
-			retry.timer = undefined;
-			if (this.pending.get(id) !== report) return;
-			this.queued.push(report);
-			this.flush();
-		}, 1000 * 2 ** (retry.attempts - 1));
+		retry.timer = setTimeout(
+			() => {
+				retry.timer = undefined;
+				if (this.pending.get(id) !== report) return;
+				this.queued.push(report);
+				this.flush();
+			},
+			1000 * 2 ** (retry.attempts - 1),
+		);
 		retry.timer.unref?.();
 		this.retries.set(id, retry);
 	}

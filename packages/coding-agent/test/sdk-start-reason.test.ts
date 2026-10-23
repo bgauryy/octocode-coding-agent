@@ -43,9 +43,7 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 				},
 			],
 		});
-		let session:
-			| Awaited<ReturnType<typeof createAgentSession>>["session"]
-			| undefined;
+		let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 		try {
 			await loader.reload();
 			({ session } = await createAgentSession({
@@ -66,13 +64,7 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 					: {}),
 			}));
 			await session.bindExtensions({});
-			expect(seen).toEqual([
-				kind === "new"
-					? "startup"
-					: kind === "explicit-fork"
-						? "fork"
-						: "resume",
-			]);
+			expect(seen).toEqual([kind === "new" ? "startup" : kind === "explicit-fork" ? "fork" : "resume"]);
 		} finally {
 			session?.dispose();
 			fs.rmSync(root, { recursive: true, force: true });

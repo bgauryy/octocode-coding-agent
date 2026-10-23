@@ -30,13 +30,8 @@ export async function screenshot(
 	const budget = imageBudget(limits);
 	const limit = `limit ${kb(budget)}`;
 	const capture = async (options: Record<string, unknown>) =>
-		(
-			await page.send<{ data: string }>(
-				"Page.captureScreenshot",
-				{ captureBeyondViewport: false, ...options },
-				signal,
-			)
-		).data;
+		(await page.send<{ data: string }>("Page.captureScreenshot", { captureBeyondViewport: false, ...options }, signal))
+			.data;
 	const first = await capture(format === "png" ? { format } : { format, quality: SHOT_QUALITY });
 	const mimeType = `image/${format}`;
 	const file = saveImageFile(first, mimeType, "browser_screenshot");

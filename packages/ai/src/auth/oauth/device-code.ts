@@ -1,3 +1,5 @@
+import { sleepUnlessAborted } from "../../utils/abort.ts";
+
 const CANCEL_MESSAGE = "Login cancelled";
 const TIMEOUT_MESSAGE = "Device flow timed out";
 const SLOW_DOWN_TIMEOUT_MESSAGE =
@@ -9,9 +11,7 @@ const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INTERVAL_INCREMENT_MS = 5000;
 
 type OAuthDeviceCodeIncompletePollResult =
-	| { status: "pending" }
-	| { status: "slow_down"; intervalSeconds?: number }
-	| { status: "failed"; message: string };
+	{ status: "pending" } | { status: "slow_down"; intervalSeconds?: number } | { status: "failed"; message: string };
 
 type OAuthDeviceCodePollResult<T> = OAuthDeviceCodeIncompletePollResult | { status: "complete"; value: T };
 
@@ -22,26 +22,6 @@ type OAuthDeviceCodePollOptions<T> = {
 	poll: () => Promise<OAuthDeviceCodePollResult<T>>;
 	signal: AbortSignal;
 };
-
-function abortableSleep(ms: number, signal: AbortSignal, cancelMessage: string): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal.aborted) {
-			reject(new Error(cancelMessage));
-			return;
-		}
-
-		const onAbort = () => {
-			clearTimeout(timeout);
-			reject(new Error(cancelMessage));
-		};
-		const timeout = setTimeout(() => {
-			signal.removeEventListener("abort", onAbort);
-			resolve();
-		}, ms);
-
-		signal.addEventListener("abort", onAbort, { once: true });
-	});
-}
 
 export async function pollOAuthDeviceCodeFlow<T>(options: OAuthDeviceCodePollOptions<T>): Promise<T> {
 	const deadline =
@@ -57,7 +37,7 @@ export async function pollOAuthDeviceCodeFlow<T>(options: OAuthDeviceCodePollOpt
 	if (options.waitBeforeFirstPoll) {
 		const remainingMs = deadline - Date.now();
 		if (remainingMs > 0) {
-			await abortableSleep(Math.min(intervalMs, remainingMs), options.signal, CANCEL_MESSAGE);
+			await sleepUnlessAborted(Math.min(intervalMs, remainingMs), options.signal, () => new Error(CANCEL_MESSAGE));
 		}
 	}
 
@@ -91,7 +71,7 @@ export async function pollOAuthDeviceCodeFlow<T>(options: OAuthDeviceCodePollOpt
 			break;
 		}
 
-		await abortableSleep(Math.min(intervalMs, remainingMs), options.signal, CANCEL_MESSAGE);
+		await sleepUnlessAborted(Math.min(intervalMs, remainingMs), options.signal, () => new Error(CANCEL_MESSAGE));
 	}
 
 	throw new Error(slowDownResponses > 0 ? SLOW_DOWN_TIMEOUT_MESSAGE : TIMEOUT_MESSAGE);

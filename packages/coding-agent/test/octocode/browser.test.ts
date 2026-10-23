@@ -77,8 +77,7 @@ const pageHandler: CdpHandler = (method, params, page) => {
 			if (expression.includes("'no-focus'")) return { result: { value: "field" } };
 			return { result: { value: true } };
 		}
-		if (expression.includes('location.href + " | "'))
-			return { result: { value: "https://example.com/ | Stub page" } };
+		if (expression.includes('location.href + " | "')) return { result: { value: "https://example.com/ | Stub page" } };
 		if (expression === "boom()")
 			return {
 				exceptionDetails: { text: "Uncaught", exception: { description: "ReferenceError: boom is not defined" } },
@@ -362,9 +361,7 @@ describe("browser tool over a shared Chrome", () => {
 		const { run } = register();
 		const textOf = async (args: Record<string, unknown>) =>
 			((await run(args)).content as Array<{ text: string }>)[0]!.text;
-		expect(await textOf({ action: "evaluate", expression: "hostile" })).toBe(
-			"a\\u{1b}[31mred\\u{1b}[0m \\u{202e}evil",
-		);
+		expect(await textOf({ action: "evaluate", expression: "hostile" })).toBe("a\\u{1b}[31mred\\u{1b}[0m \\u{202e}evil");
 		const saved = await textOf({ action: "evaluate", expression: "big" });
 		expect(saved).toContain("row 1 ");
 		expect(saved).toContain("row 5000 ");
@@ -683,11 +680,7 @@ describe("settle", () => {
 		await expect(waiting).rejects.toThrow("stop");
 		expect(page.count()).toBe(0);
 		await expect(
-			settle(
-				{ ...events(), evaluate: async () => Promise.reject(new Error("context destroyed")) },
-				undefined,
-				timing,
-			),
+			settle({ ...events(), evaluate: async () => Promise.reject(new Error("context destroyed")) }, undefined, timing),
 		).resolves.toBeUndefined();
 	});
 
@@ -878,9 +871,7 @@ describe("browser input, forms, waits and tabs", () => {
 		const plain = await open();
 		await plain.text({ action: "hover", ref: 3 });
 		expect(plain.mouse()).toEqual(["mouseMoved@30"]);
-		expect(await plain.text({ action: "drag", ref: 1, to: 4 })).toMatch(
-			/^Dragged \[1\] onto \[4\] \(a mouse drag\)\./,
-		);
+		expect(await plain.text({ action: "drag", ref: 1, to: 4 })).toMatch(/^Dragged \[1\] onto \[4\] \(a mouse drag\)\./);
 		expect(plain.mouse().slice(1, 3)).toEqual(["mouseMoved@10", "mousePressed@10"]);
 		expect(plain.mouse().at(-1)).toBe("mouseReleased@40");
 		expect(plain.cdp.commands.some((command) => command.method === "Input.dispatchDragEvent")).toBe(false);
@@ -962,9 +953,7 @@ describe("browser input, forms, waits and tabs", () => {
 		expect(waited).toMatch(/^"Saved!" appeared after \d+(?:ms|\.\ds|s)\.\n\n# Form/);
 		expect(waited).not.toContain("still changing");
 		// The text is already there: the wait is as short as the machine allows, so assert the format (`formatDuration(ms, true)`), not the speed.
-		expect(await text({ action: "snapshot", text: "Saved!" })).toMatch(
-			/^"Saved!" appeared after \d+(?:ms|\.\ds|s)\./,
-		);
+		expect(await text({ action: "snapshot", text: "Saved!" })).toMatch(/^"Saved!" appeared after \d+(?:ms|\.\ds|s)\./);
 	}, 20_000);
 
 	it("waits for text, and follows, lists and switches tabs", async () => {

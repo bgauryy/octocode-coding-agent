@@ -31,6 +31,46 @@ import type {
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
+/** The assistant message that ends a run whose loop threw: empty text, the error, no usage. */
+export function runFailureMessage(
+	model: Pick<AgentLoopConfig["model"], "api" | "provider" | "id">,
+	error: unknown,
+	aborted: boolean,
+): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text: "" }],
+		api: model.api,
+		provider: model.provider,
+		model: model.id,
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: aborted ? "aborted" : "error",
+		errorMessage: error instanceof Error ? error.message : String(error),
+		timestamp: Date.now(),
+	};
+}
+
+/** End a stream whose loop threw the way a failed run ends: an error message, then `agent_end`. */
+function endWithFailure(
+	stream: EventStream<AgentEvent, AgentMessage[]>,
+	config: AgentLoopConfig,
+	signal: AbortSignal | undefined,
+	error: unknown,
+): void {
+	const message = runFailureMessage(config.model, error, signal?.aborted === true);
+	stream.push({ type: "message_start", message });
+	stream.push({ type: "message_end", message });
+	stream.push({ type: "turn_end", message, toolResults: [] });
+	stream.push({ type: "agent_end", messages: [message] });
+}
+
 /**
  * Start an agent loop with a new prompt message.
  * The prompt is added to the context and events are emitted for it.
@@ -53,9 +93,10 @@ export function agentLoop(
 		},
 		signal,
 		streamFn,
-	).then((messages) => {
-		stream.end(messages);
-	});
+	).then(
+		(messages) => stream.end(messages),
+		(error) => endWithFailure(stream, config, signal, error),
+	);
 
 	return stream;
 }
@@ -92,9 +133,10 @@ export function agentLoopContinue(
 		},
 		signal,
 		streamFn,
-	).then((messages) => {
-		stream.end(messages);
-	});
+	).then(
+		(messages) => stream.end(messages),
+		(error) => endWithFailure(stream, config, signal, error),
+	);
 
 	return stream;
 }
@@ -209,15 +251,17 @@ async function runLoop(
 				await emit({ type: "turn_start" });
 			}
 
-			if (!selected && pendingMessages.length) config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
+			if (!selected && pendingMessages.length)
+				config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
 			const commit = inputCommitter(currentContext, newMessages, emit);
 			if (config.prepareInput && pendingMessages.length > 0) {
 				await commit(preparedMessages);
 				preparedMessages = [];
 			}
-			const input = pendingMessages.length > 0
-				? await config.prepareInput?.({ kind: pendingKind, messages: pendingMessages }, signal, commit)
-				: undefined;
+			const input =
+				pendingMessages.length > 0
+					? await config.prepareInput?.({ kind: pendingKind, messages: pendingMessages }, signal, commit)
+					: undefined;
 			await commit([...preparedMessages, ...(input?.messages ?? pendingMessages)], input?.stop ? signal : undefined);
 			pendingMessages = [];
 			pendingKind = "steer";
@@ -297,8 +341,9 @@ async function runLoop(
 			const decision = await config.finishTurn?.(lastCompletedTurn, signal);
 			await emit({ type: "turn_end", message, toolResults });
 
-			// A boundary can veto continuation after a completed tool batch. Preserve
-			// the existing queue handling for runs already aborted before this boundary.
+			// A boundary can veto continuation after a completed tool batch. A run aborted earlier, during its tools,
+			// deliberately goes on: queued steering is committed, and the next request returns at once as an aborted
+			// assistant message that marks the interruption in the transcript (pinned by the session runtime tests).
 			if ((!abortedBeforeBoundary && signal?.aborted) || decision?.action === "end") {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
@@ -337,7 +382,7 @@ async function runLoop(
 function inputCommitter(context: AgentContext, recorded: AgentMessage[], emit: AgentEventSink) {
 	const committed = new Set<AgentMessage>();
 	return async (messages: AgentMessage[], signal?: AbortSignal): Promise<void> => {
-		const pending = messages.filter(message => !committed.has(message));
+		const pending = messages.filter((message) => !committed.has(message));
 		if (signal?.aborted) return;
 		for (const message of declareToolChanges(context, pending)) {
 			if (signal?.aborted) break;
@@ -370,9 +415,7 @@ function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage
 	}
 	const pending = pendingMessages[systemIndex] as SystemMessage | undefined;
 	const baseline = pending
-		? pendingMessages.map((message, index) =>
-				index === systemIndex ? withToolChanges(pending, NO_CHANGES) : message,
-			)
+		? pendingMessages.map((message, index) => (index === systemIndex ? withToolChanges(pending, NO_CHANGES) : message))
 		: pendingMessages;
 	const changes = getToolStateChanges(
 		getCurrentTools([...context.messages, ...baseline]),

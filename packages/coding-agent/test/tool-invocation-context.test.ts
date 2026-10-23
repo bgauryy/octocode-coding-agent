@@ -54,10 +54,7 @@ it("isolates parallel and nested calls and revokes identity on rejection", async
 	);
 	const a = tool.execute("a", {}, undefined).catch(() => undefined),
 		b = tool.execute("a/1", {}, undefined).catch(() => undefined);
-	expect(contexts.map((ctx) => ctx.invocation?.toolCallId)).toEqual([
-		"a",
-		"a/1",
-	]);
+	expect(contexts.map((ctx) => ctx.invocation?.toolCallId)).toEqual(["a", "a/1"]);
 	releases.forEach((resolve) => resolve());
 	await Promise.all([a, b]);
 	expect(contexts.map((ctx) => ctx.invocation)).toEqual([undefined, undefined]);
@@ -66,12 +63,7 @@ it("isolates parallel and nested calls and revokes identity on rejection", async
 it.each(["cycle", "typed", "function", "deep"])(
 	"preserves SDK execution with unsupported %s snapshot input",
 	async (kind) => {
-		const input: any =
-			kind === "typed"
-				? new Uint8Array([1])
-				: kind === "function"
-					? { callback: () => 1 }
-					: {};
+		const input: any = kind === "typed" ? new Uint8Array([1]) : kind === "function" ? { callback: () => 1 } : {};
 		if (kind === "cycle") input.self = input;
 		if (kind === "deep") {
 			let next = input;

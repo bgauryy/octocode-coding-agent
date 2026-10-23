@@ -24,11 +24,7 @@ const member = (id: string, parentId?: string): Member => ({
 
 function family() {
 	const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
-	for (const entry of [
-		member("main-aaaaaa"),
-		member("child-0001", "main-aaaaaa"),
-		member("child-0002", "main-aaaaaa"),
-	])
+	for (const entry of [member("main-aaaaaa"), member("child-0001", "main-aaaaaa"), member("child-0002", "main-aaaaaa")])
 		store.save(entry);
 	return store;
 }
@@ -37,11 +33,15 @@ describe("a child's questions to its parent, from the team tables", () => {
 	it("lists each replyRequired message to the parent with its first reply from the parent, and the wait", () => {
 		const store = family();
 		try {
-			const first = store.send("child-0001", ["main-aaaaaa"], "Which database?", { replyRequired: true }, 10_000)
-				.id!;
+			const first = store.send("child-0001", ["main-aaaaaa"], "Which database?", { replyRequired: true }, 10_000).id!;
 			store.send("child-0001", ["main-aaaaaa"], "FYI: slow tests", { replyRequired: false }, 11_000);
-			const second = store.send("child-0001", ["main-aaaaaa"], "Rename the column?", { replyRequired: true }, 12_000)
-				.id!;
+			const second = store.send(
+				"child-0001",
+				["main-aaaaaa"],
+				"Rename the column?",
+				{ replyRequired: true },
+				12_000,
+			).id!;
 			const reply = store.send(
 				"main-aaaaaa",
 				["child-0001"],
@@ -72,10 +72,14 @@ describe("a child's questions to its parent, from the team tables", () => {
 		const store = family();
 		try {
 			const old = store.send("child-0001", ["main-aaaaaa"], "old run", { replyRequired: true }, 1_000).id!;
-			const toSibling = store.send("child-0001", ["child-0002"], "to a sibling", { replyRequired: true }, 20_000)
-				.id!;
-			const other = store.send("child-0002", ["main-aaaaaa"], "another child asks", { replyRequired: true }, 20_000)
-				.id!;
+			const toSibling = store.send("child-0001", ["child-0002"], "to a sibling", { replyRequired: true }, 20_000).id!;
+			const other = store.send(
+				"child-0002",
+				["main-aaaaaa"],
+				"another child asks",
+				{ replyRequired: true },
+				20_000,
+			).id!;
 			const mine = store.send("child-0001", ["main-aaaaaa"], "mine", { replyRequired: true }, 20_000).id!;
 			// A sibling answering is not the parent's answer.
 			store.send("child-0002", ["child-0001"], "I think so", { replyRequired: false, replyTo: mine }, 30_000);
@@ -113,9 +117,7 @@ describe("ask counts and the askUser windows", () => {
 		expect(asksLabel([])).toBe("");
 		expect(asksNote([])).toBe("");
 		expect(asksLabel([ask(1)])).toBe("1 ask (1 unanswered)");
-		expect(asksLabel([ask(1, 41_000), ask(3, 3_601_000), ask(5)])).toBe(
-			"3 asks (2 answered in 40s, 1h, 1 unanswered)",
-		);
+		expect(asksLabel([ask(1, 41_000), ask(3, 3_601_000), ask(5)])).toBe("3 asks (2 answered in 40s, 1h, 1 unanswered)");
 		expect(asksNote([ask(1, 41_000)])).toBe("Asks to its parent: 1 ask (1 answered in 40s).");
 	});
 

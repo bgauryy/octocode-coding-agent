@@ -102,7 +102,11 @@ describe("AgentSession.getSessionStats", () => {
 		const { session, sessionManager } = await createSession();
 		try {
 			sessionManager.appendMessage(createAssistantMessage("reply", 100, 1));
-			sessionManager.appendUsage("cache_warm", model.provider, model.id, { ...createUsage(1000), input: 0, cacheRead: 1000 });
+			sessionManager.appendUsage("cache_warm", model.provider, model.id, {
+				...createUsage(1000),
+				input: 0,
+				cacheRead: 1000,
+			});
 			const stats = session.getSessionStats();
 			expect(stats.cache.conversation).toMatchObject({ requests: 1, promptTokens: 100, hitRate: 0 });
 			expect(stats.cache.warming).toMatchObject({ requests: 1, promptTokens: 1000, hitRate: 1 });

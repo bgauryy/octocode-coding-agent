@@ -458,7 +458,8 @@ export async function typeInto(
     })()`,
 		signal,
 	);
-	if (matches !== true) throw new Error(`[${ref}] did not retain the requested value; inspect the field before retrying.`);
+	if (matches !== true)
+		throw new Error(`[${ref}] did not retain the requested value; inspect the field before retrying.`);
 	if (submit) await pressKey(page, "Enter", signal);
 }
 

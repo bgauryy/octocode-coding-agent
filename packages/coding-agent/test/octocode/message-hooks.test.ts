@@ -108,9 +108,9 @@ describe("message hooks", () => {
 		};
 		expect(interpret("PreMessageSend", run)).toEqual({ ask: "confirm destination" });
 		expect(interpret("PostMessageReceive", { ...run, code: 2, stderr: "deny" })).toEqual({});
-		expect(
-			interpret("PostMessageReceive", { ...run, stdout: '{"decision":"block","reason":"send a reply"}' }),
-		).toEqual({});
+		expect(interpret("PostMessageReceive", { ...run, stdout: '{"decision":"block","reason":"send a reply"}' })).toEqual(
+			{},
+		);
 		const { hooks, ctx } = await setup({ PreMessageSend: group(`echo '${run.stdout}'`) });
 		expect(await hooks.messageSend(outbound(), ctx)).toEqual({ ask: "confirm destination" });
 	});
@@ -221,9 +221,9 @@ describe("message hooks", () => {
 			});
 		}
 		const tool = tools.get("sendMessage");
-		await expect(
-			tool.execute("t1", { to: receiver, message: "tool body" }, undefined, undefined, ctx),
-		).rejects.toThrow("forbidden");
+		await expect(tool.execute("t1", { to: receiver, message: "tool body" }, undefined, undefined, ctx)).rejects.toThrow(
+			"forbidden",
+		);
 		const resumed = vi.fn(async () => "resumed");
 		team.rememberFinished("done-aaaaaa", "done");
 		team.setResumer(resumed);

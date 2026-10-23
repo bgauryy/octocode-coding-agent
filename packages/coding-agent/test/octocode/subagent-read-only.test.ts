@@ -34,8 +34,17 @@ describe("read-only subagent roles", () => {
 			vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
 			vi.stubEnv(READ_ONLY_ENV, readOnly ? "1" : "");
 			const fake = fakePi();
-			registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: fakeOctocode({ by: "off" }).mcp });
-			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["file", "agent", "archive", "bash"] } };
+			registerTurnSetup(fake.pi, {
+				isSubagent: true,
+				profiles: () => new Map(),
+				octocode: fakeOctocode({ by: "off" }).mcp,
+			});
+			const event = {
+				systemPromptOptions: {
+					sections: {} as Record<string, string>,
+					selectedTools: ["file", "agent", "archive", "bash"],
+				},
+			};
 			await fake.emit("before_agent_start", event, {});
 			return Object.values(event.systemPromptOptions.sections).join("\n");
 		};

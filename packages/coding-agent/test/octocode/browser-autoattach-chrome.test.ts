@@ -134,8 +134,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 				.map((entry) => entry.data as AuditEntry)
 				.filter((entry) => entry.allowed === false && entry.action === "invariant");
 			expect(
-				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`))
-					.length,
+				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`)).length,
 			).toBeGreaterThan(0);
 		}, 60_000);
 	},
@@ -262,8 +261,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")(
 				.map((entry) => entry.data as AuditEntry)
 				.filter((entry) => entry.allowed === false && entry.action === "invariant");
 			expect(
-				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`))
-					.length,
+				blocked.flatMap((entry) => entry.what ?? []).filter((what) => what.includes(`127.0.0.1:${secretPort}`)).length,
 			).toBeGreaterThan(0);
 		}, 60_000);
 	},

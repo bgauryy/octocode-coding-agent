@@ -211,10 +211,7 @@ async function tokenRequest(
 		await options.addClientAuthentication(headers, params, url, options.metadata);
 	} else {
 		applyClientAuthentication(
-			selectClientAuthMethod(
-				options.clientInformation,
-				options.metadata?.token_endpoint_auth_methods_supported ?? [],
-			),
+			selectClientAuthMethod(options.clientInformation, options.metadata?.token_endpoint_auth_methods_supported ?? []),
 			options.clientInformation,
 			headers,
 			params,
@@ -447,36 +444,46 @@ export async function authorizeMcp(provider: OAuthClientProvider, options: OAuth
  * Auth provider for `StreamableHttpTransport`. After a 401 it refreshes the tokens, or throws
  * `McpOAuthAuthorizationRequiredError` when the user has to authorize (again). Concurrent 401s share
  * one refresh, and a request whose token was already replaced is just retried: with rotating refresh
- * tokens, a second refresh with the old refresh token would fail and discard the new grant.
+ * tokens, a second refresh with the old refresh token would fail and discard the new grant. A 403 asking
+ * for more scope shares only another step-up: a refresh keeps the granted scope, and a step-up skips the
+ * refresh token, so neither can stand in for the other.
  */
 export function adaptOAuthProvider(provider: OAuthClientProvider): AuthProvider {
-	let inFlight: Promise<void> | undefined;
+	let refreshing: Promise<void> | undefined;
+	let steppingUp: Promise<void> | undefined;
+	const authorize = async (
+		context: UnauthorizedContext,
+		challenge: ReturnType<typeof parseWwwAuthenticate>,
+		stepUp: boolean,
+	) => {
+		const granted = stepUp ? await provider.tokens() : undefined;
+		const result = await authorizeMcp(provider, {
+			serverUrl: context.serverUrl,
+			resourceMetadataUrl: challenge.resourceMetadataUrl,
+			scope: stepUp ? stepUpScope(granted?.scope, challenge.scope) : challenge.scope,
+			fetch: context.fetch,
+			skipRefresh: stepUp,
+		});
+		if (result === "REDIRECT") throw new McpOAuthAuthorizationRequiredError();
+	};
 	return {
 		token: async () => (await provider.tokens())?.access_token,
 		onUnauthorized: async (context: UnauthorizedContext) => {
 			const challenge = parseWwwAuthenticate(context.response.headers.get("www-authenticate"));
-			const insufficientScope = challenge.error === "insufficient_scope";
-			if (!insufficientScope && !inFlight && context.token !== undefined) {
+			if (challenge.error === "insufficient_scope") {
+				steppingUp ??= authorize(context, challenge, true).finally(() => {
+					steppingUp = undefined;
+				});
+				return steppingUp;
+			}
+			if (!refreshing && context.token !== undefined) {
 				const current = (await provider.tokens())?.access_token;
 				if (current !== undefined && current !== context.token) return;
 			}
-			inFlight ??= Promise.resolve(insufficientScope ? provider.tokens() : undefined)
-				.then((granted) =>
-					authorizeMcp(provider, {
-						serverUrl: context.serverUrl,
-						resourceMetadataUrl: challenge.resourceMetadataUrl,
-						scope: insufficientScope ? stepUpScope(granted?.scope, challenge.scope) : challenge.scope,
-						fetch: context.fetch,
-						skipRefresh: insufficientScope,
-					}),
-				)
-				.then((result) => {
-					if (result === "REDIRECT") throw new McpOAuthAuthorizationRequiredError();
-				})
-				.finally(() => {
-					inFlight = undefined;
-				});
-			await inFlight;
+			refreshing ??= authorize(context, challenge, false).finally(() => {
+				refreshing = undefined;
+			});
+			return refreshing;
 		},
 	};
 }

@@ -592,9 +592,9 @@ describe("web tool", () => {
 				details: { kind: "search", provider: "bing", results: 0 },
 			}),
 		).toContain("No results · bing");
-		expect(
-			render({ content: [{ type: "text", text: "Search failed: offline\nmore" }] }, { isError: true }),
-		).toContain("⎿  Search failed: offline");
+		expect(render({ content: [{ type: "text", text: "Search failed: offline\nmore" }] }, { isError: true })).toContain(
+			"⎿  Search failed: offline",
+		);
 	});
 
 	it("records the page size and search provider without duplicating Octocode execution timing", async () => {
@@ -900,8 +900,7 @@ describe("search through the guarded request", () => {
 		guard.stub = async (url) => {
 			if (url.includes("tavily"))
 				throw new Error("api.tavily.com answered with a redirect (HTTP 302); it is not followed");
-			if (url.includes("serper"))
-				return new Response(`{"organic":"${"x".repeat(6 * 1024 * 1024)}"}`, { status: 200 });
+			if (url.includes("serper")) return new Response(`{"organic":"${"x".repeat(6 * 1024 * 1024)}"}`, { status: 200 });
 			return new Response("", { status: 200 });
 		};
 		const outcome = await search("q", 3, { TAVILY_API_KEY: "t", SERPER_API_KEY: "s" });

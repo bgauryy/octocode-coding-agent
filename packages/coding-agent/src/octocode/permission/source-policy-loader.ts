@@ -1,15 +1,8 @@
 import os from "node:os";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	ToolInvocation,
-} from "../../core/extensions/types.ts";
+import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/extensions/types.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
 import { envFlag, HOOKS_COMPAT_ENV } from "../shared/env.ts";
-import {
-	projectTrustForContents,
-	preparePermissionTrustUpdate,
-} from "../shared/trust.ts";
+import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
 import { say } from "../shared/commands.ts";
 import { errorMessage } from "../shared/util.ts";
 import { initializeBashSyntax } from "./bash-syntax.ts";
@@ -51,15 +44,16 @@ export function registerSourcePolicy(
 		anchor: ctx.cwd,
 	});
 	const publish = (ctx: ExtensionContext) => {
-		const overlay = parseSourcePolicy(
-			{ permissions: sessionRules },
-			sessionSource(ctx),
-		);
+		const overlay = parseSourcePolicy({ permissions: sessionRules }, sessionSource(ctx));
 		policy = {
 			rules: [...basePolicy.rules, ...transient.rules, ...overlay.rules],
 			errors: [...basePolicy.errors, ...transient.errors, ...overlay.errors],
-            defaultMode: overlay.defaultMode ?? transient.defaultMode ?? basePolicy.defaultMode,
-            additionalDirectories: [...(basePolicy.additionalDirectories??[]),...(transient.additionalDirectories??[]),...(overlay.additionalDirectories??[])],
+			defaultMode: overlay.defaultMode ?? transient.defaultMode ?? basePolicy.defaultMode,
+			additionalDirectories: [
+				...(basePolicy.additionalDirectories ?? []),
+				...(transient.additionalDirectories ?? []),
+				...(overlay.additionalDirectories ?? []),
+			],
 		};
 		revision++;
 		onChange?.();
@@ -69,11 +63,7 @@ export function registerSourcePolicy(
 		try {
 			await initializeBashSyntax();
 		} catch {
-			say(
-				ctx,
-				"Bash syntax parser unavailable; shell file targets require explicit review",
-				"warning",
-			);
+			say(ctx, "Bash syntax parser unavailable; shell file targets require explicit review", "warning");
 		}
 		// Read the policy only after initialization, and verify trust against exactly those bytes.
 		const allSources = claudeSettingsSources(ctx.cwd, true, home);
@@ -84,11 +74,7 @@ export function registerSourcePolicy(
 		const trusted = await projectTrustForContents(
 			ctx,
 			new Map(
-				captured
-					.slice(1)
-					.flatMap((entry) =>
-						entry.text === undefined ? [] : [[entry.source.path, entry.text]],
-					),
+				captured.slice(1).flatMap((entry) => (entry.text === undefined ? [] : [[entry.source.path, entry.text]])),
 			),
 		);
 		const current = allSources.map((source) => ({
@@ -97,13 +83,9 @@ export function registerSourcePolicy(
 		}));
 		const stable = JSON.stringify(captured) === JSON.stringify(current);
 		const contents = captured.map((entry) =>
-			stable || entry.source === allSources[0]
-				? entry
-				: { source: entry.source, error: true },
+			stable || entry.source === allSources[0] ? entry : { source: entry.source, error: true },
 		);
-		const localAllowed = contents.map(
-			(entry) => !entry.error && localPermissionAllowances(entry.source.path),
-		);
+		const localAllowed = contents.map((entry) => !entry.error && localPermissionAllowances(entry.source.path));
 		const id = ctx.sessionManager.getSessionId();
 		const fingerprint = JSON.stringify({
 			contents,
@@ -122,16 +104,13 @@ export function registerSourcePolicy(
 			}
 			next.rules.push(
 				...loaded.rules.filter(
-					(rule) =>
-						trusted ||
-						source.path === allSources[0]!.path ||
-						localAllowed[index] ||
-						rule.behavior !== "allow",
+					(rule) => trusted || source.path === allSources[0]!.path || localAllowed[index] || rule.behavior !== "allow",
 				),
 			);
 			next.errors.push(...loaded.errors);
-            if(loaded.defaultMode)next.defaultMode=loaded.defaultMode;
-            if(trusted || source.path===allSources[0]!.path || localAllowed[index]) next.additionalDirectories=[...(next.additionalDirectories??[]),...(loaded.additionalDirectories??[])];
+			if (loaded.defaultMode) next.defaultMode = loaded.defaultMode;
+			if (trusted || source.path === allSources[0]!.path || localAllowed[index])
+				next.additionalDirectories = [...(next.additionalDirectories ?? []), ...(loaded.additionalDirectories ?? [])];
 		}
 		return { fingerprint, next, id, contents };
 	};
@@ -165,40 +144,24 @@ export function registerSourcePolicy(
 		await refresh(ctx);
 	});
 	return {
-		prepareUpdates: (
-			ctx: ExtensionContext,
-			updates: readonly SourcePermissionUpdate[],
-		) => {
-			if (!enabled)
-				throw new Error("Source permission updates require compatibility mode");
+		prepareUpdates: (ctx: ExtensionContext, updates: readonly SourcePermissionUpdate[]) => {
+			if (!enabled) throw new Error("Source permission updates require compatibility mode");
 			const nextSession = applySessionRuleUpdates(
 				sessionRules,
 				updates.filter((update) => update.destination === "session"),
 			);
-			const sessionParsed = parseSourcePolicy(
-				{ permissions: nextSession },
-				sessionSource(ctx),
-			);
-			if (sessionParsed.errors.length)
-				throw new Error(sessionParsed.errors.join("\n"));
+			const sessionParsed = parseSourcePolicy({ permissions: nextSession }, sessionSource(ctx));
+			if (sessionParsed.errors.length) throw new Error(sessionParsed.errors.join("\n"));
 			const sources = claudeSettingsSources(ctx.cwd, true, home);
 			const destinations = {
 				userSettings: sources[0]!,
 				projectSettings: sources[1]!,
 				localSettings: sources[2]!,
 			};
-			const plans = (
-				["userSettings", "projectSettings", "localSettings"] as const
-			).flatMap((destination) => {
-				const selected = updates.filter(
-					(update) => update.destination === destination,
-				);
+			const plans = (["userSettings", "projectSettings", "localSettings"] as const).flatMap((destination) => {
+				const selected = updates.filter((update) => update.destination === destination);
 				if (!selected.length) return [];
-				const plan = stageSettingsWrite(
-					destinations[destination],
-					destination,
-					selected,
-				);
+				const plan = stageSettingsWrite(destinations[destination], destination, selected);
 				const parsed = parseSourcePolicy(plan.settings, plan.source);
 				if (parsed.errors.length) throw new Error(parsed.errors.join("\n"));
 				return [plan];
@@ -227,10 +190,7 @@ export function registerSourcePolicy(
 				)
 					throw new Error("Permission policy changed before update commit");
 			};
-			return async (
-				signal: AbortSignal,
-				commit: (change: () => void) => void,
-			) => {
+			return async (signal: AbortSignal, commit: (change: () => void) => void) => {
 				signal.throwIfAborted();
 				assertCurrent();
 				let written = 0;
@@ -254,14 +214,10 @@ export function registerSourcePolicy(
 					assertCurrent();
 					if (snapshot) {
 						if (snapshot.id !== expectedSession)
-							throw new Error(
-								"Permission session changed before update publication",
-							);
+							throw new Error("Permission session changed before update publication");
 						const expected = expectedContents.map((entry) => {
 							const own = plans.find(
-								(plan) =>
-									plan.source.path === entry.source.path &&
-									saved.includes(plan.source.path),
+								(plan) => plan.source.path === entry.source.path && saved.includes(plan.source.path),
 							);
 							return own
 								? {
@@ -272,9 +228,7 @@ export function registerSourcePolicy(
 								: entry;
 						});
 						if (JSON.stringify(snapshot.contents) !== JSON.stringify(expected))
-							throw new Error(
-								"External permission settings changed during update commit",
-							);
+							throw new Error("External permission settings changed during update commit");
 					}
 					commit(() => {
 						if (snapshot) install(snapshot);
@@ -284,18 +238,11 @@ export function registerSourcePolicy(
 							if (!written) {
 								// Failed saves retain the attempted source rules for this process. A successful
 								// settings reload instead restores the normal per-source trust boundary.
-								for (const plan of plans)
-									transient.rules.push(
-										...parseSourcePolicy(plan.settings, plan.source).rules,
-									);
+								for (const plan of plans) transient.rules.push(...parseSourcePolicy(plan.settings, plan.source).rules);
 								// The failed destination itself must not turn this approved update into a malformed-policy denial.
-								const failedPaths = new Set(
-									plans.map((plan) => plan.source.path),
-								);
+								const failedPaths = new Set(plans.map((plan) => plan.source.path));
 								basePolicy = {
-									rules: basePolicy.rules.filter(
-										(rule) => !failedPaths.has(rule.source.path),
-									),
+									rules: basePolicy.rules.filter((rule) => !failedPaths.has(rule.source.path)),
 									errors: basePolicy.errors,
 								};
 							}
@@ -313,10 +260,8 @@ export function registerSourcePolicy(
 			};
 		},
 		refresh,
-		unprojected: (toolName: string) =>
-			unprojectedSourcePolicy(policy, toolName),
-		evaluate: (invocation: ToolInvocation, cwd: string) =>
-			evaluateSourcePolicy(policy, invocation, cwd),
+		unprojected: (toolName: string) => unprojectedSourcePolicy(policy, toolName),
+		evaluate: (invocation: ToolInvocation, cwd: string) => evaluateSourcePolicy(policy, invocation, cwd),
 		get enabled() {
 			return enabled;
 		},

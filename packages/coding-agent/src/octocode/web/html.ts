@@ -12,8 +12,7 @@ import {
 /** Page metadata (JSON-LD, price and date meta tags) up to this size leads the page text; longer metadata follows it, whole. */
 const METADATA_LEAD_CHARS = 1_500;
 /** What to do when the static HTML is not the page: the main session has no `browser`, so the advice names both routes. */
-export const RENDER_ADVICE =
-	"render it with the browser tool, or with a browser subagent when browser is not active";
+export const RENDER_ADVICE = "render it with the browser tool, or with a browser subagent when browser is not active";
 /** Less visible text than this in the static HTML means the page is built by JavaScript. */
 const SHELL_TEXT_CHARS = 500;
 
@@ -246,9 +245,7 @@ export function pageMetadata(html: string): string {
 	for (const block of elementsWith(html, "script", /type=["']?application\/ld\+json/gi)) {
 		try {
 			const data = JSON.parse(block.trim()) as unknown;
-			lines.add(
-				`JSON-LD: ${JSON.stringify(data, (key, value: unknown) => (key === "@context" ? undefined : value))}`,
-			);
+			lines.add(`JSON-LD: ${JSON.stringify(data, (key, value: unknown) => (key === "@context" ? undefined : value))}`);
 		} catch {
 			// A malformed block is skipped: the page text still stands.
 		}

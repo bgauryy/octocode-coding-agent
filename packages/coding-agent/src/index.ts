@@ -24,10 +24,7 @@ export {
 	type SessionStats,
 } from "./core/agent-session.ts";
 export { readStoredCredential } from "./core/auth-storage.ts";
-export type {
-	CacheWarmingDecision,
-	CacheWarmingStatus,
-} from "./core/cache-warmer.ts";
+export type { CacheWarmingDecision, CacheWarmingStatus } from "./core/cache-warmer.ts";
 // Compaction
 export {
 	type BranchPreparation,
@@ -52,11 +49,7 @@ export {
 	serializeConversation,
 	shouldCompact,
 } from "./core/compaction/index.ts";
-export {
-	createEventBus,
-	type EventBus,
-	type EventBusController,
-} from "./core/event-bus.ts";
+export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
 // Extension system
 export type {
 	AfterProviderResponseEvent,
@@ -253,15 +246,8 @@ export type {
 	ResolvedResource,
 } from "./core/package-manager.ts";
 export { DefaultPackageManager } from "./core/package-manager.ts";
-export type {
-	ResourceCollision,
-	ResourceDiagnostic,
-	ResourceLoader,
-} from "./core/resource-loader.ts";
-export {
-	DefaultResourceLoader,
-	loadProjectContextFiles,
-} from "./core/resource-loader.ts";
+export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
+export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
 // SDK for programmatic usage
 export {
 	AgentSessionRuntime,
@@ -348,11 +334,7 @@ export {
 	type SkillFrontmatter,
 } from "./core/skills.ts";
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
-export {
-	type EditDiffResult,
-	generateDiffString,
-	generateUnifiedPatch,
-} from "./core/tools/edit-diff.ts";
+export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
 // Tools
 export {
 	type BashOperations,
@@ -428,17 +410,8 @@ export {
 	type VirtualModelStateData,
 } from "./core/virtual-models.ts";
 // Built-in extensions. The CLI loads them; SDK sessions add them to their extension factories.
-export type {
-	LoadedMcpConfig,
-	McpExposure,
-	McpServerConfig,
-	McpServerEntry,
-} from "./extensions/mcp/config.ts";
-export {
-	createMcpExtension,
-	type McpExtensionOptions,
-	type McpTransportFactory,
-} from "./extensions/mcp/index.ts";
+export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
+export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
@@ -518,11 +491,7 @@ export {
 export { copyToClipboard } from "./utils/clipboard.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";
 export { convertToPng } from "./utils/image-convert.ts";
-export {
-	formatDimensionNote,
-	type ResizedImage,
-	resizeImage,
-} from "./utils/image-resize.ts";
+export { formatDimensionNote, type ResizedImage, resizeImage } from "./utils/image-resize.ts";
 export { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
 // Shell utilities
 export { getPowerShellConfig, getShellConfig } from "./utils/shell.ts";

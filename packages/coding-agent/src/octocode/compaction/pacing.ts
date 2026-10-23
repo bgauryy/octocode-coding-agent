@@ -29,8 +29,7 @@ export class ThrashBreaker {
 
 	/** Records a finished compaction; a manual one starts the count over. */
 	compacted(manual: boolean): void {
-		this.#streak =
-			!manual && this.#turnsSince !== undefined && this.#turnsSince <= THRASH_TURNS ? this.#streak + 1 : 0;
+		this.#streak = !manual && this.#turnsSince !== undefined && this.#turnsSince <= THRASH_TURNS ? this.#streak + 1 : 0;
 		this.#turnsSince = 0;
 	}
 

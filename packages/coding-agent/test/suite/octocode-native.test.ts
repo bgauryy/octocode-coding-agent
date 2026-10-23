@@ -81,12 +81,18 @@ it("runs native tools and releases team resources across a real session reload",
 			}
 			harness.session.setActiveToolsByName(["bash", "file", "agent"]);
 			harness.setResponses([
-				fauxAssistantMessage(fauxToolCall("agent", { type: "coordinate", input: { action: "join", goal: "Verify native lifecycle" } }), {
-					stopReason: "toolUse",
-				}),
-				fauxAssistantMessage(fauxToolCall("agent", { type: "coordinate", input: { action: "lock", paths: [`run-${run}.txt`] } }), {
-					stopReason: "toolUse",
-				}),
+				fauxAssistantMessage(
+					fauxToolCall("agent", { type: "coordinate", input: { action: "join", goal: "Verify native lifecycle" } }),
+					{
+						stopReason: "toolUse",
+					},
+				),
+				fauxAssistantMessage(
+					fauxToolCall("agent", { type: "coordinate", input: { action: "lock", paths: [`run-${run}.txt`] } }),
+					{
+						stopReason: "toolUse",
+					},
+				),
 				fauxAssistantMessage(
 					fauxToolCall("file", {
 						queries: [

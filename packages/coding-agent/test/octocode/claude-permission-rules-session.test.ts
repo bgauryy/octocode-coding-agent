@@ -12,9 +12,7 @@ it("Claude source deny blocks native full before permission approval", async () 
 		await f.run();
 		expect(fs.existsSync(f.marker)).toBe(false);
 		expect(f.inputs()).toEqual([]);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -69,22 +67,19 @@ it("source policy honors custom CLAUDE_CONFIG_DIR", async () => {
 		await f.close();
 	}
 });
-it.each([false, true])(
-	"restrictive project permission rules apply with project trust=%s",
-	async (projectTrusted) => {
-		const f = await fixture("claude", {
-			mode: "full",
-			projectRules: { deny: ["Bash"] },
-			projectTrusted,
-		});
-		try {
-			await f.run();
-			expect(fs.existsSync(f.marker)).toBe(false);
-		} finally {
-			await f.close();
-		}
-	},
-);
+it.each([false, true])("restrictive project permission rules apply with project trust=%s", async (projectTrusted) => {
+	const f = await fixture("claude", {
+		mode: "full",
+		projectRules: { deny: ["Bash"] },
+		projectTrusted,
+	});
+	try {
+		await f.run();
+		expect(fs.existsSync(f.marker)).toBe(false);
+	} finally {
+		await f.close();
+	}
+});
 it("user deny cannot be replaced by trusted project allow", async () => {
 	const f = await fixture("claude", {
 		mode: "full",
@@ -108,37 +103,28 @@ it("tool-name glob denies an otherwise unclassified custom invocation", async ()
 		await f.run("nested_permission_fixture", {});
 		expect(fs.existsSync(path.join(f.cwd, "nested-a.txt"))).toBe(false);
 		expect(fs.existsSync(path.join(f.cwd, "nested-b.txt"))).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
 });
-it.each([false, true])(
-	"source Read rule reaches a real read-only tool, deny=%s",
-	async (denied) => {
-		const f = await fixture("claude", {
-			mode: "full",
-			rules: denied ? { deny: ["Read"] } : {},
-			readTool: true,
-		});
-		try {
-			const secret = path.join(f.cwd, "secret.txt");
-			fs.writeFileSync(secret, "READ_POLICY_EVIDENCE");
-			await f.run("read", { path: secret });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
-			expect(result, JSON.stringify(result)).toMatchObject({ isError: denied });
-			expect(JSON.stringify(result).includes("READ_POLICY_EVIDENCE")).toBe(
-				!denied,
-			);
-		} finally {
-			await f.close();
-		}
-	},
-);
+it.each([false, true])("source Read rule reaches a real read-only tool, deny=%s", async (denied) => {
+	const f = await fixture("claude", {
+		mode: "full",
+		rules: denied ? { deny: ["Read"] } : {},
+		readTool: true,
+	});
+	try {
+		const secret = path.join(f.cwd, "secret.txt");
+		fs.writeFileSync(secret, "READ_POLICY_EVIDENCE");
+		await f.run("read", { path: secret });
+		const result = f.session.messages.findLast((m) => m.role === "toolResult");
+		expect(result, JSON.stringify(result)).toMatchObject({ isError: denied });
+		expect(JSON.stringify(result).includes("READ_POLICY_EVIDENCE")).toBe(!denied);
+	} finally {
+		await f.close();
+	}
+});
 it("a later denied native file batch member prevents all batch effects", async () => {
 	const f = await fixture("claude", {
 		mode: "full",
@@ -179,24 +165,17 @@ it("removing a reloaded source deny restores originally active tools without rev
 		f.session.setActiveToolsByName(original.filter((name) => name !== "web"));
 		const settingsFile = path.join(f.configDir, "settings.json");
 		const config = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
-		fs.writeFileSync(
-			settingsFile,
-			JSON.stringify({ ...config, permissions: { deny: ["Bash"] } }),
-		);
+		fs.writeFileSync(settingsFile, JSON.stringify({ ...config, permissions: { deny: ["Bash"] } }));
 		await f.session.reload();
 		expect(f.session.getActiveToolNames()).not.toContain("bash");
 		expect(f.session.getActiveToolNames()).not.toContain("web");
 		await f.run();
 		expect(fs.existsSync(f.marker)).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		expect(f.session.getActiveToolNames()).not.toContain("web");
 		fs.writeFileSync(settingsFile, JSON.stringify(config));
 		await f.session.reload();
-		expect(f.session.getActiveToolNames().sort()).toEqual(
-			original.filter((name) => name !== "web").sort(),
-		);
+		expect(f.session.getActiveToolNames().sort()).toEqual(original.filter((name) => name !== "web").sort());
 		await f.run();
 		expect(fs.readFileSync(f.marker, "utf8")).toBe("PERMISSION_EFFECT");
 	} finally {
@@ -223,48 +202,32 @@ it("source ask on one native file invocation resolves once across outer and inte
 	}
 });
 
-it.each([false, true])(
-	"deferred read-only MCP invoked by another tool obeys source deny=%s",
-	async (denied) => {
-		const f = await fixture("claude", {
-			mode: "full",
-			deferredMcp: true,
-			rules: denied ? { deny: ["mcp__policy__*"] } : {},
-		});
-		let pid: number | undefined;
-		try {
-			await f.session.prompt("/mcp tools policy");
-			// The listed tool must be registered in the session, not only listed by the server, before the nested call.
-			await vi.waitFor(
-				() =>
-					expect(
-						f.session
-							.getAllTools()
-							.some((tool) => tool.name === "mcp__policy__observe"),
-					).toBe(true),
-				{ timeout: 5000 },
-			);
-			await f.run("nested_mcp_policy_fixture", {});
-			const records = f.mcpRecords();
-			expect(
-				records.some((record) => record.message.method === "initialize"),
-			).toBe(true);
-			pid = records[0].pid;
-			expect(
-				records.filter((record) => record.message.method === "tools/call"),
-			).toHaveLength(denied ? 0 : 1);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
-			expect(
-				JSON.stringify(result).includes("DEFERRED_MCP_READ_EVIDENCE"),
-			).toBe(!denied);
-		} finally {
-			await f.close();
-			if (pid) expect(() => process.kill(pid!, 0)).toThrow();
-		}
-	},
-);
+it.each([false, true])("deferred read-only MCP invoked by another tool obeys source deny=%s", async (denied) => {
+	const f = await fixture("claude", {
+		mode: "full",
+		deferredMcp: true,
+		rules: denied ? { deny: ["mcp__policy__*"] } : {},
+	});
+	let pid: number | undefined;
+	try {
+		await f.session.prompt("/mcp tools policy");
+		// The listed tool must be registered in the session, not only listed by the server, before the nested call.
+		await vi.waitFor(
+			() => expect(f.session.getAllTools().some((tool) => tool.name === "mcp__policy__observe")).toBe(true),
+			{ timeout: 5000 },
+		);
+		await f.run("nested_mcp_policy_fixture", {});
+		const records = f.mcpRecords();
+		expect(records.some((record) => record.message.method === "initialize")).toBe(true);
+		pid = records[0].pid;
+		expect(records.filter((record) => record.message.method === "tools/call")).toHaveLength(denied ? 0 : 1);
+		const result = f.session.messages.findLast((m) => m.role === "toolResult");
+		expect(JSON.stringify(result).includes("DEFERRED_MCP_READ_EVIDENCE")).toBe(!denied);
+	} finally {
+		await f.close();
+		if (pid) expect(() => process.kill(pid!, 0)).toThrow();
+	}
+});
 
 it("untrusted project allow cannot authorize a native manual request", async () => {
 	const f = await fixture("claude", {
@@ -276,9 +239,7 @@ it("untrusted project allow cannot authorize a native manual request", async () 
 	try {
 		await f.run();
 		expect(fs.existsSync(f.marker)).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -317,12 +278,8 @@ it("source allow cannot bypass the native unread-file mutation guard", async () 
 				},
 			],
 		});
-		expect(fs.readFileSync(f.marker, "utf8")).toBe(
-			"ORIGINAL_GUARDED_CONTENT\n",
-		);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(fs.readFileSync(f.marker, "utf8")).toBe("ORIGINAL_GUARDED_CONTENT\n");
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -346,9 +303,7 @@ it("source allow cannot bypass native state-folder protection", async () => {
 			],
 		});
 		expect(fs.existsSync(target)).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}

@@ -94,8 +94,7 @@ export function registerAskUser(pi: ExtensionAPI): void {
 						question: Type.String({ description: "Self-contained question with the context needed to answer" }),
 						header: Type.Optional(
 							Type.String({
-								description:
-									"Short tab label (about 12 characters are shown); omit for an automatic question number",
+								description: "Short tab label (about 12 characters are shown); omit for an automatic question number",
 							}),
 						),
 						options: Type.Optional(
@@ -141,17 +140,14 @@ export function registerAskUser(pi: ExtensionAPI): void {
 						? { answers: [], cancelled: true, reason: "unavailable" }
 						: await withDialog(
 								() =>
-									ctx.mode === "tui"
-										? showAskDialog(ctx, questions, signal)
-										: askWithDialogs(ctx, questions, signal),
+									ctx.mode === "tui" ? showAskDialog(ctx, questions, signal) : askWithDialogs(ctx, questions, signal),
 								signal,
 							);
 				// Empty questions and options are not asked: say how many, so a missing answer is not mistaken for a skipped one.
 				const skippedQuestions = params.questions.length - questions.length;
 				const skipped = [
 					skippedQuestions > 0 && plural(skippedQuestions, "empty question"),
-					skippedOptions > 0 &&
-						plural(skippedOptions, "option with an empty label", "options with an empty label"),
+					skippedOptions > 0 && plural(skippedOptions, "option with an empty label", "options with an empty label"),
 				].filter(Boolean);
 				const note = skipped.length > 0 ? `\n(Not asked: ${skipped.join(" and ")}.)` : "";
 				return { content: [{ type: "text", text: `${formatAnswers(result)}${note}` }], details: result };

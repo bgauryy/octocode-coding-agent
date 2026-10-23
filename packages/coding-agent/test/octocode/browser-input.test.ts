@@ -92,7 +92,11 @@ describe("pointing at elements", () => {
 		const controller = new AbortController();
 		const { page, sent } = fakePage(() => ({ x: 1, y: 2, covered: "" }));
 		const send = page.send.bind(page);
-		page.send = async <T = Record<string, unknown>>(method: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> => {
+		page.send = async <T = Record<string, unknown>>(
+			method: string,
+			params?: Record<string, unknown>,
+			signal?: AbortSignal,
+		): Promise<T> => {
 			const result = await send<T>(method, params, signal);
 			if (params?.type === "mousePressed") {
 				if (failure === "abort") controller.abort(new Error("stop"));
@@ -193,12 +197,9 @@ describe("typing and filling", () => {
 
 	it("rejects unrecognized toggle values without clicking", async () => {
 		const { page, sent } = fakePage(() => "checked");
-		expect(await fillFields(page, [{ ref: 1, value: "typo" }])).toEqual([
-			"[1]: Toggle value must be true or false.",
-		]);
+		expect(await fillFields(page, [{ ref: 1, value: "typo" }])).toEqual(["[1]: Toggle value must be true or false."]);
 		expect(sent).toEqual([]);
 	});
-
 });
 
 describe("waits that honour abort", () => {

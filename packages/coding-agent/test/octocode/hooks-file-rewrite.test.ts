@@ -18,10 +18,7 @@ it("reverses each Claude file projection while preserving unrelated queries and 
 		content: "new",
 	});
 	expect(write).toEqual({
-		queries: [
-			{ type: "write", path: "/new", content: "new", reasoning: "create" },
-			input.queries[1],
-		],
+		queries: [{ type: "write", path: "/new", content: "new", reasoning: "create" }, input.queries[1]],
 	});
 	const edit = rewriteFileQuery(input, 1, {
 		file_path: "/edited",
@@ -68,7 +65,5 @@ it("preserves replace-all semantics and refuses invalid or incomplete replacemen
 			replace_all: "yes",
 		}),
 	).toThrow("boolean");
-	expect(() => rewriteFileQuery(input, 0, { file_path: "a" })).toThrow(
-		"old_string",
-	);
+	expect(() => rewriteFileQuery(input, 0, { file_path: "a" })).toThrow("old_string");
 });

@@ -76,8 +76,18 @@ export class ApplicationStream {
 				const tools = next.tools ?? [];
 				const previous = tools.find((tool) => tool.toolCallId === event.toolCallId);
 				const hint = event.hint ?? previous?.hint;
+				// Older hosts omit order from tool events. Keep a call's previous position or infer one after
+				// the latest retained item; current hosts send the exact order even if older items were evicted.
+				const order =
+					event.order ??
+					previous?.order ??
+					Math.max(
+						next.messages.reduce((last, message) => Math.max(last, message.order ?? -1), -1),
+						tools.reduce((last, tool) => Math.max(last, tool.order ?? -1), -1),
+					) + 1;
 				const tool = {
 					toolCallId: event.toolCallId,
+					order,
 					toolName: event.toolName,
 					...(hint ? { hint } : {}),
 					text: event.text ?? previous?.text ?? "",

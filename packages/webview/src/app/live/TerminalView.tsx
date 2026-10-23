@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useCopy, useElapsed, useStickToBottom } from "../hooks.ts";
 import { plural, span } from "../model/format.ts";
 import { ArrowDownIcon, CheckIcon, CopyIcon, TerminalIcon, WrapIcon } from "../ui/icons.tsx";
@@ -10,8 +10,7 @@ import type { TerminalEntry } from "./model.ts";
  * Read-only: commands run in the agent's session under the host's permissions, never from this page.
  */
 export function TerminalTranscript({ entries }: { entries: readonly TerminalEntry[] }) {
-	const log = useRef<HTMLOListElement>(null);
-	const { atBottom, jump } = useStickToBottom(log, entries);
+	const { ref: log, atBottom, jump } = useStickToBottom<HTMLOListElement>(entries);
 	const [wrap, setWrap] = useState(true);
 	const transcript = useMemo(
 		() => entries.map((entry) => `$ ${entry.command}${entry.output ? `\n${entry.output}` : ""}`).join("\n\n"),

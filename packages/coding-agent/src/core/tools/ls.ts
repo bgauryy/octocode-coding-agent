@@ -11,7 +11,12 @@ import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } fr
 const lsSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Directory to list (default: current directory)" })),
 	limit: Type.Optional(Type.Integer({ minimum: 1, description: "Maximum number of entries to return (default: 500)" })),
-	offset: Type.Optional(Type.Integer({ minimum: 0, description: "Skip this many sorted entries (default: 0); use the returned next offset to continue" })),
+	offset: Type.Optional(
+		Type.Integer({
+			minimum: 0,
+			description: "Skip this many sorted entries (default: 0); use the returned next offset to continue",
+		}),
+	),
 });
 
 export const lsToolSystemPromptContribution = {
@@ -72,7 +77,8 @@ export function createLsToolDefinition(
 			ctx?: ExtensionContext,
 		) {
 			if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("offset must be a non-negative integer");
-			if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error("limit must be a positive integer");
+			if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
+				throw new Error("limit must be a positive integer");
 			return new Promise((resolve, reject) => {
 				if (signal?.aborted) {
 					reject(new Error("Operation aborted"));
@@ -138,7 +144,10 @@ export function createLsToolDefinition(
 						}
 
 						if (results.length === 0) {
-							resolve({ content: [{ type: "text", text: offset > 0 ? "(no more entries)" : "(empty directory)" }], details: undefined });
+							resolve({
+								content: [{ type: "text", text: offset > 0 ? "(no more entries)" : "(empty directory)" }],
+								details: undefined,
+							});
 							return;
 						}
 

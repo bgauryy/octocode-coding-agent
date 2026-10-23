@@ -11,9 +11,7 @@ it.each(["claude", "codex"] as const)(
 		const f = await fixture(protocol);
 		try {
 			await f.run();
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result, JSON.stringify(result)).toMatchObject({ isError: false });
 			expect(fs.readFileSync(f.marker, "utf8")).toBe("PERMISSION_EFFECT");
 			const inputs = fs
@@ -22,12 +20,8 @@ it.each(["claude", "codex"] as const)(
 				.split("\n")
 				.map((s) => JSON.parse(s));
 			expect(inputs).toHaveLength(1);
-			expect(inputs[0].session_id).toBe(
-				f.session.sessionManager.getSessionId(),
-			);
-			expect(inputs[0].transcript_path).toBe(
-				f.session.sessionManager.getSessionFile(),
-			);
+			expect(inputs[0].session_id).toBe(f.session.sessionManager.getSessionId());
+			expect(inputs[0].transcript_path).toBe(f.session.sessionManager.getSessionFile());
 			expect(inputs[0].cwd).toBe(f.cwd);
 			expect(inputs[0].permission_mode).toBe("default");
 			expect(inputs[0]).not.toHaveProperty("tool_use_id");
@@ -45,10 +39,7 @@ it.each(["claude", "codex"] as const)(
 	},
 );
 
-const decision = (
-	behavior: "allow" | "deny",
-	extra: Record<string, unknown> = {},
-) => ({
+const decision = (behavior: "allow" | "deny", extra: Record<string, unknown> = {}) => ({
 	hookSpecificOutput: {
 		hookEventName: "PermissionRequest",
 		decision: { behavior, ...extra },
@@ -81,9 +72,7 @@ for (const protocol of ["claude", "codex"] as const) {
 			},
 		],
 		[
-			protocol === "claude"
-				? "malformed input rewrite"
-				: "unsupported input rewrite",
+			protocol === "claude" ? "malformed input rewrite" : "unsupported input rewrite",
 			decision("allow", {
 				updatedInput: {
 					command: protocol === "claude" ? 123 : "printf CHANGED",
@@ -100,9 +89,7 @@ for (const protocol of ["claude", "codex"] as const) {
 		const f = await fixture(protocol, { output });
 		try {
 			await f.run();
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 			expect(fs.existsSync(f.marker)).toBe(false);
 			expect(f.inputs()).toHaveLength(1);
 		} finally {
@@ -117,9 +104,7 @@ for (const protocol of ["claude", "codex"] as const) {
 			});
 			try {
 				await f.run();
-				expect(
-					f.session.messages.findLast((m) => m.role === "toolResult"),
-				).toMatchObject({ isError: true });
+				expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 				expect(fs.existsSync(f.marker)).toBe(false);
 				expect(f.inputs()).toHaveLength(1);
 			} finally {
@@ -132,9 +117,7 @@ for (const protocol of ["claude", "codex"] as const) {
 		const f = await fixture(protocol, { matcher: "NotThisTool" });
 		try {
 			await f.run();
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 			expect(fs.existsSync(f.marker)).toBe(false);
 			expect(f.inputs()).toEqual([]);
 		} finally {
@@ -150,9 +133,7 @@ for (const protocol of ["claude", "codex"] as const) {
 			await running;
 			expect(f.providerRequests).toBe(1);
 			expect(fs.existsSync(f.marker)).toBe(false);
-			const pid = Number(
-				fs.readFileSync(path.join(f.root, "hook.pid"), "utf8"),
-			);
+			const pid = Number(fs.readFileSync(path.join(f.root, "hook.pid"), "utf8"));
 			expect(() => process.kill(pid, 0)).toThrow();
 		} finally {
 			fs.writeFileSync(path.join(f.root, "release"), "");
@@ -172,9 +153,7 @@ for (const protocol of ["claude", "codex"] as const) {
 					},
 				],
 			});
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(fs.readFileSync(f.marker, "utf8")).toBe("PERMISSION_EFFECT\n");
 			expect(f.inputs()).toHaveLength(1);
 		} finally {
@@ -193,19 +172,13 @@ it.each(["claude", "codex"] as const)(
 			res.writeHead(200, { "content-type": "text/plain" });
 			res.end("LOCAL_NETWORK_PERMISSION_EVIDENCE");
 		});
-		await new Promise<void>((resolve) =>
-			server.listen(0, "127.0.0.1", resolve),
-		);
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 		try {
 			const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/safe`;
 			await f.run("web", { url });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result, JSON.stringify(result)).toMatchObject({ isError: false });
-			expect(JSON.stringify(result)).toContain(
-				"LOCAL_NETWORK_PERMISSION_EVIDENCE",
-			);
+			expect(JSON.stringify(result)).toContain("LOCAL_NETWORK_PERMISSION_EVIDENCE");
 			expect(requests).toBe(1);
 			expect(f.inputs()).toHaveLength(1);
 			expect(f.inputs()[0].tool_input).toMatchObject({ url });
@@ -230,9 +203,9 @@ it.each(["claude", "codex"] as const)(
 			await f.run();
 			expect(f.inputs()).toHaveLength(1);
 			expect(fs.existsSync(f.marker)).toBe(protocol === "claude");
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: protocol === "codex" });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({
+				isError: protocol === "codex",
+			});
 		} finally {
 			await f.close();
 		}
@@ -244,12 +217,8 @@ it.each(["claude", "codex"] as const)(
 		const f = await fixture(protocol);
 		try {
 			await f.run("nested_permission_fixture", {});
-			expect(fs.readFileSync(path.join(f.cwd, "nested-a.txt"), "utf8")).toBe(
-				"nested-a.txt\n",
-			);
-			expect(fs.readFileSync(path.join(f.cwd, "nested-b.txt"), "utf8")).toBe(
-				"nested-b.txt\n",
-			);
+			expect(fs.readFileSync(path.join(f.cwd, "nested-a.txt"), "utf8")).toBe("nested-a.txt\n");
+			expect(fs.readFileSync(path.join(f.cwd, "nested-b.txt"), "utf8")).toBe("nested-b.txt\n");
 			const inputs = f.inputs();
 			expect(inputs).toHaveLength(2);
 			expect(JSON.stringify(inputs)).toContain("nested-a.txt");
@@ -272,11 +241,7 @@ it.each(["claude", "codex"] as const)(
 			await f.run();
 			expect(fs.existsSync(f.marker)).toBe(false);
 			expect(f.inputs()).toEqual([]);
-			expect(
-				JSON.stringify(
-					f.session.messages.findLast((m) => m.role === "toolResult"),
-				),
-			).toContain("PRE_GATE_DENIAL");
+			expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toContain("PRE_GATE_DENIAL");
 		} finally {
 			await f.close();
 		}
@@ -305,9 +270,7 @@ it("Claude cannot use one file approval to authorize another effect in a native 
 			],
 		});
 		expect(fs.existsSync(unapproved)).toBe(false);
-		expect(
-			f.inputs().some((input) => input.tool_input.file_path === unapproved),
-		).toBe(true);
+		expect(f.inputs().some((input) => input.tool_input.file_path === unapproved)).toBe(true);
 	} finally {
 		await f.close();
 	}
@@ -327,9 +290,7 @@ it.each([false, true])(
 			expect(fs.existsSync(f.marker)).toBe(false);
 			expect(f.inputs()).toHaveLength(1);
 			expect(f.providerRequests).toBe(interrupt ? 1 : 2);
-			expect(JSON.stringify(f.session.sessionManager.getEntries())).toContain(
-				"DENY_INTERRUPT_FIXTURE",
-			);
+			expect(JSON.stringify(f.session.sessionManager.getEntries())).toContain("DENY_INTERRUPT_FIXTURE");
 		} finally {
 			await f.close();
 		}
@@ -349,9 +310,7 @@ it("Claude universal stop takes precedence over a nested permission allowance", 
 		expect(fs.existsSync(f.marker)).toBe(false);
 		expect(f.providerRequests).toBe(1);
 		expect(f.inputs()).toHaveLength(1);
-		expect(JSON.stringify(f.session.sessionManager.getEntries())).toContain(
-			"UNIVERSAL_PERMISSION_STOP",
-		);
+		expect(JSON.stringify(f.session.sessionManager.getEntries())).toContain("UNIVERSAL_PERMISSION_STOP");
 	} finally {
 		await f.close();
 	}

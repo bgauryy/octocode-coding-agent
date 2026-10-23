@@ -7,7 +7,7 @@
 
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { startOAuthCallbackServer, waitForCallbackOrManualInput } from "./callback-server.ts";
+import { startOAuthCallbackServer, waitForCallbackOrManualInput, parseAuthorizationInput } from "./callback-server.ts";
 import { generatePKCE } from "./pkce.ts";
 
 const decode = (s: string) => atob(s);
@@ -25,36 +25,6 @@ const ANTHROPIC_BROWSER_LOGIN_METHOD = "browser";
 const ANTHROPIC_COPY_CODE_LOGIN_METHOD = "copy_code";
 const SCOPES =
 	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
-
-function parseAuthorizationInput(input: string): { code?: string; state?: string } {
-	const value = input.trim();
-	if (!value) return {};
-
-	try {
-		const url = new URL(value);
-		return {
-			code: url.searchParams.get("code") ?? undefined,
-			state: url.searchParams.get("state") ?? undefined,
-		};
-	} catch {
-		// not a URL
-	}
-
-	if (value.includes("#")) {
-		const [code, state] = value.split("#", 2);
-		return { code, state };
-	}
-
-	if (value.includes("code=")) {
-		const params = new URLSearchParams(value);
-		return {
-			code: params.get("code") ?? undefined,
-			state: params.get("state") ?? undefined,
-		};
-	}
-
-	return { code: value };
-}
 
 function formatErrorDetails(error: unknown): string {
 	if (error instanceof Error) {
@@ -139,6 +109,8 @@ async function exchangeAuthorizationCode(
 
 async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
 	const { verifier, challenge } = await generatePKCE();
+	// A separate random state: the redirect carries it, and must not carry the PKCE verifier.
+	const state = crypto.randomUUID();
 	const startCallbackServer = (port: number) =>
 		startOAuthCallbackServer({
 			providerName: "Anthropic",
@@ -146,7 +118,7 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
 			port,
 			path: CALLBACK_PATH,
 			redirectHost: "localhost",
-			state: verifier,
+			state,
 			complete: async (code) => code,
 			signal: interaction.signal,
 		});
@@ -165,7 +137,7 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
 			scope: SCOPES,
 			code_challenge: challenge,
 			code_challenge_method: "S256",
-			state: verifier,
+			state,
 		});
 		interaction.notify({
 			type: "auth_url",
@@ -179,19 +151,19 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
 			placeholder: redirectUri,
 		});
 		let code: string | undefined;
-		let state = verifier;
+		let returnedState: string = state;
 		if (result.type === "callback") {
 			code = result.value;
 		} else {
 			const parsed = parseAuthorizationInput(result.input);
-			if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
+			if (parsed.state && parsed.state !== state) throw new Error("OAuth state mismatch");
 			code = parsed.code;
-			state = parsed.state ?? verifier;
+			returnedState = parsed.state ?? state;
 		}
 
 		if (!code) throw new Error("Missing authorization code");
 		interaction.notify({ type: "progress", message: "Exchanging authorization code for tokens..." });
-		return await exchangeAuthorizationCode(code, state, verifier, redirectUri, interaction.signal);
+		return await exchangeAuthorizationCode(code, returnedState, verifier, redirectUri, interaction.signal);
 	} finally {
 		callback?.close();
 	}
@@ -199,6 +171,8 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
 
 async function loginAnthropicCopyCode(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
 	const { verifier, challenge } = await generatePKCE();
+	// A separate random state: the redirect carries it, and must not carry the PKCE verifier.
+	const state = crypto.randomUUID();
 	const authParams = new URLSearchParams({
 		code: "true",
 		client_id: CLIENT_ID,
@@ -207,7 +181,7 @@ async function loginAnthropicCopyCode(interaction: ProviderAuthInteraction): Pro
 		scope: SCOPES,
 		code_challenge: challenge,
 		code_challenge_method: "S256",
-		state: verifier,
+		state,
 	});
 	interaction.notify({
 		type: "auth_url",
@@ -222,12 +196,12 @@ async function loginAnthropicCopyCode(interaction: ProviderAuthInteraction): Pro
 		signal: interaction.signal,
 	});
 	const parsed = parseAuthorizationInput(input);
-	if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
+	if (parsed.state && parsed.state !== state) throw new Error("OAuth state mismatch");
 	if (!parsed.code) throw new Error("Missing authorization code");
 	interaction.notify({ type: "progress", message: "Exchanging authorization code for tokens..." });
 	return await exchangeAuthorizationCode(
 		parsed.code,
-		parsed.state ?? verifier,
+		parsed.state ?? state,
 		verifier,
 		COPY_CODE_REDIRECT_URI,
 		interaction.signal,

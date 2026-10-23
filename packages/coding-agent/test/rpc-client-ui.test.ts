@@ -17,7 +17,9 @@ async function startClient() {
 	const dir = mkdtempSync(join(tmpdir(), "octocode-rpc-ui-"));
 	dirs.push(dir);
 	const cliPath = join(dir, "child.mjs");
-	writeFileSync(cliPath, `
+	writeFileSync(
+		cliPath,
+		`
 import { createInterface } from "node:readline";
 const output = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -32,7 +34,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 		output({ type: "agent_settled", aborted: false });
 	}
 });
-`);
+`,
+	);
 	const client = new RpcClient({ cliPath });
 	clients.push(client);
 	await client.start();
@@ -71,7 +74,9 @@ describe("RPC client UI transport", () => {
 	it("rejects UI responses when the client is not started", async () => {
 		await expect(
 			new RpcClient().respondToExtensionUIRequest({
-				type: "extension_ui_response", id: "dialog-1", cancelled: true,
+				type: "extension_ui_response",
+				id: "dialog-1",
+				cancelled: true,
 			}),
 		).rejects.toThrow("Client not started");
 	});

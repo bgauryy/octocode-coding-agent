@@ -310,9 +310,7 @@ describe("substituteArgs - array slicing", () => {
 	});
 
 	test("should handle slice in middle of text", () => {
-		expect(substituteArgs(`Process \${@:2} with $1`, ["tool", "file1", "file2"])).toBe(
-			"Process file1 file2 with tool",
-		);
+		expect(substituteArgs(`Process \${@:2} with $1`, ["tool", "file1", "file2"])).toBe("Process file1 file2 with tool");
 	});
 
 	test("should handle multiple slices in one template", () => {
@@ -438,7 +436,10 @@ describe("parseCommandArgs", () => {
 describe("expandPromptTemplate", () => {
 	test("qualifies core and extension collisions while preserving source and arguments", () => {
 		const templates = ["config", "custom", "review"].map((name) => ({
-			name, description: name, content: `${name}: $1 / $2`, filePath: `/tmp/${name}.md`,
+			name,
+			description: name,
+			content: `${name}: $1 / $2`,
+			filePath: `/tmp/${name}.md`,
 			sourceInfo: { path: `/tmp/${name}.md`, source: "local", scope: "temporary", origin: "top-level" } as const,
 		}));
 		const reserved = [{ name: "extension", invocationName: "extension:1", aliases: ["custom"] }];
@@ -446,17 +447,27 @@ describe("expandPromptTemplate", () => {
 		expect(commands.map((command) => command.name)).toEqual(["prompt:config", "prompt:custom", "review"]);
 		expect(commands[0].sourceName).toBe("config");
 		expect(commands[0].template).toBe(templates[0]);
-		expect(expandPromptTemplate('/prompt:config "two words" value', templates, reserved)).toBe("config: two words / value");
-		expect(expandPromptTemplate('/prompt:custom a b', templates, reserved)).toBe("custom: a / b");
-		expect(expandPromptTemplate('/review a b', templates, reserved)).toBe("review: a / b");
-		expect(expandPromptTemplate('/prompt:review a b', templates, reserved)).toBe("review: a / b");
-		expect(expandPromptTemplate('/config a b', templates, reserved)).toBe("/config a b");
+		expect(expandPromptTemplate('/prompt:config "two words" value', templates, reserved)).toBe(
+			"config: two words / value",
+		);
+		expect(expandPromptTemplate("/prompt:custom a b", templates, reserved)).toBe("custom: a / b");
+		expect(expandPromptTemplate("/review a b", templates, reserved)).toBe("review: a / b");
+		expect(expandPromptTemplate("/prompt:review a b", templates, reserved)).toBe("review: a / b");
+		expect(expandPromptTemplate("/config a b", templates, reserved)).toBe("/config a b");
 	});
 
 	test("keeps qualified prompts distinct from extension names and duplicate templates", () => {
-		const template = { name: "config", description: "", content: "", filePath: "/tmp/a.md",
-			sourceInfo: { path: "/tmp/a.md", source: "local", scope: "temporary", origin: "top-level" } as const };
-		const commands = getPromptCommands([template, { ...template, filePath: "/tmp/b.md" }], [{ name: "prompt:config:1" }]);
+		const template = {
+			name: "config",
+			description: "",
+			content: "",
+			filePath: "/tmp/a.md",
+			sourceInfo: { path: "/tmp/a.md", source: "local", scope: "temporary", origin: "top-level" } as const,
+		};
+		const commands = getPromptCommands(
+			[template, { ...template, filePath: "/tmp/b.md" }],
+			[{ name: "prompt:config:1" }],
+		);
 		expect(commands.map((command) => command.name)).toEqual(["prompt:config:2", "prompt:config:3"]);
 	});
 
@@ -525,9 +536,7 @@ describe("parseCommandArgs + substituteArgs integration", () => {
 		const args = parseCommandArgs(input);
 		const template = "Create a React component named $1 with features: $ARGUMENTS";
 		const result = substituteArgs(template, args);
-		expect(result).toBe(
-			"Create a React component named Button with features: Button onClick handler disabled support",
-		);
+		expect(result).toBe("Create a React component named Button with features: Button onClick handler disabled support");
 	});
 
 	test("should produce same result with $@ and $ARGUMENTS", () => {

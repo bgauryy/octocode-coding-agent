@@ -242,9 +242,9 @@ describe("native external Octocode adapter", () => {
 		await expect(client.call("message.send", { ...params, expectedSessionId: "wrong" })).rejects.toMatchObject({
 			code: -32000,
 		});
-		await expect(client.call("turn.abort", { key: "other", expectedSessionId: "session-one" })).rejects.toMatchObject(
-			{ code: -32000 },
-		);
+		await expect(client.call("turn.abort", { key: "other", expectedSessionId: "session-one" })).rejects.toMatchObject({
+			code: -32000,
+		});
 		await expect(client.call("message.send", params)).resolves.toEqual(first);
 		expect(fake.sent).toHaveLength(1);
 		expect(abort).not.toHaveBeenCalled();
@@ -352,8 +352,7 @@ describe("native external Octocode adapter", () => {
 			});
 			const rejected = expect(send).rejects.toThrow();
 			await vi.waitFor(() => expect(hook).toHaveBeenCalledOnce());
-			if (reason === "cancel")
-				await client.call("turn.abort", { key: "prepared", expectedSessionId: "session-one" });
+			if (reason === "cancel") await client.call("turn.abort", { key: "prepared", expectedSessionId: "session-one" });
 			else if (reason === "shutdown") await api.stop();
 			await rejected;
 			expect(signal?.aborted).toBe(true);

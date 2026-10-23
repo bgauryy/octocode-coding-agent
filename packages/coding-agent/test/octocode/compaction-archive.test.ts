@@ -461,7 +461,13 @@ describe("the pointer in the summary and after a default summary", () => {
 	const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
 
 	it("puts the pointer in the Recovery section of Octocode's summary, and a rewritten summary does not carry it", async () => {
-		const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}), createUsageRecorder: () => () => {}, appendEntry: () => {} } as never;
+		const pi = {
+			getThinkingLevel: () => "off",
+			getActiveTools: () => [],
+			getSettings: () => ({}),
+			createUsageRecorder: () => () => {},
+			appendEntry: () => {},
+		} as never;
 		const ctx = {
 			model,
 			modelRegistry: {
@@ -559,9 +565,7 @@ describe("archive wiring in the session", () => {
 		await s.before();
 		expect(fs.existsSync(archiveFolder())).toBe(false);
 		await s.compacted();
-		expect(readSegments()).toMatchObject([
-			{ n: 1, entry: "c1", method: "pi-default", tldr: "fix login", messages: 2 },
-		]);
+		expect(readSegments()).toMatchObject([{ n: 1, entry: "c1", method: "pi-default", tldr: "fix login", messages: 2 }]);
 		expect(s.sendMessage).toHaveBeenCalledTimes(1);
 		expect(s.sendMessage.mock.calls[0]![0]).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
 		expect(s.sendMessage.mock.calls[0]![0].content).toContain("This compaction is segment 1:");

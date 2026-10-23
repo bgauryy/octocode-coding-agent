@@ -39,11 +39,7 @@ export function formatAuthSelectorProviderStatus(provider: AuthSelectorProvider)
 		const label = `${formatAuthSelectorProviderType(provider.status.type, provider.subscription)} configured`;
 		return theme.fg("muted", " • ") + theme.fg("warning", label);
 	}
-	if (
-		!provider.status.source ||
-		provider.status.source === "OAuth" ||
-		provider.status.source === "stored credential"
-	) {
+	if (!provider.status.source || provider.status.source === "OAuth" || provider.status.source === "stored credential") {
 		return theme.fg("success", " ✓ configured");
 	}
 	const source = /^[A-Z][A-Z0-9_]*(?:, [A-Z][A-Z0-9_]*)*$/.test(provider.status.source)

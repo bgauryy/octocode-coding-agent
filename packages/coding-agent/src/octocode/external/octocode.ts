@@ -139,10 +139,7 @@ export class OctocodeBackend implements ExternalBackend {
 				timeoutMs: Math.min(options.timeoutMs, API_CALL_MS),
 				signal: controller.signal,
 			});
-			if (
-				!this.owned &&
-				(status.state !== "idle" || status.pending !== false || status.activeMessageId !== undefined)
-			)
+			if (!this.owned && (status.state !== "idle" || status.pending !== false || status.activeMessageId !== undefined))
 				throw new Error("Octocode session is busy; nothing was sent");
 			this.owned = { key, text };
 			attempted = true;

@@ -11,7 +11,7 @@ import {
 	type Transport,
 	toToolDeclaration,
 } from "@octocodeai/octocode-ai";
-import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
+import { runAgentLoop, runAgentLoopContinue, runFailureMessage } from "./agent-loop.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
 	AfterToolCallContext,
@@ -46,15 +46,6 @@ function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 			message.role === "toolResult",
 	);
 }
-
-const EMPTY_USAGE = {
-	input: 0,
-	output: 0,
-	cacheRead: 0,
-	cacheWrite: 0,
-	totalTokens: 0,
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
 
 const DEFAULT_MODEL = {
 	id: "unknown",
@@ -181,6 +172,8 @@ type ActiveRun = {
 	promise: Promise<void>;
 	resolve: () => void;
 	abortController: AbortController;
+	/** The loop already emitted `agent_end`; a later failure must not end the run a second time. */
+	ended?: boolean;
 };
 
 /**
@@ -418,10 +411,7 @@ export class Agent {
 		await this.runContinuation();
 	}
 
-	private normalizePromptInput(
-		input: string | AgentMessage | AgentMessage[],
-		images?: ImageContent[],
-	): AgentMessage[] {
+	private normalizePromptInput(input: string | AgentMessage | AgentMessage[], images?: ImageContent[]): AgentMessage[] {
 		if (Array.isArray(input)) {
 			return input;
 		}
@@ -533,24 +523,18 @@ export class Agent {
 		try {
 			await executor(abortController.signal);
 		} catch (error) {
-			await this.handleRunFailure(error, abortController.signal.aborted);
+			if (this.activeRun?.ended) this._state.errorMessage = error instanceof Error ? error.message : String(error);
+			else await this.handleRunFailure(error, abortController.signal.aborted);
+			// Stop the run's other work (parallel tools still running) before going idle; the failure is reported first,
+			// as a failed run, not an aborted one.
+			abortController.abort();
 		} finally {
 			this.finishRun();
 		}
 	}
 
 	private async handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
-		const failureMessage = {
-			role: "assistant",
-			content: [{ type: "text", text: "" }],
-			api: this._state.model.api,
-			provider: this._state.model.provider,
-			model: this._state.model.id,
-			usage: EMPTY_USAGE,
-			stopReason: aborted ? "aborted" : "error",
-			errorMessage: error instanceof Error ? error.message : String(error),
-			timestamp: Date.now(),
-		} satisfies AgentMessage;
+		const failureMessage = runFailureMessage(this._state.model, error, aborted);
 		await this.processEvents({ type: "message_start", message: failureMessage });
 		await this.processEvents({ type: "message_end", message: failureMessage });
 		await this.processEvents({ type: "turn_end", message: failureMessage, toolResults: [] });
@@ -609,6 +593,7 @@ export class Agent {
 
 			case "agent_end":
 				this._state.streamingMessage = undefined;
+				if (this.activeRun) this.activeRun.ended = true;
 				break;
 		}
 

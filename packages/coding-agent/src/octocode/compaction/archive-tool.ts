@@ -83,9 +83,7 @@ export function registerArchiveTool(pi: ExtensionAPI): void {
 				const goal = params.goal?.trim();
 				const reason = params.reason?.trim();
 				if (!goal || !reason)
-					throw new Error(
-						"archive needs goal (what you look for) and reason (why history is needed, not the code).",
-					);
+					throw new Error("archive needs goal (what you look for) and reason (why history is needed, not the code).");
 				const page = Math.max(1, Math.floor(params.page ?? 1));
 				const scope = historyScope(ctx.cwd);
 				const why = { goal, reason };
@@ -109,18 +107,14 @@ export function registerArchiveTool(pi: ExtensionAPI): void {
 					const listed = listHistory(scope, page);
 					const head = `${plural(scope.length, "session")} with history, nearest first. Search them with query; read a file with file (and line).`;
 					return textResult(
-						[head, listed.text, pageNote(listed.page, listed.pages, "goal and reason")]
-							.filter(Boolean)
-							.join("\n\n"),
+						[head, listed.text, pageNote(listed.page, listed.pages, "goal and reason")].filter(Boolean).join("\n\n"),
 						{ ...why, mode: "list", page: listed.page, pages: listed.pages } satisfies ArchiveDetails,
 					);
 				}
 				if (!query) {
 					const read = readHistory(target!, params.line ?? 1, page);
 					if (!read)
-						throw new Error(
-							`${params.file} cannot be read (missing, or a folder: list it, or search it with query).`,
-						);
+						throw new Error(`${params.file} cannot be read (missing, or a folder: list it, or search it with query).`);
 					const more =
 						read.page < read.pages
 							? `Page ${read.page} of ${read.pages} of these lines; next: page ${read.page + 1} with the same file and line.`

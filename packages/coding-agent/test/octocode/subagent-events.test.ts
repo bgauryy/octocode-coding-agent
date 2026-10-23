@@ -43,9 +43,19 @@ describe("reduceEvent", () => {
 		const state = newChildState();
 		const assistant = reply("toolUse");
 		reduce(state, assistant);
-		const nested = { type: "message_end", message: { role: "toolResult", toolCallId: "nested-agent", usage: {
-			...assistant.message.usage, cacheWrite: 4, cacheWrite12h: 3, reasoning: 1,
-		} } };
+		const nested = {
+			type: "message_end",
+			message: {
+				role: "toolResult",
+				toolCallId: "nested-agent",
+				usage: {
+					...assistant.message.usage,
+					cacheWrite: 4,
+					cacheWrite12h: 3,
+					reasoning: 1,
+				},
+			},
+		};
 		const effects = reduce(state, nested);
 		expect(effects).toContainEqual({ kind: "incoming", role: "toolResult" });
 		expect(progress(effects)).toHaveLength(1);
@@ -180,9 +190,9 @@ describe("reduceEvent", () => {
 		const state = newChildState();
 		const dialog = { type: "extension_ui_request", id: "1", method: "confirm" };
 		expect(reduce(state, dialog)).toEqual([{ kind: "ui", event: dialog }]);
-		expect(
-			reduce(state, { type: "tool_execution_start", toolName: "bash", args: {}, parentToolCallId: "p" }),
-		).toEqual([]);
+		expect(reduce(state, { type: "tool_execution_start", toolName: "bash", args: {}, parentToolCallId: "p" })).toEqual(
+			[],
+		);
 		expect(reduce(state, { type: "agent_start", parentToolCallId: "p" })).toEqual([]);
 		expect(state).toMatchObject({ toolsRunning: 0, running: false });
 	});

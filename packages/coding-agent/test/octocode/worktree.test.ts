@@ -197,10 +197,7 @@ describe("isolated subagent worktrees", () => {
 			const worktree = await createWorktree(dir, id, home);
 			fs.writeFileSync(path.join(worktree.path, "src", "a.txt"), `${id}\n`);
 			const meta = `${worktree.path}.json`;
-			fs.writeFileSync(
-				meta,
-				JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }),
-			);
+			fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 			return worktree;
 		};
 		await orphan("race-1");
@@ -241,17 +238,12 @@ describe("isolated subagent worktrees", () => {
 			const reused = await orphan("reused-1");
 			fs.renameSync(`${reused.path}.json`, `${reused.path}.json.pruning-${process.ppid}-1`);
 			const held = await orphan("held-1");
-			fs.renameSync(
-				`${held.path}.json`,
-				`${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`,
-			);
+			fs.renameSync(`${held.path}.json`, `${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`);
 			expect(await pruneWorktrees(dir, home)).toEqual({
 				saved: [{ agentId: "reused-1", ref: "refs/octocode/pi/reused-1" }],
 				kept: [],
 			});
-			expect(fs.existsSync(`${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`)).toBe(
-				true,
-			);
+			expect(fs.existsSync(`${held.path}.json.pruning-${process.ppid}-${processStartTime(process.ppid)}`)).toBe(true);
 		},
 	);
 
@@ -273,9 +265,7 @@ describe("isolated subagent worktrees", () => {
 		});
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(await pruneWorktrees(dir, home)).toEqual({ saved: [], kept: [] });
-		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode").trim()).toBe(
-			"refs/octocode/pi/midwrite-1",
-		);
+		expect(git(dir, "for-each-ref", "--format=%(refname)", "refs/octocode").trim()).toBe("refs/octocode/pi/midwrite-1");
 	});
 
 	it("removes an unchanged worktree with an unreadable stale record, writing no ref", async () => {
@@ -394,10 +384,7 @@ describe("isolated subagent worktrees", () => {
 		for (const worktree of [saved, stuck]) {
 			fs.writeFileSync(path.join(worktree.path, "src", "a.txt"), `${worktree.agentId} work\n`);
 			const meta = `${worktree.path}.json`;
-			fs.writeFileSync(
-				meta,
-				JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }),
-			);
+			fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 		}
 		fs.writeFileSync(path.join(git(stuck.path, "rev-parse", "--absolute-git-dir"), "index.lock"), "");
 		const report = await pruneWorktrees(dir, home);
@@ -420,9 +407,7 @@ describe("isolated subagent worktrees", () => {
 	});
 
 	it("keeps an isolated child on its parent team workspace", () => {
-		expect(subagentProcessEnv(undefined, {}, { id: "a-1", workspace: "/repo" }).OCTOCODE_TEAM_WORKSPACE).toBe(
-			"/repo",
-		);
+		expect(subagentProcessEnv(undefined, {}, { id: "a-1", workspace: "/repo" }).OCTOCODE_TEAM_WORKSPACE).toBe("/repo");
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1" })).not.toHaveProperty("OCTOCODE_TEAM_WORKSPACE");
 	});
 });

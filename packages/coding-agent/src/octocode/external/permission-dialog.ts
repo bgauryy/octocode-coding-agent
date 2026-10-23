@@ -21,8 +21,6 @@ export const externalPermissionDialog: ExternalPolicy["permission"] =
 			const selected = await ctx.ui.select(title, labels, { signal });
 			if (signal.aborted) return cancelled;
 			const index = selected ? labels.indexOf(selected) : -1;
-			return index < 0
-				? cancelled
-				: { outcome: { outcome: "selected" as const, optionId: options[index]!.optionId } };
+			return index < 0 ? cancelled : { outcome: { outcome: "selected" as const, optionId: options[index]!.optionId } };
 		}, signal);
 	};

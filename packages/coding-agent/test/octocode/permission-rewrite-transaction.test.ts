@@ -1,9 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { Type } from "typebox";
-import type {
-	ToolInvocation,
-	ToolCallEvent,
-} from "../../src/core/extensions/index.ts";
+import type { ToolInvocation, ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
@@ -18,7 +15,10 @@ const definition = {
 		background: Type.Optional(Type.Boolean()),
 	}),
 };
-function setup(updatedInput: unknown) {
+function setup(
+	updatedInput: unknown,
+	provenance: { check: (event: any) => { why: string } | undefined } = { check: () => undefined },
+) {
 	const fake = fakePi();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	const permission = new Permission({
@@ -27,21 +27,17 @@ function setup(updatedInput: unknown) {
 		isSubagent: false,
 	});
 	permission.start(ctx);
-	const resolver = vi.fn(
-		async (_ctx: unknown, _invocation: ToolInvocation) => ({
-			decision: "allow" as const,
-			updatedInput: updatedInput as any,
-		}),
-	);
+	const resolver = vi.fn(async (_ctx: unknown, _invocation: ToolInvocation) => ({
+		decision: "allow" as const,
+		updatedInput: updatedInput as any,
+	}));
 	permission.setResolver(resolver);
 	const refresh = vi.fn(async () => {});
-	const reserved = vi.fn(
-		async () => undefined as { block: true; reason: string } | undefined,
-	);
+	const reserved = vi.fn(async () => undefined as { block: true; reason: string } | undefined);
 	const gate = permissionGate({
 		permission,
 		annotations: () => undefined,
-		provenance: { check: () => undefined },
+		provenance,
 		replacement: { definition: () => definition, refresh, reserved },
 	});
 	const event = {
@@ -74,21 +70,16 @@ it("validates, rechecks and commits effective source input without old native op
 		timeout: 30,
 		background: true,
 	});
-	const entries = f.fake.entries.filter(
-		(entry) => (entry.data as any)?.allowed === true,
-	);
+	const entries = f.fake.entries.filter((entry) => (entry.data as any)?.allowed === true);
 	expect(entries).toHaveLength(1);
 	expect(JSON.stringify(entries[0])).toContain("replacement");
 });
-it.each([{ command: 7 }, null, "wrong"])(
-	"never executes original for invalid replacement %j",
-	async (input) => {
-		const f = setup(input);
-		const original = structuredClone(f.event.input);
-		expect(await f.gate(f.event, f.ctx)).toMatchObject({ block: true });
-		expect(f.event.input).toEqual(original);
-	},
-);
+it.each([{ command: 7 }, null, "wrong"])("never executes original for invalid replacement %j", async (input) => {
+	const f = setup(input);
+	const original = structuredClone(f.event.input);
+	expect(await f.gate(f.event, f.ctx)).toMatchObject({ block: true });
+	expect(f.event.input).toEqual(original);
+});
 it("preserves empty replacement input but rechecks a source ask without a second hook", async () => {
 	const f = setup({});
 	f.permission.setSourcePolicy(() => ({
@@ -99,12 +90,23 @@ it("preserves empty replacement input but rechecks a source ask without a second
 	expect(f.resolver).toHaveBeenCalledTimes(1);
 	expect(f.event.input.command).toBe("printf original");
 });
+it("does not let a hook approval carry a replacement that trips provenance", async () => {
+	// The hook approved the original command; its replacement reads as untrusted-content driven, which needs a person.
+	const f = setup(
+		{ command: "printf replacement" },
+		{
+			check: (event) =>
+				String(event.input?.command).includes("replacement") ? { why: "untrusted content asked for this" } : undefined,
+		},
+	);
+	expect(await f.gate(f.event, f.ctx)).toMatchObject({ block: true });
+	expect(f.resolver).toHaveBeenCalledTimes(1);
+	expect(f.event.input.command).toBe("printf original");
+});
 it("observes source policy changed while hook ran", async () => {
 	const f = setup({ command: "printf replacement" });
 	let denied = false;
-	f.permission.setSourcePolicy(() =>
-		denied ? { decision: "deny", message: "new deny" } : { decision: "none" },
-	);
+	f.permission.setSourcePolicy(() => (denied ? { decision: "deny", message: "new deny" } : { decision: "none" }));
 	f.refresh.mockImplementation(async () => {
 		denied = true;
 	});
@@ -116,9 +118,7 @@ it("observes source policy changed while hook ran", async () => {
 });
 it("rechecks reservations before commit and retains original on refusal", async () => {
 	const f = setup({ command: "printf replacement" });
-	f.reserved
-		.mockResolvedValueOnce(undefined)
-		.mockResolvedValueOnce({ block: true, reason: "reserved now" });
+	f.reserved.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ block: true, reason: "reserved now" });
 	expect(await f.gate(f.event, f.ctx)).toMatchObject({
 		block: true,
 		reason: "reserved now",

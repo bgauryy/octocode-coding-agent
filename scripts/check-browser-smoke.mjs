@@ -41,7 +41,15 @@ function includesNodePackage(inputs, packageName) {
 }
 
 try {
-	await build({ entryPoints: ["packages/contacts/src/index.ts", "packages/webview/src/index.ts"], bundle: true, platform: "browser", format: "esm", write: false, outdir: "browser-contract-smoke", logLevel: "silent" });
+	await build({
+		entryPoints: ["packages/contacts/src/index.ts", "packages/webview/src/index.ts"],
+		bundle: true,
+		platform: "browser",
+		format: "esm",
+		write: false,
+		outdir: "browser-contract-smoke",
+		logLevel: "silent",
+	});
 	await build({
 		entryPoints: ["scripts/browser-smoke-entry.ts"],
 		bundle: true,
@@ -99,10 +107,7 @@ try {
 		"openai",
 	];
 	const includedAiSdkPackages = aiSdkPackages.filter((packageName) => includesNodePackage(inputs, packageName));
-	if (
-		includedAiSdkPackages.length !== 1 ||
-		includedAiSdkPackages[0] !== "@anthropic-ai/sdk"
-	) {
+	if (includedAiSdkPackages.length !== 1 || includedAiSdkPackages[0] !== "@anthropic-ai/sdk") {
 		throw new Error(
 			`Agent selective-provider bundle SDKs: expected only @anthropic-ai/sdk, found ${includedAiSdkPackages.join(", ") || "none"}`,
 		);
@@ -114,9 +119,7 @@ try {
 	if (error && typeof error === "object" && "errors" in error && Array.isArray(error.errors)) {
 		detailedErrors = error.errors
 			.map((entry) => {
-				const location = entry.location
-					? `${entry.location.file}:${entry.location.line}:${entry.location.column}`
-					: "";
+				const location = entry.location ? `${entry.location.file}:${entry.location.line}:${entry.location.column}` : "";
 				return [location, entry.text].filter(Boolean).join(" ");
 			})
 			.join("\n");

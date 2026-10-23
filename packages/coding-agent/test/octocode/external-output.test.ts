@@ -52,11 +52,13 @@ describe("external evidence boundaries", () => {
 
 	it("marks failed tool calls as errors while retaining uncertain execution and redacted partial evidence", async () => {
 		const fake = fakePi();
-		vi.spyOn(ExternalAgents.prototype, "call").mockRejectedValue(Object.assign(new Error(`failed ${token}`), {
-			execution: "uncertain",
-			partial: { text: "work may have completed", credential: token },
-			stderr: token,
-		}));
+		vi.spyOn(ExternalAgents.prototype, "call").mockRejectedValue(
+			Object.assign(new Error(`failed ${token}`), {
+				execution: "uncertain",
+				partial: { text: "work may have completed", credential: token },
+				stderr: token,
+			}),
+		);
 		registerExternal(fake.pi, new Subcommands(), {
 			authorize: async () => undefined,
 			beforeSend: async () => undefined,
@@ -64,21 +66,24 @@ describe("external evidence boundaries", () => {
 			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
 			sender: () => "test",
 		});
-		const result = await fake.tools.get("externalAgent")!.execute(
-			"tool", { action: "prompt", id: "peer", text: "task" }, undefined, undefined, fakeCtx({ cwd: tmp() }),
-		);
+		const result = await fake.tools
+			.get("externalAgent")!
+			.execute("tool", { action: "prompt", id: "peer", text: "task" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
 		expect(result.isError).toBe(true);
-		expect(result.details).toMatchObject({ execution: "uncertain", partial: { text: "work may have completed" }, stderr: "[redacted]" });
+		expect(result.details).toMatchObject({
+			execution: "uncertain",
+			partial: { text: "work may have completed" },
+			stderr: "[redacted]",
+		});
 		expect(JSON.stringify(result)).not.toContain(token);
 	});
 
 	it("keeps complete large API results readable beyond the transport frame", async () => {
 		const evidence = { reply: { text: "body\n".repeat(300_000) + token, updates: [{ last: "final evidence" }] } };
 		const client = await apiClient(async () => evidence);
-		const result = await client.call<{ fullOutput: { path: string; bytes: number; format: string } }>(
-			"external.call",
-			{ action: "list" },
-		);
+		const result = await client.call<{ fullOutput: { path: string; bytes: number; format: string } }>("external.call", {
+			action: "list",
+		});
 		const whole = fs.readFileSync(result.fullOutput.path, "utf8");
 		expect(Buffer.byteLength(whole)).toBe(result.fullOutput.bytes);
 		expect(result.fullOutput.format).toBe("json");
@@ -114,39 +119,61 @@ describe("external evidence boundaries", () => {
 	});
 });
 
-
 describe("external agent command syntax", () => {
 	it("combines local controls and external discovery under one registration", async () => {
 		const fake = fakePi();
 		const commands = new Subcommands();
 		const local = vi.fn(async () => {});
-		commands.add("agents",{description:"Local agents",handler:local});
-		const external = vi.spyOn(ExternalAgents.prototype,"call").mockResolvedValue({agents:[]});
+		commands.add("agents", { description: "Local agents", handler: local });
+		const external = vi.spyOn(ExternalAgents.prototype, "call").mockResolvedValue({ agents: [] });
 		registerExternal(fake.pi, commands, {
-			authorize: async () => undefined, beforeSend: async () => undefined, afterReceive: async () => undefined,
-			permission: () => async () => ({outcome:{outcome:"cancelled"}}), sender: () => "test",
+			authorize: async () => undefined,
+			beforeSend: async () => undefined,
+			afterReceive: async () => undefined,
+			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
+			sender: () => "test",
 		});
 		commands.register(fake.pi);
-		const ctx = fakeCtx({cwd:tmp(),hasUI:true});
-		await fake.commands.get("agents")!.handler("",ctx);
-		expect(local).toHaveBeenCalledWith("",ctx);
-		expect(external).toHaveBeenCalledWith({action:"list"},ctx);
-		await fake.commands.get("agents")!.handler("kill local-1",ctx);
-		expect(local).toHaveBeenLastCalledWith("kill local-1",ctx);
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
+		await fake.commands.get("agents")!.handler("", ctx);
+		expect(local).toHaveBeenCalledWith("", ctx);
+		expect(external).toHaveBeenCalledWith({ action: "list" }, ctx);
+		await fake.commands.get("agents")!.handler("kill local-1", ctx);
+		expect(local).toHaveBeenLastCalledWith("kill local-1", ctx);
 		expect(external).toHaveBeenCalledTimes(1);
-		await fake.commands.get("agents")!.handler("external cancel remote-1",ctx);
-		expect(external).toHaveBeenLastCalledWith({action:"cancel",id:"remote-1"},ctx);
+		await fake.commands.get("agents")!.handler("external cancel remote-1", ctx);
+		expect(external).toHaveBeenLastCalledWith({ action: "cancel", id: "remote-1" }, ctx);
 		expect([...fake.commands.keys()]).toEqual(["agents"]);
 	});
 
 	it("supports discovery, connection and control without JSON", () => {
-		expect(parseExternalCommand("")).toEqual({action:"list"});
-		expect(parseExternalCommand("connect octocode instance-1")).toEqual({action:"connect",transport:"octocode",instanceId:"instance-1"});
-		expect(parseExternalCommand("connect acp claude claude --acp")).toEqual({action:"connect",transport:"acp",vendor:"claude",command:"claude",args:["--acp"]});
-		expect(parseExternalCommand('connect acp claude "/Applications/Agent App/agent" "argument with spaces"')).toEqual({action:"connect", transport:"acp", vendor:"claude", command:"/Applications/Agent App/agent", args:["argument with spaces"]});
-		expect(parseExternalCommand("prompt prompt review  this file")).toEqual({action:"prompt",id:"prompt",text:"review  this file"});
-		expect(parseExternalCommand("cancel agent-1")).toEqual({action:"cancel",id:"agent-1"});
-		expect(parseExternalCommand("disconnect agent-1")).toEqual({action:"disconnect",id:"agent-1"});
+		expect(parseExternalCommand("")).toEqual({ action: "list" });
+		expect(parseExternalCommand("connect octocode instance-1")).toEqual({
+			action: "connect",
+			transport: "octocode",
+			instanceId: "instance-1",
+		});
+		expect(parseExternalCommand("connect acp claude claude --acp")).toEqual({
+			action: "connect",
+			transport: "acp",
+			vendor: "claude",
+			command: "claude",
+			args: ["--acp"],
+		});
+		expect(parseExternalCommand('connect acp claude "/Applications/Agent App/agent" "argument with spaces"')).toEqual({
+			action: "connect",
+			transport: "acp",
+			vendor: "claude",
+			command: "/Applications/Agent App/agent",
+			args: ["argument with spaces"],
+		});
+		expect(parseExternalCommand("prompt prompt review  this file")).toEqual({
+			action: "prompt",
+			id: "prompt",
+			text: "review  this file",
+		});
+		expect(parseExternalCommand("cancel agent-1")).toEqual({ action: "cancel", id: "agent-1" });
+		expect(parseExternalCommand("disconnect agent-1")).toEqual({ action: "disconnect", id: "agent-1" });
 		expect(() => parseExternalCommand("cancel")).toThrow("Usage: /agents external");
 	});
 });

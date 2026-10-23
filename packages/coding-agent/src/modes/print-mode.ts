@@ -128,21 +128,33 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 		await rebindSession();
 
-		if (initialMessage) {
-			await session.prompt(initialMessage, { images: initialImages });
-		}
-
-		for (const message of messages) {
-			await session.prompt(message);
+		// Any failed prompt fails the run, in either mode; text mode also reports it on stderr.
+		const lastAssistant = (): AssistantMessage | undefined => {
+			const last = session.state.messages[session.state.messages.length - 1];
+			return last?.role === "assistant" ? (last as AssistantMessage) : undefined;
+		};
+		const failed = (message: AssistantMessage | undefined): boolean =>
+			message?.stopReason === "error" || message?.stopReason === "aborted";
+		const checkPrompt = (isLast: boolean): void => {
+			const message = lastAssistant();
+			if (!failed(message)) return;
+			exitCode = 1;
+			if (mode === "text" && !isLast) console.error(message!.errorMessage || `Request ${message!.stopReason}`);
+		};
+		const prompts: Array<() => Promise<void>> = [
+			...(initialMessage ? [() => session.prompt(initialMessage, { images: initialImages })] : []),
+			...messages.map((message) => () => session.prompt(message)),
+		];
+		for (const [index, run] of prompts.entries()) {
+			await run();
+			checkPrompt(index === prompts.length - 1);
 		}
 
 		if (mode === "text") {
-			const state = session.state;
-			const lastMessage = state.messages[state.messages.length - 1];
+			const assistantMsg = lastAssistant();
 
-			if (lastMessage?.role === "assistant") {
-				const assistantMsg = lastMessage as AssistantMessage;
-				if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
+			if (assistantMsg) {
+				if (failed(assistantMsg)) {
 					console.error(assistantMsg.errorMessage || `Request ${assistantMsg.stopReason}`);
 					exitCode = 1;
 				} else {

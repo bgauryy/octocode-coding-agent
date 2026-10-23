@@ -20,10 +20,7 @@ function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
 		if (child.exitCode !== null) return;
 		// Windows has no graceful signals, and cross-spawn runs `.cmd` shims through cmd.exe; killing only
 		// that would leave the server running.
-		spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on(
-			"error",
-			() => {},
-		);
+		spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
 		return;
 	}
 	if (USE_PROCESS_GROUPS && pid !== undefined) {
@@ -70,6 +67,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 	readonly options: Readonly<StdioTransportOptions>;
 	private child: ChildProcess | undefined;
 	private stdoutBuffer = Buffer.alloc(0);
+	/** Set after an oversized message was dropped before its newline: the bytes up to that newline still belong to it. */
+	private discardingLine = false;
 	private stderrBuffer = Buffer.alloc(0);
 	private started = false;
 	private closed = false;
@@ -105,7 +104,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		if (USE_PROCESS_GROUPS && pid !== undefined) {
 			installExitHook();
 			liveProcessGroups.add(pid);
-			child.once("exit", () => liveProcessGroups.delete(pid));
+			// Until "close", a launcher's children may still hold the pipes and belong to the group.
+			child.once("close", () => liveProcessGroups.delete(pid));
 		}
 		child.stdout?.on("data", (chunk: Buffer | string) => this.handleStdout(chunk));
 		child.stdout?.on("error", (error) => this.emitError(error));
@@ -120,6 +120,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 				this.emitError(new Error("MCP stdio server closed with an incomplete JSON-RPC message"));
 			}
 			this.stdoutBuffer = Buffer.alloc(0);
+			this.discardingLine = false;
 			this.emitClose();
 		});
 
@@ -158,7 +159,9 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			return;
 		}
 		if (child.exitCode !== null || child.signalCode !== null) {
+			// The launcher (npx, uvx) exited, but the server it started can still hold the pipes: stop the group too.
 			child.stdin?.end();
+			killProcessTree(child, "SIGTERM");
 			return;
 		}
 		// Shutdown per the spec: close stdin and let the server exit, then SIGTERM, then SIGKILL.
@@ -184,14 +187,20 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		while (true) {
 			const newline = this.stdoutBuffer.indexOf(0x0a);
 			if (newline < 0) {
-				if (this.stdoutBuffer.length > maxMessageBytes) {
+				if (this.discardingLine) this.stdoutBuffer = Buffer.alloc(0);
+				else if (this.stdoutBuffer.length > maxMessageBytes) {
 					this.stdoutBuffer = Buffer.alloc(0);
+					this.discardingLine = true;
 					this.emitError(new Error(`MCP stdio message exceeds ${maxMessageBytes} bytes`));
 				}
 				return;
 			}
 			const line = this.stdoutBuffer.subarray(0, newline);
 			this.stdoutBuffer = this.stdoutBuffer.subarray(newline + 1);
+			if (this.discardingLine) {
+				this.discardingLine = false;
+				continue;
+			}
 			if (line.length > maxMessageBytes) {
 				this.emitError(new Error(`MCP stdio message exceeds ${maxMessageBytes} bytes`));
 				continue;

@@ -7,8 +7,7 @@ export interface FileInputReplacement {
 }
 
 function text(value: unknown, field: string): string {
-	if (typeof value !== "string")
-		throw new Error(`Rewritten ${field} must be a string`);
+	if (typeof value !== "string") throw new Error(`Rewritten ${field} must be a string`);
 	return value;
 }
 
@@ -33,38 +32,28 @@ export function rewriteFileQuery(
 	} else if (previous.type === "delete") {
 		query = { type: "delete", path: file, reasoning: previous.reasoning };
 	} else {
-		const multiple =
-			Array.isArray(previous.edits) && previous.edits.length !== 1;
+		const multiple = Array.isArray(previous.edits) && previous.edits.length !== 1;
 
 		const edits = multiple ? updated.edits : [updated];
-		if (!Array.isArray(edits))
-			throw new Error("Rewritten edits must be an array");
+		if (!Array.isArray(edits)) throw new Error("Rewritten edits must be an array");
 		query = {
 			type: previous.type,
 			path: file,
 			reasoning: previous.reasoning,
 			edits: edits.map((edit) => {
-				if (!isRecord(edit))
-					throw new Error("Rewritten edit must be an object");
-				if (
-					edit.replace_all !== undefined &&
-					typeof edit.replace_all !== "boolean"
-				)
+				if (!isRecord(edit)) throw new Error("Rewritten edit must be an object");
+				if (edit.replace_all !== undefined && typeof edit.replace_all !== "boolean")
 					throw new Error("Rewritten replace_all must be a boolean");
 				return {
 					oldText: text(edit.old_string, "old_string"),
 					newText: text(edit.new_string, "new_string"),
-					...(typeof edit.replace_all === "boolean"
-						? { replaceAll: edit.replace_all }
-						: {}),
+					...(typeof edit.replace_all === "boolean" ? { replaceAll: edit.replace_all } : {}),
 				};
 			}),
 		};
 	}
 	return {
 		...input,
-		queries: input.queries.map((item, position) =>
-			position === index ? query : item,
-		),
+		queries: input.queries.map((item, position) => (position === index ? query : item)),
 	};
 }

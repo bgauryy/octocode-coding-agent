@@ -30,10 +30,7 @@ function loadHtmlViewer(html: string): HtmlViewer {
 	const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 	if (!sessionData || !script) throw new Error("Missing exported session data or viewer script");
 	return runInNewContext(
-		script.replace(
-			"marked.use({",
-			"return { formatReadLineRange, getTreeNodeDisplayHtml, renderEntry }; marked.use({",
-		),
+		script.replace("marked.use({", "return { formatReadLineRange, getTreeNodeDisplayHtml, renderEntry }; marked.use({"),
 		{
 			atob,
 			TextDecoder,

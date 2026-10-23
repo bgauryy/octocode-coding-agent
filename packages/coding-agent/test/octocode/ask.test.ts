@@ -518,9 +518,7 @@ describe("askUser tool", () => {
 
 	it("renders the call and the answers", () => {
 		expect(rendered(tool.renderCall(params, theme, {}))).toBe("○ Ask(A very long header, Extras)");
-		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe(
-			"○ Ask(bad)",
-		);
+		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe("○ Ask(bad)");
 		expect(rendered(tool.renderCall({}, theme, {}))).toBe("○ Ask");
 		expect(rendered(tool.renderResult({ content: [] }, {}, theme, {}))).toBe("");
 		const answered = {
@@ -533,9 +531,9 @@ describe("askUser tool", () => {
 		expect(rendered(tool.renderResult(answered, {}, theme, {}))).toBe(
 			"  ⎿  ✓ Which scope? → Large\n     Declined the remaining questions",
 		);
-		expect(
-			rendered(tool.renderResult({ content: [], details: { cancelled: true, answers: [] } }, {}, theme, {})),
-		).toBe("  ⎿  Declined");
+		expect(rendered(tool.renderResult({ content: [], details: { cancelled: true, answers: [] } }, {}, theme, {}))).toBe(
+			"  ⎿  Declined",
+		);
 		expect(
 			rendered(tool.renderResult({ content: [{ type: "text", text: "No interactive user" }] }, {}, theme, {})),
 		).toBe("  ⎿  No interactive user");

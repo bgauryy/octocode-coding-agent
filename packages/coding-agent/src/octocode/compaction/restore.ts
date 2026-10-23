@@ -110,10 +110,7 @@ function sameStamp(file: string, stamp: Stamp): boolean {
 	try {
 		const now = fs.statSync(file);
 		return (
-			now.mtimeMs === stamp.mtimeMs &&
-			now.ctimeMs === stamp.ctimeMs &&
-			now.size === stamp.size &&
-			now.ino === stamp.ino
+			now.mtimeMs === stamp.mtimeMs && now.ctimeMs === stamp.ctimeMs && now.size === stamp.size && now.ino === stamp.ino
 		);
 	} catch {
 		return false;
@@ -205,46 +202,58 @@ export function restoreFiles(
 	const blocks: string[] = [];
 	const files: Restored["files"] = [];
 	const worked: WorkedFile[] = [];
-	let used = 0;
+	const intro =
+		"[After compaction] The files you were working on, read again from disk just now. They count as read: you may edit them without reading them first.";
+	let used = intro.length + 2;
 	let skipped = 0;
 	// One file read by two paths (a symlink and its target) comes back once.
 	const taken = new Set<string>();
 	for (const candidate of candidates) {
 		const { file } = candidate;
-		const room = Math.min(RESTORE_FILE_CHARS, total - used);
+		const separator = blocks.length > 0 ? 2 : 0;
+		const available = total - used - separator;
+		let room = Math.min(RESTORE_FILE_CHARS, available);
 		if (files.length >= RESTORE_MAX_FILES || room < RESTORE_MIN_FILE_CHARS || skipped >= RESTORE_MAX_SKIPPED) break;
 		const real = canonicalPath(file);
 		if (held.has(real) || taken.has(real)) continue;
 		const read = textOf(file);
 		const text = read?.text;
-		const view = text === undefined ? undefined : windowOf(text, room, candidate.line);
+		let view = text === undefined ? undefined : windowOf(text, room, candidate.line);
 		if (read === undefined || text === undefined || !view || (view.text.length === 0 && text.length > 0)) {
 			skipped++;
 			continue;
 		}
-		taken.add(real);
 		const relative = path.relative(cwd, file);
 		const display = relative.startsWith("..") ? file : relative;
-		const from = candidate.line && view.first > 1 ? ", from where you last read or changed it" : "";
-		const note = view.cut
-			? `\n[… shown lines ${view.first}–${view.last} of ${view.total}${from}; read the file with an offset for the rest]`
-			: "";
-		// The file's text stays exact; a file that itself contains `</file>` gets a tag it cannot close by accident.
-		const tag = view.text.includes("</file") ? `file-${sha256(text).slice(0, 8)}` : "file";
-		blocks.push(
-			`<${tag} path="${attribute(display)}">\n${view.text}${view.text.endsWith("\n") || view.text === "" ? "" : "\n"}</${tag}>${note}`,
-		);
+		const render = (window: Window): string => {
+			const from = candidate.line && window.first > 1 ? ", from where you last read or changed it" : "";
+			const note = window.cut
+				? `\n[… shown lines ${window.first}–${window.last} of ${window.total}${from}; read the file with an offset for the rest]`
+				: "";
+			// The file's text stays exact; a file that itself contains `</file>` gets a tag it cannot close by accident.
+			const tag = window.text.includes("</file") ? `file-${sha256(text).slice(0, 8)}` : "file";
+			return `<${tag} path="${attribute(display)}">\n${window.text}${window.text.endsWith("\n") || window.text === "" ? "" : "\n"}</${tag}>${note}`;
+		};
+		let block = render(view);
+		// Include framing and truncation notes in the budget, without dropping every file when the text fills it.
+		while (block.length > available && room >= RESTORE_MIN_FILE_CHARS) {
+			room -= block.length - available;
+			if (room < RESTORE_MIN_FILE_CHARS) break;
+			view = windowOf(text, room, candidate.line);
+			block = render(view);
+		}
+		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) break;
+		taken.add(real);
+		blocks.push(block);
 		files.push(
 			view.cut
 				? { file, whole: false, stamp: read.stamp }
 				: { file, whole: true, sha256: sha256(text), size: Buffer.byteLength(text), stamp: read.stamp },
 		);
 		worked.push(candidate);
-		used += view.text.length;
+		used += separator + block.length;
 	}
 	if (files.length === 0) return undefined;
-	const intro =
-		"[After compaction] The files you were working on, read again from disk just now. They count as read: you may edit them without reading them first.";
 	return { content: `${intro}\n\n${blocks.join("\n\n")}`, files, worked };
 }
 
@@ -267,7 +276,10 @@ export function deliverRestoredFiles(
 ): PendingRestore | undefined {
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
 		try {
-			const tokens = estimateProjectedContextTokens(ctx.sessionManager.buildSessionProjection(), ctx.sessionManager.getBranch()).tokens;
+			const tokens = estimateProjectedContextTokens(
+				ctx.sessionManager.buildSessionProjection(),
+				ctx.sessionManager.getBranch(),
+			).tokens;
 			const remaining = ctx.model.contextWindow - reserveTokensFor(ctx.model) - tokens;
 			total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
 		} catch {

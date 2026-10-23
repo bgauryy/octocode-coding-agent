@@ -190,7 +190,10 @@ export type PrepareRequest = (
 
 export interface PrepareNextTurnContext extends AgentTurnContext {}
 
-export interface InputBatch { kind: "initial" | "steer" | "followUp"; messages: AgentMessage[] }
+export interface InputBatch {
+	kind: "initial" | "steer" | "followUp";
+	messages: AgentMessage[];
+}
 
 /** Record finalized input; an optional signal stops between messages without undoing prior records. */
 export type CommitInput = (messages: AgentMessage[], signal?: AbortSignal) => Promise<void>;

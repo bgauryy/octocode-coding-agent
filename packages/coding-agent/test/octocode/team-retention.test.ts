@@ -264,14 +264,8 @@ describe("team resource bounds", () => {
 		const s = setup();
 		try {
 			for (let i = 0; i < 300; i++) s.team.rememberFinished(`done-${i}`, "report delivered");
-			expect(await s.team.send("done-0", "hello")).not.toHaveProperty(
-				"error",
-				expect.stringContaining("has finished"),
-			);
-			expect(await s.team.send("done-299", "hello")).toHaveProperty(
-				"error",
-				expect.stringContaining("has finished"),
-			);
+			expect(await s.team.send("done-0", "hello")).not.toHaveProperty("error", expect.stringContaining("has finished"));
+			expect(await s.team.send("done-299", "hello")).toHaveProperty("error", expect.stringContaining("has finished"));
 			s.team.stop();
 			s.team.start(s.ctx);
 			s.team.join();

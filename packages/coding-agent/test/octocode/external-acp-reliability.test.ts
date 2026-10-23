@@ -65,8 +65,7 @@ describe("ACP reliability runner and saved-session crash recovery", () => {
 				backends.push(backend);
 				if (saved)
 					expect(
-						(await backend.prompt("Reply only the remembered marker and current counter", { timeoutMs: WORK_MS }))
-							.text,
+						(await backend.prompt("Reply only the remembered marker and current counter", { timeoutMs: WORK_MS })).text,
 					).toBe("RANDOM_MARKER:14");
 				else {
 					expect((await backend.prompt("Remember marker RANDOM_MARKER", { timeoutMs: WORK_MS })).text).toBe(
@@ -123,8 +122,7 @@ describe("ACP reliability runner and saved-session crash recovery", () => {
 			backends.push(recovered);
 			expect(recovered.sessionId).toBe(saved);
 			expect(
-				(await recovered.prompt("Reply only the remembered marker and current counter", { timeoutMs: WORK_MS }))
-					.text,
+				(await recovered.prompt("Reply only the remembered marker and current counter", { timeoutMs: WORK_MS })).text,
 			).toBe("RANDOM_MARKER:14");
 			await recovered.close();
 			expect(groupMembers(entries(journal).find((entry) => entry.event === "spawn")!.proxyPid)).toEqual([]);

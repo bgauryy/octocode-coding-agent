@@ -79,9 +79,7 @@ describe("permission modes", () => {
 	});
 
 	it("says what each mode does", () => {
-		expect(modeSummary("full")).toMatch(
-			/destructive commands.*private web fetches.*hook's ask.*run without a prompt/,
-		);
+		expect(modeSummary("full")).toMatch(/destructive commands.*private web fetches.*hook's ask.*run without a prompt/);
 		expect(modeSummary("full")).toMatch(/⚠ counter.*audit log.*no UI has only the log/);
 		expect(modeSummary("workspace")).toContain("shell.destructive");
 		expect(modeSummary("workspace")).toContain("browser.control");

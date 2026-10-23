@@ -302,9 +302,9 @@ export function ensureSchema(db: DatabaseSync, file: string): { fts: boolean } {
 const FTS_NAMES = ["memories_fts", "memories_fts_insert", "memories_fts_delete", "memories_fts_update"];
 const ftsWhole = (db: DatabaseSync) => {
 	const present = new Set(
-		(
-			db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'memories_fts%'").all() as Array<{ name: string }>
-		).map((row) => row.name),
+		(db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'memories_fts%'").all() as Array<{ name: string }>).map(
+			(row) => row.name,
+		),
 	);
 	return FTS_NAMES.every((name) => present.has(name));
 };

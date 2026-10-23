@@ -3,11 +3,7 @@ import ignore from "ignore";
 import { basename, dirname, join, relative, resolve, sep } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
-import {
-	addIgnoreRules,
-	type IgnoreMatcher,
-	toPosixPath,
-} from "../utils/ignore.ts";
+import { addIgnoreRules, type IgnoreMatcher, toPosixPath } from "../utils/ignore.ts";
 import { canonicalizePath, resolvePath } from "../utils/paths.ts";
 import { claudeConfigDir } from "../utils/host-config.ts";
 import { parseCodexSkillMetadata } from "./codex-skill-metadata.ts";
@@ -53,15 +49,8 @@ export interface ExplicitSkill {
 	promptByteLimit?: number;
 }
 
-export function explicitSkillIdentity(
-	skill: Skill,
-	name = skill.name,
-): ExplicitSkill | undefined {
-	if (
-		basename(skill.filePath) !== "SKILL.md" ||
-		skill.argumentStyle === "claude" ||
-		skill.userInvocable === false
-	)
+export function explicitSkillIdentity(skill: Skill, name = skill.name): ExplicitSkill | undefined {
+	if (basename(skill.filePath) !== "SKILL.md" || skill.argumentStyle === "claude" || skill.userInvocable === false)
 		return undefined;
 	return {
 		skill,
@@ -87,7 +76,8 @@ export function loadedSkillDirectories(loaded: LoadSkillsResult): string[] {
 			identity.skill.argumentStyle === "claude" ||
 			isSyntheticPath(identity.canonicalPath) ||
 			isSyntheticPath(identity.skill.sourceInfo.path)
-		) continue;
+		)
+			continue;
 		captured.set(resolve(identity.discoveryPath), identity.canonicalPath);
 		directories.add(dirname(identity.canonicalPath));
 	}
@@ -111,9 +101,7 @@ function validateName(name: string): string[] {
 	}
 
 	if (!/^[a-z0-9-]+$/.test(name)) {
-		errors.push(
-			`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`,
-		);
+		errors.push(`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`);
 	}
 
 	if (name.startsWith("-") || name.endsWith("-")) {
@@ -136,9 +124,7 @@ function validateDescription(description: unknown): string[] {
 	if (typeof description !== "string" || description.trim() === "") {
 		errors.push("description is required");
 	} else if (description.length > MAX_DESCRIPTION_LENGTH) {
-		errors.push(
-			`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`,
-		);
+		errors.push(`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`);
 	}
 
 	return errors;
@@ -152,11 +138,7 @@ export interface LoadSkillsFromDirOptions {
 	protocol?: "claude" | "codex";
 }
 
-function createSkillSourceInfo(
-	filePath: string,
-	baseDir: string,
-	source: string,
-): SourceInfo {
+function createSkillSourceInfo(filePath: string, baseDir: string, source: string): SourceInfo {
 	switch (source) {
 		case "user":
 			return createSyntheticSourceInfo(filePath, {
@@ -188,18 +170,9 @@ function createSkillSourceInfo(
  * - otherwise, load direct .md children in the root
  * - recurse into subdirectories to find SKILL.md
  */
-export function loadSkillsFromDir(
-	options: LoadSkillsFromDirOptions,
-): LoadSkillsResult {
+export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkillsResult {
 	const { dir, source } = options;
-	const result = loadSkillsFromDirInternal(
-		dir,
-		source,
-		true,
-		undefined,
-		undefined,
-		options.protocol,
-	);
+	const result = loadSkillsFromDirInternal(dir, source, true, undefined, undefined, options.protocol);
 	return {
 		...result,
 		explicitSkills: result.skills.flatMap((skill) => {
@@ -293,14 +266,7 @@ function loadSkillsFromDirInternal(
 			}
 
 			if (isDirectory) {
-				const subResult = loadSkillsFromDirInternal(
-					fullPath,
-					source,
-					false,
-					ig,
-					root,
-					protocol,
-				);
+				const subResult = loadSkillsFromDirInternal(fullPath, source, false, ig, root, protocol);
 				skills.push(...subResult.skills);
 				diagnostics.push(...subResult.diagnostics);
 				continue;
@@ -341,9 +307,7 @@ function loadSkillFromFile(
 	if (
 		protocol === undefined &&
 		(resolve(filePath).startsWith(userClaudeSkillRoot) ||
-			segments.some(
-				(part, index) => part === ".claude" && segments[index + 1] === "skills",
-			))
+			segments.some((part, index) => part === ".claude" && segments[index + 1] === "skills"))
 	)
 		protocol = "claude";
 
@@ -353,8 +317,7 @@ function loadSkillFromFile(
 		canonicalPath = realpathSync(filePath);
 		rawContent = readFileSync(canonicalPath, "utf-8");
 	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "failed to read skill file";
+		const message = error instanceof Error ? error.message : "failed to read skill file";
 		diagnostics.push({ type: "warning", message, path: filePath });
 		return { skill: null, diagnostics };
 	}
@@ -365,15 +328,15 @@ function loadSkillFromFile(
 		({ frontmatter, body } = parseFrontmatter<SkillFrontmatter>(rawContent));
 	} catch (error) {
 		if (isDeclaredSkill) {
-			const message =
-				error instanceof Error ? error.message : "failed to parse skill file";
+			const message = error instanceof Error ? error.message : "failed to parse skill file";
 			diagnostics.push({ type: "warning", message, path: filePath });
 		}
 		return { skill: null, diagnostics };
 	}
 
+	// Claude reads only `<name>/SKILL.md`; other Markdown in a Claude root (a README, notes) is not described by its first line.
 	const description =
-		protocol === "claude" && frontmatter.description === undefined
+		protocol === "claude" && isDeclaredSkill && frontmatter.description === undefined
 			? body
 					.split(/\r?\n/)
 					.find((line) => line.trim())
@@ -389,8 +352,7 @@ function loadSkillFromFile(
 				? false
 				: undefined;
 	};
-	const hasDescription =
-		typeof description === "string" && description.trim() !== "";
+	const hasDescription = typeof description === "string" && description.trim() !== "";
 	if (!isDeclaredSkill && !hasDescription) {
 		return { skill: null, diagnostics };
 	}
@@ -404,10 +366,10 @@ function loadSkillFromFile(
 		diagnostics.push({ type: "warning", message: error, path: filePath });
 	}
 
-	// Use name from frontmatter, or fall back to parent directory name
-	const frontmatterName =
-		typeof frontmatter.name === "string" ? frontmatter.name : undefined;
-	const name = frontmatterName || parentDirName;
+	// Use the name from frontmatter, or the skill's directory for `SKILL.md`; a loose file is named after itself, so two
+	// loose files in one folder do not both take the folder's name.
+	const frontmatterName = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
+	const name = frontmatterName || (isDeclaredSkill ? parentDirName : basename(filePath, ".md"));
 
 	// Validate name
 	const nameErrors = validateName(name);
@@ -438,9 +400,7 @@ function loadSkillFromFile(
 		const metadataPath = join(dirname(canonicalPath), "agents", "openai.yaml");
 		try {
 			if (statSync(metadataPath).isFile()) {
-				const metadata = parseCodexSkillMetadata(
-					readFileSync(metadataPath, "utf8"),
-				);
+				const metadata = parseCodexSkillMetadata(readFileSync(metadataPath, "utf8"));
 				if (metadata.policy?.products.length) {
 					diagnostics.push({
 						type: "warning",
@@ -450,30 +410,20 @@ function loadSkillFromFile(
 					});
 					return { skill: null, diagnostics };
 				}
-				codexImplicitDisabled =
-					metadata.policy?.allowImplicitInvocation === false;
+				codexImplicitDisabled = metadata.policy?.allowImplicitInvocation === false;
 				if (metadata.interfaceDeclared || metadata.dependenciesDeclared)
 					diagnostics.push({
 						type: "warning",
 						path: metadataPath,
-						message:
-							"Codex skill interface and dependency metadata are validated but not activated by this host.",
+						message: "Codex skill interface and dependency metadata are validated but not activated by this host.",
 					});
 			}
 		} catch (error) {
-			if (
-				!(
-					error &&
-					typeof error === "object" &&
-					"code" in error &&
-					error.code === "ENOENT"
-				)
-			)
+			if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT"))
 				diagnostics.push({
 					type: "warning",
 					path: metadataPath,
-					message:
-						"Optional Codex skill metadata could not be loaded; using SKILL.md defaults.",
+					message: "Optional Codex skill metadata could not be loaded; using SKILL.md defaults.",
 				});
 		}
 	}
@@ -485,15 +435,9 @@ function loadSkillFromFile(
 			canonicalPath,
 			baseDir: skillDir,
 			sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
-			disableModelInvocation:
-				boolean(frontmatter["disable-model-invocation"]) === true ||
-				codexImplicitDisabled,
-			...(boolean(frontmatter["user-invocable"]) === false
-				? { userInvocable: false }
-				: {}),
-			...(protocol === "claude"
-				? ({ argumentStyle: "claude", argumentNames } as const)
-				: {}),
+			disableModelInvocation: boolean(frontmatter["disable-model-invocation"]) === true || codexImplicitDisabled,
+			...(boolean(frontmatter["user-invocable"]) === false ? { userInvocable: false } : {}),
+			...(protocol === "claude" ? ({ argumentStyle: "claude", argumentNames } as const) : {}),
 		},
 		diagnostics,
 	};
@@ -520,7 +464,7 @@ export function formatSkillsForPrompt(
 		return "";
 	}
 
-	// A compact list (a subagent's) carries no descriptions: its task names the skills it needs.
+	// Loaded skills always have descriptions; skills an SDK caller supplies without any are listed by name, for tasks that name them.
 	const when = visibleSkills.every((s) => !s.description)
 		? "when your task names the skill"
 		: "when the task matches its description";
@@ -541,10 +485,7 @@ export function formatSkillsForPrompt(
 	for (const skill of visibleSkills) {
 		lines.push("  <skill>");
 		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		if (skill.description)
-			lines.push(
-				`    <description>${escapeXml(skill.description)}</description>`,
-			);
+		if (skill.description) lines.push(`    <description>${escapeXml(skill.description)}</description>`);
 		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
 		lines.push("  </skill>");
 	}
@@ -604,8 +545,7 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 
 			realPathSet.add(realPath);
 			const explicit =
-				result.explicitSkills?.find((candidate) => candidate.skill === skill) ??
-				explicitSkillIdentity(skill);
+				result.explicitSkills?.find((candidate) => candidate.skill === skill) ?? explicitSkillIdentity(skill);
 			if (explicit) explicitSkills.push(explicit);
 			const existing = skillMap.get(skill.name);
 			if (existing) {
@@ -649,9 +589,7 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 		if (target === normalizedRoot) {
 			return true;
 		}
-		const prefix = normalizedRoot.endsWith(sep)
-			? normalizedRoot
-			: `${normalizedRoot}${sep}`;
+		const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
 		return target.startsWith(prefix);
 	};
 
@@ -697,8 +635,7 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 				});
 			}
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "failed to read skill path";
+			const message = error instanceof Error ? error.message : "failed to read skill path";
 			allDiagnostics.push({ type: "warning", message, path: resolvedPath });
 		}
 	}

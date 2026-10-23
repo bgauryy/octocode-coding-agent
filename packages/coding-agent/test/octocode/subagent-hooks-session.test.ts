@@ -6,12 +6,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import {
-	buildAgentArgs,
-	childSessionFile,
-	runSubagent,
-	type Identity,
-} from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs, childSessionFile, runSubagent, type Identity } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -74,8 +69,7 @@ async function fixture(
 			);
 			return;
 		}
-		const content =
-			requests.length === 1 ? "CHILD_FIRST_RESPONSE" : "CHILD_RETRIED_RESPONSE";
+		const content = requests.length === 1 ? "CHILD_FIRST_RESPONSE" : "CHILD_RETRIED_RESPONSE";
 		res.end(
 			`data: ${JSON.stringify({ id: `response-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 		);
@@ -138,10 +132,7 @@ async function fixture(
 	);
 	const command = `${quote(process.execPath)} ${quote(script)}`;
 	fs.writeFileSync(
-		path.join(
-			home,
-			protocol === "codex" ? ".codex/hooks.json" : ".claude/settings.json",
-		),
+		path.join(home, protocol === "codex" ? ".codex/hooks.json" : ".claude/settings.json"),
 		JSON.stringify({
 			hooks: Object.fromEntries(
 				[
@@ -149,16 +140,12 @@ async function fixture(
 					"SubagentStop",
 					"SessionStart",
 					"Stop",
-					...(options.ordinary
-						? ["UserPromptSubmit", "PreToolUse", "PostToolUse"]
-						: []),
+					...(options.ordinary ? ["UserPromptSubmit", "PreToolUse", "PostToolUse"] : []),
 				].map((event) => [
 					event,
 					[
 						{
-							...(event.startsWith("Subagent")
-								? { matcher: "^reviewer$" }
-								: {}),
+							...(event.startsWith("Subagent") ? { matcher: "^reviewer$" } : {}),
 							hooks: [{ type: "command", command }],
 						},
 					],
@@ -186,8 +173,7 @@ async function fixture(
 								hooks: [
 									{
 										type: "command",
-										command:
-											quote(process.execPath) + " " + quote(nativeScript),
+										command: quote(process.execPath) + " " + quote(nativeScript),
 									},
 								],
 							},
@@ -275,28 +261,20 @@ it.each(["codex", "claude"] as const)(
 			expect(result.error, JSON.stringify(result)).toBeUndefined();
 			expect(f.requests.length, JSON.stringify(result)).toBe(2);
 			expect(JSON.stringify(f.requests[0])).toContain("CHILD_START_CONTEXT");
-			expect(JSON.stringify(f.requests[0])).not.toContain(
-				"PARENT_ONLY_CONTEXT",
-			);
+			expect(JSON.stringify(f.requests[0])).not.toContain("PARENT_ONLY_CONTEXT");
 			expect(JSON.stringify(f.requests[1])).toContain("CHILD_STOP_RETRY");
 			expect(result.text).toContain("CHILD_RETRIED_RESPONSE");
 			expect(fs.readFileSync(f.parent.getSessionFile()!, "utf8")).not.toMatch(
 				/CHILD_START_CONTEXT|CHILD_STOP_RETRY|CHILD_RETRIED_RESPONSE/,
 			);
 			const records = f.records();
-			const start = records.filter(
-				(x) => x.hook_event_name === "SubagentStart",
-			);
+			const start = records.filter((x) => x.hook_event_name === "SubagentStart");
 			const stop = records.filter((x) => x.hook_event_name === "SubagentStop");
 			expect(start).toHaveLength(1);
 			expect(stop).toHaveLength(2);
 			expect(start[0]!.agent_type).toBe("reviewer");
 			expect(start[0]!.permission_mode).toBe("default");
-			expect(
-				records.filter((record) =>
-					["SessionStart", "Stop"].includes(record.hook_event_name),
-				),
-			).toHaveLength(0);
+			expect(records.filter((record) => ["SessionStart", "Stop"].includes(record.hook_event_name))).toHaveLength(0);
 			const childFile = childSessionFile(f.childSession);
 			expect(childFile).toBeDefined();
 			if (protocol === "codex") {
@@ -347,22 +325,10 @@ it.each(["codex", "claude"] as const)(
 			expect(second.error).toBeUndefined();
 			expect(childSessionFile(f.childSession)).toBe(originalFile);
 			expect(f.requests).toHaveLength(2);
-			const starts = f
-				.records()
-				.filter((record) => record.hook_event_name === "SubagentStart");
+			const starts = f.records().filter((record) => record.hook_event_name === "SubagentStart");
 			expect(starts).toHaveLength(protocol === "codex" ? 1 : 2);
-			expect(
-				f
-					.records()
-					.filter((record) => record.hook_event_name === "SubagentStop"),
-			).toHaveLength(2);
-			expect(
-				f
-					.records()
-					.filter((record) =>
-						["SessionStart", "Stop"].includes(record.hook_event_name),
-					),
-			).toHaveLength(0);
+			expect(f.records().filter((record) => record.hook_event_name === "SubagentStop")).toHaveLength(2);
+			expect(f.records().filter((record) => ["SessionStart", "Stop"].includes(record.hook_event_name))).toHaveLength(0);
 		} finally {
 			await f.close();
 		}
@@ -381,24 +347,14 @@ it.each(["codex", "claude"] as const)(
 			await Promise.race([
 				f.started,
 				running.then((result) => {
-					throw new Error(
-						`Child settled before provider request: ${JSON.stringify(result)}`,
-					);
+					throw new Error(`Child settled before provider request: ${JSON.stringify(result)}`);
 				}),
 			]);
 			controller.abort();
 			await expect(running).rejects.toThrow(/cancel/i);
 			expect(f.requests).toHaveLength(1);
-			expect(
-				f
-					.records()
-					.filter((record) => record.hook_event_name === "SubagentStart"),
-			).toHaveLength(1);
-			expect(
-				f
-					.records()
-					.filter((record) => record.hook_event_name === "SubagentStop"),
-			).toHaveLength(0);
+			expect(f.records().filter((record) => record.hook_event_name === "SubagentStart")).toHaveLength(1);
+			expect(f.records().filter((record) => record.hook_event_name === "SubagentStop")).toHaveLength(0);
 		} finally {
 			controller.abort();
 			await running?.catch(() => undefined);
@@ -416,16 +372,8 @@ it.each(["codex", "claude"] as const)(
 			const result = await f.run();
 			expect(result.error).toContain("FIXTURE_PROVIDER_FAILURE");
 			expect(f.requests).toHaveLength(1);
-			expect(
-				f
-					.records()
-					.filter((record) => record.hook_event_name === "SubagentStart"),
-			).toHaveLength(1);
-			expect(
-				f
-					.records()
-					.filter((record) => record.hook_event_name === "SubagentStop"),
-			).toHaveLength(0);
+			expect(f.records().filter((record) => record.hook_event_name === "SubagentStart")).toHaveLength(1);
+			expect(f.records().filter((record) => record.hook_event_name === "SubagentStop")).toHaveLength(0);
 		} finally {
 			await f.close();
 		}
@@ -448,31 +396,21 @@ it.each(["codex", "claude"] as const)(
 					const matches = records.filter((r) => r.hook_event_name === event);
 					expect(matches, event).toHaveLength(turn);
 					const input = matches.at(-1)!;
-					expect(input.agent_id, event).toBe(
-						protocol === "codex" ? f.childSession.id : f.identity.id,
-					);
+					expect(input.agent_id, event).toBe(protocol === "codex" ? f.childSession.id : f.identity.id);
 					expect(input.agent_type, event).toBe("reviewer");
 					expect(input.session_id, event).toBe(f.childSession.id);
 					expect(input.transcript_path, event).toBe(childFile);
 				}
-				const starts = records.filter(
-					(r) => r.hook_event_name === "SubagentStart",
-				);
+				const starts = records.filter((r) => r.hook_event_name === "SubagentStart");
 				expect(starts).toHaveLength(protocol === "codex" ? 1 : turn);
-				expect(starts[0]!.agent_id).toBe(
-					protocol === "codex" ? f.childSession.id : f.identity.id,
-				);
-				const stops = records.filter(
-					(r) => r.hook_event_name === "SubagentStop",
-				);
+				expect(starts[0]!.agent_id).toBe(protocol === "codex" ? f.childSession.id : f.identity.id);
+				const stops = records.filter((r) => r.hook_event_name === "SubagentStop");
 				expect(stops).toHaveLength(turn);
 				if (protocol === "claude") {
 					expect(stops.at(-1)!.transcript_path).toBe(f.parent.getSessionFile());
 					expect(stops.at(-1)!.agent_transcript_path).toBe(childFile);
 				}
-				expect(JSON.stringify(f.requests.at(-1))).toContain(
-					"CHILD_TOOL_OUTPUT",
-				);
+				expect(JSON.stringify(f.requests.at(-1))).toContain("CHILD_TOOL_OUTPUT");
 			}
 		} finally {
 			await f.close();
@@ -547,10 +485,7 @@ it.each(["codex", "claude"] as const)(
 			);
 			const deadline = Date.now() + 15000;
 			while (!settled) {
-				if (exited || Date.now() > deadline)
-					throw new Error(
-						`Main fixture failed ${stderr} ${JSON.stringify(events)}`,
-					);
+				if (exited || Date.now() > deadline) throw new Error(`Main fixture failed ${stderr} ${JSON.stringify(events)}`);
 				await new Promise((resolve) => setTimeout(resolve, 10));
 			}
 			expect(f.requests).toHaveLength(2);
@@ -564,10 +499,7 @@ it.each(["codex", "claude"] as const)(
 			expect(JSON.stringify(f.requests.at(-1))).toContain("CHILD_TOOL_OUTPUT");
 		} finally {
 			child.stdin.end();
-			await Promise.race([
-				exit,
-				new Promise((resolve) => setTimeout(resolve, 3000)),
-			]);
+			await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 3000))]);
 			if (!exited) {
 				child.kill("SIGKILL");
 				await exit;

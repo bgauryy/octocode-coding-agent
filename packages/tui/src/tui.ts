@@ -64,6 +64,8 @@ export interface TuiMouseDispatchTarget {
 	originY: number;
 	width: number;
 	height: number;
+	/** Forwarding components from the target outward, retained for gesture-lifecycle checks. */
+	owners?: readonly Component[];
 }
 
 /** Result of dispatching to a concrete component. */
@@ -86,7 +88,13 @@ export function dispatchMouseEvent(component: Component, event: TuiMouseEvent): 
 		// keys to that child itself, so it keeps keyboard focus. Focusing the child directly would leave
 		// focus on a detached component once the host removes it, e.g. a closed settings submenu.
 		const forwarded = result as TuiMouseDispatchResult;
-		return forwarded.focus && component.handleInput ? { ...forwarded, focusTarget: component } : forwarded;
+		const target = forwarded.target;
+		const owners = component === target.component ? target.owners : [...(target.owners ?? []), component];
+		return {
+			...forwarded,
+			target: { ...target, ...(owners ? { owners } : {}) },
+			...(forwarded.focus && component.handleInput ? { focusTarget: component } : {}),
+		};
 	}
 	if (!result.handled && !result.capture && !result.focus) return undefined;
 	return {
@@ -389,6 +397,8 @@ export class Container implements Component {
 		let childY = 0;
 		for (const { component: child, height: childHeight } of mouseChildren) {
 			if (event.y >= childY && event.y < childY + childHeight) {
+				// Keep the last painted positions until redraw, but never activate a detached child.
+				if (!this.children.includes(child)) return undefined;
 				const result = dispatchMouseEvent(child, {
 					...event,
 					y: event.y - childY,
@@ -503,10 +513,44 @@ export function isViewportTUI(tui: TUI): tui is ViewportTUI {
 	return (tui as Partial<ViewportTUI>)[VIEWPORT_TUI] === true;
 }
 
+/** Experimental scheduler controls. Both behaviors are off unless explicitly enabled. */
+export interface RenderPacingOptions {
+	outputGate?: boolean;
+	adaptiveCadence?: boolean;
+	metrics?: boolean;
+	highWaterBytes?: number;
+	lowWaterBytes?: number;
+	retryMs?: number;
+}
+
+export interface RenderPacingStats {
+	paintedFrames: number;
+	deferredFrames: number;
+	forcedFrames: number;
+	immediateFrames: number;
+	maxPendingOutputBytes: number;
+	lastFrameCostMs: number;
+	maxFrameCostMs: number;
+	maxInputToPaintMs: number;
+}
+
+/** Cadence and frame-cost floors are independent of output queue admission. */
+export function computeRenderDelayMs(
+	intervalMs: number,
+	frameCostMs: number,
+	elapsedMs: number,
+	adaptive: boolean,
+): number {
+	const floor = adaptive ? Math.max(intervalMs, Math.min(200, frameCostMs * 2)) : intervalMs;
+	return Math.max(0, floor - elapsedMs);
+}
+
 export abstract class TuiBase extends Container implements TUI {
 	abstract readonly mode: TuiMode;
 	public terminal: Terminal;
 	private focusedComponent: Component | null = null;
+	/** Tracks focus owners once mounted, so later removals cannot receive keyboard input. */
+	private readonly mountedFocusOwners = new WeakSet<Component>();
 	private inputListeners = new Set<TuiInputListener>();
 
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
@@ -516,6 +560,28 @@ export abstract class TuiBase extends Container implements TUI {
 	private renderTimer: NodeJS.Timeout | undefined;
 	private lastRenderAt = 0;
 	private static readonly MIN_RENDER_INTERVAL_MS = 16;
+	private renderPacing: Required<RenderPacingOptions> = {
+		outputGate: false,
+		adaptiveCadence: false,
+		metrics: false,
+		highWaterBytes: 256 * 1024,
+		lowWaterBytes: 128 * 1024,
+		retryMs: 10,
+	};
+	private renderPacingStats: RenderPacingStats = {
+		paintedFrames: 0,
+		deferredFrames: 0,
+		forcedFrames: 0,
+		immediateFrames: 0,
+		maxPendingOutputBytes: 0,
+		lastFrameCostMs: 0,
+		maxFrameCostMs: 0,
+		maxInputToPaintMs: 0,
+	};
+	private lastFrameCostMs = 0;
+	private lastInputAt: number | undefined;
+	private outputPressureHeld = false;
+	private renderLifecycle = 0;
 	private showHardwareCursor = false;
 	private clearOnShrink = false;
 	protected fullRedrawCount = 0;
@@ -560,6 +626,63 @@ export abstract class TuiBase extends Container implements TUI {
 	protected beforeTerminalStop(_options: TuiStopOptions): void {}
 
 	protected afterTerminalStop(_options: TuiStopOptions): void {}
+
+	/** Opt in to output gating and/or adaptive cadence independently; unspecified options keep existing values. */
+	setRenderPacing(options: RenderPacingOptions): void {
+		const next = { ...this.renderPacing, ...options };
+		if (
+			!Number.isFinite(next.highWaterBytes) ||
+			next.highWaterBytes <= 0 ||
+			!Number.isFinite(next.lowWaterBytes) ||
+			next.lowWaterBytes < 0 ||
+			next.lowWaterBytes >= next.highWaterBytes ||
+			!Number.isFinite(next.retryMs) ||
+			next.retryMs <= 0
+		)
+			throw new RangeError("Invalid render pacing thresholds");
+		this.renderPacing = next;
+		this.outputPressureHeld = false;
+		this.terminal.setDecorativeOutputPressureThreshold?.(next.outputGate ? next.highWaterBytes : undefined);
+	}
+
+	getRenderPacingStats(): Readonly<RenderPacingStats> {
+		return { ...this.renderPacingStats };
+	}
+
+	private outputIsPressured(): boolean {
+		if (!this.renderPacing.outputGate) return false;
+		const pending = this.terminal.pendingOutputBytes;
+		if (pending === undefined || !Number.isFinite(pending) || pending < 0) {
+			this.outputPressureHeld = false;
+			return false;
+		}
+		if (this.renderPacing.metrics) {
+			this.renderPacingStats.maxPendingOutputBytes = Math.max(this.renderPacingStats.maxPendingOutputBytes, pending);
+		}
+		this.outputPressureHeld = this.outputPressureHeld
+			? pending > this.renderPacing.lowWaterBytes
+			: pending > this.renderPacing.highWaterBytes;
+		return this.outputPressureHeld;
+	}
+
+	private paint(measure = false): void {
+		const start = measure ? performance.now() : 0;
+		this.doRender();
+		if (!measure) return;
+		this.lastFrameCostMs = performance.now() - start;
+		if (this.renderPacing.metrics) {
+			this.renderPacingStats.paintedFrames++;
+			this.renderPacingStats.lastFrameCostMs = this.lastFrameCostMs;
+			this.renderPacingStats.maxFrameCostMs = Math.max(this.renderPacingStats.maxFrameCostMs, this.lastFrameCostMs);
+			if (this.lastInputAt !== undefined) {
+				this.renderPacingStats.maxInputToPaintMs = Math.max(
+					this.renderPacingStats.maxInputToPaintMs,
+					performance.now() - this.lastInputAt,
+				);
+			}
+		}
+		this.lastInputAt = undefined;
+	}
 
 	get fullRedraws(): number {
 		return this.fullRedrawCount;
@@ -645,6 +768,13 @@ export abstract class TuiBase extends Container implements TUI {
 				this.clearOverlayFocusRestore();
 			}
 		}
+		if (
+			nextFocus &&
+			!this.overlayStack.some((entry) => entry.component === nextFocus && this.isOverlayVisible(entry))
+		) {
+			if (this.isComponentMounted(nextFocus)) this.mountedFocusOwners.add(nextFocus);
+			else if (this.mountedFocusOwners.has(nextFocus)) nextFocus = null;
+		}
 
 		if (isFocusable(this.focusedComponent)) {
 			this.focusedComponent.focused = false;
@@ -714,6 +844,23 @@ export abstract class TuiBase extends Container implements TUI {
 
 	private isComponentMounted(component: Component): boolean {
 		return this.getMountedRoots().some((child) => this.containsComponent(child, component));
+	}
+
+	/** A retained mouse gesture must not outlive its component or visible overlay. */
+	protected isMouseTargetMounted(target: TuiMouseDispatchTarget): boolean {
+		let component = target.component;
+		for (const owner of target.owners ?? []) {
+			// An opaque forwarding wrapper owns the target it returned; Container exposes its
+			// live children, so a child removed after press can be rejected before release.
+			if (owner instanceof Container && !owner.children.includes(component)) return false;
+			component = owner;
+		}
+		return (
+			this.isComponentMounted(component) ||
+			this.overlayStack.some(
+				(entry) => this.isOverlayVisible(entry) && this.containsComponent(entry.component, component),
+			)
+		);
 	}
 
 	private containsComponent(root: Component, target: Component): boolean {
@@ -853,9 +1000,7 @@ export abstract class TuiBase extends Container implements TUI {
 
 	/** Check if the focused component is a visible overlay */
 	protected isOverlayFocused(): boolean {
-		return this.overlayStack.some(
-			(entry) => entry.component === this.focusedComponent && this.isOverlayVisible(entry),
-		);
+		return this.overlayStack.some((entry) => entry.component === this.focusedComponent && this.isOverlayVisible(entry));
 	}
 
 	/** Keep overlay containers as keyboard focus owners when a nested control is clicked. */
@@ -925,7 +1070,12 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	start(): void {
+		this.renderLifecycle++;
 		this.stopped = false;
+		this.outputPressureHeld = false;
+		this.terminal.setDecorativeOutputPressureThreshold?.(
+			this.renderPacing.outputGate ? this.renderPacing.highWaterBytes : undefined,
+		);
 		this.beforeTerminalStart();
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
@@ -979,8 +1129,13 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	stop(options: TuiStopOptions = {}): void {
+		this.renderLifecycle++;
 		this.stopped = true;
+		this.renderRequested = false;
+		this.immediateRenderScheduled = false;
+		this.outputPressureHeld = false;
 		this.cancelRenderTimer();
+		this.terminal.setDecorativeOutputPressureThreshold?.(undefined);
 		if (this.terminalColorSchemeNotificationsEnabled) {
 			this.terminal.write("\x1b[?2031l");
 		}
@@ -991,14 +1146,17 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	renderNow(force = false): void {
+		this.rememberMountedFocus();
 		if (force) this.resetRenderState();
 		this.renderRequested = false;
 		this.cancelRenderTimer();
 		this.lastRenderAt = performance.now();
-		this.doRender();
+		if (this.renderPacing.metrics) this.renderPacingStats.immediateFrames++;
+		this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
 	}
 
 	requestRender(force = false): void {
+		this.rememberMountedFocus();
 		if (force) {
 			this.resetRenderState();
 			this.requestImmediateRender();
@@ -1006,7 +1164,16 @@ export abstract class TuiBase extends Container implements TUI {
 		}
 		if (this.renderRequested) return;
 		this.renderRequested = true;
-		process.nextTick(() => this.scheduleRender());
+		const lifecycle = this.renderLifecycle;
+		process.nextTick(() => {
+			if (lifecycle === this.renderLifecycle) this.scheduleRender();
+		});
+	}
+
+	private rememberMountedFocus(): void {
+		if (this.focusedComponent && this.isComponentMounted(this.focusedComponent)) {
+			this.mountedFocusOwners.add(this.focusedComponent);
+		}
 	}
 
 	private requestImmediateRender(): void {
@@ -1014,7 +1181,9 @@ export abstract class TuiBase extends Container implements TUI {
 		this.renderRequested = true;
 		if (this.immediateRenderScheduled) return;
 		this.immediateRenderScheduled = true;
+		const lifecycle = this.renderLifecycle;
 		process.nextTick(() => {
+			if (lifecycle !== this.renderLifecycle) return;
 			this.immediateRenderScheduled = false;
 			if (this.stopped || !this.renderRequested) return;
 			// A previously queued scheduleRender() can create a timer before this
@@ -1022,7 +1191,8 @@ export abstract class TuiBase extends Container implements TUI {
 			this.cancelRenderTimer();
 			this.renderRequested = false;
 			this.lastRenderAt = performance.now();
-			this.doRender();
+			if (this.renderPacing.metrics) this.renderPacingStats.forcedFrames++;
+			this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
 		});
 	}
 
@@ -1037,15 +1207,26 @@ export abstract class TuiBase extends Container implements TUI {
 			return;
 		}
 		const elapsed = performance.now() - this.lastRenderAt;
-		const delay = Math.max(0, TuiBase.MIN_RENDER_INTERVAL_MS - elapsed);
+		const delay = computeRenderDelayMs(
+			TuiBase.MIN_RENDER_INTERVAL_MS, this.lastFrameCostMs, elapsed, this.renderPacing.adaptiveCadence,
+		);
+		const lifecycle = this.renderLifecycle;
 		this.renderTimer = setTimeout(() => {
 			this.renderTimer = undefined;
-			if (this.stopped || !this.renderRequested) {
+			if (lifecycle !== this.renderLifecycle || this.stopped || !this.renderRequested) {
+				return;
+			}
+			if (this.outputIsPressured()) {
+				if (this.renderPacing.metrics) this.renderPacingStats.deferredFrames++;
+				this.renderTimer = setTimeout(() => {
+					this.renderTimer = undefined;
+					if (lifecycle === this.renderLifecycle) this.scheduleRender();
+				}, this.renderPacing.retryMs);
 				return;
 			}
 			this.renderRequested = false;
 			this.lastRenderAt = performance.now();
-			this.doRender();
+			this.paint(this.renderPacing.metrics || this.renderPacing.adaptiveCadence);
 			if (this.renderRequested) {
 				this.scheduleRender();
 			}
@@ -1053,6 +1234,7 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	private handleTerminalInput(data: string): void {
+		if (this.renderPacing.metrics) this.lastInputAt = performance.now();
 		if (this.consumeTerminalColorResponse(data)) {
 			return;
 		}
@@ -1114,6 +1296,10 @@ export abstract class TuiBase extends Container implements TUI {
 					this.setFocus(restoreState.resume.target);
 				}
 			}
+		}
+		if (this.focusedComponent && !focusIsOverlay) {
+			if (this.isComponentMounted(this.focusedComponent)) this.mountedFocusOwners.add(this.focusedComponent);
+			else if (this.mountedFocusOwners.has(this.focusedComponent)) this.setFocus(null);
 		}
 
 		// Pass input to focused component (including Ctrl+C)

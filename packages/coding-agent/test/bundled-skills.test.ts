@@ -99,10 +99,7 @@ describe("bundled public skills", () => {
 		const legacy = join(root, "pi-agent");
 		const skillDir = join(legacy, "skills", "octocode-research");
 		mkdirSync(skillDir, { recursive: true });
-		writeFileSync(
-			join(skillDir, "SKILL.md"),
-			"---\nname: octocode-research\ndescription: Pi research policy\n---\nPi",
-		);
+		writeFileSync(join(skillDir, "SKILL.md"), "---\nname: octocode-research\ndescription: Pi research policy\n---\nPi");
 		vi.spyOn(config, "getLegacyConfigDirs").mockReturnValue([legacy]);
 		const loader = new DefaultResourceLoader({
 			cwd,
@@ -142,10 +139,7 @@ describe("bundled public skills", () => {
 	it("uses normal exclusions and trusted project overrides for bundled skills", async () => {
 		mkdirSync(join(cwd, ".octocode"));
 		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: ["!octocode-*"] }));
-		writeFileSync(
-			join(cwd, ".octocode", "settings.json"),
-			JSON.stringify({ skills: ["+octocode-research/SKILL.md"] }),
-		);
+		writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ skills: ["+octocode-research/SKILL.md"] }));
 		for (const trusted of [false, true]) {
 			const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: trusted });
 			const manager = new DefaultPackageManager({

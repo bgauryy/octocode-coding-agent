@@ -141,9 +141,11 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		expect(fs.readFileSync(file).equals(before)).toBe(true);
 		expect(fs.readdirSync(path.dirname(file))).toEqual(["communication.sqlite"]);
 		const raw = new (loadSqlite().DatabaseSync)(file);
-		raw.prepare(
-			"INSERT INTO leases (workspace, path, kind, owner, refreshedAt, expiresAt, reasoning, pathKey) VALUES ('/w', '/w/a.ts', 'file', 's1', ?, ?, 'late', '/w/a.ts')",
-		).run(NOW, NOW + 1_000);
+		raw
+			.prepare(
+				"INSERT INTO leases (workspace, path, kind, owner, refreshedAt, expiresAt, reasoning, pathKey) VALUES ('/w', '/w/a.ts', 'file', 's1', ?, ?, 'late', '/w/a.ts')",
+			)
+			.run(NOW, NOW + 1_000);
 		raw.close();
 		expect(found.conflict("/w/a.ts")?.reason).toBe("late");
 	});

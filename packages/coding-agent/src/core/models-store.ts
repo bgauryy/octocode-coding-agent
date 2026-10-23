@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { ModelsStore, ModelsStoreEntry, ModelsStoreOperationOptions } from "@octocodeai/octocode-ai";
 import { getAgentDir } from "../config.ts";
-import { raceWithAbortSignal } from "../utils/abort.ts";
+import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { type AuthStorageBackend, FileAuthStorageBackend } from "./auth-storage.ts";
@@ -32,8 +32,7 @@ export class FileModelsStore implements ModelsStore {
 	constructor(path: string = join(getAgentDir(), "models-store.json")) {
 		this.path = normalizePath(path);
 		this.storage = new FileAuthStorageBackend(this.path);
-		this.readState =
-			sharedModelsFileReadState?.path === this.path ? sharedModelsFileReadState.readState : { data: {} };
+		this.readState = sharedModelsFileReadState?.path === this.path ? sharedModelsFileReadState.readState : { data: {} };
 		if (!sharedModelsFileReadState) {
 			sharedModelsFileReadState = { path: this.path, readState: this.readState };
 		}

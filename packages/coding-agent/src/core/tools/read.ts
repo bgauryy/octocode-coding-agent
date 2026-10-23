@@ -107,7 +107,10 @@ export function createReadToolDefinition(
 			_onUpdate?,
 			ctx?: ExtensionContext,
 		) {
-			for (const [name, value] of [["offset", offset], ["limit", limit]] as const)
+			for (const [name, value] of [
+				["offset", offset],
+				["limit", limit],
+			] as const)
 				if (value !== undefined && (!Number.isSafeInteger(value) || value < 1))
 					throw new Error(`${name} must be a positive integer`);
 			return new Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }>(
@@ -157,19 +160,26 @@ export function createReadToolDefinition(
 							} else {
 								const startLine = (offset ?? 1) - 1;
 								const startLineDisplay = startLine + 1;
-								const window = ops === defaultReadOperations
-									? await readTextWindow(absolutePath, startLineDisplay, limit, signal)
-									: undefined;
+								const window =
+									ops === defaultReadOperations
+										? await readTextWindow(absolutePath, startLineDisplay, limit, signal)
+										: undefined;
 								const allLines = window ? undefined : (await ops.readFile(absolutePath)).toString("utf8").split("\n");
 								const totalFileLines = window?.totalFileLines ?? allLines!.length;
 								if (startLine >= totalFileLines)
 									throw new Error(`Offset ${offset} is beyond end of file (${totalFileLines} lines total)`);
 								const userLimitedLines = limit === undefined ? undefined : Math.min(limit, totalFileLines - startLine);
-								const truncation = window?.truncation ?? truncateHead(allLines!.slice(startLine, limit === undefined ? undefined : startLine + limit).join("\n"));
+								const truncation =
+									window?.truncation ??
+									truncateHead(
+										allLines!.slice(startLine, limit === undefined ? undefined : startLine + limit).join("\n"),
+									);
 								let outputText: string;
 								if (truncation.firstLineExceedsLimit) {
 									// First line alone exceeds the byte limit. Point the model at a bash fallback.
-									const firstLineSize = formatSize(window?.firstLineBytes ?? Buffer.byteLength(allLines![startLine]!, "utf-8"));
+									const firstLineSize = formatSize(
+										window?.firstLineBytes ?? Buffer.byteLength(allLines![startLine]!, "utf-8"),
+									);
 									outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
 									details = { truncation };
 								} else if (truncation.truncated) {

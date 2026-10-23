@@ -208,3 +208,10 @@ describe("Google thinking level maps", () => {
 		expect(payload).toMatchObject({ config: { thinkingConfig: { thinkingBudget: 4321 } } });
 	});
 });
+
+describe("Gemini Flash-Lite budget parity", () => {
+	it.each(googleAdapters)("uses Flash-Lite's minimum budget on $name", async ({ capture }) => {
+		const payload = await capture("gemini-2.5-flash-lite", {}, "minimal");
+		expect(payload.config?.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: 512 });
+	});
+});

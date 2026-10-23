@@ -56,11 +56,20 @@ describe("documented hook discovery and controls", () => {
 		const files = hookFiles(root, true, home);
 		for (const file of files) {
 			fs.mkdirSync(path.dirname(file), { recursive: true });
-			fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "echo same" }] }] } }));
+			fs.writeFileSync(
+				file,
+				JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "echo same" }] }] } }),
+			);
 		}
-		const expected = files.map((file, i) => ({ path: file, dialect: ["claude", "codex", "octocode", "claude", "claude", "codex", "octocode"][i], scope: i < 3 ? "user" : "project" }));
+		const expected = files.map((file, i) => ({
+			path: file,
+			dialect: ["claude", "codex", "octocode", "claude", "claude", "codex", "octocode"][i],
+			scope: i < 3 ? "user" : "project",
+		}));
 		const config = loadHooks(root, true, home).config;
-		expect(config.PreToolUse.flatMap((group) => group.hooks).map((hook) => hook.origins)).toEqual(expected.map((origin) => [origin]));
+		expect(config.PreToolUse.flatMap((group) => group.hooks).map((hook) => hook.origins)).toEqual(
+			expected.map((origin) => [origin]),
+		);
 		const selected = commandsFor(config, "PreToolUse", ["Bash"]);
 		expect(selected).toHaveLength(1);
 		expect(selected[0]).toMatchObject({ origins: expected, source: files[0], timeoutMs: 60_000 });
@@ -76,17 +85,34 @@ describe("documented hook discovery and controls", () => {
 		fs.mkdirSync(path.join(root, ".git"));
 		const cwd = path.join(root, "src", "nested");
 		fs.mkdirSync(cwd, { recursive: true });
-		const userFiles = [path.join(home, ".claude/settings.json"), path.join(home, ".codex/hooks.json"), path.join(runtimeHome, "hooks.json")];
-		const projectFiles = [".claude/settings.json", ".claude/settings.local.json", ".codex/hooks.json", ".octocode/hooks.json"].map((name) => path.join(root, name));
+		const userFiles = [
+			path.join(home, ".claude/settings.json"),
+			path.join(home, ".codex/hooks.json"),
+			path.join(runtimeHome, "hooks.json"),
+		];
+		const projectFiles = [
+			".claude/settings.json",
+			".claude/settings.local.json",
+			".codex/hooks.json",
+			".octocode/hooks.json",
+		].map((name) => path.join(root, name));
 		expect(hookFiles(cwd, false, home)).toEqual(userFiles);
 		expect(hookFiles(cwd, true, home)).toEqual([...userFiles, ...projectFiles]);
 		for (const [index, file] of [...userFiles, ...projectFiles].entries()) {
 			fs.mkdirSync(path.dirname(file), { recursive: true });
-			fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: `echo source-${index}` }] }] } }));
+			fs.writeFileSync(
+				file,
+				JSON.stringify({
+					hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: `echo source-${index}` }] }] },
+				}),
+			);
 		}
 		const loaded = loadHooks(cwd, true, home);
 		expect(loaded.errors).toEqual([]);
-		expect(commandsFor(loaded.config, "PreToolUse", ["Bash"]).map((hook) => hook.source)).toEqual([...userFiles, ...projectFiles]);
+		expect(commandsFor(loaded.config, "PreToolUse", ["Bash"]).map((hook) => hook.source)).toEqual([
+			...userFiles,
+			...projectFiles,
+		]);
 		expect(commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])).toHaveLength(3);
 	});
 });

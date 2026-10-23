@@ -469,6 +469,30 @@ describe("Mistral HTTP transport", () => {
 		expect(message.stopReason).toBe("aborted");
 	});
 
+	it.each([undefined, "short"] as const)(
+		"resolves cache retention from request env with explicit override %s",
+		async (cacheRetention) => {
+			const model = getModel("mistral", "mistral-large-latest");
+			const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
+			let requestHeaders: Headers | undefined;
+			let payload: Record<string, unknown> | undefined;
+			const result = await streamMistral(model, context, {
+				apiKey: "test",
+				sessionId: "session",
+				env: { OCTOCODE_CACHE_RETENTION: "none" },
+				cacheRetention,
+				fetch: async (_url, init) => {
+					requestHeaders = new Headers(init?.headers);
+					payload = JSON.parse(String(init?.body));
+					return createSseResponse([createTerminalEvent()]);
+				},
+			}).result();
+			expect(result.stopReason).toBe("stop");
+			expect(payload?.prompt_cache_key).toBe(cacheRetention ? "session" : undefined);
+			expect(requestHeaders?.get("x-affinity")).toBe(cacheRetention ? "session" : null);
+		},
+	);
+
 	it("applies the request timeout while waiting for response headers", async () => {
 		const model = getModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
@@ -499,17 +523,19 @@ describe("Mistral HTTP transport", () => {
 		const thinkingEvent = {
 			choices: [{ index: 0, delta: { content: [{ type: "thinking", thinking: [{ type: "text", text: "x" }] }] } }],
 		};
-		const fetch: FetchFunction = async () =>
+		const fetch: FetchFunction = async (_url, init) =>
 			new Response(
 				new ReadableStream({
 					async start(controller) {
+						const onAbort = () => controller.error(init?.signal?.reason);
+						init?.signal?.addEventListener("abort", onAbort, { once: true });
 						for (let i = 0; i < 5; i++) {
 							controller.enqueue(encoder.encode(`data: ${JSON.stringify(thinkingEvent)}\n\n`));
 							await new Promise((resolve) => setTimeout(resolve, 10));
+							if (init?.signal?.aborted) return;
 						}
-						controller.enqueue(
-							encoder.encode(`data: ${JSON.stringify(createTerminalEvent())}\n\ndata: [DONE]\n\n`),
-						);
+						init?.signal?.removeEventListener("abort", onAbort);
+						controller.enqueue(encoder.encode(`data: ${JSON.stringify(createTerminalEvent())}\n\ndata: [DONE]\n\n`));
 						controller.close();
 					},
 				}),

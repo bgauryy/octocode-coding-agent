@@ -168,10 +168,7 @@ export function registerWebTool(pi: ExtensionAPI, permission: Permission): void 
 					const query = params.query?.trim();
 					if (url && query) throw new Error("Provide exactly one of url or query.");
 					if (url) {
-						const max = Math.min(
-							Math.max(Math.floor(params.maxChars ?? DEFAULT_FETCH_CHARS), 1_000),
-							MAX_FETCH_CHARS,
-						);
+						const max = Math.min(Math.max(Math.floor(params.maxChars ?? DEFAULT_FETCH_CHARS), 1_000), MAX_FETCH_CHARS);
 						// Page text is untrusted: terminal escapes, bidi and invisible characters become visible escapes (nothing is dropped) before the model sees it.
 						const approved = await approveFetch(permission, ctx, id, url, signal);
 						const fetched = await fetchUrl(url, signal, approved);
@@ -218,9 +215,8 @@ export function registerWebTool(pi: ExtensionAPI, permission: Permission): void 
 							);
 						return textResult(
 							visibleControls(
-								hits
-									.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`)
-									.join("\n\n") + via,
+								hits.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`).join("\n\n") +
+									via,
 							),
 							details,
 						);

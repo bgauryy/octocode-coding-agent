@@ -370,8 +370,7 @@ export class OctocodeApi {
 				return { aborted: wasBusy };
 			}
 			case "external.call": {
-				if (!this.operations.externalCall)
-					throw new RpcError(ERR.unavailable, "External agents are not registered");
+				if (!this.operations.externalCall) throw new RpcError(ERR.unavailable, "External agents are not registered");
 				try {
 					return boundedExternal(await this.operations.externalCall(params, this.session()));
 				} catch (error) {
@@ -514,10 +513,7 @@ export class OctocodeApi {
 		let dispatched = false;
 		try {
 			if (this.operations.messageSend)
-				await Promise.race([
-					this.operations.messageSend(message, ctx, receipt.controller.signal),
-					receipt.settlement,
-				]);
+				await Promise.race([this.operations.messageSend(message, ctx, receipt.controller.signal), receipt.settlement]);
 			this.guardPreparedSend(params, ctx, originalSessionId, key, receipt);
 			const given = this.agents.deliverable(whole, from);
 			if (typeof given !== "string") throw new RpcError(ERR.unavailable, given.error);
@@ -538,11 +534,10 @@ export class OctocodeApi {
 		} catch (error) {
 			clearTimeout(preparingTimer);
 			const execution = dispatched ? "uncertain" : "not-sent";
-			const failure = new RpcError(
-				ERR.unavailable,
-				`The session could not take the message: ${errorMessage(error)}`,
-				{ execution, ...(dispatched ? accepted : {}) },
-			);
+			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
+				execution,
+				...(dispatched ? accepted : {}),
+			});
 			this.receipts.fail(receipt, waiter, key, failure, dispatched);
 			throw failure;
 		}
@@ -576,10 +571,7 @@ export class OctocodeApi {
 			throw new RpcError(ERR.unavailable, "Message preparation was cancelled; nothing was sent");
 		if (
 			params.requireIdle === true &&
-			(!ctx.isIdle() ||
-				ctx.hasPendingMessages() ||
-				this.receipts.activeKey !== key ||
-				this.receipts.preparingCount > 1)
+			(!ctx.isIdle() || ctx.hasPendingMessages() || this.receipts.activeKey !== key || this.receipts.preparingCount > 1)
 		) {
 			throw new RpcError(ERR.unavailable, "The session became busy; nothing was sent");
 		}

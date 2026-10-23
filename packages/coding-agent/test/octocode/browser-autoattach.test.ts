@@ -188,9 +188,7 @@ describe("auto-attach", () => {
 			page.id === "popup-1" && method === "Fetch.enable" ? { error: { message: "Fetch is off" } } : undefined,
 		);
 		cdp.autoAttach({ id: "popup-1", type: "page", openerId: "page-1", url: "http://10.0.0.1/" });
-		await vi.waitFor(() =>
-			expect(cdp.commands.some((command) => command.method === "Target.closeTarget")).toBe(true),
-		);
+		await vi.waitFor(() => expect(cdp.commands.some((command) => command.method === "Target.closeTarget")).toBe(true));
 		expect(cdp.commands.find((command) => command.method === "Target.closeTarget")).toMatchObject({
 			target: "browser",
 			params: { targetId: "popup-1" },

@@ -37,11 +37,7 @@ it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 						seen.push(event);
 						durable = ctx.sessionManager
 							.getEntries()
-							.some(
-								(entry) =>
-									entry.type === "message" &&
-									entry.message.role === "toolResult",
-							);
+							.some((entry) => entry.type === "message" && entry.message.role === "toolResult");
 						await h.session.abort();
 					});
 				},
@@ -58,9 +54,7 @@ it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 			await entered;
 			const turn = h.session.getTurnId();
 			const first = h.session.abort(reason);
-			const second = h.session.abort(
-				reason === "interrupted" ? "replacement" : "interrupted",
-			);
+			const second = h.session.abort(reason === "interrupted" ? "replacement" : "interrupted");
 			release();
 			await Promise.all([prompt, first, second]);
 			await h.session.abort();
@@ -84,13 +78,9 @@ it("keeps external abort callers waiting while allowing the interruption observe
 	let release!: () => void;
 	const held = new Promise<void>((resolve) => (release = resolve));
 	let observing!: () => void;
-	const observingPromise = new Promise<void>(
-		(resolve) => (observing = resolve),
-	);
+	const observingPromise = new Promise<void>((resolve) => (observing = resolve));
 	let releaseObserver!: () => void;
-	const observerHeld = new Promise<void>(
-		(resolve) => (releaseObserver = resolve),
-	);
+	const observerHeld = new Promise<void>((resolve) => (releaseObserver = resolve));
 	const h = await createHarness({
 		settings: { retry: { enabled: false } },
 		tools: [
@@ -158,10 +148,7 @@ it("saves pending records before observing interruption when preparation fails",
 	try {
 		await h.session.bindExtensions({});
 		let abort: Promise<void> | undefined;
-		vi.spyOn(
-			h.session as unknown as { _prepareRun(): Promise<never> },
-			"_prepareRun",
-		).mockImplementation(async () => {
+		vi.spyOn(h.session as unknown as { _prepareRun(): Promise<never> }, "_prepareRun").mockImplementation(async () => {
 			await h.session.sendCustomMessage(
 				{ customType: "pending-preparation", content: "saved", display: false },
 				{ triggerTurn: false },
@@ -169,9 +156,7 @@ it("saves pending records before observing interruption when preparation fails",
 			abort = h.session.abort();
 			throw new Error("preparation failed");
 		});
-		await expect(h.session.prompt("work")).rejects.toThrow(
-			"preparation failed",
-		);
+		await expect(h.session.prompt("work")).rejects.toThrow("preparation failed");
 		await abort;
 		expect(seen).toEqual(["pending-preparation"]);
 		expect(h.session.getTurnId()).toBeUndefined();

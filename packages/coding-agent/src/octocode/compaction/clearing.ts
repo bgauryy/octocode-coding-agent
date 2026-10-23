@@ -102,9 +102,7 @@ function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 		const tool = String(message.toolName);
 		const saved = tool === "bash" ? spilledBash(message, calls) : undefined;
 		const text =
-			CLEARABLE_TOOLS.has(tool) || isOctocodeTool(tool) || saved !== undefined
-				? plainText(message.content)
-				: undefined;
+			CLEARABLE_TOOLS.has(tool) || isOctocodeTool(tool) || saved !== undefined ? plainText(message.content) : undefined;
 		return text !== undefined && !text.startsWith(PLACEHOLDER_START)
 			? [{ id: message.toolCallId, tool, text, ...(saved === undefined ? {} : { saved }) }]
 			: [];
@@ -115,8 +113,7 @@ function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 function olderResults(candidates: readonly Candidate[], cleared: ReadonlyMap<string, string>): Candidate[] {
 	const open = candidates.filter((candidate) => !cleared.has(candidate.id));
 	const older = open.slice(0, Math.max(open.length - KEEP_RECENT_RESULTS, 0));
-	return older.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN >=
-		CLEAR_AT_LEAST_TOKENS
+	return older.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN >= CLEAR_AT_LEAST_TOKENS
 		? older
 		: [];
 }
@@ -180,8 +177,6 @@ export function applyClearedResults<T>(messages: T[], cleared: ReadonlyMap<strin
 	return messages.map((message) => {
 		if (!isRecord(message) || message.role !== "toolResult") return message;
 		const saved = cleared.get(String(message.toolCallId));
-		return saved === undefined
-			? message
-			: { ...message, content: [{ type: "text", text: clearedPlaceholder(saved) }] };
+		return saved === undefined ? message : { ...message, content: [{ type: "text", text: clearedPlaceholder(saved) }] };
 	}) as T[];
 }

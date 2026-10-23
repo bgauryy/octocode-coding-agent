@@ -97,6 +97,7 @@ These variables are read by Octocode itself:
 | `OCTOCODE_IMAGE_PROTOCOL` | Override inline image detection with `kitty`, `iterm2`, `none`, or `auto` |
 | `OCTOCODE_TRUE_COLOR` | Override truecolor detection with `1`, `0`, or `auto` |
 | `OCTOCODE_TUI_ESC_TIMEOUT` | How long to wait after a lone ESC before treating it as Escape, in milliseconds; defaults to `100` over SSH and `10` otherwise. Increase if Alt-key input is misread as Escape |
+| `OCTOCODE_TUI_PASTE_TIMEOUT` | How long a bracketed paste may go without input before it is accepted without its end marker, in milliseconds; defaults to `3000` over SSH and `1000` otherwise. Increase if long pastes over a slow link arrive split |
 | `VISUAL`, `EDITOR` | External editor fallback when `externalEditor` is unset |
 | `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests |
 

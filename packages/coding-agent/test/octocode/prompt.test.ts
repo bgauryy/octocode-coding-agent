@@ -32,7 +32,7 @@ describe("prompt", () => {
 		expect(root).not.toContain("SKILL.md");
 		// Which Octocode tool does what is the server's business: no tool or parameter names.
 		for (const coupled of [
-						"localSearch",
+			"localSearch",
 			"structureSearch",
 			"astSearch",
 			"ghSearchCode",
@@ -78,9 +78,7 @@ describe("prompt", () => {
 		expect(root).not.toContain("`background: true`");
 		expect(root).not.toContain("collaborate: true");
 		expect(root).not.toContain("Never poll a subagent");
-		expect(root).toContain(
-			"have a subagent with `file` or bash save it as a Markdown doc under `.octocode/<topic>/`",
-		);
+		expect(root).toContain("have a subagent with `file` or bash save it as a Markdown doc under `.octocode/<topic>/`");
 		// The agent tool description owns delegation mechanics: the limit, report delivery and report files.
 		expect(root).not.toContain("Reports arrive automatically");
 		expect(root).not.toMatch(/at most \d+ at a time/);
@@ -108,43 +106,47 @@ describe("prompt", () => {
 	});
 
 	it("gives a read-only agent one investigate-and-report rule instead of the rules about changing files", () => {
-		const reader = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: false });
-		// It may write its scratch folder and the output path its task names (through bash), and nothing else.
+		const reader = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: false, canSave: true });
+		// A read-only role keeps `file`: it saves its scratch evidence and the report its task names, and nothing else.
 		expect(reader).toContain(
-			"- Investigate and report; do not modify the repository. Shell and MCP tools can still write, so run only read-only commands, and write only your scratch folder and the output path your task names.",
+			"- Investigate and report; do not modify the repository. Write only your scratch folder and the output path your task names. Run only read-only commands. Call only read-only MCP tools.",
 		);
-		// It names only the writers this agent has: a web profile has neither bash nor MCP.
-		const web = octocodePrompt({
+		expect(reader).toContain("a Markdown doc in your scratch folder");
+		// It limits only the writers this agent has: the browser specialist has `file` and MCP but no shell.
+		expect(
+			octocodePrompt({
+				octocode: true,
+				profiles: [],
+				canDelegate: false,
+				canWrite: false,
+				canSave: true,
+				canShell: false,
+			}),
+		).toContain(
+			"- Investigate and report; do not modify the repository. Write only your scratch folder and the output path your task names. Call only read-only MCP tools.",
+		);
+		// Without a way to save files, output goes into the report.
+		const bare = octocodePrompt({
 			octocode: false,
 			profiles: [],
 			canDelegate: false,
 			canWrite: false,
+			canSave: false,
 			canShell: false,
 			canMcp: false,
 		});
-		expect(web).toContain(
+		expect(bare).toContain(
 			"- Investigate and report; do not modify the repository. Put what you produce in your report.",
 		);
-		expect(web).not.toMatch(/Shell|MCP tools/);
-		expect(
-			octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: false, canShell: false }),
-		).toContain("MCP tools can still write, so call only read-only ones, and put what you produce in your report.");
+		expect(bare).not.toMatch(/read-only commands|MCP tools|a Markdown doc in your scratch folder/);
 		expect(reader).not.toContain("a file you will edit");
 		expect(reader).toContain("Use `localFetch` for files you know.");
-		for (const rule of [
-			"Make the smallest complete change",
-			"Never weaken or delete tests",
-			"When you changed files",
-		])
+		for (const rule of ["Make the smallest complete change", "Never weaken or delete tests", "When you changed files"])
 			expect(reader).not.toContain(rule);
 		const writer = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
 		expect(writer).not.toContain("do not modify the repository");
 		expect(writer).toContain("Use `localFetch` for a file you will edit");
-		for (const rule of [
-			"Make the smallest complete change",
-			"Never weaken or delete tests",
-			"When you changed files",
-		])
+		for (const rule of ["Make the smallest complete change", "Never weaken or delete tests", "When you changed files"])
 			expect(writer).toContain(rule);
 	});
 
@@ -154,7 +156,9 @@ describe("prompt", () => {
 			expect(child.match(/Start it with one word, done, partial, blocked or failed,/g)).toHaveLength(1);
 			// A message is mid-task contact: approval and blockers go through `agent` with type `message`, never "report to the parent".
 			expect(child).not.toMatch(/[Rr]eport [^.]*to the parent/);
-			expect(child).toContain("message your parent using `agent` type `message` for approval before destructive or irreversible actions");
+			expect(child).toContain(
+				"message your parent using `agent` type `message` for approval before destructive or irreversible actions",
+			);
 		}
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).not.toContain("one word");
 	});
@@ -190,30 +194,22 @@ describe("prompt", () => {
 	it("tells the main session which coordination system reaches whom", () => {
 		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
 		expect(root).toContain(
-			"- Inside an Octocode team use `agent` task, coordinate and message modes; use the agents-communication tools only to reach agents outside Octocode (Claude Code, Codex, other hosts); Octocode honors their file locks.",
+			"- Inside an Octocode team use `agent` (task, coordinate and message types); for agents outside Octocode use `agent` type `external`, or the agents-communication tools to reach agents in other hosts (Claude Code, Codex); Octocode honors their file locks.",
 		);
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).not.toContain(
-			"agents-communication",
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).not.toContain("agents-communication");
+		// Without the agent tool, the rule names no `agent` modes.
+		const withoutAgent = octocodePrompt({ octocode: false, profiles: [], canDelegate: true, canUseAgent: false });
+		expect(withoutAgent).toContain(
+			"- Use the agents-communication tools to reach agents in other hosts (Claude Code, Codex)",
 		);
-		// Without task delegation, the rule names only communication modes.
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true, canUseAgent: false })).toContain(
-			"- Inside an Octocode team use `agent` coordinate and message modes; use the agents-communication tools",
-		);
+		expect(withoutAgent).not.toContain("`agent`");
 	});
 
-	it("tells an agent with bash to tail long output without hiding a failing exit status", () => {
+	it("leaves the bash output recipe to the bash tool", () => {
 		for (const input of [
 			{ octocode: false, profiles: [], canDelegate: true },
 			{ octocode: true, profiles: [], canDelegate: false, canWrite: false },
-		]) {
-			const prompt = octocodePrompt(input);
-			expect(prompt).toContain("`2>&1 | tail -n 50`");
-			// `cmd | tail` alone exits with tail's status: a failed build would read as passing.
-			expect(prompt).toContain("`set -o pipefail;`");
-			expect(prompt.match(/- Keep bash output small/g)).toHaveLength(1);
-		}
-		expect(
-			octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: false, canShell: false }),
-		).not.toContain("tail -n");
+		])
+			expect(octocodePrompt(input)).not.toContain("tail -n");
 	});
 });

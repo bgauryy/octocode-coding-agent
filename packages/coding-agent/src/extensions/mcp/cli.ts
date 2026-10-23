@@ -223,7 +223,10 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 	if (command === "config") {
 		const parsed = parseOptions(rest, { json: "flag" }, error);
 		if (!parsed) return 1;
-		if (parsed.positional.length) { error(`Usage: ${APP_NAME} mcp config [--json]`); return 1; }
+		if (parsed.positional.length) {
+			error(`Usage: ${APP_NAME} mcp config [--json]`);
+			return 1;
+		}
 		const locations = getMcpConfigLocations(options.agentDir, options.cwd, projectTrusted);
 		log(parsed.values.has("json") ? JSON.stringify(locations, null, 2) : formatMcpConfigLocations(locations));
 		return 0;
@@ -240,7 +243,10 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			const parsed = parseOptions(rest, { json: "flag" }, error);
 			if (!parsed) return 1;
 			const [server, tool, ...extra] = parsed.positional;
-			if (extra.length) { error(`Usage: ${APP_NAME} mcp tools [server] [tool] [--json]`); return 1; }
+			if (extra.length) {
+				error(`Usage: ${APP_NAME} mcp tools [server] [tool] [--json]`);
+				return 1;
+			}
 			if (server && !loaded.servers.some((entry) => entry.name === server)) {
 				error(`No MCP server named "${server}".${untrustedNote ? ` ${untrustedNote}` : ""}`);
 				return 1;
@@ -253,26 +259,54 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			const parsed = parseOptions(rest, { local: "flag" }, error);
 			if (!parsed) return 1;
 			const [name, mode, ...extra] = parsed.positional;
-			if (!name || extra.length || (command !== "exposure" && mode !== undefined) ||
-				(command === "exposure" && !["auto", "deferred", "direct", "hidden"].includes(mode ?? ""))) {
-				error(`Usage: ${APP_NAME} mcp ${command} <server>${command === "exposure" ? " <auto|deferred|direct|hidden>" : ""} [-l]`);
+			if (
+				!name ||
+				extra.length ||
+				(command !== "exposure" && mode !== undefined) ||
+				(command === "exposure" && !["auto", "deferred", "direct", "hidden"].includes(mode ?? ""))
+			) {
+				error(
+					`Usage: ${APP_NAME} mcp ${command} <server>${command === "exposure" ? " <auto|deferred|direct|hidden>" : ""} [-l]`,
+				);
 				return 1;
 			}
 			const entry = loaded.servers.find((server) => server.name === name);
-			if (!entry) { error(`No MCP server named "${name}".${untrustedNote ? ` ${untrustedNote}` : ""}`); return 1; }
+			if (!entry) {
+				error(`No MCP server named "${name}".${untrustedNote ? ` ${untrustedNote}` : ""}`);
+				return 1;
+			}
 			const local = parsed.values.has("local");
-			if (local && !projectTrusted) { error("Project configuration requires a trusted project."); return 1; }
+			if (local && !projectTrusted) {
+				error("Project configuration requires a trusted project.");
+				return 1;
+			}
 			const projectOverride = entry.override && entry.overrideScope !== "global";
 			const target = local
-				? (entry.scope === "project" ? entry.source : loaded.projectConfig ?? projectConfig)
-				: projectOverride ? entry.override! : entry.scope === "project" ? entry.source : loaded.globalConfig ?? join(options.agentDir, "mcp.json");
+				? entry.scope === "project"
+					? entry.source
+					: (loaded.projectConfig ?? projectConfig)
+				: projectOverride
+					? entry.override!
+					: entry.scope === "project"
+						? entry.source
+						: (loaded.globalConfig ?? join(options.agentDir, "mcp.json"));
 			try {
-				updateMcpServerConfig(target, name,
+				updateMcpServerConfig(
+					target,
+					name,
 					command === "exposure" ? { exposure: mode as McpExposure } : { enabled: command === "enable" },
-					{ override: target !== entry.source });
-			} catch (failure) { error(`Could not update ${target}: ${errorMessage(failure)}`); return 1; }
-			log(`MCP server "${name}": ${command === "exposure" ? `exposure ${mode}` : command === "enable" ? "enabled" : "disabled"}. Saved to ${target}.`);
-			log(`Running sessions keep their current configuration; use /mcp ${command} ${name}${mode ? ` ${mode}` : ""}${local ? " --local" : ""} there, or restart.`);
+					{ override: target !== entry.source },
+				);
+			} catch (failure) {
+				error(`Could not update ${target}: ${errorMessage(failure)}`);
+				return 1;
+			}
+			log(
+				`MCP server "${name}": ${command === "exposure" ? `exposure ${mode}` : command === "enable" ? "enabled" : "disabled"}. Saved to ${target}.`,
+			);
+			log(
+				`Running sessions keep their current configuration; use /mcp ${command} ${name}${mode ? ` ${mode}` : ""}${local ? " --local" : ""} there, or restart.`,
+			);
 			return 0;
 		}
 		case "list": {
@@ -510,54 +544,58 @@ async function list(
 	inspect?: { server?: string; tool?: string },
 ): Promise<number> {
 	const reports = await Promise.all(
-		loaded.servers.filter((entry) => !inspect?.server || entry.name === inspect.server).map(async (entry): Promise<ServerReport> => {
-			const report: ServerReport = {
-				name: entry.name,
-				scope: entry.scope ?? "global",
-				source: entry.source,
-				...(entry.override ? { override: entry.override, overrideScope: entry.overrideScope ?? "project" } : {}),
-				enabled: entry.config.enabled !== false,
-				exposure: entry.config.exposure ?? DEFAULT_MCP_EXPOSURE,
-				transport: describeTransport(entry),
-				state: "disabled",
-				tools: [],
-			};
-			if (!report.enabled) return report;
-			const connection = createConnection(entry, options, credentials);
-			try {
-				await connection.getClient();
-			} catch {
-				// The connection records the state and error.
-			}
-			report.state = connection.state;
-			report.tools = connection.tools.map((tool) => tool.name);
-			if (inspect) report.toolDetails = connection.tools
-				.filter((tool) => !inspect.tool || tool.name === inspect.tool)
-				.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema, exposure: getMcpToolExposure(entry.config, tool.name, entry.name) }));
-			const overrides = connection.tools.flatMap((tool) => {
-				const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
-				return exposure === report.exposure ? [] : [[tool.name, exposure] as const];
-			});
-			if (overrides.length > 0) report.toolExposure = Object.fromEntries(overrides);
-			if (connection.hasResources) report.resources = true;
-			if (connection.state !== "connected" && connection.error) report.error = connection.error;
-			await connection.close();
-			return report;
-		}),
+		loaded.servers
+			.filter((entry) => !inspect?.server || entry.name === inspect.server)
+			.map(async (entry): Promise<ServerReport> => {
+				const report: ServerReport = {
+					name: entry.name,
+					scope: entry.scope ?? "global",
+					source: entry.source,
+					...(entry.override ? { override: entry.override, overrideScope: entry.overrideScope ?? "project" } : {}),
+					enabled: entry.config.enabled !== false,
+					exposure: entry.config.exposure ?? DEFAULT_MCP_EXPOSURE,
+					transport: describeTransport(entry),
+					state: "disabled",
+					tools: [],
+				};
+				if (!report.enabled) return report;
+				const connection = createConnection(entry, options, credentials);
+				try {
+					await connection.getClient();
+				} catch {
+					// The connection records the state and error.
+				}
+				report.state = connection.state;
+				report.tools = connection.tools.map((tool) => tool.name);
+				if (inspect)
+					report.toolDetails = connection.tools
+						.filter((tool) => !inspect.tool || tool.name === inspect.tool)
+						.map((tool) => ({
+							name: tool.name,
+							description: tool.description,
+							inputSchema: tool.inputSchema,
+							exposure: getMcpToolExposure(entry.config, tool.name, entry.name),
+						}));
+				const overrides = connection.tools.flatMap((tool) => {
+					const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
+					return exposure === report.exposure ? [] : [[tool.name, exposure] as const];
+				});
+				if (overrides.length > 0) report.toolExposure = Object.fromEntries(overrides);
+				if (connection.hasResources) report.resources = true;
+				if (connection.state !== "connected" && connection.error) report.error = connection.error;
+				await connection.close();
+				return report;
+			}),
 	);
-	const missingTool = inspect?.tool && !reports.some((report) => report.toolDetails?.length)
-		? `No available tool named "${inspect.tool}" on MCP server "${inspect.server}".` : undefined;
+	const missingTool =
+		inspect?.tool && !reports.some((report) => report.toolDetails?.length)
+			? `No available tool named "${inspect.tool}" on MCP server "${inspect.server}".`
+			: undefined;
 	const errors = [...loaded.errors, ...(missingTool ? [missingTool] : [])];
 	const failed = errors.length > 0 || reports.some((report) => report.enabled && report.state !== "connected");
 
 	if (json) {
-		log(
-			JSON.stringify(
-				{ servers: reports, errors, ...(untrustedNote ? { note: untrustedNote } : {}) },
-				null,
-				2,
-			),
-		);
+		log(JSON.stringify({ servers: reports, errors, ...(untrustedNote ? { note: untrustedNote } : {}) }, null, 2));
 		return failed ? 1 : 0;
 	}
 	if (reports.length === 0 && loaded.errors.length === 0) {

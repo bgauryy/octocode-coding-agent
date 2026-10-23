@@ -19,7 +19,12 @@ export function externalFailure(error: unknown): Record<string, unknown> {
 	};
 }
 
-export function registerExternal(pi: ExtensionAPI, commands: Subcommands, policy: ExternalPolicy, registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool)): ExternalAgents {
+export function registerExternal(
+	pi: ExtensionAPI,
+	commands: Subcommands,
+	policy: ExternalPolicy,
+	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+): ExternalAgents {
 	const agents = new ExternalAgents(policy);
 	const render = (data: unknown) =>
 		fenceUntrusted(
@@ -50,16 +55,22 @@ export function registerExternal(pi: ExtensionAPI, commands: Subcommands, policy
 	commands.add("agents", {
 		dialog: "interaction",
 		description: "List local and external agents; message, stop or connect an agent",
-		complete: (prefix) => prefix.startsWith("external ")
-			? wordCompletions(["list", "connect", "prompt", "cancel", "disconnect"], prefix.slice(9))?.map(item => ({...item, value: `external ${item.value}`})) ?? null
-			: [...(local?.complete?.(prefix) ?? []), ...(wordCompletions(["external"], prefix) ?? [])],
+		complete: (prefix) =>
+			prefix.startsWith("external ")
+				? (wordCompletions(["list", "connect", "prompt", "cancel", "disconnect"], prefix.slice(9))?.map((item) => ({
+						...item,
+						value: `external ${item.value}`,
+					})) ?? null)
+				: [...(local?.complete?.(prefix) ?? []), ...(wordCompletions(["external"], prefix) ?? [])],
 		handler: async (args, ctx) => {
 			const line = args.trim();
 			if (line && line !== "external" && !line.startsWith("external ")) {
-				if (local) return local.dialog === "interaction" ? local.handler(line, ctx) : withDialog(() => local.handler(line, ctx));
+				if (local)
+					return local.dialog === "interaction" ? local.handler(line, ctx) : withDialog(() => local.handler(line, ctx));
 				return say(ctx, "Use /agents external [list|connect|prompt|cancel|disconnect].", "warning");
 			}
-			if (!line && local) await (local.dialog === "interaction" ? local.handler("", ctx) : withDialog(() => local.handler("", ctx)));
+			if (!line && local)
+				await (local.dialog === "interaction" ? local.handler("", ctx) : withDialog(() => local.handler("", ctx)));
 			try {
 				const input = parseExternalCommand(line.replace(/^external\s*/, ""));
 				say(ctx, render(await agents.call(input, ctx)), "info");
@@ -79,7 +90,11 @@ export function parseExternalCommand(args: string): unknown {
 	if (action === "list" && !id) return { action };
 	if ((action === "cancel" || action === "disconnect") && id && !rest.length) return { action, id };
 	if (action === "prompt" && id && rest.length) return { action, id, text: line.replace(/^\S+\s+\S+\s+/, "") };
-	if (action === "connect" && id === "octocode" && rest.length === 1) return { action, transport: id, instanceId: rest[0] };
-	if (action === "connect" && id === "acp" && rest.length >= 2) return { action, transport: id, vendor: rest[0], command: rest[1], args: rest.slice(2) };
-	throw new Error("Usage: /agents external [list | connect octocode <instanceId> | connect acp <vendor> <command> [args...] | prompt <id> <text> | cancel <id> | disconnect <id>]");
+	if (action === "connect" && id === "octocode" && rest.length === 1)
+		return { action, transport: id, instanceId: rest[0] };
+	if (action === "connect" && id === "acp" && rest.length >= 2)
+		return { action, transport: id, vendor: rest[0], command: rest[1], args: rest.slice(2) };
+	throw new Error(
+		"Usage: /agents external [list | connect octocode <instanceId> | connect acp <vendor> <command> [args...] | prompt <id> <text> | cancel <id> | disconnect <id>]",
+	);
 }

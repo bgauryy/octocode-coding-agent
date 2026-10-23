@@ -71,8 +71,7 @@ export function getTextOutput(
 		const imageIndicators = imageBlocks
 			.map((img) => {
 				const mimeType = img.mimeType ?? "image/unknown";
-				const dims =
-					img.data && img.mimeType ? (getImageDimensions(img.data, img.mimeType) ?? undefined) : undefined;
+				const dims = img.data && img.mimeType ? (getImageDimensions(img.data, img.mimeType) ?? undefined) : undefined;
 				return imageFallback(mimeType, dims);
 			})
 			.join("\n");
@@ -98,9 +97,7 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	const header = theme.fg("toolTitle", theme.bold(title));
 	if (args == null) return header;
 	const entries =
-		typeof args === "object" && !Array.isArray(args)
-			? Object.entries(args)
-			: ([["args", args]] as [string, unknown][]);
+		typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : ([["args", args]] as [string, unknown][]);
 	if (entries.length === 0) return header;
 	if (expanded) {
 		const lines = entries.map(([key, value]) => {

@@ -8,7 +8,8 @@ import { type CompactionResult, estimateProjectedContextTokens } from "./compact
 export class CheckpointPersistenceError extends Error {}
 
 export function persistCheckpointText(text: string, sessionFile?: string): string {
-	if (!sessionFile) throw new CheckpointPersistenceError("Cannot persist the complete checkpoint without a session file.");
+	if (!sessionFile)
+		throw new CheckpointPersistenceError("Cannot persist the complete checkpoint without a session file.");
 	const file = `${sessionFile}.checkpoint-${randomUUID()}.md`;
 	try {
 		fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -24,6 +25,9 @@ export function finalizeCompactionResult(
 	options: { branchEntries: SessionEntry[]; contextWindow: number; reserveTokens: number; sessionFile?: string },
 ): CompactionResult {
 	const { branchEntries, contextWindow, reserveTokens } = options;
+	if (!branchEntries.some((entry) => entry.id === result.firstKeptEntryId)) {
+		throw new CheckpointPersistenceError("Compaction retained context boundary is not on the active branch.");
+	}
 	const earlierArchives = new Set<string>();
 	for (const entry of branchEntries) {
 		if (entry.type !== "compaction" || !entry.details || typeof entry.details !== "object") continue;
@@ -53,19 +57,28 @@ export function finalizeCompactionResult(
 		return estimateProjectedContextTokens(buildSessionProjection(entries), entries).tokens;
 	};
 	const available = contextWindow - reserveTokens;
-	const summaryBudget = Math.min(reserveTokens > 0 ? Math.floor(reserveTokens * 0.8) : available, available - projectedTokens(""));
+	const summaryBudget = Math.min(
+		reserveTokens > 0 ? Math.floor(reserveTokens * 0.8) : available,
+		available - projectedTokens(""),
+	);
 	if (summaryBudget <= 0) {
-		throw new CheckpointPersistenceError("Compaction cannot fit the retained context and a checkpoint in the target window.");
+		throw new CheckpointPersistenceError(
+			"Compaction cannot fit the retained context and a checkpoint in the target window.",
+		);
 	}
-	if (Math.ceil(result.summary.length / 4) <= summaryBudget && projectedTokens(result.summary) <= available) return result;
+	if (Math.ceil(result.summary.length / 4) <= summaryBudget && projectedTokens(result.summary) <= available)
+		return result;
 	const file = persistCheckpointText(result.summary, options.sessionFile);
 	const summary = `The complete context checkpoint is saved at ${file}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.`;
 	if (Math.ceil(summary.length / 4) > summaryBudget || projectedTokens(summary) > available) {
-		throw new CheckpointPersistenceError("Compaction cannot fit the retained context and its checkpoint reference in the target window.");
+		throw new CheckpointPersistenceError(
+			"Compaction cannot fit the retained context and its checkpoint reference in the target window.",
+		);
 	}
-	const details = result.details !== null && typeof result.details === "object"
-		? result.details
-		: { originalDetails: result.details };
+	const details =
+		result.details !== null && typeof result.details === "object"
+			? result.details
+			: { originalDetails: result.details };
 	return {
 		...result,
 		summary,

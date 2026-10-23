@@ -60,9 +60,7 @@ describe("action classes of tool calls", () => {
 		expect(of(call("bash", { command: "npm test" }))).toBe("shell");
 		expect(of(call("powershell", { command: "Get-ChildItem" }))).toBe("shell");
 		expect(of(call("edit", { path: "src/a.ts", edits: [] }))).toBe("file.workspace");
-		expect(of(call("write", { path: path.join(os.tmpdir(), "elsewhere", "x.txt"), content: "" }))).toBe(
-			"file.outside",
-		);
+		expect(of(call("write", { path: path.join(os.tmpdir(), "elsewhere", "x.txt"), content: "" }))).toBe("file.outside");
 		expect(of(call("read", { path: "src/a.ts" }))).toBeUndefined();
 		expect(of(call("read", { path: "/etc/hosts" }))).toBe("read.outside");
 		expect(of(call("grep", { pattern: "x" }))).toBeUndefined();
@@ -154,9 +152,7 @@ describe("permission gate", () => {
 				},
 			});
 			await strict.gate(call("bash", { type: "powershell", command }), strict.ctx);
-			expect(strict.asked[0], command).toMatch(
-				destructive ? /^Run this destructive command\?/ : /^Run this command\?/,
-			);
+			expect(strict.asked[0], command).toMatch(destructive ? /^Run this destructive command\?/ : /^Run this command\?/);
 		}
 		expect(seen).toEqual(Object.keys(verdicts));
 		// Only the powershell tool is parsed by the helper: bash goes through the POSIX classifier.
@@ -280,9 +276,7 @@ describe("permission gate", () => {
 
 	it("runs a hook ask in full without a dialog and records the reason, headless too", async () => {
 		const full = setup("full");
-		expect(
-			await full.gate(call("bash", { command: "ls" }), full.ctx, { ask: "Hook says check this" }),
-		).toBeUndefined();
+		expect(await full.gate(call("bash", { command: "ls" }), full.ctx, { ask: "Hook says check this" })).toBeUndefined();
 		expect(full.asked).toEqual([]);
 		expect(full.fake.entries.map((entry) => entry.data)).toEqual([
 			expect.objectContaining({ action: "shell", reasons: ["hook.ask"], allowed: true, via: "mode" }),
@@ -326,9 +320,7 @@ describe("permission gate", () => {
 
 	it("records a hook ask and a provenance hit together in full, without asking", async () => {
 		const full = setup("full", { hit: "contains text from web x (now)" });
-		expect(
-			await full.gate(call("bash", { command: "ls" }), full.ctx, { ask: "Hook says check this" }),
-		).toBeUndefined();
+		expect(await full.gate(call("bash", { command: "ls" }), full.ctx, { ask: "Hook says check this" })).toBeUndefined();
 		expect(full.asked).toEqual([]);
 		expect(full.fake.entries.map((entry) => entry.data)).toEqual([
 			expect.objectContaining({ action: "shell", reasons: ["provenance", "hook.ask"], allowed: true, via: "mode" }),

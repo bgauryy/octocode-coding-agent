@@ -70,14 +70,7 @@ it("treats server errors as failures and bounds calls that ignore cancellation",
 	}));
 	expect(result.code).toBeNull();
 	expect(interpret("PreToolUse", result, "claude")).toEqual({});
-	const stalled = await runHook(
-		hook(),
-		{},
-		tmp(),
-		{},
-		undefined,
-		() => new Promise(() => {}),
-	);
+	const stalled = await runHook(hook(), {}, tmp(), {}, undefined, () => new Promise(() => {}));
 	expect(stalled.timedOut).toBe(true);
 });
 it("does not call MCP after cancellation or when no MCP owner is available", async () => {
@@ -93,9 +86,7 @@ it("skips launch SessionStart MCP hooks but runs later compact/clear hooks", asy
 	const config = parseHooks(
 		{
 			hooks: {
-				SessionStart: [
-					{ hooks: [{ type: "mcp_tool", server: "policy", tool: "context" }] },
-				],
+				SessionStart: [{ hooks: [{ type: "mcp_tool", server: "policy", tool: "context" }] }],
 			},
 		},
 		"fixture",
@@ -110,26 +101,12 @@ it("skips launch SessionStart MCP hooks but runs later compact/clear hooks", asy
 		content: [{ type: "text" as const, text: "session guidance" }],
 	}));
 	for (const source of ["startup", "resume", "fork"]) {
-		const result = await runHook(
-			selected,
-			{ hook_event_name: "SessionStart", source },
-			tmp(),
-			{},
-			undefined,
-			call,
-		);
+		const result = await runHook(selected, { hook_event_name: "SessionStart", source }, tmp(), {}, undefined, call);
 		expect(result).toMatchObject({ code: 0, stdout: "" });
 	}
 	expect(call).not.toHaveBeenCalled();
 	for (const source of ["clear", "compact"]) {
-		const result = await runHook(
-			selected,
-			{ hook_event_name: "SessionStart", source },
-			tmp(),
-			{},
-			undefined,
-			call,
-		);
+		const result = await runHook(selected, { hook_event_name: "SessionStart", source }, tmp(), {}, undefined, call);
 		expect(interpret("SessionStart", result, "claude")).toEqual({
 			context: "session guidance",
 		});
@@ -144,9 +121,7 @@ function codexHook(event = "PreToolUse", input: Record<string, unknown> = {}) {
 			hooks: {
 				[event]: [
 					{
-						hooks: [
-							{ type: "mcp_tool", server: "policy", tool: "check", input },
-						],
+						hooks: [{ type: "mcp_tool", server: "policy", tool: "check", input }],
 					},
 				],
 			},
@@ -165,11 +140,7 @@ function codexHook(event = "PreToolUse", input: Record<string, unknown> = {}) {
 it("runs Codex MCP hooks on existing connections with typed recursive placeholders", async () => {
 	const { selected, errors } = codexHook("PreToolUse", {
 		count: "${tool_input.count}",
-		nested: [
-			"${tool_input.object}",
-			"n=${tool_input.count}",
-			"${tool_input.nil}",
-		],
+		nested: ["${tool_input.object}", "n=${tool_input.count}", "${tool_input.nil}"],
 		literal: "$none",
 	});
 	expect(errors).toEqual([]);
@@ -212,14 +183,7 @@ it("fails Codex missing placeholders without invoking the tool", async () => {
 	});
 	expect(errors).toEqual([]);
 	const call = vi.fn();
-	const result = await runHook(
-		selected!,
-		{ tool_input: {} },
-		tmp(),
-		{},
-		undefined,
-		call,
-	);
+	const result = await runHook(selected!, { tool_input: {} }, tmp(), {}, undefined, call);
 	expect(result.code).toBeNull();
 	expect(result.stderr).toContain("was not found");
 	expect(call).not.toHaveBeenCalled();
@@ -230,17 +194,8 @@ it("attempts Codex startup MCP hooks but excludes SessionEnd", async () => {
 	const call = vi.fn(async () => ({
 		content: [{ type: "text" as const, text: "startup context" }],
 	}));
-	await runHook(
-		selected!,
-		{ hook_event_name: "SessionStart", source: "startup" },
-		tmp(),
-		{},
-		undefined,
-		call,
-	);
-	expect(call).toHaveBeenCalledWith(
-		expect.objectContaining({ waitForConnection: false }),
-	);
+	await runHook(selected!, { hook_event_name: "SessionStart", source: "startup" }, tmp(), {}, undefined, call);
+	expect(call).toHaveBeenCalledWith(expect.objectContaining({ waitForConnection: false }));
 	const ending = codexHook("SessionEnd");
 	expect(ending.selected).toBeUndefined();
 	expect(ending.errors.join()).toContain("SessionEnd");

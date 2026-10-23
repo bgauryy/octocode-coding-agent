@@ -312,10 +312,12 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 		}
 		if (
 			packageName !== undefined &&
-			(packageName.startsWith(internalPackagePrefix)) &&
+			packageName.startsWith(internalPackagePrefix) &&
 			entry.version !== installerPackageJson.version
 		) {
-			errors.push(`${lockPath} internal package version ${entry.version} does not match ${installerPackageJson.version}`);
+			errors.push(
+				`${lockPath} internal package version ${entry.version} does not match ${installerPackageJson.version}`,
+			);
 		}
 		if (entry.hasInstallScript) {
 			if (!packageName || !entry.version) {
@@ -422,15 +424,20 @@ function generateInstallLock() {
 
 try {
 	const codingAgentManifest = readJson(join(codingAgentDir, "package.json"));
-	const localDependencies = Object.entries(codingAgentManifest.dependencies ?? {})
-		.filter(([, specifier]) => /^(file|link):/.test(specifier));
+	const localDependencies = Object.entries(codingAgentManifest.dependencies ?? {}).filter(([, specifier]) =>
+		/^(file|link):/.test(specifier),
+	);
 	if (localDependencies.length > 0) {
 		if (requireRegistry) {
-			throw new Error("Cannot release a registry installer with local dependencies. Replace file: dependencies with reviewed registry versions first.");
+			throw new Error(
+				"Cannot release a registry installer with local dependencies. Replace file: dependencies with reviewed registry versions first.",
+			);
 		}
 		const validated = validateLocalDependencies(codingAgentDir);
 		console.log(`Validated local dependencies: ${validated.join(", ")}`);
-		console.log("Local dependency mode; registry installer artifacts are unavailable. Replace file: dependencies with reviewed registry versions, then regenerate with --require-registry.");
+		console.log(
+			"Local dependency mode; registry installer artifacts are unavailable. Replace file: dependencies with reviewed registry versions, then regenerate with --require-registry.",
+		);
 		process.exit(0);
 	}
 	const { installerPackageJson, installLock } = generateInstallLock();
@@ -456,8 +463,9 @@ try {
 		writeFileSync(outputPackageJsonPath, packageJsonContent);
 		writeFileSync(outputLockfilePath, lockfileContent);
 		const packageCount = Object.keys(installLock.packages).length - 1;
-		const platformPackageCount = Object.values(installLock.packages).filter((entry) => entry.os || entry.cpu || entry.libc)
-			.length;
+		const platformPackageCount = Object.values(installLock.packages).filter(
+			(entry) => entry.os || entry.cpu || entry.libc,
+		).length;
 		console.log(
 			`Wrote packages/coding-agent/install-lock/package.json and package-lock.json (${packageCount} packages, ${platformPackageCount} platform-specific).`,
 		);

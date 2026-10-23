@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getAgentDir } from "../../src/config.ts";
 import { loadSkills } from "../../src/core/skills.ts";
 import { extraSkillDirs, extraSkillsEnabled } from "../../src/octocode/skills.ts";
 import { tmp } from "./helpers.ts";
@@ -46,6 +47,20 @@ describe("skills", () => {
 		]);
 	});
 
+	it("leaves the repository's .octocode/skills and the agent directory's skills to core discovery", () => {
+		const repo = tmp();
+		fs.mkdirSync(path.join(repo, ".git"));
+		fs.mkdirSync(path.join(repo, ".octocode", "skills"), { recursive: true });
+		fs.mkdirSync(path.join(repo, ".claude", "skills"), { recursive: true });
+		const sub = path.join(repo, "packages", "a");
+		fs.mkdirSync(sub, { recursive: true });
+		// Loaded again here, their skills would escape the `skills` patterns and lose to user skills.
+		expect(extraSkillDirs(sub, tmp(), true)).toEqual([path.join(repo, ".claude", "skills")]);
+		const agentSkills = path.join(getAgentDir(), "skills");
+		fs.mkdirSync(agentSkills, { recursive: true });
+		expect(extraSkillDirs(tmp(), tmp(), true, { OCTOCODE_HOME: path.dirname(agentSkills) })).toEqual([]);
+	});
+
 	it("leaves out claude.ai's synced skills under ~/.claude/skills/synced, as Octocode loads the result", async () => {
 		const home = tmp();
 		const root = path.join(home, ".claude", "skills");
@@ -84,12 +99,25 @@ describe("skills", () => {
 });
 
 it("keeps Claude parsing semantics through extra-directory and filtered-file discovery", () => {
- const home = tmp();const cwd = tmp();
- const root = path.join(home, ".claude", "skills");
- fs.mkdirSync(path.join(root, "example"), { recursive: true });
- fs.mkdirSync(path.join(root, "synced"), { recursive: true });
- fs.writeFileSync(path.join(root, "example", "SKILL.md"), '---\nname: example\nuser-invocable: "no"\n---\nDescription from the body.\n$0');
- const loaded = loadSkills({ cwd, agentDir: tmp(), includeDefaults: false, skillPaths: extraSkillDirs(cwd, home, false) });
- expect(loaded.skills).toHaveLength(1);
- expect(loaded.skills[0]).toMatchObject({ description: "Description from the body.", userInvocable: false, argumentStyle: "claude" });
+	const home = tmp();
+	const cwd = tmp();
+	const root = path.join(home, ".claude", "skills");
+	fs.mkdirSync(path.join(root, "example"), { recursive: true });
+	fs.mkdirSync(path.join(root, "synced"), { recursive: true });
+	fs.writeFileSync(
+		path.join(root, "example", "SKILL.md"),
+		'---\nname: example\nuser-invocable: "no"\n---\nDescription from the body.\n$0',
+	);
+	const loaded = loadSkills({
+		cwd,
+		agentDir: tmp(),
+		includeDefaults: false,
+		skillPaths: extraSkillDirs(cwd, home, false),
+	});
+	expect(loaded.skills).toHaveLength(1);
+	expect(loaded.skills[0]).toMatchObject({
+		description: "Description from the body.",
+		userInvocable: false,
+		argumentStyle: "claude",
+	});
 });

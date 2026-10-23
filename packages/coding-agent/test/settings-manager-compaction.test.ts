@@ -21,18 +21,26 @@ describe("built-in compaction policy", () => {
 		}
 	});
 
-	it.each([null, false, { enabled: false, reserveTokens: 0, keepRecentTokens: 999999, modelOverrides: { "p/m": { reserveTokens: 199999 } } }])(
-		"ignores legacy customization from both settings layers: %j", async (compaction) => {
-			const storage = new InMemorySettingsStorage();
-			storage.withLock("global", () => JSON.stringify({ compaction }));
-			storage.withLock("project", () => JSON.stringify({ compaction }));
-			const manager = SettingsManager.fromStorage(storage);
-			const model = { provider: "p", id: "m", contextWindow: 200000 };
-			expect(manager.getCompactionSettings(model)).toEqual(defaults);
-			await manager.reload();
-			expect(manager.getCompactionSettings(model)).toEqual(defaults);
-			expect(autoCompactAt(model)).toBe(200000 - 16384);
-		});
+	it.each([
+		null,
+		false,
+		{
+			enabled: false,
+			reserveTokens: 0,
+			keepRecentTokens: 999999,
+			modelOverrides: { "p/m": { reserveTokens: 199999 } },
+		},
+	])("ignores legacy customization from both settings layers: %j", async (compaction) => {
+		const storage = new InMemorySettingsStorage();
+		storage.withLock("global", () => JSON.stringify({ compaction }));
+		storage.withLock("project", () => JSON.stringify({ compaction }));
+		const manager = SettingsManager.fromStorage(storage);
+		const model = { provider: "p", id: "m", contextWindow: 200000 };
+		expect(manager.getCompactionSettings(model)).toEqual(defaults);
+		await manager.reload();
+		expect(manager.getCompactionSettings(model)).toEqual(defaults);
+		expect(autoCompactAt(model)).toBe(200000 - 16384);
+	});
 
 	it("does not publish customization or a setter", () => {
 		expect(SettingsSchema.properties).not.toHaveProperty("compaction");

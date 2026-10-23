@@ -225,6 +225,29 @@ describe("Markdown component", () => {
 
 			const lines = markdown.render(80).map((line) => stripAnsi(line).trimEnd());
 
+			assert.deepStrictEqual(lines, ["☐ beep", "✔ boop"]);
+		});
+
+		it("strikes through completed task items and keeps ordered numbers", () => {
+			const markdown = new Markdown("1. [x] done\n2. [ ] todo", 0, 0, defaultMarkdownTheme);
+
+			const lines = markdown.render(80);
+
+			assert.deepStrictEqual(
+				lines.map((line) => stripAnsi(line).trimEnd()),
+				["1. ✔ done", "2. ☐ todo"],
+			);
+			assert.ok(lines[0]!.includes("\x1b[9m"));
+			assert.ok(!lines[1]!.includes("\x1b[9m"));
+		});
+
+		it("keeps source task markers when markers are preserved", () => {
+			const markdown = new Markdown("- [ ] beep\n- [x] boop", 0, 0, defaultMarkdownTheme, undefined, {
+				preserveOrderedListMarkers: true,
+			});
+
+			const lines = markdown.render(80).map((line) => stripAnsi(line).trimEnd());
+
 			assert.deepStrictEqual(lines, ["- [ ] beep", "- [x] boop"]);
 		});
 
@@ -313,6 +336,14 @@ describe("Markdown component", () => {
 			assert.deepStrictEqual(lines, ["- │ alpha beta gamma", "  │ delta epsilon zeta"]);
 		});
 
+		it("keeps the code indent on wrapped code lines", () => {
+			const markdown = new Markdown("```\n\treturn alpha + beta + gamma + delta;\n```", 0, 0, defaultMarkdownTheme);
+
+			const lines = markdown.render(24).map((line) => stripAnsi(line).trimEnd());
+
+			assert.deepStrictEqual(lines, ["```", "     return alpha + beta", "     + gamma + delta;", "```"]);
+		});
+
 		it("should render and wrap code blocks inside list items", () => {
 			const markdown = new Markdown(
 				"- ```ts\n  alpha beta gamma delta epsilon zeta\n  ```",
@@ -323,7 +354,7 @@ describe("Markdown component", () => {
 
 			const lines = markdown.render(24).map((line) => stripAnsi(line).trimEnd());
 
-			assert.deepStrictEqual(lines, ["- ```ts", "    alpha beta gamma", "  delta epsilon zeta", "  ```"]);
+			assert.deepStrictEqual(lines, ["- ```ts", "    alpha beta gamma", "    delta epsilon zeta", "  ```"]);
 		});
 	});
 
@@ -352,7 +383,7 @@ describe("Markdown component", () => {
 			assert.ok(plainLines.some((line) => line.includes("─")));
 		});
 
-		it("should render row dividers between data rows", () => {
+		it("omits row dividers when every row fits on one line", () => {
 			const markdown = new Markdown(
 				`| Name | Age |
 | --- | --- |
@@ -365,6 +396,23 @@ describe("Markdown component", () => {
 
 			const lines = markdown.render(80);
 			const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+			const dividerLines = plainLines.filter((line) => line.includes("┼"));
+
+			assert.strictEqual(dividerLines.length, 1, "Expected only the header divider");
+		});
+
+		it("renders row dividers when a row wraps", () => {
+			const markdown = new Markdown(
+				`| Name | Notes |
+| --- | --- |
+| Alice | short |
+| Bob | a much longer note that has to wrap inside its cell |`,
+				0,
+				0,
+				defaultMarkdownTheme,
+			);
+
+			const plainLines = markdown.render(30).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
 			const dividerLines = plainLines.filter((line) => line.includes("┼"));
 
 			assert.strictEqual(dividerLines.length, 2, "Expected header + row divider");
@@ -1032,16 +1080,10 @@ Inline \(A_{sf}\)`,
 		});
 
 		it("should preserve gray italic styling after bold text", () => {
-			const markdown = new Markdown(
-				"This is thinking with **bold text** and more after",
-				1,
-				0,
-				defaultMarkdownTheme,
-				{
-					color: (text) => chalk.gray(text),
-					italic: true,
-				},
-			);
+			const markdown = new Markdown("This is thinking with **bold text** and more after", 1, 0, defaultMarkdownTheme, {
+				color: (text) => chalk.gray(text),
+				italic: true,
+			});
 
 			const lines = markdown.render(80);
 			const joinedOutput = lines.join("\n");
@@ -1149,11 +1191,7 @@ more text`,
 				const lines = markdown.render(80);
 				const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 
-				assert.deepStrictEqual(
-					plainLines,
-					expectedLines,
-					`Unexpected spacing for markdown: ${JSON.stringify(text)}`,
-				);
+				assert.deepStrictEqual(plainLines, expectedLines, `Unexpected spacing for markdown: ${JSON.stringify(text)}`);
 			}
 		});
 
@@ -1414,16 +1452,10 @@ bar`,
 		});
 
 		it("should properly indent wrapped blockquote lines with styling", () => {
-			const markdown = new Markdown(
-				"> This is styled text that is long enough to wrap",
-				0,
-				0,
-				defaultMarkdownTheme,
-				{
-					color: (text) => chalk.yellow(text), // This should NOT be applied to blockquotes
-					italic: true,
-				},
-			);
+			const markdown = new Markdown("> This is styled text that is long enough to wrap", 0, 0, defaultMarkdownTheme, {
+				color: (text) => chalk.yellow(text), // This should NOT be applied to blockquotes
+				italic: true,
+			});
 
 			const lines = markdown.render(25);
 			const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
@@ -1495,14 +1527,8 @@ bar`,
 			// Look at the ANSI codes between the code span end and "should not be optional".
 			// There should be bold (\x1b[1m) and cyan (\x1b[36m) re-applied.
 			const precedingChunk = joinedOutput.slice(Math.max(0, afterCodeIndex - 40), afterCodeIndex);
-			assert.ok(
-				precedingChunk.includes("\x1b[1m"),
-				`Should re-apply bold before text after code: ${precedingChunk}`,
-			);
-			assert.ok(
-				precedingChunk.includes("\x1b[36m"),
-				`Should re-apply cyan before text after code: ${precedingChunk}`,
-			);
+			assert.ok(precedingChunk.includes("\x1b[1m"), `Should re-apply bold before text after code: ${precedingChunk}`);
+			assert.ok(precedingChunk.includes("\x1b[36m"), `Should re-apply cyan before text after code: ${precedingChunk}`);
 		});
 
 		it("should preserve heading styling after inline code for h1", () => {
@@ -1656,9 +1682,7 @@ bar`,
 			const plainLines = lines.map((line) => line.replace(/\x1b[^a-zA-Z]*[a-zA-Z]|\x1b\].*?\x1b\\/g, ""));
 			assert.ok(plainLines.join("").includes("click here"), "Should contain link text");
 			// URL is NOT printed inline as plain text
-			const rawPlain = lines.map((line) =>
-				line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""),
-			);
+			const rawPlain = lines.map((line) => line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""));
 			assert.ok(!rawPlain.join("").includes("(https://example.com)"), "URL should not appear inline in parentheses");
 		});
 
@@ -1669,10 +1693,7 @@ bar`,
 			const lines = markdown.render(80);
 			const joined = lines.join("");
 
-			assert.ok(
-				joined.includes("\x1b]8;;mailto:test@example.com\x1b\\"),
-				"Should contain OSC 8 open with mailto URL",
-			);
+			assert.ok(joined.includes("\x1b]8;;mailto:test@example.com\x1b\\"), "Should contain OSC 8 open with mailto URL");
 			assert.ok(joined.includes("\x1b]8;;\x1b\\"), "Should contain OSC 8 close sequence");
 		});
 
@@ -1685,9 +1706,7 @@ bar`,
 
 			assert.ok(joined.includes("\x1b]8;;https://example.com\x1b\\"), "Should contain OSC 8 hyperlink");
 			// URL should not also appear as raw parenthetical text
-			const rawPlain = lines.map((line) =>
-				line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""),
-			);
+			const rawPlain = lines.map((line) => line.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "").replace(/\x1b\[[0-9;]*m/g, ""));
 			assert.ok(!rawPlain.join("").includes("(https://example.com)"), "URL should not appear twice");
 		});
 	});
@@ -1722,10 +1741,7 @@ bar`,
 			const joinedPlain = plainLines.join("\n");
 
 			// HTML in code blocks should be visible
-			assert.ok(
-				joinedPlain.includes("<div>") && joinedPlain.includes("</div>"),
-				"Should render HTML in code blocks",
-			);
+			assert.ok(joinedPlain.includes("<div>") && joinedPlain.includes("</div>"), "Should render HTML in code blocks");
 		});
 	});
 

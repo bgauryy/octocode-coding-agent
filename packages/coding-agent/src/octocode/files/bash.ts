@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../shared/env.ts";
@@ -20,7 +21,6 @@ import {
 	type OrphanJob,
 	reapOrphanJobs,
 	type ShellSettings,
-	shellEnv,
 	shellSettings,
 	shellScript,
 } from "./bash-jobs.ts";
@@ -270,11 +270,17 @@ export function registerBashTool(
 			...(builtin.outputSchema !== undefined
 				? { outputSchema: Type.Union([builtin.outputSchema, BACKGROUND_OUTPUT]) }
 				: {}),
-			promptGuidelines: builtin.promptGuidelines,
+			// `cmd | tail` alone exits with tail's status, so a failing build would read as passing; each call returns up to 50 KB.
+			promptGuidelines: [
+				...(builtin.promptGuidelines ?? []),
+				"Keep bash output small: pipe builds, tests and logs through `2>&1 | tail -n 50` (or grep, head) after `set -o pipefail;`, so failures still show.",
+			],
 			parameters: Type.Object({
-				type: Type.Optional(Type.Union([Type.Literal("bash"), Type.Literal("powershell")], {
-					description: "Shell syntax: bash (default, configured shell) or powershell (Windows)",
-				})),
+				type: Type.Optional(
+					Type.Union([Type.Literal("bash"), Type.Literal("powershell")], {
+						description: "Shell syntax: bash (default, configured shell) or powershell (Windows)",
+					}),
+				),
 				command: Type.String({ description: "Shell command to execute in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
@@ -294,7 +300,7 @@ export function registerBashTool(
 				const settings = { ...settingsFor(ctx), type: params.type ?? "bash" };
 				if (params.background) {
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
-						env: shellEnv(ctx),
+						env: bashSessionEnv(ctx),
 						shell: settings,
 					});
 					const timeout = job.timeout;

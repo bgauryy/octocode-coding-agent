@@ -14,12 +14,9 @@ const ENVIRONMENT_NAMES = new Set([
 	"TERM",
 	"XDG_CONFIG_HOME",
 ]);
-const RUST_SPACE =
-	"[\\u0009-\\u000d \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
-const trimPath = (value: string) =>
-	value.replace(new RegExp(`^${RUST_SPACE}+|${RUST_SPACE}+$`, "g"), "");
-const foreignResource = (value: string) =>
-	/^(?:app|mcp|plugin):\/\//.test(value);
+const RUST_SPACE = "[\\u0009-\\u000d \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+const trimPath = (value: string) => value.replace(new RegExp(`^${RUST_SPACE}+|${RUST_SPACE}+$`, "g"), "");
+const foreignResource = (value: string) => /^(?:app|mcp|plugin):\/\//.test(value);
 
 export function extractSkillMentions(text: string): {
 	plainNames: string[];
@@ -27,11 +24,9 @@ export function extractSkillMentions(text: string): {
 } {
 	const plainNames = new Set<string>();
 	const paths = new Set<string>();
-	for (let index = 0; index < text.length; ) {
+	for (let index = 0; index < text.length;) {
 		if (text[index] === "[") {
-			const link = /^\[\$([a-zA-Z0-9_:-]+)\][\t\n\f\r ]*\(([^)]*)\)/.exec(
-				text.slice(index),
-			);
+			const link = /^\[\$([a-zA-Z0-9_:-]+)\][\t\n\f\r ]*\(([^)]*)\)/.exec(text.slice(index));
 			if (link) {
 				const path = trimPath(link[2]);
 				if (path) {
@@ -70,26 +65,18 @@ export function selectExplicitSkills(
 	const candidates: ExplicitSkill[] = [];
 	const identities = new Set<string>();
 	for (const candidate of inventory) {
-		if (
-			candidate.skill.userInvocable === false ||
-			candidate.skill.argumentStyle === "claude"
-		)
-			continue;
+		if (candidate.skill.userInvocable === false || candidate.skill.argumentStyle === "claude") continue;
 		if (identities.has(candidate.canonicalPath)) continue;
 		identities.add(candidate.canonicalPath);
 		candidates.push(candidate);
 	}
 	const counts = new Map<string, number>();
-	for (const candidate of candidates)
-		counts.set(candidate.name, (counts.get(candidate.name) ?? 0) + 1);
+	for (const candidate of candidates) counts.set(candidate.name, (counts.get(candidate.name) ?? 0) + 1);
 	const selected: ExplicitSkill[] = [];
 	const seenPaths = new Set<string>();
 	const seenNames = new Set<string>();
 	for (const candidate of candidates) {
-		if (
-			paths.has(candidate.canonicalPath) ||
-			paths.has(candidate.discoveryPath)
-		) {
+		if (paths.has(candidate.canonicalPath) || paths.has(candidate.discoveryPath)) {
 			selected.push(candidate);
 			seenPaths.add(candidate.canonicalPath);
 			seenNames.add(candidate.name);

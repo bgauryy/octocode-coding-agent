@@ -422,6 +422,26 @@ function findGitRepoRoot(startDir: string): string | null {
 	}
 }
 
+/**
+ * `.octocode/skills` of the directories above `startDir` up to its repository root, nearest first. The working
+ * directory's own folder is the project skills folder. Outside a repository there are none, so a home `.octocode`
+ * is never read as a project.
+ */
+function collectAncestorProjectSkillDirs(startDir: string): string[] {
+	const resolvedStartDir = resolve(startDir);
+	const gitRepoRoot = findGitRepoRoot(resolvedStartDir);
+	const skillDirs: string[] = [];
+	if (!gitRepoRoot) return skillDirs;
+	let dir = resolvedStartDir;
+	while (dir !== gitRepoRoot) {
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+		skillDirs.push(join(dir, CONFIG_DIR_NAME, "skills"));
+	}
+	return skillDirs;
+}
+
 function collectAncestorAgentsSkillDirs(startDir: string): string[] {
 	const skillDirs: string[] = [];
 	const resolvedStartDir = resolve(startDir);
@@ -752,9 +772,7 @@ function applyPatterns(allPaths: string[], patterns: string[], baseDir: string):
 function applyAutoloadDisabledPatterns(allPaths: string[], patterns: string[], baseDir: string): Map<string, boolean> {
 	const result = new Map<string, boolean>();
 	for (const pattern of patterns) {
-		const target = pattern.slice(
-			pattern.startsWith("+") || pattern.startsWith("-") || pattern.startsWith("!") ? 1 : 0,
-		);
+		const target = pattern.slice(pattern.startsWith("+") || pattern.startsWith("-") || pattern.startsWith("!") ? 1 : 0);
 		const enabled = !pattern.startsWith("-") && !pattern.startsWith("!");
 		const exact = pattern.startsWith("+") || pattern.startsWith("-");
 		for (const filePath of allPaths) {
@@ -766,6 +784,23 @@ function applyAutoloadDisabledPatterns(allPaths: string[], patterns: string[], b
 		}
 	}
 	return result;
+}
+
+/**
+ * Whether the `skills` setting leaves a skill file enabled: a matching project entry decides, as for bundled skills,
+ * otherwise the global entries do. For skill files that reach the loader without auto-discovery, such as folders an
+ * extension adds.
+ */
+export function isSkillEnabledBySettings(
+	filePath: string,
+	globalPatterns: readonly string[],
+	projectPatterns: readonly string[],
+	baseDir: string,
+): boolean {
+	return (
+		applyAutoloadDisabledPatterns([filePath], getOverridePatterns([...projectPatterns]), baseDir).get(filePath) ??
+		isEnabledByOverrides(filePath, [...globalPatterns], baseDir)
+	);
 }
 
 export class DefaultPackageManager implements PackageManager {
@@ -941,8 +976,7 @@ export class DefaultPackageManager implements PackageManager {
 					accumulator.skills,
 					path,
 					{ source: "builtin", scope: "user", origin: "top-level", baseDir: this.builtinSkillsDir },
-					projectOverrides.get(path) ??
-						isEnabledByOverrides(path, globalSettings.skills ?? [], this.builtinSkillsDir),
+					projectOverrides.get(path) ?? isEnabledByOverrides(path, globalSettings.skills ?? [], this.builtinSkillsDir),
 				);
 			}
 		}
@@ -1330,8 +1364,7 @@ export class DefaultPackageManager implements PackageManager {
 		const identity = this.getPackageIdentity(pkg.source, scope);
 		const userEntry = sources.find(
 			(entry) =>
-				entry.scope === "user" &&
-				this.getPackageIdentity(this.getPackageSourceString(entry.pkg), "user") === identity,
+				entry.scope === "user" && this.getPackageIdentity(this.getPackageSourceString(entry.pkg), "user") === identity,
 		);
 		return userEntry ? { source: this.getPackageSourceString(userEntry.pkg), scope: "user" } : undefined;
 	}
@@ -1600,13 +1633,7 @@ export class DefaultPackageManager implements PackageManager {
 			return {
 				ref: "@{upstream}",
 				head,
-				fetchArgs: [
-					"fetch",
-					"--prune",
-					"--no-tags",
-					"origin",
-					`+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-				],
+				fetchArgs: ["fetch", "--prune", "--no-tags", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
 			};
 		} catch {
 			await this.runCommand("git", ["remote", "set-head", "origin", "-a"], { cwd: installedPath }).catch(() => {});
@@ -1623,13 +1650,7 @@ export class DefaultPackageManager implements PackageManager {
 				return {
 					ref: "origin/HEAD",
 					head,
-					fetchArgs: [
-						"fetch",
-						"--prune",
-						"--no-tags",
-						"origin",
-						`+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-					],
+					fetchArgs: ["fetch", "--prune", "--no-tags", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
 				};
 			}
 			return {
@@ -1782,9 +1803,7 @@ export class DefaultPackageManager implements PackageManager {
 		if (supportedPackageManagers.has(directCommand)) return directCommand;
 
 		const wrappedPackageManagers = [
-			...new Set(
-				npmCommand.args.map(normalizeCommandName).filter((command) => supportedPackageManagers.has(command)),
-			),
+			...new Set(npmCommand.args.map(normalizeCommandName).filter((command) => supportedPackageManagers.has(command))),
 		];
 		if (wrappedPackageManagers.length > 1) {
 			throw new Error(`Ambiguous npmCommand package managers: ${wrappedPackageManagers.join(", ")}`);
@@ -1923,11 +1942,7 @@ export class DefaultPackageManager implements PackageManager {
 
 		try {
 			const manifest = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as { dependencies?: unknown };
-			if (
-				!manifest.dependencies ||
-				typeof manifest.dependencies !== "object" ||
-				Array.isArray(manifest.dependencies)
-			) {
+			if (!manifest.dependencies || typeof manifest.dependencies !== "object" || Array.isArray(manifest.dependencies)) {
 				return false;
 			}
 
@@ -2472,6 +2487,17 @@ export class DefaultPackageManager implements PackageManager {
 				projectOverrides.skills,
 				projectBaseDir,
 			);
+			// From a subdirectory, the repository root's .octocode/ skills are project skills too.
+			for (const skillsDir of collectAncestorProjectSkillDirs(this.cwd)) {
+				const baseDir = dirname(skillsDir);
+				addResources(
+					"skills",
+					collectAutoSkillEntries(skillsDir, "octocode"),
+					{ ...projectMetadata, baseDir },
+					projectOverrides.skills,
+					baseDir,
+				);
+			}
 		}
 
 		// Project skills from .agents/ (each with its own baseDir)
@@ -2546,13 +2572,7 @@ export class DefaultPackageManager implements PackageManager {
 			userOverrides.prompts,
 			globalBaseDir,
 		);
-		addResources(
-			"themes",
-			collectAutoThemeEntries(userDirs.themes),
-			userMetadata,
-			userOverrides.themes,
-			globalBaseDir,
-		);
+		addResources("themes", collectAutoThemeEntries(userDirs.themes), userMetadata, userOverrides.themes, globalBaseDir);
 	}
 
 	private collectFilesFromPaths(paths: string[], resourceType: ResourceType): string[] {
@@ -2614,9 +2634,7 @@ export class DefaultPackageManager implements PackageManager {
 	}
 
 	private toResolvedPaths(accumulator: ResourceAccumulator): ResolvedPaths {
-		const mapToResolved = (
-			entries: Map<string, { metadata: PathMetadata; enabled: boolean }>,
-		): ResolvedResource[] => {
+		const mapToResolved = (entries: Map<string, { metadata: PathMetadata; enabled: boolean }>): ResolvedResource[] => {
 			const resolved = Array.from(entries.entries()).map(([path, { metadata, enabled }]) => ({
 				path,
 				enabled,

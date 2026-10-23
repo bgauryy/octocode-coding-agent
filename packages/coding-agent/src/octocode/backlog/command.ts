@@ -44,13 +44,7 @@ function detail(backlog: Backlog, item: Item, notes = 10): string {
 		...(origin ? { origin } : {}),
 		derived: backlog.store.derived(item),
 	};
-	return itemDetail(
-		item,
-		backlog.store.notes(item, notes),
-		backlog.store.noteCount(item),
-		Date.now(),
-		options,
-	);
+	return itemDetail(item, backlog.store.notes(item, notes), backlog.store.noteCount(item), Date.now(), options);
 }
 
 /** Writes `content` atomically to `<repo>/.octocode/<name>` (the folder is made when missing) and returns the path. */
@@ -174,19 +168,13 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 	};
 
 	/** Deletes `item` after the user confirms (`detail` is the dialog text). */
-	const remove = async (
-		ctx: ExtensionCommandContext,
-		backlog: Backlog,
-		item: Item,
-		detail: string,
-	): Promise<void> => {
+	const remove = async (ctx: ExtensionCommandContext, backlog: Backlog, item: Item, detail: string): Promise<void> => {
 		if (!(await ctx.ui.confirm(`Delete ${item.ref}?`, detail))) return;
 		applyAndSay(ctx, () => backlog.store.remove(item.ref, item.version), `Deleted ${item.ref}.`);
 	};
 
 	const add = async (ctx: ExtensionCommandContext, backlog: Backlog, given: string): Promise<void> => {
-		const title =
-			given || (ctx.hasUI ? ((await ctx.ui.input("New backlog item", "title"))?.trim() ?? "") : "");
+		const title = given || (ctx.hasUI ? ((await ctx.ui.input("New backlog item", "title"))?.trim() ?? "") : "");
 		if (!title) return say(ctx, "Usage: /backlog add <title>", given || !ctx.hasUI ? "warning" : "info");
 		let item: Item;
 		try {
@@ -208,15 +196,16 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 		const field = name === undefined ? undefined : EDITABLE[name];
 		if (!name || !field) return;
 		const hint = name === "Paths" || name === "Evidence" ? " (one per line)" : "";
-		const text = await ctx.ui.editor(
-			`Edit the ${name.toLowerCase()} of ${item.ref}${hint}`,
-			field.text(item),
-		);
+		const text = await ctx.ui.editor(`Edit the ${name.toLowerCase()} of ${item.ref}${hint}`, field.text(item));
 		if (text === undefined) return;
 		const patch = field.patch(text.trim());
 		if (name === "Title" && !patch.title) return say(ctx, "Not saved: the title is empty.", "warning");
 		applyAndSay(ctx, () =>
-			backlog.store.update(item.ref, { ...patch, version: item.version, force: true }, { ...backlog.actor, kind: "human" }),
+			backlog.store.update(
+				item.ref,
+				{ ...patch, version: item.version, force: true },
+				{ ...backlog.actor, kind: "human" },
+			),
 		);
 	};
 
@@ -256,11 +245,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 					const index = (PRIORITIES as readonly string[]).indexOf(priority ?? "");
 					if (index >= 0)
 						applyAndSay(ctx, () =>
-							backlog.store.update(
-								item.ref,
-								{ priority: index, version: item.version, force: true },
-								backlog.actor,
-							),
+							backlog.store.update(item.ref, { priority: index, version: item.version, force: true }, backlog.actor),
 						);
 				},
 			},
@@ -351,11 +336,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 						state === "done" || item.state === "done"
 							? "Open the item actions to complete or reopen with a result/reason."
 							: apply(ctx, () =>
-									backlog.store.update(
-										item.ref,
-										{ state, version: item.version },
-										{ ...backlog.actor, kind: "human" },
-									),
+									backlog.store.update(item.ref, { state, version: item.version }, { ...backlog.actor, kind: "human" }),
 								),
 				},
 				selected,
@@ -450,16 +431,26 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);
 			let items: Item[] = [];
-			try { items = deps.items(); } catch { /* Completion remains available without the database. */ }
-			const refs: [string, string][] = items.map(item => [refText(item.seq), `${sanitizeTerminalText(item.title)} — ${item.state}`]);
+			try {
+				items = deps.items();
+			} catch {
+				/* Completion remains available without the database. */
+			}
+			const refs: [string, string][] = items.map((item) => [
+				refText(item.seq),
+				`${sanitizeTerminalText(item.title)} — ${item.state}`,
+			]);
 			if (words[0] === "do" && words.length === 2)
-				return wordCompletions(refs, words[1]!)?.map(item => ({ ...item, value: `do ${item.value}` })) ?? null;
+				return wordCompletions(refs, words[1]!)?.map((item) => ({ ...item, value: `do ${item.value}` })) ?? null;
 			if (words.length <= 1)
 				return wordCompletions(
-					[...refs, ...Object.entries(verbs).map(([name, verb]): [string, string] => [
-						name,
-						`${name}${verb.args ? ` ${verb.args}` : ""} — ${verb.description}`,
-					])],
+					[
+						...refs,
+						...Object.entries(verbs).map(([name, verb]): [string, string] => [
+							name,
+							`${name}${verb.args ? ` ${verb.args}` : ""} — ${verb.description}`,
+						]),
+					],
 					prefix,
 				);
 			if (words.length === 2 && parseRef(words[0]!) !== undefined)
@@ -490,12 +481,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 				if (command) return await command.run(ctx, backlog, tail);
 				if (rest.length > 1) return say(ctx, `Usage: /${usage}`, "warning");
 				const item = backlog.store.get(word);
-				if (!item)
-					return say(
-						ctx,
-						`Unknown backlog item or subcommand "${word}". Usage: /${usage}`,
-						"warning",
-					);
+				if (!item) return say(ctx, `Unknown backlog item or subcommand "${word}". Usage: /${usage}`, "warning");
 				const verb = rest[0];
 				if (verb === undefined) {
 					if (ctx.hasUI) {
@@ -511,8 +497,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 						: say(ctx, `Moved ${itemLine(backlog.store.get(item.ref)!, backlog.session)}`);
 				}
 				if (verb === "delete") {
-					if (!ctx.hasUI)
-						return say(ctx, "Deleting needs a confirmation: run it in the interactive UI.", "warning");
+					if (!ctx.hasUI) return say(ctx, "Deleting needs a confirmation: run it in the interactive UI.", "warning");
 					return await remove(ctx, backlog, item, sanitizeTerminalText(item.title));
 				}
 				return say(ctx, `Unknown action "${verb}". Usage: /${usage}`, "warning");

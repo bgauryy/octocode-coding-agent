@@ -211,10 +211,7 @@ type SessionBeforeEvent = Extract<
 >;
 
 type SessionBeforeEventResult =
-	| SessionBeforeSwitchResult
-	| SessionBeforeForkResult
-	| NativeCompactionResult
-	| SessionBeforeTreeResult;
+	SessionBeforeSwitchResult | SessionBeforeForkResult | NativeCompactionResult | SessionBeforeTreeResult;
 
 type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "session_before_switch" }
 	? SessionBeforeSwitchResult | undefined
@@ -594,8 +591,7 @@ export class ExtensionRunner {
 			...ui,
 			select: (title, options, opts) => this.withUIPrompt("select", title, () => ui.select(title, options, opts)),
 			confirm: (title, message, opts) => this.withUIPrompt("confirm", title, () => ui.confirm(title, message, opts)),
-			input: (title, placeholder, opts) =>
-				this.withUIPrompt("input", title, () => ui.input(title, placeholder, opts)),
+			input: (title, placeholder, opts) => this.withUIPrompt("input", title, () => ui.input(title, placeholder, opts)),
 			editor: (title, prefill) => this.withUIPrompt("editor", title, () => ui.editor(title, prefill)),
 			custom: (factory, options) => this.withUIPrompt("custom", undefined, () => ui.custom(factory, options)),
 		};
@@ -833,7 +829,9 @@ export class ExtensionRunner {
 		}
 
 		const seen = new Map<string, number>();
-		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]));
+		const builtinNames = new Set(
+			BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
+		);
 		const takenInvocationNames = new Set<string>(builtinNames);
 
 		const resolved = commands.map((command) => {
@@ -841,8 +839,10 @@ export class ExtensionRunner {
 			seen.set(command.name, occurrence);
 
 			const nativeBuiltin = command.sourceInfo.path === NATIVE_FEATURE_PATH && builtinNames.has(command.name);
-			let invocationName = !nativeBuiltin && ((counts.get(command.name) ?? 0) > 1 || builtinNames.has(command.name))
-				? `${command.name}:${occurrence}` : command.name;
+			let invocationName =
+				!nativeBuiltin && ((counts.get(command.name) ?? 0) > 1 || builtinNames.has(command.name))
+					? `${command.name}:${occurrence}`
+					: command.name;
 
 			if (!nativeBuiltin && takenInvocationNames.has(invocationName)) {
 				let suffix = occurrence;
@@ -866,17 +866,24 @@ export class ExtensionRunner {
 		const occupied = new Set([...reserved, ...aliases.keys()]);
 		return resolved.map((command) => ({
 			...command,
-			...(command.aliases ? { aliases: command.aliases.map((alias) => {
-				const nativeAlias = command.sourceInfo.path === NATIVE_FEATURE_PATH &&
-					BUILTIN_SLASH_COMMANDS.some((builtin) => builtin.name === command.name && builtin.aliases?.includes(alias));
-				if (nativeAlias) return alias;
-				if (!reserved.has(alias) && aliases.get(alias) === 1) return alias;
-				let suffix = 1;
-				while (occupied.has(`${alias}:${suffix}`)) suffix++;
-				const qualified = `${alias}:${suffix}`;
-				occupied.add(qualified);
-				return qualified;
-			}) } : {}),
+			...(command.aliases
+				? {
+						aliases: command.aliases.map((alias) => {
+							const nativeAlias =
+								command.sourceInfo.path === NATIVE_FEATURE_PATH &&
+								BUILTIN_SLASH_COMMANDS.some(
+									(builtin) => builtin.name === command.name && builtin.aliases?.includes(alias),
+								);
+							if (nativeAlias) return alias;
+							if (!reserved.has(alias) && aliases.get(alias) === 1) return alias;
+							let suffix = 1;
+							while (occupied.has(`${alias}:${suffix}`)) suffix++;
+							const qualified = `${alias}:${suffix}`;
+							occupied.add(qualified);
+							return qualified;
+						}),
+					}
+				: {}),
 		}));
 	}
 
@@ -895,8 +902,10 @@ export class ExtensionRunner {
 
 	getCommand(name: string): ResolvedCommand | undefined {
 		const commands = this.resolveRegisteredCommands();
-		return commands.find((command) => command.invocationName === name) ??
-			commands.find((command) => command.aliases?.includes(name));
+		return (
+			commands.find((command) => command.invocationName === name) ??
+			commands.find((command) => command.aliases?.includes(name))
+		);
 	}
 
 	/**
@@ -1145,9 +1154,14 @@ export class ExtensionRunner {
 				try {
 					const nativeCompaction =
 						event.type === "session_before_compact" && ext.sourceInfo.path === NATIVE_FEATURE_PATH;
-					const observedEvent = event.type === "session_before_compact" && !nativeCompaction
-						? { ...event, preparation: structuredClone(event.preparation), branchEntries: structuredClone(event.branchEntries) }
-						: event;
+					const observedEvent =
+						event.type === "session_before_compact" && !nativeCompaction
+							? {
+									...event,
+									preparation: structuredClone(event.preparation),
+									branchEntries: structuredClone(event.branchEntries),
+								}
+							: event;
 					const handlerResult = await handler(observedEvent, ctx);
 					if (event.type === "session_before_compact" && !nativeCompaction) continue;
 
@@ -1365,8 +1379,7 @@ export class ExtensionRunner {
 
 					// Handlers may return a new list or edit event.messages in place.
 					const returned =
-						handlerResult?.messages ??
-						(sameMessages(visibleMessages, visibleSnapshot) ? undefined : visibleMessages);
+						handlerResult?.messages ?? (sameMessages(visibleMessages, visibleSnapshot) ? undefined : visibleMessages);
 					if (!returned) continue;
 					currentMessages = restoreSystemMessages(currentMessages, visibleSnapshot, returned);
 				} catch (err) {
@@ -1395,7 +1408,8 @@ export class ExtensionRunner {
 						this.emitError({
 							extensionPath: ext.path,
 							event: "context_with_system",
-							error: "Handler removed the leading system message; the request has no prompt or initial tool declarations. Keep it at index 0 or replace a dropped prefix with getCurrentSystemMessage().",
+							error:
+								"Handler removed the leading system message; the request has no prompt or initial tool declarations. Keep it at index 0 or replace a dropped prefix with getCurrentSystemMessage().",
 						});
 					}
 				} catch (err) {
@@ -1479,10 +1493,7 @@ export class ExtensionRunner {
 	): Promise<BeforeAgentStartCombinedResult> {
 		const currentOptions = normalizeBuildSystemPromptOptions(systemPromptOptions);
 		const renderCurrentSystemPrompt = (): string => buildSystemPrompt(currentOptions);
-		const ctx = Object.defineProperties(
-			{},
-			Object.getOwnPropertyDescriptors(this.createContext()),
-		) as ExtensionContext;
+		const ctx = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this.createContext())) as ExtensionContext;
 		ctx.getSystemPrompt = () => {
 			this.assertActive();
 			return renderCurrentSystemPrompt();
@@ -1577,11 +1588,15 @@ export class ExtensionRunner {
 			for (const handler of handlers) {
 				if (ctx.signal?.aborted) return combined;
 				try {
-					const result = await handler(event, ctx) as UserInputEventResult | undefined;
+					const result = (await handler(event, ctx)) as UserInputEventResult | undefined;
 					combined.block ||= result?.block;
 					combined.additionalContext!.push(...(result?.additionalContext ?? []));
 				} catch (error) {
-					this.emitError({ extensionPath: ext.path, event: "user_input", error: error instanceof Error ? error.message : String(error) });
+					this.emitError({
+						extensionPath: ext.path,
+						event: "user_input",
+						error: error instanceof Error ? error.message : String(error),
+					});
 				}
 			}
 		}

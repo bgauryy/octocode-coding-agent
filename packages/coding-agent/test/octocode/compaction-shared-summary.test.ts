@@ -70,7 +70,12 @@ function setup(options: Setup = {}) {
 	const ctx = {
 		model,
 		modelRegistry: {
-			getCachePolicy: (_model: unknown, layers: Array<{ values: Record<string, unknown> }>) => ({ options: { cacheRetention: layers[0]?.values.cacheRetention ?? "short", instructionCacheRetention: layers[0]?.values.instructionCacheRetention ?? "long" } }),
+			getCachePolicy: (_model: unknown, layers: Array<{ values: Record<string, unknown> }>) => ({
+				options: {
+					cacheRetention: layers[0]?.values.cacheRetention ?? "short",
+					instructionCacheRetention: layers[0]?.values.instructionCacheRetention ?? "long",
+				},
+			}),
 			streamSimple: (requested: unknown, context: Context, requestOptions: SimpleStreamOptions) => {
 				calls.push({ model: requested, context, options: requestOptions });
 				return {
@@ -146,7 +151,9 @@ describe("cache-sharing compaction summary", () => {
 	});
 
 	it("uses the session cache preferences for the summary request", async () => {
-		const { calls, pi, ctx, event } = setup({ settings: { cacheRetention: "long", instructionCacheRetention: "short" } });
+		const { calls, pi, ctx, event } = setup({
+			settings: { cacheRetention: "long", instructionCacheRetention: "short" },
+		});
 		await sharedSummary(pi, event, ctx, model as never, "");
 		expect(calls[0]?.options).toMatchObject({ cacheRetention: "long", instructionCacheRetention: "short" });
 	});
@@ -463,10 +470,11 @@ describe("writeSummary with the shared path", () => {
 	});
 });
 
-
 describe("summary attempt accounting", () => {
 	it("records the rejected cache-sharing attempt and the successful fallback exactly once", async () => {
-		const s = setup({ reply: (call) => reply([text(call === 1 ? "cut" : "complete summary")], call === 1 ? "length" : "stop") });
+		const s = setup({
+			reply: (call) => reply([text(call === 1 ? "cut" : "complete summary")], call === 1 ? "length" : "stop"),
+		});
 		const result = await writeSummary(s.pi, s.event, s.ctx);
 		expect(s.calls).toHaveLength(2);
 		expect(s.recordedUsage).toHaveLength(2);

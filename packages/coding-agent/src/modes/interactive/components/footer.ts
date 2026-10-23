@@ -4,7 +4,12 @@ import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ContextUsage } from "../../../core/extensions/types.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { addUsageToTotals, createUsageTotals, customMessageUsage, type UsageTotals } from "../../../core/usage-totals.ts";
+import {
+	addUsageToTotals,
+	createUsageTotals,
+	customMessageUsage,
+	type UsageTotals,
+} from "../../../core/usage-totals.ts";
 import { theme } from "../theme/theme.ts";
 
 /**

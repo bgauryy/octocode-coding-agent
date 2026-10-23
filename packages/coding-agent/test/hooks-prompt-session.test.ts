@@ -52,11 +52,7 @@ it.each([false, true])(
 			],
 			extensionFactories: [
 				(pi) => {
-					const hooks = registerHooks(
-						pi,
-						{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-						home,
-					);
+					const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 					pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 					pi.on("turn_end", async (event) => {
 						outcomes.push(event.outcome);
@@ -94,11 +90,7 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 		tools: [],
 		extensionFactories: [
 			(pi) => {
-				registerHooks(
-					pi,
-					{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-					home,
-				);
+				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 			},
 		],
 	});
@@ -106,13 +98,9 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 		await harness.session.bindExtensions({});
 		harness.setResponses([
 			fauxAssistantMessage("initial completion"),
-			fauxAssistantMessage(
-				'{"ok":false,"reason":"finish the remaining check"}',
-			),
+			fauxAssistantMessage('{"ok":false,"reason":"finish the remaining check"}'),
 			(context) => {
-				expect(JSON.stringify(context.messages)).toContain(
-					"finish the remaining check",
-				);
+				expect(JSON.stringify(context.messages)).toContain("finish the remaining check");
 				return fauxAssistantMessage("completed check");
 			},
 			fauxAssistantMessage('{"ok":true}'),

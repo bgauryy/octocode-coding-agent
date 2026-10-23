@@ -23,29 +23,45 @@ function setup() {
 }
 
 describe("file cancellation around filesystem mutations", () => {
-	it.each(["write", "edit", "delete"] as const)("retains the %s checkpoint when lock cleanup fails after commit", async (type) => {
-		const { file, guard, checkpoints, tool, ctx } = setup();
-		const acquire = lockfile.lock.bind(lockfile);
-		const locked = vi.spyOn(lockfile, "lock").mockImplementation(async (target, options) => {
-			const release = await acquire(target, options);
-			return async () => {
-				await release();
-				if (target === file) throw new Error("cleanup failed");
-			};
-		});
-		try {
-			const query = { type, path: file, reasoning: "change it", ...(type === "write" ? { content: "changed" } : type === "edit" ? { edits: [{ oldText: "original", newText: "changed" }] } : {}) };
-			await expect(tool.execute("cleanup-failure", { queries: [query] }, undefined, undefined, ctx)).rejects.toThrow(/file was changed/i);
-			expect(checkpoints.list()).toHaveLength(1);
-			if (type === "delete") expect(fs.existsSync(file)).toBe(false);
-			else {
-				expect(fs.readFileSync(file, "utf8")).toBe("changed");
-				expect(guard.check(file, "edit", file)).toBeUndefined();
+	it.each(["write", "edit", "delete"] as const)(
+		"retains the %s checkpoint when lock cleanup fails after commit",
+		async (type) => {
+			const { file, guard, checkpoints, tool, ctx } = setup();
+			const acquire = lockfile.lock.bind(lockfile);
+			const locked = vi.spyOn(lockfile, "lock").mockImplementation(async (target, options) => {
+				const release = await acquire(target, options);
+				return async () => {
+					await release();
+					if (target === file) throw new Error("cleanup failed");
+				};
+			});
+			try {
+				const query = {
+					type,
+					path: file,
+					reasoning: "change it",
+					...(type === "write"
+						? { content: "changed" }
+						: type === "edit"
+							? { edits: [{ oldText: "original", newText: "changed" }] }
+							: {}),
+				};
+				await expect(tool.execute("cleanup-failure", { queries: [query] }, undefined, undefined, ctx)).rejects.toThrow(
+					/file was changed/i,
+				);
+				expect(checkpoints.list()).toHaveLength(1);
+				if (type === "delete") expect(fs.existsSync(file)).toBe(false);
+				else {
+					expect(fs.readFileSync(file, "utf8")).toBe("changed");
+					expect(guard.check(file, "edit", file)).toBeUndefined();
+				}
+			} finally {
+				locked.mockRestore();
 			}
-		} finally { locked.mockRestore(); }
-		expect((await checkpoints.rewind(checkpoints.turns())).restored).toEqual([file]);
-		expect(fs.readFileSync(file, "utf8")).toBe("original");
-	});
+			expect((await checkpoints.rewind(checkpoints.turns())).restored).toEqual([file]);
+			expect(fs.readFileSync(file, "utf8")).toBe("original");
+		},
+	);
 	it("does not delete a file when aborted while waiting for its mutation queue", async () => {
 		const { file, checkpoints, tool, ctx } = setup();
 		const controller = new AbortController();
@@ -89,9 +105,7 @@ describe("file cancellation around filesystem mutations", () => {
 					type,
 					path: file,
 					reasoning: "replace it",
-					...(type === "write"
-						? { content: "changed" }
-						: { edits: [{ oldText: "original", newText: "changed" }] }),
+					...(type === "write" ? { content: "changed" } : { edits: [{ oldText: "original", newText: "changed" }] }),
 				};
 				await expect(
 					tool.execute("cancel-write", { queries: [query] }, controller.signal, undefined, ctx),

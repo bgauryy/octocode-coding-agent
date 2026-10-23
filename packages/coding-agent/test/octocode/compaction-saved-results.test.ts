@@ -53,7 +53,13 @@ function summarize(
 	messages: unknown[],
 	options: { branch?: unknown[]; previousSummary?: string; standalone?: boolean; answer?: string } = {},
 ) {
-	const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}), createUsageRecorder: () => () => {}, appendEntry: () => {} } as never;
+	const pi = {
+		getThinkingLevel: () => "off",
+		getActiveTools: () => [],
+		getSettings: () => ({}),
+		createUsageRecorder: () => () => {},
+		appendEntry: () => {},
+	} as never;
 	const ctx = {
 		model,
 		modelRegistry: {
@@ -306,10 +312,7 @@ describe("saved results carried into the compaction summary", () => {
 				details: { readFiles: [], modifiedFiles: [] },
 			},
 		];
-		expect(carriedSavedResults(branch as never)).toEqual([
-			path.resolve(fileOf(earlier)),
-			path.resolve(fileOf(during)),
-		]);
+		expect(carriedSavedResults(branch as never)).toEqual([path.resolve(fileOf(earlier)), path.resolve(fileOf(during))]);
 		const next = (await summarize([result("b", kept)], { branch, previousSummary: "## Goal\ndefault" }))!.compaction!;
 		expect(next.details).toMatchObject({
 			[SAVED_RESULTS_DETAILS]: [

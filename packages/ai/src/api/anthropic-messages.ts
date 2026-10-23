@@ -442,9 +442,9 @@ function nextLineBreakIndex(text: string): number {
 	return Math.min(carriageReturnIndex, newlineIndex);
 }
 
-function consumeLine(text: string): { line: string; rest: string } | null {
+function consumeLine(text: string, endOfStream = false): { line: string; rest: string } | null {
 	const lineBreakIndex = nextLineBreakIndex(text);
-	if (lineBreakIndex === -1) {
+	if (lineBreakIndex === -1 || (!endOfStream && text[lineBreakIndex] === "\r" && lineBreakIndex === text.length - 1)) {
 		return null;
 	}
 
@@ -492,14 +492,14 @@ async function* iterateSseMessages(
 		}
 
 		buffer += decoder.decode();
-		let consumed = consumeLine(buffer);
+		let consumed = consumeLine(buffer, true);
 		while (consumed) {
 			buffer = consumed.rest;
 			const event = decodeSseLine(consumed.line, state);
 			if (event) {
 				yield event;
 			}
-			consumed = consumeLine(buffer);
+			consumed = consumeLine(buffer, true);
 		}
 
 		if (buffer.length > 0) {
@@ -514,6 +514,8 @@ async function* iterateSseMessages(
 			yield trailingEvent;
 		}
 	} finally {
+		// A consumer that stops early (an error, an abort) must not leave the response body and its socket open.
+		await reader.cancel().catch(() => {});
 		reader.releaseLock();
 	}
 }
@@ -747,9 +749,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 						const block: Block = {
 							type: "toolCall",
 							id: event.content_block.id,
-							name: isOAuth
-								? fromClaudeCodeName(event.content_block.name, currentTools)
-								: event.content_block.name,
+							name: isOAuth ? fromClaudeCodeName(event.content_block.name, currentTools) : event.content_block.name,
 							arguments: (event.content_block.input as Record<string, any>) ?? {},
 							partialJson: "",
 							index: event.index,
@@ -989,14 +989,23 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 	);
 
 	const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
+	const thinkingBudgetTokens = Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024));
+	// The API rejects a budget under its 1024-token minimum, and a turn this close to the context limit cannot hold one:
+	// answer without thinking rather than send a request that fails.
+	if (thinkingBudgetTokens < ANTHROPIC_MIN_THINKING_BUDGET) {
+		return stream(model, context, { ...base, maxTokens, thinkingEnabled: false } satisfies AnthropicOptions);
+	}
 
 	return stream(model, context, {
 		...base,
 		maxTokens,
 		thinkingEnabled: true,
-		thinkingBudgetTokens: Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024)),
+		thinkingBudgetTokens,
 	} satisfies AnthropicOptions);
 };
+
+/** Anthropic's smallest accepted `budget_tokens`. */
+const ANTHROPIC_MIN_THINKING_BUDGET = 1024;
 
 function isOAuthToken(apiKey: string): boolean {
 	return apiKey.includes("sk-ant-oat");

@@ -108,9 +108,7 @@ describe("team tools on a fake Octocode", () => {
 			expect.objectContaining({ block: true }),
 		]);
 		// `file` is guarded inside the file tool itself; unrelated tools pass.
-		expect(await b.gate({ toolName: "file", input: { queries: [{ path: "src/a.ts" }] } }, b.ctx)).toEqual([
-			undefined,
-		]);
+		expect(await b.gate({ toolName: "file", input: { queries: [{ path: "src/a.ts" }] } }, b.ctx)).toEqual([undefined]);
 		expect(await b.gate({ toolName: "write", input: { path: "free.ts" } }, b.ctx)).toEqual([undefined]);
 
 		const listed = text(await run(b.tools.get("coordinate"), { action: "list" }, b.ctx));
@@ -162,9 +160,7 @@ describe("team tools on a fake Octocode", () => {
 		expect(text(await run(coordinate, { action: "unlock", paths: ["src/a.ts", "lib/"] }, inPkg.ctx))).toBe(
 			"Released 2 reservation(s).",
 		);
-		expect(await atRoot.gate({ toolName: "write", input: { path: "pkg/src/a.ts" } }, atRoot.ctx)).toEqual([
-			undefined,
-		]);
+		expect(await atRoot.gate({ toolName: "write", input: { path: "pkg/src/a.ts" } }, atRoot.ctx)).toEqual([undefined]);
 	});
 
 	it("delivers messages between agents and rejects unknown recipients", async () => {
@@ -275,11 +271,7 @@ describe("team tools on a fake Octocode", () => {
 		const { a, b } = await pair();
 		await run(a.tools.get("coordinate"), { action: "join" }, a.ctx);
 		await a.emit("agent_start", {}, a.ctx);
-		await a.emit(
-			"tool_execution_start",
-			{ toolCallId: "t1", toolName: "bash", args: { command: "yarn test" } },
-			a.ctx,
-		);
+		await a.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: { command: "yarn test" } }, a.ctx);
 		await a.emit(
 			"message_end",
 			{
@@ -334,9 +326,9 @@ describe("team tools on a fake Octocode", () => {
 		).toContain("badred");
 		expect(rendered(renderer({}, { expanded: false }, theme))).toContain("from agent");
 		// Details that are not a batch (another writer, a damaged entry) show the text the model got.
-		expect(
-			rendered(renderer({ content: "plain text", details: { from: "x" } }, { expanded: false }, theme)),
-		).toContain("plain text");
+		expect(rendered(renderer({ content: "plain text", details: { from: "x" } }, { expanded: false }, theme))).toContain(
+			"plain text",
+		);
 
 		const coordinate = a.tools.get("coordinate");
 		expect(rendered(coordinate.renderCall({ action: "lock", paths: ["a.ts", "b/"], goal: "n" }, theme, {}))).toBe(
@@ -381,9 +373,9 @@ describe("team tools on a fake Octocode", () => {
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: false }))).toBe(
 			"  ⎿  Queued #42 (ctrl+o to expand)",
 		);
-		expect(
-			rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: true }), 1_000),
-		).toBe(`  ⎿  Queued #42\n     hello\n     ${"x".repeat(500)}`);
+		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: true }), 1_000)).toBe(
+			`  ⎿  Queued #42\n     hello\n     ${"x".repeat(500)}`,
+		);
 	});
 
 	it("/agents and /agents tell report through the UI", async () => {
@@ -565,9 +557,7 @@ describe("AgentsView", () => {
 			const agents = new AgentsView(fakeTeam(() => view, "me-0001"));
 			const ctx = fakeCtx({ cwd: tmp() });
 			agents.start(ctx);
-			expect(ctx.ui.statuses.get("octocode-team")).toBe(
-				"team retrying: Team database unavailable: database is locked",
-			);
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("team retrying: Team database unavailable: database is locked");
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
 			view = { members: [peer("me-0001", "working", null), peer("reviewer-1a2b")], traffic: [] };
 			vi.advanceTimersByTime(1_000);

@@ -1,15 +1,9 @@
 import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import type {
-	ExtensionToolContext,
-	ToolDefinition,
-} from "../extensions/types.ts";
+import type { ExtensionToolContext, ToolDefinition } from "../extensions/types.ts";
 
 /** Creates the context for one tool call. */
-type ToolContextFactory = (
-	toolCallId: string,
-	signal: AbortSignal | undefined,
-) => ExtensionToolContext;
+type ToolContextFactory = (toolCallId: string, signal: AbortSignal | undefined) => ExtensionToolContext;
 
 /** Wrap a ToolDefinition into an AgentTool for the core runtime. */
 export function wrapToolDefinition<TDetails = unknown>(
@@ -25,48 +19,21 @@ export function wrapToolDefinition<TDetails = unknown>(
 		constrainedSampling: definition.constrainedSampling,
 		prepareArguments: definition.prepareArguments,
 		executionMode: definition.executionMode,
-		execute: async (
-			toolCallId,
-			params,
-			signal,
-			onUpdate,
-			ctx?: ExtensionToolContext,
-		) => {
+		execute: async (toolCallId, params, signal, onUpdate, ctx?: ExtensionToolContext) => {
 			const base = ctx ?? ctxFactory?.(toolCallId, signal);
 			if (!base)
-				return definition.execute(
-					toolCallId,
-					params,
-					signal,
-					onUpdate,
-					base as unknown as ExtensionToolContext,
-				);
+				return definition.execute(toolCallId, params, signal, onUpdate, base as unknown as ExtensionToolContext);
 			let active = true;
-			const invocation = captureToolInvocation(
-				toolCallId,
-				definition.name,
-				params,
-				() => active,
-			);
-			const descriptors: Record<string, PropertyDescriptor> =
-				Object.getOwnPropertyDescriptors(base);
+			const invocation = captureToolInvocation(toolCallId, definition.name, params, () => active);
+			const descriptors: Record<string, PropertyDescriptor> = Object.getOwnPropertyDescriptors(base);
 			delete descriptors.invocation;
-			const context = Object.defineProperties(
-				Object.create(Object.getPrototypeOf(base)),
-				descriptors,
-			);
+			const context = Object.defineProperties(Object.create(Object.getPrototypeOf(base)), descriptors);
 			Object.defineProperty(context, "invocation", {
 				enumerable: true,
 				get: () => (active ? invocation : undefined),
 			});
 			try {
-				return await definition.execute(
-					toolCallId,
-					params,
-					signal,
-					onUpdate,
-					context,
-				);
+				return await definition.execute(toolCallId, params, signal, onUpdate, context);
 			} finally {
 				active = false;
 			}
@@ -80,9 +47,7 @@ export function wrapToolDefinition<TDetails = unknown>(
  * This keeps AgentSession's internal registry definition-first even when a caller
  * provides plain AgentTool overrides that do not include prompt metadata or renderers.
  */
-export function createToolDefinitionFromAgentTool(
-	tool: AgentTool<any>,
-): ToolDefinition<any, unknown> {
+export function createToolDefinitionFromAgentTool(tool: AgentTool<any>): ToolDefinition<any, unknown> {
 	return {
 		name: tool.name,
 		label: tool.label,
@@ -92,7 +57,6 @@ export function createToolDefinitionFromAgentTool(
 		constrainedSampling: tool.constrainedSampling,
 		prepareArguments: tool.prepareArguments,
 		executionMode: tool.executionMode,
-		execute: async (toolCallId, params, signal, onUpdate) =>
-			tool.execute(toolCallId, params, signal, onUpdate),
+		execute: async (toolCallId, params, signal, onUpdate) => tool.execute(toolCallId, params, signal, onUpdate),
 	};
 }

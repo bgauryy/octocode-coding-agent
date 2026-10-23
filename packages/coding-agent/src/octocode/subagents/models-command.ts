@@ -110,10 +110,7 @@ export function registerModelsCommand(commands: Subcommands, getProfiles: () => 
 				: catalog
 					? `Capabilities and missing prices from models.dev (fetched ${new Date(catalog.fetchedAt).toISOString().slice(0, 10)}).`
 					: "models.dev could not be reached now or within the last hour; Octocode's metadata only.";
-			say(
-				ctx,
-				`${describeModels(ctx.modelRegistry.getAvailable(), ctx.model, getProfiles(), catalog)}\n\n${source}`,
-			);
+			say(ctx, `${describeModels(ctx.modelRegistry.getAvailable(), ctx.model, getProfiles(), catalog)}\n\n${source}`);
 		},
 	});
 }

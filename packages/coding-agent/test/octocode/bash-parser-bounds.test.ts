@@ -1,9 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Parser } from "web-tree-sitter";
-import {
-	bashSyntax,
-	initializeBashSyntax,
-} from "../../src/octocode/permission/bash-syntax.ts";
+import { bashSyntax, initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
 beforeAll(initializeBashSyntax);
 describe("Bash parser resource bounds", () => {
 	it("rejects oversized source before parsing", () => {
@@ -16,9 +13,7 @@ describe("Bash parser resource bounds", () => {
 		}
 	});
 	it("stops deep syntax traversal", () => {
-		expect(
-			bashSyntax("(".repeat(150) + "echo hi" + ")".repeat(150)).incomplete,
-		).toBe(true);
+		expect(bashSyntax("(".repeat(150) + "echo hi" + ")".repeat(150)).incomplete).toBe(true);
 	});
 	it("disposes a parser when native parsing returns null", () => {
 		const parse = vi.spyOn(Parser.prototype, "parse").mockReturnValue(null);
@@ -37,19 +32,13 @@ describe("Bash parser resource bounds", () => {
 		now.mockImplementation(() => (clock += 100));
 		const original = Parser.prototype.parse;
 		let returned: unknown = "not-called";
-		const parse = vi
-			.spyOn(Parser.prototype, "parse")
-			.mockImplementation(function (this: Parser, ...args) {
-				returned = original.apply(this, args);
-				return returned as ReturnType<Parser["parse"]>;
-			});
+		const parse = vi.spyOn(Parser.prototype, "parse").mockImplementation(function (this: Parser, ...args) {
+			returned = original.apply(this, args);
+			return returned as ReturnType<Parser["parse"]>;
+		});
 		const dispose = vi.spyOn(Parser.prototype, "delete");
 		try {
-			expect(
-				bashSyntax(
-					Array.from({ length: 2000 }, () => "echo $(echo hi)").join(";"),
-				).incomplete,
-			).toBe(true);
+			expect(bashSyntax(Array.from({ length: 2000 }, () => "echo $(echo hi)").join(";")).incomplete).toBe(true);
 			expect(dispose).toHaveBeenCalledTimes(1);
 			expect(returned).toBeNull();
 		} finally {

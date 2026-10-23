@@ -18,9 +18,7 @@ const model: Model<"anthropic-messages"> = {
 
 describe("layered cache warming", () => {
 	it("does not schedule a whole-prompt refresh using the lifetime of just the history", () => {
-		expect(
-			getPromptCacheTtlMs(model, { cacheRetention: "short", instructionCacheRetention: "long" }),
-		).toBeUndefined();
+		expect(getPromptCacheTtlMs(model, { cacheRetention: "short", instructionCacheRetention: "long" })).toBeUndefined();
 	});
 	it("preserves Pi warming for a single lifetime and honors explicit disabling", () => {
 		expect(getPromptCacheTtlMs(model, { cacheRetention: "long" })).toBe(3600000);

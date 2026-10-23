@@ -2,9 +2,29 @@ import type { ItemType, BacklogRef, WorkLink, Completion } from "./backlogs.ts";
 export const STATES = ["backlog", "todo", "ongoing", "done"] as const;
 export type State = (typeof STATES)[number];
 export type NoteKind = "note" | "change";
-export interface Note { at: number; author: string; kind: NoteKind; text: string; }
-export interface BacklogComment { id: number; backlogId: string; at: number; author: string; text: string; }
-export interface BacklogAudit { id: number; backlogId: string; at: number; actor: { id: string; kind?: string }; action: string; entity: string; before: unknown; after: unknown; }
+export interface Note {
+	at: number;
+	author: string;
+	kind: NoteKind;
+	text: string;
+}
+export interface BacklogComment {
+	id: number;
+	backlogId: string;
+	at: number;
+	author: string;
+	text: string;
+}
+export interface BacklogAudit {
+	id: number;
+	backlogId: string;
+	at: number;
+	actor: { id: string; kind?: string };
+	action: string;
+	entity: string;
+	before: unknown;
+	after: unknown;
+}
 
 export interface SnapshotItem {
 	comments?: BacklogComment[];
@@ -54,4 +74,3 @@ export interface Snapshot {
 	idleMs: number;
 	items: SnapshotItem[];
 }
-

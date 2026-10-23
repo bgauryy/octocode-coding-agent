@@ -52,7 +52,11 @@ describe("ToolExecutionComponent parity", () => {
 			details: { completed: 2 },
 			structuredContent: { completed: 2, failed: 1 },
 			usage: {
-				input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3,
+				input: 1,
+				output: 2,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 3,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
 			isError: true,

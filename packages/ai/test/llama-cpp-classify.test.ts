@@ -205,12 +205,10 @@ describe("llama.cpp classifier", () => {
 		};
 		expect(prefix("urgent")).toBe(prefix("team"));
 		expect(prefix("severity")).toBe(prefix("team"));
-		expect(
-			renderQuestion(context, "urgent").content.endsWith("No means: No time pressure\n\nAnswer Yes or No."),
-		).toBe(true);
-		expect(renderQuestion(context, "severity").content.endsWith("2. high\n\nAnswer with one level number.")).toBe(
+		expect(renderQuestion(context, "urgent").content.endsWith("No means: No time pressure\n\nAnswer Yes or No.")).toBe(
 			true,
 		);
+		expect(renderQuestion(context, "severity").content.endsWith("2. high\n\nAnswer with one level number.")).toBe(true);
 	});
 
 	it("divides label log-probabilities by the temperature", async () => {
@@ -301,6 +299,35 @@ describe("llama.cpp classifier", () => {
 
 		expect(firstTokenizations).toBeGreaterThan(0);
 		expect(server.requests.filter((request) => request.url.endsWith("/tokenize"))).toHaveLength(firstTokenizations);
+	});
+
+	it("does not share cancellation between concurrent label-token lookups", async () => {
+		const classifierModel = model();
+		const server = fakeServer();
+		const input: ClassifierContext = {
+			state: {},
+			questions: { pick: { type: "choice", instructions: "Pick", criteria: { a: "", b: "" } } },
+		};
+		const controller = new AbortController();
+		const started = Promise.withResolvers<void>();
+		const first = classify(classifierModel, input, {
+			signal: controller.signal,
+			maxRetries: 0,
+			fetch: (url, init) => {
+				if (!String(url).endsWith("/tokenize")) return server.fetch(url, init);
+				started.resolve();
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+				});
+			},
+		});
+		await started.promise;
+		const second = classify(classifierModel, input, { fetch: server.fetch, maxRetries: 0 });
+		controller.abort();
+		const [cancelled, independent] = await Promise.all([first, second]);
+		expect(cancelled.stopReason).toBe("aborted");
+		expect(independent.stopReason).toBe("stop");
+		expect(independent.answers.pick).toMatchObject({ type: "choice", choice: "a" });
 	});
 
 	it("validates option counts before sending requests", async () => {

@@ -17,7 +17,13 @@ const object = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 export function isPluginIdentifier(value: unknown): value is string {
-	return typeof value === "string" && value.length > 0 && !/[\s@:\/\\\p{Cc}\p{Cf}]/u.test(value) && value !== "." && value !== "..";
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		!/[\s@:\/\\\p{Cc}\p{Cf}]/u.test(value) &&
+		value !== "." &&
+		value !== ".."
+	);
 }
 
 /** Resolve package files before reading; lexical containment alone does not contain symlinks. */
@@ -33,12 +39,16 @@ export function resolvePluginPath(root: string, entry: string): string {
 }
 
 /** Read declarations only. Discovery neither trusts a plugin nor executes any component. */
-export function discoverPluginManifests(root: string, options: { protocol?: PluginManifest["protocol"] } = {}): { manifests: PluginManifest[]; errors: string[] } {
+export function discoverPluginManifests(
+	root: string,
+	options: { protocol?: PluginManifest["protocol"] } = {},
+): { manifests: PluginManifest[]; errors: string[] } {
 	const manifests: PluginManifest[] = [];
 	const errors: string[] = [];
 	const read = (entry: string): { present: boolean; value?: Record<string, unknown>; source?: string } => {
-		try { lstatSync(path.resolve(root, entry)); }
-		catch (error) {
+		try {
+			lstatSync(path.resolve(root, entry));
+		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return { present: false };
 			errors.push(`${entry}: ${String(error)}`);
 			return { present: true };
@@ -53,18 +63,30 @@ export function discoverPluginManifests(root: string, options: { protocol?: Plug
 			return { present: true };
 		}
 	};
-	const add = (protocol: PluginManifest["protocol"], format: PluginManifest["format"], metadata: Record<string, unknown>, settings: Record<string, unknown>, sources: string[]) => {
-		const name = format === "codex" && (metadata.name === undefined || (typeof metadata.name === "string" && !metadata.name.trim()))
-			? path.basename(realpathSync(root)) : metadata.name;
+	const add = (
+		protocol: PluginManifest["protocol"],
+		format: PluginManifest["format"],
+		metadata: Record<string, unknown>,
+		settings: Record<string, unknown>,
+		sources: string[],
+	) => {
+		const name =
+			format === "codex" &&
+			(metadata.name === undefined || (typeof metadata.name === "string" && !metadata.name.trim()))
+				? path.basename(realpathSync(root))
+				: metadata.name;
 		if (!isPluginIdentifier(name)) {
-			errors.push(`${sources[0] ?? root}: plugin name must be a non-empty namespace identifier without spaces, separators or control characters`);
+			errors.push(
+				`${sources[0] ?? root}: plugin name must be a non-empty namespace identifier without spaces, separators or control characters`,
+			);
 			return;
 		}
 		manifests.push({ protocol, format, name, root: realpathSync(root), sources, metadata, settings });
 	};
 	const claude = read("./.claude-plugin/plugin.json");
 	if (claude.value) add("claude", "claude", claude.value, claude.value, [claude.source!]);
-	else if (!claude.present && options.protocol === "claude") add("claude", "claude", { name: path.basename(realpathSync(root)) }, {}, []);
+	else if (!claude.present && options.protocol === "claude")
+		add("claude", "claude", { name: path.basename(realpathSync(root)) }, {}, []);
 	const portable = read("./plugin.json");
 	if (portable.present) {
 		if (!portable.value) return { manifests, errors };
@@ -78,7 +100,10 @@ export function discoverPluginManifests(root: string, options: { protocol?: Plug
 		else {
 			const overlay = read("./.codex-plugin/plugin.json");
 			if (!overlay.present || overlay.value)
-				add("codex", "portable", portable.value, overlay.value ?? {}, [portable.source!, ...(overlay.source ? [overlay.source] : [])]);
+				add("codex", "portable", portable.value, overlay.value ?? {}, [
+					portable.source!,
+					...(overlay.source ? [overlay.source] : []),
+				]);
 		}
 	} else {
 		const codex = read("./.codex-plugin/plugin.json");

@@ -54,7 +54,18 @@ describe("ExtensionRunner", () => {
 		const onUsageRecorded = vi.fn();
 		runner.bindCore(extensionActions, { ...extensionContextActions, onUsageRecorded });
 		const record = runtime.createUsageRecorder("compaction");
-		const message = { provider: "p", model: "m", usage: { input: 3, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 4, cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 } } } as unknown as import("@octocodeai/octocode-ai").AssistantMessage;
+		const message = {
+			provider: "p",
+			model: "m",
+			usage: {
+				input: 3,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 4,
+				cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 },
+			},
+		} as unknown as import("@octocodeai/octocode-ai").AssistantMessage;
 		record(message);
 		record(message);
 		expect(onUsageRecorded).toHaveBeenCalledTimes(1);
@@ -253,9 +264,7 @@ describe("ExtensionRunner", () => {
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
 			const shortcuts = runner.getShortcuts(defaultKeybindings);
 
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("built-in shortcut for app.clipboard.pasteImage"),
-			);
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("built-in shortcut for app.clipboard.pasteImage"));
 			expect(shortcuts.has(pasteImageKey as KeyId)).toBe(true);
 
 			warnSpy.mockRestore();
@@ -350,9 +359,7 @@ describe("ExtensionRunner", () => {
 			const keybindings = { ...defaultKeybindings, "app.clipboard.pasteImage": ["ctrl+x", "ctrl+y"] as KeyId[] };
 			const shortcuts = runner.getShortcuts(keybindings);
 
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("built-in shortcut for app.clipboard.pasteImage"),
-			);
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("built-in shortcut for app.clipboard.pasteImage"));
 			expect(shortcuts.has("ctrl+y")).toBe(true);
 
 			warnSpy.mockRestore();
@@ -483,11 +490,14 @@ describe("ExtensionRunner", () => {
 
 	describe("command collection", () => {
 		it("resolves aliases to one canonical command and qualifies collisions", async () => {
-			fs.writeFileSync(path.join(extensionsDir, "aliases.ts"), `export default function(pi) {
+			fs.writeFileSync(
+				path.join(extensionsDir, "aliases.ts"),
+				`export default function(pi) {
 				pi.registerCommand("first", { aliases: ["shortcut", "shared", "second", "model"], handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
 				pi.registerCommand("second", { aliases: ["shared"], handler: async () => {} });
 				pi.registerCommand("model", { handler: async () => {} });
-			}`);
+			}`,
+			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
 			const commands = runner.getRegisteredCommands();
@@ -504,26 +514,36 @@ describe("ExtensionRunner", () => {
 		});
 
 		it("keeps the native implementation of built-in commands unqualified", async () => {
-			fs.writeFileSync(path.join(extensionsDir, "native.ts"), `export default function(pi) {
+			fs.writeFileSync(
+				path.join(extensionsDir, "native.ts"),
+				`export default function(pi) {
 				pi.registerCommand("model", { aliases: ["native-model"], handler: async () => {} });
-			}`);
+			}`,
+			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			result.extensions[0]!.commands.get("model")!.sourceInfo = {
-				...result.extensions[0]!.sourceInfo, path: "<inline:octocode>",
+				...result.extensions[0]!.sourceInfo,
+				path: "<inline:octocode>",
 			};
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
 			expect(runner.getCommand("model")?.invocationName).toBe("model");
 			expect(runner.getCommand("native-model")?.invocationName).toBe("model");
 		});
 
-		it.each(["", "two words", "/shortcut", "shortcut/path", "tab\tname", "trailing\n"])("rejects invalid alias %j", async (alias) => {
-			fs.writeFileSync(path.join(extensionsDir, "invalid.ts"), `export default function(pi) {
+		it.each(["", "two words", "/shortcut", "shortcut/path", "tab\tname", "trailing\n"])(
+			"rejects invalid alias %j",
+			async (alias) => {
+				fs.writeFileSync(
+					path.join(extensionsDir, "invalid.ts"),
+					`export default function(pi) {
 				pi.registerCommand("valid", { aliases: [${JSON.stringify(alias)}], handler: async () => {} });
-			}`);
-			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-			expect(result.errors).toHaveLength(1);
-			expect(result.errors[0]?.error).toContain("aliases must be non-empty single tokens");
-		});
+			}`,
+				);
+				const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+				expect(result.errors).toHaveLength(1);
+				expect(result.errors[0]?.error).toContain("aliases must be non-empty single tokens");
+			},
+		);
 
 		it("collects commands from multiple extensions", async () => {
 			const cmdCode = (name: string) => `
@@ -880,9 +900,7 @@ describe("ExtensionRunner", () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 
 			expect(result.extensions).toHaveLength(0);
-			expect(result.errors[0]?.error).toContain(
-				'Invalid default for flag "safe-mode": expected boolean, got string',
-			);
+			expect(result.errors[0]?.error).toContain('Invalid default for flag "safe-mode": expected boolean, got string');
 			expect(result.runtime.flagValues.has("safe-mode")).toBe(false);
 		});
 

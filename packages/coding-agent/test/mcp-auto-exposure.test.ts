@@ -10,7 +10,9 @@ describe("automatic MCP exposure", () => {
 	it("budgets combined catalogs against input space after the output reserve", () => {
 		const selected = { ...model({ supportsToolSearch: true }), contextWindow: 1000, maxTokens: 500 };
 		expect(resolveMcpExposure("auto", small, selected, true)).toBe("direct");
-		expect(resolveMcpExposure("auto", [...small, ...small, ...small, ...small, ...small], selected, true)).toBe("deferred");
+		expect(resolveMcpExposure("auto", [...small, ...small, ...small, ...small, ...small], selected, true)).toBe(
+			"deferred",
+		);
 		expect(resolveMcpExposure("direct", large, selected, true)).toBe("direct");
 	});
 	it("uses direct calls for small catalogs even when deferred loading is supported", () => {

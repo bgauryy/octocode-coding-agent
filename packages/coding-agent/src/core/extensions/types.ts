@@ -1199,9 +1199,7 @@ export interface UserInputEventResult {
 
 /** Result from input event handler */
 export type InputEventResult =
-	| { action: "continue" }
-	| { action: "transform"; text: string; images?: ImageContent[] }
-	| { action: "handled" };
+	{ action: "continue" } | { action: "transform"; text: string; images?: ImageContent[] } | { action: "handled" };
 
 // ============================================================================
 // Tool Events
@@ -1624,10 +1622,7 @@ export interface ExtensionAPI {
 		event: "session_before_fork",
 		handler: ExtensionHandler<SessionBeforeForkEvent, SessionBeforeForkResult>,
 	): () => void;
-	on(
-		event: "session_before_compact",
-		handler: ExtensionHandler<SessionBeforeCompactEvent, unknown>,
-	): () => void;
+	on(event: "session_before_compact", handler: ExtensionHandler<SessionBeforeCompactEvent, unknown>): () => void;
 	on(event: "session_compact", handler: ExtensionHandler<SessionCompactEvent>): () => void;
 	on(event: "session_compact_failed", handler: ExtensionHandler<SessionCompactFailedEvent>): () => void;
 	on(event: "session_shutdown", handler: ExtensionHandler<SessionShutdownEvent>): () => void;
@@ -1765,7 +1760,6 @@ export interface ExtensionAPI {
 
 	/** Capture the current session before auxiliary requests; record each completed response once, including reported failed usage. */
 	createUsageRecorder(kind: string): (message: AssistantMessage) => void;
-
 
 	// =========================================================================
 	// Session Metadata

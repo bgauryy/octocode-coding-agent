@@ -59,12 +59,12 @@ export async function reportBug(context: BugReportContext, initialHint?: string)
 
 	let summary: string | undefined;
 	if (options.includeSummary) {
-		const loader = showLoader(
-			context,
-			`Writing summary with ${context.session.model?.name ?? "the current model"}...`,
-		);
+		const loader = showLoader(context, `Writing summary with ${context.session.model?.name ?? "the current model"}...`);
 		try {
-			summary = await getApplicationPort(context.session).invoke("summarizeForBugReport", { hint: options.hint, signal: loader.signal });
+			summary = await getApplicationPort(context.session).invoke("summarizeForBugReport", {
+				hint: options.hint,
+				signal: loader.signal,
+			});
 		} catch (error: unknown) {
 			restoreEditor(context, loader);
 			if (loader.signal.aborted) context.showStatus("Bug report cancelled");

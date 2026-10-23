@@ -7,7 +7,11 @@ export class McpCatalogCache {
 	private tools: Tool[] = [];
 	private instructions: string | undefined;
 
-	update(identity: unknown, tools: Tool[], instructions: string | undefined): {
+	update(
+		identity: unknown,
+		tools: Tool[],
+		instructions: string | undefined,
+	): {
 		tools: Tool[];
 		instructions: string | undefined;
 	} {
@@ -18,7 +22,12 @@ export class McpCatalogCache {
 			return cached && isDeepStrictEqual(cached, tool) ? cached : tool;
 		});
 		const byName = new Map(next.map((tool) => [tool.name, tool]));
-		if (sameServer && byName.size === next.length && next.length === this.tools.length && this.tools.every((tool) => byName.has(tool.name))) {
+		if (
+			sameServer &&
+			byName.size === next.length &&
+			next.length === this.tools.length &&
+			this.tools.every((tool) => byName.has(tool.name))
+		) {
 			next = this.tools.map((tool) => byName.get(tool.name)!);
 		}
 		if (!sameServer || next.length !== this.tools.length || next.some((tool, index) => tool !== this.tools[index])) {

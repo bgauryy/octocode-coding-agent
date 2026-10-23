@@ -255,9 +255,6 @@ export function resolveTranscriptTools(messages: TranscriptMessages, support: Tr
 		return { requestTools: getCurrentTools(systemMessages), foldedSystemMessages: systemMessages.length };
 	}
 	if (support === "changes") return { requestTools: [], foldedSystemMessages: 0 };
-	const folded = Math.max(
-		getInitialSystemMessage(messages) ? 1 : 0,
-		findLastNonAdditiveToolChange(systemMessages) + 1,
-	);
+	const folded = Math.max(getInitialSystemMessage(messages) ? 1 : 0, findLastNonAdditiveToolChange(systemMessages) + 1);
 	return { requestTools: getCurrentTools(systemMessages.slice(0, folded)), foldedSystemMessages: folded };
 }

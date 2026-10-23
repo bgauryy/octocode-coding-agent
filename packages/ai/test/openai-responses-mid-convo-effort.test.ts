@@ -113,11 +113,7 @@ describe("OpenAI Responses configuration_update", () => {
 			update("low"),
 		]);
 		expect(third.payload.input.at(-1)).toEqual(update("low"));
-		expect([first, second, third].map(({ message }) => message.providerThinkingLevel)).toEqual([
-			"high",
-			"high",
-			"low",
-		]);
+		expect([first, second, third].map(({ message }) => message.providerThinkingLevel)).toEqual(["high", "high", "low"]);
 	});
 
 	it("applies a level change made during a tool loop to the next reply", async () => {

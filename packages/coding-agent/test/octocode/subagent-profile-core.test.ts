@@ -43,7 +43,13 @@ describe("core tools of a subagent profile", () => {
 
 	it("counts a pattern that already matches a core tool, and adds the rest", () => {
 		expect(profile('tools: "*"').tools).toBe("*");
-		expect(allowed(profile('tools: "agent*,file"').tools)).toEqual(["agent*", "file", "archive", ...MCP_ACCESS_TOOLS, "mcp__*"]);
+		expect(allowed(profile('tools: "agent*,file"').tools)).toEqual([
+			"agent*",
+			"file",
+			"archive",
+			...MCP_ACCESS_TOOLS,
+			"mcp__*",
+		]);
 	});
 
 	it("gives an empty allowlist the core tools: it still reaches its parent", () => {
@@ -53,7 +59,9 @@ describe("core tools of a subagent profile", () => {
 	it("adds core tools with modifiers when a profile leaves its tools unspecified", () => {
 		const parsed = profile("excludeTools: browser");
 		expect(parsed.tools).toBeUndefined();
-		expect(parseArgs(buildAgentArgs(parsed, undefined, SESSION)).tools).toEqual([...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`));
+		expect(parseArgs(buildAgentArgs(parsed, undefined, SESSION)).tools).toEqual(
+			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
+		);
 	});
 
 	it("leaves a relative list alone: it changes the default selection, which has the core tools", () => {
@@ -65,6 +73,7 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: file", ["file"]],
 		["tools: -file", ["file"]],
 		["excludeTools: tool_search", ["tool_search"]],
+		["excludeTools: mcp", ["mcp"]],
 		["excludeTools: mcp__octocode__localFetch", ["mcp__octocode__localFetch"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
@@ -90,12 +99,18 @@ describe("core tools of a subagent profile", () => {
 			skipped.push(`${path.basename(file)}: ${(error as Error).message}`),
 		);
 		expect(profiles.has("blind")).toBe(false);
-		expect(allowed(profiles.get("fine")?.tools)).toEqual(["edit", "file", "agent", "archive", ...MCP_ACCESS_TOOLS, "mcp__*"]);
+		expect(allowed(profiles.get("fine")?.tools)).toEqual([
+			"edit",
+			"file",
+			"agent",
+			"archive",
+			...MCP_ACCESS_TOOLS,
+			"mcp__*",
+		]);
 		expect(skipped).toHaveLength(1);
 		expect(skipped[0]).toMatch(/^blind\.md: Profile "blind" removes agent/);
 		// The bundled profiles all still load.
-		for (const name of ["researcher", "reviewer", "implementer", "browser"])
-			expect(profiles.has(name)).toBe(true);
+		for (const name of ["researcher", "reviewer", "implementer", "browser"]) expect(profiles.has(name)).toBe(true);
 	});
 
 	it("keeps the core tools active in a real Octocode session started with the profile's allowlist, and drops them without the addition", async () => {
@@ -107,7 +122,6 @@ describe("core tools of a subagent profile", () => {
 		const launch = parseArgs(buildAgentArgs(profile("tools: file"), undefined, SESSION));
 		const activeTools = async (tools: string | undefined) => {
 			const settingsManager = SettingsManager.inMemory({
-
 				retry: { enabled: false },
 			});
 			const resourceLoader = new DefaultResourceLoader({
@@ -146,9 +160,7 @@ describe("core tools of a subagent profile", () => {
 		};
 		try {
 			const active = await activeTools(profile("tools: file").tools);
-			expect(active).toEqual(
-				expect.arrayContaining(["file", ...CORE_TOOLS, ...MCP_ACCESS_TOOLS]),
-			);
+			expect(active).toEqual(expect.arrayContaining(["file", ...CORE_TOOLS, ...MCP_ACCESS_TOOLS]));
 			for (const exposure of ["deferred", "deferred", "hidden"])
 				expect(active).not.toContain(`mcp__octocode__${exposure}`);
 			// The evidence for the addition: the bare allowlist loses the messaging tools.

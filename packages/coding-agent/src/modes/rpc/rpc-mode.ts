@@ -79,10 +79,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	};
 
 	// Pending extension UI requests waiting for response
-	const pendingExtensionRequests = new Map<
-		string,
-		{ resolve: (value: any) => void; reject: (error: Error) => void }
-	>();
+	const pendingExtensionRequests = new Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }>();
 
 	// Shutdown request flag
 	let shutdownRequested = false;
@@ -437,9 +434,6 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			case "new_session": {
 				const options = command.parentSession ? { parentSession: command.parentSession } : undefined;
 				const result = await runtimeHost.newSession(options);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
 				return success(id, "new_session", result);
 			}
 
@@ -599,17 +593,11 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 			case "switch_session": {
 				const result = await runtimeHost.switchSession(command.sessionPath);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
 				return success(id, "switch_session", result);
 			}
 
 			case "fork": {
 				const result = await runtimeHost.fork(command.entryId);
-				if (!result.cancelled) {
-					await rebindSession();
-				}
 				return success(id, "fork", { text: result.selectedText, cancelled: result.cancelled });
 			}
 
@@ -619,9 +607,6 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					return error(id, "clone", "Cannot clone session: no current entry selected");
 				}
 				const result = await runtimeHost.fork(leafId, { position: "at" });
-				if (!result.cancelled) {
-					await rebindSession();
-				}
 				return success(id, "clone", { cancelled: result.cancelled });
 			}
 
@@ -687,7 +672,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					});
 				}
 
-				for (const { template, name, aliases } of getPromptCommands(session.promptTemplates, session.extensionRunner.getRegisteredCommands())) {
+				for (const { template, name, aliases } of getPromptCommands(
+					session.promptTemplates,
+					session.extensionRunner.getRegisteredCommands(),
+				)) {
 					commands.push({
 						name,
 						aliases,
@@ -698,7 +686,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				}
 
 				for (const { skill, name, aliases } of getSkillCommands(session.resourceLoader.getSkills().skills, [
-					...session.extensionRunner.getRegisteredCommands(), ...session.promptTemplates,
+					...session.extensionRunner.getRegisteredCommands(),
+					...session.promptTemplates,
 				])) {
 					commands.push({
 						name,
@@ -766,12 +755,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		}
 
 		// Handle extension UI responses
-		if (
-			typeof parsed === "object" &&
-			parsed !== null &&
-			"type" in parsed &&
-			parsed.type === "extension_ui_response"
-		) {
+		if (typeof parsed === "object" && parsed !== null && "type" in parsed && parsed.type === "extension_ui_response") {
 			const response = parsed as RpcExtensionUIResponse;
 			const pending = pendingExtensionRequests.get(response.id);
 			if (pending) {
@@ -791,11 +775,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			await checkShutdownRequested();
 		} catch (commandError: unknown) {
 			output(
-				error(
-					command.id,
-					command.type,
-					commandError instanceof Error ? commandError.message : String(commandError),
-				),
+				error(command.id, command.type, commandError instanceof Error ? commandError.message : String(commandError)),
 			);
 			await waitForRawStdoutBackpressure();
 		}

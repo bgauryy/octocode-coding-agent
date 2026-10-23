@@ -10,8 +10,7 @@ import { registerSourcePolicy } from "../../src/octocode/permission/source-polic
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 const roots: string[] = [];
 afterEach(() => {
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	trust.check.mockReset().mockResolvedValue(true);
 	vi.unstubAllEnvs();
 });
@@ -25,11 +24,7 @@ function setup() {
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
 	const fake = fakePi();
 	fake.pi.setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(
-		fake.pi,
-		{ OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-	);
+	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home);
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	return {
 		root,
@@ -52,10 +47,7 @@ it("never publishes project allowances changed across the trust snapshot", async
 	const f = setup();
 	fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: [] } }));
 	trust.check.mockImplementationOnce(async () => {
-		fs.writeFileSync(
-			f.project,
-			JSON.stringify({ permissions: { allow: ["Bash"] } }),
-		);
+		fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: ["Bash"] } }));
 		return true;
 	});
 	await f.owner.refresh(f.ctx);
@@ -64,31 +56,17 @@ it("never publishes project allowances changed across the trust snapshot", async
 it("loads restrictive project rules without trust but excludes allowances", async () => {
 	const f = setup();
 	trust.check.mockResolvedValue(false);
-	fs.writeFileSync(
-		f.project,
-		JSON.stringify({ permissions: { allow: ["Bash"], deny: ["Read"] } }),
-	);
+	fs.writeFileSync(f.project, JSON.stringify({ permissions: { allow: ["Bash"], deny: ["Read"] } }));
 	await f.owner.refresh(f.ctx);
 	expect(f.owner.evaluate(invocation, f.cwd).decision).toBe("none");
-	expect(
-		f.owner.evaluate(
-			{ ...invocation, toolName: "read", input: { path: "a" } },
-			f.cwd,
-		).decision,
-	).toBe("deny");
+	expect(f.owner.evaluate({ ...invocation, toolName: "read", input: { path: "a" } }, f.cwd).decision).toBe("deny");
 });
 it.each(["oversized", "directory", "invalid-utf8"])(
 	"diagnoses %s source without accepting its policy",
 	async (kind) => {
 		const f = setup();
 		if (kind === "directory") fs.mkdirSync(f.user);
-		else
-			fs.writeFileSync(
-				f.user,
-				kind === "oversized"
-					? Buffer.alloc(1024 * 1024 + 1, 32)
-					: Buffer.from([0xff]),
-			);
+		else fs.writeFileSync(f.user, kind === "oversized" ? Buffer.alloc(1024 * 1024 + 1, 32) : Buffer.from([0xff]));
 		await f.owner.refresh(f.ctx);
 		expect(f.owner.evaluate(invocation, f.cwd).decision).toBe("unsupported");
 	},

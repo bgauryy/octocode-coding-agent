@@ -765,12 +765,8 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("needle");
 		await terminal.waitForRender();
 
-		assert.ok(
-			terminal.events.some((event) => event.type === "write" && event.data.includes("\x1b[42mneedle\x1b[49m")),
-		);
-		assert.ok(
-			terminal.events.some((event) => event.type === "write" && event.data.includes("\x1b[41mneedle\x1b[49m")),
-		);
+		assert.ok(terminal.events.some((event) => event.type === "write" && event.data.includes("\x1b[42mneedle\x1b[49m")));
+		assert.ok(terminal.events.some((event) => event.type === "write" && event.data.includes("\x1b[41mneedle\x1b[49m")));
 		tui.stop();
 	});
 
@@ -1299,11 +1295,7 @@ describe("TuiAltScreen", () => {
 		const belUrl = "https://example.com/bel";
 		const emojiUrl = "https://example.com/emoji";
 		tui.addChild(
-			new Text(
-				`${hyperlink("link", url)}\n\x1b]8;;${belUrl}\x07link\x1b]8;;\x07\n${hyperlink("🙂", emojiUrl)}`,
-				0,
-				0,
-			),
+			new Text(`${hyperlink("link", url)}\n\x1b]8;;${belUrl}\x07link\x1b]8;;\x07\n${hyperlink("🙂", emojiUrl)}`, 0, 0),
 		);
 		tui.start();
 		await terminal.waitForRender();

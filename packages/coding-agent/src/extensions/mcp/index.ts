@@ -5,7 +5,16 @@
 
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import type { Model } from "@octocodeai/octocode-ai";
-import { prefersDeferred, resolveMcpExposure } from "./exposure.ts";
+import { configuredExposures, exposureOf, hasDirectTools, prefersDeferred, resolveMcpExposure } from "./exposure.ts";
+import { MCP_SERVERS_SECTION, reachesServer, renderServersSection } from "./section.ts";
+
+export {
+	MAX_SERVERS_SECTION_CHARS,
+	MCP_SERVERS_SECTION,
+	type McpServerListing,
+	reachesServer,
+	renderServersSection,
+} from "./section.ts";
 import { isDeepStrictEqual } from "node:util";
 import { dirname, join } from "node:path";
 import type { SelectItem } from "@octocodeai/octocode-tui";
@@ -18,7 +27,7 @@ import type {
 	ExtensionFactory,
 	ToolDefinition,
 } from "../../core/extensions/types.ts";
-import { DEFAULT_MCP_EXPOSURE, mcpNamespace, OCTOCODE_DIRECT_TOOLS, OCTOCODE_SERVER } from "../../core/mcp-servers.ts";
+import { mcpNamespace } from "../../core/mcp-servers.ts";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
@@ -39,6 +48,7 @@ import {
 	LIST_MCP_RESOURCES_TOOL,
 	READ_MCP_RESOURCE_TOOL,
 } from "./resources.ts";
+import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type * as McpRuntime from "./runtime.ts";
 import type { McpServerConnection, McpServerLog, McpTransportFactory } from "./runtime.ts";
@@ -117,109 +127,6 @@ function isEnabled(server: Pick<McpServer, "entry">): boolean {
 	return server.entry.config.enabled !== false;
 }
 
-function exposureOf(entry: McpServerEntry): McpExposure {
-	return entry.config.exposure ?? DEFAULT_MCP_EXPOSURE;
-}
-
-/** Exposures the server's tools can have, known from its config before it connects. */
-function configuredExposures(entry: McpServerEntry): Set<McpExposure> {
-	const exposures = new Set([exposureOf(entry), ...Object.values(entry.config.toolExposure ?? {})]);
-	// The `octocode` server's default split: local research tools direct, the rest through tool_search.
-	if (entry.name === OCTOCODE_SERVER && entry.config.exposure === undefined) {
-		for (const tool of OCTOCODE_DIRECT_TOOLS) exposures.add(getMcpToolExposure(entry.config, tool, entry.name));
-	}
-	return exposures;
-}
-
-/** Whether some of the server's tools are declared to the model, so the first prompt waits for them. */
-function hasDirectTools(entry: McpServerEntry): boolean {
-	const exposures = configuredExposures(entry);
-	return exposures.has("direct") || exposures.has("auto");
-}
-
-/** Whether some of the server's tools are reached through tool_search. */
-function hasIndirectTools(entry: McpServerEntry): boolean {
-	const exposures = configuredExposures(entry);
-	return exposures.has("deferred");
-}
-
-/** Name of the system prompt section that lists the servers whose tools are not declared. */
-export const MCP_SERVERS_SECTION = "mcp_servers";
-/** Characters of a server description in the section, as Codex allows for deferred namespaces. */
-const MAX_SERVER_DESCRIPTION_CHARS = 250;
-/**
- * Characters of the whole section. Descriptions shrink to fit; when the server lines alone do not
- * fit, the last servers are left out and counted in a closing line.
- */
-export const MAX_SERVERS_SECTION_CHARS = 4096;
-
-/** The section's first line. It explains only the ways of reaching tools that the listed servers use. */
-function serversSectionIntro(reaches: ReadonlySet<string>): string {
-	let intro = "MCP servers whose tools are not declared to you.";
-	if (reaches.has("tool_search")) intro += " Load the tools of `tool_search` servers with `tool_search`.";
-	return intro;
-}
-
-function truncate(text: string, max: number): string {
-	if (text.length <= max) return text;
-	return max <= 1 ? "" : `${text.slice(0, max - 1).trimEnd()}…`;
-}
-
-/** What the `mcp_servers` section needs of a server. */
-export interface McpServerListing {
-	entry: McpServerEntry;
-	connection?: { instructions?: string };
-}
-
-/** First line of the configured description, or of the server instructions once connected. */
-function serverSummary(server: McpServerListing): string {
-	const text = server.entry.config.description?.trim() || server.connection?.instructions || "";
-	return (text.split("\n", 1)[0] ?? "").trim();
-}
-
-/**
- * The `mcp_servers` section: every enabled server with deferred tools, with how its
- * tools are reached and a one-line summary. The model learns of the servers from it, before discovery loads individual tools. Undefined when there are no such servers.
- */
-export function renderServersSection(servers: readonly McpServerListing[]): string | undefined {
-	const listed = servers
-		.filter((server) => isEnabled(server) && hasIndirectTools(server.entry))
-		.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
-	if (listed.length === 0) return undefined;
-	const reaches = listed.map((server) =>
-		"tool_search",
-	);
-	const intro = serversSectionIntro(new Set(reaches));
-	const heads = listed.map((server, index) => `- ${mcpNamespace(server.entry.name)} (${reaches[index]})`);
-	const discovery = "tool_search";
-	const omitted = (count: number) =>
-		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with ${discovery}`] : [];
-	// Characters of the intro, the first `kept` server lines without descriptions, and the omission line.
-	const size = (kept: number) => [intro, ...heads.slice(0, kept), ...omitted(listed.length - kept)].join("\n").length;
-	let kept = listed.length;
-	while (kept > 0 && size(kept) > MAX_SERVERS_SECTION_CHARS) kept--;
-	// Each description also takes a ": " separator.
-	const perServer =
-		kept === 0
-			? 0
-			: Math.min(MAX_SERVER_DESCRIPTION_CHARS, Math.floor((MAX_SERVERS_SECTION_CHARS - size(kept)) / kept) - 2);
-	const lines = listed.slice(0, kept).map((server, index) => {
-		const summary = perServer > 0 ? truncate(serverSummary(server), perServer) : "";
-		return summary ? `${heads[index]}: ${summary}` : heads[index];
-	});
-	return [intro, ...lines, ...omitted(listed.length - kept)].join("\n");
-}
-
-/**
- * Whether a call that reaches `reach` (see `ToolDefinition.reachesTools`) needs the server: it
- * reaches every tool, or one of its words contains the server's namespace.
- */
-function reachesServer(reach: "all" | readonly string[], server: string): boolean {
-	if (reach === "all") return true;
-	const namespace = mcpNamespace(server);
-	return reach.some((word) => word === namespace || word.startsWith(`${namespace}__`));
-}
-
 /** Short state for lists and the startup report. `withError` appends the first line of a failure. */
 function describeState(server: McpServer, withError = true): string {
 	if (!isEnabled(server)) return "disabled";
@@ -269,7 +176,8 @@ function describeTransport(entry: McpServerEntry): string {
 	return url.href;
 }
 
-const MCP_USAGE = "Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp enable|disable <server> [--local], /mcp exposure <server> <auto|deferred|direct|hidden> [--local], /mcp login|logout|reconnect [server]";
+const MCP_USAGE =
+	"Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp enable|disable <server> [--local], /mcp exposure <server> <auto|deferred|direct|hidden> [--local], /mcp login|logout [server], /mcp reconnect [server|all]";
 
 export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
 	return (pi: ExtensionAPI) => {
@@ -326,15 +234,19 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		};
 		const listeners = new Set<() => void>();
 		const emitChange = () => {
-			setMcpSessionStatus(pi.events, "configured", servers.map((server) => ({
-				name: server.entry.name,
-				enabled: isEnabled(server),
-				state: !isEnabled(server) ? "disabled" : (server.connection?.state ?? "starting"),
-				exposure: exposureOf(server.entry),
-				toolCount: server.connection?.state === "connected" ? server.connection.tools.length : 0,
-				source: server.entry.source,
-				...(server.entry.scope ? { scope: server.entry.scope } : {}),
-			})));
+			setMcpSessionStatus(
+				pi.events,
+				"configured",
+				servers.map((server) => ({
+					name: server.entry.name,
+					enabled: isEnabled(server),
+					state: !isEnabled(server) ? "disabled" : (server.connection?.state ?? "starting"),
+					exposure: exposureOf(server.entry),
+					toolCount: server.connection?.state === "connected" ? server.connection.tools.length : 0,
+					source: server.entry.source,
+					...(server.entry.scope ? { scope: server.entry.scope } : {}),
+				})),
+			);
 			for (const listener of listeners) listener();
 		};
 		const subscribe = (listener: () => void) => {
@@ -347,17 +259,21 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		};
 
 		let selectedModel: Model<any> | undefined;
-		const automaticCatalog = () => servers.filter(isEnabled).flatMap(({ entry, connection }) =>
-			(connection?.tools ?? []).filter((tool) => {
-				const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
-				return exposure === "direct" || (exposure === "auto" && !prefersDeferred(entry.name, entry.config));
-			}));
-		const effectiveExposure = (entry: McpServerEntry, tool?: string): Exclude<McpExposure, "auto"> => resolveMcpExposure(
-			tool === undefined ? exposureOf(entry) : getMcpToolExposure(entry.config, tool, entry.name),
-			automaticCatalog(), selectedModel,
-			pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools),
-			prefersDeferred(entry.name, entry.config),
-		);
+		const automaticCatalog = () =>
+			servers.filter(isEnabled).flatMap(({ entry, connection }) =>
+				(connection?.tools ?? []).filter((tool) => {
+					const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
+					return exposure === "direct" || (exposure === "auto" && !prefersDeferred(entry.name, entry.config));
+				}),
+			);
+		const effectiveExposure = (entry: McpServerEntry, tool?: string): Exclude<McpExposure, "auto"> =>
+			resolveMcpExposure(
+				tool === undefined ? exposureOf(entry) : getMcpToolExposure(entry.config, tool, entry.name),
+				automaticCatalog(),
+				selectedModel,
+				pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools),
+				prefersDeferred(entry.name, entry.config),
+			);
 
 		const connections = () => servers.flatMap((server) => (server.connection ? [server.connection] : []));
 		const findServer = (name: string) => servers.find((server) => server.entry.name === name);
@@ -418,9 +334,13 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				...(description ? { description } : {}),
 				...(connection.instructions ? { instructions: connection.instructions } : {}),
 			};
-			const automaticExposure = resolveMcpExposure("auto", automaticCatalog(), selectedModel,
+			const automaticExposure = resolveMcpExposure(
+				"auto",
+				automaticCatalog(),
+				selectedModel,
 				pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools),
-				prefersDeferred(server, entry.config));
+				prefersDeferred(server, entry.config),
+			);
 			const resolvedExposure = (tool: string) => {
 				const requested = getMcpToolExposure(entry.config, tool, server);
 				return requested === "auto" ? automaticExposure : requested;
@@ -488,7 +408,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				cachedDefinitions.set(name, definition);
 				definitions.set(definition.name, definition);
 				pi.registerTool(definition);
-				if (wasDirect && exposure !== "direct") pi.setActiveTools(pi.getActiveTools().filter((active) => active !== name));
+				if (wasDirect && exposure !== "direct")
+					pi.setActiveTools(pi.getActiveTools().filter((active) => active !== name));
 			}
 			serverTools.set(server, current);
 			// Tools cannot be unregistered, so tools the server dropped are re-registered as hidden. When
@@ -503,7 +424,11 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			}
 			if (connection.tools.some((tool) => resolvedExposure(tool.name) === "deferred")) {
 				const active = pi.getActiveTools();
-				if (!active.includes(TOOL_SEARCH_TOOL_NAME) && pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)) pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
+				if (
+					!active.includes(TOOL_SEARCH_TOOL_NAME) &&
+					pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)
+				)
+					pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
 			}
 			syncResourceTools();
 		};
@@ -554,10 +479,20 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		/** Activate discovery only for deferred catalogs. */
 		const ensureDiscoveryActive = (ctx: ExtensionContext) => {
 			const hasSearch = pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools);
-			const needsSearch = servers.some((server) => isEnabled(server) && [...configuredExposures(server.entry)].some(
-				(exposure) =>
-					resolveMcpExposure(exposure, automaticCatalog(), selectedModel, hasSearch, prefersDeferred(server.entry.name, server.entry.config)) === "deferred",
-			));
+			const needsSearch = servers.some(
+				(server) =>
+					isEnabled(server) &&
+					[...configuredExposures(server.entry)].some(
+						(exposure) =>
+							resolveMcpExposure(
+								exposure,
+								automaticCatalog(),
+								selectedModel,
+								hasSearch,
+								prefersDeferred(server.entry.name, server.entry.config),
+							) === "deferred",
+					),
+			);
 			if (!needsSearch) return;
 			if (hasSearch) {
 				const active = pi.getActiveTools();
@@ -566,7 +501,10 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			}
 			if (warnedUnreachable) return;
 			warnedUnreachable = true;
-			ctx.ui.notify("Deferred MCP tools need tool_search. Enable it or select direct exposure for these servers.", "warning");
+			ctx.ui.notify(
+				"Deferred MCP tools need tool_search. Enable it or select direct exposure for these servers.",
+				"warning",
+			);
 		};
 
 		/**
@@ -613,7 +551,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				log: getServerLog(runtime),
 				onTools: (connection) => {
 					if (isCurrent()) {
-						for (const current of connections()) if (current === connection || current.state === "connected") registerTools(current);
+						for (const current of connections())
+							if (current === connection || current.state === "connected") registerTools(current);
 					}
 				},
 				onChange: (connection) => {
@@ -668,9 +607,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					signal?.aborted ||
 					ready.every(
 						(attempt) =>
-							!isEnabled(attempt.server) ||
-							!servers.includes(attempt.server) ||
-							attempt.ready === attempt.server.ready,
+							!isEnabled(attempt.server) || !servers.includes(attempt.server) || attempt.ready === attempt.server.ready,
 					)
 				)
 					return;
@@ -685,8 +622,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const lines = only ? [] : configErrors.map((error) => `config: ${error}`);
 			for (const server of only ?? servers) {
 				const state = server.connection?.state;
-				if (state === "needs-auth" || state === "failed")
-					lines.push(`${server.entry.name}: ${describeState(server)}`);
+				if (state === "needs-auth" || state === "failed") lines.push(`${server.entry.name}: ${describeState(server)}`);
 			}
 			if (lines.length === 0) return;
 			ctx.ui.notify(
@@ -699,8 +635,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			entry.override && entry.overrideScope !== "global"
 				? entry.override
 				: entry.scope === "global"
-					? globalConfig ?? entry.override ?? entry.source
-					: entry.override ?? entry.source;
+					? (globalConfig ?? entry.override ?? entry.source)
+					: (entry.override ?? entry.source);
 
 		/**
 		 * Save a config change; returns an error message when the file could not be updated. Changes to
@@ -788,11 +724,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		};
 
 		/** Returns an error message when the config could not be saved; connection errors show in the state. */
-		const setEnabled = async (
-			server: McpServer,
-			enabled: boolean,
-			inProject = false,
-		): Promise<string | undefined> => {
+		const setEnabled = async (server: McpServer, enabled: boolean, inProject = false): Promise<string | undefined> => {
 			const wasEnabled = isEnabled(server);
 			const failed = saveConfig(server, { enabled }, inProject);
 			if (failed) return failed;
@@ -849,16 +781,29 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			...configErrors.map((error) => `config: ${error}`),
 			...overridden.map((line) => `overridden: ${line}`),
 		];
-		const configLocations = () => getMcpConfigLocations(globalConfig ? dirname(globalConfig) : getAgentDir(), sessionCwd, projectTrusted);
+		const configLocations = () =>
+			getMcpConfigLocations(globalConfig ? dirname(globalConfig) : getAgentDir(), sessionCwd, projectTrusted);
 		const toolCatalog = (name: string): McpToolListing[] => {
 			const server = findServer(name);
-			if (server) return server.connection?.state === "connected" && isEnabled(server)
-				? server.connection.tools.map((tool) => ({ ...tool, exposure: getMcpToolExposure(server.entry.config, tool.name, server.entry.name) })) : [];
+			if (server)
+				return server.connection?.state === "connected" && isEnabled(server)
+					? server.connection.tools.map((tool) => ({
+							...tool,
+							exposure: getMcpToolExposure(server.entry.config, tool.name, server.entry.name),
+						}))
+					: [];
 			const automatic = getMcpSessionStatus(pi.events).find((candidate) => candidate.name === name);
 			if (!automatic?.enabled || automatic.state !== "connected") return [];
 			const prefix = `${mcpNamespace(name)}__`;
-			return pi.getAllTools().filter((tool) => tool.namespace?.name === mcpNamespace(name) && tool.exposure !== "hidden")
-				.map((tool) => ({ name: tool.name.startsWith(prefix) ? tool.name.slice(prefix.length) : tool.name, description: tool.description, inputSchema: tool.parameters as McpToolListing["inputSchema"], exposure: tool.exposure === "model-only" ? "direct" : tool.exposure }));
+			return pi
+				.getAllTools()
+				.filter((tool) => tool.namespace?.name === mcpNamespace(name) && tool.exposure !== "hidden")
+				.map((tool) => ({
+					name: tool.name.startsWith(prefix) ? tool.name.slice(prefix.length) : tool.name,
+					description: tool.description,
+					inputSchema: tool.parameters as McpToolListing["inputSchema"],
+					exposure: tool.exposure === "model-only" ? "direct" : tool.exposure,
+				}));
 		};
 
 		const serversMenu = (): McpMenu => ({
@@ -871,10 +816,16 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					value: server.entry.name,
 					label: server.entry.name,
 					description: `${describeState(server)} · ${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
-				})).concat(getMcpSessionStatus(pi.events).filter((server) => !findServer(server.name)).map((server) => ({
-					value: server.name, label: server.name,
-					description: `${server.state} · ${server.exposure} · automatic`,
-				}))),
+				}))
+				.concat(
+					getMcpSessionStatus(pi.events)
+						.filter((server) => !findServer(server.name))
+						.map((server) => ({
+							value: server.name,
+							label: server.name,
+							description: `${server.state} · ${server.exposure} · automatic`,
+						})),
+				),
 			empty: `No MCP servers configured. Add them to ${configLocations().globalWrite} or ${configLocations().projectWrite}.`,
 			confirmLabel: "manage",
 			cancelLabel: "close",
@@ -884,15 +835,19 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const server = findServer(name);
 			if (!server) {
 				const automatic = getMcpSessionStatus(pi.events).find((candidate) => candidate.name === name);
-				if (automatic) return {
-					title: `MCP server ${name}`,
-					details: `${automatic.state} · ${automatic.toolCount} tools · ${automatic.exposure}\n${automatic.source}\nAdd an explicit transport entry to ${configLocations().globalWrite} for persistent enablement and exposure controls. /mcp config shows workspace and inherited locations.`,
-					items: [
-						...(automatic.enabled && automatic.state === "connected" ? [{ value: "tools", label: "Tools", description: `${automatic.toolCount} offered` }] : []),
-						...(getMcpReconnect(pi.events, name) ? [{ value: "reconnect", label: "Reconnect" }] : []),
-					],
-					confirmLabel: "select", cancelLabel: "back",
-				};
+				if (automatic)
+					return {
+						title: `MCP server ${name}`,
+						details: `${automatic.state} · ${automatic.toolCount} tools · ${automatic.exposure}\n${automatic.source}\nAdd an explicit transport entry to ${configLocations().globalWrite} for persistent enablement and exposure controls. /mcp config shows workspace and inherited locations.`,
+						items: [
+							...(automatic.enabled && automatic.state === "connected"
+								? [{ value: "tools", label: "Tools", description: `${automatic.toolCount} offered` }]
+								: []),
+							...(getMcpReconnect(pi.events, name) ? [{ value: "reconnect", label: "Reconnect" }] : []),
+						],
+						confirmLabel: "select",
+						cancelLabel: "back",
+					};
 				return {
 					title: name,
 					items: [],
@@ -904,7 +859,10 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const { entry, connection } = server;
 			const saved = entry.scope === "extension" ? "for this session" : `saved to ${configPath(entry)}`;
 			// Global servers without an override can be turned on or off for the trusted project alone.
-			const inProject = entry.scope === "global" && (!entry.override || entry.overrideScope === "global") && projectConfig !== undefined;
+			const inProject =
+				entry.scope === "global" &&
+				(!entry.override || entry.overrideScope === "global") &&
+				projectConfig !== undefined;
 			const inProjectSaved = `saved to ${projectConfig}`;
 			const items: SelectItem[] = [];
 			if (!isEnabled(server)) {
@@ -914,8 +872,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				}
 			} else {
 				const state = connection?.state;
-				if (state === "needs-auth")
-					items.push({ value: "signin", label: "Sign in", description: "opens the browser" });
+				if (state === "needs-auth") items.push({ value: "signin", label: "Sign in", description: "opens the browser" });
 				if (state === "connected" && connection) {
 					items.push({ value: "tools", label: "Tools", description: `${connection.tools.length} offered` });
 				}
@@ -953,16 +910,31 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 
 		const showTools = async (ui: McpUi, name: string) => {
 			for (;;) {
-				const selected = await ui.menu(() => ({
-					title: `Tools of ${name}`,
-					details: "Select a tool to inspect its description and input schema. Hidden tools cannot be called.",
-					items: toolCatalog(name).map((tool) => ({ value: tool.name, label: tool.name, description: `[${tool.exposure}] ${firstLine(tool.description ?? "")}` })),
-					empty: "No tools available. The server may be disabled, disconnected, or offer no tools.",
-					confirmLabel: "inspect", cancelLabel: "back",
-				}), subscribe);
+				const selected = await ui.menu(
+					() => ({
+						title: `Tools of ${name}`,
+						details: "Select a tool to inspect its description and input schema. Hidden tools cannot be called.",
+						items: toolCatalog(name).map((tool) => ({
+							value: tool.name,
+							label: tool.name,
+							description: `[${tool.exposure}] ${firstLine(tool.description ?? "")}`,
+						})),
+						empty: "No tools available. The server may be disabled, disconnected, or offer no tools.",
+						confirmLabel: "inspect",
+						cancelLabel: "back",
+					}),
+					subscribe,
+				);
 				if (!selected) return;
 				const tool = toolCatalog(name).find((candidate) => candidate.name === selected);
-				if (tool) await ui.menu(() => ({ title: `Tool ${tool.name}`, details: formatMcpTool(tool, true), items: [], confirmLabel: "", cancelLabel: "back" }));
+				if (tool)
+					await ui.menu(() => ({
+						title: `Tool ${tool.name}`,
+						details: formatMcpTool(tool, true),
+						items: [],
+						confirmLabel: "",
+						cancelLabel: "back",
+					}));
 			}
 		};
 
@@ -1077,7 +1049,10 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					if (!action) break;
 					if (server) await runAction(ui, ctx, server, action);
 					else {
-						if (action === "tools") { await showTools(ui, name); continue; }
+						if (action === "tools") {
+							await showTools(ui, name);
+							continue;
+						}
 						const reconnect = getMcpReconnect(pi.events, name);
 						if (action !== "reconnect" || !reconnect) break;
 						const failure = await reconnect(ctx);
@@ -1101,8 +1076,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				const { name } = server.entry;
 				const exposure = exposureOf(server.entry);
 				const connection = server.connection;
-				if (connection?.state === "needs-auth")
-					return `${name}: needs sign-in, run /mcp login ${name} (${exposure})`;
+				if (connection?.state === "needs-auth") return `${name}: needs sign-in, run /mcp login ${name} (${exposure})`;
 				const tools = connection?.state === "connected" ? `, ${connection.tools.length} tools` : "";
 				const state = !isEnabled(server)
 					? "disabled"
@@ -1115,8 +1089,14 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 						: "";
 				return `${name}: ${isEnabled(server) ? "enabled · " : ""}${state}${tools} (${exposure})${error}`;
 			});
-			for (const server of automatic) lines.push(`${server.name}: ${server.enabled ? "enabled" : "disabled"} · ${server.state}, ${server.toolCount} tools (${server.exposure}, automatic)`);
-			if (automatic.some((server) => server.name === "octocode")) lines.push("Automatic Octocode: /mcp reconnect octocode; OCTOCODE_MCP=0 disables it at startup. Add an explicit octocode entry to mcp.json for persistent enablement and exposure controls.");
+			for (const server of automatic)
+				lines.push(
+					`${server.name}: ${server.enabled ? "enabled" : "disabled"} · ${server.state}, ${server.toolCount} tools (${server.exposure}, automatic)`,
+				);
+			if (automatic.some((server) => server.name === "octocode"))
+				lines.push(
+					"Automatic Octocode: /mcp reconnect octocode; OCTOCODE_MCP=0 disables it at startup. Add an explicit octocode entry to mcp.json for persistent enablement and exposure controls.",
+				);
 			for (const error of configErrors) lines.push(`config error: ${error}`);
 			for (const line of overridden) lines.push(`overridden: ${line}`);
 			return lines.join("\n");
@@ -1206,7 +1186,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			session = new AbortController();
 			const { signal } = session;
 			unregisterHookCaller?.();
-			unregisterHookCaller = registerMcpHookCaller(pi.events, async request => {
+			unregisterHookCaller = registerMcpHookCaller(pi.events, async (request) => {
 				const callSignal = AbortSignal.any([signal, request.signal]);
 				callSignal.throwIfAborted();
 				const server = findServer(request.server);
@@ -1214,7 +1194,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 				if (request.waitForConnection) await waitForServers([server], callSignal);
 				callSignal.throwIfAborted();
 				const connection = server.connection;
-				if (!connection || connection.state !== "connected") throw new Error(`MCP server "${request.server}" is not connected`);
+				if (!connection || connection.state !== "connected")
+					throw new Error(`MCP server "${request.server}" is not connected`);
 				const client = await connection.getClient();
 				callSignal.throwIfAborted();
 				return client.callTool(request.tool, request.input, { signal: callSignal, timeoutMs: connection.timeoutMs });
@@ -1283,8 +1264,11 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			if (options.prepareLaunch && !ctx.signal?.aborted && !session.signal.aborted) {
 				const changed = servers.filter((server) => {
 					const launched = server.connection && preparedLaunches.get(server.connection);
-					return isEnabled(server) && launched &&
-						!isDeepStrictEqual(launched, options.prepareLaunch!(server.entry, sessionCwd));
+					return (
+						isEnabled(server) &&
+						launched &&
+						!isDeepStrictEqual(launched, options.prepareLaunch!(server.entry, sessionCwd))
+					);
 				});
 				for (const server of changed) void track(reconnect(server));
 				await waitForServers(changed, ctx.signal);
@@ -1293,7 +1277,12 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			for (const connection of connections()) if (connection.state === "connected") registerTools(connection);
 			ensureDiscoveryActive(ctx);
 			const { sections } = event.systemPromptOptions;
-			const section = renderServersSection(servers.map((server) => ({ ...server, entry: { ...server.entry, config: { ...server.entry.config, exposure: effectiveExposure(server.entry) } } })));
+			const section = renderServersSection(
+				servers.map((server) => ({
+					...server,
+					entry: { ...server.entry, config: { ...server.entry.config, exposure: effectiveExposure(server.entry) } },
+				})),
+			);
 			if (section) sections[MCP_SERVERS_SECTION] = section;
 			else delete sections[MCP_SERVERS_SECTION];
 		});
@@ -1371,26 +1360,123 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			await Promise.all([...backgroundActions, ...closing.map((connection) => connection.close())]);
 		});
 
+		// The model's `mcp` tool acts on this session's servers only; configuration files stay unchanged.
+		/** Servers the `mcp` tool added for this session; only these can be removed through it. */
+		const addedHere = new Set<string>();
+		// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
+		pi.registerTool({
+			defaultActive: false,
+			...createMcpManageTool({
+				servers: (): ManagedMcpServer[] => [
+					...servers.map((server) => ({
+						name: server.entry.name,
+						state: server.connection?.isStopped ? "stopped" : describeState(server, false),
+						connected: server.connection?.state === "connected",
+						origin: addedHere.has(server.entry.name) ? ("added" as const) : ("configured" as const),
+						...(server.connection?.error ? { error: server.connection.error } : {}),
+					})),
+					...getMcpSessionStatus(pi.events)
+						.filter((status) => !findServer(status.name))
+						.map((status) => ({
+							name: status.name,
+							state: `${status.state} · ${status.toolCount} tools`,
+							connected: status.state === "connected",
+							origin: "automatic" as const,
+						})),
+				],
+				restart: async (name, ctx) => {
+					const server = findServer(name);
+					if (!server) {
+						const owner = getMcpReconnect(pi.events, name);
+						return owner ? owner(ctx) : `MCP server "${name}" cannot be restarted here.`;
+					}
+					if (!server.connection)
+						return `MCP server "${name}" is disabled in its configuration; the user can enable it with /mcp enable ${name}.`;
+					const failure = await reconnect(server);
+					ensureDiscoveryActive(ctx);
+					return failure;
+				},
+				stop: async (name) => {
+					const connection = findServer(name)?.connection;
+					if (!connection)
+						return `MCP server "${name}" runs outside this extension; restart it instead, or ask the user to disable it.`;
+					await connection.stop();
+					hideTools(name);
+					emitChange();
+					return undefined;
+				},
+				add: (name, config) => {
+					addedHere.add(name);
+					pi.registerMcpServer(name, config);
+				},
+				remove: async (name) => {
+					if (!addedHere.has(name))
+						return `MCP server "${name}" comes from configuration; stop it for this session instead.`;
+					addedHere.delete(name);
+					pi.unregisterMcpServer(name);
+					return undefined;
+				},
+			}),
+		});
+
 		pi.registerCommand("mcp", {
-			description: "Manage MCP servers, inspect tools and configuration, sign in, reconnect, or change enablement and exposure",
+			description:
+				"Manage MCP servers, inspect tools and configuration, sign in, reconnect, or change enablement and exposure",
 			getArgumentCompletions: (prefix) => {
 				const words = prefix.trimStart().split(/\s+/);
 				const [action = "", name = "", value = ""] = words;
-				if (words.length === 1) return ["list", "tools", "config", "enable", "disable", "exposure", "login", "logout", "reconnect"]
-					.filter((item) => item.startsWith(action)).map((item) => ({ value: `${item} `, label: item }));
-				if (action === "exposure" && words.length === 3) return Object.keys(EXPOSURE_DESCRIPTIONS)
-					.filter((mode) => mode.startsWith(value)).map((mode) => ({ value: `exposure ${name} ${mode}`, label: mode }));
+				if (words.length === 1)
+					return ["list", "tools", "config", "enable", "disable", "exposure", "login", "logout", "reconnect"]
+						.filter((item) => item.startsWith(action))
+						.map((item) => ({ value: `${item} `, label: item }));
+				if (action === "exposure" && words.length === 3)
+					return Object.keys(EXPOSURE_DESCRIPTIONS)
+						.filter((mode) => mode.startsWith(value))
+						.map((mode) => ({ value: `exposure ${name} ${mode}`, label: mode }));
 				if (action === "tools") {
-					if (words.length === 3) return toolCatalog(name).filter((tool) => tool.name.startsWith(value)).map((tool) => ({ value: `tools ${name} ${tool.name}`, label: tool.name, description: firstLine(tool.description ?? "") }));
-					if (words.length === 2) return getMcpSessionStatus(pi.events).filter((server) => server.name.startsWith(name)).map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
+					if (words.length === 3)
+						return toolCatalog(name)
+							.filter((tool) => tool.name.startsWith(value))
+							.map((tool) => ({
+								value: `tools ${name} ${tool.name}`,
+								label: tool.name,
+								description: firstLine(tool.description ?? ""),
+							}));
+					if (words.length === 2)
+						return getMcpSessionStatus(pi.events)
+							.filter((server) => server.name.startsWith(name))
+							.map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
 					return null;
 				}
-				if (words.length !== 2 || !["enable", "disable", "exposure", "login", "logout", "reconnect"].includes(action)) return null;
-				return servers.filter((candidate) =>
-					(action !== "login" && action !== "logout" || usesOAuth(candidate)) && candidate.entry.name.startsWith(name),
-				).map((candidate) => ({ value: `${action} ${candidate.entry.name}${action === "exposure" ? " " : ""}`, label: candidate.entry.name, description: describeState(candidate) }))
-				.concat(action === "reconnect" ? getMcpSessionStatus(pi.events).filter((candidate) => !findServer(candidate.name) && candidate.name.startsWith(name) && getMcpReconnect(pi.events, candidate.name))
-					.map((candidate) => ({ value: `reconnect ${candidate.name}`, label: candidate.name, description: candidate.state })) : []);
+				if (words.length !== 2 || !["enable", "disable", "exposure", "login", "logout", "reconnect"].includes(action))
+					return null;
+				return servers
+					.filter(
+						(candidate) =>
+							((action !== "login" && action !== "logout") || usesOAuth(candidate)) &&
+							candidate.entry.name.startsWith(name),
+					)
+					.map((candidate) => ({
+						value: `${action} ${candidate.entry.name}${action === "exposure" ? " " : ""}`,
+						label: candidate.entry.name,
+						description: describeState(candidate),
+					}))
+					.concat(
+						action === "reconnect"
+							? getMcpSessionStatus(pi.events)
+									.filter(
+										(candidate) =>
+											!findServer(candidate.name) &&
+											candidate.name.startsWith(name) &&
+											getMcpReconnect(pi.events, candidate.name),
+									)
+									.map((candidate) => ({
+										value: `reconnect ${candidate.name}`,
+										label: candidate.name,
+										description: candidate.state,
+									}))
+							: [],
+					);
 			},
 			handler: async (args, ctx) => {
 				const [action, name, ...extra] = args.trim().split(/\s+/).filter(Boolean);
@@ -1411,46 +1497,79 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					return;
 				}
 				if (action === "tools") {
-					if (extra.length > 1) { ctx.ui.notify(MCP_USAGE, "warning"); return; }
+					if (extra.length > 1) {
+						ctx.ui.notify(MCP_USAGE, "warning");
+						return;
+					}
 					const snapshot = getMcpSessionStatus(pi.events).filter((server) => !name || server.name === name);
-					if (name && snapshot.length === 0) { ctx.ui.notify(`No MCP server named "${name}".`, "error"); return; }
+					if (name && snapshot.length === 0) {
+						ctx.ui.notify(`No MCP server named "${name}".`, "error");
+						return;
+					}
 					const toolName = extra[0];
 					if (toolName) {
 						const tool = toolCatalog(name).find((candidate) => candidate.name === toolName);
-						ctx.ui.notify(tool ? formatMcpTool(tool, true) : `No available tool named "${toolName}" on MCP server "${name}".`, tool ? "info" : "warning");
-					} else ctx.ui.notify(snapshot.map((server) => [
-						`${server.name}: ${server.enabled ? server.state : "disabled"}`,
-						...(toolCatalog(server.name).map((tool) => `  ${formatMcpTool(tool)}`)),
-						...(toolCatalog(server.name).length ? [] : ["  No tools available in the current connection."]),
-					].join("\n")).join("\n\n") || "No MCP servers configured. Use /mcp config to see configuration locations.", "info");
+						ctx.ui.notify(
+							tool ? formatMcpTool(tool, true) : `No available tool named "${toolName}" on MCP server "${name}".`,
+							tool ? "info" : "warning",
+						);
+					} else
+						ctx.ui.notify(
+							snapshot
+								.map((server) =>
+									[
+										`${server.name}: ${server.enabled ? server.state : "disabled"}`,
+										...toolCatalog(server.name).map((tool) => `  ${formatMcpTool(tool)}`),
+										...(toolCatalog(server.name).length ? [] : ["  No tools available in the current connection."]),
+									].join("\n"),
+								)
+								.join("\n\n") || "No MCP servers configured. Use /mcp config to see configuration locations.",
+							"info",
+						);
 					return;
 				}
 				if (action === "enable" || action === "disable" || action === "exposure") {
 					const mode = action === "exposure" ? extra.shift() : undefined;
 					const inProject = extra.length === 1 && (extra[0] === "--local" || extra[0] === "-l");
-					if (!name || (extra.length > 0 && !inProject) || (action === "exposure" && !Object.hasOwn(EXPOSURE_DESCRIPTIONS, mode ?? ""))) {
-						ctx.ui.notify(MCP_USAGE, "warning"); return;
+					if (
+						!name ||
+						(extra.length > 0 && !inProject) ||
+						(action === "exposure" && !Object.hasOwn(EXPOSURE_DESCRIPTIONS, mode ?? ""))
+					) {
+						ctx.ui.notify(MCP_USAGE, "warning");
+						return;
 					}
 					const server = findServer(name);
 					if (!server) {
 						const automatic = getMcpSessionStatus(pi.events).some((candidate) => candidate.name === name);
-						ctx.ui.notify(automatic
-							? `MCP server "${name}" is automatic. Add an explicit ${name} transport entry to ${configLocations().globalWrite} to persist enablement or exposure. /mcp config shows other locations. /mcp reconnect octocode restarts automatic Octocode; OCTOCODE_MCP=0 disables it at startup.`
-							: `No MCP server named "${name}".`, "error");
+						ctx.ui.notify(
+							automatic
+								? `MCP server "${name}" is automatic. Add an explicit ${name} transport entry to ${configLocations().globalWrite} to persist enablement or exposure. /mcp config shows other locations. /mcp reconnect octocode restarts automatic Octocode; OCTOCODE_MCP=0 disables it at startup.`
+								: `No MCP server named "${name}".`,
+							"error",
+						);
 						return;
 					}
-					const failure = action === "exposure"
-						? setExposure(server, mode as McpExposure, inProject)
-						: await track(setEnabled(server, action === "enable", inProject));
+					const failure =
+						action === "exposure"
+							? setExposure(server, mode as McpExposure, inProject)
+							: await track(setEnabled(server, action === "enable", inProject));
 					if (failure) ctx.ui.notify(failure, "error");
 					else {
 						ensureDiscoveryActive(ctx);
-						const saved = server.entry.scope === "extension" ? "this session" : server.entry.override ?? server.entry.source;
-						ctx.ui.notify(`${name}: ${isEnabled(server) ? "enabled" : "disabled"} · ${describeState(server, false)} · ${exposureOf(server.entry)}. Saved to ${saved}.`, "info");
+						const saved =
+							server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
+						ctx.ui.notify(
+							`${name}: ${isEnabled(server) ? "enabled" : "disabled"} · ${describeState(server, false)} · ${exposureOf(server.entry)}. Saved to ${saved}.`,
+							"info",
+						);
 					}
 					return;
 				}
-				if (extra.length > 0) { ctx.ui.notify(MCP_USAGE, "warning"); return; }
+				if (extra.length > 0) {
+					ctx.ui.notify(MCP_USAGE, "warning");
+					return;
+				}
 				await pending;
 				switch (action) {
 					case "login": {
@@ -1472,10 +1591,42 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					}
 					case "restart":
 					case "reconnect": {
+						if (name === "all") {
+							const owners = getMcpSessionStatus(pi.events)
+								.filter((candidate) => !findServer(candidate.name))
+								.flatMap((candidate) => {
+									const owner = getMcpReconnect(pi.events, candidate.name);
+									return owner ? [{ name: candidate.name, run: () => owner(ctx) }] : [];
+								});
+							const targets = [
+								...servers
+									.filter((server) => server.connection)
+									.map((server) => ({ name: server.entry.name, run: () => reconnect(server) })),
+								...owners,
+							];
+							if (targets.length === 0) return ctx.ui.notify("No enabled MCP server to reconnect.", "info");
+							const failures = (
+								await Promise.all(targets.map(async (target) => ({ name: target.name, failure: await target.run() })))
+							).filter((result) => result.failure);
+							if (session.signal.aborted) return;
+							ensureDiscoveryActive(ctx);
+							ctx.ui.notify(
+								failures.length
+									? `Reconnected ${targets.length - failures.length} of ${targets.length} MCP servers. ${failures.map((result) => `${result.name}: ${result.failure}`).join("; ")}`
+									: `Reconnected ${targets.length} MCP server${targets.length === 1 ? "" : "s"}.`,
+								failures.length ? "error" : "info",
+							);
+							return;
+						}
 						let target: string | undefined = name;
-						const automatic = getMcpSessionStatus(pi.events).filter((candidate) => !findServer(candidate.name) && getMcpReconnect(pi.events, candidate.name));
+						const automatic = getMcpSessionStatus(pi.events).filter(
+							(candidate) => !findServer(candidate.name) && getMcpReconnect(pi.events, candidate.name),
+						);
 						if (!target && automatic.length) {
-							const candidates = [...servers.filter((server) => server.connection).map((server) => server.entry.name), ...automatic.map((server) => server.name)];
+							const candidates = [
+								...servers.filter((server) => server.connection).map((server) => server.entry.name),
+								...automatic.map((server) => server.name),
+							];
 							target = candidates.length === 1 ? candidates[0] : await ctx.ui.select("MCP server", candidates);
 							if (!target) return;
 						}
@@ -1499,10 +1650,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 						if (failure) ctx.ui.notify(failure, "error");
 						else {
 							ensureDiscoveryActive(ctx);
-							ctx.ui.notify(
-								`Reconnected to MCP server "${server.entry.name}" (${describeState(server)}).`,
-								"info",
-							);
+							ctx.ui.notify(`Reconnected to MCP server "${server.entry.name}" (${describeState(server)}).`, "info");
 						}
 						return;
 					}

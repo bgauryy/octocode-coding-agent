@@ -76,8 +76,7 @@ function fakePi(models: TestModel[]) {
 		modelRegistry: {
 			getCachePolicy: () => ({ options: { cacheRetention: "short", instructionCacheRetention: "long" } }),
 			getAll: () => catalog,
-			find: (provider: string, id: string) =>
-				catalog.find((model) => model.provider === provider && model.id === id),
+			find: (provider: string, id: string) => catalog.find((model) => model.provider === provider && model.id === id),
 		},
 		sessionManager: { getSessionId: () => "s1", getBranch: () => [], getHeader: () => null },
 		getContextUsage: () => ({ tokens: 1, contextWindow: 1_000_000, percent: usage.percent }),
@@ -215,7 +214,9 @@ describe("granted tier and warming", () => {
 	it.each([true, false])("keeps active refresh decisions when hasUI=%s, including subagents", (hasUI) => {
 		const ctx = { hasUI, sessionManager: { getBranch: () => [] } } as never;
 		for (const action of ["warm", "stop"] as const) {
-			expect(warmingDecision({ action, warmCost: 0.01, missCost: 1, continuationProbability: 1 }, ctx, 300_000, 0, true)).toBeUndefined();
+			expect(
+				warmingDecision({ action, warmCost: 0.01, missCost: 1, continuationProbability: 1 }, ctx, 300_000, 0, true),
+			).toBeUndefined();
 		}
 	});
 
@@ -289,16 +290,66 @@ describe("cache retention", () => {
 	});
 });
 
-
 describe("cache clock evidence", () => {
+	it("uses cache request dispatch time when a warm receipt arrives later", () => {
+		const branch = [
+			{ type: "message", message: { role: "assistant", stopReason: "stop", timestamp: 1_000 } },
+			{
+				type: "usage",
+				kind: "cache_warm",
+				timestamp: new Date(310_000).toISOString(),
+				cacheRequestedAt: new Date(270_000).toISOString(),
+				usage: { cacheRead: 100, cacheWrite: 0 },
+			},
+		];
+		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(270_000);
+	});
 	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid lifetime %s", (short) => {
 		expect(promptCacheTtlMs({ short }, {})).toBeUndefined();
 	});
 	it("does not renew cache lifetime for a refresh reporting neither a read nor a write", () => {
 		const branch = [
 			{ type: "message", message: { role: "assistant", stopReason: "stop", timestamp: 1000 } },
-			{ type: "usage", kind: "cache_warm", timestamp: new Date(2000).toISOString(), usage: { cacheRead: 0, cacheWrite: 0 } },
+			{
+				type: "usage",
+				kind: "cache_warm",
+				timestamp: new Date(2000).toISOString(),
+				usage: { cacheRead: 0, cacheWrite: 0 },
+			},
 		];
 		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(1000);
+	});
+});
+
+describe("failed requests after cache expiry", () => {
+	it.each(["error", "aborted"])("does not renew the cache for a %s reply without cache activity", (stopReason) => {
+		const branch = [
+			{
+				type: "message",
+				message: { role: "assistant", stopReason: "stop", timestamp: 1_000, usage: { cacheRead: 100, cacheWrite: 0 } },
+			},
+			{
+				type: "message",
+				message: { role: "assistant", stopReason, timestamp: 400_000, usage: { cacheRead: 0, cacheWrite: 0 } },
+			},
+		];
+		const clock = cacheClock({ getBranch: () => branch } as never);
+		expect(clock.replyAt).toBe(400_000);
+		expect(clock.useAt).toBe(1_000);
+	});
+
+	it("keeps a failed stream's cache use when the provider reported it before the failure", () => {
+		const branch = [
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					stopReason: "aborted",
+					timestamp: 400_000,
+					usage: { cacheRead: 100, cacheWrite: 0 },
+				},
+			},
+		];
+		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(400_000);
 	});
 });

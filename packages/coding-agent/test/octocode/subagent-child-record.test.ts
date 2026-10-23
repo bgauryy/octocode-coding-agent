@@ -300,10 +300,7 @@ describe("what the parent keeps of a child's run", () => {
 		expect(text).not.toContain("compacting on the standalone request");
 		expect(text).toContain("Compactions: 1 aborted.");
 		expect(text).toContain(`Session ${result.details.id}: `);
-		expect(result.details.notices.kept.map((notice: { level: string }) => notice.level)).toEqual([
-			"warning",
-			"error",
-		]);
+		expect(result.details.notices.kept.map((notice: { level: string }) => notice.level)).toEqual(["warning", "error"]);
 	});
 
 	it("reports the same reason for a background child, with its notices inside the fence and no popup in the parent", async () => {

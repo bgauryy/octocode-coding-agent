@@ -118,12 +118,16 @@ async function verifyPackagesAreAvailable(packages) {
 			return results.map((result) => result.value);
 		}
 
-		console.log(`Waiting for ${failures.length} Octocode package${failures.length === 1 ? "" : "s"} on npm (attempt ${attempt}):`);
+		console.log(
+			`Waiting for ${failures.length} Octocode package${failures.length === 1 ? "" : "s"} on npm (attempt ${attempt}):`,
+		);
 		for (const failure of failures) console.log(`  ${failure}`);
 		if (Date.now() < deadline) await sleep(RETRY_DELAY_MS);
 	} while (Date.now() < deadline);
 
-	throw new Error(`Timed out waiting for Octocode packages to become available from npm:\n${failures.map((failure) => `  ${failure}`).join("\n")}`);
+	throw new Error(
+		`Timed out waiting for Octocode packages to become available from npm:\n${failures.map((failure) => `  ${failure}`).join("\n")}`,
+	);
 }
 
 function gitSourceCommit() {
@@ -152,36 +156,16 @@ function runAws(args, { allowNotFound = false, allowPreconditionFailure = false 
 }
 
 function readLatestRelease(bucket, endpoint, key, outputPath) {
-	const head = runAws(
-		[
-			"s3api",
-			"head-object",
-			"--bucket",
-			bucket,
-			"--key",
-			key,
-			"--endpoint-url",
-			endpoint,
-		],
-		{ allowNotFound: true },
-	);
+	const head = runAws(["s3api", "head-object", "--bucket", bucket, "--key", key, "--endpoint-url", endpoint], {
+		allowNotFound: true,
+	});
 	if (head === undefined) return undefined;
 
 	const metadata = JSON.parse(head);
 	if (typeof metadata.ETag !== "string") {
 		throw new Error("Latest Octocode release marker has no ETag.");
 	}
-	runAws([
-		"s3api",
-		"get-object",
-		"--bucket",
-		bucket,
-		"--key",
-		key,
-		"--endpoint-url",
-		endpoint,
-		outputPath,
-	]);
+	runAws(["s3api", "get-object", "--bucket", bucket, "--key", key, "--endpoint-url", endpoint, outputPath]);
 	const release = JSON.parse(readFileSync(outputPath, "utf8"));
 	if (
 		typeof release !== "object" ||
@@ -263,7 +247,9 @@ export async function advanceLatestRelease(version, readLatest, writeLatest) {
 			return { advanced: true, version };
 		}
 	}
-	throw new Error(`Could not advance the Octocode release marker to ${version} after ${MAX_POINTER_UPDATE_ATTEMPTS} attempts.`);
+	throw new Error(
+		`Could not advance the Octocode release marker to ${version} after ${MAX_POINTER_UPDATE_ATTEMPTS} attempts.`,
+	);
 }
 
 async function main() {
@@ -338,14 +324,7 @@ async function main() {
 					join(temporaryDirectory, "installer-latest-current.json"),
 				),
 			(condition) =>
-				putJson(
-					options.bucket,
-					options.endpoint,
-					latestPath,
-					`${INSTALLER_PREFIX}/latest.json`,
-					"no-store",
-					condition,
-				),
+				putJson(options.bucket, options.endpoint, latestPath, `${INSTALLER_PREFIX}/latest.json`, "no-store", condition),
 		);
 		console.log(
 			installerLatest.advanced
@@ -363,14 +342,7 @@ async function main() {
 					join(temporaryDirectory, "latest-current.json"),
 				),
 			(condition) =>
-				putJson(
-					options.bucket,
-					options.endpoint,
-					latestPath,
-					`${RELEASES_PREFIX}/latest.json`,
-					"no-store",
-					condition,
-				),
+				putJson(options.bucket, options.endpoint, latestPath, `${RELEASES_PREFIX}/latest.json`, "no-store", condition),
 		);
 		console.log(
 			result.advanced

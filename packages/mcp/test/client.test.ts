@@ -91,6 +91,18 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
+	it("does not report connected when it was closed while sending initialized", async () => {
+		const { clientTransport } = await createServer();
+		const client = new McpClient({ name: "test-client", version: "2.0.0" });
+		const send = clientTransport.send.bind(clientTransport);
+		clientTransport.send = async (message) => {
+			await send(message);
+			if ("method" in message && message.method === "notifications/initialized") await client.close();
+		};
+		await expect(client.connect(clientTransport)).rejects.toThrow(/closed/i);
+		expect(client.connectionState).toBe("closed");
+	});
+
 	it("paginates tools and preserves protocol tool definitions", async () => {
 		const { client, server } = await connect();
 		server.setHandler("tools/list", (request) => {
@@ -319,9 +331,9 @@ describe("McpClient", () => {
 		const client = new McpClient({ name: "test-client", version: "1.0.0", requestTimeoutMs: 5 });
 		await expect(client.connect(clientTransport)).rejects.toBeInstanceOf(McpTimeoutError);
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(
-			server.messages.some((message) => "method" in message && message.method === "notifications/cancelled"),
-		).toBe(false);
+		expect(server.messages.some((message) => "method" in message && message.method === "notifications/cancelled")).toBe(
+			false,
+		);
 	});
 
 	it("notifies close listeners once when the transport drops", async () => {

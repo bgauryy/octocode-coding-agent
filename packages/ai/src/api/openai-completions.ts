@@ -290,7 +290,6 @@ type ChatCompletionToolWithCacheControl = OpenAI.Chat.Completions.ChatCompletion
 	cache_control?: OpenAICompatCacheControl;
 };
 
-
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
 	model: Model<"openai-completions">,
 	context: TranscriptContext,
@@ -345,14 +344,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				cacheSessionId,
 				compat,
 			);
-			let params = buildParams(
-				model,
-				normalizedContext,
-				options,
-				compat,
-				cacheRetention,
-				grammarToolInputProperties,
-			);
+			let params = buildParams(model, normalizedContext, options, compat, cacheRetention, grammarToolInputProperties);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
 				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
@@ -370,7 +362,14 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 					signal: options?.signal,
 				},
 			);
-			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			try {
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			} catch (error) {
+				// Iteration has not started, so the SDK iterator cannot release this response yet.
+				openaiStream.controller.abort();
+				await response.body?.cancel().catch(() => {});
+				throw error;
+			}
 			stream.push({ type: "start", partial: output });
 
 			interface StreamingToolCallBlock extends ToolCall {
@@ -410,12 +409,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			): string | undefined => {
 				const customInput = block.customInput;
 				if (!customInput) return undefined;
-				const delta = appendGrammarToolInputJsonDelta(
-					customInput.jsonBuffer,
-					customInput.property,
-					nextInput,
-					close,
-				);
+				const delta = appendGrammarToolInputJsonDelta(customInput.jsonBuffer, customInput.property, nextInput, close);
 				block.arguments = { [customInput.property]: nextInput };
 				return delta;
 			};
@@ -627,11 +621,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 						}
 					}
 
-					if (
-						choice.delta.content !== null &&
-						choice.delta.content !== undefined &&
-						choice.delta.content.length > 0
-					) {
+					if (choice.delta.content !== null && choice.delta.content !== undefined && choice.delta.content.length > 0) {
 						const block = ensureTextBlock();
 						block.text += choice.delta.content;
 						stream.push({
@@ -930,8 +920,7 @@ function buildParams(
 			(params as any).thinking = { type: "disabled" };
 		}
 		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
-			(params as any).reasoning_effort =
-				model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+			(params as any).reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}
 	} else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
 		// OpenRouter normalizes reasoning across providers via a nested reasoning object.
@@ -1324,9 +1313,7 @@ export function convertMessages(
 			if (nonEmptyThinkingBlocks.length > 0) {
 				if (compat.requiresThinkingAsText) {
 					// Convert thinking blocks to plain text (no tags to avoid model mimicking them)
-					const thinkingText = nonEmptyThinkingBlocks
-						.map((block) => sanitizeSurrogates(block.thinking))
-						.join("\n\n");
+					const thinkingText = nonEmptyThinkingBlocks.map((block) => sanitizeSurrogates(block.thinking)).join("\n\n");
 					assistantMsg.content = [{ type: "text", text: thinkingText }, ...assistantTextParts];
 				} else {
 					// Always send assistant content as a plain string (OpenAI Chat Completions
@@ -1711,8 +1698,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 			model.compat.requiresAssistantAfterToolResult ?? detected.requiresAssistantAfterToolResult,
 		requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
 		requiresReasoningContentOnAssistantMessages:
-			model.compat.requiresReasoningContentOnAssistantMessages ??
-			detected.requiresReasoningContentOnAssistantMessages,
+			model.compat.requiresReasoningContentOnAssistantMessages ?? detected.requiresReasoningContentOnAssistantMessages,
 		thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
 		openRouterRouting: model.compat.openRouterRouting ?? {},
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
@@ -1725,8 +1711,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		supportsOpenAIGrammarTools: model.compat.supportsOpenAIGrammarTools ?? detected.supportsOpenAIGrammarTools,
 		supportsMidConvoSystemMessages:
 			model.compat.supportsMidConvoSystemMessages ?? detected.supportsMidConvoSystemMessages,
-		supportsMidConvoToolAdditions:
-			model.compat.supportsMidConvoToolAdditions ?? detected.supportsMidConvoToolAdditions,
+		supportsMidConvoToolAdditions: model.compat.supportsMidConvoToolAdditions ?? detected.supportsMidConvoToolAdditions,
 		cacheControlFormat: model.compat.cacheControlFormat ?? detected.cacheControlFormat,
 		sendSessionAffinityHeaders: model.compat.sendSessionAffinityHeaders ?? detected.sendSessionAffinityHeaders,
 		sessionAffinityFormat: model.compat.sessionAffinityFormat ?? detected.sessionAffinityFormat,

@@ -47,17 +47,14 @@ const entries = [
 	},
 ];
 
-it.each(entries)(
-	"retains validated $type permission updates without applying them",
-	(entry) => {
-		const result = decode({ behavior: "allow", updatedPermissions: [entry] });
-		expect(result).toMatchObject({
-			permissionDecision: "allow",
-			updatedPermissions: [entry],
-		});
-		expect(result.error).toBeUndefined();
-	},
-);
+it.each(entries)("retains validated $type permission updates without applying them", (entry) => {
+	const result = decode({ behavior: "allow", updatedPermissions: [entry] });
+	expect(result).toMatchObject({
+		permissionDecision: "allow",
+		updatedPermissions: [entry],
+	});
+	expect(result.error).toBeUndefined();
+});
 
 it("retains ordered updates with replacement input", () => {
 	expect(
@@ -101,10 +98,7 @@ it("keeps a valid denial authoritative over irrelevant malformed effects", () =>
 });
 
 it("keeps Codex reserved permission updates unsupported", () => {
-	const result = decode(
-		{ behavior: "allow", updatedPermissions: [entries[0]] },
-		"codex",
-	);
+	const result = decode({ behavior: "allow", updatedPermissions: [entries[0]] }, "codex");
 	expect(result.error).toBeDefined();
 	expect(result.permissionDecision).toBeUndefined();
 });

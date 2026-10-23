@@ -51,8 +51,7 @@ function timeline(item: Item, now: number, self?: string, parents?: ReadonlySet<
 		`created ${stamp(item.createdAt)} (${ago(item.createdAt, now)}) by ${visibleControls(item.createdBy)}`,
 	];
 	if (item.startedAt) parts.push(`claimed ${ago(item.startedAt, now)}${item.state === "done" ? "" : heldBy}`);
-	else if (item.assignee && item.state !== "done")
-		parts.push(`assignee ${who(item.assignee, self, parents)}`);
+	else if (item.assignee && item.state !== "done") parts.push(`assignee ${who(item.assignee, self, parents)}`);
 	if (item.doneAt)
 		parts.push(
 			`done ${ago(item.doneAt, now)}${item.startedAt && item.startedAt <= item.doneAt ? ` (took ${formatSpan(item.doneAt - item.startedAt)})` : ""}${heldBy}`,
@@ -85,8 +84,7 @@ export function itemFields(item: Item): string[] {
 	if (item.goal) lines.push(`Goal: ${visibleControls(item.goal)}`);
 	if (item.paths.length) lines.push(`Where: ${item.paths.map((path) => visibleControls(path)).join(", ")}`);
 	if (item.why) lines.push(`Why: ${indented(item.why, "  ")}`);
-	if (item.evidence.length)
-		lines.push("Evidence:", ...item.evidence.map((entry) => `- ${visibleControls(entry)}`));
+	if (item.evidence.length) lines.push("Evidence:", ...item.evidence.map((entry) => `- ${visibleControls(entry)}`));
 	if (item.plan) lines.push(`Plan: ${indented(item.plan, "  ")}`);
 	return lines;
 }
@@ -112,10 +110,9 @@ export function itemDetail(
 	options: DetailOptions = {},
 ): string {
 	const { self, parents } = options;
-	const meta = [
-		...timeline(item, now, self, parents),
-		options.version ? `version ${item.version}` : "",
-	].filter(Boolean);
+	const meta = [...timeline(item, now, self, parents), options.version ? `version ${item.version}` : ""].filter(
+		Boolean,
+	);
 	const lines = [itemLine(item, self, parents), ...itemFields(item), meta.join(" · ")];
 	if (options.origin) lines.push(`From: ${itemLine(options.origin, self, parents)}`);
 	if (item.body) lines.push("", visibleControls(item.body));
@@ -191,13 +188,10 @@ export function exportMarkdown(store: BacklogStore, repoName: string, now: numbe
 				item.doneAt ? `done ${stamp(item.doneAt)}` : "",
 			];
 			lines.push(`  _${times.filter(Boolean).join(" · ")}_`);
-			for (const line of item.body ? visibleControls(item.body).split("\n") : [])
-				lines.push(`  ${line}`.trimEnd());
+			for (const line of item.body ? visibleControls(item.body).split("\n") : []) lines.push(`  ${line}`.trimEnd());
 			for (const note of store.notes(item, -1)) {
 				const heading = `${new Date(note.at).toISOString().slice(0, 16).replace("T", " ")} ${visibleControls(note.author)}${note.kind === "change" ? " ·" : ":"}`;
-				lines.push(
-					...`  - ${heading} ${indented(note.text, "    ")}`.split("\n").map((line) => line.trimEnd()),
-				);
+				lines.push(...`  - ${heading} ${indented(note.text, "    ")}`.split("\n").map((line) => line.trimEnd()));
 			}
 		}
 		lines.push("");

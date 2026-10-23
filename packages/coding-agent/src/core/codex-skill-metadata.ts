@@ -25,11 +25,7 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 		if (!target) return fail();
 		return resolve(target, seen);
 	}
-	function checkAliases(
-		node: unknown,
-		active = new Set<unknown>(),
-		depth = 0,
-	): void {
+	function checkAliases(node: unknown, active = new Set<unknown>(), depth = 0): void {
 		if (depth > 128 || active.has(node)) fail();
 		if (!node || typeof node !== "object") return;
 		active.add(node);
@@ -40,16 +36,12 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 				checkAliases(pair.key, active, depth + 1);
 				checkAliases(pair.value, active, depth + 1);
 			}
-		else if (isSeq(node))
-			for (const item of node.items) checkAliases(item, active, depth + 1);
+		else if (isSeq(node)) for (const item of node.items) checkAliases(item, active, depth + 1);
 		active.delete(node);
 	}
 	checkAliases(document.contents);
 	function blank(node: unknown): boolean {
-		return (
-			node == null ||
-			(isScalar(node) && node.type === "PLAIN" && node.source === "")
-		);
+		return node == null || (isScalar(node) && node.type === "PLAIN" && node.source === "");
 	}
 	function optional(node: unknown): boolean {
 		node = resolve(node);
@@ -60,11 +52,7 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 		if (node.tag && !nul) fail();
 		return nul;
 	}
-	function fields(
-		raw: unknown,
-		known: readonly string[],
-		aliases: Record<string, string> = {},
-	): Map<string, unknown> {
+	function fields(raw: unknown, known: readonly string[], aliases: Record<string, string> = {}): Map<string, unknown> {
 		const node = resolve(raw);
 		if (blank(node)) return new Map();
 		if (!isMap(node)) return fail();
@@ -91,11 +79,7 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 		if (!isSeq(node)) return fail();
 		return node.items;
 	}
-	const root = fields(document.contents, [
-		"policy",
-		"interface",
-		"dependencies",
-	]);
+	const root = fields(document.contents, ["policy", "interface", "dependencies"]);
 	let policy: CodexSkillPolicy | undefined;
 	const policyNode = root.get("policy");
 	if (!optional(policyNode)) {
@@ -106,27 +90,16 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 			if (
 				!isScalar(implicit) ||
 				implicit.type !== "PLAIN" ||
-				!["true", "True", "TRUE", "false", "False", "FALSE"].includes(
-					implicit.source ?? "",
-				)
+				!["true", "True", "TRUE", "false", "False", "FALSE"].includes(implicit.source ?? "")
 			)
 				fail();
 			allow = (implicit as { source: string }).source.toLowerCase() === "true";
 		}
 		const products = sequence(p.get("products")).map((raw) => {
 			const node = resolve(raw);
-			if (
-				!isScalar(node) ||
-				(node.tag && !node.tag.startsWith("tag:yaml.org,2002:"))
-			)
-				return fail();
+			if (!isScalar(node) || (node.tag && !node.tag.startsWith("tag:yaml.org,2002:"))) return fail();
 			const value = node.source ?? String(node.value);
-			if (
-				!["chatgpt", "codex", "atlas", "CHATGPT", "CODEX", "ATLAS"].includes(
-					value,
-				)
-			)
-				return fail();
+			if (!["chatgpt", "codex", "atlas", "CHATGPT", "CODEX", "ATLAS"].includes(value)) return fail();
 			return value.toLowerCase() as CodexSkillPolicy["products"][number];
 		});
 		policy = {
@@ -152,24 +125,8 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 	if (dependenciesDeclared) {
 		const deps = fields(dependenciesNode, ["tools"]);
 		for (const tool of sequence(deps.get("tools"))) {
-			const values = fields(tool, [
-				"type",
-				"value",
-				"description",
-				"transport",
-				"command",
-				"url",
-				"oauth",
-			]);
-			for (const key of [
-				"type",
-				"value",
-				"description",
-				"transport",
-				"command",
-				"url",
-			])
-				scalar(values.get(key));
+			const values = fields(tool, ["type", "value", "description", "transport", "command", "url", "oauth"]);
+			for (const key of ["type", "value", "description", "transport", "command", "url"]) scalar(values.get(key));
 			const oauth = values.get("oauth");
 			if (optional(oauth)) continue;
 			const port = fields(oauth, ["callbackPort"], {
@@ -178,10 +135,7 @@ export function parseCodexSkillMetadata(source: string): CodexSkillMetadata {
 			if (optional(port)) continue;
 			if (!isScalar(port) || port.type !== "PLAIN") fail();
 			const source = (port as { source?: string }).source ?? "";
-			if (
-				!/^\+?(?:0|[1-9][0-9]*|0x[0-9a-fA-F]+|0o[0-7]+|0b[01]+)$/.test(source)
-			)
-				fail();
+			if (!/^\+?(?:0|[1-9][0-9]*|0x[0-9a-fA-F]+|0o[0-7]+|0b[01]+)$/.test(source)) fail();
 			const numeric = Number(source.replace(/^\+/, ""));
 			if (!Number.isInteger(numeric) || numeric < 0 || numeric > 65535) fail();
 		}

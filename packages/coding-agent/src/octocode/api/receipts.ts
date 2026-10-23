@@ -83,8 +83,7 @@ export class SendReceipts {
 	}
 
 	private clear(reason: string): void {
-		for (const waiter of this.waiters)
-			waiter.reject(new RpcError(ERR.unavailable, reason, { execution: "accepted" }));
+		for (const waiter of this.waiters) waiter.reject(new RpcError(ERR.unavailable, reason, { execution: "accepted" }));
 		this.waiters.clear();
 		for (const receipt of this.preparing) this.cancelPreparation(receipt, reason);
 		this.preparing.clear();
@@ -180,8 +179,7 @@ export class SendReceipts {
 			this.cancelPreparation(receipt, "Message preparation was cancelled; nothing was sent");
 			return "cancelled";
 		}
-		if (receipt.phase !== "accepted")
-			throw new RpcError(ERR.unavailable, "This request no longer owns the active run");
+		if (receipt.phase !== "accepted") throw new RpcError(ERR.unavailable, "This request no longer owns the active run");
 		return "owner";
 	}
 

@@ -60,9 +60,9 @@ it("validates Codex limits and diagnoses limits on events that cannot emit conte
 		return { config, errors };
 	};
 	for (const limit of [0, 42, 2500])
-		expect(
-			commandsFor(parse(limit).config, "PreToolUse", ["Bash"])[0],
-		).toMatchObject({ additionalContextLimit: limit });
+		expect(commandsFor(parse(limit).config, "PreToolUse", ["Bash"])[0]).toMatchObject({
+			additionalContextLimit: limit,
+		});
 	for (const limit of [-1, 1.5, "42"]) {
 		const parsed = parse(limit);
 		expect(parsed.config.PreToolUse).toEqual([]);
@@ -70,75 +70,64 @@ it("validates Codex limits and diagnoses limits on events that cannot emit conte
 	}
 	const ignored = parse(42, "Stop");
 	expect(ignored.errors.join()).toContain("ignoring additionalContextLimit");
-	expect(ignored.config.Stop[0]?.hooks[0]).not.toHaveProperty(
-		"additionalContextLimit",
-	);
+	expect(ignored.config.Stop[0]?.hooks[0]).not.toHaveProperty("additionalContextLimit");
 });
-it.each([false, true])(
-	"applies the per-handler context limit in actual dispatch (async=%s)",
-	async (async) => {
-		const home = tmp();
-		vi.stubEnv("OCTOCODE_HOME", tmp());
-		fs.mkdirSync(path.join(home, ".codex"));
-		fs.writeFileSync(
-			path.join(home, ".codex/hooks.json"),
-			JSON.stringify({
-				hooks: {
-					PreToolUse: [
-						{
-							hooks: [
-								{
-									type: "command",
-									command: "fixture",
-									async,
-									additionalContextLimit: 256,
-								},
-							],
-						},
-					],
-				},
-			}),
+it.each([false, true])("applies the per-handler context limit in actual dispatch (async=%s)", async (async) => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".codex"));
+	fs.writeFileSync(
+		path.join(home, ".codex/hooks.json"),
+		JSON.stringify({
+			hooks: {
+				PreToolUse: [
+					{
+						hooks: [
+							{
+								type: "command",
+								command: "fixture",
+								async,
+								additionalContextLimit: 256,
+							},
+						],
+					},
+				],
+			},
+		}),
+	);
+	const text = "start-" + "context ".repeat(750) + "-end";
+	vi.spyOn(runner, "runHook").mockResolvedValue({
+		code: 0,
+		stderr: "",
+		timedOut: false,
+		stdout: JSON.stringify({
+			hookSpecificOutput: {
+				hookEventName: "PreToolUse",
+				additionalContext: text,
+			},
+		}),
+	});
+	const f = fakePi();
+	const ctx = fakeCtx({ cwd: tmp() });
+	const hooks = registerHooks(f.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	await f.fire("session_start", { reason: "startup" }, ctx);
+	try {
+		await hooks.preToolUse(
+			{
+				toolName: "bash",
+				toolCallId: "limited",
+				input: { command: "true" },
+			} as never,
+			ctx,
 		);
-		const text = "start-" + "context ".repeat(750) + "-end";
-		vi.spyOn(runner, "runHook").mockResolvedValue({
-			code: 0,
-			stderr: "",
-			timedOut: false,
-			stdout: JSON.stringify({
-				hookSpecificOutput: {
-					hookEventName: "PreToolUse",
-					additionalContext: text,
-				},
-			}),
-		});
-		const f = fakePi();
-		const ctx = fakeCtx({ cwd: tmp() });
-		const hooks = registerHooks(
-			f.pi,
-			{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-			home,
-		);
-		await f.fire("session_start", { reason: "startup" }, ctx);
-		try {
-			await hooks.preToolUse(
-				{
-					toolName: "bash",
-					toolCallId: "limited",
-					input: { command: "true" },
-				} as never,
-				ctx,
-			);
-			await new Promise((resolve) => setImmediate(resolve));
-			const result = async
-				? await f.emit("before_agent_start", {}, ctx)
-				: f.sent;
-			expect(JSON.stringify(result)).toContain("Full hook output saved to:");
-			expect(JSON.stringify(result)).not.toContain(text);
-		} finally {
-			await f.fire("session_shutdown", { reason: "quit" }, ctx);
-		}
-	},
-);
+		await new Promise((resolve) => setImmediate(resolve));
+		const result = async ? await f.emit("before_agent_start", {}, ctx) : f.sent;
+		expect(JSON.stringify(result)).toContain("Full hook output saved to:");
+		expect(JSON.stringify(result)).not.toContain(text);
+	} finally {
+		await f.fire("session_shutdown", { reason: "quit" }, ctx);
+	}
+});
 
 it("treats null as the default and keeps different context limits distinct", () => {
 	const errors: string[] = [];

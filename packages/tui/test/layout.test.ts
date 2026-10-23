@@ -308,10 +308,7 @@ describe("viewport layout", () => {
 		const borderForeground = "\x1b[31m";
 		const content = {
 			render: (width: number) =>
-				Array.from(
-					{ length: 8 },
-					() => `${background}${"x".repeat(width - 1)}${borderForeground}│\x1b[39m\x1b[49m`,
-				),
+				Array.from({ length: 8 }, () => `${background}${"x".repeat(width - 1)}${borderForeground}│\x1b[39m\x1b[49m`),
 			invalidate: () => {},
 		};
 		const scrollView = new ScrollView(content, {

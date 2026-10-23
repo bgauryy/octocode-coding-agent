@@ -49,9 +49,7 @@ describe("the DevTools attach check", () => {
 			});
 		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 		try {
-			await expect(
-				openBrowser({}, { port: (server.address() as AddressInfo).port, reuseTab: true }),
-			).rejects.toThrow(
+			await expect(openBrowser({}, { port: (server.address() as AddressInfo).port, reuseTab: true })).rejects.toThrow(
 				/Refused the DevTools URL ws:\/\/evil\.example:\d+\/devtools\/page\/a: host evil\.example is not this machine/,
 			);
 			expect(upgraded).toBe(false);

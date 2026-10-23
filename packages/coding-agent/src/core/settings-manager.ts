@@ -3,15 +3,17 @@ import type { Model } from "@octocodeai/octocode-ai";
 import { type CachePreferences, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ScrollViewScrollbar, TerminalCapabilities, WheelScrollLines } from "@octocodeai/octocode-tui";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir, getLegacyConfigDirs } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
+import { atomicWriteFileSync } from "../utils/atomic-file.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
 import { builtInCompactionSettings } from "./compaction/settings.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
+import { ProjectTrustStore } from "./trust-manager.ts";
 import type {
 	CacheWarmingMode,
 	DefaultProjectTrust,
@@ -161,7 +163,12 @@ export interface SettingsManagerCreateOptions {
 }
 
 export interface SettingsStorage {
-	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void;
+	/** Read-only loads can leave a missing configuration directory untouched; a returned write is rejected. */
+	withLock(
+		scope: SettingsScope,
+		fn: (current: string | undefined) => string | undefined,
+		options?: { readOnly?: boolean },
+	): void;
 }
 
 export interface SettingsError {
@@ -218,18 +225,25 @@ export class FileSettingsStorage implements SettingsStorage {
 		throw (lastError as Error) ?? new Error("Failed to acquire settings lock");
 	}
 
-	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {
+	withLock(
+		scope: SettingsScope,
+		fn: (current: string | undefined) => string | undefined,
+		options: { readOnly?: boolean } = {},
+	): void {
 		const path = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
 		const dir = dirname(path);
 
 		let release: (() => void) | undefined;
 		try {
-			// Only create directory and lock if file exists or we need to write
-			const fileExists = existsSync(path);
-			if (fileExists) {
+			// A writer locks before reading even when this is the first settings file.
+			// Startup reads leave missing configuration directories untouched.
+			if (!options.readOnly && !existsSync(dir)) {
+				mkdirSync(dir, { recursive: true });
+			}
+			if (!options.readOnly || existsSync(path)) {
 				release = this.acquireLockSyncWithRetry(path);
 			}
-			let current = fileExists ? readFileSync(path, "utf-8") : undefined;
+			let current = existsSync(path) ? readFileSync(path, "utf-8") : undefined;
 			if (scope === "global") {
 				let inherited: Record<string, unknown> = {};
 				for (const legacyDir of getLegacyConfigDirs(dir).reverse()) {
@@ -254,19 +268,17 @@ export class FileSettingsStorage implements SettingsStorage {
 					inherited = deepMergeObjects(inherited, legacy);
 				}
 				if (Object.keys(inherited).length) {
-					current = JSON.stringify(deepMergeObjects(inherited, current ? JSON.parse(stripBom(current)) : {}));
+					const native = current !== undefined ? JSON.parse(stripBom(current)) : {};
+					if (!isMergeableObject(native)) throw new Error(`Invalid settings object: ${path}`);
+					current = JSON.stringify(deepMergeObjects(inherited, native));
 				}
 			}
 			const next = fn(current);
+			if (options.readOnly && next !== undefined) {
+				throw new Error("Read-only settings transaction cannot write");
+			}
 			if (next !== undefined) {
-				// Only create directory when we actually need to write
-				if (!existsSync(dir)) {
-					mkdirSync(dir, { recursive: true });
-				}
-				if (!release) {
-					release = this.acquireLockSyncWithRetry(path);
-				}
-				writeFileSync(path, next, "utf-8");
+				atomicWriteFileSync(path, next);
 			}
 		} finally {
 			if (release) {
@@ -280,9 +292,16 @@ export class InMemorySettingsStorage implements SettingsStorage {
 	private global: string | undefined;
 	private project: string | undefined;
 
-	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {
+	withLock(
+		scope: SettingsScope,
+		fn: (current: string | undefined) => string | undefined,
+		options: { readOnly?: boolean } = {},
+	): void {
 		const current = scope === "global" ? this.global : this.project;
 		const next = fn(current);
+		if (options.readOnly && next !== undefined) {
+			throw new Error("Read-only settings transaction cannot write");
+		}
 		if (next !== undefined) {
 			if (scope === "global") {
 				this.global = next;
@@ -335,6 +354,16 @@ export class SettingsManager {
 	}
 
 	/** Create a SettingsManager that loads from files */
+	/**
+	 * Settings for startup decisions made before project trust is resolved (where sessions are stored): a project's
+	 * settings apply only when the user already trusted that project.
+	 */
+	static createForStartup(cwd: string, agentDir: string = getAgentDir()): SettingsManager {
+		return SettingsManager.create(cwd, agentDir, {
+			projectTrusted: new ProjectTrustStore(agentDir).get(cwd) === true,
+		});
+	}
+
 	static create(
 		cwd: string,
 		agentDir: string = getAgentDir(),
@@ -397,12 +426,16 @@ export class SettingsManager {
 		}
 
 		let content: string | undefined;
-		storage.withLock(scope, (current) => {
-			content = current;
-			return undefined;
-		});
+		storage.withLock(
+			scope,
+			(current) => {
+				content = current;
+				return undefined;
+			},
+			{ readOnly: true },
+		);
 
-		if (!content) {
+		if (content === undefined) {
 			return {};
 		}
 		const settings = JSON.parse(stripBom(content));
@@ -423,6 +456,7 @@ export class SettingsManager {
 
 	/** Migrate old settings format to new format */
 	private static migrateSettings(settings: Record<string, unknown>): Settings {
+		if (!isMergeableObject(settings)) throw new Error("Invalid settings object: expected a JSON object");
 		// Migrate queueMode -> steeringMode
 		if ("queueMode" in settings && !("steeringMode" in settings)) {
 			settings.steeringMode = settings.queueMode;
@@ -634,9 +668,10 @@ export class SettingsManager {
 		modifiedNestedFields: Map<keyof Settings, Set<string>>,
 	): void {
 		this.storage.withLock(scope, (current) => {
-			const currentFileSettings = current
-				? SettingsManager.migrateSettings(JSON.parse(stripBom(current)) as Record<string, unknown>)
-				: {};
+			const currentFileSettings =
+				current !== undefined
+					? SettingsManager.migrateSettings(JSON.parse(stripBom(current)) as Record<string, unknown>)
+					: {};
 			const mergedSettings: Settings = { ...currentFileSettings };
 			for (const field of modifiedFields) {
 				const value = snapshotSettings[field];
@@ -1340,10 +1375,7 @@ export class SettingsManager {
 	getDefaultTools(defaults: readonly string[] = DEFAULT_TOOL_NAMES): string[] | undefined {
 		const tools = this.settings.defaultTools;
 		if (tools === undefined) return undefined;
-		return resolveDefaultTools(
-			Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : [],
-			defaults,
-		);
+		return resolveDefaultTools(Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : [], defaults);
 	}
 
 	setEnabledModels(patterns: string[] | undefined): void {

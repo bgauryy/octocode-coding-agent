@@ -28,6 +28,7 @@ import {
 	StdioTransport,
 	StreamableHttpTransport,
 } from "@octocodeai/octocode-mcp";
+import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@octocodeai/octocode-mcp/oauth";
 import { VERSION } from "../../config.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
@@ -156,12 +157,20 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	private listRevision = 0;
 	private client: McpClient | undefined;
 	private opening: Promise<McpClient> | undefined;
+	/** Unlike permanent shutdown, stopping an opening can be followed by a fresh reconnect. */
+	private openingAbort: AbortController | undefined;
+	/** Expired sessions retain their transport until requests already using it have settled. */
+	private readonly activeCalls = new Map<McpClient, number>();
+	private readonly retiredClients = new Set<McpClient>();
+	private readonly closingRetired = new Map<McpClient, Promise<void>>();
 	/** Aborted by `close()`; cancels a connect in progress, including the wait between retries. */
 	private readonly shutdown = new AbortController();
 	/** Stderr of the last stdio server that failed to connect. */
 	private stderrTail: string | undefined;
 	private readonly cwd: string;
 	private readonly createTransport: McpTransportFactory;
+	/** Stopped by `stop()` until `reconnect()`: calls do not start the server again. */
+	private stopped = false;
 	private readonly authProvider: McpAuthProvider | undefined;
 	private readonly onTools: (connection: McpServerConnection) => void;
 	private readonly onChange: ((connection: McpServerConnection) => void) | undefined;
@@ -241,6 +250,10 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	getClient(): Promise<McpClient> {
 		if (this.entry.config.enabled === false)
 			return Promise.reject(new Error(`MCP server "${this.entry.name}" is disabled`));
+		if (this.stopped)
+			return Promise.reject(
+				new Error(`MCP server "${this.entry.name}" is stopped in this session; connect or restart it to use it`),
+			);
 		if (this.closed) return Promise.reject(new Error(`MCP server "${this.entry.name}" is shut down`));
 		if (this.client?.connectionState === "connected") return Promise.resolve(this.client);
 		this.opening ??= this.open().finally(() => {
@@ -250,70 +263,122 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	callTool(name: string, args: Record<string, unknown>, options: McpRequestOptions): Promise<CallToolResult> {
-		return this.withClient((client) => client.callTool(name, args, options));
+		return this.withClient((client) => client.callTool(name, args, options), false, options.signal);
 	}
 
 	readResource(uri: string, options: McpRequestOptions): Promise<ReadResourceResult> {
-		return this.withClient((client) => client.readResource(uri, options), true);
+		return this.withClient((client) => client.readResource(uri, options), true, options.signal);
 	}
 
 	resourcesPage(cursor: string | undefined, options: McpRequestOptions): Promise<ListResourcesResult> {
-		return this.withClient((client) => client.listResourcesPage(cursor, options), true);
+		return this.withClient((client) => client.listResourcesPage(cursor, options), true, options.signal);
 	}
 
 	resourceTemplatesPage(cursor: string | undefined, options: McpRequestOptions): Promise<ListResourceTemplatesResult> {
 		return this.withClient(
-			(client) =>
-				withoutTemplates(() => client.listResourceTemplatesPage(cursor, options), { resourceTemplates: [] }),
+			(client) => withoutTemplates(() => client.listResourceTemplatesPage(cursor, options), { resourceTemplates: [] }),
 			true,
+			options.signal,
 		);
 	}
 
 	allResources(options: McpRequestOptions): Promise<Resource[]> {
-		return this.withClient((client) => client.listResources(options), true);
+		return this.withClient((client) => client.listResources(options), true, options.signal);
 	}
 
 	allResourceTemplates(options: McpRequestOptions): Promise<ResourceTemplate[]> {
-		return this.withClient((client) => listTemplates(client, options), true);
+		return this.withClient((client) => listTemplates(client, options), true, options.signal);
 	}
 
 	/**
 	 * Run a request, reconnecting when needed. `readOnly` requests are retried once after a transient
 	 * HTTP error; tool calls are not, since they may have run.
 	 */
-	private async withClient<T>(run: (client: McpClient) => Promise<T>, readOnly = false): Promise<T> {
+	private async withClient<T>(
+		run: (client: McpClient) => Promise<T>,
+		readOnly = false,
+		signal?: AbortSignal,
+	): Promise<T> {
 		for (let attempt = 1; ; attempt++) {
-			const client = await this.getClient();
+			// A cancelled call stops waiting; the shared (re)connect continues for the server's other callers.
+			const client = await raceWithAbortSignal(this.getClient(), signal);
+			this.activeCalls.set(client, (this.activeCalls.get(client) ?? 0) + 1);
 			try {
 				return await run(client);
 			} catch (error) {
 				if (readOnly && attempt === 1 && error instanceof McpHttpError && isTransientError(error)) {
-					await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAYS_MS[0]));
+					await sleep(CONNECT_RETRY_DELAYS_MS[0], undefined, { signal });
 					continue;
 				}
 				if (error instanceof McpSessionExpiredError && attempt === 1) {
 					// The server no longer knows the session (restart, deploy), so it did not run the request.
-					// Retry once on a new session. The old client is detached but not closed: closing would
-					// fail its other in-flight calls, which instead get the same 404 and retry the same way.
+					// Retry once on a new session. Defer closing the old client until its other calls settle;
+					// closing it now would fail calls that may also receive a 404 and retry.
 					if (this.client === client) {
 						this.client = undefined;
 						this.withdrawCatalog();
 					}
+					this.retiredClients.add(client);
 					continue;
 				}
 				if (!this.needsSignIn(error)) throw error;
 				await this.dropClient(client);
 				this.markNeedsAuth();
 				throw new Error(signInRequiredMessage(this.entry));
+			} finally {
+				const remaining = (this.activeCalls.get(client) ?? 1) - 1;
+				if (remaining > 0) this.activeCalls.set(client, remaining);
+				else {
+					this.activeCalls.delete(client);
+					if (this.retiredClients.has(client)) void this.closeRetiredClient(client);
+				}
 			}
 		}
 	}
 
+	private closeRetiredClient(client: McpClient): Promise<void> {
+		const existing = this.closingRetired.get(client);
+		if (existing) return existing;
+		const closing = client
+			.close()
+			.catch(() => undefined)
+			.finally(() => {
+				this.retiredClients.delete(client);
+				this.closingRetired.delete(client);
+			});
+		this.closingRetired.set(client, closing);
+		return closing;
+	}
+
+	private async closeRetiredClients(): Promise<void> {
+		await Promise.all([...this.retiredClients].map((client) => this.closeRetiredClient(client)));
+	}
+
 	/** Connect again with fresh credentials, for example after signing in. */
 	async reconnect(): Promise<void> {
+		this.stopped = false;
 		await this.opening?.catch(() => undefined);
 		if (this.client) await this.dropClient(this.client);
 		await this.getClient();
+	}
+
+	/**
+	 * Stop the server for this session: its process or session ends and its tools are withdrawn. Calls fail instead of
+	 * starting it again; `reconnect()` starts it. Configuration is unchanged.
+	 */
+	async stop(): Promise<void> {
+		this.stopped = true;
+		this.openingAbort?.abort();
+		await Promise.all([this.opening?.catch(() => undefined), this.closeRetiredClients()]);
+		await Promise.all([this.client && this.dropClient(this.client), this.closeRetiredClients()]);
+		this.withdrawCatalog();
+		this.state = "disconnected";
+		this.error = undefined;
+		this.changed();
+	}
+
+	get isStopped(): boolean {
+		return this.stopped;
 	}
 
 	/** Disconnect after the stored credentials were removed. */
@@ -351,25 +416,32 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	private async open(): Promise<McpClient> {
+		const openingAbort = new AbortController();
+		this.openingAbort = openingAbort;
+		const signal = AbortSignal.any([this.shutdown.signal, openingAbort.signal]);
 		this.state = "connecting";
 		this.changed();
 		const retries = "url" in this.entry.config ? CONNECT_RETRY_DELAYS_MS : [];
-		for (let attempt = 0; ; attempt++) {
-			this.stderrTail = undefined;
-			try {
-				return await this.connectOnce();
-			} catch (error) {
-				const delay = retries[attempt];
-				if (this.closed || delay === undefined || !isTransientError(error)) {
-					throw this.connectFailed(error);
+		try {
+			for (let attempt = 0; ; attempt++) {
+				this.stderrTail = undefined;
+				try {
+					return await this.connectOnce(signal);
+				} catch (error) {
+					const delay = retries[attempt];
+					if (signal.aborted || delay === undefined || !isTransientError(error)) {
+						throw this.connectFailed(error);
+					}
+					await sleep(delay, undefined, { signal }).catch(() => undefined);
+					if (signal.aborted) throw this.connectFailed(error);
 				}
-				await sleep(delay, undefined, { signal: this.shutdown.signal }).catch(() => undefined);
-				if (this.closed) throw this.connectFailed(error);
 			}
+		} finally {
+			if (this.openingAbort === openingAbort) this.openingAbort = undefined;
 		}
 	}
 
-	private async connectOnce(): Promise<McpClient> {
+	private async connectOnce(signal: AbortSignal): Promise<McpClient> {
 		const client = new McpClient({
 			name: "octocode",
 			version: VERSION,
@@ -389,7 +461,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			closing ??= client.close().catch(() => undefined);
 			return closing;
 		};
-		this.shutdown.signal.addEventListener("abort", closeClient, { once: true });
+		signal.addEventListener("abort", closeClient, { once: true });
 		let transport: McpTransport | undefined;
 		let listChangedDuringConnect = false;
 		client.onNotification("notifications/tools/list_changed", () => {
@@ -398,12 +470,12 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		});
 		try {
 			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
-			await client.connect(transport);
+			await raceWithAbortSignal(client.connect(transport), signal);
 			const stdio = transport instanceof StdioTransport ? transport : undefined;
 			client.onClose(() => this.handleClientClose(client, stdio));
 			// Servers without the tools capability (prompts or resources only) do not answer tools/list.
 			const tools = client.serverCapabilities?.tools ? await client.listTools() : [];
-			if (this.closed) throw new Error("shut down while connecting");
+			if (signal.aborted) throw new Error("stopped while connecting");
 			if (client.connectionState !== "connected") throw new Error("connection closed during setup");
 			this.client = client;
 			this.hasResources = client.serverCapabilities?.resources !== undefined;
@@ -420,7 +492,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			}
 			throw error;
 		} finally {
-			this.shutdown.signal.removeEventListener("abort", closeClient);
+			signal.removeEventListener("abort", closeClient);
 		}
 	}
 
@@ -489,7 +561,11 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		this.changed();
 		const client = this.client;
 		this.client = undefined;
-		await Promise.all([client?.close().catch(() => undefined), this.opening?.catch(() => undefined)]);
+		await Promise.all([
+			client?.close().catch(() => undefined),
+			this.opening?.catch(() => undefined),
+			this.closeRetiredClients(),
+		]);
 		// A refresh the server already answered may have rotated the refresh token; exiting before the
 		// new tokens are saved would lose the grant.
 		await this.authProvider?.settled();

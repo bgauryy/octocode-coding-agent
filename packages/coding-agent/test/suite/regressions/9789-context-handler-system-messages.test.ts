@@ -220,8 +220,6 @@ describe("context_with_system handlers", () => {
 		await harness.session.prompt("hello");
 
 		expect(getRequest().messages.map((message) => message.role)).toEqual(["user"]);
-		expect(errors).toEqual([
-			expect.stringMatching(/^context_with_system: Handler removed the leading system message/),
-		]);
+		expect(errors).toEqual([expect.stringMatching(/^context_with_system: Handler removed the leading system message/)]);
 	});
 });

@@ -347,9 +347,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					const name = "name" in cmd ? cmd.name : cmd.value;
 					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
 					const desc = cmd.description ?? "";
-					const aliases = "aliases" in cmd ? cmd.aliases ?? [] : [];
+					const aliases = "aliases" in cmd ? (cmd.aliases ?? []) : [];
 					const detail = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
-					const fullDesc = [detail, aliases.length ? `Aliases: ${aliases.map((alias) => `/${alias}`).join(", ")}` : ""].filter(Boolean).join(" — ");
+					const fullDesc = [detail, aliases.length ? `Aliases: ${aliases.map((alias) => `/${alias}`).join(", ")}` : ""]
+						.filter(Boolean)
+						.join(" — ");
 					return {
 						name,
 						aliases,
@@ -369,8 +371,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				);
 				const nameMatches = [...bareNameMatches, ...fullNameOnlyMatches];
 				const matched = new Set(nameMatches);
-				const aliasMatches = commandItems.filter((item) => !matched.has(item) &&
-					fuzzyFilter([...item.aliases], prefix, (alias) => alias).length > 0);
+				const aliasMatches = commandItems.filter(
+					(item) => !matched.has(item) && fuzzyFilter([...item.aliases], prefix, (alias) => alias).length > 0,
+				);
 				const filtered = [...nameMatches, ...aliasMatches].map((item) => ({
 					value: item.name,
 					label: item.label,
@@ -388,10 +391,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const commandName = commandText.slice(1, spaceIndex);
 			const argumentText = commandText.slice(spaceIndex + 1);
 
-			const command = this.commands.find((cmd) => {
-				const name = "name" in cmd ? cmd.name : cmd.value;
-				return name === commandName;
-			}) ?? this.commands.find((cmd) => "aliases" in cmd && cmd.aliases?.includes(commandName));
+			const command =
+				this.commands.find((cmd) => {
+					const name = "name" in cmd ? cmd.name : cmd.value;
+					return name === commandName;
+				}) ?? this.commands.find((cmd) => "aliases" in cmd && cmd.aliases?.includes(commandName));
 			if (command && "argumentKind" in command && command.argumentKind === "path") {
 				const items = this.getFileSuggestions(argumentText);
 				return items.length ? { items, prefix: argumentText } : null;

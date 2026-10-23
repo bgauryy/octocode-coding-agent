@@ -53,9 +53,7 @@ for (const command of [
 			fs.writeFileSync(path.join(f.cwd, "secret.txt"), "SECRET_FIXTURE\n");
 			fs.writeFileSync(path.join(f.cwd, "safe.txt"), "SAFE\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(JSON.stringify(result)).not.toContain("SECRET_FIXTURE");
@@ -81,9 +79,7 @@ for (const [command, output] of [
 		try {
 			fs.writeFileSync(path.join(f.cwd, "safe.txt"), "SAFE\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain(output);
 			expect(f.inputs()).toHaveLength(0);
@@ -93,11 +89,7 @@ for (const [command, output] of [
 	});
 }
 
-for (const command of [
-	"head -n 1 safe.txt",
-	"tail -n 1 safe.txt",
-	"head -c 1 safe.txt",
-]) {
+for (const command of ["head -n 1 safe.txt", "tail -n 1 safe.txt", "head -c 1 safe.txt"]) {
 	it(`source-only numeric candidate matches vendor Read denial for ${command}`, async () => {
 		const f = await fixture("claude", {
 			mode: "full",
@@ -106,9 +98,7 @@ for (const command of [
 		try {
 			fs.writeFileSync(path.join(f.cwd, "safe.txt"), "SAFE\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(f.inputs()).toHaveLength(0);
@@ -133,9 +123,7 @@ for (const command of [
 			fs.writeFileSync(path.join(f.cwd, "secret.txt"), "SECRET_FIXTURE\n");
 			await f.run("bash", { command });
 			expect(fs.existsSync(f.marker)).toBe(false);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).not.toContain("SECRET_FIXTURE");
 			expect(f.inputs()).toHaveLength(0);
@@ -152,10 +140,7 @@ it("read operand follows an existing symlink before source denial", async () => 
 	});
 	try {
 		fs.writeFileSync(path.join(f.cwd, "secret.txt"), "SECRET_FIXTURE\n");
-		fs.symlinkSync(
-			path.join(f.cwd, "secret.txt"),
-			path.join(f.cwd, "alias.txt"),
-		);
+		fs.symlinkSync(path.join(f.cwd, "secret.txt"), path.join(f.cwd, "alias.txt"));
 		await f.run("bash", { command: "cat alias.txt" });
 		const result = f.session.messages.findLast((m) => m.role === "toolResult");
 		expect(result).toMatchObject({ isError: true });
@@ -195,9 +180,7 @@ for (const reader of ["head", "tail"]) {
 			fs.writeFileSync(outside, "UNREAD_OUTSIDE");
 			fs.symlinkSync(outside, path.join(f.cwd, "1"));
 			await f.run("bash", { command: `${reader} -n 1 safe.txt` });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("SAFE");
 			expect(JSON.stringify(result)).not.toContain("UNREAD_OUTSIDE");
@@ -219,9 +202,7 @@ it("unknown indirect-reader option refuses explicitly under applicable Read deni
 		await f.run("bash", { command: "wc --files0-from=list.txt" });
 		const result = f.session.messages.findLast((m) => m.role === "toolResult");
 		expect(result).toMatchObject({ isError: true });
-		expect(JSON.stringify(result)).toContain(
-			"Cannot resolve Bash file target for Read rule",
-		);
+		expect(JSON.stringify(result)).toContain("Cannot resolve Bash file target for Read rule");
 		expect(JSON.stringify(result)).not.toContain("illegal option");
 		expect(JSON.stringify(result)).not.toContain("SECRET_FIXTURE");
 		expect(f.inputs()).toHaveLength(0);
@@ -240,9 +221,7 @@ for (const reader of ["head", "tail"]) {
 			fs.writeFileSync(path.join(f.cwd, "safe.txt"), "SAFE\n");
 			fs.writeFileSync(path.join(f.cwd, "+1"), "PLUS_FILE_SECRET\n");
 			await f.run("bash", { command: `${reader} +1 safe.txt` });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(JSON.stringify(result)).not.toContain("PLUS_FILE_SECRET");
@@ -291,9 +270,7 @@ for (const reader of ["head", "tail"]) {
 				fs.writeFileSync(outside, "OUTSIDE_OPTION\n");
 				fs.symlinkSync(outside, path.join(f.cwd, "-n"));
 				await f.run("bash", { command: `${reader} safe.txt -n 1` });
-				const result = f.session.messages.findLast(
-					(m) => m.role === "toolResult",
-				);
+				const result = f.session.messages.findLast((m) => m.role === "toolResult");
 				expect(result).toMatchObject({ isError: false });
 				expect(JSON.stringify(result)).toContain("OUTSIDE_OPTION");
 				expect(f.inputs()).toHaveLength(1);
@@ -320,9 +297,7 @@ for (const [command, denied] of [
 		try {
 			fs.writeFileSync(path.join(f.cwd, "safe.txt"), "SAFE\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(f.inputs()).toHaveLength(0);
@@ -347,9 +322,7 @@ for (const [command, denied] of [
 			fs.writeFileSync(path.join(f.cwd, "-"), "DASH_SECRET\n");
 			fs.writeFileSync(path.join(f.cwd, "-n"), "OPTION_SECRET\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(JSON.stringify(result)).not.toContain("DASH_SECRET");
@@ -374,13 +347,9 @@ for (const reader of ["head", "tail", "wc"]) {
 				fs.writeFileSync(outside, "DASH_SECRET\n");
 				fs.symlinkSync(outside, path.join(f.cwd, "-"));
 				await f.run("bash", { command: `${reader} -` });
-				const result = f.session.messages.findLast(
-					(m) => m.role === "toolResult",
-				);
+				const result = f.session.messages.findLast((m) => m.role === "toolResult");
 				expect(result).toMatchObject({ isError: false });
-				expect(JSON.stringify(result)).toContain(
-					reader === "wc" ? "12" : "DASH_SECRET",
-				);
+				expect(JSON.stringify(result)).toContain(reader === "wc" ? "12" : "DASH_SECRET");
 				expect(f.inputs()).toHaveLength(1);
 			} finally {
 				await f.close();

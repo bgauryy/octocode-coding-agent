@@ -89,6 +89,32 @@ async function protocolHandler(
 afterEach(closeServers);
 
 describe("consumeSseStream", () => {
+	it("cancels the body when its signal aborts or an event is rejected, so the connection is released", async () => {
+		const open = (first: string) => {
+			let cancelled = false;
+			const stream = new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(first));
+				},
+				cancel() {
+					cancelled = true;
+				},
+			});
+			return { stream, cancelled: () => cancelled };
+		};
+		const waiting = open("data: one\n\n");
+		const controller = new AbortController();
+		const reading = consumeSseStream(waiting.stream, { onEvent: () => controller.abort(), signal: controller.signal });
+		await reading.catch(() => undefined);
+		expect(waiting.cancelled()).toBe(true);
+
+		const oversized = open(`data: ${"x".repeat(64)}\n`);
+		await expect(consumeSseStream(oversized.stream, { maxEventBytes: 16, onEvent: () => {} })).rejects.toThrow(
+			/exceeds/,
+		);
+		expect(oversized.cancelled()).toBe(true);
+	});
+
 	it("parses chunked CRLF events, comments, IDs, and multiline data", async () => {
 		const encoder = new TextEncoder();
 		const chunks = [': keepalive\r\nid: 7\r\ndata: {"one":\r\n', "data: 1}\r\n\r\n"];
@@ -288,6 +314,33 @@ describe("StreamableHttpTransport", () => {
 		const client = new McpClient({ name: "http-test", version: "1.0.0" });
 		await client.connect(new StreamableHttpTransport({ url, openGetStream: false }));
 		await expect(client.callTool("echo")).rejects.toThrow("without a response");
+		await client.close();
+	});
+
+	it("refuses a JSON response larger than maxMessageBytes without reading all of it", async () => {
+		let sent = 0;
+		let stopped = false;
+		const { url } = await startServer(async (request, response, requests) => {
+			if (request.method !== "POST") return protocolHandler(request, response, requests);
+			const message = JSON.parse(await readBody(request)) as Record<string, unknown>;
+			if (message.method !== "tools/list") return protocolHandler(request, response, requests, message);
+			response.writeHead(200, { "content-type": "application/json" });
+			response.on("close", () => {
+				stopped = true;
+			});
+			// An endless body: only a reader that stops at the limit settles.
+			const chunk = "a".repeat(1024);
+			const write = () => {
+				while (!stopped && sent < 64 * 1024 * 1024 && response.write(chunk)) sent += chunk.length;
+				if (!stopped && sent < 64 * 1024 * 1024) response.once("drain", write);
+			};
+			response.write('{"jsonrpc":"2.0","id":1,"result":{"pad":"');
+			write();
+		});
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await client.connect(new StreamableHttpTransport({ url, openGetStream: false, maxMessageBytes: 4096 }));
+		await expect(client.listTools()).rejects.toThrow("MCP HTTP response exceeds 4096 bytes");
+		expect(sent).toBeLessThan(8 * 1024 * 1024);
 		await client.close();
 	});
 

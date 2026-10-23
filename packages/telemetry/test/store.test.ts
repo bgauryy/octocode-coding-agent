@@ -47,12 +47,12 @@ describe("in-memory store snapshots", () => {
 		const telemetry = new InMemoryTelemetryContext();
 		telemetry.counter("calls").add(2);
 		telemetry.counter("calls").add(3);
-		expect(
-			(await telemetry.findMetrics({ name: "calls" })).map((row) => [row.intervalMs, row.count, row.sum]),
-		).toEqual([
-			[20_000, 1, 2],
-			[20_000, 1, 3],
-		]);
+		expect((await telemetry.findMetrics({ name: "calls" })).map((row) => [row.intervalMs, row.count, row.sum])).toEqual(
+			[
+				[20_000, 1, 2],
+				[20_000, 1, 3],
+			],
+		);
 		expect(telemetry.getMetrics()).toEqual([
 			{ kind: "counter", name: "calls", value: 2, attributes: {}, context: null },
 			{ kind: "counter", name: "calls", value: 3, attributes: {}, context: null },

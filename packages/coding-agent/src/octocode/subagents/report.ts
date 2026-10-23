@@ -20,11 +20,7 @@ const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[
  * `Status:` or `Outcome:` label may come first (`**Report: partial.**`).
  */
 export function reportStatus(text: string | undefined): ReportStatus | undefined {
-	const first =
-		(text ?? "")
-			.trimStart()
-			.replace(OUTCOME_LABEL, "")
-			.split(/\s/, 1)[0] ?? "";
+	const first = (text ?? "").trimStart().replace(OUTCOME_LABEL, "").split(/\s/, 1)[0] ?? "";
 	const word = first.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();
 	return REPORT_STATUSES.find((status) => status === word);
 }
@@ -163,7 +159,14 @@ export class ReportTracker {
 	 * The report as returned to the caller: `text` is `body` plus, when the whole text is saved in a file, the `pointer`
 	 * line naming it. A caller that shortens `body` keeps the pointer.
 	 */
-	result(): { text: string; body: string; pointer?: string; error?: string; outcome?: ReportStatus; answered: boolean } {
+	result(): {
+		text: string;
+		body: string;
+		pointer?: string;
+		error?: string;
+		outcome?: ReportStatus;
+		answered: boolean;
+	} {
 		if (this.sections === 0) {
 			const pointer = this.partialFile
 				? `Full partial report: ${shortPath(this.partialFile)} (read only the parts you need).`
@@ -176,9 +179,7 @@ export class ReportTracker {
 				...(this.failure ? { error: this.failure } : {}),
 			};
 		}
-		const body = this.failure
-			? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})`
-			: this.text;
+		const body = this.failure ? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})` : this.text;
 		const pointer = this.file ? `Full report: ${shortPath(this.file)} (read only the parts you need).` : undefined;
 		return {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,

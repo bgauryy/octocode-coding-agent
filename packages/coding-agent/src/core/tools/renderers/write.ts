@@ -37,8 +37,7 @@ function refreshWriteHighlightPrefix(cache: WriteHighlightCache): void {
 	const prefixSource = cache.normalizedLines.slice(0, prefixCount).join("\n");
 	const prefixHighlighted = highlightCode(prefixSource, cache.lang);
 	for (let i = 0; i < prefixCount; i++) {
-		cache.highlightedLines[i] =
-			prefixHighlighted[i] ?? highlightSingleLine(cache.normalizedLines[i] ?? "", cache.lang);
+		cache.highlightedLines[i] = prefixHighlighted[i] ?? highlightSingleLine(cache.normalizedLines[i] ?? "", cache.lang);
 	}
 }
 function rebuildWriteHighlightCacheFull(rawPath: string | null, fileContent: string): WriteHighlightCache | undefined {
@@ -147,8 +146,7 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 		const renderArgs = args as { path?: string; file_path?: string; content?: string } | undefined;
 		const rawPath = str(renderArgs?.file_path ?? renderArgs?.path);
 		const fileContent = str(renderArgs?.content);
-		const component =
-			(context.lastComponent as WriteCallRenderComponent | undefined) ?? new WriteCallRenderComponent();
+		const component = (context.lastComponent as WriteCallRenderComponent | undefined) ?? new WriteCallRenderComponent();
 		if (fileContent !== null) {
 			component.cache = context.argsComplete
 				? rebuildWriteHighlightCacheFull(rawPath, fileContent)

@@ -68,13 +68,15 @@ describe("bash tool", () => {
 		expect(tool.promptGuidelines).toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
+		// `cmd | tail` alone exits with tail's status: a failed build would read as passing.
+		expect(tool.promptGuidelines).toContain(
+			"Keep bash output small: pipe builds, tests and logs through `2>&1 | tail -n 50` (or grep, head) after `set -o pipefail;`, so failures still show.",
+		);
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
 		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
 		expect(tool.parameters.properties.background.description).toContain("long builds");
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
-		const variants = tool.outputSchema.anyOf.map((variant: { properties: object }) =>
-			Object.keys(variant.properties),
-		);
+		const variants = tool.outputSchema.anyOf.map((variant: { properties: object }) => Object.keys(variant.properties));
 		expect(variants).toEqual([expect.arrayContaining(["output", "exit_code"]), ["job", "pid", "log"]]);
 	});
 
@@ -109,9 +111,9 @@ describe("bash tool", () => {
 	it("stops a foreground sleep at its deadline and says how to run it longer", async () => {
 		const { tool, ctx, jobs } = setup();
 		const started = Date.now();
-		await expect(
-			tool.execute("t1", { command: "sleep 30", timeout: 1 }, undefined, undefined, ctx),
-		).rejects.toThrow(/Command timed out after 1 seconds[\s\S]*background: true/);
+		await expect(tool.execute("t1", { command: "sleep 30", timeout: 1 }, undefined, undefined, ctx)).rejects.toThrow(
+			/Command timed out after 1 seconds[\s\S]*background: true/,
+		);
 		expect(Date.now() - started).toBeLessThan(10_000);
 		expect(jobs.jobs.size).toBe(0);
 	});
@@ -157,13 +159,7 @@ describe("bash tool", () => {
 		const controller = new AbortController();
 		setTimeout(() => controller.abort(), 300);
 		await expect(
-			tool.execute(
-				"t2",
-				{ command: "echo started; sleep 30", timeout: 1_000_000 },
-				controller.signal,
-				undefined,
-				ctx,
-			),
+			tool.execute("t2", { command: "echo started; sleep 30", timeout: 1_000_000 }, controller.signal, undefined, ctx),
 		).rejects.toThrow(/aborted[\s\S]*\(timeout clamped to 3600 s; use background: true for longer\)/);
 		const plain = new AbortController();
 		setTimeout(() => plain.abort(), 300);
@@ -347,7 +343,9 @@ describe("bash tool", () => {
 		// An editor named on the command line still wins, and pagers default to cat.
 		const inline = await tool.execute(
 			"t3",
-			{ command: `GIT_EDITOR=true ${git} commit -q --allow-empty-message && git log --oneline | wc -l; echo "$PAGER $GIT_PAGER"` },
+			{
+				command: `GIT_EDITOR=true ${git} commit -q --allow-empty-message && git log --oneline | wc -l; echo "$PAGER $GIT_PAGER"`,
+			},
 			undefined,
 			undefined,
 			ctx,
@@ -409,8 +407,7 @@ describe("bash tool", () => {
 			const command =
 				// biome-ignore lint/suspicious/noTemplateCurlyInString: Shell expansion is intentional.
 				'printf "%s|%s|%s|%s" "$OCTOCODE_SESSION_ID" "${OCTOCODE_MODEL-unset}" "${OCTOCODE_SESSION_FILE-unset}" "$PATH"';
-			const foreground = (await tool.execute("t0", { command }, undefined, undefined, ctx)).content[0]
-				.text as string;
+			const foreground = (await tool.execute("t0", { command }, undefined, undefined, ctx)).content[0].text as string;
 			const result = await tool.execute("t1", { command, background: true }, undefined, undefined, ctx);
 			await until(() => sent.length === 1);
 			const log = /Log: (\S+)/.exec(result.content[0].text as string)![1]!;
@@ -526,9 +523,7 @@ describe("bash tool", () => {
 		await vi.waitFor(() => expect(sent).toHaveLength(2), { timeout: 5_000 });
 		const reports = sent.map((entry) => String(entry.message.content)).sort();
 		expect(
-			reports.some(
-				(text) => /finished after .*sleep 0\.3; echo timed-done/.test(text) && text.includes("timed-done"),
-			),
+			reports.some((text) => /finished after .*sleep 0\.3; echo timed-done/.test(text) && text.includes("timed-done")),
 		).toBe(true);
 		expect(reports.some((text) => /stopped \(run end\)/.test(text))).toBe(true);
 		expect(jobs.jobs.size).toBe(0);
@@ -631,7 +626,12 @@ describe("bash rendering", () => {
 		const { tool } = setup();
 		const short = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
 		const whole = rendered(
-			tool.renderResult({ content: [{ type: "text", text: short }] }, { expanded: false, isPartial: false }, theme, done()),
+			tool.renderResult(
+				{ content: [{ type: "text", text: short }] },
+				{ expanded: false, isPartial: false },
+				theme,
+				done(),
+			),
 		).split("\n");
 		// A short output shows whole: folding it would hide a few lines behind a one-line hint.
 		expect(whole).toHaveLength(13);

@@ -119,7 +119,7 @@ export function sessionTree(members: Member[], id: string): Set<string> {
 	)
 		root = parent;
 	const tree = new Set([root]);
-	for (let grew = true; grew; ) {
+	for (let grew = true; grew;) {
 		grew = false;
 		for (const member of members) {
 			if (member.parentId && tree.has(member.parentId) && !tree.has(member.id)) {

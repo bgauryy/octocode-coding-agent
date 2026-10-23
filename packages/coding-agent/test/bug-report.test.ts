@@ -52,8 +52,7 @@ describe("bug report prompt", () => {
 
 			await vi.waitFor(() => expect(editorContainer.children[0]).toBeInstanceOf(ExtensionSelectorComponent));
 			const transcriptSelector = editorContainer.children[0];
-			if (!(transcriptSelector instanceof ExtensionSelectorComponent))
-				throw new Error("Missing transcript selector");
+			if (!(transcriptSelector instanceof ExtensionSelectorComponent)) throw new Error("Missing transcript selector");
 			expect(transcriptSelector.render(120).join("\n")).toContain("Include the session transcript?");
 			transcriptSelector.handleInput("j");
 			transcriptSelector.handleInput("\r");

@@ -9,7 +9,12 @@ interface TextWindow {
 }
 
 /** Count the source while retaining only a bounded preview, including when one line spans many chunks. */
-export async function readTextWindow(file: string, offset: number, limit?: number, signal?: AbortSignal): Promise<TextWindow> {
+export async function readTextWindow(
+	file: string,
+	offset: number,
+	limit?: number,
+	signal?: AbortSignal,
+): Promise<TextWindow> {
 	let line = 1;
 	let prefix = "";
 	let selectedLines = 0;
@@ -23,7 +28,10 @@ export async function readTextWindow(file: string, offset: number, limit?: numbe
 	const part = (text: string) => {
 		if (line < offset || (limit !== undefined && line >= offset + limit)) return;
 		if (!startedLine) {
-			if (selectedLines > 0) { selectedBytes++; append("\n"); }
+			if (selectedLines > 0) {
+				selectedBytes++;
+				append("\n");
+			}
 			selectedLines++;
 			lastSelectedLineBytes = 0;
 			startedLine = true;
@@ -39,7 +47,10 @@ export async function readTextWindow(file: string, offset: number, limit?: numbe
 		const parts = (chunk as string).split("\n");
 		for (let index = 0; index < parts.length; index++) {
 			part(parts[index]!);
-			if (index < parts.length - 1) { line++; startedLine = false; }
+			if (index < parts.length - 1) {
+				line++;
+				startedLine = false;
+			}
 		}
 	}
 	part("");

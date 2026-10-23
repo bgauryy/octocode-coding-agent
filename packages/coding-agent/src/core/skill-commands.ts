@@ -18,7 +18,7 @@ export function getSkillCommands(
 	skills: readonly Skill[],
 	reservedCommands: readonly SkillCommandReservation[] = [],
 ): SkillCommand[] {
-	skills = skills.filter(skill => skill.userInvocable !== false);
+	skills = skills.filter((skill) => skill.userInvocable !== false);
 	const reserved = new Set<string>();
 	for (const command of [...BUILTIN_SLASH_COMMANDS, ...reservedCommands] as SkillCommandReservation[]) {
 		reserved.add(command.name);

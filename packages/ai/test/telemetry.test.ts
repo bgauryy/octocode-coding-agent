@@ -136,9 +136,9 @@ describe("AI telemetry", () => {
 			);
 			const measurements = telemetry.getMetrics();
 			expect(measurements).toHaveLength(7);
-			expect(measurements.filter((measurement) => measurement.kind === "counter").map(({ value }) => value)).toEqual(
-				[11, 22, 33, 44, 1],
-			);
+			expect(measurements.filter((measurement) => measurement.kind === "counter").map(({ value }) => value)).toEqual([
+				11, 22, 33, 44, 1,
+			]);
 			for (const measurement of measurements) {
 				expect(Object.keys(measurement.attributes).sort()).toEqual(
 					measurement.name === "pi.ai.tokens"
@@ -180,9 +180,7 @@ describe("AI telemetry", () => {
 		if (!missing) result.errorMessage = `${"x".repeat(500)}discarded-tail`;
 		const { models } = setup(result);
 		expect(
-			await telemetry.startSpan({ name: "caller" }, (span) =>
-				models.fetchDeferred(model, handle, { telemetry: span }),
-			),
+			await telemetry.startSpan({ name: "caller" }, (span) => models.fetchDeferred(model, handle, { telemetry: span })),
 		).toBe(result);
 		await settled(telemetry);
 		const [, span] = telemetry.getSpans();
@@ -324,9 +322,7 @@ describe("AI telemetry", () => {
 		async (reason) => {
 			const telemetry = new InMemoryTelemetryContext();
 			const { models } = setup(message(reason));
-			await telemetry.startSpan({ name: "caller" }, (span) =>
-				models.fetchDeferred(model, handle, { telemetry: span }),
-			);
+			await telemetry.startSpan({ name: "caller" }, (span) => models.fetchDeferred(model, handle, { telemetry: span }));
 			await settled(telemetry);
 			const counters = telemetry.getMetrics().filter((metric) => metric.kind === "counter");
 			expect(counters).toHaveLength(reason === "pending" || reason === "deferred" ? 0 : 5);

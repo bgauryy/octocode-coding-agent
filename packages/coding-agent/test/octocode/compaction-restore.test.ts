@@ -39,17 +39,24 @@ const plain = (...files: string[]) => files.map((file) => ({ file }));
 
 describe("file restore after compaction", () => {
 	it("does not refill a nearly full compacted context and keeps the original file available", () => {
-		const directory=tmp();
-		const file=path.join(directory,"work.ts");
-		const original="const value = 123;\n".repeat(200);
-		fs.writeFileSync(file,original);
-		const sendMessage=vi.fn();
-		const message={role:"user",content:"x".repeat(27_600),timestamp:0};
-		const entry={type:"message",id:"tail",parentId:null,timestamp:new Date(0).toISOString(),message};
-		const ctx={cwd:directory,model:{provider:"test",id:"small",contextWindow:8000},sessionManager:{getBranch:()=>[entry],buildSessionProjection:()=>({entries:[{sourceEntry:entry,messages:[message]}],messages:[message]})}};
-		expect(deliverRestoredFiles({sendMessage},plain(file),ctx as never,RESTORE_TOTAL_CHARS)).toBeUndefined();
+		const directory = tmp();
+		const file = path.join(directory, "work.ts");
+		const original = "const value = 123;\n".repeat(200);
+		fs.writeFileSync(file, original);
+		const sendMessage = vi.fn();
+		const message = { role: "user", content: "x".repeat(27_600), timestamp: 0 };
+		const entry = { type: "message", id: "tail", parentId: null, timestamp: new Date(0).toISOString(), message };
+		const ctx = {
+			cwd: directory,
+			model: { provider: "test", id: "small", contextWindow: 8000 },
+			sessionManager: {
+				getBranch: () => [entry],
+				buildSessionProjection: () => ({ entries: [{ sourceEntry: entry, messages: [message] }], messages: [message] }),
+			},
+		};
+		expect(deliverRestoredFiles({ sendMessage }, plain(file), ctx as never, RESTORE_TOTAL_CHARS)).toBeUndefined();
 		expect(sendMessage).not.toHaveBeenCalled();
-		expect(fs.readFileSync(file,"utf8")).toBe(original);
+		expect(fs.readFileSync(file, "utf8")).toBe(original);
 	});
 	it("lists the files read or changed in the summarized part, most recent first", () => {
 		const messages = [
@@ -128,10 +135,7 @@ describe("file restore after compaction", () => {
 		const binary = path.join(dir, "big.bin");
 		fs.writeFileSync(binary, Buffer.concat([Buffer.from([1, 0, 2]), Buffer.alloc(1_500_000, 0x61)]));
 		const invalid = path.join(dir, "latin1.txt");
-		fs.writeFileSync(
-			invalid,
-			Buffer.concat([Buffer.alloc(100, 0x61), Buffer.from([0xe9]), Buffer.alloc(1_000, 0x61)]),
-		);
+		fs.writeFileSync(invalid, Buffer.concat([Buffer.alloc(100, 0x61), Buffer.from([0xe9]), Buffer.alloc(1_000, 0x61)]));
 		// 'é' (2 bytes) straddles the end of the sniffed bytes: a text file, not a decoding failure.
 		const straddle = path.join(dir, "accents.txt");
 		fs.writeFileSync(straddle, `${"a".repeat(8_191)}é${"b".repeat(100)}\n`);
@@ -139,9 +143,9 @@ describe("file restore after compaction", () => {
 		try {
 			expect(restoreFiles(plain(binary, invalid), new Set(), dir)).toBeUndefined();
 			expect(read).not.toHaveBeenCalled();
-			expect(restoreFiles(plain(straddle), new Set(), dir)!.files.map((entry) => path.basename(entry.file))).toEqual(
-				["accents.txt"],
-			);
+			expect(restoreFiles(plain(straddle), new Set(), dir)!.files.map((entry) => path.basename(entry.file))).toEqual([
+				"accents.txt",
+			]);
 			expect(read).toHaveBeenCalledTimes(1);
 		} finally {
 			read.mockRestore();
@@ -150,8 +154,7 @@ describe("file restore after compaction", () => {
 
 	it("stops after RESTORE_MAX_SKIPPED candidates that cannot be read back; held ones do not count", () => {
 		const dir = tmp();
-		const junk = (count: number) =>
-			Array.from({ length: count }, (_, i) => path.join(dir, `missing${count}-${i}.txt`));
+		const junk = (count: number) => Array.from({ length: count }, (_, i) => path.join(dir, `missing${count}-${i}.txt`));
 		const good = path.join(dir, "good.txt");
 		fs.writeFileSync(good, "kept\n");
 		expect(restoreFiles(plain(...junk(RESTORE_MAX_SKIPPED), good), new Set(), dir)).toBeUndefined();
@@ -468,9 +471,7 @@ describe("file restore after compaction", () => {
 			fs.truncateSync(huge.file, 2_000_001);
 			const reads = vi.spyOn(fs, "readFileSync");
 			try {
-				expect(heldFiles([{ file: huge.file, at: Date.now() + 1_000, partial: true, lines: [[1, 1]] }]).size).toBe(
-					0,
-				);
+				expect(heldFiles([{ file: huge.file, at: Date.now() + 1_000, partial: true, lines: [[1, 1]] }]).size).toBe(0);
 				expect(reads).not.toHaveBeenCalledWith(canonicalPath(huge.file));
 			} finally {
 				reads.mockRestore();
@@ -527,10 +528,25 @@ describe("file restore after compaction", () => {
 					}),
 				},
 			};
-			expect(
-				deliverRestoredFiles(pi as never, plain(held), everything as never, RESTORE_TOTAL_CHARS),
-			).toBeUndefined();
+			expect(deliverRestoredFiles(pi as never, plain(held), everything as never, RESTORE_TOTAL_CHARS)).toBeUndefined();
 			expect(sent).toHaveLength(1);
 		});
+	});
+});
+
+describe("restored message framing budget", () => {
+	it("restores a useful file window when its text alone fills the available budget", () => {
+		const cwd = tmp();
+		const file = path.join(cwd, "work.ts");
+		fs.writeFileSync(file, "const value = 123;\n".repeat(1_000));
+		const total = 5_000;
+		const sendMessage = vi.fn();
+		const ctx = { cwd, sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } };
+		const pending = deliverRestoredFiles({ sendMessage }, plain(file), ctx as never, total);
+		expect(pending?.files).toHaveLength(1);
+		expect(sendMessage).toHaveBeenCalledOnce();
+		expect(sendMessage.mock.calls[0]![0].content.length).toBeLessThanOrEqual(total);
+		expect(sendMessage.mock.calls[0]![0].content).toContain("const value = 123;");
+		expect(pending?.files[0]?.whole).toBe(false);
 	});
 });

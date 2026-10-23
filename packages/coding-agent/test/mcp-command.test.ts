@@ -64,11 +64,17 @@ describe("pi mcp", () => {
 	});
 
 	it("inspects one server's tool metadata without connecting unrelated servers", async () => {
-		const result = await run(["tools", "fixture", "echo", "--json"], { fixture: servers.fixture, broken: servers.broken });
+		const result = await run(["tools", "fixture", "echo", "--json"], {
+			fixture: servers.fixture,
+			broken: servers.broken,
+		});
 		expect(result.exitCode).toBe(0);
 		const report = JSON.parse(result.output);
 		expect(report.servers).toHaveLength(1);
-		expect(report.servers[0]).toMatchObject({ name: "fixture", toolDetails: [{ name: "echo", exposure: "auto", inputSchema: { type: "object" } }] });
+		expect(report.servers[0]).toMatchObject({
+			name: "fixture",
+			toolDetails: [{ name: "echo", exposure: "auto", inputSchema: { type: "object" } }],
+		});
 		expect((await run(["tools", "fixture", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
 		expect((await run(["tools", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
 		const disabled = await run(["tools", "parked", "--json"], { parked: servers.parked });
@@ -77,13 +83,19 @@ describe("pi mcp", () => {
 	});
 
 	it("shows global and workspace configuration paths without connecting or exposing credentials", async () => {
-		const result = await run(["config", "--json"], { private: { command: "never-connect-for-config", env: { TOKEN: "private-token" } } });
+		const result = await run(["config", "--json"], {
+			private: { command: "never-connect-for-config", env: { TOKEN: "private-token" } },
+		});
 		expect(result.exitCode).toBe(0);
 		const locations = JSON.parse(result.output);
 		expect(locations.globalWrite).toBe(join(result.agentDir, "mcp.json"));
 		expect(locations.projectWrite).toBe(join(result.agentDir, ".octocode", "mcp.json"));
 		expect(locations.projectTrusted).toBe(false);
-		expect(locations.files.filter((file: { scope: string }) => file.scope === "project").every((file: { ignored: boolean }) => file.ignored)).toBe(true);
+		expect(
+			locations.files
+				.filter((file: { scope: string }) => file.scope === "project")
+				.every((file: { ignored: boolean }) => file.ignored),
+		).toBe(true);
 		expect(result.output).not.toContain("private-token");
 		new ProjectTrustStore(result.agentDir).set(result.agentDir, true);
 		const trusted = await run(["config"], undefined, result.agentDir);
@@ -104,12 +116,18 @@ describe("pi mcp", () => {
 	});
 
 	it("enables, disables, and changes exposure without connecting or replacing transport settings", async () => {
-		const initial = await run(["disable", "broken"], { broken: { command: "never-launch-this", env: { TOKEN: "secret" } } });
+		const initial = await run(["disable", "broken"], {
+			broken: { command: "never-launch-this", env: { TOKEN: "secret" } },
+		});
 		expect(initial.exitCode).toBe(0);
-		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({ mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, enabled: false } } });
+		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({
+			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, enabled: false } },
+		});
 		expect((await run(["exposure", "broken", "direct"], undefined, initial.agentDir)).exitCode).toBe(0);
 		expect((await run(["enable", "broken"], undefined, initial.agentDir)).exitCode).toBe(0);
-		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({ mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, exposure: "direct" } } });
+		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({
+			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, exposure: "direct" } },
+		});
 		const before = readFileSync(join(initial.agentDir, "mcp.json"), "utf8");
 		expect((await run(["exposure", "broken", "invalid"], undefined, initial.agentDir)).exitCode).toBe(1);
 		expect((await run(["disable", "missing"], undefined, initial.agentDir)).exitCode).toBe(1);
@@ -117,7 +135,9 @@ describe("pi mcp", () => {
 	});
 
 	it("requires trust for project controls and saves an override without copying secrets", async () => {
-		const initial = await run(["disable", "remote", "--local"], { remote: { url: "https://example.test/mcp", headers: { Authorization: "secret" } } });
+		const initial = await run(["disable", "remote", "--local"], {
+			remote: { url: "https://example.test/mcp", headers: { Authorization: "secret" } },
+		});
 		expect(initial.exitCode).toBe(1);
 		expect(initial.output).toContain("trusted project");
 		new ProjectTrustStore(initial.agentDir).set(initial.agentDir, true);

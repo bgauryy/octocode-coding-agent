@@ -4,12 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
 import type { ChildNotices, ChildProgress } from "../../src/octocode/subagents/events.ts";
-import {
-	runSubagent,
-	STARTUP_RETRY_DELAY_MS,
-	StartupError,
-	USER_STOP,
-} from "../../src/octocode/subagents/process.ts";
+import { runSubagent, STARTUP_RETRY_DELAY_MS, StartupError, USER_STOP } from "../../src/octocode/subagents/process.ts";
 import { noticeLines } from "../../src/octocode/subagents/render.ts";
 import { tmp } from "./helpers.ts";
 
@@ -78,9 +73,7 @@ describe("a child's notices past the inline page", () => {
 		// The inline page is whole notices, and the last line is the way to the rest.
 		const text = noticeLines({ notices }).join("\n");
 		expect(text).toContain(`- error: long failure ${"detail ".repeat(300)}end`);
-		expect(text).toContain(
-			`- +5 more notices; every notice, whole, is in ${shortPath(file)} (read it, or search it)`,
-		);
+		expect(text).toContain(`- +5 more notices; every notice, whole, is in ${shortPath(file)} (read it, or search it)`);
 		expect(text).not.toContain("distinct warning 8");
 	});
 

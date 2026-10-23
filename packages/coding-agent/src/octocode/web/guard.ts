@@ -99,9 +99,7 @@ export function isBlockedIp(ip: string): boolean {
 	if (embedded.length > 0) return embedded.some(isBlockedIp);
 	const first = groups[0]!;
 	return (
-		groups
-			.slice(0, 7)
-			.every((group) => group === 0) || // :: and ::1
+		groups.slice(0, 7).every((group) => group === 0) || // :: and ::1
 		(first === 0x64 && groups[1] === 0xff9b) || // NAT64 local-use 64:ff9b:1::/48 and the rest of 64:ff9b::/32
 		(first & 0xfe00) === 0xfc00 || // unique local fc00::/7
 		(first & 0xffc0) === 0xfe80 || // link-local fe80::/10
@@ -114,9 +112,7 @@ export function isBlockedIp(ip: string): boolean {
 
 /** What a URL's host reaches: only public addresses (listed), any non-public one, or nothing that resolves here. */
 export type HostClass =
-	| { kind: "public"; addresses: string[] }
-	| { kind: "private" }
-	| { kind: "unresolved"; error: unknown };
+	{ kind: "public"; addresses: string[] } | { kind: "private" } | { kind: "unresolved"; error: unknown };
 
 /** Releases the connection of a response whose body is not read. */
 export const discardBody = (response: Response): Promise<void> =>

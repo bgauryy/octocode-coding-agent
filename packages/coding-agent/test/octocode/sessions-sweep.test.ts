@@ -51,9 +51,7 @@ describe("session sweep", () => {
 	it("removes data of sessions Octocode no longer lists, keeps live and current ones, trims old output, and runs at most every 6 hours", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const insert = (id: string, pid: number | null, started: string | null = null) =>
-			sharedAgentDb()
-				.db.prepare("INSERT INTO sessions (id, pid, pid_started) VALUES (?, ?, ?)")
-				.run(id, pid, started);
+			sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid, pid_started) VALUES (?, ?, ?)").run(id, pid, started);
 		const listed = async () => new Set(["kept-file", "current"]);
 		insert("gone-file", null);
 		insert("recent-gone-file", null);
@@ -167,12 +165,8 @@ describe("session sweep", () => {
 		).toEqual([]);
 		expect(fs.existsSync(path.join(home, "agent", "sessions", "unindexed-old"))).toBe(true);
 		// The failed sweep does not count: the next session start tries again instead of waiting 6 hours.
-		expect(await sweepSessions(index, "current", { listed: async () => Promise.reject(new Error("no")) })).toEqual(
-			[],
-		);
-		expect(await sweepSessions(index, "current", { listed: async () => new Set<string>() })).toEqual([
-			"unindexed-old",
-		]);
+		expect(await sweepSessions(index, "current", { listed: async () => Promise.reject(new Error("no")) })).toEqual([]);
+		expect(await sweepSessions(index, "current", { listed: async () => new Set<string>() })).toEqual(["unindexed-old"]);
 	});
 
 	it("keeps the folders of sessions Octocode keeps in a recorded custom session dir, still removes true orphans", async () => {

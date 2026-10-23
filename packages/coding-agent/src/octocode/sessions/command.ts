@@ -159,18 +159,15 @@ export function registerSessionsCommand(
 			if (!ctx.hasUI)
 				return say(
 					ctx,
-					[
-						`Sessions (${scope}), newest first:`,
-						...lines.map((line, i) => `${line}\n    ${rows[i]!.info.id}`),
-					].join("\n"),
+					[`Sessions (${scope}), newest first:`, ...lines.map((line, i) => `${line}\n    ${rows[i]!.info.id}`)].join(
+						"\n",
+					),
 				);
 			const picked = await ctx.ui.select(`Sessions — ${scope} (● running)`, lines);
 			const row = picked === undefined ? undefined : rows[lines.indexOf(picked)];
 			if (!row) return;
 			// Octocode owns session names and can only rename the session it has open.
-			const actions = Object.values(ACTIONS).filter(
-				(action) => action !== ACTIONS.rename || row.info.id === current,
-			);
+			const actions = Object.values(ACTIONS).filter((action) => action !== ACTIONS.rename || row.info.id === current);
 			const action = await ctx.ui.select(title(row), actions);
 			if (action === ACTIONS.resume) return resume(ctx, row, current);
 			if (action === ACTIONS.details) return say(ctx, details(row, current));

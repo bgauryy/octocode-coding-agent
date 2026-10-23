@@ -6,6 +6,7 @@ import path from "node:path";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
+import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
 import { atomicWriteFileSync } from "../shared/atomic.ts";
 import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
@@ -79,41 +80,6 @@ export function shellScript(command: string, settings: ShellSettings): string {
 /** The command as Octocode's bash runs it: the settings prefix on its own line first. */
 export function prefixed(command: string, commandPrefix?: string): string {
 	return commandPrefix ? `${commandPrefix}\n${command}` : command;
-}
-
-/**
- * The environment Octocode's own bash gives a command (core/tools/bash `resolveSpawnContext` over utils/shell `getShellEnv`,
- * neither exported): Octocode's bin folder first on PATH, and the OCTOCODE_* session variables set from this session, never
- * inherited from the parent. The builtin is created without a spawnHook, so there is none to apply here.
- */
-export function shellEnv(ctx?: ExtensionContext, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-	const bin = path.join(getAgentDir(), "bin");
-	const pathKey = Object.keys(base).find((key) => key.toLowerCase() === "path") ?? "PATH";
-	const current = base[pathKey] ?? "";
-	const env: NodeJS.ProcessEnv = {
-		...base,
-		[pathKey]: current.split(path.delimiter).filter(Boolean).includes(bin)
-			? current
-			: [bin, current].filter(Boolean).join(path.delimiter),
-	};
-	for (const name of [
-		"OCTOCODE_SESSION_ID",
-		"OCTOCODE_SESSION_FILE",
-		"OCTOCODE_PROVIDER",
-		"OCTOCODE_MODEL",
-		"OCTOCODE_REASONING_LEVEL",
-	])
-		delete env[name];
-	if (!ctx) return env;
-	env.OCTOCODE_SESSION_ID = ctx.sessionManager.getSessionId();
-	const sessionFile = ctx.sessionManager.getSessionFile();
-	if (sessionFile) env.OCTOCODE_SESSION_FILE = sessionFile;
-	if (ctx.model) {
-		env.OCTOCODE_PROVIDER = ctx.model.provider;
-		env.OCTOCODE_MODEL = ctx.model.id;
-	}
-	if (ctx.thinkingLevel) env.OCTOCODE_REASONING_LEVEL = ctx.thinkingLevel;
-	return env;
 }
 
 /** What git runs instead of an editor: says how to pass the text, then fails so the command stops at once. */
@@ -192,7 +158,7 @@ function countLines(fd: number, size: number): number {
 	const chunk = Buffer.alloc(Math.min(size, 1024 * 1024));
 	let lines = 0;
 	let last = 0x0a;
-	for (let position = 0; position < size; ) {
+	for (let position = 0; position < size;) {
 		const read = fs.readSync(fd, chunk, 0, chunk.length, position);
 		if (read <= 0) break;
 		for (let at = chunk.indexOf(0x0a); at !== -1 && at < read; at = chunk.indexOf(0x0a, at + 1)) lines++;
@@ -298,9 +264,7 @@ export async function reapOrphanJobs(dirs: readonly string[]): Promise<OrphanJob
 	const entries: Array<{ file: string; record: JobRecord | undefined }> = [];
 	for (const dir of dirs) {
 		try {
-			await releaseDeadClaims(dir, fs.readdirSync(dir), CLAIM_MARKER, (original) =>
-				original.endsWith(RECORD_SUFFIX),
-			);
+			await releaseDeadClaims(dir, fs.readdirSync(dir), CLAIM_MARKER, (original) => original.endsWith(RECORD_SUFFIX));
 			for (const name of fs.readdirSync(dir))
 				if (name.endsWith(RECORD_SUFFIX))
 					entries.push({ file: path.join(dir, name), record: readRecord(path.join(dir, name)) });
@@ -380,7 +344,7 @@ export class BashJobs {
 		asked: number | undefined,
 		onExit: (job: BashJob, exit: JobExit) => void,
 		{
-			env = shellEnv(),
+			env = bashSessionEnv(undefined),
 			shell: settings = {},
 			maxLogBytes = MAX_JOB_LOG_BYTES,
 		}: { env?: NodeJS.ProcessEnv; shell?: ShellSettings; maxLogBytes?: number } = {},
@@ -426,11 +390,7 @@ export class BashJobs {
 		command: string,
 		cwd: string,
 		onExit: (job: BashJob, exit: JobExit) => void,
-		{
-			output,
-			startedAt,
-			maxLogBytes = MAX_JOB_LOG_BYTES,
-		}: { output: Buffer; startedAt: number; maxLogBytes?: number },
+		{ output, startedAt, maxLogBytes = MAX_JOB_LOG_BYTES }: { output: Buffer; startedAt: number; maxLogBytes?: number },
 	): BashJob {
 		if (child.pid === undefined) throw new Error("The command has no process to move");
 		return this.register(child, child.pid, command, cwd, onExit, { maxLogBytes, output, startedAt });

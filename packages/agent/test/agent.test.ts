@@ -610,6 +610,77 @@ describe("Agent", () => {
 		expect(events.filter((event) => event.type === "tool_execution_update")).toHaveLength(0);
 	});
 
+	it("aborts tools still running when a listener fails the run", async () => {
+		const toolSchema = Type.Object({});
+		const slowStarted = createDeferred();
+		let slowSignal: AbortSignal | undefined;
+		const fastTool: AgentTool<typeof toolSchema, object> = {
+			name: "fast_tool",
+			label: "Fast",
+			description: "fast",
+			parameters: toolSchema,
+			execute: async () => ({ content: [{ type: "text", text: "done" }], details: {} }),
+		};
+		const slowTool: AgentTool<typeof toolSchema, object> = {
+			name: "slow_tool",
+			label: "Slow",
+			description: "slow",
+			parameters: toolSchema,
+			async execute(_id, _params, signal) {
+				slowSignal = signal;
+				slowStarted.resolve();
+				await new Promise((resolve) => signal?.addEventListener("abort", resolve, { once: true }));
+				return { content: [{ type: "text", text: "stopped" }], details: {} };
+			},
+		};
+		const agent = new Agent({
+			initialState: { tools: [fastTool, slowTool] },
+			streamFn: () => {
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() =>
+					stream.push({
+						type: "done",
+						reason: "toolUse",
+						message: createAssistantToolUseMessage([
+							{ type: "toolCall", id: "call-1", name: "fast_tool", arguments: {} },
+							{ type: "toolCall", id: "call-2", name: "slow_tool", arguments: {} },
+						]),
+					}),
+				);
+				return stream;
+			},
+		});
+		agent.subscribe(async (event) => {
+			if (event.type === "tool_execution_end" && event.toolCallId === "call-1") {
+				await slowStarted.promise;
+				throw new Error("persistence failed");
+			}
+		});
+		await agent.prompt("run tools");
+		expect(agent.state.isStreaming).toBe(false);
+		expect(slowSignal?.aborted).toBe(true);
+	});
+
+	it("emits agent_end once and adds no error message when a listener fails on agent_end", async () => {
+		const ends: AgentEvent[] = [];
+		const agent = new Agent({
+			streamFn: () => {
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage("hi") }));
+				return stream;
+			},
+		});
+		agent.subscribe((event) => {
+			if (event.type !== "agent_end") return;
+			ends.push(event);
+			if (ends.length === 1) throw new Error("listener failed");
+		});
+		await agent.prompt("hello");
+		expect(ends).toHaveLength(1);
+		expect(agent.state.messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "stop" });
+		expect(agent.state.errorMessage).toBe("listener failed");
+	});
+
 	it("should update state with mutators", () => {
 		const agent = new Agent({ streamFn: unusedStreamFunction });
 
@@ -988,9 +1059,7 @@ describe("Agent", () => {
 					),
 				);
 				const stream = createAssistantMessageEventStream();
-				queueMicrotask(() =>
-					stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }),
-				);
+				queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }));
 				return stream;
 			},
 		});
@@ -1018,9 +1087,7 @@ describe("Agent", () => {
 					),
 				);
 				const stream = createAssistantMessageEventStream();
-				queueMicrotask(() =>
-					stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }),
-				);
+				queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }));
 				return stream;
 			},
 		});
@@ -1050,9 +1117,7 @@ describe("Agent", () => {
 					),
 				);
 				const stream = createAssistantMessageEventStream();
-				queueMicrotask(() =>
-					stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }),
-				);
+				queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }));
 				return stream;
 			},
 		});
@@ -1112,9 +1177,7 @@ describe("Agent", () => {
 			finishTurn: () => ({ action: "end" }),
 			streamFn: () => {
 				const stream = createAssistantMessageEventStream();
-				queueMicrotask(() =>
-					stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }),
-				);
+				queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") }));
 				return stream;
 			},
 		});

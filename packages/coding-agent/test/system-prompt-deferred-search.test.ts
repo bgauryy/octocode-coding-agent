@@ -19,7 +19,10 @@ afterEach(() => {
 it("leaves out the shell-search rule when tool_search can load an Octocode search tool", async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-deferred-search-"));
 	roots.push(root);
-	const faux = createFauxCore({ provider: "faux", models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }] });
+	const faux = createFauxCore({
+		provider: "faux",
+		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
+	});
 	const extension: ExtensionFactory = (pi) => {
 		pi.registerProvider("faux", {
 			name: "Faux",

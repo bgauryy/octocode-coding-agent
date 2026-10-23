@@ -124,7 +124,7 @@ export function subagentProcessEnv(
 			AGENT_COLLABORATE_ENV,
 			AGENT_SCRATCH_ENV,
 			PARENT_SESSION_ENV,
-	PARENT_TRANSCRIPT_ENV,
+			PARENT_TRANSCRIPT_ENV,
 			PARENT_PID_ENV,
 		],
 	];
@@ -209,7 +209,6 @@ export function childSessionFile(session: ChildSession): string | undefined {
 		return undefined;
 	}
 }
-
 
 /**
  * The Octocode arguments of a child. It runs in RPC mode: the task is not an argument (RPC ignores a positional task and
@@ -317,15 +316,12 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
  * Runs one child (see `runChild`). A child that crashed while loading its code before any model turn is started once
  * more after a short delay: no tool ran, so nothing repeats. A stop (`signal`) is never retried.
  */
-export async function runSubagent(
-	...call: Parameters<typeof runChild>
-): Promise<SubagentOutcome> {
+export async function runSubagent(...call: Parameters<typeof runChild>): Promise<SubagentOutcome> {
 	try {
 		return await runChild(...call);
 	} catch (error) {
 		const signal = call[5];
-		if (!(error instanceof StartupError) || !error.retryable || signal?.aborted)
-			throw error;
+		if (!(error instanceof StartupError) || !error.retryable || signal?.aborted) throw error;
 		await pause(STARTUP_RETRY_DELAY_MS, signal);
 		if (signal?.aborted) throw new Error("Subagent cancelled");
 		return runChild(...call);
@@ -364,15 +360,8 @@ async function runChild(
 	try {
 		if (identity.skillResources) {
 			adoptSkillResourceSnapshot(identity.skillResources);
-			const directory = privateDir(
-				identity.scratch ??
-					reportDir(identity.id) ??
-					sessionOutputDir("output"),
-			);
-			const file = path.join(
-				directory,
-				`skills-${randomBytes(16).toString("hex")}.json`,
-			);
+			const directory = privateDir(identity.scratch ?? reportDir(identity.id) ?? sessionOutputDir("output"));
+			const file = path.join(directory, `skills-${randomBytes(16).toString("hex")}.json`);
 			const fd = fs.openSync(file, "wx", PRIVATE_FILE_MODE);
 			skillSnapshotFile = file;
 			try {
@@ -381,9 +370,7 @@ async function runChild(
 				fs.closeSync(fd);
 			}
 		}
-		const rolePromptFile = profile?.prompt
-			? writeRolePrompt(profile.prompt, sessionOutputDir("output"))
-			: undefined;
+		const rolePromptFile = profile?.prompt ? writeRolePrompt(profile.prompt, sessionOutputDir("output")) : undefined;
 		const nonce = randomBytes(16).toString("hex");
 		nonceFile = writeNonceFile(nonce, identity.id);
 		vouched = nonceFile ? host?.vouch?.(identity.id, nonce) : undefined;
@@ -396,14 +383,7 @@ async function runChild(
 			// Detached on POSIX so the child leads a process group: cancelling kills its whole tree (MCP servers, Chrome, bash).
 			const child = spawn(command, [...prefix, ...args], {
 				cwd,
-				env: subagentProcessEnv(
-					profile,
-					process.env,
-					identity,
-					nonceFile,
-					rolePromptFile,
-					skillSnapshotFile,
-				),
+				env: subagentProcessEnv(profile, process.env, identity, nonceFile, rolePromptFile, skillSnapshotFile),
 				stdio: ["pipe", "pipe", "pipe"],
 				detached: process.platform !== "win32",
 			});
@@ -424,8 +404,7 @@ async function runChild(
 			};
 			/** Closing stdin is how an RPC child is told to shut down in order. */
 			const closeInput = () => {
-				if (!child.stdin.destroyed && !child.stdin.writableEnded)
-					child.stdin.end();
+				if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
 			};
 			let onSettled: (() => void) | undefined;
 			const settledEvent = new Promise<void>((resolve) => {
@@ -438,8 +417,7 @@ async function runChild(
 				return undefined;
 			});
 			const stop = async (graceMs: number): Promise<void> => {
-				if (state.running && send({ type: "abort" }))
-					await settleWithin(settledEvent, ABORT_SETTLE_MS);
+				if (state.running && send({ type: "abort" })) await settleWithin(settledEvent, ABORT_SETTLE_MS);
 				closeInput();
 				// A child that settled leaves on its own once its input is closed; one that did not gets the signals at once.
 				if (state.settledSeen) await settleWithin(exitEvent, graceMs);
@@ -450,11 +428,7 @@ async function runChild(
 			let stopped: Promise<void> | undefined;
 			const abort = () => {
 				relay.cancelAll();
-				stopped ??= stop(
-					signal?.reason === USER_STOP
-						? USER_STOP_GRACE_MS
-						: SUBAGENT_STOP_GRACE_MS,
-				);
+				stopped ??= stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS);
 			};
 			signal?.addEventListener("abort", abort, { once: true });
 			// Watchdog: a child stuck on a stalled model stream emits nothing; stop it instead of spinning forever.
@@ -486,8 +460,7 @@ async function runChild(
 					const now = Date.now();
 					if (streamFailure || stalled || relay.open > 0) return;
 					const busy = state.toolsRunning > 0 || state.settling;
-					if (busy ? now < state.busyUntil : now - activeAt < limits.idleMs)
-						return;
+					if (busy ? now < state.busyUntil : now - activeAt < limits.idleMs) return;
 					stalled = busy
 						? new Error(
 								`Subagent stopped: ${state.lastActivity} ran past its own deadline; last output ${formatDuration(now - activeAt)} ago. Its process tree was killed.`,
@@ -510,9 +483,7 @@ async function runChild(
 			};
 			const handleLine = (line: string) => {
 				const event = parseEvent(line);
-				if (event)
-					for (const effect of reduceEvent(state, event, limits, Date.now()))
-						perform(effect);
+				if (event) for (const effect of reduceEvent(state, event, limits, Date.now())) perform(effect);
 			};
 			const perform = (effect: ChildEffect) => {
 				switch (effect.kind) {
@@ -534,11 +505,7 @@ async function runChild(
 					case "incoming":
 						return report.incoming(effect.role);
 					case "answer":
-						return report.answer(
-							effect.text,
-							effect.stopReason,
-							effect.errorMessage,
-						);
+						return report.answer(effect.text, effect.stopReason, effect.errorMessage);
 				}
 			};
 			child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
@@ -550,9 +517,7 @@ async function runChild(
 					const part = chunk.slice(start, newline < 0 ? undefined : newline);
 					frameBytes += Buffer.byteLength(part);
 					if (frameBytes > MAX_EVENT_BYTES) {
-						streamFailure = new Error(
-							`Subagent JSON event exceeds ${MAX_EVENT_BYTES} bytes`,
-						);
+						streamFailure = new Error(`Subagent JSON event exceeds ${MAX_EVENT_BYTES} bytes`);
 						buffer = "";
 						abort();
 						return;
@@ -565,9 +530,7 @@ async function runChild(
 					start = newline + 1;
 				}
 			});
-			child.stderr
-				.setEncoding("utf8")
-				.on("data", (chunk: string) => stderr.write(chunk));
+			child.stderr.setEncoding("utf8").on("data", (chunk: string) => stderr.write(chunk));
 			// The run settles once, from `close` (stdio drained) or, when a grandchild that left the process group keeps the
 			// pipes open, from `exit` plus a short grace: the tool call must return and its slot be freed either way.
 			let finished = false;
@@ -593,42 +556,27 @@ async function runChild(
 				clearInterval(watchdog);
 				// What the child left in its own process group (an MCP server, a dev server, a Chrome) dies with the run, and
 				// before the run settles: the caller removes the child's worktree next, and a holder must not outlive that.
-				if (leftBehind(child.pid))
-					stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS);
+				if (leftBehind(child.pid)) stopped ??= stopTree(child.pid, SUBAGENT_STOP_GRACE_MS);
 				exitGrace = setTimeout(() => settle(code, exitSignal), EXIT_GRACE_MS);
 			});
 			child.on("close", (code, exitSignal) => settle(code, exitSignal));
-			const settle = (
-				code: number | null,
-				exitSignal: NodeJS.Signals | null,
-			) => {
+			const settle = (code: number | null, exitSignal: NodeJS.Signals | null) => {
 				if (!finish()) return;
 				if (stopped) void stopped.then(() => conclude(code, exitSignal));
 				else conclude(code, exitSignal);
 			};
-			const conclude = (
-				code: number | null,
-				exitSignal: NodeJS.Signals | null,
-			) => {
+			const conclude = (code: number | null, exitSignal: NodeJS.Signals | null) => {
 				for (const stream of [child.stdout, child.stderr]) stream.destroy();
 				if (buffer.trim()) handleLine(buffer);
 				relay.end();
 				stderr.close();
 				const saved = savedNotices(state, outputDir);
 				if (saved) progress({ usage: state.usage, notices: saved });
-				const {
-					text: finalText,
-					body: lastProgress,
-					pointer,
-					error,
-					answered,
-					outcome,
-				} = report.result();
+				const { text: finalText, body: lastProgress, pointer, error, answered, outcome } = report.result();
 				if (streamFailure) reject(streamFailure);
 				// A child stopped while settling after its answer still delivers that answer.
 				else if (stalled && !answered) reject(stalled);
-				else if (signal?.aborted && !answered)
-					reject(new Error("Subagent cancelled"));
+				else if (signal?.aborted && !answered) reject(new Error("Subagent cancelled"));
 				// The child's report (already shown with visible escapes by `Report`) and stderr are untrusted text headed for the model and the terminal. A crash before any
 				// final answer is a failure even when the child narrated progress first: narration is not a report.
 				else if (code !== 0 && !answered && !state.turnSeen) {
@@ -648,11 +596,7 @@ async function runChild(
 					const last = finalText
 						? `\nLast progress: ${lastProgress.trim()}${pointer ? `\n${visibleControls(pointer)}` : ""}`
 						: "";
-					reject(
-						new Error(
-							`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${last}`,
-						),
-					);
+					reject(new Error(`Subagent ${exitReason(code, exitSignal)}: ${stderr.text()}${last}`));
 				} else {
 					// A child that aborted itself (its compaction kept thrashing, say) says why in its last error notice.
 					const failure = cancelled
@@ -672,8 +616,7 @@ async function runChild(
 			try {
 				if (child.pid !== undefined) onSpawn?.(child.pid);
 			} catch (error) {
-				streamFailure =
-					error instanceof Error ? error : new Error(String(error));
+				streamFailure = error instanceof Error ? error : new Error(String(error));
 				abort();
 			}
 			if (!streamFailure) send({ type: "prompt", message: task });
@@ -689,9 +632,7 @@ async function runChild(
 			try {
 				fs.rmSync(file, { force: true });
 			} catch {
-				process.stderr.write(
-					"Unable to remove a private subagent handoff file\n",
-				);
+				process.stderr.write("Unable to remove a private subagent handoff file\n");
 			}
 		}
 	}

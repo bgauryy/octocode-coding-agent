@@ -24,14 +24,30 @@ describe("team message delivery", () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
 		try {
 			for (const id of ["asker", "worker", "other"])
-				store.save({ id, role: id, pid: process.pid, status: "idle", joinedAt: Date.now(), updatedAt: Date.now(), toolCalls: 0, input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false });
+				store.save({
+					id,
+					role: id,
+					pid: process.pid,
+					status: "idle",
+					joinedAt: Date.now(),
+					updatedAt: Date.now(),
+					toolCalls: 0,
+					input: 0,
+					cacheRead: 0,
+					output: 0,
+					cost: 0,
+					unpriced: false,
+				});
 			const ask = store.send("asker", ["worker"], "Question", { replyRequired: true }).id!;
 			store.ack("worker", [ask]);
 			store.send("worker", ["other"], "Wrong recipient", { replyRequired: false, replyTo: ask });
 			expect(store.recent().find((message) => message.id === ask)?.state).toBe("awaiting reply");
 			expect(store.asks("asker", "worker", 0)[0]?.answer).toBeUndefined();
 			expect(store.pending("asker")).toEqual([]);
-			const reply = store.send("worker", ["asker", "other"], "Correct reply", { replyRequired: false, replyTo: ask }).id;
+			const reply = store.send("worker", ["asker", "other"], "Correct reply", {
+				replyRequired: false,
+				replyTo: ask,
+			}).id;
 			expect(store.recent().find((message) => message.id === ask)?.state).toBe("answered");
 			expect(store.asks("asker", "worker", 0)[0]?.answer?.id).toBe(reply);
 			expect(store.pending("asker")[0]?.wake).toBe(true);

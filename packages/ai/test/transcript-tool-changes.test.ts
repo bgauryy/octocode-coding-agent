@@ -322,9 +322,9 @@ describe("transcript system messages", () => {
 
 		expect(payload.tools?.map((value) => value.name)).toEqual(["base_tool"]);
 		expect(payload.input.map((item) => item.type)).toContain("tool_search_call");
-		expect(
-			payload.input.find((item) => item.type === "tool_search_output")?.tools?.map((value) => value.name),
-		).toEqual(["late_tool"]);
+		expect(payload.input.find((item) => item.type === "tool_search_output")?.tools?.map((value) => value.name)).toEqual(
+			["late_tool"],
+		);
 	});
 
 	test("folds OpenAI updates into the leading developer message without native support", async () => {
@@ -517,9 +517,11 @@ describe("transcript system messages", () => {
 		expect(payload.messages.find((message) => message.tools)?.tools?.map((value) => value.function?.name)).toEqual([
 			"late_tool",
 		]);
-		expect(payload.messages.filter((message) => message.role === "system").map((message) => message.content)).toEqual(
-			["base prompt", undefined, "updated guidance"],
-		);
+		expect(payload.messages.filter((message) => message.role === "system").map((message) => message.content)).toEqual([
+			"base prompt",
+			undefined,
+			"updated guidance",
+		]);
 	});
 
 	type KimiPayload = {
@@ -581,9 +583,10 @@ describe("transcript system messages", () => {
 
 		expect(payload.tools?.map((value) => value.function?.name)).toEqual(["base_tool", "late_tool"]);
 		expect(payload.messages.some((message) => message.tools !== undefined)).toBe(false);
-		expect(payload.messages.filter((message) => message.role === "system").map((message) => message.content)).toEqual(
-			["base prompt", "updated guidance"],
-		);
+		expect(payload.messages.filter((message) => message.role === "system").map((message) => message.content)).toEqual([
+			"base prompt",
+			"updated guidance",
+		]);
 	});
 
 	test("folds OpenAI-compatible updates into the system prompt without native support", async () => {

@@ -23,8 +23,18 @@ export function getMcpConfigLocations(agentDir: string, cwd: string, projectTrus
 		projectWrite,
 		projectTrusted,
 		files: [
-			...globalMcpConfigPaths(agentDir).map((path) => ({ path, scope: "global" as const, ignored: false, exists: existsSync(path) })),
-			...projectMcpConfigPaths(cwd).map((path) => ({ path, scope: "project" as const, ignored: !projectTrusted, exists: existsSync(path) })),
+			...globalMcpConfigPaths(agentDir).map((path) => ({
+				path,
+				scope: "global" as const,
+				ignored: false,
+				exists: existsSync(path),
+			})),
+			...projectMcpConfigPaths(cwd).map((path) => ({
+				path,
+				scope: "project" as const,
+				ignored: !projectTrusted,
+				exists: existsSync(path),
+			})),
 		],
 	};
 }
@@ -34,7 +44,10 @@ export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConf
 		`Global configuration: ${locations.globalWrite}`,
 		`Workspace configuration: ${locations.projectWrite}${locations.projectTrusted ? "" : " (not loaded: project is untrusted)"}`,
 		"Read order (later entries override earlier ones):",
-		...locations.files.map((file) => `  ${file.scope}: ${file.path} (${file.exists ? "exists" : "not present"}${file.ignored ? "; ignored until trusted" : ""})`),
+		...locations.files.map(
+			(file) =>
+				`  ${file.scope}: ${file.path} (${file.exists ? "exists" : "not present"}${file.ignored ? "; ignored until trusted" : ""})`,
+		),
 		"Enable/disable/exposure updates the effective override when one exists; otherwise global changes save to the global file. --local writes a trusted workspace override. Existing project definitions are updated in place.",
 		"Enabled defaults to true; exposure defaults to auto. Use /mcp tools to inspect session tools and /reload after editing files.",
 	].join("\n");

@@ -9,11 +9,14 @@ export function registerArchiveCommand(commands: Subcommands): void {
 	commands.add("archive", {
 		description:
 			"archive [<n>] — compacted history of this session: segments with their TL;DR, or the file of segment <n>",
-		complete: prefix => wordCompletions(readSegments().map(segment => [String(segment.n), segmentLine(segment)]), prefix),
+		complete: (prefix) =>
+			wordCompletions(
+				readSegments().map((segment) => [String(segment.n), segmentLine(segment)]),
+				prefix,
+			),
 		handler: async (args, ctx) => {
 			const word = args.trim();
-			if (word !== "" && !/^\d+$/.test(word))
-				return say(ctx, "Usage: /archive [<segment number>]", "warning");
+			if (word !== "" && !/^\d+$/.test(word)) return say(ctx, "Usage: /archive [<segment number>]", "warning");
 			const folder = archiveFolder();
 			const segments = readSegments();
 			if (word !== "") {

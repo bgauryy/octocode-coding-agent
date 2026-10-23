@@ -89,12 +89,10 @@ describe("backlog composition", () => {
 		store.update(dependent.ref, { state: "done", completion: result() }, actor);
 		store.update(item.ref, { state: "todo", note: "Found a regression" }, actor);
 		expect(store.get(item.ref)?.completions).toHaveLength(1);
-		expect(
-			backlogSnapshot(store, "repo", Date.now()).items.find((i) => i.ref === dependent.ref)?.needsReview,
-		).toBe(true);
-		expect(
-			store.update(item.ref, { state: "done", completion: result("retry") }, actor).completions,
-		).toHaveLength(2);
+		expect(backlogSnapshot(store, "repo", Date.now()).items.find((i) => i.ref === dependent.ref)?.needsReview).toBe(
+			true,
+		);
+		expect(store.update(item.ref, { state: "done", completion: result("retry") }, actor).completions).toHaveLength(2);
 	});
 	it("rolls back failed creation and rejects stale versions, unsafe paths and conflicting aliases", () => {
 		expect(() => add("bad", { dependsOn: ["B999"] })).toThrow(/Dependencies/);
@@ -128,15 +126,21 @@ describe("backlog composition", () => {
 		);
 		expect(done.completions[0]?.files).toEqual([]);
 	});
-    it("allows notes after a prerequisite reopens, while preventing another completion", () => {
-        const prerequisite = add("Prerequisite");
-        store.update(prerequisite.ref, { state: "done", completion: result() }, actor);
-        const dependent = add("Dependent", { dependsOn: [prerequisite.ref] });
-        store.update(dependent.ref, { state: "ongoing" }, actor);
-        store.update(prerequisite.ref, { state: "todo", note: "Regression" }, actor);
-        expect(store.update(dependent.ref, { state: "ongoing", dependsOn: [prerequisite.ref], note: "Waiting on the fix" }, actor).state).toBe("ongoing");
-        expect(() => store.update(dependent.ref, { state: "done", completion: result() }, actor)).toThrow(/Blocked by/);
-    });
+	it("allows notes after a prerequisite reopens, while preventing another completion", () => {
+		const prerequisite = add("Prerequisite");
+		store.update(prerequisite.ref, { state: "done", completion: result() }, actor);
+		const dependent = add("Dependent", { dependsOn: [prerequisite.ref] });
+		store.update(dependent.ref, { state: "ongoing" }, actor);
+		store.update(prerequisite.ref, { state: "todo", note: "Regression" }, actor);
+		expect(
+			store.update(
+				dependent.ref,
+				{ state: "ongoing", dependsOn: [prerequisite.ref], note: "Waiting on the fix" },
+				actor,
+			).state,
+		).toBe("ongoing");
+		expect(() => store.update(dependent.ref, { state: "done", completion: result() }, actor)).toThrow(/Blocked by/);
+	});
 
 	it("retains corrected results and searches their files and lessons", () => {
 		const item = add("Work");
@@ -162,9 +166,7 @@ describe("backlog composition", () => {
 		store.update(child.ref, { state: "done", completion: result() }, actor);
 		store.update(grandchild.ref, { state: "todo", note: "New evidence" }, actor);
 		expect(() => store.update(epic.ref, { state: "done", completion: result() }, actor)).toThrow(/child/);
-		expect(
-			backlogSnapshot(store, "repo", Date.now()).items.find((i) => i.ref === child.ref)?.needsReview,
-		).toBe(true);
+		expect(backlogSnapshot(store, "repo", Date.now()).items.find((i) => i.ref === child.ref)?.needsReview).toBe(true);
 	});
 	it("enforces subagent authority in the domain and preserves parent claims", () => {
 		const item = add("Assigned");
@@ -199,20 +201,25 @@ describe("live local backlog", () => {
 		const address = url.origin.replace("http:", "ws:") + "/api/backlogs/live";
 		const bad = new WebSocket(address, { origin: url.origin });
 		await once(bad, "open");
-		const denied = once(bad, "close"); bad.send("wrong");
+		const denied = once(bad, "close");
+		bad.send("wrong");
 		expect((await denied)[0]).toBe(1008);
 		const foreign = new WebSocket(address, { origin: "https://evil.example" });
 		expect((await once(foreign, "error"))[0].message).toContain("403");
 		const client = new WebSocket(address, { origin: url.origin });
 		await once(client, "open");
-		const initial = once(client, "message"); client.send(url.hash.slice(8));
+		const initial = once(client, "message");
+		client.send(url.hash.slice(8));
 		expect(JSON.parse((await initial)[0].toString()).data.items).toEqual([]);
 		const other = openAgentDb(db.file);
 		try {
 			const update = once(client, "message");
 			new BacklogStore(() => other, "repo").add({ title: "From another session", createdBy: "user" });
 			expect(JSON.parse((await update)[0].toString()).data.items[0].title).toBe("From another session");
-		} finally { other.close(); client.terminate(); }
+		} finally {
+			other.close();
+			client.terminate();
+		}
 	});
 	it("authenticates reads and writes, rejects other origins and preserves version conflicts", async () => {
 		web = await startBacklogWeb({ store, actor, session: actor.id, repoName: "repo" });

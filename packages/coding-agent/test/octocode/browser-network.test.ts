@@ -165,9 +165,9 @@ describe("PagePolicy", () => {
 		await expect(
 			page.check("http://127.0.0.1:3000/data", "Fetch", { origin: "http://127.0.0.1:3000" }),
 		).resolves.toBeUndefined();
-		await expect(
-			page.check("http://127.0.0.1:3000/data", "Fetch", { origin: "https://evil.example" }),
-		).rejects.toThrow(/Blocked private/);
+		await expect(page.check("http://127.0.0.1:3000/data", "Fetch", { origin: "https://evil.example" })).rejects.toThrow(
+			/Blocked private/,
+		);
 		page.closed("a");
 		await expect(
 			page.check("http://127.0.0.1:3000/data", "Fetch", { origin: "http://127.0.0.1:3000" }),
@@ -270,8 +270,7 @@ async function setup(
 	});
 	tools.push(browser);
 	let tool:
-		| { execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }> }> }
-		| undefined;
+		{ execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }> }> } | undefined;
 	registerBrowserTool(
 		{
 			registerTool: (definition: typeof tool) => {
@@ -665,17 +664,13 @@ describe("browser page requests", () => {
 		const real = globalThis.fetch;
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
-			.mockImplementation((input, init) =>
-				String(input).includes("/json/close/") ? closeReply() : real(input, init),
-			);
+			.mockImplementation((input, init) => (String(input).includes("/json/close/") ? closeReply() : real(input, init)));
 		try {
 			[...cdp.pages.values()].at(-1)!.emit("Network.responseReceived", {
 				response: { url: "https://cdn.example/c", remoteIPAddress: "10.0.0.5", remotePort: 443 },
 			});
 			await vi.waitFor(() =>
-				expect(session.console.some((line) => line.includes("answered from the private address 10.0.0.5"))).toBe(
-					true,
-				),
+				expect(session.console.some((line) => line.includes("answered from the private address 10.0.0.5"))).toBe(true),
 			);
 			expect(session.console.at(-1)).toContain("the tab could not be closed");
 			expect(session.console.join("\n")).not.toContain("the tab was closed");
@@ -713,9 +708,7 @@ describe("browser page requests", () => {
 		await vi.waitFor(() => expect(cdp.requests).toContain(`GET /json/close/${session.targetId}`));
 		await vi.waitFor(() =>
 			expect(
-				session.console.some((line) =>
-					line.includes("answered from the private address 10.0.0.5; the tab was closed"),
-				),
+				session.console.some((line) => line.includes("answered from the private address 10.0.0.5; the tab was closed")),
 			).toBe(true),
 		);
 		expect(audit().at(-1)).toMatchObject({ action: "invariant", allowed: false });

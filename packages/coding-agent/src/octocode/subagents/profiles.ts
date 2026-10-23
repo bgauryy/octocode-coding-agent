@@ -45,8 +45,8 @@ export const GENERAL_PROFILE = "general";
 
 /** Every child can save files, communicate and recover history; local research is added separately. */
 export const CORE_TOOLS = ["file", "agent", "archive"] as const;
-/** Deferred MCP catalogs need discovery before the child can call their tools directly. */
-export const MCP_ACCESS_TOOLS = ["tool_search"] as const;
+/** Deferred MCP catalogs need discovery before the child can call their tools directly; `mcp` restarts the child's own servers. */
+export const MCP_ACCESS_TOOLS = ["tool_search", "mcp"] as const;
 
 const BUNDLED_DIR = getSubagentsDir();
 
@@ -170,7 +170,11 @@ const mcpRequired = (name: string): string =>
 function withCoreTools(tools: string, selected: readonly string[] | undefined): string {
 	if (isRelative(selected)) return tools;
 	// An allowlist without MCP entries implicitly keeps all MCP servers. Preserve that reach when adding local tools.
-	const required = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...(selected?.some(isMcpTool) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"])];
+	const required = [
+		...CORE_TOOLS,
+		...MCP_ACCESS_TOOLS,
+		...(selected?.some(isMcpTool) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"]),
+	];
 	return [...toolList(tools), ...required.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
 
@@ -197,7 +201,10 @@ export function profileTools(profile?: AgentProfile): string {
 	refuseCoreRemoval(profile?.name ?? GENERAL_PROFILE, selected, profile?.excludeTools);
 	if (profile?.mcp === false) throw new Error(mcpRequired(profile.name));
 	return !selected || isRelative(selected)
-		? [...(selected ?? []), ...[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`)].join(",")
+		? [
+				...(selected ?? []),
+				...[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
+			].join(",")
 		: withCoreTools(profile!.tools!, selected);
 }
 
@@ -225,14 +232,11 @@ export function profileSelectsTool(
 export function profileReach(profile: AgentProfile | undefined, defaultTools?: readonly string[]): ActionClass[] {
 	const nativeDefaults = ["bash", "file"];
 	const configured =
-		SettingsManager.inMemory(defaultTools ? { defaultTools: [...defaultTools] } : {}).getDefaultTools(
-			nativeDefaults,
-		) ?? nativeDefaults;
+		SettingsManager.inMemory(defaultTools ? { defaultTools: [...defaultTools] } : {}).getDefaultTools(nativeDefaults) ??
+		nativeDefaults;
 	return [
 		...(profileSelectsTool(profile, "file", configured) ? ["file.workspace" as const] : []),
-		...(profileSelectsTool(profile, "bash", configured)
-			? ["shell" as const]
-			: []),
+		...(profileSelectsTool(profile, "bash", configured) ? ["shell" as const] : []),
 	];
 }
 
@@ -262,9 +266,7 @@ export async function askSpawn(
 	const reach = profileReach(profile, defaultTools);
 	const declared = profile?.permissions ?? [];
 	const may =
-		reach.length > 0
-			? `may ${reach.map((action) => REACH_TEXT[action]).join(" and ")}`
-			: "may only read and research";
+		reach.length > 0 ? `may ${reach.map((action) => REACH_TEXT[action]).join(" and ")}` : "may only read and research";
 	// One identity for both remembered answers: the profile's name and the hash of its whole content.
 	const seen = `${name} ${profile?.hash ?? ""}`;
 	const needsAnswer = declared.length > 0 && !permission.profileSeen(seen);

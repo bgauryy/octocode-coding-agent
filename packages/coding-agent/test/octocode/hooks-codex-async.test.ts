@@ -32,11 +32,7 @@ async function fixture(count = 1, event = "PreToolUse") {
 		}),
 	);
 	const fake = fakePi();
-	const hooks = registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-	);
+	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 	const notify = vi.fn();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 	ctx.ui.notify = notify;
@@ -56,11 +52,7 @@ it("runs at most eight Codex jobs and discards queued invocations at shutdown", 
 		(_hook, _input, _cwd, _env, signal) =>
 			new Promise((resolve) => {
 				completions.push(resolve);
-				signal!.addEventListener(
-					"abort",
-					() => resolve({ ...success, code: 1 }),
-					{ once: true },
-				);
+				signal!.addEventListener("abort", () => resolve({ ...success, code: 1 }), { once: true });
 			}),
 	);
 	const f = await fixture(10);
@@ -93,16 +85,11 @@ it("delivers valid informational output while ignoring controls and keeping UI w
 	const f = await fixture();
 	try {
 		expect(await f.hooks.preToolUse(call as never, f.ctx)).toBeUndefined();
-		const result = JSON.stringify(
-			await f.emit("before_agent_start", {}, f.ctx),
-		);
+		const result = JSON.stringify(await f.emit("before_agent_start", {}, f.ctx));
 		expect(result).toContain("Codex background context");
 		expect(result).not.toContain("UI warning only");
 		expect(result).not.toContain("ignored decision");
-		expect(f.notify).toHaveBeenCalledWith(
-			expect.stringContaining("UI warning only"),
-			"warning",
-		);
+		expect(f.notify).toHaveBeenCalledWith(expect.stringContaining("UI warning only"), "warning");
 		expect(f.sent).toEqual([]);
 	} finally {
 		await f.fire("session_shutdown", {}, f.ctx);
@@ -118,13 +105,8 @@ it("rejects invalid background output instead of admitting it as model context",
 	const f = await fixture();
 	try {
 		await f.hooks.preToolUse(call as never, f.ctx);
-		expect(
-			JSON.stringify(await f.emit("before_agent_start", {}, f.ctx)),
-		).not.toContain("also rejected");
-		expect(f.notify).toHaveBeenCalledWith(
-			expect.stringContaining("unknown fields"),
-			"warning",
-		);
+		expect(JSON.stringify(await f.emit("before_agent_start", {}, f.ctx))).not.toContain("also rejected");
+		expect(f.notify).toHaveBeenCalledWith(expect.stringContaining("unknown fields"), "warning");
 	} finally {
 		await f.fire("session_shutdown", {}, f.ctx);
 	}

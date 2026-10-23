@@ -1,10 +1,6 @@
 import { isRecord } from "./util.ts";
 
-export type SourcePermissionDestination =
-	| "session"
-	| "localSettings"
-	| "projectSettings"
-	| "userSettings";
+export type SourcePermissionDestination = "session" | "localSettings" | "projectSettings" | "userSettings";
 type SourcePermissionBehavior = "allow" | "deny" | "ask";
 interface SourcePermissionRule {
 	toolName: string;
@@ -19,14 +15,7 @@ export type SourcePermissionUpdate =
 	  }
 	| {
 			type: "setMode";
-			mode:
-				| "default"
-				| "manual"
-				| "auto"
-				| "acceptEdits"
-				| "dontAsk"
-				| "bypassPermissions"
-				| "plan";
+			mode: "default" | "manual" | "auto" | "acceptEdits" | "dontAsk" | "bypassPermissions" | "plan";
 			destination: SourcePermissionDestination;
 	  }
 	| {
@@ -35,23 +24,16 @@ export type SourcePermissionUpdate =
 			destination: SourcePermissionDestination;
 	  };
 
-export function parsePermissionUpdates(
-	value: unknown,
-): SourcePermissionUpdate[] {
-	if (!Array.isArray(value) || value.length > 4096)
-		throw new Error("updatedPermissions must be a bounded array");
+export function parsePermissionUpdates(value: unknown): SourcePermissionUpdate[] {
+	if (!Array.isArray(value) || value.length > 4096) throw new Error("updatedPermissions must be a bounded array");
 	return value.map((entry) => {
 		if (
 			!isRecord(entry) ||
-			!["session", "localSettings", "projectSettings", "userSettings"].includes(
-				String(entry.destination),
-			)
+			!["session", "localSettings", "projectSettings", "userSettings"].includes(String(entry.destination))
 		)
 			throw new Error("Invalid permission update destination");
 		const destination = entry.destination as SourcePermissionDestination;
-		if (
-			["addRules", "replaceRules", "removeRules"].includes(String(entry.type))
-		) {
+		if (["addRules", "replaceRules", "removeRules"].includes(String(entry.type))) {
 			if (
 				!["allow", "deny", "ask"].includes(String(entry.behavior)) ||
 				!Array.isArray(entry.rules) ||
@@ -64,16 +46,12 @@ export function parsePermissionUpdates(
 					typeof rule.toolName !== "string" ||
 					!/^([^()\s]+)$/.test(rule.toolName) ||
 					rule.toolName.length > 8192 ||
-					(rule.ruleContent !== undefined &&
-						(typeof rule.ruleContent !== "string" ||
-							rule.ruleContent.length > 8192))
+					(rule.ruleContent !== undefined && (typeof rule.ruleContent !== "string" || rule.ruleContent.length > 8192))
 				)
 					throw new Error("Invalid permission update rule");
 				return {
 					toolName: rule.toolName,
-					...(rule.ruleContent !== undefined
-						? { ruleContent: rule.ruleContent as string }
-						: {}),
+					...(rule.ruleContent !== undefined ? { ruleContent: rule.ruleContent as string } : {}),
 				};
 			});
 			return {
@@ -85,23 +63,14 @@ export function parsePermissionUpdates(
 		}
 		if (entry.type === "setMode") {
 			if (
-				![
-					"default",
-					"manual",
-					"auto",
-					"acceptEdits",
-					"dontAsk",
-					"bypassPermissions",
-					"plan",
-				].includes(String(entry.mode))
+				!["default", "manual", "auto", "acceptEdits", "dontAsk", "bypassPermissions", "plan"].includes(
+					String(entry.mode),
+				)
 			)
 				throw new Error("Invalid source permission mode");
 			return {
 				type: "setMode",
-				mode: entry.mode as Extract<
-					SourcePermissionUpdate,
-					{ type: "setMode" }
-				>["mode"],
+				mode: entry.mode as Extract<SourcePermissionUpdate, { type: "setMode" }>["mode"],
 				destination,
 			};
 		}
@@ -109,9 +78,7 @@ export function parsePermissionUpdates(
 			if (
 				!Array.isArray(entry.directories) ||
 				entry.directories.length > 4096 ||
-				entry.directories.some(
-					(dir) => typeof dir !== "string" || !dir || dir.length > 8192,
-				)
+				entry.directories.some((dir) => typeof dir !== "string" || !dir || dir.length > 8192)
 			)
 				throw new Error("Invalid permission directories");
 			return {
@@ -143,9 +110,7 @@ export function applyRuleUpdates(
 	};
 	for (const update of updates) {
 		if (update.destination !== destination)
-			throw new Error(
-				`Unsupported permission update ${update.type} at ${update.destination}; call not executed`,
-			);
+			throw new Error(`Unsupported permission update ${update.type} at ${update.destination}; call not executed`);
 		if (update.type === "setMode") {
 			if (!["default", "manual", "acceptEdits", "dontAsk"].includes(update.mode))
 				throw new Error(`Unsupported source permission mode ${update.mode}; call not executed`);
@@ -159,27 +124,16 @@ export function applyRuleUpdates(
 				update.type === "addDirectories"
 					? [...new Set([...previous, ...directories])]
 					: previous.filter((directory) => !directories.includes(directory));
-			if (next.additionalDirectories.length > 4096)
-				throw new Error("Permission directory update exceeds the limit");
+			if (next.additionalDirectories.length > 4096) throw new Error("Permission directory update exceeds the limit");
 			continue;
 		}
 		const rules = update.rules.map((rule) =>
-			rule.ruleContent === undefined
-				? rule.toolName
-				: `${rule.toolName}(${rule.ruleContent})`,
+			rule.ruleContent === undefined ? rule.toolName : `${rule.toolName}(${rule.ruleContent})`,
 		);
-		if (update.type === "replaceRules")
-			next[update.behavior] = [...new Set(rules)];
-		else if (update.type === "addRules")
-			next[update.behavior] = [
-				...new Set([...next[update.behavior], ...rules]),
-			];
-		else
-			next[update.behavior] = next[update.behavior].filter(
-				(rule) => !rules.includes(rule),
-			);
-		if (next[update.behavior].length > 4096)
-			throw new Error("Permission rule update exceeds the rule limit");
+		if (update.type === "replaceRules") next[update.behavior] = [...new Set(rules)];
+		else if (update.type === "addRules") next[update.behavior] = [...new Set([...next[update.behavior], ...rules])];
+		else next[update.behavior] = next[update.behavior].filter((rule) => !rules.includes(rule));
+		if (next[update.behavior].length > 4096) throw new Error("Permission rule update exceeds the rule limit");
 	}
 	return next;
 }

@@ -32,9 +32,7 @@ describe("an MCP server's stderr in its failure", () => {
 		const error = await failure("kaboom: the config is broken");
 		expect(error).toMatch(/\nkaboom: the config is broken$/);
 		expect(error).not.toContain("[server stderr");
-		expect(fs.readdirSync(sessionOutputDir("output")).filter((name) => name.startsWith("mcp-stderr"))).toEqual(
-			before,
-		);
+		expect(fs.readdirSync(sessionOutputDir("output")).filter((name) => name.startsWith("mcp-stderr"))).toEqual(before);
 	});
 
 	it("is saved whole when only its tail fits, and the error says how much it shows and where the rest is", async () => {

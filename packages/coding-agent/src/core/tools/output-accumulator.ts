@@ -152,7 +152,11 @@ export class OutputAccumulator {
 
 		if (!linesExceeded && !bytesExceeded) {
 			const whole = truncateTail(text, { maxLines: this.maxLines, maxBytes: this.maxBytes });
-			return { content: whole.content, truncation: { ...whole, totalLines, totalBytes }, fullOutputPath: this.tempFilePath };
+			return {
+				content: whole.content,
+				truncation: { ...whole, totalLines, totalBytes },
+				fullOutputPath: this.tempFilePath,
+			};
 		}
 
 		if (options.persistIfTruncated) {
@@ -325,7 +329,7 @@ export class OutputAccumulator {
 		let lines = 0;
 		let bytes = 0;
 		let end = 0;
-		for (let pos = 0; lines < this.headMaxLines; ) {
+		for (let pos = 0; lines < this.headMaxLines;) {
 			const newline = this.headBuffer.indexOf("\n", pos);
 			if (newline === -1) break;
 			const next = bytes + byteLength(this.headBuffer.slice(pos, newline)) + (lines > 0 ? 1 : 0);

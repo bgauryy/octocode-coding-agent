@@ -1,4 +1,14 @@
-import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, SelectList, Spacer, Text, type SlashCommand } from "@octocodeai/octocode-tui";
+import {
+	Container,
+	type Focusable,
+	fuzzyFilter,
+	getKeybindings,
+	Input,
+	SelectList,
+	Spacer,
+	Text,
+	type SlashCommand,
+} from "@octocodeai/octocode-tui";
 import { getSelectListTheme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
@@ -10,8 +20,12 @@ export class CommandSelectorComponent extends Container implements Focusable {
 	private readonly commands: readonly SlashCommand[];
 	private readonly onSelect: (name: string) => void;
 	private readonly onCancel: () => void;
-	get focused(): boolean { return this.input.focused; }
-	set focused(value: boolean) { this.input.focused = value; }
+	get focused(): boolean {
+		return this.input.focused;
+	}
+	set focused(value: boolean) {
+		this.input.focused = value;
+	}
 
 	constructor(
 		title: string,
@@ -32,20 +46,34 @@ export class CommandSelectorComponent extends Container implements Focusable {
 		this.addChild(this.input);
 		this.addChild(new Spacer(1));
 		this.addChild(this.listContainer);
-		this.addChild(new Text(`${keyHint("tui.select.confirm", "insert command")} · ${keyHint("tui.select.cancel", "close")}`, 1, 0));
+		this.addChild(
+			new Text(`${keyHint("tui.select.confirm", "insert command")} · ${keyHint("tui.select.cancel", "close")}`, 1, 0),
+		);
 		this.addChild(new DynamicBorder());
 		this.filter();
 	}
 
 	private filter(): void {
-		const commands = fuzzyFilter([...this.commands], this.input.getValue(), (command) =>
-			`${command.name} ${(command.aliases ?? []).join(" ")} ${command.description ?? ""}`,
+		const commands = fuzzyFilter(
+			[...this.commands],
+			this.input.getValue(),
+			(command) => `${command.name} ${(command.aliases ?? []).join(" ")} ${command.description ?? ""}`,
 		);
-		this.list = new SelectList(commands.map((command) => ({
-			value: command.name,
-			label: `/${command.name}`,
-			description: [command.description, command.aliases?.length ? `aliases: ${command.aliases.map((alias) => `/${alias}`).join(", ")}` : undefined].filter(Boolean).join(" · "),
-		})), 12, getSelectListTheme(), { maxPrimaryColumnWidth: 36 });
+		this.list = new SelectList(
+			commands.map((command) => ({
+				value: command.name,
+				label: `/${command.name}`,
+				description: [
+					command.description,
+					command.aliases?.length ? `aliases: ${command.aliases.map((alias) => `/${alias}`).join(", ")}` : undefined,
+				]
+					.filter(Boolean)
+					.join(" · "),
+			})),
+			12,
+			getSelectListTheme(),
+			{ maxPrimaryColumnWidth: 36 },
+		);
 		this.list.onSelect = (item) => this.onSelect(item.value);
 		this.list.onCancel = this.onCancel;
 		this.listContainer.clear();
@@ -54,7 +82,11 @@ export class CommandSelectorComponent extends Container implements Focusable {
 
 	handleInput(data: string): void {
 		const keys = getKeybindings();
-		if ((["tui.select.up", "tui.select.down", "tui.select.confirm", "tui.select.cancel"] as const).some((key) => keys.matches(data, key))) {
+		if (
+			(["tui.select.up", "tui.select.down", "tui.select.confirm", "tui.select.cancel"] as const).some((key) =>
+				keys.matches(data, key),
+			)
+		) {
 			this.list.handleInput(data);
 			return;
 		}

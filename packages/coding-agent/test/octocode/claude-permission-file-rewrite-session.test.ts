@@ -33,18 +33,13 @@ it("Claude Write permission replacement writes only its new path and content", a
 		expect(fs.existsSync(original)).toBe(false);
 		expect(fs.readFileSync(replacement, "utf8")).toBe("REWRITTEN");
 		expect(f.inputs()).toHaveLength(1);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 	} finally {
 		await f.close();
 	}
 });
 
-function indexedHook(
-	f: Awaited<ReturnType<typeof fixture>>,
-	outputs: Record<string, unknown>,
-) {
+function indexedHook(f: Awaited<ReturnType<typeof fixture>>, outputs: Record<string, unknown>) {
 	const table = JSON.stringify(outputs);
 	fs.writeFileSync(
 		path.join(f.root, "hook.cjs"),
@@ -54,10 +49,7 @@ function indexedHook(
 for (const boundary of ["deny", "ask", "unread"] as const) {
 	it(`a later ${boundary} replacement leaves every original batch write untouched`, async () => {
 		const f = await fixture("claude", {
-			rules:
-				boundary === "unread"
-					? {}
-					: { [boundary]: ["Edit(./replacement.txt)"] },
+			rules: boundary === "unread" ? {} : { [boundary]: ["Edit(./replacement.txt)"] },
 		});
 		try {
 			const first = path.join(f.cwd, "first.txt"),
@@ -72,20 +64,16 @@ for (const boundary of ["deny", "ask", "unread"] as const) {
 			});
 			expect(fs.existsSync(first)).toBe(false);
 			expect(fs.existsSync(second)).toBe(false);
-			expect(
-				fs.existsSync(target) ? fs.readFileSync(target, "utf8") : null,
-			).toBe(boundary === "unread" ? "BEFORE" : null);
+			expect(fs.existsSync(target) ? fs.readFileSync(target, "utf8") : null).toBe(
+				boundary === "unread" ? "BEFORE" : null,
+			);
 			expect(
 				f
 					.inputs()
-					.map((x) =>
-						path.basename((x.tool_input as { file_path: string }).file_path),
-					)
+					.map((x) => path.basename((x.tool_input as { file_path: string }).file_path))
 					.sort(),
 			).toEqual(["first.txt", "second.txt"]);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			await f.close();
 		}
@@ -121,9 +109,7 @@ for (const kind of ["write", "edit"] as const) {
 				f,
 				decision({
 					file_path: target,
-					...(kind === "write"
-						? { content: "REWRITTEN" }
-						: { old_string: "BEFORE", new_string: "REWRITTEN" }),
+					...(kind === "write" ? { content: "REWRITTEN" } : { old_string: "BEFORE", new_string: "REWRITTEN" }),
 				}),
 			);
 			await f.run("file", {
@@ -140,9 +126,7 @@ for (const kind of ["write", "edit"] as const) {
 			});
 			expect(fs.readFileSync(target, "utf8")).toBe("BEFORE");
 			expect(f.inputs()).toHaveLength(0);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			await f.close();
 		}
@@ -240,9 +224,7 @@ it("real read evidence permits the unchanged native Edit control", async () => {
 		const target = path.join(f.cwd, "original.txt");
 		fs.writeFileSync(target, "BEFORE");
 		await f.run("read", { path: target });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		await f.run("file", {
 			queries: [
 				{
@@ -273,15 +255,9 @@ it("overlapping rewritten targets refuse the whole staged batch", async () => {
 		for (const file of [a, b, target])
 			expect(
 				fs.existsSync(file),
-				file +
-					"\n" +
-					JSON.stringify(
-						f.session.messages.findLast((m) => m.role === "toolResult"),
-					),
+				file + "\n" + JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult")),
 			).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -296,9 +272,7 @@ it("an empty Write replacement retains original fields and rechecks the original
 		await f.run("file", { queries: [write(target)] });
 		expect(fs.existsSync(target)).toBe(false);
 		expect(f.inputs()).toHaveLength(1);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -343,9 +317,7 @@ it("Edit replacement to an unread target preserves both existing files", async (
 		expect(fs.readFileSync(original, "utf8")).toBe("BEFORE");
 		expect(fs.readFileSync(target, "utf8")).toBe("BEFORE");
 		expect(f.inputs()).toHaveLength(1);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -357,13 +329,7 @@ it("cancelling a later indexed permission hook commits none of the selected batc
 			second = path.join(f.cwd, "second.txt");
 		const script = path.join(f.root, "hook.cjs"),
 			text = fs.readFileSync(script, "utf8");
-		fs.writeFileSync(
-			script,
-			text.replace(
-				"if(true)",
-				"if(JSON.parse(s).tool_input.file_path.endsWith('second.txt'))",
-			),
-		);
+		fs.writeFileSync(script, text.replace("if(true)", "if(JSON.parse(s).tool_input.file_path.endsWith('second.txt'))"));
 		const running = f.run("file", { queries: [write(first), write(second)] });
 		await vi.waitFor(() => expect(f.inputs()).toHaveLength(2));
 		await f.session.abort();
@@ -403,9 +369,7 @@ it("a later candidate reserved in the real team store prevents all batch effects
 			}),
 		).toBe(true);
 		expect(
-			store.lock("acceptance-other-owner", [
-				{ path: target, kind: "file", reason: "Acceptance reservation" },
-			]).ok,
+			store.lock("acceptance-other-owner", [{ path: target, kind: "file", reason: "Acceptance reservation" }]).ok,
 		).toBe(true);
 		indexedHook(f, {
 			"second.txt": decision({ file_path: target, content: "REWRITTEN" }),
@@ -414,20 +378,12 @@ it("a later candidate reserved in the real team store prevents all batch effects
 		for (const file of [first, second, target])
 			expect(
 				fs.existsSync(file),
-				file +
-					"\n" +
-					JSON.stringify(
-						f.session.messages.findLast((m) => m.role === "toolResult"),
-					),
+				file + "\n" + JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult")),
 			).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
-		expect(
-			JSON.stringify(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			),
-		).toMatch(/reserv|locked|acceptance-other-owner/i);
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
+		expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toMatch(
+			/reserv|locked|acceptance-other-owner/i,
+		);
 	} finally {
 		store.remove("acceptance-other-owner");
 		store.close();
@@ -474,9 +430,7 @@ it("Codex PostToolUse apply_patch projection captures the committed Claude repla
 		expect(fs.readFileSync(target, "utf8")).toBe("REWRITTEN\n");
 		const post = JSON.parse(fs.readFileSync(capture, "utf8").trim());
 		expect(post.tool_name).toBe("apply_patch");
-		expect(post.tool_input.command).toContain(
-			`*** Add File: ${target}\n+REWRITTEN\n`,
-		);
+		expect(post.tool_input.command).toContain(`*** Add File: ${target}\n+REWRITTEN\n`);
 		expect(post.tool_input.command).not.toContain(original);
 	} finally {
 		await f.close();
@@ -519,23 +473,12 @@ for (const candidate of [false, true]) {
 			fs.symlinkSync(outside, alias);
 			fs.writeFileSync(release, "");
 			await running;
-			for (const file of [
-				original,
-				later,
-				path.join(inside, "target.txt"),
-				path.join(outside, "target.txt"),
-			])
+			for (const file of [original, later, path.join(inside, "target.txt"), path.join(outside, "target.txt")])
 				expect(
 					fs.existsSync(file),
-					file +
-						"\n" +
-						JSON.stringify(
-							f.session.messages.findLast((m) => m.role === "toolResult"),
-						),
+					file + "\n" + JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult")),
 				).toBe(false);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			fs.writeFileSync(path.join(f.root, "drift-release"), "");
 			await f.close();
@@ -557,9 +500,7 @@ for (const tool of ["Write", "Edit"] as const) {
 				f,
 				decision({
 					file_path: target,
-					...(tool === "Write"
-						? { content: "REWRITTEN" }
-						: { old_string: "BEFORE", new_string: "REWRITTEN" }),
+					...(tool === "Write" ? { content: "REWRITTEN" } : { old_string: "BEFORE", new_string: "REWRITTEN" }),
 					arbitrary: "IGNORED",
 					path: forbidden,
 					type: "delete",
@@ -610,14 +551,10 @@ it("invalid replace_all type cannot change either occurrence", async () => {
 			],
 		});
 		expect(fs.readFileSync(target, "utf8")).toBe("BEFORE BEFORE");
-		expect(
-			JSON.stringify(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			),
-		).toMatch(/replace_all|unsupported/i);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toMatch(
+			/replace_all|unsupported/i,
+		);
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -634,14 +571,10 @@ it("canonical patch permission replacement remains an explicit unavailable mode"
 		});
 		expect(fs.existsSync(original)).toBe(false);
 		expect(fs.existsSync(target)).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
-		expect(
-			JSON.stringify(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			),
-		).toMatch(/patch|unsupported|unavailable|input replacement requires/i);
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
+		expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toMatch(
+			/patch|unsupported|unavailable|input replacement requires/i,
+		);
 	} finally {
 		await f.close();
 	}
@@ -667,11 +600,8 @@ it("a fresh source ask for an unchanged sibling invalidates a held batch approva
 		fs.writeFileSync(config, JSON.stringify(settings));
 		fs.writeFileSync(release, "");
 		await running;
-		for (const file of [first, second, target])
-			expect(fs.existsSync(file), file).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		for (const file of [first, second, target]) expect(fs.existsSync(file), file).toBe(false);
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		fs.writeFileSync(path.join(f.root, "refresh-release"), "");
 		await f.close();
@@ -708,9 +638,7 @@ for (const [name, body, anchor] of [
 			});
 			expect(fs.readFileSync(target, "utf8")).toBe(body);
 			expect(f.inputs()).toHaveLength(0);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			await f.close();
 		}
@@ -733,14 +661,10 @@ for (const existing of [false, true]) {
 				reasoning: "Sequential unchanged original",
 			});
 			await f.run("file", {
-				queries: existing
-					? [edit("A", "B"), edit("B", "C")]
-					: [write(target, "A"), edit("A", "B")],
+				queries: existing ? [edit("A", "B"), edit("B", "C")] : [write(target, "A"), edit("A", "B")],
 			});
 			expect(fs.readFileSync(target, "utf8")).toBe(existing ? "C" : "B");
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		} finally {
 			await f.close();
 		}

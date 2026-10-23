@@ -64,7 +64,11 @@ export async function executeBashWithOperations(
 		if (tempFilePath) {
 			return;
 		}
-		({ path: tempFilePath, stream: tempFileStream, close: closeTempFile } = createOutputFileStream("octocode-bash", ".log"));
+		({
+			path: tempFilePath,
+			stream: tempFileStream,
+			close: closeTempFile,
+		} = createOutputFileStream("octocode-bash", ".log"));
 		for (const chunk of outputChunks) {
 			tempFileStream.write(chunk);
 		}

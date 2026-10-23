@@ -66,7 +66,7 @@ export class RotatingLog {
 	}
 
 	private append(chunk: Buffer): void {
-		for (let offset = 0; offset < chunk.length; ) {
+		for (let offset = 0; offset < chunk.length;) {
 			const written = fs.writeSync(this.fd!, chunk, offset);
 			offset += written;
 			this.size += written;

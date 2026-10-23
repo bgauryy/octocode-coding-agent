@@ -134,9 +134,7 @@ const LATEX_MARKDOWN_EXTENSIONS: readonly TokenizerExtension[] = [
 		name: "latex",
 		level: "inline",
 		start(source) {
-			const indices = [source.indexOf("$"), source.indexOf("\\("), source.indexOf("\\[")].filter(
-				(index) => index >= 0,
-			);
+			const indices = [source.indexOf("$"), source.indexOf("\\("), source.indexOf("\\[")].filter((index) => index >= 0);
 			return indices.length > 0 ? Math.min(...indices) : undefined;
 		},
 		tokenizer: tokenizeInlineLatex,
@@ -530,16 +528,26 @@ export class Markdown implements Component {
 			case "code": {
 				const indent = this.theme.codeBlockIndent ?? "  ";
 				lines.push(this.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
-				if (this.theme.highlightCode) {
-					const highlightedLines = this.theme.highlightCode(token.text, token.lang);
-					for (const hlLine of highlightedLines) {
-						lines.push(`${indent}${hlLine}`);
+				const sourceLines: string[] = token.text.split("\n");
+				const styledLines = this.theme.highlightCode
+					? this.theme.highlightCode(token.text, token.lang)
+					: sourceLines.map((codeLine) => this.theme.codeBlock(codeLine));
+				// A long code line wraps here rather than in render()'s final pass, so its continuation rows keep
+				// the block indent and the line's own indentation instead of starting at column 0.
+				const codeWidth = Math.max(1, width - visibleWidth(indent));
+				for (let i = 0; i < styledLines.length; i++) {
+					const styledLine = styledLines[i]!;
+					if (visibleWidth(styledLine) <= codeWidth) {
+						lines.push(`${indent}${styledLine}`);
+						continue;
 					}
-				} else {
-					// Split code by newlines and style each line
-					const codeLines = token.text.split("\n");
-					for (const codeLine of codeLines) {
-						lines.push(`${indent}${this.theme.codeBlock(codeLine)}`);
+					const hang = (sourceLines[i]?.match(/^[ \t]*/)?.[0] ?? "").slice(0, Math.floor(codeWidth / 2));
+					const [first = "", ...rest] = wrapTextWithAnsi(styledLine, codeWidth);
+					lines.push(`${indent}${first}`);
+					for (const continuation of rest.flatMap((part) =>
+						wrapTextWithAnsi(part, Math.max(1, codeWidth - hang.length)),
+					)) {
+						lines.push(`${indent}${hang}${continuation}`);
 					}
 				}
 				lines.push(this.theme.codeBlockBorder("```"));
@@ -779,8 +787,12 @@ export class Markdown implements Component {
 				: this.options.preserveOrderedListMarkers
 					? (this.getUnorderedListMarker(item) ?? "- ")
 					: "- ";
-			const taskMarker = item.task ? `[${item.checked ? "x" : " "}] ` : "";
-			const marker = bullet + taskMarker;
+			// Task items read as a checklist: a box glyph replaces the bullet (and follows an ordered number) unless the
+			// source markers are preserved.
+			const preserve = this.options.preserveOrderedListMarkers;
+			const taskMarker = item.task ? (preserve ? `[${item.checked ? "x" : " "}] ` : item.checked ? "✔ " : "☐ ") : "";
+			const marker = (item.task && !preserve && !token.ordered ? "" : bullet) + taskMarker;
+			const done = item.task && item.checked && !preserve;
 			const firstPrefix = indent + this.theme.listBullet(marker);
 			const continuationPrefix = indent + " ".repeat(visibleWidth(marker));
 			const itemWidth = Math.max(1, width - visibleWidth(firstPrefix));
@@ -797,7 +809,7 @@ export class Markdown implements Component {
 				for (const line of itemLines) {
 					for (const wrappedLine of wrapTextWithAnsi(line, itemWidth)) {
 						const linePrefix = renderedAnyLine ? continuationPrefix : firstPrefix;
-						lines.push(linePrefix + wrappedLine);
+						lines.push(linePrefix + (done && wrappedLine ? this.theme.strikethrough(wrappedLine) : wrappedLine));
 						renderedAnyLine = true;
 					}
 				}
@@ -889,10 +901,7 @@ export class Markdown implements Component {
 			for (let i = 0; i < row.length; i++) {
 				const cellText = this.renderInlineTokens(row[i].tokens || [], styleContext);
 				naturalWidths[i] = Math.max(naturalWidths[i] || 0, visibleWidth(cellText));
-				minWordWidths[i] = Math.max(
-					minWordWidths[i] || 1,
-					this.getLongestWordWidth(cellText, maxUnbrokenWordWidth),
-				);
+				minWordWidths[i] = Math.max(minWordWidths[i] || 1, this.getLongestWordWidth(cellText, maxUnbrokenWordWidth));
 			}
 		}
 
@@ -992,12 +1001,16 @@ export class Markdown implements Component {
 		lines.push(separatorLine);
 
 		// Render rows with wrapping
-		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
-			const row = token.rows[rowIndex];
-			const rowCellLines: string[][] = row.map((cell, i) => {
+		const rowsCellLines: string[][][] = token.rows.map((row) =>
+			row.map((cell, i) => {
 				const text = this.renderInlineTokens(cell.tokens || [], styleContext);
 				return this.wrapCellText(text, columnWidths[i], styleContext?.stylePrefix);
-			});
+			}),
+		);
+		// Rules between rows are only needed to tell wrapped rows apart; single-line rows read better without them.
+		const separateRows = rowsCellLines.some((cells) => cells.some((cellLines) => cellLines.length > 1));
+		for (let rowIndex = 0; rowIndex < rowsCellLines.length; rowIndex++) {
+			const rowCellLines = rowsCellLines[rowIndex]!;
 			const rowLineCount = Math.max(...rowCellLines.map((c) => c.length));
 
 			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
@@ -1008,7 +1021,7 @@ export class Markdown implements Component {
 				lines.push(`│ ${rowParts.join(" │ ")} │`);
 			}
 
-			if (rowIndex < token.rows.length - 1) {
+			if (separateRows && rowIndex < rowsCellLines.length - 1) {
 				lines.push(separatorLine);
 			}
 		}

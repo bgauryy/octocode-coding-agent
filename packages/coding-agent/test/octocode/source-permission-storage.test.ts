@@ -2,16 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import {
-	stageSettingsWrite,
-	persistSettingsWrite,
-} from "../../src/octocode/permission/source-policy-storage.ts";
+import { stageSettingsWrite, persistSettingsWrite } from "../../src/octocode/permission/source-policy-storage.ts";
 import { parsePermissionUpdates } from "../../src/octocode/shared/permission-updates.ts";
 const roots: string[] = [];
 afterEach(() => {
 	vi.restoreAllMocks();
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "permission-storage-"));
@@ -35,18 +31,12 @@ function fixture() {
 		root,
 		file,
 		initial,
-		plan: stageSettingsWrite(
-			{ path: file, anchor: root },
-			"userSettings",
-			updates,
-		),
+		plan: stageSettingsWrite({ path: file, anchor: root }, "userSettings", updates),
 	};
 }
 it("atomically persists only the requested permission rules and preserves other settings", async () => {
 	const f = fixture();
-	expect(
-		await persistSettingsWrite(f.plan, new AbortController().signal),
-	).toEqual({ written: true });
+	expect(await persistSettingsWrite(f.plan, new AbortController().signal)).toEqual({ written: true });
 	expect(JSON.parse(fs.readFileSync(f.file, "utf8"))).toEqual({
 		...f.initial,
 		permissions: {
@@ -59,13 +49,8 @@ it("atomically persists only the requested permission rules and preserves other 
 });
 it("treats changed bytes as lost authorization rather than an IO fallback", async () => {
 	const f = fixture();
-	fs.writeFileSync(
-		f.file,
-		JSON.stringify({ ...f.initial, other: "concurrent" }),
-	);
-	await expect(
-		persistSettingsWrite(f.plan, new AbortController().signal),
-	).rejects.toThrow(/changed/);
+	fs.writeFileSync(f.file, JSON.stringify({ ...f.initial, other: "concurrent" }));
+	await expect(persistSettingsWrite(f.plan, new AbortController().signal)).rejects.toThrow(/changed/);
 	expect(JSON.parse(fs.readFileSync(f.file, "utf8")).other).toBe("concurrent");
 });
 it("refuses same-byte symlink retarget before commit", async () => {
@@ -74,18 +59,14 @@ it("refuses same-byte symlink retarget before commit", async () => {
 	fs.copyFileSync(f.file, other);
 	fs.unlinkSync(f.file);
 	fs.symlinkSync(other, f.file);
-	await expect(
-		persistSettingsWrite(f.plan, new AbortController().signal),
-	).rejects.toThrow(/identity/);
+	await expect(persistSettingsWrite(f.plan, new AbortController().signal)).rejects.toThrow(/identity/);
 	expect(JSON.parse(fs.readFileSync(other, "utf8"))).toEqual(f.initial);
 });
 it("reports a real writer IO failure without replacing existing bytes or leaking temp files", async () => {
 	const f = fixture();
 	const failure = Object.assign(new Error("denied"), { code: "EACCES" });
 	vi.spyOn(fs.promises, "rename").mockRejectedValueOnce(failure);
-	expect(
-		await persistSettingsWrite(f.plan, new AbortController().signal),
-	).toMatchObject({
+	expect(await persistSettingsWrite(f.plan, new AbortController().signal)).toMatchObject({
 		written: false,
 		message: expect.stringContaining("not saved"),
 	});
@@ -96,8 +77,6 @@ it("does not start a write after cancellation", async () => {
 	const f = fixture();
 	const controller = new AbortController();
 	controller.abort();
-	await expect(
-		persistSettingsWrite(f.plan, controller.signal),
-	).rejects.toThrow();
+	await expect(persistSettingsWrite(f.plan, controller.signal)).rejects.toThrow();
 	expect(JSON.parse(fs.readFileSync(f.file, "utf8"))).toEqual(f.initial);
 });

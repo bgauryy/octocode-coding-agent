@@ -133,11 +133,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 					);
 					return;
 				}
-				const list = new SelectList(
-					menu.items,
-					Math.min(menu.items.length, MAX_VISIBLE_ITEMS),
-					getSelectListTheme(),
-				);
+				const list = new SelectList(menu.items, Math.min(menu.items.length, MAX_VISIBLE_ITEMS), getSelectListTheme());
 				const index = menu.items.findIndex((item) => item.value === wanted);
 				if (index !== -1) list.setSelectedIndex(index);
 				selected = list.getSelectedItem()?.value;

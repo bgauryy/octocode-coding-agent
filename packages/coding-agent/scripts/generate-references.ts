@@ -63,19 +63,22 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 		sections: [
 			{
 				heading: "Providers",
-				intro: "Each key under `providers` is a provider ID. A built-in provider ID changes that provider. Any other ID adds a provider, which needs `baseUrl` and an `api` at provider or model level.",
+				intro:
+					"Each key under `providers` is a provider ID. A built-in provider ID changes that provider. Any other ID adds a provider, which needs `baseUrl` and an `api` at provider or model level.",
 				schema: ModelsJsonSchemas.provider,
 				links: { models: "#models", modelOverrides: "#model-overrides", compat: "#compatibility" },
 			},
 			{
 				heading: "Models",
-				intro: "Each `models` entry adds a model to the provider. An entry whose `id` matches an existing model replaces it.",
+				intro:
+					"Each `models` entry adds a model to the provider. An entry whose `id` matches an existing model replaces it.",
 				schema: ModelsJsonSchemas.model,
 				links: { inputLimits: "#input-limits", compat: "#compatibility" },
 			},
 			{
 				heading: "Model overrides",
-				intro: "Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it.",
+				intro:
+					"Each `modelOverrides` key is the ID of a built-in or extension model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it.",
 				schema: ModelsJsonSchemas.modelOverride,
 				links: { inputLimits: "#input-limits", compat: "#compatibility" },
 			},
@@ -86,11 +89,13 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			},
 			{
 				heading: "Compatibility",
-				intro: "`compat` describes verified differences from an API's standard request and response behavior. Model values override provider values per field. The fields that apply depend on the model's `api`.",
+				intro:
+					"`compat` describes verified differences from an API's standard request and response behavior. Model values override provider values per field. The fields that apply depend on the model's `api`.",
 			},
 			...[...compatSchemaApis].map(([schema, [api, ...aliases]]) => ({
 				heading: `### \`${api}\``,
-				intro: aliases.length > 0 ? `Also applies to ${formatList(aliases.map((alias) => `\`${alias}\``))}.` : undefined,
+				intro:
+					aliases.length > 0 ? `Also applies to ${formatList(aliases.map((alias) => `\`${alias}\``))}.` : undefined,
 				schema,
 				collapsed: ["openRouterRouting", "vercelGatewayRouting"],
 			})),
@@ -161,7 +166,6 @@ function renderReference(artifact: ReferenceArtifact): string {
 export function renderReferences(): ReadonlyMap<string, string> {
 	return new Map(referenceArtifacts.map((artifact) => [artifact.path, renderReference(artifact)]));
 }
-
 
 function generateReferences(): void {
 	for (const [relativePath, content] of renderReferences()) {

@@ -420,10 +420,7 @@ class AskDialog {
 					: sanitizeTerminalText(label);
 			add(
 				selected ? theme.fg("accent", "› ") : "  ",
-				theme.fg(
-					selected ? "accent" : index > q.options.length ? "success" : "text",
-					`${index + 1}. ${box}${text}`,
-				),
+				theme.fg(selected ? "accent" : index > q.options.length ? "success" : "text", `${index + 1}. ${box}${text}`),
 			);
 			const description = q.options[index]?.description;
 			if (description) add("     ", theme.fg("muted", sanitizeTerminalText(description)));
@@ -434,8 +431,7 @@ class AskDialog {
 		}
 		if (this.typing) {
 			lines.push("");
-			for (const line of this.editor.render(Math.max(1, width - 2)))
-				lines.push(truncateToWidth(` ${line}`, width, ""));
+			for (const line of this.editor.render(Math.max(1, width - 2))) lines.push(truncateToWidth(` ${line}`, width, ""));
 		}
 	}
 }

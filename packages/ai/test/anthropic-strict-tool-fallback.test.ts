@@ -129,9 +129,7 @@ describe("Anthropic preferred strict tool fallback", () => {
 			{ role: "system", content: "", toolsAdded: [tool("lookup", "prefer")], timestamp: 2 },
 			{ role: "system", content: "", toolsAdded: [tool("lookup", "require")], timestamp: 3 },
 		);
-		const { payloads, options } = harness((_payload, attempt) =>
-			attempt === 1 ? errorResponse() : successResponse(),
-		);
+		const { payloads, options } = harness((_payload, attempt) => (attempt === 1 ? errorResponse() : successResponse()));
 		const result = await streamAnthropic(
 			{
 				...model,
@@ -247,13 +245,10 @@ describe("Anthropic preferred strict tool fallback", () => {
 	});
 
 	it("does not disable strict sampling on later requests", async () => {
-		const { payloads, options } = harness((_payload, attempt) =>
-			attempt === 1 ? errorResponse() : successResponse(),
-		);
+		const { payloads, options } = harness((_payload, attempt) => (attempt === 1 ? errorResponse() : successResponse()));
 		const transcript = context([tool("lookup", "prefer")]);
 		await streamAnthropic(model, transcript, options).result();
 		await streamAnthropic(model, transcript, options).result();
 		expect(payloads.map((payload) => (payload.tools as BetaTool[])[0].strict)).toEqual([true, undefined, true]);
 	});
-
 });

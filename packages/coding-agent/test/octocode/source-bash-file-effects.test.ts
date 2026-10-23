@@ -1,9 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
-import {
-	evaluateSourcePolicy,
-	parseSourcePolicy,
-} from "../../src/octocode/permission/source-policy.ts";
+import { evaluateSourcePolicy, parseSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
 
 beforeAll(initializeBashSyntax);
 const evaluate = (command: string, deny: string[]) =>
@@ -34,27 +31,19 @@ describe("shell-specific file rule projection", () => {
 		expect(evaluate(command, ["Edit(./protected.txt)"])).toBe("deny");
 	});
 	it("applies scoped Read to input", () => {
-		expect(evaluate("cat < protected.txt", ["Read(./protected.txt)"])).toBe(
-			"deny",
-		);
+		expect(evaluate("cat < protected.txt", ["Read(./protected.txt)"])).toBe("deny");
 	});
 	it.each([
 		["printf BLOCK > protected.txt", "Read(./protected.txt)"],
 		["cat < protected.txt", "Edit(./protected.txt)"],
 		["printf BLOCK > protected.txt", "Edit"],
 		["cat < protected.txt", "Read"],
-	])(
-		"does not borrow direct-file cross-rule eligibility: %s %s",
-		(command, rule) => {
-			expect(evaluate(command, [rule])).toBe("allow");
-		},
-	);
-	it.each(["printf BLOCK > /dev/null", "printf BLOCK 2>&1", "cat <&3"])(
-		"excludes non-file targets: %s",
-		(command) => {
-			expect(evaluate(command, ["Read(**)", "Edit(**)"])).toBe("allow");
-		},
-	);
+	])("does not borrow direct-file cross-rule eligibility: %s %s", (command, rule) => {
+		expect(evaluate(command, [rule])).toBe("allow");
+	});
+	it.each(["printf BLOCK > /dev/null", "printf BLOCK 2>&1", "cat <&3"])("excludes non-file targets: %s", (command) => {
+		expect(evaluate(command, ["Read(**)", "Edit(**)"])).toBe("allow");
+	});
 });
 it.each(["printf BLOCK >& protected.txt", "tee > /dev/null protected.txt"])(
 	"accounts for filename redirects and interleaved tee operands: %s",
@@ -88,9 +77,7 @@ it("does not cross-apply file asks or wildcard-only file tools", () => {
 	expect(result.decision).toBe("allow");
 });
 it("retains explicit uncertainty when read-write redirection cannot be parsed", async () => {
-	const { bashSyntax } = await import(
-		"../../src/octocode/permission/bash-syntax.ts"
-	);
+	const { bashSyntax } = await import("../../src/octocode/permission/bash-syntax.ts");
 	const result = bashSyntax("cat <> protected.txt");
 	expect(result.incomplete).toBe(true);
 	expect(result.targets).toEqual(
@@ -101,17 +88,9 @@ it("retains explicit uncertainty when read-write redirection cannot be parsed", 
 	);
 });
 it("tracks cd effects without inventing a new working directory", async () => {
-	const { bashSyntax } = await import(
-		"../../src/octocode/permission/bash-syntax.ts"
-	);
-	expect(bashSyntax("cd sub; cat < input").targets[0]?.uncertain).toBe(
-		"relative target follows cd",
-	);
-	for (const command of [
-		"cd sub > output",
-		"(cd sub); cat < input",
-		"cd sub | cat; cat < input",
-	]) {
+	const { bashSyntax } = await import("../../src/octocode/permission/bash-syntax.ts");
+	expect(bashSyntax("cd sub; cat < input").targets[0]?.uncertain).toBe("relative target follows cd");
+	for (const command of ["cd sub > output", "(cd sub); cat < input", "cd sub | cat; cat < input"]) {
 		expect(bashSyntax(command).targets[0]?.uncertain).toBeUndefined();
 	}
 });
@@ -174,11 +153,7 @@ it("does not let ignored file asks make broad Bash control flow unsupported", ()
 	expect(result.decision).toBe("allow");
 });
 it("retains tee operands attached to a containing pipeline redirect", () => {
-	expect(
-		evaluate("printf x | tee > /dev/null protected.txt", [
-			"Edit(./protected.txt)",
-		]),
-	).toBe("deny");
+	expect(evaluate("printf x | tee > /dev/null protected.txt", ["Edit(./protected.txt)"])).toBe("deny");
 });
 it("combines a scoped Bash allowance with its target allowance", () => {
 	const result = evaluateSourcePolicy(
@@ -232,13 +207,8 @@ it("matches target allowances when the accepted working directory has a canonica
 	}
 });
 it("discovers tee targets through the existing command wrapper projection", () => {
-	expect(
-		evaluate("printf x | command tee protected.txt", ["Edit(./protected.txt)"]),
-	).toBe("deny");
+	expect(evaluate("printf x | command tee protected.txt", ["Edit(./protected.txt)"])).toBe("deny");
 });
-it.each(["Edit(./protected.txt)", "Read(./protected.txt)"])(
-	"does not run read-write redirection past %s",
-	(rule) => {
-		expect(evaluate("cat <> protected.txt", [rule])).toBe("unsupported");
-	},
-);
+it.each(["Edit(./protected.txt)", "Read(./protected.txt)"])("does not run read-write redirection past %s", (rule) => {
+	expect(evaluate("cat <> protected.txt", [rule])).toBe("unsupported");
+});

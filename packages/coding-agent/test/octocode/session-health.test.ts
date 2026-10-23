@@ -206,12 +206,10 @@ describe("scripts/session-health.mjs", () => {
 			reasons: { prefix_binding_mismatch: 4, other: 3 },
 			firstPath: "messages.2.content.0",
 		});
-		expect(first.cacheResets.map((r) => [r.id, r.kind, r.previousCacheRead, r.cacheRead, r.afterCompaction])).toEqual(
-			[
-				["a3", "zero", 90, 0, false],
-				["a5", "drop", 100, 20, false],
-			],
-		);
+		expect(first.cacheResets.map((r) => [r.id, r.kind, r.previousCacheRead, r.cacheRead, r.afterCompaction])).toEqual([
+			["a3", "zero", 90, 0, false],
+			["a5", "drop", 100, 20, false],
+		]);
 		expect(first.cacheResets[0].timestamp).toBe(at(4));
 		expect(first.compaction).toEqual({
 			id: "c1",

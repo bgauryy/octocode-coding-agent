@@ -2,11 +2,7 @@ import { syncBuiltinESMExports } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-	fauxAssistantMessage,
-	fauxToolCall,
-	type TranscriptContext,
-} from "@octocodeai/octocode-ai";
+import { fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
@@ -31,10 +27,7 @@ async function fixture() {
 	fs.mkdirSync(agentDir);
 	const skill = path.join(root, "skill", "SKILL.md");
 	fs.mkdirSync(path.dirname(skill));
-	fs.writeFileSync(
-		skill,
-		"---\nname: alpha\ndescription: Alpha fixture\n---\nSKILL_BODY_EVIDENCE\n",
-	);
+	fs.writeFileSync(skill, "---\nname: alpha\ndescription: Alpha fixture\n---\nSKILL_BODY_EVIDENCE\n");
 	const template = path.join(root, "expanded.md");
 	fs.writeFileSync(template, "TEMPLATE_BODY_EVIDENCE $1");
 	const script = path.join(root, "hook.cjs");
@@ -48,18 +41,11 @@ async function fixture() {
 		fs.mkdirSync(dir);
 		const command = `${quote(process.execPath)} ${quote(script)} ${profile}`;
 		const events =
-			profile === "codex"
-				? ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]
-				: ["UserPromptSubmit"];
+			profile === "codex" ? ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"] : ["UserPromptSubmit"];
 		fs.writeFileSync(
 			path.join(dir, profile === "claude" ? "settings.json" : "hooks.json"),
 			JSON.stringify({
-				hooks: Object.fromEntries(
-					events.map((event) => [
-						event,
-						[{ hooks: [{ type: "command", command }] }],
-					]),
-				),
+				hooks: Object.fromEntries(events.map((event) => [event, [{ hooks: [{ type: "command", command }] }]])),
 			}),
 		);
 	}
@@ -94,18 +80,12 @@ async function fixture() {
 					settledIds.push(ctx.getTurnId());
 				});
 				pi.on("input", (event) =>
-					event.text === "TRANSFORM"
-						? { action: "transform", text: "Use $alpha" }
-						: { action: "continue" },
+					event.text === "TRANSFORM" ? { action: "transform", text: "Use $alpha" } : { action: "continue" },
 				);
 				pi.on("before_agent_start", (event) => {
 					if (event.messageType === "user") beforePrompts.push(event.prompt);
 				});
-				const hooks = registerHooks(
-					pi,
-					{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-					root,
-				);
+				const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, root);
 				pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 				pi.registerTool({
 					name: "wait",
@@ -150,8 +130,7 @@ async function fixture() {
 		records,
 		began,
 		release,
-		releaseHook: () =>
-			fs.writeFileSync(path.join(root, "release-hook"), "ready"),
+		releaseHook: () => fs.writeFileSync(path.join(root, "release-hook"), "ready"),
 		cleanup: () => {
 			harness.cleanup();
 			vi.unstubAllEnvs();
@@ -160,22 +139,14 @@ async function fixture() {
 	};
 }
 const submits = (f: Awaited<ReturnType<typeof fixture>>, profile = "codex") =>
-	f
-		.records()
-		.filter(
-			(record) =>
-				record.profile === profile &&
-				record.hook_event_name === "UserPromptSubmit",
-		);
+	f.records().filter((record) => record.profile === profile && record.hook_event_name === "UserPromptSubmit");
 const users = (context: TranscriptContext) =>
 	context.messages
 		.filter((message) => message.role === "user")
 		.flatMap((message) =>
 			typeof message.content === "string"
 				? [message.content]
-				: message.content.flatMap((part) =>
-						part.type === "text" ? [part.text] : [],
-					),
+				: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
 		);
 
 it.each(["steer", "followUp"] as const)(
@@ -193,16 +164,11 @@ it.each(["steer", "followUp"] as const)(
 			running = f.harness.session.prompt("initial");
 			await f.began;
 			await f.harness.session[method]("queued $alpha");
-			expect(submits(f, "claude").map((x) => x.prompt)).toContain(
-				"queued $alpha",
-			);
+			expect(submits(f, "claude").map((x) => x.prompt)).toContain("queued $alpha");
 			expect(submits(f).map((x) => x.prompt)).toEqual(["initial"]);
 			f.release();
 			await running;
-			expect(submits(f).map((x) => x.prompt)).toEqual([
-				"initial",
-				"queued $alpha",
-			]);
+			expect(submits(f).map((x) => x.prompt)).toEqual(["initial", "queued $alpha"]);
 			const [initial, queued] = submits(f);
 			expect(initial!.turn_id).toEqual(expect.any(String));
 			expect(initial!.turn_id).not.toBe("");
@@ -228,64 +194,44 @@ it("keeps one logical ID through tools and Stop", async () => {
 		await f.harness.session.prompt("initial");
 		const records = f.records().filter((x) => x.profile === "codex");
 		expect(records.map((x) => x.hook_event_name)).toEqual(
-			expect.arrayContaining([
-				"UserPromptSubmit",
-				"PreToolUse",
-				"PostToolUse",
-				"Stop",
-			]),
+			expect.arrayContaining(["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]),
 		);
-		expect(
-			records.every(
-				(x) => typeof x.turn_id === "string" && x.turn_id.length > 0,
-			),
-		).toBe(true);
+		expect(records.every((x) => typeof x.turn_id === "string" && x.turn_id.length > 0)).toBe(true);
 		expect(new Set(records.map((x) => x.turn_id)).size).toBe(1);
 	} finally {
 		f.cleanup();
 	}
 });
 
-it.each(["all", "one-at-a-time"] as const)(
-	"allocates consumed follow-up IDs per %s batch",
-	async (mode) => {
-		const f = await fixture();
-		let running: Promise<void> | undefined;
-		f.harness.session.agent.followUpMode = mode;
-		f.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("wait", {})], {
-				stopReason: "toolUse",
-			}),
-			...Array.from({ length: 4 }, () => fauxAssistantMessage("done")),
-		]);
-		try {
-			running = f.harness.session.prompt("initial");
-			await f.began;
-			await f.harness.session.followUp("queued-one");
-			await f.harness.session.followUp("queued-two");
-			f.release();
-			await running;
-			const records = submits(f);
-			expect(records.map((x) => x.prompt)).toEqual([
-				"initial",
-				"queued-one",
-				"queued-two",
-			]);
-			expect(
-				records.every(
-					(x) => typeof x.turn_id === "string" && x.turn_id.length > 0,
-				),
-			).toBe(true);
-			expect(records[1]!.turn_id).not.toBe(records[0]!.turn_id);
-			if (mode === "all") expect(records[2]!.turn_id).toBe(records[1]!.turn_id);
-			else expect(records[2]!.turn_id).not.toBe(records[1]!.turn_id);
-		} finally {
-			f.release();
-			await running;
-			f.cleanup();
-		}
-	},
-);
+it.each(["all", "one-at-a-time"] as const)("allocates consumed follow-up IDs per %s batch", async (mode) => {
+	const f = await fixture();
+	let running: Promise<void> | undefined;
+	f.harness.session.agent.followUpMode = mode;
+	f.harness.setResponses([
+		fauxAssistantMessage([fauxToolCall("wait", {})], {
+			stopReason: "toolUse",
+		}),
+		...Array.from({ length: 4 }, () => fauxAssistantMessage("done")),
+	]);
+	try {
+		running = f.harness.session.prompt("initial");
+		await f.began;
+		await f.harness.session.followUp("queued-one");
+		await f.harness.session.followUp("queued-two");
+		f.release();
+		await running;
+		const records = submits(f);
+		expect(records.map((x) => x.prompt)).toEqual(["initial", "queued-one", "queued-two"]);
+		expect(records.every((x) => typeof x.turn_id === "string" && x.turn_id.length > 0)).toBe(true);
+		expect(records[1]!.turn_id).not.toBe(records[0]!.turn_id);
+		if (mode === "all") expect(records[2]!.turn_id).toBe(records[1]!.turn_id);
+		else expect(records[2]!.turn_id).not.toBe(records[1]!.turn_id);
+	} finally {
+		f.release();
+		await running;
+		f.cleanup();
+	}
+});
 
 it("blocks initial input before reading selected skills and retains hook context without Stop", async () => {
 	const f = await fixture();
@@ -301,19 +247,9 @@ it("blocks initial input before reading selected skills and retains hook context
 	try {
 		await f.harness.session.prompt("BLOCK $alpha");
 		expect(calls).toBe(0);
-		expect(
-			read.mock.calls.some(([file]) =>
-				[f.skill, fs.realpathSync(f.skill)].includes(String(file)),
-			),
-		).toBe(false);
-		expect(JSON.stringify(f.harness.session.messages)).toContain(
-			"BLOCKED_CONTEXT_EVIDENCE",
-		);
-		expect(
-			f
-				.records()
-				.filter((x) => x.profile === "codex" && x.hook_event_name === "Stop"),
-		).toHaveLength(0);
+		expect(read.mock.calls.some(([file]) => [f.skill, fs.realpathSync(f.skill)].includes(String(file)))).toBe(false);
+		expect(JSON.stringify(f.harness.session.messages)).toContain("BLOCKED_CONTEXT_EVIDENCE");
+		expect(f.records().filter((x) => x.profile === "codex" && x.hook_event_name === "Stop")).toHaveLength(0);
 		expect(submits(f)[0]!.turn_id).toEqual(expect.any(String));
 	} finally {
 		read.mockRestore();
@@ -322,63 +258,54 @@ it("blocks initial input before reading selected skills and retains hook context
 	}
 });
 
-it.each([false, true])(
-	"filters consumed blocked follow-up items (all blocked: %s)",
-	async (allBlocked) => {
-		const f = await fixture();
-		let running: Promise<void> | undefined;
-		f.harness.session.agent.followUpMode = "all";
-		const observed: TranscriptContext[] = [];
-		f.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("wait", {})], {
-				stopReason: "toolUse",
-			}),
-			...Array.from({ length: 4 }, () => (context: TranscriptContext) => {
-				observed.push(context);
-				return fauxAssistantMessage("done");
-			}),
-		]);
-		try {
-			running = f.harness.session.prompt("initial");
-			await f.began;
-			await f.harness.session.followUp("BLOCK first");
-			await f.harness.session.followUp(
-				allBlocked ? "BLOCK second" : "accepted second",
-			);
-			expect(f.harness.session.pendingMessageCount).toBe(2);
-			f.release();
-			await running;
-			expect(observed).toHaveLength(allBlocked ? 1 : 2);
-			const text = users(observed.at(-1)!);
-			expect(text).not.toContain("BLOCK first");
-			expect(text).not.toContain("BLOCK second");
-			if (!allBlocked) expect(text).toContain("accepted second");
-			expect(JSON.stringify(f.harness.session.messages)).toContain(
-				"BLOCKED_CONTEXT_EVIDENCE",
-			);
-			expect(f.harness.session.pendingMessageCount).toBe(0);
-			const queued = submits(f).filter((x) => x.prompt !== "initial");
-			expect(queued).toHaveLength(2);
-			expect(queued[0]!.turn_id).toBe(queued[1]!.turn_id);
-			if (allBlocked)
-				expect(
-					f
-						.records()
-						.filter(
-							(record) =>
-								record.profile === "codex" &&
-								record.hook_event_name === "Stop" &&
-								record.turn_id === queued[0]!.turn_id,
-						),
-				).toHaveLength(0);
-			expect(f.currentId()).toBeUndefined();
-		} finally {
-			f.release();
-			await running;
-			f.cleanup();
-		}
-	},
-);
+it.each([false, true])("filters consumed blocked follow-up items (all blocked: %s)", async (allBlocked) => {
+	const f = await fixture();
+	let running: Promise<void> | undefined;
+	f.harness.session.agent.followUpMode = "all";
+	const observed: TranscriptContext[] = [];
+	f.harness.setResponses([
+		fauxAssistantMessage([fauxToolCall("wait", {})], {
+			stopReason: "toolUse",
+		}),
+		...Array.from({ length: 4 }, () => (context: TranscriptContext) => {
+			observed.push(context);
+			return fauxAssistantMessage("done");
+		}),
+	]);
+	try {
+		running = f.harness.session.prompt("initial");
+		await f.began;
+		await f.harness.session.followUp("BLOCK first");
+		await f.harness.session.followUp(allBlocked ? "BLOCK second" : "accepted second");
+		expect(f.harness.session.pendingMessageCount).toBe(2);
+		f.release();
+		await running;
+		expect(observed).toHaveLength(allBlocked ? 1 : 2);
+		const text = users(observed.at(-1)!);
+		expect(text).not.toContain("BLOCK first");
+		expect(text).not.toContain("BLOCK second");
+		if (!allBlocked) expect(text).toContain("accepted second");
+		expect(JSON.stringify(f.harness.session.messages)).toContain("BLOCKED_CONTEXT_EVIDENCE");
+		expect(f.harness.session.pendingMessageCount).toBe(0);
+		const queued = submits(f).filter((x) => x.prompt !== "initial");
+		expect(queued).toHaveLength(2);
+		expect(queued[0]!.turn_id).toBe(queued[1]!.turn_id);
+		if (allBlocked)
+			expect(
+				f
+					.records()
+					.filter(
+						(record) =>
+							record.profile === "codex" && record.hook_event_name === "Stop" && record.turn_id === queued[0]!.turn_id,
+					),
+			).toHaveLength(0);
+		expect(f.currentId()).toBeUndefined();
+	} finally {
+		f.release();
+		await running;
+		f.cleanup();
+	}
+});
 
 it("does not consume cleared queued input or read its skill", async () => {
 	const f = await fixture();
@@ -397,11 +324,7 @@ it("does not consume cleared queued input or read its skill", async () => {
 		f.release();
 		await running;
 		expect(submits(f).map((x) => x.prompt)).toEqual(["initial"]);
-		expect(
-			read.mock.calls.some(([file]) =>
-				[f.skill, fs.realpathSync(f.skill)].includes(String(file)),
-			),
-		).toBe(false);
+		expect(read.mock.calls.some(([file]) => [f.skill, fs.realpathSync(f.skill)].includes(String(file)))).toBe(false);
 		expect(f.harness.session.pendingMessageCount).toBe(0);
 	} finally {
 		read.mockRestore();
@@ -427,9 +350,7 @@ it.each(["Use $alpha", "/expanded argument"])(
 			await f.harness.session.prompt(prompt);
 			expect(submits(f).map((x) => x.prompt)).toEqual([prompt]);
 			expect(users(observed!).join("\n")).toContain(
-				prompt.startsWith("/")
-					? "TEMPLATE_BODY_EVIDENCE"
-					: "SKILL_BODY_EVIDENCE",
+				prompt.startsWith("/") ? "TEMPLATE_BODY_EVIDENCE" : "SKILL_BODY_EVIDENCE",
 			);
 		} finally {
 			f.cleanup();
@@ -469,9 +390,7 @@ it("does not recursively submit accepted hook context", async () => {
 	try {
 		await f.harness.session.prompt("CONTEXT request");
 		expect(submits(f).map((x) => x.prompt)).toEqual(["CONTEXT request"]);
-		expect(JSON.stringify(observed!.messages)).toContain(
-			"ACCEPTED_CONTEXT_EVIDENCE",
-		);
+		expect(JSON.stringify(observed!.messages)).toContain("ACCEPTED_CONTEXT_EVIDENCE");
 	} finally {
 		f.cleanup();
 	}
@@ -495,15 +414,9 @@ it("does not run Stop for a fully blocked steering batch", async () => {
 		f.release();
 		await running;
 		expect(additionalRequests).toBe(0);
-		expect(
-			f
-				.records()
-				.filter((x) => x.profile === "codex" && x.hook_event_name === "Stop"),
-		).toHaveLength(0);
+		expect(f.records().filter((x) => x.profile === "codex" && x.hook_event_name === "Stop")).toHaveLength(0);
 		expect(f.harness.session.pendingMessageCount).toBe(0);
-		expect(JSON.stringify(f.harness.session.messages)).toContain(
-			"BLOCKED_CONTEXT_EVIDENCE",
-		);
+		expect(JSON.stringify(f.harness.session.messages)).toContain("BLOCKED_CONTEXT_EVIDENCE");
 	} finally {
 		f.release();
 		await running;
@@ -516,17 +429,9 @@ it("does not reuse the previous assistant for Stop after a blocked initial promp
 	f.harness.setResponses([fauxAssistantMessage("prior response")]);
 	try {
 		await f.harness.session.prompt("prior");
-		const stops = f
-			.records()
-			.filter(
-				(x) => x.profile === "codex" && x.hook_event_name === "Stop",
-			).length;
+		const stops = f.records().filter((x) => x.profile === "codex" && x.hook_event_name === "Stop").length;
 		await f.harness.session.prompt("BLOCK next");
-		expect(
-			f
-				.records()
-				.filter((x) => x.profile === "codex" && x.hook_event_name === "Stop"),
-		).toHaveLength(stops);
+		expect(f.records().filter((x) => x.profile === "codex" && x.hook_event_name === "Stop")).toHaveLength(stops);
 		const ids = submits(f).map((x) => x.turn_id);
 		expect(ids[1]).toEqual(expect.any(String));
 		expect(ids[1]).not.toBe(ids[0]);
@@ -554,11 +459,7 @@ it("retains logical turn ID and one submission across a transient provider retry
 		expect(submits(f)).toHaveLength(1);
 		const records = f.records().filter((x) => x.profile === "codex");
 		expect(records.map((x) => x.hook_event_name)).toContain("Stop");
-		expect(
-			records.every(
-				(x) => typeof x.turn_id === "string" && x.turn_id.length > 0,
-			),
-		).toBe(true);
+		expect(records.every((x) => typeof x.turn_id === "string" && x.turn_id.length > 0)).toBe(true);
 		expect(new Set(records.map((x) => x.turn_id)).size).toBe(1);
 	} finally {
 		f.cleanup();
@@ -567,20 +468,13 @@ it("retains logical turn ID and one submission across a transient provider retry
 
 it("retains the logical ID through a blocking Stop continuation", async () => {
 	const f = await fixture();
-	f.harness.setResponses([
-		fauxAssistantMessage("CONTINUE_STOP"),
-		fauxAssistantMessage("done"),
-	]);
+	f.harness.setResponses([fauxAssistantMessage("CONTINUE_STOP"), fauxAssistantMessage("done")]);
 	try {
 		await f.harness.session.prompt("continue fixture");
 		expect(submits(f)).toHaveLength(1);
 		const records = f.records().filter((x) => x.profile === "codex");
 		expect(records.filter((x) => x.hook_event_name === "Stop")).toHaveLength(2);
-		expect(
-			records.every(
-				(x) => typeof x.turn_id === "string" && x.turn_id.length > 0,
-			),
-		).toBe(true);
+		expect(records.every((x) => typeof x.turn_id === "string" && x.turn_id.length > 0)).toBe(true);
 		expect(new Set(records.map((x) => x.turn_id)).size).toBe(1);
 	} finally {
 		f.cleanup();
@@ -595,8 +489,7 @@ it("reads a selected skill only after the consumed submit hook accepts it", asyn
 		file: Parameters<typeof fs.readFileSync>[0],
 		...args: unknown[]
 	) => {
-		if ([f.skill, fs.realpathSync(f.skill)].includes(String(file)))
-			observed.push(submits(f));
+		if ([f.skill, fs.realpathSync(f.skill)].includes(String(file))) observed.push(submits(f));
 		return Reflect.apply(original, fs, [file, ...args]);
 	}) as typeof fs.readFileSync);
 	syncBuiltinESMExports();
@@ -604,12 +497,7 @@ it("reads a selected skill only after the consumed submit hook accepts it", asyn
 	try {
 		await f.harness.session.prompt("Use $alpha");
 		expect(observed.length).toBeGreaterThan(0);
-		expect(
-			observed.every(
-				(records) =>
-					records.length === 1 && records[0]!.prompt === "Use $alpha",
-			),
-		).toBe(true);
+		expect(observed.every((records) => records.length === 1 && records[0]!.prompt === "Use $alpha")).toBe(true);
 	} finally {
 		read.mockRestore();
 		syncBuiltinESMExports();
@@ -626,9 +514,7 @@ it.each(["/expanded argument", "/skill:alpha argument"])(
 			await f.harness.session.prompt(prompt);
 			expect(f.beforePrompts).toHaveLength(1);
 			expect(f.beforePrompts[0]).toContain(
-				prompt.startsWith("/skill:")
-					? "SKILL_BODY_EVIDENCE"
-					: "TEMPLATE_BODY_EVIDENCE",
+				prompt.startsWith("/skill:") ? "SKILL_BODY_EVIDENCE" : "TEMPLATE_BODY_EVIDENCE",
 			);
 			expect(submits(f).map((x) => x.prompt)).toEqual([prompt]);
 		} finally {
@@ -686,14 +572,9 @@ it("places accepted user content before its hook additional context in the provi
 				message.role === "user" &&
 				(typeof message.content === "string"
 					? message.content === "CONTEXT ordered request"
-					: message.content.some(
-							(part) =>
-								part.type === "text" && part.text === "CONTEXT ordered request",
-						)),
+					: message.content.some((part) => part.type === "text" && part.text === "CONTEXT ordered request")),
 		);
-		const contextIndex = messages.findIndex((message) =>
-			JSON.stringify(message).includes("ACCEPTED_CONTEXT_EVIDENCE"),
-		);
+		const contextIndex = messages.findIndex((message) => JSON.stringify(message).includes("ACCEPTED_CONTEXT_EVIDENCE"));
 		expect(requestIndex).toBeGreaterThanOrEqual(0);
 		expect(contextIndex).toBeGreaterThan(requestIndex);
 		expect(submits(f)).toHaveLength(1);
@@ -730,10 +611,7 @@ it("allocates follow-up identity before next-turn preparation and before consume
 		f.release();
 		await running;
 		const records = submits(f);
-		expect(records.map((record) => record.prompt)).toEqual([
-			"initial",
-			"followup",
-		]);
+		expect(records.map((record) => record.prompt)).toEqual(["initial", "followup"]);
 		expect(records[1]!.turn_id).not.toBe(records[0]!.turn_id);
 		expect(prepared).toContainEqual({
 			id: records[1]!.turn_id,
@@ -769,11 +647,7 @@ it("retains an accepted empty text item in a mixed blocked follow-up batch", asy
 		expect(observed).toHaveLength(2);
 		expect(users(observed[1]!)).toContain("");
 		expect(users(observed[1]!)).not.toContain("BLOCK first");
-		expect(submits(f).map((record) => record.prompt)).toEqual([
-			"initial",
-			"BLOCK first",
-			"",
-		]);
+		expect(submits(f).map((record) => record.prompt)).toEqual(["initial", "BLOCK first", ""]);
 		const records = submits(f);
 		expect(records[1]!.turn_id).toBe(records[2]!.turn_id);
 		expect(f.harness.session.pendingMessageCount).toBe(0);
@@ -803,23 +677,13 @@ it("still gates every selected item when clearQueue runs during its first hook",
 		await f.harness.session.followUp("BLOCK second selected");
 		f.release();
 		const deadline = Date.now() + 5000;
-		while (
-			!submits(f).some((record) => record.prompt === "HOLD selected") &&
-			Date.now() < deadline
-		)
+		while (!submits(f).some((record) => record.prompt === "HOLD selected") && Date.now() < deadline)
 			await new Promise((resolve) => setTimeout(resolve, 10));
-		expect(submits(f).map((record) => record.prompt)).toEqual([
-			"initial",
-			"HOLD selected",
-		]);
+		expect(submits(f).map((record) => record.prompt)).toEqual(["initial", "HOLD selected"]);
 		f.harness.session.clearQueue();
 		f.releaseHook();
 		await running;
-		expect(submits(f).map((record) => record.prompt)).toEqual([
-			"initial",
-			"HOLD selected",
-			"BLOCK second selected",
-		]);
+		expect(submits(f).map((record) => record.prompt)).toEqual(["initial", "HOLD selected", "BLOCK second selected"]);
 		expect(observed).toHaveLength(2);
 		expect(users(observed[1]!)).toContain("HOLD selected");
 		expect(users(observed[1]!)).not.toContain("BLOCK second selected");
@@ -854,10 +718,7 @@ it("commits accepted batch items before a later hook waits and preserves them wh
 		await f.harness.session.followUp("third unconsumed $alpha");
 		f.release();
 		const deadline = Date.now() + 5000;
-		while (
-			!submits(f).some((record) => record.prompt === "HOLD selected $alpha") &&
-			Date.now() < deadline
-		)
+		while (!submits(f).some((record) => record.prompt === "HOLD selected $alpha") && Date.now() < deadline)
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(submits(f).map((record) => record.prompt)).toEqual([
 			"initial",
@@ -867,9 +728,7 @@ it("commits accepted batch items before a later hook waits and preserves them wh
 		const during = JSON.stringify(f.harness.session.messages);
 		expect(during).toContain("CONTEXT first accepted");
 		expect(during).toContain("ACCEPTED_CONTEXT_EVIDENCE");
-		const recordedDuring = JSON.stringify(
-			f.harness.sessionManager.getEntries(),
-		);
+		const recordedDuring = JSON.stringify(f.harness.sessionManager.getEntries());
 		expect(recordedDuring).toContain("CONTEXT first accepted");
 		expect(recordedDuring).toContain("ACCEPTED_CONTEXT_EVIDENCE");
 		await f.harness.session.abort();
@@ -890,11 +749,7 @@ it("commits accepted batch items before a later hook waits and preserves them wh
 		expect(recordedAfter).toContain("CONTEXT first accepted");
 		expect(recordedAfter).toContain("ACCEPTED_CONTEXT_EVIDENCE");
 		expect(recordedAfter).not.toContain("HOLD selected $alpha");
-		expect(
-			read.mock.calls.some(([file]) =>
-				[f.skill, fs.realpathSync(f.skill)].includes(String(file)),
-			),
-		).toBe(false);
+		expect(read.mock.calls.some(([file]) => [f.skill, fs.realpathSync(f.skill)].includes(String(file)))).toBe(false);
 		expect(observed).toHaveLength(1);
 	} finally {
 		await f.harness.session.abort();

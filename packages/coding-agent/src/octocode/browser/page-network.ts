@@ -263,8 +263,7 @@ export function watchNetwork(
 			}
 		} else if (method === "Network.responseReceived" && !session.chrome?.proxy) {
 			const response = params.response as
-				| { url?: unknown; remoteIPAddress?: unknown; remotePort?: unknown }
-				| undefined;
+				{ url?: unknown; remoteIPAddress?: unknown; remotePort?: unknown } | undefined;
 			const { url, remoteIPAddress: address } = response ?? {};
 			if (
 				typeof url === "string" &&

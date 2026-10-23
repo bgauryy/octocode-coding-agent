@@ -288,11 +288,7 @@ export function createLlamaProvider(): LlamaProviderController {
 		stream: (model, context, options) => stream(model, context, options as ProviderStreamOptions | undefined),
 		streamSimple: (model, context, options) => streamSimple(model, context, options),
 		classify: (model, context, options) =>
-			(model.api === "typesafe-system-one" ? decisionClassifier : fallbackClassifier).classify(
-				model,
-				context,
-				options,
-			),
+			(model.api === "typesafe-system-one" ? decisionClassifier : fallbackClassifier).classify(model, context, options),
 	};
 
 	return { provider, setCatalog };

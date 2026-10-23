@@ -252,7 +252,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader,
 		baseToolsOverride: toolMap,
-		initialActiveToolNames: options.initialActiveToolNames ?? (options.builtinCompactionFactories ? (toolMap ? Object.keys(toolMap) : [...DEFAULT_TOOL_NAMES]) : undefined),
+		initialActiveToolNames:
+			options.initialActiveToolNames ??
+			(options.builtinCompactionFactories ? (toolMap ? Object.keys(toolMap) : [...DEFAULT_TOOL_NAMES]) : undefined),
 		usesDefaultTools: options.initialActiveToolNames === undefined && !options.builtinCompactionFactories,
 		allowedToolNames: options.allowedToolNames,
 		excludedToolNames: options.excludedToolNames,

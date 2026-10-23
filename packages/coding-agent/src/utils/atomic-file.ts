@@ -63,14 +63,29 @@ interface WriteIo {
 	syncDirectory(dir: string): unknown;
 }
 
-const syncIo: WriteIo = {
-	realpath: (file) => {
+/** Match writeFileSync for dangling links: create the missing target, keeping the link in place. */
+function writeTargetSync(file: string, hops = 40): string {
+	try {
+		return fs.realpathSync(file);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		let link: string | undefined;
 		try {
-			return fs.realpathSync(file);
-		} catch {
-			return file;
+			link = fs.readlinkSync(file);
+		} catch (failure) {
+			const code = (failure as NodeJS.ErrnoException).code;
+			if (code !== "ENOENT" && code !== "EINVAL") throw failure;
 		}
-	},
+		if (link !== undefined) {
+			if (hops === 0) throw new Error(`Too many symbolic links: ${file}`);
+			return writeTargetSync(path.resolve(path.dirname(file), link), hops - 1);
+		}
+		return path.join(fs.realpathSync(path.dirname(file)), path.basename(file));
+	}
+}
+
+const syncIo: WriteIo = {
+	realpath: writeTargetSync,
 	mode: (file) => {
 		try {
 			return fs.statSync(file).mode & 0o7777;
@@ -182,25 +197,29 @@ export async function atomicWriteFile(
 	expectedSha?: string | null,
 	options: AtomicWriteOptions = {},
 ): Promise<void> {
-	await withFileWriteLock(file, async (target, assertHeld) => {
-		const check = async () => {
-			options.signal?.throwIfAborted();
-			if (expectedSha !== undefined && ((await sha256File(target)) ?? null) !== expectedSha)
-				throw changedOnDisk(file);
-			assertHeld();
-			options.beforeCommit?.();
-		};
-		const steps = writeSteps(asyncIo, target, data, options, check);
-		let step = steps.next();
-		while (!step.done) {
-			let value: unknown;
-			try {
-				value = await step.value;
-			} catch (error) {
-				step = steps.throw(error);
-				continue;
+	await withFileWriteLock(
+		file,
+		async (target, assertHeld) => {
+			const check = async () => {
+				options.signal?.throwIfAborted();
+				if (expectedSha !== undefined && ((await sha256File(target)) ?? null) !== expectedSha)
+					throw changedOnDisk(file);
+				assertHeld();
+				options.beforeCommit?.();
+			};
+			const steps = writeSteps(asyncIo, target, data, options, check);
+			let step = steps.next();
+			while (!step.done) {
+				let value: unknown;
+				try {
+					value = await step.value;
+				} catch (error) {
+					step = steps.throw(error);
+					continue;
+				}
+				step = steps.next(value);
 			}
-			step = steps.next(value);
-		}
-	}, options.signal);
+		},
+		options.signal,
+	);
 }

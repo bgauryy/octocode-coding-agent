@@ -40,7 +40,9 @@ describe("bounded archive search", () => {
 	});
 
 	it("ends a pathological regex at its deadline even without a caller abort", async () => {
-		await expect(matchHistory([file(`${"a".repeat(100_000)}!`)], /^(a+)+$/)).rejects.toThrow(/exceeded 5 seconds; simplify query/);
+		await expect(matchHistory([file(`${"a".repeat(100_000)}!`)], /^(a+)+$/)).rejects.toThrow(
+			/exceeded 5 seconds; simplify query/,
+		);
 	}, 10_000);
 
 	it("rejects an already-aborted call even when there are no files", async () => {

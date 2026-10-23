@@ -1,5 +1,6 @@
 import type { ApplicationFrame, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
 import { expect, it } from "vitest";
+import { ApplicationProjection } from "../src/app/live/model.ts";
 import { ApplicationStream } from "../src/application-stream.ts";
 
 const snapshot: ApplicationSnapshot = {
@@ -113,7 +114,7 @@ it("restores tools from a snapshot, updates progress, and retains retry status",
 	);
 	stream.accept(frame(3, { type: "event", event: { type: "session.status", status: "retrying" } }));
 	expect(stream.snapshot?.tools).toEqual([
-		{ toolCallId: "tool-a", toolName: "read", text: "denied", status: "failed" },
+		{ toolCallId: "tool-a", order: 0, toolName: "read", text: "denied", status: "failed" },
 	]);
 	expect(stream.snapshot?.status).toBe("retrying");
 });
@@ -130,8 +131,99 @@ it("keeps a tool call's hint after progress and completion replace its text", ()
 		frame(3, { type: "event", event: { type: "tool.completed", toolCallId: "t", toolName: "bash", text: "3 passed" } }),
 	);
 	expect(stream.snapshot?.tools).toEqual([
-		{ toolCallId: "t", toolName: "bash", hint: "npm test", text: "3 passed", status: "completed" },
+		{ toolCallId: "t", order: 0, toolName: "bash", hint: "npm test", text: "3 passed", status: "completed" },
 	]);
+});
+it("keeps live tool calls between the surrounding messages through progress and completion", () => {
+	const stream = new ApplicationStream();
+	stream.accept(
+		frame(0, {
+			type: "snapshot",
+			snapshot: {
+				...snapshot,
+				messages: [{ id: "before", role: "assistant", text: "Before", complete: true, order: 0 }],
+			},
+		}),
+	);
+	stream.accept(
+		frame(1, {
+			type: "event",
+			event: { type: "tool.started", toolCallId: "t", toolName: "bash", hint: "npm test" },
+		}),
+	);
+	stream.accept(
+		frame(2, {
+			type: "event",
+			event: {
+				type: "message.completed",
+				message: { id: "after", role: "assistant", text: "After", complete: true, order: 2 },
+			},
+		}),
+	);
+	for (const [sequence, event] of [
+		[3, { type: "tool.progress", toolCallId: "t", toolName: "bash", text: "running" }],
+		[4, { type: "tool.completed", toolCallId: "t", toolName: "bash", text: "done" }],
+	] as const) {
+		stream.accept(frame(sequence, { type: "event", event }));
+		expect(stream.snapshot?.tools?.[0]).toMatchObject({ order: 1, toolCallId: "t" });
+	}
+	expect(new ApplicationProjection().update(stream.snapshot, 5).map((item) => item.text.split("\n")[0])).toEqual([
+		"Before",
+		"bash",
+		"After",
+	]);
+});
+it("retains a snapshot tool's order when a replayed progress event arrives", () => {
+	const stream = new ApplicationStream();
+	stream.accept(
+		frame(0, {
+			type: "snapshot",
+			snapshot: { ...snapshot, tools: [{ toolCallId: "t", toolName: "bash", text: "", status: "running", order: 7 }] },
+		}),
+	);
+	stream.accept(
+		frame(1, {
+			type: "event",
+			event: { type: "tool.progress", toolCallId: "t", toolName: "bash", text: "running" },
+		}),
+	);
+	expect(stream.snapshot?.tools?.[0].order).toBe(7);
+});
+it("uses the host's exact tool order when retained history has gaps", () => {
+	const stream = new ApplicationStream();
+	stream.accept(
+		frame(0, {
+			type: "snapshot",
+			snapshot: {
+				...snapshot,
+				messages: [{ id: "recent", role: "assistant", text: "Recent", complete: true, order: 40 }],
+			},
+		}),
+	);
+	stream.accept(
+		frame(1, {
+			type: "event",
+			event: {
+				type: "tool.started",
+				toolCallId: "t",
+				toolName: "bash",
+				order: 91,
+			},
+		}),
+	);
+	stream.accept(
+		frame(2, {
+			type: "event",
+			event: {
+				type: "tool.completed",
+				toolCallId: "t",
+				toolName: "bash",
+				text: "done",
+				order: 91,
+			},
+		}),
+	);
+	expect(stream.snapshot?.tools?.[0].order).toBe(91);
 });
 it("invalidates the old cursor when the host switches sessions", () => {
 	const stream = new ApplicationStream();

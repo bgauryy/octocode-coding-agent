@@ -175,9 +175,16 @@ describe("azure base URL normalization", () => {
 	});
 
 	it.each(["option", "environment"])("omits affinity when caching is disabled through %s", async (source) => {
-		const model = { ...getModel("openai", "gpt-4o-mini"), api: "azure-openai-responses" as const, provider: "azure", baseUrl: "https://example.openai.azure.com/openai/v1" };
+		const model = {
+			...getModel("openai", "gpt-4o-mini"),
+			api: "azure-openai-responses" as const,
+			provider: "azure",
+			baseUrl: "https://example.openai.azure.com/openai/v1",
+		};
 		await streamAzureOpenAIResponses(model, normalizeContext(context), {
-			apiKey: "test-key", sessionId: "session", maxRetries: 0,
+			apiKey: "test-key",
+			sessionId: "session",
+			maxRetries: 0,
 			...(source === "option" ? { cacheRetention: "none" as const } : { env: { OCTOCODE_CACHE_RETENTION: "none" } }),
 		}).result();
 		expect(azureMock.lastParams).toBeDefined();

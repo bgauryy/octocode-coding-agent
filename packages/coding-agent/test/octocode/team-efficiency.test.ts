@@ -36,26 +36,55 @@ describe("team delivery efficiency", () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
 		try {
 			store.save(member("recipient"));
-			const ids = Array.from({ length: 40 }, (_, i) => store.send("sender", ["recipient"], `${i}:` + "界".repeat(7900), { replyRequired: false }).id!);
+			const ids = Array.from(
+				{ length: 40 },
+				(_, i) => store.send("sender", ["recipient"], `${i}:` + "界".repeat(7900), { replyRequired: false }).id!,
+			);
 			const inbox = new Inbox();
 			const batches: import("../../src/octocode/team/model.ts").Message[][] = [];
-			const send = (batch: import("../../src/octocode/team/model.ts").Message[]) => { batches.push(batch); return true; };
+			const send = (batch: import("../../src/octocode/team/model.ts").Message[]) => {
+				batches.push(batch);
+				return true;
+			};
 			for (let i = 0; i < 10; i++) inbox.deliver(store, "recipient", send);
 			expect(batches).toHaveLength(1);
 			expect(Buffer.byteLength(JSON.stringify(batches[0]))).toBeLessThanOrEqual(32 * 1024);
-			const interrupt = store.send("sender", ["recipient"], "stop current work", { interrupt: true, replyRequired: false }).id!;
+			const interrupt = store.send("sender", ["recipient"], "stop current work", {
+				interrupt: true,
+				replyRequired: false,
+			}).id!;
 			inbox.deliver(store, "recipient", send);
-			expect(batches.at(-1)!.map(m => m.id)).toEqual([interrupt]);
+			expect(batches.at(-1)!.map((m) => m.id)).toEqual([interrupt]);
 			for (let i = 0; i < 5; i++) inbox.deliver(store, "recipient", send);
 			expect(batches).toHaveLength(2);
-			inbox.seen(store, "recipient", batches.flat().map(m => m.id));
+			inbox.seen(
+				store,
+				"recipient",
+				batches.flat().map((m) => m.id),
+			);
 			while (store.waiting("recipient") > 0) {
 				inbox.deliver(store, "recipient", send);
-				inbox.seen(store, "recipient", batches.at(-1)!.map(m => m.id));
+				inbox.seen(
+					store,
+					"recipient",
+					batches.at(-1)!.map((m) => m.id),
+				);
 			}
-			expect(batches.flat().filter(m => !m.interrupt).map(m => m.id)).toEqual(ids);
-			expect(batches.flat().filter(m => !m.interrupt).every(m => m.text.endsWith("界".repeat(7900)))).toBe(true);
-		} finally { store.close(); }
+			expect(
+				batches
+					.flat()
+					.filter((m) => !m.interrupt)
+					.map((m) => m.id),
+			).toEqual(ids);
+			expect(
+				batches
+					.flat()
+					.filter((m) => !m.interrupt)
+					.every((m) => m.text.endsWith("界".repeat(7900))),
+			).toBe(true);
+		} finally {
+			store.close();
+		}
 	});
 
 	it("lets an idle wake pass unseen FYIs without draining their backlog", () => {
@@ -70,7 +99,9 @@ describe("team delivery efficiency", () => {
 			inbox.deliver(store, "recipient", send, true);
 			expect(send).toHaveBeenCalledTimes(2);
 			expect(send.mock.calls[1]![0][0].id).toBe(question);
-		} finally { store.close(); }
+		} finally {
+			store.close();
+		}
 	});
 
 	it("batches every dead-letter notice and retries its database acknowledgement without sending it twice", () => {

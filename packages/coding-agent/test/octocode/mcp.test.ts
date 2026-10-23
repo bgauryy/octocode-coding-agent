@@ -92,8 +92,7 @@ describe("Octocode MCP launch and ownership", () => {
 		expect(OCTOCODE_MCP_SPEC).toBe(`octocode-mcp@${range}`);
 		if (range.startsWith("file:"))
 			expect(() => octocodeLaunch("/w", {}, "")).toThrow("local octocode-mcp build is missing");
-		else
-			expect(octocodeLaunch("/w", {}, "")).toMatchObject({ command: "npx", args: ["-y", `octocode-mcp@${range}`] });
+		else expect(octocodeLaunch("/w", {}, "")).toMatchObject({ command: "npx", args: ["-y", `octocode-mcp@${range}`] });
 	});
 
 	it("reads an octocode entry from Octocode's mcp.json, the trusted project file replacing the global one", () => {
@@ -296,7 +295,9 @@ describe("Octocode MCP client", () => {
 			registered.mockClear();
 			await mcp.restart(ctx);
 			expect(registered).toHaveBeenCalledTimes(mcp.status().tools * 2);
-			expect(registered.mock.calls.slice(0, mcp.status().tools).every(([definition]) => definition.exposure === "hidden")).toBe(true);
+			expect(
+				registered.mock.calls.slice(0, mcp.status().tools).every(([definition]) => definition.exposure === "hidden"),
+			).toBe(true);
 			expect(fake.tools.get("mcp__octocode__shout")).toBe(shout);
 			expect(text(await call("shout", { text: "reconnected" }))).toBe("RECONNECTED");
 			registered.mockClear();
@@ -394,9 +395,7 @@ describe("Octocode MCP client", () => {
 	});
 
 	it("shows terminal escape sequences in the server stderr as visible escapes in the failure text and the notice", async () => {
-		const { ctx, mcp, notes } = session((cwd) =>
-			exits(cwd, "boom \u001b]0;pwned\u0007\u001b[31mred\u001b[0m\u202e!"),
-		);
+		const { ctx, mcp, notes } = session((cwd) => exits(cwd, "boom \u001b]0;pwned\u0007\u001b[31mred\u001b[0m\u202e!"));
 		await mcp.start(ctx);
 		expect(await mcp.ready(ctx)).toBe(false);
 		const error = mcp.status().error!;
@@ -499,7 +498,8 @@ describe("Octocode MCP client", () => {
 describe("native discovery for deferred tools", () => {
 	const started = async (autoEnable?: boolean) => {
 		const agentDir = tmp();
-		if (autoEnable !== undefined) fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ autoEnableCodemode: autoEnable }));
+		if (autoEnable !== undefined)
+			fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ autoEnableCodemode: autoEnable }));
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
 		vi.stubEnv("OCTOCODE_MCP", "1");
 		const fake = fakePi();
@@ -632,8 +632,10 @@ describe("Octocode tool results and rendering", () => {
 	});
 
 	it("keeps local research direct when the host defers other tools", () => {
-		const exposure = (name: string) => octocodeToolDefinition({ ...tool, name }, { ...binding, exposure: "deferred" }).exposure;
-		for (const name of ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"]) expect(exposure(name)).toBe("direct");
+		const exposure = (name: string) =>
+			octocodeToolDefinition({ ...tool, name }, { ...binding, exposure: "deferred" }).exposure;
+		for (const name of ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"])
+			expect(exposure(name)).toBe("direct");
 		for (const name of ["ghSearchCode", "artifactSearch", "ghStructure"]) expect(exposure(name)).toBe("deferred");
 	});
 
@@ -752,9 +754,7 @@ describe("Octocode result size budgets", () => {
 		const full = `${body}\nnext:\n  continueChars: { charOffset: 50000 }\n`;
 		for (const budget of [undefined, new TurnBudget()]) {
 			expect(
-				shown(
-					await toToolResult("localFetch", { content: [{ type: "text", text: full }] }, false, undefined, budget),
-				),
+				shown(await toToolResult("localFetch", { content: [{ type: "text", text: full }] }, false, undefined, budget)),
 			).toBe(full);
 		}
 	});
@@ -783,21 +783,34 @@ describe("Octocode result size budgets", () => {
 	it("bounds all text across concurrent results and preserves overflow in one recoverable archive", async () => {
 		const budget = new TurnBudget();
 		const pages = Array.from({ length: 30 }, (_, i) => page(TEXT_MAX_CHARS - 100, String(i)));
-		const results = await Promise.all(pages.map(async (text) =>
-			shown(await toToolResult("localFetch", { content: [{ type: "text", text }] }, false, undefined, budget))));
+		const results = await Promise.all(
+			pages.map(async (text) =>
+				shown(await toToolResult("localFetch", { content: [{ type: "text", text }] }, false, undefined, budget)),
+			),
+		);
 		expect(results.slice(0, 3)).toEqual(pages.slice(0, 3));
 		expect(results.reduce((sum, text) => sum + text.length, 0)).toBeLessThanOrEqual(TURN_MAX_CHARS);
 		const archive = /saved as JSON lines at (.+)\.\]/.exec(results[3]!)![1]!;
-		const records = fs.readFileSync(archive, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+		const records = fs
+			.readFileSync(archive, "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
 		expect(records.map((record) => record.text)).toEqual(pages.slice(3));
 		expect(results.slice(4).every((text) => text === "")).toBe(true);
 		budget.reset();
-		expect(shown(await toToolResult("t", { content: [{ type: "text", text: "new turn" }] }, false, undefined, budget))).toBe("new turn");
+		expect(
+			shown(await toToolResult("t", { content: [{ type: "text", text: "new turn" }] }, false, undefined, budget)),
+		).toBe("new turn");
 	});
 
 	it("reports an oversized structured result as an error and saves complete JSON", async () => {
 		const value = { required: "x".repeat(TEXT_MAX_CHARS + 1) };
-		const result = await toToolResult("typed", { content: [{ type: "text", text: "success" }], structuredContent: value }, true);
+		const result = await toToolResult(
+			"typed",
+			{ content: [{ type: "text", text: "success" }], structuredContent: value },
+			true,
+		);
 		expect(result.isError).toBe(true);
 		expect(result.structuredContent).toBeUndefined();
 		const file = /Full JSON: (.+)\. Request/.exec(shown(result))![1]!;
@@ -868,9 +881,7 @@ describe("Octocode result sanitizing", () => {
 			},
 		]);
 		// Nothing raw that steers a terminal is left.
-		expect(JSON.stringify(result.content)).not.toMatch(
-			/[\u0000-\u0008\u000b-\u001f\u202a-\u202e\u200b-\u200d\ufeff]/u,
-		);
+		expect(JSON.stringify(result.content)).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u202a-\u202e\u200b-\u200d\ufeff]/u);
 		// Raw CR never stands alone: only the CR of a CRLF pair, which the terminal draws as a line break, is left.
 		expect((result.content[0] as { text: string }).text.replaceAll("\r\n", "")).not.toContain("\r");
 	});

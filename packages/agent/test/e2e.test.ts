@@ -194,10 +194,7 @@ describe("Agent integration with faux provider", () => {
 		const faux = createFauxRegistration();
 		faux.setResponses([
 			fauxAssistantMessage(
-				[
-					fauxText("Let me calculate that."),
-					fauxToolCall("calculate", { expression: "123 * 456" }, { id: "calc-1" }),
-				],
+				[fauxText("Let me calculate that."), fauxToolCall("calculate", { expression: "123 * 456" }, { id: "calc-1" })],
 				{ stopReason: "toolUse" },
 			),
 			fauxAssistantMessage("The result is 56088."),
@@ -211,9 +208,7 @@ describe("Agent integration with faux provider", () => {
 			tokenSize: { min: 2, max: 2 },
 		});
 		faux.setResponses([
-			fauxAssistantMessage(
-				"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen",
-			),
+			fauxAssistantMessage("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"),
 		]);
 		await abortExecution(faux.getModel());
 	});
@@ -356,8 +351,7 @@ describe("Agent.continue() with faux provider", () => {
 			const agent = new Agent({
 				streamFn: streamSimple,
 				initialState: {
-					systemPrompt:
-						"You are a helpful assistant. After getting a calculation result, state the answer clearly.",
+					systemPrompt: "You are a helpful assistant. After getting a calculation result, state the answer clearly.",
 					model,
 					thinkingLevel: "off",
 					tools: [calculateTool],

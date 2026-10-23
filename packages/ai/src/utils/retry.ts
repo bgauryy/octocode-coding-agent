@@ -1,4 +1,5 @@
 import type { AssistantMessage } from "../types.ts";
+import { sleepUnlessAborted } from "./abort.ts";
 
 function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
@@ -36,13 +37,8 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"model is at capacity",
 	"rate.?limit",
 	"too many requests",
-	"429",
-	"500",
-	"502",
-	"503",
-	"504",
-	"520",
-	"524",
+	// A status code standing alone: not digits inside a larger number ("max_tokens: 150000") or an index ("1500").
+	"(?<![\\d.])(?:429|500|502|503|504|520|524)(?![\\d.])",
 	// Also matches "The service is temporarily unavailable" (#10965).
 	"service.?(?:is.?)?(?:temporarily.?)?unavailable",
 	"server.?error",
@@ -81,9 +77,10 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"reset before headers",
 	"socket hang up",
 	"socket connection was closed",
-	"timed? out",
-	"timeout",
-	"terminated",
+	// Whole words only, so a name such as "timeout_tool" in a request error does not read as a transient failure.
+	"\\btimed? out\\b",
+	"\\btimeout\\b",
+	"\\bterminated\\b",
 
 	// WebSocket transports can report close/error text instead of HTTP/fetch text.
 	"websocket.?closed",
@@ -165,24 +162,6 @@ class RetrySleepAbortError extends Error {
 	}
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) {
-			reject(new RetrySleepAbortError());
-			return;
-		}
-		const timeout = setTimeout(resolve, ms);
-		signal?.addEventListener(
-			"abort",
-			() => {
-				clearTimeout(timeout);
-				reject(new RetrySleepAbortError());
-			},
-			{ once: true },
-		);
-	});
-}
-
 /**
  * Run a single assistant-producing call with bounded retry on transient errors.
  *
@@ -240,7 +219,7 @@ export async function retryAssistantCall(
 		// Normalize aborts during retry backoff to the same AssistantMessage shape as
 		// provider stream aborts, so callers do not need to care when cancellation happened.
 		try {
-			await sleep(delayMs, signal);
+			await sleepUnlessAborted(delayMs, signal, () => new RetrySleepAbortError());
 		} catch (error) {
 			await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
 			if (error instanceof RetrySleepAbortError) {

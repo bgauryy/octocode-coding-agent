@@ -60,6 +60,25 @@ describe("activity cards", () => {
 });
 
 describe("application projection", () => {
+	it("keeps the host's order of messages and tools from one snapshot", () => {
+		const projection = new ApplicationProjection();
+		const events = projection.update(
+			session({
+				messages: [
+					{ id: "a", role: "assistant", text: "First answer", complete: true, order: 0 },
+					{ id: "b", role: "assistant", text: "Second answer", complete: true, order: 2 },
+				],
+				tools: [{ toolCallId: "t", toolName: "read", text: "ok", status: "completed", order: 1 }],
+			}),
+			10,
+		);
+		const firstLines = (list: readonly { text: string }[]) => list.map((event) => event.text.split("\n")[0]);
+		expect(firstLines(events)).toEqual(["First answer", "read", "Second answer"]);
+		// They share the snapshot's time, so the feed's time sort keeps that order.
+		const feed = mergeEvents({ sessionId: "s", events: [] } as never, events, "s").events;
+		expect(firstLines(feed)).toEqual(["First answer", "read", "Second answer"]);
+	});
+
 	it("keeps stable ids and first-seen times while messages stream", () => {
 		const projection = new ApplicationProjection();
 		const first = projection.update(

@@ -278,7 +278,7 @@ export function descendantPids(pid: number | undefined): number[] {
 		children.set(parent, [...(children.get(parent) ?? []), child]);
 	}
 	const found: number[] = [];
-	for (let queue = [pid]; queue.length > 0; ) {
+	for (let queue = [pid]; queue.length > 0;) {
 		const next = queue
 			.flatMap((each) => children.get(each) ?? [])
 			.filter((each) => !found.includes(each) && each !== pid);

@@ -11,45 +11,32 @@ const output = (decision: unknown) =>
 	JSON.stringify({
 		hookSpecificOutput: { hookEventName: "PermissionRequest", decision },
 	});
-it.each(["claude", "codex"] as const)(
-	"parses %s permission decisions without generic gate semantics",
-	(protocol) => {
-		expect(
-			interpret(
-				"PermissionRequest" as any,
-				run(output({ behavior: "allow" })),
-				protocol,
-			),
-		).toHaveProperty("permissionDecision", "allow");
-		expect(
-			interpret(
-				"PermissionRequest" as any,
-				run(output({ behavior: "deny", message: "no" })),
-				protocol,
-			),
-		).toHaveProperty("permissionDecision", "deny");
-		for (const field of [
-			...(protocol === "codex"
-				? [{ updatedInput: {} }, { updatedPermissions: [] }]
-				: [{ updatedPermissions: [{ type: "addRules" }] }]),
-			...(protocol === "codex" ? [{ interrupt: true }] : []),
-		])
-			expect(
-				interpret(
-					"PermissionRequest" as any,
-					run(output({ behavior: "allow", ...field })),
-					protocol,
-				).error,
-			).toBeDefined();
-	},
-);
-it("keeps source exit-two behavior distinct", () => {
+it.each(["claude", "codex"] as const)("parses %s permission decisions without generic gate semantics", (protocol) => {
+	expect(interpret("PermissionRequest" as any, run(output({ behavior: "allow" })), protocol)).toHaveProperty(
+		"permissionDecision",
+		"allow",
+	);
 	expect(
-		interpret("PermissionRequest" as any, run("", 2, "refused"), "codex"),
+		interpret("PermissionRequest" as any, run(output({ behavior: "deny", message: "no" })), protocol),
 	).toHaveProperty("permissionDecision", "deny");
-	expect(
-		interpret("PermissionRequest" as any, run("", 2, "refused"), "claude"),
-	).not.toHaveProperty("permissionDecision");
+	for (const field of [
+		...(protocol === "codex"
+			? [{ updatedInput: {} }, { updatedPermissions: [] }]
+			: [{ updatedPermissions: [{ type: "addRules" }] }]),
+		...(protocol === "codex" ? [{ interrupt: true }] : []),
+	])
+		expect(
+			interpret("PermissionRequest" as any, run(output({ behavior: "allow", ...field })), protocol).error,
+		).toBeDefined();
+});
+it("keeps source exit-two behavior distinct", () => {
+	expect(interpret("PermissionRequest" as any, run("", 2, "refused"), "codex")).toHaveProperty(
+		"permissionDecision",
+		"deny",
+	);
+	expect(interpret("PermissionRequest" as any, run("", 2, "refused"), "claude")).not.toHaveProperty(
+		"permissionDecision",
+	);
 });
 it("loads source PermissionRequest with tool matching but excludes native dialect", () => {
 	for (const protocol of ["claude", "codex"] as const) {
@@ -57,9 +44,7 @@ it("loads source PermissionRequest with tool matching but excludes native dialec
 		const config = parseHooks(
 			{
 				hooks: {
-					PermissionRequest: [
-						{ matcher: "Bash", hooks: [{ type: "command", command: "true" }] },
-					],
+					PermissionRequest: [{ matcher: "Bash", hooks: [{ type: "command", command: "true" }] }],
 				},
 			},
 			"fixture",
@@ -69,23 +54,16 @@ it("loads source PermissionRequest with tool matching but excludes native dialec
 			protocol,
 		);
 		expect(errors).toEqual([]);
-		expect(
-			commandsFor(config, "PermissionRequest" as any, ["Bash"]),
-		).toHaveLength(1);
-		expect(
-			commandsFor(config, "PermissionRequest" as any, ["Write"]),
-		).toHaveLength(0);
+		expect(commandsFor(config, "PermissionRequest" as any, ["Bash"])).toHaveLength(1);
+		expect(commandsFor(config, "PermissionRequest" as any, ["Write"])).toHaveLength(0);
 	}
 });
 
 it("Claude deny interrupt is explicit and Codex rejects it", () => {
-	expect(
-		interpret(
-			"PermissionRequest",
-			run(output({ behavior: "deny", interrupt: true })),
-			"claude",
-		),
-	).toHaveProperty("permissionInterrupt", true);
+	expect(interpret("PermissionRequest", run(output({ behavior: "deny", interrupt: true })), "claude")).toHaveProperty(
+		"permissionInterrupt",
+		true,
+	);
 });
 
 it("cannot bypass an unrepresentable required Codex file policy with a Claude allow", async () => {
@@ -93,12 +71,8 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
 	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-	const { registerHooks } = await import(
-		"../../src/octocode/hooks/register.ts"
-	);
-	const { captureToolInvocation } = await import(
-		"../../src/core/tools/tool-invocation.ts"
-	);
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
+	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
 	const home = tmp();
 	for (const dir of [".claude", ".codex"]) fs.mkdirSync(path.join(home, dir));
 	const allow = "printf '%s' '" + output({ behavior: "allow" }) + "'";
@@ -106,9 +80,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 		path.join(home, ".claude/settings.json"),
 		JSON.stringify({
 			hooks: {
-				PermissionRequest: [
-					{ matcher: "Edit", hooks: [{ type: "command", command: allow }] },
-				],
+				PermissionRequest: [{ matcher: "Edit", hooks: [{ type: "command", command: allow }] }],
 			},
 		}),
 	);
@@ -127,11 +99,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 	);
 	const fake = fakePi(),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-	);
+	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("file", "file", {
 		queries: [
@@ -143,13 +111,9 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 			},
 		],
 	})!;
-	expect(
-		await hooks.permissionRequest(
-			invocation,
-			ctx,
-			new AbortController().signal,
-		),
-	).toMatchObject({ decision: "deny" });
+	expect(await hooks.permissionRequest(invocation, ctx, new AbortController().signal)).toMatchObject({
+		decision: "deny",
+	});
 });
 
 it("retains required invalid permission handlers without executing unsupported transports", () => {
@@ -178,71 +142,57 @@ it("retains required invalid permission handlers without executing unsupported t
 	});
 });
 
-it.each([false, true])(
-	"keeps invalid Codex effects neutral unless failClosed=%s",
-	async (required) => {
-		const fs = await import("node:fs");
-		const path = await import("node:path");
-		const { tmp } = await import("./helpers.ts");
-		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-		const { registerHooks } = await import(
-			"../../src/octocode/hooks/register.ts"
-		);
-		const { captureToolInvocation } = await import(
-			"../../src/core/tools/tool-invocation.ts"
-		);
-		const home = tmp();
-		fs.mkdirSync(path.join(home, ".codex"));
-		const marker = path.join(home, "must-not-run");
-		const command = (value: unknown) => "printf '%s' '" + output(value) + "'";
-		const invalid = required
-			? {
-					type: "command",
-					command: `touch '${marker}'`,
-					unsupported: true,
-					failClosed: true,
-				}
-			: {
-					type: "command",
-					command: command({
-						behavior: "allow",
-						updatedInput: { command: "false" },
-					}),
-				};
-		fs.writeFileSync(
-			path.join(home, ".codex/hooks.json"),
-			JSON.stringify({
-				hooks: {
-					PermissionRequest: [
-						{
-							matcher: "Bash",
-							hooks: [
-								invalid,
-								{ type: "command", command: command({ behavior: "allow" }) },
-							],
-						},
-					],
-				},
-			}),
-		);
-		const fake = fakePi(),
-			ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-		const hooks = registerHooks(
-			fake.pi,
-			{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-			home,
-		);
-		await fake.fire("session_start", { reason: "startup" }, ctx);
-		expect(
-			await hooks.permissionRequest(
-				captureToolInvocation("one", "bash", { command: "true" })!,
-				ctx,
-				new AbortController().signal,
-			),
-		).toMatchObject({ decision: required ? "deny" : "allow" });
-		expect(fs.existsSync(marker)).toBe(false);
-	},
-);
+it.each([false, true])("keeps invalid Codex effects neutral unless failClosed=%s", async (required) => {
+	const fs = await import("node:fs");
+	const path = await import("node:path");
+	const { tmp } = await import("./helpers.ts");
+	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
+	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
+	const home = tmp();
+	fs.mkdirSync(path.join(home, ".codex"));
+	const marker = path.join(home, "must-not-run");
+	const command = (value: unknown) => "printf '%s' '" + output(value) + "'";
+	const invalid = required
+		? {
+				type: "command",
+				command: `touch '${marker}'`,
+				unsupported: true,
+				failClosed: true,
+			}
+		: {
+				type: "command",
+				command: command({
+					behavior: "allow",
+					updatedInput: { command: "false" },
+				}),
+			};
+	fs.writeFileSync(
+		path.join(home, ".codex/hooks.json"),
+		JSON.stringify({
+			hooks: {
+				PermissionRequest: [
+					{
+						matcher: "Bash",
+						hooks: [invalid, { type: "command", command: command({ behavior: "allow" }) }],
+					},
+				],
+			},
+		}),
+	);
+	const fake = fakePi(),
+		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	expect(
+		await hooks.permissionRequest(
+			captureToolInvocation("one", "bash", { command: "true" })!,
+			ctx,
+			new AbortController().signal,
+		),
+	).toMatchObject({ decision: required ? "deny" : "allow" });
+	expect(fs.existsSync(marker)).toBe(false);
+});
 
 it("Claude universal stop overrides a nested permission allow", () => {
 	expect(
@@ -272,12 +222,8 @@ it("retains interruption from a later denied file constituent", async () => {
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
 	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-	const { registerHooks } = await import(
-		"../../src/octocode/hooks/register.ts"
-	);
-	const { captureToolInvocation } = await import(
-		"../../src/core/tools/tool-invocation.ts"
-	);
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
+	const { captureToolInvocation } = await import("../../src/core/tools/tool-invocation.ts");
 	const home = tmp();
 	fs.mkdirSync(path.join(home, ".claude"));
 	const script = path.join(home, "hook.cjs");
@@ -292,9 +238,7 @@ it("retains interruption from a later denied file constituent", async () => {
 				PermissionRequest: [
 					{
 						matcher: "Write",
-						hooks: [
-							{ type: "command", command: `'${process.execPath}' '${script}'` },
-						],
+						hooks: [{ type: "command", command: `'${process.execPath}' '${script}'` }],
 					},
 				],
 			},
@@ -302,11 +246,7 @@ it("retains interruption from a later denied file constituent", async () => {
 	);
 	const fake = fakePi(),
 		ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const hooks = registerHooks(
-		fake.pi,
-		{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-	);
+	const hooks = registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 	await fake.fire("session_start", { reason: "startup" }, ctx);
 	const invocation = captureToolInvocation("one", "file", {
 		queries: [
@@ -314,13 +254,10 @@ it("retains interruption from a later denied file constituent", async () => {
 			{ type: "write", path: "second", content: "two\n" },
 		],
 	})!;
-	expect(
-		await hooks.permissionRequest(
-			invocation,
-			ctx,
-			new AbortController().signal,
-		),
-	).toMatchObject({ decision: "deny", interrupt: true });
+	expect(await hooks.permissionRequest(invocation, ctx, new AbortController().signal)).toMatchObject({
+		decision: "deny",
+		interrupt: true,
+	});
 });
 
 it("retains Claude replacement presence including empty input and ignores empty permission updates", () => {
@@ -328,9 +265,7 @@ it("retains Claude replacement presence including empty input and ignores empty 
 		expect(
 			interpret(
 				"PermissionRequest",
-				run(
-					output({ behavior: "allow", updatedInput, updatedPermissions: [] }),
-				),
+				run(output({ behavior: "allow", updatedInput, updatedPermissions: [] })),
 				"claude",
 			),
 		).toMatchObject({
@@ -342,25 +277,14 @@ it("retains Claude replacement presence including empty input and ignores empty 
 });
 it("Claude denial precedes malformed replacement fields", () => {
 	expect(
-		interpret(
-			"PermissionRequest",
-			run(output({ behavior: "deny", message: "deny wins", updatedInput: 7 })),
-			"claude",
-		),
+		interpret("PermissionRequest", run(output({ behavior: "deny", message: "deny wins", updatedInput: 7 })), "claude"),
 	).toMatchObject({ permissionDecision: "deny", block: "deny wins" });
 });
-it.each([null, "command", 7])(
-	"rejects present invalid Claude replacement %s",
-	(updatedInput) => {
-		expect(
-			interpret(
-				"PermissionRequest",
-				run(output({ behavior: "allow", updatedInput })),
-				"claude",
-			).error,
-		).toBeDefined();
-	},
-);
+it.each([null, "command", 7])("rejects present invalid Claude replacement %s", (updatedInput) => {
+	expect(
+		interpret("PermissionRequest", run(output({ behavior: "allow", updatedInput })), "claude").error,
+	).toBeDefined();
+});
 
 it("keeps Codex nullable reserved fields neutral", () => {
 	expect(
@@ -380,12 +304,6 @@ it("keeps Codex nullable reserved fields neutral", () => {
 it.each([{ message: 123 }, { interrupt: "yes" }])(
 	"validates Claude denial wire fields before accepting denial %j",
 	(field) => {
-		expect(
-			interpret(
-				"PermissionRequest",
-				run(output({ behavior: "deny", ...field })),
-				"claude",
-			).error,
-		).toBeDefined();
+		expect(interpret("PermissionRequest", run(output({ behavior: "deny", ...field })), "claude").error).toBeDefined();
 	},
 );

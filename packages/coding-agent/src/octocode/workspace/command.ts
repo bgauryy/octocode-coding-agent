@@ -2,10 +2,12 @@ import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { errorMessage } from "../shared/util.ts";
 
-export function webCommand(open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void>): Subcommand {
+export function webCommand(
+	open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void>,
+): Subcommand {
 	return {
 		description: "Open the web workspace — /web [backlogs]",
-		complete: prefix => wordCompletions(["backlogs"], prefix),
+		complete: (prefix) => wordCompletions(["backlogs"], prefix),
 		async handler(args, ctx) {
 			if (args.trim() && args.trim() !== "backlogs") {
 				say(ctx, "Usage: /web [backlogs]", "warning");

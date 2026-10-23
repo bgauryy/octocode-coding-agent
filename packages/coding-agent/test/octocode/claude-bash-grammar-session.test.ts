@@ -5,21 +5,9 @@ import { fixture } from "./permission-session-fixture.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 const literalCases = [
-	[
-		"quoted semicolon",
-		"printf '%s' 'SAFE; printf BLOCK' > $MARKER",
-		"SAFE; printf BLOCK",
-	],
-	[
-		"quoted and",
-		"printf '%s' 'SAFE && printf BLOCK' > $MARKER",
-		"SAFE && printf BLOCK",
-	],
-	[
-		"quoted pipe",
-		"printf '%s' 'SAFE | printf BLOCK' > $MARKER",
-		"SAFE | printf BLOCK",
-	],
+	["quoted semicolon", "printf '%s' 'SAFE; printf BLOCK' > $MARKER", "SAFE; printf BLOCK"],
+	["quoted and", "printf '%s' 'SAFE && printf BLOCK' > $MARKER", "SAFE && printf BLOCK"],
+	["quoted pipe", "printf '%s' 'SAFE | printf BLOCK' > $MARKER", "SAFE | printf BLOCK"],
 	["escaped raw word", String.raw`printf BL\OCK > $MARKER`, "BLOCK"],
 ] as const;
 
@@ -34,9 +22,7 @@ for (const [name, command, expected] of literalCases) {
 				command: command.replaceAll("$MARKER", JSON.stringify(f.marker)),
 			});
 			expect(fs.readFileSync(f.marker, "utf8")).toBe(expected);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(f.inputs()).toEqual([]);
 		} finally {
 			await f.close();
@@ -70,9 +56,7 @@ for (const [name, command] of deniedCases) {
 				command: command.replaceAll("$MARKER", JSON.stringify(f.marker)),
 			});
 			expect(fs.existsSync(f.marker)).toBe(false);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(JSON.stringify(result)).not.toContain("Unsupported applicable");
@@ -133,9 +117,7 @@ for (const [name, allow, expectedHooks] of [
 		});
 		try {
 			await f.run("bash", { command: "node -p 41; node -p 42" });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("41");
 			expect(JSON.stringify(result)).toContain("42");
@@ -148,16 +130,8 @@ for (const [name, allow, expectedHooks] of [
 
 for (const [name, rules, denied] of [
 	["whole raw deny", { deny: ["Bash(node -p 41; node -p 42)"] }, true],
-	[
-		"whole allow with second leaf deny",
-		{ allow: ["Bash(node -p 41; node -p 42)"], deny: ["Bash(node -p 42)"] },
-		true,
-	],
-	[
-		"whole raw ask in full mode",
-		{ ask: ["Bash(node -p 41; node -p 42)"] },
-		false,
-	],
+	["whole allow with second leaf deny", { allow: ["Bash(node -p 41; node -p 42)"], deny: ["Bash(node -p 42)"] }, true],
+	["whole raw ask in full mode", { ask: ["Bash(node -p 41; node -p 42)"] }, false],
 ] as const) {
 	it(`source Bash ${name} matches the observed rule precedence`, async () => {
 		const f = await fixture("claude", {
@@ -166,12 +140,9 @@ for (const [name, rules, denied] of [
 		});
 		try {
 			await f.run("bash", { command: "node -p 41; node -p 42" });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: denied });
-			if (denied)
-				expect(JSON.stringify(result)).toContain("Claude permission deny:");
+			if (denied) expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(f.inputs()).toHaveLength(0);
 		} finally {
 			await f.close();
@@ -194,9 +165,7 @@ for (const [name, command, rule, expected] of [
 				command: command.replaceAll("$MARKER", JSON.stringify(f.marker)),
 			});
 			expect(fs.readFileSync(f.marker, "utf8")).toBe(expected);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(f.inputs()).toEqual([]);
 		} finally {
 			await f.close();
@@ -216,9 +185,7 @@ for (const [name, allow, expectedHooks] of [
 		});
 		try {
 			await f.run("bash", { command: "node -p >/dev/null 42" });
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 			expect(f.inputs()).toHaveLength(expectedHooks);
 		} finally {
 			await f.close();
@@ -244,12 +211,9 @@ for (const [shape, command] of [
 				await f.run("bash", {
 					command: command.replaceAll("$MARKER", JSON.stringify(f.marker)),
 				});
-				const result = f.session.messages.findLast(
-					(m) => m.role === "toolResult",
-				);
+				const result = f.session.messages.findLast((m) => m.role === "toolResult");
 				expect(result).toMatchObject({ isError: false });
-				if (shape === "file redirect")
-					expect(fs.readFileSync(f.marker, "utf8")).toBe("42\n");
+				if (shape === "file redirect") expect(fs.readFileSync(f.marker, "utf8")).toBe("42\n");
 				else expect(JSON.stringify(result)).toContain("42");
 				expect(f.inputs()).toHaveLength(expectedHooks);
 			} finally {
@@ -291,9 +255,7 @@ for (const [pattern, denied] of [
 			await f.run("bash", {
 				command: `printf http://blocked > ${JSON.stringify(f.marker)}`,
 			});
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: denied });
 			if (denied) {
 				expect(fs.existsSync(f.marker)).toBe(false);

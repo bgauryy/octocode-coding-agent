@@ -100,7 +100,7 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 	return (
 		<>
 			<div className="backdrop palette-backdrop" aria-hidden="true" onMouseDown={onClose} />
-			<div ref={dialog} className="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+			<div ref={dialog} className="palette" role="dialog" aria-modal="true" aria-label="Command palette" tabIndex={-1}>
 				<div className="palette-input">
 					<SearchIcon />
 					<input

@@ -24,7 +24,12 @@ order. Octocode configuration takes precedence:
   provider replaces the whole Pi provider, including credentials and models.
 - `settings.json`: missing settings are inherited. Native values win, including
   nested settings. Saving settings writes the effective configuration to the
-  Octocode directory; the Pi files are unchanged.
+  Octocode directory; the Pi files are unchanged. A native settings document
+  that is empty or whose root is not a JSON object is reported as invalid rather
+  than masked by fallback settings. Each save locks the read–merge–write operation,
+  including first creation, and replaces the target file atomically. The file is
+  parsed again during the save; invalid content introduced after startup is left
+  untouched and reported as a settings error. Repair it, then run `/reload`.
 - `mcp.json`: Pi servers are inherited, followed by shared `~/.octocode/`
   and `~/.octocode/agent/` files, then the canonical agent directory.
   Enablement and exposure changes save native overrides. See [MCP](mcp.md#configure-servers)
@@ -45,6 +50,7 @@ own tools and commands; normal conflict diagnostics apply.
 Explicit home overrides and custom SDK directories disable automatic Pi fallback.
 Pi sessions, trust decisions, authentication files, device identity and telemetry
 consent are not imported. Existing directories are neither moved nor deleted.
+Project trust decisions are saved by atomically replacing the native `trust.json`.
 The separate agents-communication service keeps its shared directory at
 `~/.octocode/agents-communication/`.
 

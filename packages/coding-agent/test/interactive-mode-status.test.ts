@@ -755,15 +755,12 @@ describe("InteractiveMode.showLoadedResources", () => {
 			},
 			{
 				path: "/tmp/project/.octocode/npm/node_modules/@scope/pi-scoped/extensions/index.ts",
-				sourceInfo: createSourceInfo(
-					"/tmp/project/.octocode/npm/node_modules/@scope/pi-scoped/extensions/index.ts",
-					{
-						source: "npm:@scope/pi-scoped",
-						scope: "project",
-						origin: "package",
-						baseDir: "/tmp/project/.octocode/npm/node_modules/@scope/pi-scoped",
-					},
-				),
+				sourceInfo: createSourceInfo("/tmp/project/.octocode/npm/node_modules/@scope/pi-scoped/extensions/index.ts", {
+					source: "npm:@scope/pi-scoped",
+					scope: "project",
+					origin: "package",
+					baseDir: "/tmp/project/.octocode/npm/node_modules/@scope/pi-scoped",
+				}),
 			},
 			{
 				path: "/tmp/project/.octocode/git/github.com/HazAT/pi-interactive-subagents/extensions/index.ts",
@@ -854,12 +851,21 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 	test("shows current MCP states after skills and refreshes without duplicate sections", () => {
 		const events = createEventBus();
-		const server = { name: "octocode", enabled: true, state: "connecting", exposure: "direct" as const,
-			toolCount: 0, source: "built-in Octocode" };
+		const server = {
+			name: "octocode",
+			enabled: true,
+			state: "connecting",
+			exposure: "direct" as const,
+			toolCount: 0,
+			source: "built-in Octocode",
+		};
 		setMcpSessionStatus(events, "native", [server]);
 		setMcpSessionStatus(events, "configured", [{ ...server, name: "docs", enabled: false }]);
-		const fakeThis = createShowLoadedResourcesThis({ quietStartup: false, events,
-			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "research" }] });
+		const fakeThis = createShowLoadedResourcesThis({
+			quietStartup: false,
+			events,
+			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "research" }],
+		});
 		const render = () => {
 			(InteractiveMode as any).prototype.showLoadedResources.call(fakeThis);
 			return renderAll(fakeThis.loadedResourcesContainer);

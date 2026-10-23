@@ -44,10 +44,7 @@ describe("Delivery", () => {
 		// Held by Octocode until the turn ends, never cleared; next-turn messages wait for the user; no details, no identity.
 		t.pi.sendMessage(report("fyi"), { triggerTurn: false });
 		t.pi.sendMessage(report("later"), { deliverAs: "nextTurn" });
-		t.pi.sendMessage(
-			{ customType: "x", content: "plain", display: true, details: undefined },
-			{ deliverAs: "steer" },
-		);
+		t.pi.sendMessage({ customType: "x", content: "plain", display: true, details: undefined }, { deliverAs: "steer" });
 		expect(t.sent).toHaveLength(6);
 		expect(t.delivery.pending).toBe(2);
 		expect(t.ctx.ui.statuses.get(STATUS.queued)).toContain("2 queued");

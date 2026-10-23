@@ -99,7 +99,14 @@ function focusable(container: HTMLElement): HTMLElement[] {
 }
 
 /** Open modals, innermost last: only the innermost one handles Escape and Tab. */
-const modals: symbol[] = [];
+interface ModalEntry {
+	token: symbol;
+	opener: HTMLElement | null;
+	fallback: HTMLElement | null;
+	container: RefObject<HTMLElement | null>;
+}
+const modals: ModalEntry[] = [];
+let originalOverflow: string | undefined;
 export function hasOpenModal(): boolean {
 	return modals.length > 0;
 }
@@ -117,14 +124,14 @@ export function useModal(
 	const focusInitial = useEffectEvent(() => (initialFocus?.() ?? container.current)?.focus({ preventScroll: true }));
 	useLayoutEffect(() => {
 		const token = Symbol("modal");
-		modals.push(token);
 		const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		const overflow = document.body.style.overflow;
+		if (!modals.length) originalOverflow = document.body.style.overflow;
+		modals.push({ token, opener, fallback: null, container });
 		document.body.style.overflow = "hidden";
 		focusInitial();
 		function onKeyDown(event: KeyboardEvent) {
 			const root = container.current;
-			if (!root || modals.at(-1) !== token) return;
+			if (!root || modals.at(-1)?.token !== token) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
 				close();
@@ -150,10 +157,26 @@ export function useModal(
 		}
 		document.addEventListener("keydown", onKeyDown);
 		return () => {
-			modals.splice(modals.indexOf(token), 1);
 			document.removeEventListener("keydown", onKeyDown);
-			document.body.style.overflow = overflow;
-			if (opener?.isConnected) opener.focus({ preventScroll: true });
+			const index = modals.findIndex((modal) => modal.token === token);
+			if (index < 0) return;
+			const top = index === modals.length - 1;
+			const [removed] = modals.splice(index, 1);
+			if (modals[index]) modals[index].fallback = removed.opener?.isConnected ? removed.opener : removed.fallback;
+			if (!modals.length) {
+				document.body.style.overflow = originalOverflow ?? "";
+				originalOverflow = undefined;
+			}
+			if (!top) return;
+			// React removes the background's inert attribute later in the same commit; restore focus afterward.
+			queueMicrotask(() => {
+				const activeDialog = modals.at(-1)?.container.current;
+				const available = (element: HTMLElement | null) =>
+					element?.isConnected && !element.closest("[inert]") && (!activeDialog || activeDialog.contains(element));
+				const target = [removed.opener, removed.fallback].find(available);
+				if (target) target.focus({ preventScroll: true });
+				else activeDialog?.focus({ preventScroll: true });
+			});
 		};
 	}, [container]);
 }
@@ -175,11 +198,13 @@ const BOTTOM_SLACK = 32;
  * Keep a scrolling log pinned to its newest line while the reader is at the bottom; scrolling up releases it, and
  * `jump` returns to the end. `content` is whatever changes when new lines arrive.
  */
-export function useStickToBottom(ref: RefObject<HTMLElement | null>, content: unknown) {
+export function useStickToBottom<T extends HTMLElement>(content: unknown) {
+	// The element, not a ref object: the log may mount after the first render (an empty transcript shows a placeholder),
+	// and the scroll listener must attach whenever it does.
+	const [element, ref] = useState<T | null>(null);
 	const [atBottom, setAtBottom] = useState(true);
 	const pinned = useRef(true);
 	useEffect(() => {
-		const element = ref.current;
 		if (!element) return;
 		const onScroll = () => {
 			pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_SLACK;
@@ -187,18 +212,16 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, content: un
 		};
 		element.addEventListener("scroll", onScroll, { passive: true });
 		return () => element.removeEventListener("scroll", onScroll);
-	}, [ref]);
+	}, [element]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-pin whenever new content arrives.
 	useLayoutEffect(() => {
-		const element = ref.current;
 		if (element && pinned.current) element.scrollTop = element.scrollHeight;
-	}, [ref, content]);
+	}, [element, content]);
 	const jump = useCallback(() => {
-		const element = ref.current;
 		if (!element) return;
 		pinned.current = true;
 		setAtBottom(true);
 		element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
-	}, [ref]);
-	return { atBottom, jump };
+	}, [element]);
+	return { ref, atBottom, jump };
 }

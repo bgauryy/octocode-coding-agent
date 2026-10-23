@@ -22,15 +22,32 @@ it("loads one canonical native command per row and resolves aliases through the 
 	vi.stubEnv("OCTOCODE_EXTRA_SKILLS", "0");
 	const settingsManager = SettingsManager.inMemory();
 	const resourceLoader = new DefaultResourceLoader({
-		cwd, agentDir, settingsManager, additionalExtensionPaths: ["builtin:mcp"],
-		noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+		cwd,
+		agentDir,
+		settingsManager,
+		additionalExtensionPaths: ["builtin:mcp"],
+		noExtensions: true,
+		noSkills: true,
+		noPromptTemplates: true,
+		noThemes: true,
+		noContextFiles: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createAgentSession({ cwd, agentDir, resourceLoader, settingsManager, sessionManager: SessionManager.inMemory(cwd) });
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir,
+		resourceLoader,
+		settingsManager,
+		sessionManager: SessionManager.inMemory(cwd),
+	});
 	try {
 		const runner = session.extensionRunner;
 		const commands = runner.getRegisteredCommands();
-		for (const [name, alias] of [["permissions", "permission"], ["resume", "sessions"], ["status", "info"]]) {
+		for (const [name, alias] of [
+			["permissions", "permission"],
+			["resume", "sessions"],
+			["status", "info"],
+		]) {
 			const canonical = commands.filter((command) => command.name === name);
 			expect(canonical).toHaveLength(1);
 			expect(canonical[0]!.aliases).toContain(alias);

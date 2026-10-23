@@ -6,7 +6,7 @@ export default mergeConfig(
 	defineConfig({
 		test: {
 			globals: true,
-            exclude: ["test/octocode/**", "**/node_modules/**"],
+			exclude: ["test/octocode/**", "**/node_modules/**"],
 			environment: "node",
 			setupFiles: ["test/setup-env.ts"],
 			testTimeout: 30000,

@@ -339,6 +339,21 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		return this.layoutRoot ? [this.layoutRoot] : this.children;
 	}
 
+	protected override isMouseTargetMounted(target: TuiMouseDispatchTarget): boolean {
+		const owners = target.owners ?? [];
+		const implicitIndex = owners.indexOf(this.implicitDocument);
+		if (implicitIndex < 0) return super.isMouseTargetMounted(target);
+		if (this.layoutRoot) return false;
+		let component = target.component;
+		for (const owner of owners.slice(0, implicitIndex)) {
+			if (owner instanceof Container && !owner.children.includes(component)) return false;
+			component = owner;
+		}
+		// The implicit document forwards into TuiAltScreen's children without owning
+		// its own child list. Keep the painted coordinates, but require a live child.
+		return this.children.includes(component);
+	}
+
 	private getPrimaryScrollView(): ScrollView {
 		return this.currentLayout?.primaryScrollView ?? this.implicitScrollView;
 	}
@@ -636,8 +651,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				const baseIndex = exactIndex >= 0 ? exactIndex : Math.min(search.selectedIndex, matches.length - 1);
 				selectedIndex = baseIndex < 0 ? matches.length - 1 : (baseIndex - 1 + matches.length) % matches.length;
 			} else {
-				selectedIndex =
-					exactIndex >= 0 ? exactIndex : Math.min(Math.max(0, search.selectedIndex), matches.length - 1);
+				selectedIndex = exactIndex >= 0 ? exactIndex : Math.min(Math.max(0, search.selectedIndex), matches.length - 1);
 			}
 		}
 
@@ -911,6 +925,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 		if (this.mouseCapture || this.mousePressTarget) {
 			const target = this.mouseCapture ?? this.mousePressTarget!;
+			if (
+				!this.isMouseTargetMounted(target) ||
+				(this.mousePressTarget && !this.isMouseTargetMounted(this.mousePressTarget))
+			) {
+				this.clearComponentMouseGesture();
+				this.lastComponentClick = undefined;
+				return;
+			}
 			if (this.mousePressPoint && (raw.x !== this.mousePressPoint.x || raw.y !== this.mousePressPoint.y)) {
 				this.mousePressMoved = true;
 				this.lastComponentClick = undefined;
@@ -919,7 +941,12 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			const targetResult = this.dispatchMouseToTarget(event, target);
 			if (targetResult) render = this.applyMouseDispatchResult(event, targetResult);
 			if (raw.release) {
-				if (!this.mousePressMoved && this.mousePressPoint?.x === raw.x && this.mousePressPoint.y === raw.y) {
+				if (
+					this.isMouseTargetMounted(target) &&
+					!this.mousePressMoved &&
+					this.mousePressPoint?.x === raw.x &&
+					this.mousePressPoint.y === raw.y
+				) {
 					const clickEvent = this.createMouseEvent("click", raw.button, raw.x, raw.y, {
 						clickCount: this.getComponentClickCount(target, raw.x, raw.y),
 					});
@@ -1046,12 +1073,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		for (const scrollView of getScrollViewsAt(this.currentLayout, x, y)) {
 			const box = getScrollViewBox(this.currentLayout, scrollView);
 			const geometry = box ? getScrollbarGeometry(box, includeHiddenAuto) : undefined;
-			if (
-				geometry &&
-				x === geometry.column &&
-				y >= geometry.trackTop &&
-				y < geometry.trackTop + geometry.trackHeight
-			) {
+			if (geometry && x === geometry.column && y >= geometry.trackTop && y < geometry.trackTop + geometry.trackHeight) {
 				return { scrollView, geometry };
 			}
 		}
@@ -1091,17 +1113,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				this.stopScrollbarDrag();
 				return true;
 			}
-			const box = this.currentLayout
-				? getScrollViewBox(this.currentLayout, this.scrollbarDrag.scrollView)
-				: undefined;
+			const box = this.currentLayout ? getScrollViewBox(this.currentLayout, this.scrollbarDrag.scrollView) : undefined;
 			const geometry = box ? getScrollbarGeometry(box) : undefined;
 			if (geometry) {
-				this.scrollScrollbarToPointer(
-					this.scrollbarDrag.scrollView,
-					geometry,
-					event.y,
-					this.scrollbarDrag.grabOffset,
-				);
+				this.scrollScrollbarToPointer(this.scrollbarDrag.scrollView, geometry, event.y, this.scrollbarDrag.grabOffset);
 			}
 			return true;
 		}
@@ -1183,9 +1198,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			segments.push({ start, end, selectable: segment.isWordLike === true || joiner, joiner });
 			start = end;
 		}
-		const clickedSegmentIndex = segments.findIndex(
-			(segment) => point.col >= segment.start && point.col < segment.end,
-		);
+		const clickedSegmentIndex = segments.findIndex((segment) => point.col >= segment.start && point.col < segment.end);
 		if (clickedSegmentIndex < 0) return undefined;
 
 		const canJoin = (
@@ -1377,9 +1390,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = true;
 		const scrollView =
-			!this.hasOverlay() && this.currentLayout
-				? getScrollViewsAt(this.currentLayout, event.x, event.y)[0]
-				: undefined;
+			!this.hasOverlay() && this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y)[0] : undefined;
 		const anchor = this.getSelectionPoint(event, scrollView);
 		const word = this.getWordSelection(anchor);
 		const clickCount = this.getClickCount(anchor, word);
@@ -1404,10 +1415,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		const anchorBeforeFocus =
 			this.selectionAnchor.row < this.selectionFocus.row ||
 			(this.selectionAnchor.row === this.selectionFocus.row && this.selectionAnchor.col < this.selectionFocus.col);
-		if (
-			this.selectionAnchor.row === this.selectionFocus.row &&
-			this.selectionAnchor.col === this.selectionFocus.col
-		) {
+		if (this.selectionAnchor.row === this.selectionFocus.row && this.selectionAnchor.col === this.selectionFocus.col) {
 			return undefined;
 		}
 		return anchorBeforeFocus
@@ -1745,8 +1753,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		// WezTerm erases intersecting Kitty image cells when a later row write touches a covered row.
 		// Draw image placements after every clear and text write so nothing later intersects them; preserve
 		// the existing interleaved output for text-only frames and every other terminal.
-		const drawKittyImagesLast =
-			redrawImages && this.imageProtocol === "kitty" && screen.some(isImageLine) && isWezTerm;
+		const drawKittyImagesLast = redrawImages && this.imageProtocol === "kitty" && screen.some(isImageLine) && isWezTerm;
 		if (drawKittyImagesLast) {
 			for (let row = 0; row < height; row++) {
 				if (!fullRedraw && !imagesNeedRedraw && screen[row] === this.previousScreen[row]) continue;

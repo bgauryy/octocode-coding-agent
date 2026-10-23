@@ -74,7 +74,12 @@ describe("OutputAccumulator head and tail", () => {
 
 	it("gives a single huge line only its end, without a marker", () => {
 		const { snapshot, output } = accumulate([`${"a".repeat(60 * 1024)}END`]);
-		expect(snapshot.truncation).toMatchObject({ truncated: true, truncatedBy: "bytes", lastLinePartial: true, totalLines: 1 });
+		expect(snapshot.truncation).toMatchObject({
+			truncated: true,
+			truncatedBy: "bytes",
+			lastLinePartial: true,
+			totalLines: 1,
+		});
 		expect(snapshot.truncation.headLines).toBeUndefined();
 		expect(snapshot.content.endsWith("aaaEND")).toBe(true);
 		expect(snapshot.content).not.toContain("elided");

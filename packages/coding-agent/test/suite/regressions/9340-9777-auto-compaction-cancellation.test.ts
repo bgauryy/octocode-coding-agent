@@ -49,7 +49,6 @@ describe("automatic compaction cancellation regressions", () => {
 			models: [{ id: "faux-1", contextWindow: 200, maxTokens: 50 }],
 			compactionPolicy: { enabled: true, reserveTokens: 50, keepRecentTokens: 1 },
 			settings: {
-
 				retry: { enabled: false },
 			},
 			builtinCompactionFactories: [

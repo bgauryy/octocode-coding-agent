@@ -23,7 +23,7 @@ const USAGE = `octocode-api — talk to running Octocode sessions (start them wi
 async function main(argv: string[]): Promise<void> {
 	if (argv[0] === "completion") {
 		if (argv[1] === "--values") {
-			const ids = argv.at(-2) === "--to" ? listInstances(apiDir(), false).map(instance => instance.id) : [];
+			const ids = argv.at(-2) === "--to" ? listInstances(apiDir(), false).map((instance) => instance.id) : [];
 			const values = completeApi(argv.slice(2), ids);
 			if (values.length) process.stdout.write(values.join("\n") + "\n");
 		} else if (argv.length === 2 && ["bash", "zsh", "fish"].includes(argv[1])) {

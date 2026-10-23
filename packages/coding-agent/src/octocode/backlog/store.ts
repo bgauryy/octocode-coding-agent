@@ -33,7 +33,14 @@ import { type Row, refText, toItem } from "./row.ts";
  * notes, which say why.
  */
 
-import { STATES, type State, type Note, type NoteKind, type BacklogComment, type BacklogAudit } from "@octocodeai/octocode-contacts/snapshot";
+import {
+	STATES,
+	type State,
+	type Note,
+	type NoteKind,
+	type BacklogComment,
+	type BacklogAudit,
+} from "@octocodeai/octocode-contacts/snapshot";
 export { STATES, type State, type Note } from "@octocodeai/octocode-contacts/snapshot";
 export const PRIORITIES = ["p0", "p1", "p2", "p3"] as const;
 type Priority = (typeof PRIORITIES)[number];
@@ -101,8 +108,7 @@ const tagText = (tags: readonly string[]) => (tags.length ? tags.map((tag) => `#
 const listText = (entries: readonly string[]) => (entries.length ? entries.join(", ") : "none");
 
 /** A text field's change: the old text is kept in full, so a replacement loses nothing. */
-const replaced = (name: string, before: string) =>
-	before ? `${name} replaced; it was:\n${before}` : `${name} added`;
+const replaced = (name: string, before: string) => (before ? `${name} replaced; it was:\n${before}` : `${name} added`);
 
 /** The change note for one update: every field that changed, old → new; a replaced text is kept in full. */
 function changeText(before: Item, after: Item): string {
@@ -246,8 +252,7 @@ export class BacklogStore {
 		const seq = typeof ref === "number" ? ref : parseRef(ref);
 		if (seq === undefined) return undefined;
 		const row = this.db.prepare(`${SELECT} WHERE b.repo_key = ? AND b.seq = ?`).get(this.repo, seq) as
-			| Row<State>
-			| undefined;
+			Row<State> | undefined;
 		return row ? this.enrich(toItem(row)) : undefined;
 	}
 
@@ -266,11 +271,7 @@ export class BacklogStore {
 		if (!item) return target.rowId;
 		if (target.rowId === item.rowId) throw new BacklogError(`${item.ref} cannot come from itself.`);
 		const seen = new Set<number>();
-		for (
-			let at: Item | undefined = target;
-			at?.from !== undefined && !seen.has(at.seq);
-			at = this.get(at.from)
-		) {
+		for (let at: Item | undefined = target; at?.from !== undefined && !seen.has(at.seq); at = this.get(at.from)) {
 			seen.add(at.seq);
 			if (at.from === item.seq)
 				throw new BacklogError(`${target.ref} already comes from ${item.ref}: the link would make a loop.`);
@@ -297,9 +298,8 @@ export class BacklogStore {
 			args.push(this.origin(query.from));
 		}
 		const clause = where.join(" AND ");
-		const total = (
-			this.db.prepare(`SELECT COUNT(*) AS n FROM backlog b WHERE ${clause}`).get(...args) as { n: number }
-		).n;
+		const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM backlog b WHERE ${clause}`).get(...args) as { n: number })
+			.n;
 		const limit = query.limit === undefined ? -1 : Math.max(0, Math.floor(query.limit));
 		const rows = this.db
 			.prepare(`${SELECT} WHERE ${clause} ORDER BY ${ORDER} LIMIT ? OFFSET ?`)
@@ -333,12 +333,40 @@ export class BacklogStore {
 	comments(ref: string): BacklogComment[] {
 		const item = this.get(ref);
 		if (!item) throw new BacklogError(`No backlog item ${ref}.`);
-		return (this.db.prepare("SELECT id, at, author, text FROM backlog_comments WHERE item = ? ORDER BY id").all(item.rowId) as unknown as Array<{ id: number; at: number; author: string; text: string }>).map((row) => ({ ...row, backlogId: item.ref }));
+		return (
+			this.db
+				.prepare("SELECT id, at, author, text FROM backlog_comments WHERE item = ? ORDER BY id")
+				.all(item.rowId) as unknown as Array<{ id: number; at: number; author: string; text: string }>
+		).map((row) => ({ ...row, backlogId: item.ref }));
 	}
 
 	audit(ref?: string, limit = 500, before?: number): BacklogAudit[] {
-		const rows = this.db.prepare("SELECT * FROM backlog_audits WHERE repo_key = ? AND (? IS NULL OR backlog_id = ?) AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?").all(this.repo, ref ?? null, ref ?? null, before ?? null, before ?? null, Math.max(1, Math.min(500, Math.floor(limit)))) as Array<Record<string, string | number | null>>;
-		return redactData(rows.reverse().map((row) => ({ id: Number(row.id), backlogId: String(row.backlog_id), at: Number(row.at), actor: JSON.parse(String(row.actor)), action: String(row.action), entity: String(row.entity), before: row.before_value ? JSON.parse(String(row.before_value)) : null, after: row.after_value ? JSON.parse(String(row.after_value)) : null })));
+		const rows = this.db
+			.prepare(
+				"SELECT * FROM backlog_audits WHERE repo_key = ? AND (? IS NULL OR backlog_id = ?) AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
+			)
+			.all(
+				this.repo,
+				ref ?? null,
+				ref ?? null,
+				before ?? null,
+				before ?? null,
+				Math.max(1, Math.min(500, Math.floor(limit))),
+			) as Array<Record<string, string | number | null>>;
+		return redactData(
+			rows
+				.reverse()
+				.map((row) => ({
+					id: Number(row.id),
+					backlogId: String(row.backlog_id),
+					at: Number(row.at),
+					actor: JSON.parse(String(row.actor)),
+					action: String(row.action),
+					entity: String(row.entity),
+					before: row.before_value ? JSON.parse(String(row.before_value)) : null,
+					after: row.after_value ? JSON.parse(String(row.after_value)) : null,
+				})),
+		);
 	}
 
 	comment(ref: string, text: string, actor: Actor, version?: number): Item {
@@ -357,8 +385,7 @@ export class BacklogStore {
 	add(input: AddInput, actor: Actor = { id: input.createdBy }): Item {
 		this.validateEntityInput(input);
 		input = this.reasonInput(input);
-		if (input.completion && input.state !== "done")
-			throw new BacklogError("A completion requires state done.");
+		if (input.completion && input.state !== "done") throw new BacklogError("A completion requires state done.");
 		refuseSecrets({ note: input.note });
 		const title = storedTitle(input.title);
 		if (!title) throw new BacklogError("An item needs a title.");
@@ -376,57 +403,61 @@ export class BacklogStore {
 			tags: input.tags,
 		});
 		const agentDb = this.agentDb();
-		return agentDb.withActor({ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") }, () => agentDb.transaction(() => {
-			// Numbers are never reused, even after the newest item is deleted: the high-water mark lives in `meta`.
-			const key = `backlog_seq:${this.repo}`;
-			const mark = Number(readMeta(agentDb.db, key) ?? 0);
-			const max =
-				(
-					agentDb.db.prepare("SELECT MAX(seq) AS n FROM backlog WHERE repo_key = ?").get(this.repo) as {
-						n: number | null;
-					}
-				).n ?? 0;
-			const seq = Math.max(mark, max) + 1;
-			writeMeta(agentDb.db, key, String(seq));
-			const from = input.from === undefined ? null : this.origin(input.from);
-			const at = this.now();
-			const wanted = input.state ?? "backlog";
-			const state = wanted === "ongoing" || wanted === "done" ? "todo" : wanted;
-			agentDb.db
-				.prepare(
-					`INSERT INTO backlog (repo_key, seq, title, goal, body, paths, why, evidence, plan, state, priority, tags, assignee, created_by, source_session, created_at, updated_at, started_at, done_at, from_item)
+		return agentDb.withActor(
+			{ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") },
+			() =>
+				agentDb.transaction(() => {
+					// Numbers are never reused, even after the newest item is deleted: the high-water mark lives in `meta`.
+					const key = `backlog_seq:${this.repo}`;
+					const mark = Number(readMeta(agentDb.db, key) ?? 0);
+					const max =
+						(
+							agentDb.db.prepare("SELECT MAX(seq) AS n FROM backlog WHERE repo_key = ?").get(this.repo) as {
+								n: number | null;
+							}
+						).n ?? 0;
+					const seq = Math.max(mark, max) + 1;
+					writeMeta(agentDb.db, key, String(seq));
+					const from = input.from === undefined ? null : this.origin(input.from);
+					const at = this.now();
+					const wanted = input.state ?? "backlog";
+					const state = wanted === "ongoing" || wanted === "done" ? "todo" : wanted;
+					agentDb.db
+						.prepare(
+							`INSERT INTO backlog (repo_key, seq, title, goal, body, paths, why, evidence, plan, state, priority, tags, assignee, created_by, source_session, created_at, updated_at, started_at, done_at, from_item)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
-				)
-				.run(
-					this.repo,
-					seq,
-					title,
-					storedText(input.goal),
-					storedText(input.body),
-					cleanList(input.paths ?? []).join("\n"),
-					storedText(input.why),
-					cleanList(input.evidence ?? []).join("\n"),
-					storedText(input.plan),
-					state,
-					clampPriority(input.priority),
-					cleanTags(input.tags ?? []).join(" "),
-					input.createdBy,
-					input.sourceSession ?? null,
-					at,
-					at,
-					null,
-					null,
-					from,
-				);
-			const item = this.get(seq)!;
-			this.applyEntities(item, input, actor, at);
-			if (input.note?.trim()) this.log(item, at, actor.id, "note", storedText(input.note));
-			if (item.from !== undefined)
-				this.log(item, at, input.createdBy, "change", `created from ${refText(item.from)}`);
-			return wanted === "ongoing" || wanted === "done"
-				? this.update(item.ref, { state: wanted, completion: input.completion }, actor)
-				: this.get(seq)!;
-		}));
+						)
+						.run(
+							this.repo,
+							seq,
+							title,
+							storedText(input.goal),
+							storedText(input.body),
+							cleanList(input.paths ?? []).join("\n"),
+							storedText(input.why),
+							cleanList(input.evidence ?? []).join("\n"),
+							storedText(input.plan),
+							state,
+							clampPriority(input.priority),
+							cleanTags(input.tags ?? []).join(" "),
+							input.createdBy,
+							input.sourceSession ?? null,
+							at,
+							at,
+							null,
+							null,
+							from,
+						);
+					const item = this.get(seq)!;
+					this.applyEntities(item, input, actor, at);
+					if (input.note?.trim()) this.log(item, at, actor.id, "note", storedText(input.note));
+					if (item.from !== undefined)
+						this.log(item, at, input.createdBy, "change", `created from ${refText(item.from)}`);
+					return wanted === "ongoing" || wanted === "done"
+						? this.update(item.ref, { state: wanted, completion: input.completion }, actor)
+						: this.get(seq)!;
+				}),
+		);
 	}
 
 	/**
@@ -449,165 +480,160 @@ export class BacklogStore {
 			tags: input.tags,
 		});
 		const agentDb = this.agentDb();
-		return agentDb.withActor({ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") }, () => agentDb.transaction(() => {
-			const item = this.get(ref);
-			if (!item) throw new BacklogError(`No backlog item ${ref}.`);
-			if (input.completion) {
-				const previous = item.completions.find((c) => c.operationKey === input.completion!.operationKey);
-				if (previous) {
-					const { id: _id, actor: _actor, at: _at, version: _version, goal: _goal, ...payload } = previous;
-					if (!isDeepStrictEqual(payload, input.completion))
-						throw new BacklogError("Completion operation key was already used with different content.");
+		return agentDb.withActor(
+			{ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") },
+			() =>
+				agentDb.transaction(() => {
+					const item = this.get(ref);
+					if (!item) throw new BacklogError(`No backlog item ${ref}.`);
+					if (input.completion) {
+						const previous = item.completions.find((c) => c.operationKey === input.completion!.operationKey);
+						if (previous) {
+							const { id: _id, actor: _actor, at: _at, version: _version, goal: _goal, ...payload } = previous;
+							if (!isDeepStrictEqual(payload, input.completion))
+								throw new BacklogError("Completion operation key was already used with different content.");
+							if (previous.actor !== actor.id || (actor.owners && !(item.assignee && actor.owners.has(item.assignee))))
+								throw new BacklogError("Completion belongs to another actor.");
+							return item;
+						}
+					}
+					if (input.version !== undefined && input.version !== item.version)
+						throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
+					if (actor.owners && !(item.assignee && actor.owners.has(item.assignee))) {
+						throw new BacklogError(
+							`${item.ref} is not claimed by your parent: a subagent updates only the items its parent has claimed.`,
+						);
+					}
+					const holder =
+						!actor.owners && item.state === "ongoing" && item.assignee && item.assignee !== actor.id
+							? this.liveHolder(item.assignee)
+							: undefined;
+					const changes = (
+						[
+							"title",
+							"goal",
+							"body",
+							"paths",
+							"why",
+							"evidence",
+							"plan",
+							"state",
+							"priority",
+							"tags",
+							"from",
+							"type",
+							"parentId",
+							"dependsOn",
+							"links",
+							"completion",
+						] as const
+					).some((field) => input[field] !== undefined);
+					if (holder && (input.state === "ongoing" || (changes && !input.force))) {
+						throw new BacklogError(
+							`${item.ref} is ongoing for ${holder}, which is still running: add a note, leave it, or ask the user.`,
+						);
+					}
 					if (
-						previous.actor !== actor.id ||
-						(actor.owners && !(item.assignee && actor.owners.has(item.assignee)))
+						actor.owners &&
+						[
+							"title",
+							"goal",
+							"body",
+							"paths",
+							"why",
+							"evidence",
+							"plan",
+							"priority",
+							"tags",
+							"from",
+							"type",
+							"parentId",
+							"dependsOn",
+							"links",
+						].some((key) => input[key as keyof UpdateInput] !== undefined)
 					)
-						throw new BacklogError("Completion belongs to another actor.");
-					return item;
-				}
-			}
-			if (input.version !== undefined && input.version !== item.version)
-				throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
-			if (actor.owners && !(item.assignee && actor.owners.has(item.assignee))) {
-				throw new BacklogError(
-					`${item.ref} is not claimed by your parent: a subagent updates only the items its parent has claimed.`,
-				);
-			}
-			const holder =
-				!actor.owners && item.state === "ongoing" && item.assignee && item.assignee !== actor.id
-					? this.liveHolder(item.assignee)
-					: undefined;
-			const changes = (
-				[
-					"title",
-					"goal",
-					"body",
-					"paths",
-					"why",
-					"evidence",
-					"plan",
-					"state",
-					"priority",
-					"tags",
-					"from",
-					"type",
-					"parentId",
-					"dependsOn",
-					"links",
-					"completion",
-				] as const
-			).some((field) => input[field] !== undefined);
-			if (holder && (input.state === "ongoing" || (changes && !input.force))) {
-				throw new BacklogError(
-					`${item.ref} is ongoing for ${holder}, which is still running: add a note, leave it, or ask the user.`,
-				);
-			}
-			if (
-				actor.owners &&
-				[
-					"title",
-					"goal",
-					"body",
-					"paths",
-					"why",
-					"evidence",
-					"plan",
-					"priority",
-					"tags",
-					"from",
-					"type",
-					"parentId",
-					"dependsOn",
-					"links",
-				].some((key) => input[key as keyof UpdateInput] !== undefined)
-			)
-				throw new BacklogError("A subagent changes only state, notes and completion of its parent's items.");
-			if (actor.owners && (input.state === "todo" || input.state === "backlog"))
-				throw new BacklogError("A subagent cannot release its parent's claim.");
-			const state = input.state ?? item.state;
-			if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
-			if (
-				(state === "ongoing" || state === "done") &&
-				(input.state !== undefined ||
-					input.completion !== undefined ||
-					input.goal !== undefined ||
-					input.why !== undefined)
-			) {
-				if (!(input.goal ?? item.goal).trim() || !(input.why ?? item.why).trim())
-					throw new BacklogError("Starting or completing work needs a reason and goal.");
-			}
-			if (item.state === "done" && state !== "done" && !input.note?.trim())
-				throw new BacklogError("Reopening needs a note explaining why.");
-			if (item.state === "done" && state === "done" && (input.goal !== undefined || input.why !== undefined))
-				throw new BacklogError("Reopen before changing a completed goal or reason.");
-			if (state === "done" && item.state !== "done" && !input.completion)
-				throw new BacklogError("Done needs a completion: summary, files, verification and operationKey.");
-			if (input.completion && state !== "done") throw new BacklogError("A completion requires state done.");
+						throw new BacklogError("A subagent changes only state, notes and completion of its parent's items.");
+					if (actor.owners && (input.state === "todo" || input.state === "backlog"))
+						throw new BacklogError("A subagent cannot release its parent's claim.");
+					const state = input.state ?? item.state;
+					if (!STATES.includes(state)) throw new BacklogError("Unknown backlog state.");
+					if (
+						(state === "ongoing" || state === "done") &&
+						(input.state !== undefined ||
+							input.completion !== undefined ||
+							input.goal !== undefined ||
+							input.why !== undefined)
+					) {
+						if (!(input.goal ?? item.goal).trim() || !(input.why ?? item.why).trim())
+							throw new BacklogError("Starting or completing work needs a reason and goal.");
+					}
+					if (item.state === "done" && state !== "done" && !input.note?.trim())
+						throw new BacklogError("Reopening needs a note explaining why.");
+					if (item.state === "done" && state === "done" && (input.goal !== undefined || input.why !== undefined))
+						throw new BacklogError("Reopen before changing a completed goal or reason.");
+					if (state === "done" && item.state !== "done" && !input.completion)
+						throw new BacklogError("Done needs a completion: summary, files, verification and operationKey.");
+					if (input.completion && state !== "done") throw new BacklogError("A completion requires state done.");
 
-			let assignee = item.assignee;
-			if (input.state === "ongoing" && item.assignee !== actor.id) {
-				if (!actor.owners) assignee = actor.id;
-			} else if (input.state === "backlog" || input.state === "todo") assignee = undefined;
-			const note = input.note === undefined ? "" : storedText(input.note);
-			const at = this.now();
-			const title = input.title === undefined ? item.title : storedTitle(input.title);
-			if (!title) throw new BacklogError("An item needs a title.");
-			const doneAt = state === "done" ? (item.state === "done" ? (item.doneAt ?? at) : at) : null;
-			// A claim (or a takeover) starts the clock; releasing the item clears it; done keeps it, so the cycle time stays.
-			const claimed = state === "ongoing" && (item.state !== "ongoing" || assignee !== item.assignee);
-			const startedAt = claimed
-				? at
-				: state === "backlog" || state === "todo"
-					? null
-					: (item.startedAt ?? null);
-			const fromItem =
-				input.from === undefined
-					? item.from === undefined
-						? null
-						: this.get(item.from)!.rowId
-					: input.from === null
-						? null
-						: this.origin(input.from, item);
-			agentDb.db
-				.prepare(
-					"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, version = version + 1 WHERE id = ?",
-				)
-				.run(
-					title,
-					input.goal === undefined ? item.goal : storedText(input.goal),
-					input.body === undefined ? item.body : storedText(input.body),
-					(input.paths === undefined ? item.paths : cleanList(input.paths)).join("\n"),
-					input.why === undefined ? item.why : storedText(input.why),
-					(input.evidence === undefined ? item.evidence : cleanList(input.evidence)).join("\n"),
-					input.plan === undefined ? item.plan : storedText(input.plan),
-					state,
-					input.priority === undefined ? item.priority : clampPriority(input.priority),
-					input.tags === undefined ? item.tags.join(" ") : cleanTags(input.tags).join(" "),
-					assignee ?? null,
-					at,
-					startedAt,
-					doneAt,
-					fromItem,
-					item.rowId,
-				);
-			this.applyEntities(item, input, actor, at);
-			const updated = this.get(item.seq)!;
-			// What changed first, then why: notes at one time read in insertion order.
-			const change = [
-				changeText(item, updated),
-				...(["type", "parentId", "dependsOn", "links"] as const)
-					.filter((key) => JSON.stringify(item[key]) !== JSON.stringify(updated[key]))
-					.map(
-						(key) => `${key}: ${JSON.stringify(item[key] ?? null)} → ${JSON.stringify(updated[key] ?? null)}`,
-					),
-				...(input.completion ? ["completion recorded"] : []),
-			]
-				.filter(Boolean)
-				.join(" · ");
-			if (change) this.log(item, at, actor.id, "change", change);
-			if (note) this.log(item, at, actor.id, "note", note);
-			return updated;
-		}));
+					let assignee = item.assignee;
+					if (input.state === "ongoing" && item.assignee !== actor.id) {
+						if (!actor.owners) assignee = actor.id;
+					} else if (input.state === "backlog" || input.state === "todo") assignee = undefined;
+					const note = input.note === undefined ? "" : storedText(input.note);
+					const at = this.now();
+					const title = input.title === undefined ? item.title : storedTitle(input.title);
+					if (!title) throw new BacklogError("An item needs a title.");
+					const doneAt = state === "done" ? (item.state === "done" ? (item.doneAt ?? at) : at) : null;
+					// A claim (or a takeover) starts the clock; releasing the item clears it; done keeps it, so the cycle time stays.
+					const claimed = state === "ongoing" && (item.state !== "ongoing" || assignee !== item.assignee);
+					const startedAt = claimed ? at : state === "backlog" || state === "todo" ? null : (item.startedAt ?? null);
+					const fromItem =
+						input.from === undefined
+							? item.from === undefined
+								? null
+								: this.get(item.from)!.rowId
+							: input.from === null
+								? null
+								: this.origin(input.from, item);
+					agentDb.db
+						.prepare(
+							"UPDATE backlog SET title = ?, goal = ?, body = ?, paths = ?, why = ?, evidence = ?, plan = ?, state = ?, priority = ?, tags = ?, assignee = ?, updated_at = ?, started_at = ?, done_at = ?, from_item = ?, version = version + 1 WHERE id = ?",
+						)
+						.run(
+							title,
+							input.goal === undefined ? item.goal : storedText(input.goal),
+							input.body === undefined ? item.body : storedText(input.body),
+							(input.paths === undefined ? item.paths : cleanList(input.paths)).join("\n"),
+							input.why === undefined ? item.why : storedText(input.why),
+							(input.evidence === undefined ? item.evidence : cleanList(input.evidence)).join("\n"),
+							input.plan === undefined ? item.plan : storedText(input.plan),
+							state,
+							input.priority === undefined ? item.priority : clampPriority(input.priority),
+							input.tags === undefined ? item.tags.join(" ") : cleanTags(input.tags).join(" "),
+							assignee ?? null,
+							at,
+							startedAt,
+							doneAt,
+							fromItem,
+							item.rowId,
+						);
+					this.applyEntities(item, input, actor, at);
+					const updated = this.get(item.seq)!;
+					// What changed first, then why: notes at one time read in insertion order.
+					const change = [
+						changeText(item, updated),
+						...(["type", "parentId", "dependsOn", "links"] as const)
+							.filter((key) => JSON.stringify(item[key]) !== JSON.stringify(updated[key]))
+							.map((key) => `${key}: ${JSON.stringify(item[key] ?? null)} → ${JSON.stringify(updated[key] ?? null)}`),
+						...(input.completion ? ["completion recorded"] : []),
+					]
+						.filter(Boolean)
+						.join(" · ");
+					if (change) this.log(item, at, actor.id, "change", change);
+					if (note) this.log(item, at, actor.id, "note", note);
+					return updated;
+				}),
+		);
 	}
 
 	private log(item: Item, at: number, author: string, kind: NoteKind, text: string): void {
@@ -619,43 +645,47 @@ export class BacklogStore {
 	/** Deletes an item and its notes. With `actor` (the agent), an item another live session holds is refused. */
 	remove(ref: string, version?: number, actor?: Actor): Item {
 		const agentDb = this.agentDb();
-		return agentDb.withActor({ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") }, () => agentDb.transaction(() => {
-			const item = this.get(ref);
-			if (!item) throw new BacklogError(`No backlog item ${ref}.`);
-			if (version !== undefined && version !== item.version)
-				throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
-			const holder =
-				actor && item.state === "ongoing" && item.assignee && item.assignee !== actor.id
-					? this.liveHolder(item.assignee)
-					: undefined;
-			if (holder)
-				throw new BacklogError(
-					`${item.ref} is ongoing for ${holder}, which is still running: leave it or ask the user.`,
-				);
-			if (
-				this.list().items.some(
-					(other) => other.parentId === item.ref || other.dependsOn.some((r) => r.id === item.ref),
-				)
-			)
-				throw new BacklogError("Reparent children and remove dependencies before deleting this item.");
-			if (item.completions.length) throw new BacklogError("Items with completion history cannot be deleted.");
-			// The items that came from it keep a trace of the link in their change log.
-			const at = this.now();
-			for (const child of this.derived(item)) {
-				agentDb.db
-					.prepare("UPDATE backlog SET from_item = NULL, updated_at = ?, version = version + 1 WHERE id = ?")
-					.run(at, child.rowId);
-				this.log(
-					child,
-					at,
-					actor?.id ?? USER_AUTHOR,
-					"change",
-					`from ${item.ref} → none (${item.ref} "${item.title}" was removed)`,
-				);
-			}
-			agentDb.db.prepare("DELETE FROM backlog WHERE id = ?").run(item.rowId);
-			return item;
-		}));
+		return agentDb.withActor(
+			{ id: actor?.id ?? USER_AUTHOR, kind: actor?.kind ?? (actor?.id === USER_AUTHOR || !actor ? "human" : "agent") },
+			() =>
+				agentDb.transaction(() => {
+					const item = this.get(ref);
+					if (!item) throw new BacklogError(`No backlog item ${ref}.`);
+					if (version !== undefined && version !== item.version)
+						throw new BacklogError(`${item.ref} changed elsewhere — reload it.`, item);
+					const holder =
+						actor && item.state === "ongoing" && item.assignee && item.assignee !== actor.id
+							? this.liveHolder(item.assignee)
+							: undefined;
+					if (holder)
+						throw new BacklogError(
+							`${item.ref} is ongoing for ${holder}, which is still running: leave it or ask the user.`,
+						);
+					if (
+						this.list().items.some(
+							(other) => other.parentId === item.ref || other.dependsOn.some((r) => r.id === item.ref),
+						)
+					)
+						throw new BacklogError("Reparent children and remove dependencies before deleting this item.");
+					if (item.completions.length) throw new BacklogError("Items with completion history cannot be deleted.");
+					// The items that came from it keep a trace of the link in their change log.
+					const at = this.now();
+					for (const child of this.derived(item)) {
+						agentDb.db
+							.prepare("UPDATE backlog SET from_item = NULL, updated_at = ?, version = version + 1 WHERE id = ?")
+							.run(at, child.rowId);
+						this.log(
+							child,
+							at,
+							actor?.id ?? USER_AUTHOR,
+							"change",
+							`from ${item.ref} → none (${item.ref} "${item.title}" was removed)`,
+						);
+					}
+					agentDb.db.prepare("DELETE FROM backlog WHERE id = ?").run(item.rowId);
+					return item;
+				}),
+		);
 	}
 
 	private reasonInput<T extends { reason?: string; why?: string }>(input: T): T {
@@ -686,11 +716,7 @@ export class BacklogStore {
 			...(input.completion?.files ?? []),
 			...(input.links ?? []).flatMap((l) => (l.target.resource === "files" ? [l.target] : [])),
 		]) {
-			if (
-				/^(?:[\\/]|[a-z]:)/i.test(file.path) ||
-				file.path.split(/[\\/]/).includes("..") ||
-				!file.path.trim()
-			)
+			if (/^(?:[\\/]|[a-z]:)/i.test(file.path) || file.path.split(/[\\/]/).includes("..") || !file.path.trim())
 				throw new BacklogError("Files need repository-relative paths without traversal.");
 		}
 	}
@@ -703,9 +729,8 @@ export class BacklogStore {
 		const parent =
 			row.parent_id === null
 				? undefined
-				: (this.db
-						.prepare("SELECT seq FROM backlog WHERE id = ? AND repo_key = ?")
-						.get(row.parent_id, this.repo) as { seq: number } | undefined);
+				: (this.db.prepare("SELECT seq FROM backlog WHERE id = ? AND repo_key = ?").get(row.parent_id, this.repo) as
+						{ seq: number } | undefined);
 		const rows = this.db
 			.prepare("SELECT relation, target FROM backlog_links WHERE item = ? ORDER BY rowid")
 			.all(base.rowId) as { relation: string; target: string }[];
@@ -714,59 +739,44 @@ export class BacklogStore {
 			reason: base.why,
 			type: row.type,
 			...(parent ? { parentId: refText(parent.seq) } : {}),
-			dependsOn: rows
-				.filter((r) => r.relation === "depends_on")
-				.map((r) => JSON.parse(r.target) as BacklogRef),
+			dependsOn: rows.filter((r) => r.relation === "depends_on").map((r) => JSON.parse(r.target) as BacklogRef),
 			links: rows
 				.filter((r) => r.relation !== "depends_on")
 				.map((r) => ({ relation: r.relation, target: JSON.parse(r.target) }) as WorkLink),
 			completions: (
-				this.db
-					.prepare("SELECT id, payload FROM backlog_completions WHERE item = ? ORDER BY id")
-					.all(base.rowId) as { id: number; payload: string }[]
+				this.db.prepare("SELECT id, payload FROM backlog_completions WHERE item = ? ORDER BY id").all(base.rowId) as {
+					id: number;
+					payload: string;
+				}[]
 			).map((r) => ({ ...JSON.parse(r.payload), id: r.id })),
 		};
 	}
 
-	private applyEntities(
-		before: Item,
-		input: EntityInput & { state?: State },
-		actor: Actor,
-		at: number,
-	): void {
+	private applyEntities(before: Item, input: EntityInput & { state?: State }, actor: Actor, at: number): void {
 		if (input.parentId !== undefined && input.parentId !== (before.parentId ?? null)) {
 			const parent = input.parentId === null ? undefined : this.get(input.parentId);
-			if (input.parentId !== null && !parent)
-				throw new BacklogError("Parent does not exist in this repository.");
+			if (input.parentId !== null && !parent) throw new BacklogError("Parent does not exist in this repository.");
 			if (parent?.state === "done") throw new BacklogError("Reopen the parent before adding children.");
-			this.db
-				.prepare("UPDATE backlog SET parent_id = ? WHERE id = ?")
-				.run(parent?.rowId ?? null, before.rowId);
+			this.db.prepare("UPDATE backlog SET parent_id = ? WHERE id = ?").run(parent?.rowId ?? null, before.rowId);
 		}
 		if (input.type !== undefined)
 			this.db.prepare("UPDATE backlog SET type = ? WHERE id = ?").run(input.type, before.rowId);
 		if (input.dependsOn !== undefined) {
 			const refs = input.dependsOn.map((value): BacklogRef => {
 				const ref =
-					typeof value === "string"
-						? { resource: "backlogs" as const, repositoryKey: this.repo, id: value }
-						: value;
+					typeof value === "string" ? { resource: "backlogs" as const, repositoryKey: this.repo, id: value } : value;
 				const target = ref.repositoryKey === this.repo ? this.get(ref.id) : undefined;
 				if (!target) throw new BacklogError("Dependencies must exist in the same repository.");
 				return { resource: "backlogs", repositoryKey: this.repo, id: target.ref };
 			});
-			this.db
-				.prepare("DELETE FROM backlog_links WHERE item = ? AND relation = 'depends_on'")
-				.run(before.rowId);
+			this.db.prepare("DELETE FROM backlog_links WHERE item = ? AND relation = 'depends_on'").run(before.rowId);
 			for (const ref of refs)
 				this.db
 					.prepare("INSERT OR IGNORE INTO backlog_links VALUES (?, 'depends_on', ?)")
 					.run(before.rowId, JSON.stringify(ref));
 		}
 		if (input.links !== undefined) {
-			this.db
-				.prepare("DELETE FROM backlog_links WHERE item = ? AND relation != 'depends_on'")
-				.run(before.rowId);
+			this.db.prepare("DELETE FROM backlog_links WHERE item = ? AND relation != 'depends_on'").run(before.rowId);
 			for (const link of input.links)
 				this.db
 					.prepare("INSERT OR IGNORE INTO backlog_links VALUES (?, ?, ?)")
@@ -797,16 +807,11 @@ export class BacklogStore {
 		for (const item of items) visit(item.ref);
 		const unresolved = current.dependsOn.filter((r) => byRef.get(r.id)?.state !== "done");
 		const closing = current.state === "done" && (before.state !== "done" || input.completion !== undefined);
-		const starting =
-			input.state === "ongoing" && (before.state !== "ongoing" || before.assignee !== current.assignee);
+		const starting = input.state === "ongoing" && (before.state !== "ongoing" || before.assignee !== current.assignee);
 		const addedPrerequisite = unresolved.some(
 			(ref) => !before.dependsOn.some((old) => old.id === ref.id && old.repositoryKey === ref.repositoryKey),
 		);
-		if (
-			["ongoing", "done"].includes(current.state) &&
-			unresolved.length &&
-			(closing || starting || addedPrerequisite)
-		)
+		if (["ongoing", "done"].includes(current.state) && unresolved.length && (closing || starting || addedPrerequisite))
 			throw new BacklogError(`Blocked by ${unresolved.map((r) => r.id).join(", ")}.`);
 
 		const descendants = (parent: string): Item[] =>

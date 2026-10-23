@@ -177,9 +177,7 @@ describe("openAgentDb", () => {
 					name: string;
 				}>
 			).map((row) => row.name);
-			expect(names).toEqual(
-				expect.arrayContaining(["agents", "backlog_board", "memories", "edits", "memories_fts"]),
-			);
+			expect(names).toEqual(expect.arrayContaining(["agents", "backlog_board", "memories", "edits", "memories_fts"]));
 			// What this build does not know stays, data included: another build sharing the file still needs it.
 			expect(names).toEqual(expect.arrayContaining(["retired", "backlog_stale"]));
 			expect(agent.db.prepare("SELECT legacy FROM backlog").get()).toEqual({ legacy: "gone" });

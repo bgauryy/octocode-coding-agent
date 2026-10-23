@@ -20,6 +20,7 @@ import {
 	decorateEditor,
 	hintText,
 	labelledRule,
+	promptLabel,
 	registerEditor,
 	withHint,
 } from "../../src/octocode/ui/editor.ts";
@@ -207,9 +208,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		Reflect.set(resumed.ui, "theme", { fg: (_color: string, text: string) => text });
 		resumed.sessionManager.getBranch = (() => [{ type: "message" }]) as never;
 		await fake.fire("session_start", {}, resumed);
-		expect(resumed.ui.getEditorComponent()!(tui, editorTheme, keys).render(100)[1]).not.toContain(
-			"Ask about any code",
-		);
+		expect(resumed.ui.getEditorComponent()!(tui, editorTheme, keys).render(100)[1]).not.toContain("Ask about any code");
 		await fake.fire("session_tree", {}, ctx);
 		expect(row()).toContain("Ask about any code");
 	});
@@ -286,6 +285,14 @@ describe("Octocode prompt box", () => {
 		expect(plain(lines[2]!)).toContain("⏵⏵ full");
 		input("!ls");
 		expect(editor.render(60)[0]!.startsWith(painted(36, "╭─"))).toBe(true);
+		expect(plain(editor.render(60)[0]!)).toMatch(/^╭── ! shell ─+╮$/);
+	});
+
+	it("names the ! modes in the top border instead of the idle label", () => {
+		const theme = { fg: (_color: string, text: string) => text };
+		expect(promptLabel("", theme)).toBe(" octocode ");
+		expect(promptLabel("  !ls", theme)).toBe(" ! shell ");
+		expect(promptLabel("!!ls", theme)).toBe(" !! shell · no context ");
 	});
 
 	it("gives the top border to Octocode’s working line during a run", () => {

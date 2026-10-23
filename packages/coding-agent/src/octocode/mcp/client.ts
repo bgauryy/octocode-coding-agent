@@ -283,7 +283,8 @@ export class OctocodeServer {
 		const revision = ++this.listRevision;
 		try {
 			const tools = client.serverCapabilities?.tools
-				? await client.listTools({ timeoutMs: this.requestTimeoutMs }) : [];
+				? await client.listTools({ timeoutMs: this.requestTimeoutMs })
+				: [];
 			if (client !== this.client || revision !== this.listRevision) return;
 			this.refreshReported = false;
 			this.publishCatalog(client, tools);

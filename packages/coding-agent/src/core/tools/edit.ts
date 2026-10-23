@@ -22,8 +22,7 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 const replaceEditSchema = Type.Object(
 	{
 		oldText: Type.String({
-			description:
-				"Exact text; unique unless replaceAll is true. Edits must not overlap.",
+			description: "Exact text; unique unless replaceAll is true. Edits must not overlap.",
 		}),
 		newText: Type.String({
 			description: "Replacement text for this targeted edit.",
@@ -51,8 +50,7 @@ const editSchema = Type.Object(
 );
 
 export const editToolSystemPromptContribution = {
-	snippet:
-		"Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+	snippet: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
 	guidelines: [
 		"Use edit for precise changes (edits[].oldText must match exactly)",
 		"When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
@@ -134,10 +132,7 @@ function prepareEditArguments(input: unknown): EditToolInput {
 	}
 
 	const legacy = args as LegacyEditToolInput;
-	if (
-		typeof legacy.oldText !== "string" ||
-		typeof legacy.newText !== "string"
-	) {
+	if (typeof legacy.oldText !== "string" || typeof legacy.newText !== "string") {
 		return args as EditToolInput;
 	}
 
@@ -152,9 +147,7 @@ function validateEditInput(input: EditToolInput): {
 	edits: Edit[];
 } {
 	if (!Array.isArray(input.edits) || input.edits.length === 0) {
-		throw new Error(
-			"Edit tool input is invalid. edits must contain at least one replacement.",
-		);
+		throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
 	}
 	return { path: input.path, edits: input.edits };
 }
@@ -162,11 +155,7 @@ function validateEditInput(input: EditToolInput): {
 export function createEditToolDefinition(
 	cwd: string,
 	options?: EditToolOptions,
-): ToolDefinition<
-	typeof editSchema,
-	EditToolDetails | undefined,
-	EditRenderState
-> {
+): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
 	const ops = options?.operations ?? defaultEditOperations;
 	return {
 		name: "edit",
@@ -179,13 +168,7 @@ export function createEditToolDefinition(
 		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderShell: "self",
 		prepareArguments: prepareEditArguments,
-		async execute(
-			_toolCallId,
-			input: EditToolInput,
-			signal?: AbortSignal,
-			_onUpdate?,
-			ctx?: ExtensionContext,
-		) {
+		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, ctx?: ExtensionContext) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, ctx?.cwd || cwd);
 
@@ -205,10 +188,7 @@ export function createEditToolDefinition(
 					await ops.access(absolutePath);
 				} catch (error: unknown) {
 					throwIfAborted();
-					const errorMessage =
-						error instanceof Error && "code" in error
-							? `Error code: ${error.code}`
-							: String(error);
+					const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
 					throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
 				}
 				throwIfAborted();
@@ -222,15 +202,10 @@ export function createEditToolDefinition(
 				const { bom, text: content } = splitBom(rawContent);
 				const originalEnding = detectLineEnding(content);
 				const normalizedContent = normalizeToLF(content);
-				const { baseContent, newContent } = applyEditsToNormalizedContent(
-					normalizedContent,
-					edits,
-					path,
-				);
+				const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
 				throwIfAborted();
 
-				const finalContent =
-					bom + restoreLineEndings(newContent, originalEnding);
+				const finalContent = bom + restoreLineEndings(newContent, originalEnding);
 				if (ops === defaultEditOperations)
 					await atomicWriteFile(absolutePath, finalContent, sha256(buffer), {
 						signal,
@@ -259,9 +234,6 @@ export function createEditToolDefinition(
 	};
 }
 
-export function createEditTool(
-	cwd: string,
-	options?: EditToolOptions,
-): AgentTool<typeof editSchema> {
+export function createEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
 	return wrapToolDefinition(createEditToolDefinition(cwd, options));
 }

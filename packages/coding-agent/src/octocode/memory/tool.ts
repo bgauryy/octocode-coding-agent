@@ -143,18 +143,14 @@ export function registerMemoryTool(
 								keywords: Type.Optional(
 									Type.String({ description: "set: synonyms/terms that should retrieve this memory" }),
 								),
-								kind: Type.Optional(
-									StringEnum(MEMORY_KINDS, { description: "set: what sort of note (default fact)" }),
-								),
+								kind: Type.Optional(StringEnum(MEMORY_KINDS, { description: "set: what sort of note (default fact)" })),
 								pinned: Type.Optional(
 									Type.Boolean({
 										description: "set: always inject this memory (keep pinned ones few and short)",
 									}),
 								),
 							}),
-					limit: Type.Optional(
-						Type.Integer({ description: `search/list: most results (default ${DEFAULT_LIMIT})` }),
-					),
+					limit: Type.Optional(Type.Integer({ description: `search/list: most results (default ${DEFAULT_LIMIT})` })),
 				}),
 				async execute(_toolCallId, input, signal, _onUpdate, ctx) {
 					// The subagent schema omits the set-only fields; set is refused there before they are read.
@@ -173,8 +169,7 @@ export function registerMemoryTool(
 						throw new MemoryError(refusal);
 					};
 					const id = params.id === undefined ? undefined : parseMemoryId(params.id);
-					if (params.id !== undefined && id === undefined)
-						throw new Error(`"${params.id}" is not a memory id (M<n>).`);
+					if (params.id !== undefined && id === undefined) throw new Error(`"${params.id}" is not a memory id (M<n>).`);
 					const needId = (): number => {
 						if (id === undefined) throw new Error(`${params.op} needs id.`);
 						return id;
@@ -216,10 +211,7 @@ export function registerMemoryTool(
 							if (current && !trusted && current.scope !== "global") throw noMemory(current.id);
 							if (params.op === "delete") {
 								if (current)
-									guardWide(
-										current.scope === "global" || current.pinned,
-										`deleting ${memoryLabel(current.id)}`,
-									);
+									guardWide(current.scope === "global" || current.pinned, `deleting ${memoryLabel(current.id)}`);
 								const removed = store.delete(needId());
 								return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
 							}
@@ -258,8 +250,7 @@ export function registerMemoryTool(
 					const detail = [args.id, args.query, (args as MemoryParams).title].find(
 						(value) => typeof value === "string" && value.trim(),
 					);
-					const shown =
-						detail === args.id || detail === undefined ? (detail ?? "") : `"${clip(String(detail), 100)}"`;
+					const shown = detail === args.id || detail === undefined ? (detail ?? "") : `"${clip(String(detail), 100)}"`;
 					return toolHeader(theme, context, "Memory", [String(args.op ?? ""), shown].filter(Boolean).join(" "));
 				},
 				renderResult(result, _options, theme, context) {

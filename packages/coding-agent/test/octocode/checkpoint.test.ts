@@ -143,8 +143,7 @@ describe("checkpoints", () => {
 			}),
 		);
 		expect(fs.existsSync(temp)).toBe(true);
-		for (const entry of checkpoints.list())
-			expect(fs.existsSync(path.join(store, "blobs", entry.before!))).toBe(true);
+		for (const entry of checkpoints.list()) expect(fs.existsSync(path.join(store, "blobs", entry.before!))).toBe(true);
 		expect(checkpoints.list()).toHaveLength(6);
 	});
 
@@ -207,9 +206,9 @@ describe("checkpoints", () => {
 		const big = path.join(cwd, "big.bin");
 		fs.writeFileSync(big, Buffer.alloc(8 * 1024 * 1024 + 1));
 		expect(await checkpoints.capture(big)).toEqual({ fresh: false, note: "not checkpointed: over 8 MiB" });
-		expect(
-			await checkpoints.capture(big, undefined, { data: fs.readFileSync(big), sha256: "x", mode: 0o644 }),
-		).toEqual({ fresh: false, note: "not checkpointed: over 8 MiB" });
+		expect(await checkpoints.capture(big, undefined, { data: fs.readFileSync(big), sha256: "x", mode: 0o644 })).toEqual(
+			{ fresh: false, note: "not checkpointed: over 8 MiB" },
+		);
 		expect(await checkpoints.capture(cwd)).toEqual({ fresh: false });
 		for (let turn = 0; turn < 3; turn++) {
 			checkpoints.beginTurn();
@@ -567,10 +566,7 @@ describe("/rewind and the fork offer", () => {
 		]);
 
 		// Forking before the first user message offers to restore the files the agent changed after it.
-		await handlers.get("session_before_fork")!(
-			{ type: "session_before_fork", entryId: "u1", position: "before" },
-			ctx,
-		);
+		await handlers.get("session_before_fork")!({ type: "session_before_fork", entryId: "u1", position: "before" }, ctx);
 		expect(selects).toEqual(["The agent changed 1 file after this point. Restore them?"]);
 		// Nothing changes until Octocode tears the session down for the fork: it can still refuse the fork.
 		expect(fs.readFileSync(file, "utf8")).toBe("two");

@@ -12,7 +12,10 @@ function fixture(t, { name = "research-cli", installed = true, executable = true
 	const dependency = join(root, "dependency");
 	mkdirSync(join(agent, "node_modules"), { recursive: true });
 	mkdirSync(dependency);
-	writeFileSync(join(agent, "package.json"), JSON.stringify({ dependencies: { "research-cli": "file:../dependency" } }));
+	writeFileSync(
+		join(agent, "package.json"),
+		JSON.stringify({ dependencies: { "research-cli": "file:../dependency" } }),
+	);
 	writeFileSync(join(dependency, "package.json"), JSON.stringify({ name, version: "1.0.0", bin: "cli.js" }));
 	if (executable) writeFileSync(join(dependency, "cli.js"), "");
 	if (installed) symlinkSync(dependency, join(agent, "node_modules/research-cli"), "junction");

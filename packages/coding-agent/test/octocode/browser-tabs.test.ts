@@ -27,11 +27,13 @@ describe("tabs listing", () => {
 		]);
 	});
 	it("keeps tab numbers after another tab closes and never reuses its number", async () => {
-		cdp = await startCdpStub({ targets: [
-			{ id: "C", type: "page", title: "C" },
-			{ id: "B", type: "page", title: "B" },
-			{ id: "A", type: "page", title: "A" },
-		] });
+		cdp = await startCdpStub({
+			targets: [
+				{ id: "C", type: "page", title: "C" },
+				{ id: "B", type: "page", title: "B" },
+				{ id: "A", type: "page", title: "A" },
+			],
+		});
 		const session = { port: cdp.port, targetId: "C", page: { evaluate: async () => "complete" } } as never;
 		expect(await describeTabs(session)).toContain("[2] B");
 		await fetch(`http://127.0.0.1:${cdp.port}/json/close/A`);
@@ -43,5 +45,4 @@ describe("tabs listing", () => {
 		cdp.addTarget("D");
 		expect(await describeTabs(session)).toContain("[4]");
 	});
-
 });

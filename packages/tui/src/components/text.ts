@@ -9,6 +9,7 @@ export class Text implements Component {
 	private paddingX: number; // Left/right padding
 	private paddingY: number; // Top/bottom padding
 	private customBgFn?: (text: string) => string;
+	private hangingIndent = false;
 
 	// Cache for rendered output
 	private cachedText?: string;
@@ -41,6 +42,12 @@ export class Text implements Component {
 		this.invalidate();
 	}
 
+	/** Wrapped continuation rows keep the leading spaces of the line they continue, e.g. an indented list of names. */
+	setHangingIndent(hangingIndent: boolean): void {
+		this.hangingIndent = hangingIndent;
+		this.invalidate();
+	}
+
 	invalidate(): void {
 		this.cachedText = undefined;
 		this.cachedWidth = undefined;
@@ -70,7 +77,9 @@ export class Text implements Component {
 		const contentWidth = Math.max(1, width - paddingX * 2);
 
 		// Wrap text (this preserves ANSI codes but does NOT pad)
-		const wrappedLines = wrapTextWithAnsi(normalizedText, contentWidth);
+		const wrappedLines = this.hangingIndent
+			? normalizedText.split("\n").flatMap((line) => wrapWithHangingIndent(line, contentWidth))
+			: wrapTextWithAnsi(normalizedText, contentWidth);
 
 		// Add margins and background to each line
 		const leftMargin = " ".repeat(paddingX);
@@ -110,4 +119,16 @@ export class Text implements Component {
 
 		return result.length > 0 ? result : [""];
 	}
+}
+
+/** Leading SGR sequences, then the leading spaces of the visible text. */
+const LEADING_INDENT = /^((?:\x1b\[[0-9;]*m)*)( +)/;
+
+function wrapWithHangingIndent(line: string, width: number): string[] {
+	const indent = line.match(LEADING_INDENT)?.[2] ?? "";
+	const [first = "", ...rest] = wrapTextWithAnsi(line, width);
+	if (rest.length === 0 || indent.length === 0 || indent.length >= width / 2) return [first, ...rest];
+	// Re-wrap what follows the first row in the room the indent leaves.
+	const continued = wrapTextWithAnsi(rest.join(" "), width - indent.length);
+	return [first, ...continued.map((part) => indent + part)];
 }

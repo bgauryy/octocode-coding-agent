@@ -52,9 +52,7 @@ export function parentProcessGone(value: string, compareStart = true): boolean {
 	if (!Number.isInteger(parentPid) || parentPid <= 0) return false;
 	if (parentGone(parentPid)) return true;
 	// The start time costs a synchronous `ps`, so a caller that polls compares it only now and then (`compareStart`).
-	return (
-		compareStart && process.ppid !== parentPid && started.length > 0 && !sameProcess(parentPid, started.join(" "))
-	);
+	return compareStart && process.ppid !== parentPid && started.length > 0 && !sameProcess(parentPid, started.join(" "));
 }
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
@@ -105,14 +103,10 @@ export class Team {
 		this.resumer = resume;
 	}
 	private resumer:
-		| ((to: string, text: string, from: string, signal?: AbortSignal) => Promise<string | undefined>)
-		| undefined;
+		((to: string, text: string, from: string, signal?: AbortSignal) => Promise<string | undefined>) | undefined;
 	private messageHook:
-		| ((message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>)
-		| undefined;
-	setMessageHook(
-		hook: (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>,
-	): void {
+		((message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>) | undefined;
+	setMessageHook(hook: (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>): void {
 		this.messageHook = hook;
 	}
 
@@ -290,6 +284,7 @@ export class Team {
 			this.peers = undefined;
 			this.ticker.reset();
 			this.finished.clear();
+			this.secrets.clear();
 			this.ctx = undefined;
 		}
 	}
@@ -353,8 +348,11 @@ export class Team {
 	): Promise<{ sent: string[]; id: number; departed?: string[]; resumed?: string } | { error: string }> {
 		options.signal?.throwIfAborted();
 		const from = options.from ?? this.me?.id;
-		if (!from) return { error: 'Join first: call coordinate with action "join".' };
+		if (!from) return { error: 'Join first: call `agent` type "coordinate" with action "join".' };
 		const db = this.store();
+		const sendingContext = this.ctx;
+		const sendingMember = this.me;
+		const changed = () => this.ctx !== sendingContext || this.me !== sendingMember || this.db !== db;
 		const answered = options.replyTo === undefined ? undefined : db.replyTarget(options.replyTo);
 		if (options.replyTo !== undefined && !answered)
 			return {
@@ -364,7 +362,8 @@ export class Team {
 		const to = recipient ?? answered?.from;
 		if (to === undefined)
 			return {
-				error: 'Say who to send to: `to` (an agent id, role, "parent" or "all"), or `replyTo` (the message you answer). Nothing was sent.',
+				error:
+					'Say who to send to: `to` (an agent id, role, "parent" or "all"), or `replyTo` (the message you answer). Nothing was sent.',
 			};
 		// A broadcast stays in the sender's session tree; the user's and an API client's in this session's tree.
 		const scope = outside(from) ? this.me?.id : from;
@@ -372,7 +371,8 @@ export class Team {
 		const members = db.list();
 		const targets = resolveTarget(members, from, to, this.parentId, scope);
 		const beforeSend = async (recipient: string): Promise<string | undefined> => {
-			const ctx = this.ctx;
+			if (changed()) return "The session or team membership changed before the message could be sent.";
+			const ctx = sendingContext;
 			if (!this.messageHook || !ctx) return undefined;
 			const signal = options.signal
 				? AbortSignal.any([options.signal, ...(ctx.signal ? [ctx.signal] : [])])
@@ -390,8 +390,8 @@ export class Team {
 					ctx,
 					signal,
 				);
-				options.signal?.throwIfAborted();
-				if (this.ctx !== ctx) throw new Error("The session changed before the message could be sent.");
+				signal?.throwIfAborted();
+				if (changed()) throw new Error("The session or team membership changed before the message could be sent.");
 			} catch (error) {
 				return errorMessage(error);
 			}
@@ -400,6 +400,8 @@ export class Team {
 		if (typeof targets === "string" && this.finished.has(to) && this.resumer) {
 			const denied = await beforeSend(to);
 			if (denied) return { error: denied };
+			if (changed()) return { error: "The session or team membership changed before the message could be sent." };
+			if (sendingContext?.signal?.aborted) return { error: errorMessage(sendingContext.signal.reason) };
 		}
 		const resumed =
 			typeof targets === "string" && this.finished.has(to)
@@ -419,6 +421,8 @@ export class Team {
 			if (denied) return { error: denied };
 		}
 		options.signal?.throwIfAborted();
+		if (changed()) return { error: "The session or team membership changed before the message could be sent." };
+		if (sendingContext?.signal?.aborted) return { error: errorMessage(sendingContext.signal.reason) };
 		// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 		const replyRequired = options.replyRequired ?? false;
 		// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
@@ -442,8 +446,8 @@ export class Team {
 			flags,
 		);
 		if (id === undefined) return { error: `${departed.join(", ")} left the team; the message was not sent.` };
-		if (from === USER_SENDER) this.mail.createdForUser(id);
 		const sent = targets.map((target) => target.id).filter((target) => !departed.includes(target));
+		if (from === USER_SENDER) this.mail.createdForUser(id, delivered, sent);
 		return { sent, id, ...(departed.length > 0 ? { departed } : {}) };
 	}
 

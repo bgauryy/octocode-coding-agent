@@ -45,10 +45,7 @@ describe("explicit historical migrations", () => {
 				example: "fixture-only",
 				retained: "legacy-fixture",
 			});
-			writeFileSync(
-				join(home, "auth.json"),
-				JSON.stringify({ retained: { type: "api_key", key: "native-fixture" } }),
-			);
+			writeFileSync(join(home, "auth.json"), JSON.stringify({ retained: { type: "api_key", key: "native-fixture" } }));
 			const output = run(["migrate"]);
 			expect(output).toContain("Migration checks completed");
 			expect(output).toContain("github.com/bgauryy/octocodecode/");

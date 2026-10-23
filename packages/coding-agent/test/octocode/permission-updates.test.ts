@@ -39,7 +39,7 @@ it("publishes after approval without applying its own new denial to that call", 
 			message: "next only",
 		})),
 	);
-	f.permission.setUpdateHandler(async () => (_signal,commit) => commit(publish));
+	f.permission.setUpdateHandler(async () => (_signal, commit) => commit(publish));
 	f.permission.setResolver(async () => ({
 		decision: "allow",
 		updatedPermissions: updates,
@@ -71,8 +71,7 @@ it("invalidates another pending approval while preserving the exact publisher", 
 		return { decision: "allow", updatedPermissions: updates };
 	});
 	f.permission.setUpdateHandler(
-		async () => (_signal, commit) => commit(() =>
-			f.permission.setSourcePolicy(() => ({ decision: "deny" }))),
+		async () => (_signal, commit) => commit(() => f.permission.setSourcePolicy(() => ({ decision: "deny" }))),
 	);
 	const pending = f.permission.check(f.ctx, {
 		...f.request,
@@ -97,9 +96,10 @@ it("never publishes after cancellation during preparation", async () => {
 		abort.abort();
 		return publish;
 	});
-	expect(
-		await f.permission.check(f.ctx, { ...f.request, signal: abort.signal }),
-	).toMatchObject({ allowed: false, via: "cancelled" });
+	expect(await f.permission.check(f.ctx, { ...f.request, signal: abort.signal })).toMatchObject({
+		allowed: false,
+		via: "cancelled",
+	});
 	expect(publish).not.toHaveBeenCalled();
 });
 it("does not prepare or publish updates after a rejected replacement", async () => {

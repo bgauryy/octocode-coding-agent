@@ -193,10 +193,7 @@ async function startInMemorySpan<T>(
 	const span: TelemetrySpan = {
 		metrics: state.metrics,
 		propagation: state.propagation,
-		startSpan: <Result>(
-			childOptions: SpanOptions,
-			childCallback: (child: TelemetrySpan) => Result | Promise<Result>,
-		) =>
+		startSpan: <Result>(childOptions: SpanOptions, childCallback: (child: TelemetrySpan) => Result | Promise<Result>) =>
 			startInMemorySpan(
 				state,
 				{ context: recordedSpan.context, localId: recordedSpan.id, span: recordedSpan },
@@ -394,8 +391,7 @@ export class InMemoryTelemetryContext
 			})
 			.sort(
 				(a, b) =>
-					b.spans[0]!.startedMs - a.spans[0]!.startedMs ||
-					(a.traceId < b.traceId ? -1 : a.traceId > b.traceId ? 1 : 0),
+					b.spans[0]!.startedMs - a.spans[0]!.startedMs || (a.traceId < b.traceId ? -1 : a.traceId > b.traceId ? 1 : 0),
 			);
 		const traces = matches.slice(0, limit);
 		const last = traces.at(-1)!;

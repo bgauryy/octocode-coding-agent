@@ -167,8 +167,7 @@ describe("filtering proxy: CONNECT", () => {
 			"169.254.169.254:80",
 			"0.0.0.0:80",
 		];
-		for (const authority of authorities)
-			expect((await connectVia(proxy, authority)).status, authority).toBe(FORBIDDEN);
+		for (const authority of authorities) expect((await connectVia(proxy, authority)).status, authority).toBe(FORBIDDEN);
 		expect(onBlocked).toHaveBeenCalledTimes(authorities.length);
 	});
 

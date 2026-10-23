@@ -10,14 +10,7 @@ const metadata = {
 		agentType: "reviewer",
 	},
 };
-const ordinary = [
-	"PreToolUse",
-	"PermissionRequest",
-	"PostToolUse",
-	"PreCompact",
-	"PostCompact",
-	"UserPromptSubmit",
-];
+const ordinary = ["PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "UserPromptSubmit"];
 
 describe("source child hook identity", () => {
 	it.each(ordinary)(
@@ -48,113 +41,97 @@ describe("source child hook identity", () => {
 			expect(result).not.toHaveProperty("agent_type");
 		},
 	);
-	it.each([
-		...ordinary,
-		"PostToolUseFailure",
-		"StopFailure",
-		"Notification",
-		"SessionEnd",
-	])("projects Claude common identity on %s", (event) => {
-		expect(
-			hookPayload("claude", { hook_event_name: event }, metadata),
-		).toMatchObject({ agent_id: "native-worker", agent_type: "reviewer" });
-	});
-	it.each(["claude", "codex"] as const)(
-		"keeps %s lifecycle identity authoritative",
-		(protocol) => {
-			const payload = {
-				hook_event_name: "SubagentStop",
-				agent_id: "lifecycle-id",
-				agent_type: "lifecycle-type",
-				session_id: "parent",
-				transcript_path: "/parent.jsonl",
-				agent_transcript_path: "/child.jsonl",
-			};
-			expect(hookPayload(protocol, payload, metadata)).toMatchObject(payload);
+	it.each([...ordinary, "PostToolUseFailure", "StopFailure", "Notification", "SessionEnd"])(
+		"projects Claude common identity on %s",
+		(event) => {
+			expect(hookPayload("claude", { hook_event_name: event }, metadata)).toMatchObject({
+				agent_id: "native-worker",
+				agent_type: "reviewer",
+			});
 		},
 	);
+	it.each(["claude", "codex"] as const)("keeps %s lifecycle identity authoritative", (protocol) => {
+		const payload = {
+			hook_event_name: "SubagentStop",
+			agent_id: "lifecycle-id",
+			agent_type: "lifecycle-type",
+			session_id: "parent",
+			transcript_path: "/parent.jsonl",
+			agent_transcript_path: "/child.jsonl",
+		};
+		expect(hookPayload(protocol, payload, metadata)).toMatchObject(payload);
+	});
 	it("leaves native payload unchanged and omits source child fields when no actual child exists", () => {
 		const payload = { hook_event_name: "PreToolUse" };
 		expect(hookPayload("octocode", payload, metadata)).toBe(payload);
 		for (const protocol of ["claude", "codex"] as const)
-			expect(
-				hookPayload(protocol, payload, { model: "model" }),
-			).not.toHaveProperty("agent_id");
+			expect(hookPayload(protocol, payload, { model: "model" })).not.toHaveProperty("agent_id");
 	});
 });
 
-it.each([false, true])(
-	"requires actual child marker (child=%s)",
-	async (child) => {
-		const fs = await import("node:fs");
-		const path = await import("node:path");
-		const { tmp } = await import("./helpers.ts");
-		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-		const { registerHooks } = await import(
-			"../../src/octocode/hooks/register.ts"
-		);
-		const home = tmp(),
-			cwd = tmp(),
-			output = path.join(home, "captured.json");
-		fs.mkdirSync(path.join(home, ".codex"));
-		fs.writeFileSync(
-			path.join(home, ".codex/hooks.json"),
-			JSON.stringify({
-				hooks: {
-					PreToolUse: [
-						{ hooks: [{ type: "command", command: `cat > '${output}'` }] },
-					],
-				},
-			}),
-		);
-		const fake = fakePi();
-		const ctx = fakeCtx({ cwd });
-		ctx.sessionManager.getSessionId = () => "actual-child";
-		const view = registerHooks(
-			fake.pi,
-			{
-				OCTOCODE_HOOKS: "1",
-				OCTOCODE_HOOKS_COMPAT: "1",
-				...(child ? { OCTOCODE_SUBAGENT: "1" } : {}),
+it.each([false, true])("requires actual child marker (child=%s)", async (child) => {
+	const fs = await import("node:fs");
+	const path = await import("node:path");
+	const { tmp } = await import("./helpers.ts");
+	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
+	const home = tmp(),
+		cwd = tmp(),
+		output = path.join(home, "captured.json");
+	fs.mkdirSync(path.join(home, ".codex"));
+	fs.writeFileSync(
+		path.join(home, ".codex/hooks.json"),
+		JSON.stringify({
+			hooks: {
+				PreToolUse: [{ hooks: [{ type: "command", command: `cat > '${output}'` }] }],
 			},
-			home,
-			undefined,
-			() => ({ agentName: "stale-worker", agentType: "reviewer" }),
+		}),
+	);
+	const fake = fakePi();
+	const ctx = fakeCtx({ cwd });
+	ctx.sessionManager.getSessionId = () => "actual-child";
+	const view = registerHooks(
+		fake.pi,
+		{
+			OCTOCODE_HOOKS: "1",
+			OCTOCODE_HOOKS_COMPAT: "1",
+			...(child ? { OCTOCODE_SUBAGENT: "1" } : {}),
+		},
+		home,
+		undefined,
+		() => ({ agentName: "stale-worker", agentType: "reviewer" }),
+	);
+	try {
+		await fake.fire("session_start", { reason: "startup" }, ctx);
+		await view.preToolUse(
+			{
+				toolName: "bash",
+				toolCallId: "call",
+				input: { command: "true" },
+			} as never,
+			ctx,
 		);
-		try {
-			await fake.fire("session_start", { reason: "startup" }, ctx);
-			await view.preToolUse(
-				{
-					toolName: "bash",
-					toolCallId: "call",
-					input: { command: "true" },
-				} as never,
-				ctx,
-			);
-			const captured = JSON.parse(fs.readFileSync(output, "utf8"));
-			if (child)
-				expect(captured).toMatchObject({
-					agent_id: "actual-child",
-					agent_type: "reviewer",
-				});
-			else {
-				expect(captured).not.toHaveProperty("agent_id");
-				expect(captured).not.toHaveProperty("agent_type");
-			}
-		} finally {
-			await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+		const captured = JSON.parse(fs.readFileSync(output, "utf8"));
+		if (child)
+			expect(captured).toMatchObject({
+				agent_id: "actual-child",
+				agent_type: "reviewer",
+			});
+		else {
+			expect(captured).not.toHaveProperty("agent_id");
+			expect(captured).not.toHaveProperty("agent_type");
 		}
-	},
-);
+	} finally {
+		await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+	}
+});
 
 it("snapshots identity and metadata before queued async launch", async () => {
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
 	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-	const { registerHooks } = await import(
-		"../../src/octocode/hooks/register.ts"
-	);
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 	const home = tmp(),
 		cwd = tmp(),
 		release = path.join(home, "release");
@@ -219,11 +196,7 @@ it("snapshots identity and metadata before queued async launch", async () => {
 				captured = JSON.parse(fs.readFileSync(output, "utf8"));
 				break;
 			} catch (error) {
-				if (
-					!(error instanceof SyntaxError) &&
-					(error as NodeJS.ErrnoException).code !== "ENOENT"
-				)
-					throw error;
+				if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			}
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
@@ -241,91 +214,73 @@ it("snapshots identity and metadata before queued async launch", async () => {
 	}
 }, 10000);
 
-it.each(["claude", "codex"] as const)(
-	"carries %s child identity through both compaction owners",
-	async (protocol) => {
-		const fs = await import("node:fs");
-		const path = await import("node:path");
-		const { tmp } = await import("./helpers.ts");
-		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
-		const { registerHooks } = await import(
-			"../../src/octocode/hooks/register.ts"
-		);
-		const home = tmp(),
-			cwd = tmp();
-		const config = path.join(
-			home,
-			protocol === "codex" ? ".codex/hooks.json" : ".claude/settings.json",
-		);
-		fs.mkdirSync(path.dirname(config), { recursive: true });
-		fs.writeFileSync(
-			config,
-			JSON.stringify({
-				hooks: Object.fromEntries(
-					["PreCompact", "PostCompact"].map((event) => [
-						event,
-						[
-							{
-								hooks: [
-									{
-										type: "command",
-										command: `cat > '${path.join(home, event)}'`,
-									},
-								],
-							},
-						],
-					]),
-				),
-			}),
-		);
-		const fake = fakePi();
-		const ctx = fakeCtx({ cwd, model: { id: "current-model" } as never });
-		ctx.sessionManager.getSessionId = () => "child-session";
-		ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";
-		ctx.getTurnId = () => "current-turn";
-		registerHooks(
-			fake.pi,
-			{
-				OCTOCODE_HOOKS: "1",
-				OCTOCODE_HOOKS_COMPAT: "1",
-				OCTOCODE_SUBAGENT: "1",
-			},
-			home,
-			undefined,
-			() => ({ agentName: "native-child", agentType: "reviewer" }),
-		);
-		try {
-			await fake.fire("session_start", { reason: "startup" }, ctx);
-			await fake.fire(
-				"session_before_compact",
-				{ reason: "manual", signal: new AbortController().signal },
-				ctx,
-			);
-			await fake.fire(
-				"session_compact",
-				{ reason: "manual", compactionEntry: { summary: "summary" } },
-				ctx,
-			);
-			for (const event of ["PreCompact", "PostCompact"]) {
-				const captured = JSON.parse(
-					fs.readFileSync(path.join(home, event), "utf8"),
-				);
+it.each(["claude", "codex"] as const)("carries %s child identity through both compaction owners", async (protocol) => {
+	const fs = await import("node:fs");
+	const path = await import("node:path");
+	const { tmp } = await import("./helpers.ts");
+	const { fakePi, fakeCtx } = await import("./fake-pi.ts");
+	const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
+	const home = tmp(),
+		cwd = tmp();
+	const config = path.join(home, protocol === "codex" ? ".codex/hooks.json" : ".claude/settings.json");
+	fs.mkdirSync(path.dirname(config), { recursive: true });
+	fs.writeFileSync(
+		config,
+		JSON.stringify({
+			hooks: Object.fromEntries(
+				["PreCompact", "PostCompact"].map((event) => [
+					event,
+					[
+						{
+							hooks: [
+								{
+									type: "command",
+									command: `cat > '${path.join(home, event)}'`,
+								},
+							],
+						},
+					],
+				]),
+			),
+		}),
+	);
+	const fake = fakePi();
+	const ctx = fakeCtx({ cwd, model: { id: "current-model" } as never });
+	ctx.sessionManager.getSessionId = () => "child-session";
+	ctx.sessionManager.getSessionFile = () => "/child-transcript.jsonl";
+	ctx.getTurnId = () => "current-turn";
+	registerHooks(
+		fake.pi,
+		{
+			OCTOCODE_HOOKS: "1",
+			OCTOCODE_HOOKS_COMPAT: "1",
+			OCTOCODE_SUBAGENT: "1",
+		},
+		home,
+		undefined,
+		() => ({ agentName: "native-child", agentType: "reviewer" }),
+	);
+	try {
+		await fake.fire("session_start", { reason: "startup" }, ctx);
+		await fake.fire("session_before_compact", { reason: "manual", signal: new AbortController().signal }, ctx);
+		await fake.fire("session_compact", { reason: "manual", compactionEntry: { summary: "summary" } }, ctx);
+		for (const event of ["PreCompact", "PostCompact"]) {
+			const captured = JSON.parse(fs.readFileSync(path.join(home, event), "utf8"));
+			expect(captured).toMatchObject({
+				hook_event_name: event,
+				agent_id: protocol === "codex" ? "child-session" : "native-child",
+				agent_type: "reviewer",
+				session_id: "child-session",
+				transcript_path: "/child-transcript.jsonl",
+				trigger: "manual",
+			});
+			if (protocol === "codex")
 				expect(captured).toMatchObject({
-					hook_event_name: event,
-					agent_id: protocol === "codex" ? "child-session" : "native-child",
-					agent_type: "reviewer",
-					session_id: "child-session",
-					transcript_path: "/child-transcript.jsonl",
-					trigger: "manual",
+					turn_id: "current-turn",
+					model: "current-model",
 				});
-				if (protocol === "codex")
-					expect(captured).toMatchObject({
-						turn_id: "current-turn",
-						model: "current-model",
-					});
-			}
-		} finally {
-			await fake.fire("session_shutdown", { reason: "quit" }, ctx);
 		}
-	},
-);
+	} finally {
+		await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+	}
+});

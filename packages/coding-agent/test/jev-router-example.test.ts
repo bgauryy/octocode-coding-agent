@@ -122,10 +122,7 @@ describe("jev-router example", () => {
 	});
 
 	it("plans on Terra and ignores failed edits", async () => {
-		const { harness, dispatched, respond, phases } = await setup(0.2, [
-			createTool("edit", true),
-			createTool("write"),
-		]);
+		const { harness, dispatched, respond, phases } = await setup(0.2, [createTool("edit", true), createTool("write")]);
 
 		respond(call("edit"), call("write"), fauxAssistantMessage("done"));
 		await harness.session.prompt("Add a verbose flag.");

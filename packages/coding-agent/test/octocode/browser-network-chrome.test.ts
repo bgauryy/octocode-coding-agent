@@ -112,9 +112,9 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		// The WebSocket is not paused by Fetch: reported, and the page cannot be told apart from a quiet one otherwise.
 		await vi.waitFor(
 			() =>
-				expect(
-					fake.entries.map((entry) => entry.data as AuditEntry).some((entry) => entry.via === "reported"),
-				).toBe(true),
+				expect(fake.entries.map((entry) => entry.data as AuditEntry).some((entry) => entry.via === "reported")).toBe(
+					true,
+				),
 			{ timeout: 10_000 },
 		);
 		const audit = fake.entries.map((entry) => entry.data as AuditEntry);
@@ -131,8 +131,6 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("attached Chrome: page
 		expect(hits.filter((hit) => !hit.startsWith("UPGRADE"))).toEqual([]);
 		expect(hits).toEqual([`UPGRADE /ws`]);
 		// The blocks are in the audit, one per host.
-		expect(audit.filter((entry) => entry.allowed === false && entry.action === "invariant").length).toBeGreaterThan(
-			0,
-		);
+		expect(audit.filter((entry) => entry.allowed === false && entry.action === "invariant").length).toBeGreaterThan(0);
 	}, 60_000);
 });

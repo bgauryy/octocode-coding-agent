@@ -111,8 +111,7 @@ describe("backlog snapshot", () => {
 		populate(store);
 		// Notes far past the tool's default page of 10, with long text.
 		const long = "x".repeat(5000);
-		for (let index = 0; index < 25; index++)
-			store.update("B1", { note: `note ${index} ${long}` }, { id: "agent-1" });
+		for (let index = 0; index < 25; index++) store.update("B1", { note: `note ${index} ${long}` }, { id: "agent-1" });
 		const snapshot = backlogSnapshot(store, "snap-repo", NOW, "session-live");
 		expect(snapshot).toMatchObject({ repo: "snap-repo", generatedAt: NOW, states: STATES });
 		expect(snapshot.items.map((item) => item.ref).sort()).toEqual(["B1", "B2", "B3", "B4", "B5"]);
@@ -152,10 +151,7 @@ describe("backlog snapshot", () => {
 			store.update(`B${store.list().total}`, { state: "ongoing" }, { id: holder });
 		}
 		const live = Object.fromEntries(
-			backlogSnapshot(store, "r", NOW, "session-self").items.map((item) => [
-				item.assignee,
-				item.assigneeLive,
-			]),
+			backlogSnapshot(store, "r", NOW, "session-self").items.map((item) => [item.assignee, item.assigneeLive]),
 		);
 		expect(live).toEqual({ "session-running": true, "session-gone": false, "session-self": true });
 	});
@@ -165,9 +161,7 @@ describe("backlog snapshot", () => {
 		populate(store);
 		const raw = sharedAgentDb().db;
 		// Text stored before the write-time check, or by another build, bypasses `refuseSecrets`: plant it directly.
-		raw
-			.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND repo_key = 'secret'")
-			.run(`token at ${SECRET}`);
+		raw.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND repo_key = 'secret'").run(`token at ${SECRET}`);
 		expect(() => backlogSnapshot(store, "r", NOW)).toThrow(
 			/Not written: the body of B3 looks like it contains a GitHub token/,
 		);
@@ -247,15 +241,7 @@ describe("backlog html page", () => {
 		expect(script).toContain("JSON.parse");
 		expect(script).toContain("getElementById");
 		// Every view and the deep link are present.
-		for (const view of [
-			"Board",
-			"Table",
-			"Tree",
-			"Attention",
-			"hashchange",
-			"idleMs",
-			"assigneeLive",
-		])
+		for (const view of ["Board", "Table", "Tree", "Attention", "hashchange", "idleMs", "assigneeLive"])
 			expect(script, view).toContain(view);
 	});
 });
@@ -309,7 +295,12 @@ describe("/backlog html", () => {
 	function setup(open: (file: string) => Promise<void>) {
 		const fake = fakePi();
 		const commands = new Subcommands();
-		const openWorkspace = registerBacklog(fake.pi, { commands, isSubagent: false, open, openWeb: (_ctx, backlog, changed) => startWorkspaceWeb(backlog, changed) });
+		const openWorkspace = registerBacklog(fake.pi, {
+			commands,
+			isSubagent: false,
+			open,
+			openWeb: (_ctx, backlog, changed) => startWorkspaceWeb(backlog, changed),
+		});
 		commands.add("web", webCommand(openWorkspace));
 		const cwd = path.join(tmp, "repo");
 		fs.mkdirSync(cwd, { recursive: true });
@@ -344,8 +335,8 @@ describe("/backlog html", () => {
 			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("", ctx)]);
 			const urls = open.mock.calls.map(([url]) => new URL(url));
 			expect(urls[0]!.origin).toBe(urls[1]!.origin);
-			expect(urls.map(url => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
-			expect(urls.every(url => !url.search)).toBe(true);
+			expect(urls.map((url) => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
+			expect(urls.every((url) => !url.search)).toBe(true);
 			await t.commands.get("web")!.handler("backlogs", ctx);
 			expect(open.mock.calls[2]![0]).toBe(urls[1]!.href);
 			await t.commands.get("web")!.handler("unknown", ctx);
@@ -355,7 +346,9 @@ describe("/backlog html", () => {
 			await expect(fetch(urls[0]!.origin)).rejects.toThrow();
 			await t.commands.get("web")!.handler("", ctx);
 			expect(new URL(open.mock.calls[3]![0]).hash).not.toBe(urls[0]!.hash);
-		} finally { await t.fire("session_shutdown", {}, ctx); }
+		} finally {
+			await t.fire("session_shutdown", {}, ctx);
+		}
 	});
 
 	it.each(["html"])(
@@ -439,9 +432,7 @@ describe("/backlog html", () => {
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { selects: ["Open as HTML", undefined] } });
 		await t.command.handler("tui", ctx);
-		expect(open).toHaveBeenCalledExactlyOnceWith(
-			path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"),
-		);
+		expect(open).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"));
 	});
 
 	it("opens from the board with a configured HTML action key", async () => {
@@ -471,8 +462,7 @@ describe("backlog store fixes found by the HTML review", () => {
 	it("keeps a title on one line, however the title arrives", () => {
 		const store = storeFor("title");
 		expect(
-			store.add({ title: "  two\nlines\t here  ", goal: "g", why: "Required work", createdBy: "agent" })
-				.title,
+			store.add({ title: "  two\nlines\t here  ", goal: "g", why: "Required work", createdBy: "agent" }).title,
 		).toBe("two lines here");
 		expect(store.update("B1", { title: "a\n\nb" }, { id: "agent" }).title).toBe("a b");
 		expect(() => store.update("B1", { title: " \n " }, { id: "agent" })).toThrow(/needs a title/);

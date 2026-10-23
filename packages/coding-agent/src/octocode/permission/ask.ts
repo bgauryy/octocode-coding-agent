@@ -63,7 +63,9 @@ interface ActionEvent {
 export type Answer = "once" | "session" | "kind" | "deny" | { deny: string } | undefined;
 
 /** Where an ask is shown: the parts of a context a dialog needs. */
-type Asker = Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "sessionManager" | "abort" | "cwd">> & Partial<Pick<ExtensionToolContext, "invocation">>;
+type Asker = Pick<ExtensionContext, "hasUI" | "ui"> &
+	Partial<Pick<ExtensionContext, "sessionManager" | "abort" | "cwd">> &
+	Partial<Pick<ExtensionToolContext, "invocation">>;
 
 type PermissionResolver = (
 	ctx: Asker,
@@ -75,27 +77,24 @@ type PermissionResolver = (
 			message?: string;
 			interrupt?: boolean;
 			updatedInput?: JsonObject;
-            updatedFileInputs?: FileInputReplacement[];
- updatedPermissions?: SourcePermissionUpdate[];
+			updatedFileInputs?: FileInputReplacement[];
+			updatedPermissions?: SourcePermissionUpdate[];
 	  }
 	| undefined
 >;
 
-type ReplacementCommit = (
-	signal: AbortSignal,
-	source: SourceDecision | undefined,
-) => Promise<void>;
+type ReplacementCommit = (signal: AbortSignal, source: SourceDecision | undefined) => Promise<void>;
 type PrepareReplacement = (
 	input: JsonObject,
 ) => Promise<{ request: PermissionRequest; commit: ReplacementCommit; fileIndices?: number[] }>;
 interface ReplacementCheck {
- updatedPermissions?: SourcePermissionUpdate[];
+	updatedPermissions?: SourcePermissionUpdate[];
 	prepare?: PrepareReplacement;
- prepareFile?: (inputs: FileInputReplacement[]) => ReturnType<PrepareReplacement>;
+	prepareFile?: (inputs: FileInputReplacement[]) => ReturnType<PrepareReplacement>;
 	inheritedHookApproval?: boolean;
 	commit?: ReplacementCommit;
 	auditNote?: string;
- fileIndices?: number[];
+	fileIndices?: number[];
 }
 
 /** A dialog in place of the default select (the file review). It runs inside `withDialog`. */
@@ -177,17 +176,10 @@ export class Permission {
 		this.#answeredSourceAsks = new WeakSet();
 		this.#invalidate();
 	}
-	sourceDecision(
-		invocation: ToolInvocation,
-		cwd: string,
-	): SourceDecision | undefined {
+	sourceDecision(invocation: ToolInvocation, cwd: string): SourceDecision | undefined {
 		return this.#sourcePolicy?.(invocation, cwd);
 	}
-	replacementSourceDecision(
-		invocation: ToolInvocation,
-		cwd: string,
-		indices?: number[],
-	): SourceDecision | undefined {
+	replacementSourceDecision(invocation: ToolInvocation, cwd: string, indices?: number[]): SourceDecision | undefined {
 		const source = this.sourceDecision(invocation, cwd);
 		const input = invocation.input;
 		if (
@@ -203,9 +195,7 @@ export class Permission {
 				...invocation,
 				input: {
 					...input,
-					queries: input.queries.filter((_query, index) =>
-						indices.includes(index),
-					),
+					queries: input.queries.filter((_query, index) => indices.includes(index)),
 				},
 			},
 			cwd,
@@ -218,8 +208,20 @@ export class Permission {
 	setResolver(resolver: PermissionResolver): void {
 		this.#resolver = resolver;
 	}
- #prepareUpdates?: (ctx: Asker, updates: readonly SourcePermissionUpdate[], signal: AbortSignal) => Promise<PermissionUpdateCommit>;
- setUpdateHandler(prepare: (ctx: Asker, updates: readonly SourcePermissionUpdate[], signal: AbortSignal) => Promise<PermissionUpdateCommit>): void { this.#prepareUpdates = prepare; }
+	#prepareUpdates?: (
+		ctx: Asker,
+		updates: readonly SourcePermissionUpdate[],
+		signal: AbortSignal,
+	) => Promise<PermissionUpdateCommit>;
+	setUpdateHandler(
+		prepare: (
+			ctx: Asker,
+			updates: readonly SourcePermissionUpdate[],
+			signal: AbortSignal,
+		) => Promise<PermissionUpdateCommit>,
+	): void {
+		this.#prepareUpdates = prepare;
+	}
 	#policy = new AbortController();
 	readonly #revoked = new Set<() => void>();
 
@@ -431,40 +433,25 @@ export class Permission {
 	}
 
 	/** The only way anything asks. `dialog` (the file review) replaces the default select; every rule stays here. */
-	async check(
-		ctx: Asker,
-		call: PermissionRequest,
-		dialog?: Dialog,
-	): Promise<Verdict> {
+	async check(ctx: Asker, call: PermissionRequest, dialog?: Dialog): Promise<Verdict> {
 		return this.#check(ctx, call, dialog);
 	}
 
 	/** Native outer gates can stage a replacement before any tool effects; inner checks have no commit capability. */
-	async checkWithReplacement(
-		ctx: Asker,
-		call: PermissionRequest,
-		prepare: PrepareReplacement,
-	): Promise<Verdict> {
+	async checkWithReplacement(ctx: Asker, call: PermissionRequest, prepare: PrepareReplacement): Promise<Verdict> {
 		return this.#check(ctx, call, undefined, { prepare });
 	}
 
 	async checkWithFileReplacement(
 		ctx: Asker,
 		call: PermissionRequest,
-		prepareFile: (
-			inputs: FileInputReplacement[],
-		) => ReturnType<PrepareReplacement>,
+		prepareFile: (inputs: FileInputReplacement[]) => ReturnType<PrepareReplacement>,
 		dialog?: Dialog,
 	): Promise<Verdict> {
 		return this.#check(ctx, call, dialog, { prepareFile });
 	}
 
-	async #check(
-		ctx: Asker,
-		call: PermissionRequest,
-		dialog?: Dialog,
-		transaction?: ReplacementCheck,
-	): Promise<Verdict> {
+	async #check(ctx: Asker, call: PermissionRequest, dialog?: Dialog, transaction?: ReplacementCheck): Promise<Verdict> {
 		let request = this.#withPurpose(ctx, call);
 		if (request.signal?.aborted)
 			return this.#decided(request, {
@@ -474,15 +461,9 @@ export class Permission {
 			});
 		const invocation =
 			request.invocation ??
-			(request.toolCallId && ctx.invocation?.toolCallId === request.toolCallId
-				? ctx.invocation
-				: undefined);
+			(request.toolCallId && ctx.invocation?.toolCallId === request.toolCallId ? ctx.invocation : undefined);
 		const source = invocation?.active
-			? this.replacementSourceDecision(
-					invocation,
-					request.cwd ?? ctx.cwd ?? process.cwd(),
- transaction?.fileIndices,
-				)
+			? this.replacementSourceDecision(invocation, request.cwd ?? ctx.cwd ?? process.cwd(), transaction?.fileIndices)
 			: undefined;
 		if (source?.decision === "deny" || source?.decision === "unsupported")
 			return this.#decided(request, {
@@ -490,11 +471,7 @@ export class Permission {
 				via: "policy",
 				message: source.message ?? "Source permission policy refused this call",
 			});
-		if (
-			source?.decision === "ask" &&
-			invocation &&
-			!this.#answeredSourceAsks.has(invocation)
-		)
+		if (source?.decision === "ask" && invocation && !this.#answeredSourceAsks.has(invocation))
 			request = {
 				...request,
 				reasons: [...(request.reasons ?? []), "source.ask"],
@@ -502,63 +479,33 @@ export class Permission {
 			};
 		const targetClasses = new Set<ActionClass>();
 		for (const target of source?.shellTargets ?? []) {
-			const access = shellTargetAccess(
-				target,
-				request.cwd ?? ctx.cwd ?? process.cwd(),
-			);
+			const access = shellTargetAccess(target, request.cwd ?? ctx.cwd ?? process.cwd());
 			if (access.refusal)
 				return this.#decided(request, {
 					allowed: false,
 					via: "policy",
 					message: access.refusal,
 				});
-			if (
-				access.uncertain &&
-				!(
-					source?.shellBroadAllowance &&
-					target.uncertain === "dynamic file target"
-				)
-			)
+			if (access.uncertain && !(source?.shellBroadAllowance && target.uncertain === "dynamic file target"))
 				request = {
 					...request,
-					reasons: [
-						...new Set([...(request.reasons ?? []), "shell.target" as const]),
-					],
-					reason: [
-						request.reason,
-						"Bash file target cannot be resolved before execution",
-					]
-						.filter(Boolean)
-						.join("\n"),
+					reasons: [...new Set([...(request.reasons ?? []), "shell.target" as const])],
+					reason: [request.reason, "Bash file target cannot be resolved before execution"].filter(Boolean).join("\n"),
 				};
-			if (
-				(!target.allowed || access.protected) &&
-				!(source?.shellBroadAllowance && !access.protected) &&
-				access.action
-			)
+			if ((!target.allowed || access.protected) && !(source?.shellBroadAllowance && !access.protected) && access.action)
 				targetClasses.add(access.action);
 		}
 		if (targetClasses.size)
 			request = {
 				...request,
 				also: [...new Set([...(request.also ?? []), ...targetClasses])],
-				what: [
-					...request.what,
-					...(source?.shellTargets ?? []).map(
-						(target) => `${target.kind} ${target.raw}`,
-					),
-				],
+				what: [...request.what, ...(source?.shellTargets ?? []).map((target) => `${target.kind} ${target.raw}`)],
 			};
-		const signal = request.signal
-			? AbortSignal.any([request.signal, this.#policy.signal])
-			: this.#policy.signal;
+		const signal = request.signal ? AbortSignal.any([request.signal, this.#policy.signal]) : this.#policy.signal;
 		const action = request.action;
 		const forced = (): boolean => this.#forcing(request).length > 0;
 		const classes = [...(action ? [action] : []), ...(request.also ?? [])];
-		const grant =
-			action && !forced() && !UNGRANTABLE.has(action) && classes.length === 1
-				? request.grant
-				: undefined;
+		const grant = action && !forced() && !UNGRANTABLE.has(action) && classes.length === 1 ? request.grant : undefined;
 		const grantKey = grant ? `${action}\0${grant.key}` : undefined;
 		let snapshot: Snapshot | undefined;
 		const snap = async (): Promise<void> => {
@@ -569,26 +516,22 @@ export class Permission {
 				);
 		};
 		const decided = (verdict: Verdict, note?: string): Verdict => {
-			if (verdict.allowed && source?.decision === "ask" && invocation?.active)
-				this.#answeredSourceAsks.add(invocation);
-			return this.#decided(
-				request,
-				verdict,
-				note ?? transaction?.auditNote,
-				snapshot,
-			);
+			if (verdict.allowed && source?.decision === "ask" && invocation?.active) this.#answeredSourceAsks.add(invocation);
+			return this.#decided(request, verdict, note ?? transaction?.auditNote, snapshot);
 		};
 		const completeAllowed = async (
 			verdict: Extract<Verdict, { allowed: true }>,
-   updates = transaction?.updatedPermissions,
+			updates = transaction?.updatedPermissions,
 		): Promise<Verdict> => {
-   let publishUpdates: PermissionUpdateCommit | undefined;
-   try {
-    if (updates?.length) {
-     if (!this.#prepareUpdates) throw new Error("Permission updates are unavailable; call not executed");
-     publishUpdates = await this.#prepareUpdates(ctx, updates, signal);
-    }
-   } catch (error) { return decided({allowed:false,via:"policy",message:errorMessage(error)}); }
+			let publishUpdates: PermissionUpdateCommit | undefined;
+			try {
+				if (updates?.length) {
+					if (!this.#prepareUpdates) throw new Error("Permission updates are unavailable; call not executed");
+					publishUpdates = await this.#prepareUpdates(ctx, updates, signal);
+				}
+			} catch (error) {
+				return decided({ allowed: false, via: "policy", message: errorMessage(error) });
+			}
 			await snap();
 			if (signal.aborted || (invocation && !invocation.active))
 				return decided({
@@ -611,18 +554,27 @@ export class Permission {
 					via: "cancelled",
 					message: DISMISSED,
 				});
-   let committedPolicy = this.#policy;
-   try {
-    await publishUpdates?.(signal, change => {
-     signal.throwIfAborted();
-     if (invocation && !invocation.active) throw new Error(DISMISSED);
-     change();
-     committedPolicy = this.#policy;
-    });
-   } catch (error) { return decided({allowed:false,via:signal.aborted ? "cancelled" : "policy",message:errorMessage(error)}); }
-   if (request.signal?.aborted || (invocation && !invocation.active) || this.#policy !== committedPolicy)
-    return decided({allowed:false,via:"cancelled",message:DISMISSED});
-			return decided(verdict, updates?.length ? [transaction?.auditNote, `PermissionRequest applied updates: ${JSON.stringify(updates)}`].filter(Boolean).join("\n") : undefined);
+			let committedPolicy = this.#policy;
+			try {
+				await publishUpdates?.(signal, (change) => {
+					signal.throwIfAborted();
+					if (invocation && !invocation.active) throw new Error(DISMISSED);
+					change();
+					committedPolicy = this.#policy;
+				});
+			} catch (error) {
+				return decided({ allowed: false, via: signal.aborted ? "cancelled" : "policy", message: errorMessage(error) });
+			}
+			if (request.signal?.aborted || (invocation && !invocation.active) || this.#policy !== committedPolicy)
+				return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+			return decided(
+				verdict,
+				updates?.length
+					? [transaction?.auditNote, `PermissionRequest applied updates: ${JSON.stringify(updates)}`]
+							.filter(Boolean)
+							.join("\n")
+					: undefined,
+			);
 		};
 		const automatic = (): Verdict | undefined => {
 			if (signal.aborted)
@@ -631,18 +583,14 @@ export class Permission {
 					via: "cancelled",
 					message: DISMISSED,
 				});
+			// A forcing reason (provenance, a hook ask) needs a person, even for a replacement a hook already approved.
+			if (forced()) return undefined;
 			if (transaction?.inheritedHookApproval && source?.decision !== "ask")
 				return { allowed: true, via: "hook", lasts: "call" };
-			if (forced()) return undefined;
 			const sourceAllows =
 				source?.decision === "allow" &&
-				!classes.some((each) =>
-					["net.private", "upload.outside", "agent.spawn"].includes(each),
-				);
-			if (
-				sourceAllows &&
-				[...targetClasses].every((each) => decide(this.#mode, each) === "allow")
-			)
+				!classes.some((each) => ["net.private", "upload.outside", "agent.spawn"].includes(each));
+			if (sourceAllows && [...targetClasses].every((each) => decide(this.#mode, each) === "allow"))
 				return { allowed: true, via: "policy", lasts: "call" };
 			if (classes.every((each) => decide(this.#mode, each) === "allow"))
 				return { allowed: true, via: "mode", lasts: "call" };
@@ -651,21 +599,14 @@ export class Permission {
 				decide(this.#mode, each) === "allow" ||
 				this.#spawnGrants.has(each) ||
 				this.#kinds.has(each) ||
-				(each === action &&
-					grantKey !== undefined &&
-					this.#grants.has(grantKey));
-			return classes.every(covered)
-				? { allowed: true, via: "grant", lasts: "session" }
-				: undefined;
+				(each === action && grantKey !== undefined && this.#grants.has(grantKey));
+			return classes.every(covered) ? { allowed: true, via: "grant", lasts: "session" } : undefined;
 		};
 		const ready = automatic();
 		if (ready) return ready.allowed ? completeAllowed(ready) : ready;
-        if(source?.dontAsk)return decided({allowed:false,via:"policy",message:"Claude dontAsk mode refuses this unapproved call"});
-		if (
-			invocation?.active &&
-			this.#resolver &&
-			!transaction?.inheritedHookApproval
-		) {
+		if (source?.dontAsk)
+			return decided({ allowed: false, via: "policy", message: "Claude dontAsk mode refuses this unapproved call" });
+		if (invocation?.active && this.#resolver && !transaction?.inheritedHookApproval) {
 			const answer = await this.#resolver(ctx, invocation, signal);
 			if (signal.aborted || !invocation.active)
 				return decided({
@@ -684,9 +625,10 @@ export class Permission {
 									"PermissionRequest input replacement requires a supported Bash or file-query transaction; call not executed",
 							});
 						try {
-							const prepared = answer.updatedFileInputs !== undefined
- ? await transaction!.prepareFile!(answer.updatedFileInputs)
- : await transaction!.prepare!(answer.updatedInput!);
+							const prepared =
+								answer.updatedFileInputs !== undefined
+									? await transaction!.prepareFile!(answer.updatedFileInputs)
+									: await transaction!.prepare!(answer.updatedInput!);
 							if (signal.aborted || !invocation.active)
 								return decided({
 									allowed: false,
@@ -695,9 +637,9 @@ export class Permission {
 								});
 							return this.#check(ctx, prepared.request, dialog, {
 								inheritedHookApproval: true,
- updatedPermissions: answer.updatedPermissions,
+								updatedPermissions: answer.updatedPermissions,
 								commit: prepared.commit,
- fileIndices: prepared.fileIndices,
+								fileIndices: prepared.fileIndices,
 								auditNote: `PermissionRequest replaced original input: ${JSON.stringify(invocation.input)}`,
 							});
 						} catch (error) {
@@ -758,12 +700,7 @@ export class Permission {
 				this.#grants.set(grantKey, grant.label);
 			}
 			if (answer === "kind") {
-				if (
-					!action ||
-					forced() ||
-					classes.length > 1 ||
-					kindOf(action) === undefined
-				)
+				if (!action || forced() || classes.length > 1 || kindOf(action) === undefined)
 					return decided({
 						allowed: false,
 						via: "cancelled",
@@ -778,10 +715,7 @@ export class Permission {
 					lasts: answer === "once" ? "call" : "session",
 				});
 			const note = typeof answer === "object" ? answer.deny : undefined;
-			return decided(
-				{ allowed: false, via: "user", message: this.#denied(request, note) },
-				note,
-			);
+			return decided({ allowed: false, via: "user", message: this.#denied(request, note) }, note);
 		}, signal);
 	}
 

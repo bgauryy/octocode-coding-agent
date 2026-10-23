@@ -77,6 +77,10 @@ describe("core usage totals", () => {
 		expect(getUsageCostBreakdown([report, plain])).toEqual([
 			{ key: "Tools/summaries", cost: 0.4, tokens: 2 + 500 + 9_000 + 1_000 },
 		]);
-		expect(computeCacheMetrics([report, plain]).tools).toMatchObject({ requests: 1, cacheRead: 9_000, cacheWrite: 1_000 });
+		expect(computeCacheMetrics([report, plain]).tools).toMatchObject({
+			requests: 1,
+			cacheRead: 9_000,
+			cacheWrite: 1_000,
+		});
 	});
 });

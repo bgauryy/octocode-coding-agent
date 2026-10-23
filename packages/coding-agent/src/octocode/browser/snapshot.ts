@@ -107,9 +107,7 @@ export async function snapshot(
 	options: { changesOnly?: boolean } = {},
 ): Promise<string> {
 	if (session.dialog) return dialogNotice(session.dialog);
-	const data = await session.page.untilDialog(
-		session.page.evaluate<SnapshotData | undefined>(SNAPSHOT_SCRIPT, signal),
-	);
+	const data = await session.page.untilDialog(session.page.evaluate<SnapshotData | undefined>(SNAPSHOT_SCRIPT, signal));
 	if (session.dialog) return dialogNotice(session.dialog);
 	if (!data) throw new Error("Could not read the page; wait for it to load and take a snapshot again.");
 	const previous = lastSnapshot.get(session);

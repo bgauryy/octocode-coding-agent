@@ -30,8 +30,7 @@ export function browserCallHeader(args: BrowserCallArgs, theme: Theme, context: 
 		(args.ref !== undefined ? `[${args.ref}]` : undefined) ??
 		args.key ??
 		(args.expression ? clip(args.expression, 80) : undefined);
-	const typed =
-		args.action === "type" && args.text ? ` ${JSON.stringify(clipText(redactSecrets(args.text), 60))}` : "";
+	const typed = args.action === "type" && args.text ? ` ${JSON.stringify(clipText(redactSecrets(args.text), 60))}` : "";
 	return toolHeader(theme, context, "Browser", `${args.action ?? ""}${target ? ` ${target}` : ""}${typed}`);
 }
 

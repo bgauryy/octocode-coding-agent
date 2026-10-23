@@ -64,16 +64,12 @@ it("retains checkpoint and cancellation semantics after an all-occurrence commit
 	const f = setup();
 	const controller = new AbortController();
 	const rename = fs.promises.rename.bind(fs.promises);
-	const spy = vi
-		.spyOn(fs.promises, "rename")
-		.mockImplementation(async (from, to) => {
-			await rename(from, to);
-			if (to === f.file) controller.abort();
-		});
+	const spy = vi.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
+		await rename(from, to);
+		if (to === f.file) controller.abort();
+	});
 	try {
-		await expect(f.edit(true, controller.signal)).rejects.toThrow(
-			/abort[\s\S]*changed/i,
-		);
+		await expect(f.edit(true, controller.signal)).rejects.toThrow(/abort[\s\S]*changed/i);
 		expect(fs.readFileSync(f.file, "utf8")).toBe("B\nB\n");
 		expect(f.checkpoints.list()).toHaveLength(1);
 	} finally {

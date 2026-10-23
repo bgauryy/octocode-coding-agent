@@ -14,8 +14,8 @@ export class Mail {
 	private holding = new AbortController();
 	/** Notices already handed to Octocode whose database acknowledgement still needs retrying. */
 	private notified: DeadLetter[] = [];
-	/** Ids of the messages this process created for the user, which with the signed ones are the only ones labelled "the user" (the sender column is shared and forgeable). */
-	private readonly forUser = new Set<number>();
+	/** Exact messages this process created for the user; shared database ids and sender columns alone are forgeable. */
+	private readonly forUser = new Map<number, { text: string; recipients: ReadonlySet<string> }>();
 
 	/** `secret`: what the parent gave this process (a subagent), which checks a user message the parent signed (`userProof`). */
 	private readonly pi: Pick<ExtensionAPI, "sendMessage">;
@@ -31,17 +31,18 @@ export class Mail {
 	 * still holds what was saved (the file is read outside the signature).
 	 */
 	private verified(message: Message): boolean {
-		// The id alone is not enough: after a database replacement ids start again, so the sender column must say user too.
+		const created = this.forUser.get(message.id);
 		return (
 			message.from === USER_SENDER &&
-			(this.forUser.has(message.id) || userProofValid(this.secret(), message)) &&
+			((created?.text === message.text && created.recipients.has(message.to)) ||
+				userProofValid(this.secret(), message)) &&
 			spillIntact(message.text)
 		);
 	}
 
-	/** Records that this process created message `id` for the user (`/agents tell`): its text is read as the user's. */
-	createdForUser(id: number): void {
-		this.forUser.add(id);
+	/** Binds in-process user provenance to the exact text and recipients, as the child proof does. */
+	createdForUser(id: number, text: string, recipients: readonly string[]): void {
+		this.forUser.set(id, { text, recipients: new Set(recipients) });
 	}
 
 	/** A team notice for this agent, read at its next step; never starts a turn. False when the session cannot take it. */

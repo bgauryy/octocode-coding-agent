@@ -306,7 +306,6 @@ async function main(): Promise<void> {
 
 	const modelRuntime = getModelRuntime(modelRegistry);
 	const settingsManager = SettingsManager.inMemory({
-
 		retry: { enabled: false },
 		transport: args.transport,
 	});

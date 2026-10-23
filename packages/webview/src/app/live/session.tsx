@@ -146,6 +146,7 @@ export function LiveProvider({
 		const projection = new ApplicationProjection();
 		const interner = new EventInterner();
 		let domain: WorkspaceSnapshot = { sessionId: "", agents: [], traffic: [], events: [], receipts: [] };
+		let pendingDomain: WorkspaceSnapshot | undefined;
 		let projected: WorkspaceEvent[] = [];
 		const publish = frameScheduler(() => {
 			const merged = mergeEvents(domain, projected, live.session.getState().application?.sessionId);
@@ -155,6 +156,14 @@ export function LiveProvider({
 		});
 		const connection = new BrowserConnection(access, {
 			workspace: (snapshot) => {
+				const applicationSessionId = live.session.getState().application?.sessionId;
+				if (applicationSessionId && snapshot.sessionId !== applicationSessionId) {
+					// A fresh connection sends workspace before application; hold it until the application confirms
+					// the switch. A delayed packet for an old session must not replace the visible new session.
+					pendingDomain = snapshot;
+					return;
+				}
+				pendingDomain = undefined;
 				domain = snapshot;
 				publish.schedule();
 			},
@@ -167,8 +176,19 @@ export function LiveProvider({
 			status: (text) => live.session.setState({ status: { tone: connectionTone(text), text } }),
 			application: (stream) => {
 				const application = stream.snapshot;
+				const previousSessionId = live.session.getState().application?.sessionId;
 				projected = projection.update(application, stream.at);
-				if (!domain.sessionId && application) domain = { ...domain, sessionId: application.sessionId };
+				if (
+					application &&
+					domain.sessionId !== application.sessionId &&
+					(!domain.sessionId || (previousSessionId && previousSessionId !== application.sessionId))
+				) {
+					domain =
+						pendingDomain?.sessionId === application.sessionId
+							? pendingDomain
+							: { sessionId: application.sessionId, agents: [], traffic: [], events: [], receipts: [] };
+					pendingDomain = undefined;
+				}
 				live.session.setState({ application, run: projection.run });
 				publish.schedule();
 			},

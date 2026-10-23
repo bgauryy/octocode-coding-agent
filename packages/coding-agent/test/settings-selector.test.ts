@@ -79,9 +79,7 @@ describe("SettingsSelectorComponent", () => {
 		list.selectItem("theme");
 		list.handleInput("\r");
 		let output = stripAnsi(list.render(120).join("\n"));
-		expect(output).toMatch(
-			/ {4}system +Theme created from your terminal's colors\n {4}automatic +Use separate themes/,
-		);
+		expect(output).toMatch(/ {4}system +Theme created from your terminal's colors\n {4}automatic +Use separate themes/);
 		expect(output).toContain("→ ✓ dark");
 
 		list.handleInput("\x1b[B");

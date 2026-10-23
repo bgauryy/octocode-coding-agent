@@ -17,24 +17,31 @@ it.each(["manual", "threshold", "overflow"] as const)(
 			models: [{ id: "small", contextWindow: 8000 }],
 			tools: [],
 			compactionPolicy: { keepRecentTokens: 1 },
-			builtinCompactionFactories: [(pi) => {
-				pi.on("session_before_compact", async (event) => ({ compaction: {
-					summary: complete,
-					firstKeptEntryId: event.preparation.firstKeptEntryId,
-					tokensBefore: event.preparation.tokensBefore,
-				} }));
-			}],
+			builtinCompactionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => ({
+						compaction: {
+							summary: complete,
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+						},
+					}));
+				},
+			],
 		});
 		const seed = () => {
 			manager.appendMessage({ role: "user", content: "Original instruction", timestamp: Date.now() });
 			manager.appendMessage(fauxAssistantMessage("Complete answer"));
 			harness.session.refreshContext();
 		};
-		const compact = () => reason === "manual"
-			? harness.session.compact()
-			: (harness.session as unknown as {
-				_runAutoCompaction(reason: "threshold" | "overflow", retry: boolean): Promise<boolean>;
-			})._runAutoCompaction(reason, reason === "overflow");
+		const compact = () =>
+			reason === "manual"
+				? harness.session.compact()
+				: (
+						harness.session as unknown as {
+							_runAutoCompaction(reason: "threshold" | "overflow", retry: boolean): Promise<boolean>;
+						}
+					)._runAutoCompaction(reason, reason === "overflow");
 		try {
 			seed();
 			await compact();

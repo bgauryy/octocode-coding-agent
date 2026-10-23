@@ -38,18 +38,12 @@ for (const [name, command] of [
 			rules: { allow: ["Bash"], deny: ["Edit(./original.txt)"] },
 		});
 		try {
-			if (name === "append")
-				fs.writeFileSync(path.join(f.cwd, "original.txt"), "BEFORE");
+			if (name === "append") fs.writeFileSync(path.join(f.cwd, "original.txt"), "BEFORE");
 			await f.run("bash", { command });
 			expect(fs.existsSync(path.join(f.cwd, "first.txt"))).toBe(false);
-			if (name === "append")
-				expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-					"BEFORE",
-				);
+			if (name === "append") expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("BEFORE");
 			else expect(fs.existsSync(path.join(f.cwd, "original.txt"))).toBe(false);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(f.inputs()).toEqual([]);
@@ -71,9 +65,7 @@ for (const bashAllowance of [false, true]) {
 		try {
 			fs.writeFileSync(path.join(f.cwd, "input.txt"), "INPUT_SECRET\n");
 			await f.run("bash", { command: "cat < input.txt" });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(JSON.stringify(result)).not.toContain("INPUT_SECRET");
@@ -92,46 +84,20 @@ it("scoped Edit-only source policy initializes shell parsing without any Bash ru
 	try {
 		await f.run("bash", { command: "printf WRITE > original.txt" });
 		expect(fs.existsSync(path.join(f.cwd, "original.txt"))).toBe(false);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
 });
 
 for (const [name, command, deny, output, fileContent] of [
-	[
-		"Read restriction on output",
-		"printf WRITE > original.txt",
-		"Read(./original.txt)",
-		undefined,
-		"WRITE",
-	],
-	[
-		"Edit restriction on input",
-		"cat < input.txt",
-		"Edit(./input.txt)",
-		"INPUT_SECRET",
-		undefined,
-	],
+	["Read restriction on output", "printf WRITE > original.txt", "Read(./original.txt)", undefined, "WRITE"],
+	["Edit restriction on input", "cat < input.txt", "Edit(./input.txt)", "INPUT_SECRET", undefined],
 	["bare Edit", "printf WRITE > original.txt", "Edit", undefined, "WRITE"],
-	[
-		"wildcard Edit",
-		"printf WRITE > original.txt",
-		"Edit(*)",
-		undefined,
-		"WRITE",
-	],
+	["wildcard Edit", "printf WRITE > original.txt", "Edit(*)", undefined, "WRITE"],
 	["bare Read", "cat < input.txt", "Read", "INPUT_SECRET", undefined],
 	["wildcard Read", "cat < input.txt", "Read(*)", "INPUT_SECRET", undefined],
-	[
-		"null device",
-		"printf WRITE > /dev/null",
-		"Edit(//dev/null)",
-		undefined,
-		undefined,
-	],
+	["null device", "printf WRITE > /dev/null", "Edit(//dev/null)", undefined, undefined],
 	["file descriptor duplication", "printf DUP 1>&2", "Edit", "DUP", undefined],
 ] as const) {
 	it(`shell file policy preserves the ${name} source control`, async () => {
@@ -142,15 +108,10 @@ for (const [name, command, deny, output, fileContent] of [
 		try {
 			fs.writeFileSync(path.join(f.cwd, "input.txt"), "INPUT_SECRET\n");
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			if (output) expect(JSON.stringify(result)).toContain(output);
-			if (fileContent)
-				expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-					fileContent,
-				);
+			if (fileContent) expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(fileContent);
 			expect(f.inputs()).toEqual([]);
 		} finally {
 			await f.close();
@@ -180,9 +141,7 @@ for (const [name, input, exists] of [
 			});
 			if (exists) expect(fs.readFileSync(target, "utf8")).toBe("BEFORE");
 			else expect(fs.existsSync(target)).toBe(false);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).toContain("Claude permission deny:");
 			expect(f.inputs()).toEqual([]);
@@ -200,9 +159,7 @@ for (const mode of ["manual", "full"] as const) {
 		});
 		try {
 			await f.run("bash", { command: "printf WRITE > original.txt" });
-			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-				"WRITE",
-			);
+			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("WRITE");
 			expect(f.inputs()).toEqual([]);
 		} finally {
 			await f.close();
@@ -235,9 +192,7 @@ it("scoped Edit allowance cannot authorize the original Bash invocation", async 
 	try {
 		const command = "node -p 42 > original.txt";
 		await f.run("bash", { command });
-		expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-			"42\n",
-		);
+		expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("42\n");
 		expect(f.inputs()).toHaveLength(1);
 		expect(f.inputs()[0]).toMatchObject({
 			tool_name: "Bash",
@@ -256,12 +211,8 @@ it("source Bash ask resolves once with the original command for multiple file ef
 	try {
 		const command = "printf FIRST > first.txt; printf SECOND > original.txt";
 		await f.run("bash", { command });
-		expect(fs.readFileSync(path.join(f.cwd, "first.txt"), "utf8")).toBe(
-			"FIRST",
-		);
-		expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-			"SECOND",
-		);
+		expect(fs.readFileSync(path.join(f.cwd, "first.txt"), "utf8")).toBe("FIRST");
+		expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("SECOND");
 		expect(f.inputs()).toHaveLength(1);
 		expect(f.inputs()[0]).toMatchObject({
 			tool_name: "Bash",
@@ -312,9 +263,7 @@ for (const [name, allow, count] of [
 		try {
 			const command = "node -p 42 > original.txt";
 			await f.run("bash", { command });
-			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-				"42\n",
-			);
+			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("42\n");
 			expect(f.inputs()).toHaveLength(count);
 			if (count)
 				expect(f.inputs()[0]).toMatchObject({
@@ -332,19 +281,14 @@ for (const targetAllowance of [false, true]) {
 		const f = await fixture("claude", {
 			mode: "manual",
 			rules: {
-				allow: [
-					"Bash",
-					...(targetAllowance ? ["Edit(./.claude/generated.txt)"] : []),
-				],
+				allow: ["Bash", ...(targetAllowance ? ["Edit(./.claude/generated.txt)"] : [])],
 			},
 		});
 		try {
 			fs.mkdirSync(path.join(f.cwd, ".claude"), { recursive: true });
 			const command = "node -p 42 > .claude/generated.txt";
 			await f.run("bash", { command });
-			expect(
-				fs.readFileSync(path.join(f.cwd, ".claude/generated.txt"), "utf8"),
-			).toBe("42\n");
+			expect(fs.readFileSync(path.join(f.cwd, ".claude/generated.txt"), "utf8")).toBe("42\n");
 			expect(f.inputs()).toHaveLength(1);
 			expect(f.inputs()[0]).toMatchObject({
 				tool_name: "Bash",
@@ -406,9 +350,7 @@ for (const compatibility of [true, false]) {
 					operations: event?.operations,
 				}));
 			expect(result.cancelled).toBe(false);
-			expect(
-				fs.readFileSync(path.join(f.cwd, ".claude/generated.txt"), "utf8"),
-			).toBe("WRITE");
+			expect(fs.readFileSync(path.join(f.cwd, ".claude/generated.txt"), "utf8")).toBe("WRITE");
 			expect(f.inputs()).toHaveLength(compatibility ? 1 : 0);
 		} finally {
 			await f.close();
@@ -457,9 +399,7 @@ for (const broad of [true, false]) {
 		try {
 			const command = 'OUT=original.txt; printf WRITE > "$OUT"';
 			await f.run("bash", { command });
-			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe(
-				"WRITE",
-			);
+			expect(fs.readFileSync(path.join(f.cwd, "original.txt"), "utf8")).toBe("WRITE");
 			expect(f.inputs()).toHaveLength(broad ? 0 : 1);
 		} finally {
 			await f.close();
@@ -477,9 +417,7 @@ it("unknown redirect target with a scoped file denial refuses before effects", a
 		expect(fs.existsSync(path.join(f.cwd, "original.txt"))).toBe(false);
 		const result = f.session.messages.findLast((m) => m.role === "toolResult");
 		expect(result).toMatchObject({ isError: true });
-		expect(JSON.stringify(result)).toMatch(
-			/unsupported|cannot|unknown|unresolved/i,
-		);
+		expect(JSON.stringify(result)).toMatch(/unsupported|cannot|unknown|unresolved/i);
 		expect(f.inputs()).toHaveLength(0);
 	} finally {
 		await f.close();
@@ -497,14 +435,10 @@ for (const access of ["read", "write"] as const) {
 			},
 		});
 		try {
-			if (access === "read")
-				fs.writeFileSync(path.join(f.cwd, name), "INPUT_SECRET");
+			if (access === "read") fs.writeFileSync(path.join(f.cwd, name), "INPUT_SECRET");
 			await f.run("bash", { command: `cat <> ${name}` });
-			if (access === "write")
-				expect(fs.existsSync(path.join(f.cwd, name))).toBe(false);
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			if (access === "write") expect(fs.existsSync(path.join(f.cwd, name))).toBe(false);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: true });
 			expect(JSON.stringify(result)).not.toContain("INPUT_SECRET");
 			expect(f.inputs()).toHaveLength(0);

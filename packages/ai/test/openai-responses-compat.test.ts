@@ -528,10 +528,7 @@ describe("openai-responses provider defaults", () => {
 
 			expect(result.usage.cost.input).toBeCloseTo(model.cost.input * multiplier * tokenScale, 12);
 			expect(result.usage.cost.output).toBeCloseTo(model.cost.output * multiplier * tokenScale, 12);
-			expect(result.usage.cost.total).toBeCloseTo(
-				(model.cost.input + model.cost.output) * multiplier * tokenScale,
-				12,
-			);
+			expect(result.usage.cost.total).toBeCloseTo((model.cost.input + model.cost.output) * multiplier * tokenScale, 12);
 		},
 	);
 });

@@ -130,13 +130,15 @@ describe.runIf(posix)("foreground command that reaches its deadline", () => {
 		const jobs = new BashJobs(tmp());
 		registerBashTool(pi, commands, jobs, () => ({}));
 		const ctx = fakeCtx({ cwd: tmp() });
-		await tools.get("bash").execute(
-			"t1",
-			{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
-			undefined,
-			undefined,
-			ctx,
-		);
+		await tools
+			.get("bash")
+			.execute(
+				"t1",
+				{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
+				undefined,
+				undefined,
+				ctx,
+			);
 		const job = jobs.jobs.get("bash-1")!;
 		await commands.get("jobs")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^bash-1 · \d+s · pid \d+ · trap /);

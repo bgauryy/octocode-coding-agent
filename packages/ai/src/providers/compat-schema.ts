@@ -106,8 +106,7 @@ export const OpenRouterRoutingSchema = Type.Object(
 					}),
 				],
 				{
-					description:
-						'Sorting strategy. Can be a string such as "price", "throughput", or "latency", or an object.',
+					description: 'Sorting strategy. Can be a string such as "price", "throughput", or "latency", or an object.',
 				},
 			),
 		),
@@ -121,12 +120,8 @@ export const OpenRouterRoutingSchema = Type.Object(
 						Type.Union([Type.Number(), Type.String()], { description: "Price per million completion tokens." }),
 					),
 					image: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: "Price per image." })),
-					audio: Type.Optional(
-						Type.Union([Type.Number(), Type.String()], { description: "Price per audio unit." }),
-					),
-					request: Type.Optional(
-						Type.Union([Type.Number(), Type.String()], { description: "Price per request." }),
-					),
+					audio: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: "Price per audio unit." })),
+					request: Type.Optional(Type.Union([Type.Number(), Type.String()], { description: "Price per request." })),
 				},
 				{ description: "Maximum price per million tokens in USD." },
 			),
@@ -432,8 +427,7 @@ export const AnthropicMessagesCompatSchema = Type.Object(
 		}),
 		sessionAffinityFormat: Type.Optional(
 			Type.Literal("openrouter", {
-				description:
-					"Session-affinity format. openrouter sends x-session-id; when unset, sends x-session-affinity.",
+				description: "Session-affinity format. openrouter sends x-session-id; when unset, sends x-session-affinity.",
 			}),
 		),
 		supportsCacheControlOnTools: Type.Optional(
@@ -507,7 +501,8 @@ export const BedrockCompatSchema = Type.Object(
 			default: false,
 		}),
 		supportsLongCacheRetention: optionalCompatBoolean({
-			description: 'Whether cacheRetention "long" sends one-hour cache points. Set false for models or regions that reject the ttl field.',
+			description:
+				'Whether cacheRetention "long" sends one-hour cache points. Set false for models or regions that reject the ttl field.',
 			default: true,
 		}),
 	},

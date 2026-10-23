@@ -76,8 +76,7 @@ export class UserQuestions {
 	mark(asks: readonly Ask[]): Ask[] {
 		return asks.map((ask) => {
 			const { answer } = ask;
-			if (!answer || !this.windows.some((window) => window.from >= ask.askedAt && window.to <= answer.at))
-				return ask;
+			if (!answer || !this.windows.some((window) => window.from >= ask.askedAt && window.to <= answer.at)) return ask;
 			return { ...ask, answer: { ...answer, afterAskUser: true } };
 		});
 	}

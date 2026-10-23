@@ -9,7 +9,7 @@ import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "timers/promises";
 import { getAgentDir } from "../config.ts";
-import { raceWithAbortSignal } from "../utils/abort.ts";
+import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { isCommandConfigValue, resolveConfigValue } from "./resolve-config-value.ts";

@@ -179,8 +179,7 @@ export class PagePolicy implements PageNetworkPolicy {
 		const known = this.#verdicts.get(name);
 		if (known && this.#now() - known.at < VERDICT_TTL_MS) return known.host;
 		const now = this.#now();
-		for (const [stale, verdict] of this.#verdicts)
-			if (now - verdict.at >= VERDICT_TTL_MS) this.#verdicts.delete(stale);
+		for (const [stale, verdict] of this.#verdicts) if (now - verdict.at >= VERDICT_TTL_MS) this.#verdicts.delete(stale);
 		if (this.#verdicts.size >= VERDICTS_MAX) this.#verdicts.delete(this.#verdicts.keys().next().value!);
 		const host = classifyHost(url, this.#lookup);
 		this.#verdicts.set(name, { at: now, host });

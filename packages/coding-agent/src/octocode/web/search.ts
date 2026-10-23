@@ -159,13 +159,8 @@ export async function search(
 			name: "tavily",
 			run: async (key: string) =>
 				hits(
-					(
-						await post(
-							"https://api.tavily.com/search",
-							{ authorization: `Bearer ${key}` },
-							{ query, max_results: max },
-						)
-					).results,
+					(await post("https://api.tavily.com/search", { authorization: `Bearer ${key}` }, { query, max_results: max }))
+						.results,
 					"url",
 					"content",
 				),

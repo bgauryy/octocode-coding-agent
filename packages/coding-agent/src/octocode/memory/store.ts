@@ -140,9 +140,7 @@ export class MemoryStore {
 
 	count(scope: ScopeFilter = "all"): number {
 		const where = this.scopeSql(scope);
-		const row = this.db
-			.prepare(`SELECT count(*) AS n FROM memories m WHERE ${where.sql}`)
-			.get(...where.params) as Row;
+		const row = this.db.prepare(`SELECT count(*) AS n FROM memories m WHERE ${where.sql}`).get(...where.params) as Row;
 		return Number(row.n);
 	}
 
@@ -150,12 +148,7 @@ export class MemoryStore {
 	 * Best matches for the words of `query`, best first. With FTS5: BM25 over title, keywords and body (weighted 5/3/1).
 	 * Without it: the same column weights times each term's inverse document frequency. Project hits get a small boost either way.
 	 */
-	search(
-		query: string,
-		scope: ScopeFilter = "all",
-		limit = 10,
-		exclude: ReadonlySet<number> = new Set(),
-	): MemoryHit[] {
+	search(query: string, scope: ScopeFilter = "all", limit = 10, exclude: ReadonlySet<number> = new Set()): MemoryHit[] {
 		const match = ftsQuery(query);
 		if (!match) return [];
 		const hits = this.agentDb.fts

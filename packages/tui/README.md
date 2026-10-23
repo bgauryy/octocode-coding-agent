@@ -118,6 +118,21 @@ const foreground = rgbColor(r, g, b); // cheap to render repeatedly
 const foregroundCode = foregroundAnsi(foreground, getTerminalColorMode());
 ```
 
+`shimmerText()` paints plain text with a soft light band that sweeps left to right, for a "working" label. Each cell mixes `base` toward `peak` by a cosine falloff from the band's center; the band's position comes from `now` (default `Date.now()`), so the caller redraws on its own timer, such as a `Loader`'s frame interval, and every shimmer on the same clock moves in step:
+
+```typescript
+import { shimmerText } from "@octocodeai/octocode-tui";
+
+const label = shimmerText("Working", {
+  base: parseColor("#a7b0bc"),
+  peak: parseColor("#e6edf3"),
+  mode: getTerminalColorMode(),
+  periodMs: 2000, // one sweep, including `padding` cells on each side (default 2000)
+  halfWidth: 5,   // band half-width in cells (default 5)
+  padding: 10,    // cells travelled before and after the text (default 10)
+});
+```
+
 ### Alternate-screen viewport layouts
 
 `TuiAltScreen` can render an explicit terminal-height layout. `VStack` and `HStack` allocate constrained regions, while `ScrollView` owns scrolling for one region. These semantics are intentionally unavailable on `TuiMainScreen`, where the terminal owns scrollback.
@@ -400,6 +415,7 @@ const text = new Text(
 );
 text.setText("Updated text");
 text.setCustomBgFn((text) => chalk.bgBlue(text));
+text.setHangingIndent(true); // wrapped rows keep the leading spaces of the line they continue
 ```
 
 ### TruncatedText
@@ -528,7 +544,9 @@ md.setText("Updated markdown");
 **Features:**
 - Headings, bold, italic, code blocks, lists, links, blockquotes
 - HTML tags rendered as plain text
-- Optional syntax highlighting via `highlightCode`
+- Optional syntax highlighting via `highlightCode`; long code lines wrap under the block indent and the line's own indentation
+- Tables with a rule under the header; rules between rows appear only when a row wraps
+- Task lists as `☐` / `✔` (done items struck through), or the source `[ ]` / `[x]` with `preserveOrderedListMarkers`
 - Padding support
 - Render caching for performance
 

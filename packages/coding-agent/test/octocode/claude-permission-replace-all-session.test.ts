@@ -38,9 +38,7 @@ it("source Edit replace_all updates both original occurrences after a real read"
 		});
 		expect(fs.readFileSync(target, "utf8")).toBe("AFTER AFTER");
 		expect(f.inputs()).toHaveLength(1);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 	} finally {
 		await f.close();
 	}
@@ -48,34 +46,10 @@ it("source Edit replace_all updates both original occurrences after a real read"
 
 for (const [name, before, oldText, newText, after] of [
 	["self-overlap is non-overlapping", "aaa", "aa", "X", "Xa"],
-	[
-		"replacement containing old text is nonrecursive",
-		"aa aa",
-		"aa",
-		"aaaa",
-		"aaaa aaaa",
-	],
-	[
-		"exact quotes take priority over fuzzy copies",
-		'"hello"\n“hello”\n',
-		'"hello"',
-		"AFTER",
-		"AFTER\n“hello”\n",
-	],
-	[
-		"quote fallback applies only without exact matches",
-		"“hello”\n“hello”\n",
-		'"hello"',
-		"AFTER",
-		"AFTER\nAFTER\n",
-	],
-	[
-		"CRLF bytes survive normalized matching",
-		"BEFORE\r\nBEFORE\r\n",
-		"BEFORE\n",
-		"AFTER\n",
-		"AFTER\r\nAFTER\r\n",
-	],
+	["replacement containing old text is nonrecursive", "aa aa", "aa", "aaaa", "aaaa aaaa"],
+	["exact quotes take priority over fuzzy copies", '"hello"\n“hello”\n', '"hello"', "AFTER", "AFTER\n“hello”\n"],
+	["quote fallback applies only without exact matches", "“hello”\n“hello”\n", '"hello"', "AFTER", "AFTER\nAFTER\n"],
+	["CRLF bytes survive normalized matching", "BEFORE\r\nBEFORE\r\n", "BEFORE\n", "AFTER\n", "AFTER\r\nAFTER\r\n"],
 ] as const) {
 	it(`source replace_all ${name}`, async () => {
 		const f = await fixture("claude", { fileReadTool: true });
@@ -91,9 +65,7 @@ for (const [name, before, oldText, newText, after] of [
 			});
 			await f.run("file", { queries: [edit(target, before, "ORIGINAL")] });
 			expect(fs.readFileSync(target)).toEqual(Buffer.from(after));
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: false });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		} finally {
 			await f.close();
 		}
@@ -128,9 +100,7 @@ it("partial read permits all occurrences but does not grant whole-file write cov
 		});
 		expect(fs.readFileSync(target, "utf8")).toBe(after);
 		expect(f.inputs()).toHaveLength(1);
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: true });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 	} finally {
 		await f.close();
 	}
@@ -151,9 +121,7 @@ it("stale source prefix and an extra exact occurrence are preserved and replaced
 		});
 		await f.run("file", { queries: [edit(target, before, "ORIGINAL")] });
 		expect(fs.readFileSync(target, "utf8")).toBe("PREFIX AFTER|AFTER;AFTER");
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 	} finally {
 		await f.close();
 	}
@@ -204,10 +172,7 @@ it("native replaceAll projects source replace_all consistently before and after 
 			.trim()
 			.split("\n")
 			.map((s) => JSON.parse(s));
-		expect(events.map((e) => e.hook_event_name)).toEqual([
-			"PreToolUse",
-			"PostToolUse",
-		]);
+		expect(events.map((e) => e.hook_event_name)).toEqual(["PreToolUse", "PostToolUse"]);
 		for (const event of events)
 			expect(event).toMatchObject({
 				tool_name: "Edit",
@@ -250,9 +215,7 @@ for (const overlap of [false, true]) {
 				],
 			});
 			expect(fs.readFileSync(target, "utf8")).toBe(overlap ? body : "X Y X");
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: overlap });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: overlap });
 		} finally {
 			await f.close();
 		}
@@ -278,9 +241,7 @@ for (const [name, before, anchor] of [
 			await f.run("file", { queries: [edit(target, before, "ORIGINAL")] });
 			expect(fs.readFileSync(target, "utf8")).toBe(before);
 			expect(f.inputs()).toHaveLength(1);
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: true });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: true });
 		} finally {
 			await f.close();
 		}
@@ -306,9 +267,7 @@ for (const mixed of [false, true]) {
 						type: "edit",
 						path: target,
 						edits: [
-							...(mixed
-								? [{ oldText: "aa", newText: "X", replaceAll: true }]
-								: []),
+							...(mixed ? [{ oldText: "aa", newText: "X", replaceAll: true }] : []),
 							{ oldText: "b\n", newText: "Y\n" },
 						],
 						reasoning: "Fuzzy combination boundary",
@@ -316,15 +275,11 @@ for (const mixed of [false, true]) {
 				],
 			});
 			expect(fs.readFileSync(target, "utf8")).toBe(mixed ? body : "aa\nY\naa");
-			expect(
-				f.session.messages.findLast((m) => m.role === "toolResult"),
-			).toMatchObject({ isError: mixed });
+			expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: mixed });
 			if (mixed)
-				expect(
-					JSON.stringify(
-						f.session.messages.findLast((m) => m.role === "toolResult"),
-					),
-				).toMatch(/fuzzy|mixed|separate|normaliz/i);
+				expect(JSON.stringify(f.session.messages.findLast((m) => m.role === "toolResult"))).toMatch(
+					/fuzzy|mixed|separate|normaliz/i,
+				);
 		} finally {
 			await f.close();
 		}

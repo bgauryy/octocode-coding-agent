@@ -51,11 +51,9 @@ describe("readClipboardImage", () => {
 			args.includes("TARGETS") ? undefined : Buffer.from("hello"),
 		);
 		expect(await readClipboardImage({ platform: "linux", env: { DISPLAY: ":0" } })).toBeNull();
-		expect(mocks.command).toHaveBeenCalledExactlyOnceWith(
-			"xclip",
-			["-selection", "clipboard", "-t", "TARGETS", "-o"],
-			{ timeoutMs: 1000 },
-		);
+		expect(mocks.command).toHaveBeenCalledExactlyOnceWith("xclip", ["-selection", "clipboard", "-t", "TARGETS", "-o"], {
+			timeoutMs: 1000,
+		});
 		expect(mocks.getImage).toHaveBeenCalledOnce();
 	});
 
@@ -137,21 +135,14 @@ describe("readClipboardImage", () => {
 		expect(mocks.getImage).not.toHaveBeenCalled();
 	});
 
-	test.each(["linux", "win32"] as const)(
-		"%s: propagates native transfer errors without fallback",
-		async (platform) => {
-			const error = new Error("Native clipboard operation failed");
-			mocks.getImage.mockImplementation(async () => {
-				throw error;
-			});
-			await expect(readClipboardImage({ platform, env: { WAYLAND_DISPLAY: "1", DISPLAY: ":0" } })).rejects.toBe(
-				error,
-			);
-			expect(mocks.command.mock.calls.map(([name]) => name)).toEqual(
-				platform === "linux" ? ["wl-paste", "xclip"] : [],
-			);
-		},
-	);
+	test.each(["linux", "win32"] as const)("%s: propagates native transfer errors without fallback", async (platform) => {
+		const error = new Error("Native clipboard operation failed");
+		mocks.getImage.mockImplementation(async () => {
+			throw error;
+		});
+		await expect(readClipboardImage({ platform, env: { WAYLAND_DISPLAY: "1", DISPLAY: ":0" } })).rejects.toBe(error);
+		expect(mocks.command.mock.calls.map(([name]) => name)).toEqual(platform === "linux" ? ["wl-paste", "xclip"] : []);
+	});
 
 	test("Termux does not read image clipboards", async () => {
 		expect(await readClipboardImage({ platform: "linux", env: { TERMUX_VERSION: "0.119" } })).toBeNull();

@@ -693,11 +693,7 @@ export function resolveConfiguredModelHeaders(
 	extension: ProviderConfigInput | undefined,
 	env?: Record<string, string>,
 ): Record<string, string> | undefined {
-	return resolveHeadersOrThrow(
-		rawModelHeaders(model, config, extension),
-		`model "${model.provider}/${model.id}"`,
-		env,
-	);
+	return resolveHeadersOrThrow(rawModelHeaders(model, config, extension), `model "${model.provider}/${model.id}"`, env);
 }
 
 export interface CompatibilityRequestConfig {

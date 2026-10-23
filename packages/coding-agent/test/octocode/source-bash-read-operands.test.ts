@@ -1,12 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import {
-	bashSyntax,
-	initializeBashSyntax,
-} from "../../src/octocode/permission/bash-syntax.ts";
-import {
-	evaluateSourcePolicy,
-	parseSourcePolicy,
-} from "../../src/octocode/permission/source-policy.ts";
+import { bashSyntax, initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
+import { evaluateSourcePolicy, parseSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
 beforeAll(initializeBashSyntax);
 const evaluate = (command: string, target = "secret.txt") =>
 	evaluateSourcePolicy(
@@ -49,9 +43,7 @@ describe("recognized Bash read operands", () => {
 		},
 	);
 	it.each(["cat -"])("does not treat stdin as a file: %s", (command) => {
-		expect(
-			bashSyntax(command).targets.some((target) => target.path === "-"),
-		).toBe(false);
+		expect(bashSyntax(command).targets.some((target) => target.path === "-")).toBe(false);
 	});
 	it("preserves a dash-prefixed filename after the option delimiter", () => {
 		expect(evaluate("cat -- -secret", "-secret").decision).toBe("deny");
@@ -67,38 +59,32 @@ describe("recognized Bash read operands", () => {
 	])("accounts for operand forms: %s", (command) => {
 		expect(["deny", "unsupported"]).toContain(evaluate(command).decision);
 	});
-	it.each([
-		"wc --files0-from=names",
-		"cat --unknown safe.txt",
-		'cat "$TARGET"',
-	])("refuses uncertain reads under scoped restrictions: %s", (command) => {
-		expect(evaluate(command).decision).toBe("unsupported");
-	});
-	it.each(["head", "tail"])(
-		"does not require an allowance for %s's count",
-		(reader) => {
-			const decision = evaluateSourcePolicy(
-				parseSourcePolicy(
-					{ permissions: { allow: [`Bash(${reader} *)`, "Read(./safe.txt)"] } },
-					{
-						path: "/home/test/.claude/settings.json",
-						anchor: "/home/test/.claude",
-					},
-				),
-				{
-					toolName: "bash",
-					toolCallId: "read",
-					active: true,
-					input: { command: `${reader} -n 1 safe.txt` },
-				},
-				"/work",
-			);
-			expect(decision.decision).toBe("allow");
-			expect(decision.shellTargets).toEqual([
-				expect.objectContaining({ path: "safe.txt", allowed: true }),
-			]);
+	it.each(["wc --files0-from=names", "cat --unknown safe.txt", 'cat "$TARGET"'])(
+		"refuses uncertain reads under scoped restrictions: %s",
+		(command) => {
+			expect(evaluate(command).decision).toBe("unsupported");
 		},
 	);
+	it.each(["head", "tail"])("does not require an allowance for %s's count", (reader) => {
+		const decision = evaluateSourcePolicy(
+			parseSourcePolicy(
+				{ permissions: { allow: [`Bash(${reader} *)`, "Read(./safe.txt)"] } },
+				{
+					path: "/home/test/.claude/settings.json",
+					anchor: "/home/test/.claude",
+				},
+			),
+			{
+				toolName: "bash",
+				toolCallId: "read",
+				active: true,
+				input: { command: `${reader} -n 1 safe.txt` },
+			},
+			"/work",
+		);
+		expect(decision.decision).toBe("allow");
+		expect(decision.shellTargets).toEqual([expect.objectContaining({ path: "safe.txt", allowed: true })]);
+	});
 	it("does not grant an actual operand using a count allowance", () => {
 		const decision = evaluateSourcePolicy(
 			parseSourcePolicy(
@@ -125,45 +111,29 @@ describe("recognized Bash read operands", () => {
 	});
 	it("does not consume a missing count as the option delimiter", () => {
 		expect(bashSyntax("head -n -- safe.txt").targets).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ raw: "--", uncertain: "unknown read count" }),
-			]),
+			expect.arrayContaining([expect.objectContaining({ raw: "--", uncertain: "unknown read count" })]),
 		);
 	});
 	it("retains tail legacy counts only for source denial", () => {
 		expect(evaluate("tail +1 safe.txt", "+1").decision).toBe("deny");
 		expect(bashSyntax("tail +1 safe.txt").targets).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ path: "+1", policyOnly: true }),
-			]),
+			expect.arrayContaining([expect.objectContaining({ path: "+1", policyOnly: true })]),
 		);
 	});
-	it.skipIf(process.platform !== "darwin")(
-		"retains BSD operands after the first filename",
-		() => {
-			const targets = bashSyntax("head safe.txt -n 1").targets;
-			expect(targets).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({ path: "-n" }),
-					expect.objectContaining({ path: "1" }),
-				]),
-			);
-			expect(
-				targets.find((target) => target.path === "1")?.policyOnly,
-			).not.toBe(true);
-		},
-	);
-	it("terminates cat option processing after stdin", () => {
-		expect(bashSyntax("cat - -n").targets).toEqual(
-			expect.arrayContaining([expect.objectContaining({ path: "-n" })]),
+	it.skipIf(process.platform !== "darwin")("retains BSD operands after the first filename", () => {
+		const targets = bashSyntax("head safe.txt -n 1").targets;
+		expect(targets).toEqual(
+			expect.arrayContaining([expect.objectContaining({ path: "-n" }), expect.objectContaining({ path: "1" })]),
 		);
+		expect(targets.find((target) => target.path === "1")?.policyOnly).not.toBe(true);
+	});
+	it("terminates cat option processing after stdin", () => {
+		expect(bashSyntax("cat - -n").targets).toEqual(expect.arrayContaining([expect.objectContaining({ path: "-n" })]));
 	});
 	it.skipIf(process.platform !== "darwin").each(["head -", "tail -", "wc -"])(
 		"keeps BSD dash filename in %s",
 		(command) => {
-			expect(bashSyntax(command).targets).toEqual(
-				expect.arrayContaining([expect.objectContaining({ path: "-" })]),
-			);
+			expect(bashSyntax(command).targets).toEqual(expect.arrayContaining([expect.objectContaining({ path: "-" })]));
 		},
 	);
 });

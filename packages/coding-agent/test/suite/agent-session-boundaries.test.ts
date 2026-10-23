@@ -20,17 +20,24 @@ describe("AgentSession actionable boundaries", () => {
 	});
 
 	it("rejects legacy extension compaction drafts without deleting context or continuing", async () => {
-  const harness = await createHarness({ extensionFactories: [(pi) => {
-   pi.on("turn_end", () => ({ entries: [{ type: "compaction", summary: "injected", firstKeptEntryId: null }] as never, continue: true }));
-  }] });
-  harnesses.push(harness);
-  harness.setResponses([fauxAssistantMessage("retained response")]);
-  await harness.session.prompt("retained prompt");
-  expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
-  expect(JSON.stringify(harness.session.messages)).toContain("retained prompt");
-  expect(JSON.stringify(harness.session.messages)).toContain("retained response");
-  expect(harness.faux.state.callCount).toBe(1);
- });
+		const harness = await createHarness({
+			extensionFactories: [
+				(pi) => {
+					pi.on("turn_end", () => ({
+						entries: [{ type: "compaction", summary: "injected", firstKeptEntryId: null }] as never,
+						continue: true,
+					}));
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("retained response")]);
+		await harness.session.prompt("retained prompt");
+		expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
+		expect(JSON.stringify(harness.session.messages)).toContain("retained prompt");
+		expect(JSON.stringify(harness.session.messages)).toContain("retained response");
+		expect(harness.faux.state.callCount).toBe(1);
+	});
 
 	it.each(["steering", "follow-up", "both"] as const)(
 		"preserves %s queue scheduling around a turn_end handoff",
@@ -807,8 +814,7 @@ describe("durable length recovery", () => {
 						},
 					}));
 					pi.on("agent_end", (event) => {
-						if (queued || !event.messages.some((message) => getMessageText(message) === "first recovered"))
-							return;
+						if (queued || !event.messages.some((message) => getMessageText(message) === "first recovered")) return;
 						queued = true;
 						pi.sendUserMessage("distinct follow-up", { deliverAs: "followUp" });
 					});
@@ -1003,7 +1009,6 @@ describe("durable length recovery", () => {
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			settings: {
-
 				retry: { enabled: false, maxRetries: 0, baseDelayMs: 1 },
 			},
 		});

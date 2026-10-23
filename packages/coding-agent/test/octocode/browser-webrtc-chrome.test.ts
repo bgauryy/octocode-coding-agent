@@ -23,9 +23,7 @@ describe.skipIf(process.env.OCTOCODE_TEST_CHROME !== "1")("Chrome WebRTC reachin
 		const udp: string[] = [];
 		const tcp: number[] = [];
 		const datagrams = dgram.createSocket("udp4");
-		datagrams.on("message", (message, remote) =>
-			udp.push(`${remote.address}:${remote.port} ${message.length} bytes`),
-		);
+		datagrams.on("message", (message, remote) => udp.push(`${remote.address}:${remote.port} ${message.length} bytes`));
 		await new Promise<void>((resolve) => datagrams.bind(0, "127.0.0.1", resolve));
 		const streams = net.createServer((socket) => {
 			tcp.push(socket.remotePort ?? 0);

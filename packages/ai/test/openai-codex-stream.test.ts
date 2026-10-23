@@ -257,6 +257,37 @@ describe("openai-codex streaming", () => {
 		expect(result.content.find((content) => content.type === "text")?.text).toBe("Hello");
 	});
 
+	it("does not retry a non-retryable HTTP error, and keeps its status", async () => {
+		const model: Model<"openai-codex-responses"> = {
+			id: "gpt-5.1-codex",
+			name: "GPT-5.1 Codex",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: "https://chatgpt.com/backend-api",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 400000,
+			maxTokens: 128000,
+		};
+		const context = normalizeContext({ messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }] });
+		let calls = 0;
+		const result = await streamOpenAICodexResponses(model, context, {
+			apiKey: mockToken(),
+			transport: "sse",
+			maxRetries: 3,
+			fetch: async () => {
+				calls++;
+				return new Response(JSON.stringify({ error: { message: "Invalid request: unknown parameter" } }), {
+					status: 400,
+				});
+			},
+		}).result();
+		expect(calls).toBe(1);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("Invalid request");
+	});
+
 	it("completes after response.completed even when the SSE body stays open", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
 		process.env.OCTOCODE_CODING_AGENT_DIR = tempDir;
@@ -944,9 +975,7 @@ describe("openai-codex streaming", () => {
 		await streamOpenAICodexResponses(
 			model,
 			normalizeContext({
-				messages: [
-					{ role: "user", content: "Do not call ping. Respond with text instead.", timestamp: Date.now() },
-				],
+				messages: [{ role: "user", content: "Do not call ping. Respond with text instead.", timestamp: Date.now() }],
 				tools: [
 					{
 						name: "ping",

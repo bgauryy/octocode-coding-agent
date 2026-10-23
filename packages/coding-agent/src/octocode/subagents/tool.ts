@@ -680,8 +680,12 @@ export function registerAgentTool(
 				"A subagent updates only backlog items you claimed: claim one first and name its id in the task.",
 			promptSnippet: "Delegate bounded work to a subagent",
 			parameters: Type.Object({
-				skills: Type.Optional(Type.Array(Type.String(), {
-					description: "Skill command names: omit to inherit the loaded catalog; [] disables skills. Name required workflows in task. Instructions load on demand." })),
+				skills: Type.Optional(
+					Type.Array(Type.String(), {
+						description:
+							"Skill command names: omit to inherit the loaded catalog; [] disables skills. Name required workflows in task. Instructions load on demand.",
+					}),
+				),
 				goal: Type.String({ description: GOAL_DESCRIPTION }),
 				task: Type.String({
 					description:
@@ -693,7 +697,9 @@ export function registerAgentTool(
 					}),
 				),
 				headless: Type.Optional(
-					Type.Boolean({ description: "Browser profile: true=headless (default), false=visible Chrome with persistent logins" }),
+					Type.Boolean({
+						description: "Browser profile: true=headless (default), false=visible Chrome with persistent logins",
+					}),
 				),
 				model: Type.Optional(
 					Type.String({

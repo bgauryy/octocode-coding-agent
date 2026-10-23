@@ -40,10 +40,7 @@ function setup(queries: any[], replacements: any[]) {
 		permission,
 		resolver,
 		refresh,
-		run: () =>
-			fake.tools
-				.get("file")!
-				.execute("file-one", params, undefined, undefined, ctx),
+		run: () => fake.tools.get("file")!.execute("file-one", params, undefined, undefined, ctx),
 	};
 }
 const write = (name: string, content = "original") => ({
@@ -71,35 +68,22 @@ it("commits independent indexed replacements before any file effects", async () 
 	expect(f.resolver).toHaveBeenCalledTimes(1);
 });
 it("refuses original unread files before invoking source permission hooks", async () => {
-	const f = setup(
-		[write("existing")],
-		[{ index: 0, input: { file_path: "other", content: "new" } }],
-	);
+	const f = setup([write("existing")], [{ index: 0, input: { file_path: "other", content: "new" } }]);
 	fs.writeFileSync(path.join(f.cwd, "existing"), "old");
 	await expect(f.run()).rejects.toThrow(/not read/);
 	expect(f.resolver).not.toHaveBeenCalled();
 });
 it("an unread replacement in the second query leaves the first untouched", async () => {
-	const f = setup(
-		[write("a"), write("b")],
-		[{ index: 1, input: { file_path: "existing", content: "new" } }],
-	);
+	const f = setup([write("a"), write("b")], [{ index: 1, input: { file_path: "existing", content: "new" } }]);
 	fs.writeFileSync(path.join(f.cwd, "existing"), "old");
 	await expect(f.run()).rejects.toThrow(/not read/);
 	expect(fs.existsSync(path.join(f.cwd, "a"))).toBe(false);
 	expect(fs.readFileSync(path.join(f.cwd, "existing"), "utf8")).toBe("old");
 });
 it("retains original approval for an unchanged sibling source ask", async () => {
-	const f = setup(
-		[write("asked"), write("b")],
-		[{ index: 1, input: { file_path: "c", content: "C" } }],
-	);
+	const f = setup([write("asked"), write("b")], [{ index: 1, input: { file_path: "c", content: "C" } }]);
 	f.permission.setSourcePolicy((invocation) => ({
-		decision: (invocation.input as any).queries.some(
-			(q: any) => q.path === "asked",
-		)
-			? "ask"
-			: "none",
+		decision: (invocation.input as any).queries.some((q: any) => q.path === "asked") ? "ask" : "none",
 		message: "asked source",
 	}));
 	await f.run();
@@ -107,16 +91,10 @@ it("retains original approval for an unchanged sibling source ask", async () => 
 	expect(fs.readFileSync(path.join(f.cwd, "c"), "utf8")).toBe("C");
 });
 it("shows the candidate path when its source ask requires interactive review", async () => {
-	const f = setup(
-		[write("a")],
-		[{ index: 0, input: { file_path: "candidate", content: "C" } }],
-	);
+	const f = setup([write("a")], [{ index: 0, input: { file_path: "candidate", content: "C" } }]);
 	f.ctx.hasUI = true;
 	f.permission.setSourcePolicy((invocation) => ({
-		decision:
-			(invocation.input as any).queries[0].path === "candidate"
-				? "ask"
-				: "none",
+		decision: (invocation.input as any).queries[0].path === "candidate" ? "ask" : "none",
 		message: "candidate needs review",
 	}));
 	const select = vi.fn(async (_title: string) => "Reject all");
@@ -220,10 +198,7 @@ it("refuses overlapping MultiEdit spans before any sibling write", async () => {
 	expect(fs.readFileSync(path.join(f.cwd, "edit"), "utf8")).toBe("ABCD");
 });
 it("does not commit when a candidate target changes after preparation", async () => {
-	const f = setup(
-		[write("original")],
-		[{ index: 0, input: { file_path: "alias/new", content: "new" } }],
-	);
+	const f = setup([write("original")], [{ index: 0, input: { file_path: "alias/new", content: "new" } }]);
 	const first = tmp(),
 		second = tmp();
 	fs.symlinkSync(first, path.join(f.cwd, "alias"));
@@ -238,17 +213,9 @@ it("does not commit when a candidate target changes after preparation", async ()
 	expect(fs.existsSync(path.join(second, "new"))).toBe(false);
 });
 it("does not commit when cancelled during final candidate refresh", async () => {
-	const f = setup(
-		[write("original")],
-		[{ index: 0, input: { file_path: "candidate", content: "new" } }],
-	);
+	const f = setup([write("original")], [{ index: 0, input: { file_path: "candidate", content: "new" } }]);
 	let active = true;
-	f.ctx.invocation = captureToolInvocation(
-		"file-one",
-		"file",
-		f.params,
-		() => active,
-	);
+	f.ctx.invocation = captureToolInvocation("file-one", "file", f.params, () => active);
 	f.refresh
 		.mockImplementationOnce(async () => {})
 		.mockImplementationOnce(async () => {

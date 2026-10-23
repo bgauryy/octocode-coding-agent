@@ -131,11 +131,7 @@ describe("createAgentSession stream options", () => {
 
 		try {
 			if (providerEvent === undefined) {
-				const stream = await session.agent.streamFunction(
-					model,
-					normalizeContext({ messages: [] }),
-					requestOptions,
-				);
+				const stream = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), requestOptions);
 				await stream.result();
 			} else {
 				await session.prompt("test");
@@ -205,17 +201,41 @@ describe("createAgentSession stream options", () => {
 		}
 	});
 
+	it("invalidates warming on model selection and cancels it before manual compaction", async () => {
+		const fixture = await createCacheWarmingSession();
+		try {
+			await fixture.session.prompt("test");
+			expect(fixture.session.cacheWarmingStatus?.state).toBe("scheduled");
+			const previous = fixture.session.model!;
+			await fixture.session.setModel({ ...previous, id: "capture-model-switched" });
+			expect(fixture.session.cacheWarmingStatus).toMatchObject({
+				state: "inactive",
+				reason: "conversation context changed",
+			});
+			await expect(fixture.session.compact()).rejects.toThrow(/nothing to compact|already compacted/i);
+			expect(fixture.session.cacheWarmingStatus).toMatchObject({ state: "inactive", reason: "inactive" });
+			expect(fixture.providerCalls()).toBe(1);
+		} finally {
+			fixture.dispose();
+		}
+	});
 
- it.each(["prompt", "tools"])("invalidates cache warming when %s changes", async (field) => {
-  const fixture = await createCacheWarmingSession();
-  try {
-   await fixture.session.prompt("test");
-   expect(fixture.session.cacheWarmingStatus?.nextWarmAt).toBeGreaterThan(Date.now());
-   if (field === "prompt") fixture.session.agent.state.messages.push({ role: "system", content: [{ type: "text", text: "changed" }] } as never);
-   else fixture.session.agent.state.tools = [];
-   expect(fixture.session.cacheWarmingStatus?.reason).toBe("conversation context changed");
-  } finally { fixture.dispose(); }
- });
+	it.each(["prompt", "tools"])("invalidates cache warming when %s changes", async (field) => {
+		const fixture = await createCacheWarmingSession();
+		try {
+			await fixture.session.prompt("test");
+			expect(fixture.session.cacheWarmingStatus?.nextWarmAt).toBeGreaterThan(Date.now());
+			if (field === "prompt")
+				fixture.session.agent.state.messages.push({
+					role: "system",
+					content: [{ type: "text", text: "changed" }],
+				} as never);
+			else fixture.session.agent.state.tools = [];
+			expect(fixture.session.cacheWarmingStatus?.reason).toBe("conversation context changed");
+		} finally {
+			fixture.dispose();
+		}
+	});
 
 	it("waits for the next request instead of restoring cache warming", async () => {
 		const fixture = await createCacheWarmingSession((manager, model) => {
@@ -250,11 +270,7 @@ describe("createAgentSession stream options", () => {
 	});
 
 	it("lets request timeoutMs override httpIdleTimeoutMs for OpenAI Codex", async () => {
-		const options = await captureStreamOptions(
-			"openai-codex-responses",
-			{ httpIdleTimeoutMs: 1234 },
-			{ timeoutMs: 0 },
-		);
+		const options = await captureStreamOptions("openai-codex-responses", { httpIdleTimeoutMs: 1234 }, { timeoutMs: 0 });
 
 		expect(options?.timeoutMs).toBe(0);
 	});

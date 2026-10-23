@@ -438,6 +438,45 @@ describe("file tool", () => {
 		expect(fs.readFileSync(file, "utf8")).toBe("TWO");
 	});
 
+	it("keeps a diff of what a write changed: all lines added for a new file, a real diff for an overwrite", async () => {
+		const cwd = tmp();
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one\ntwo\n");
+		const guard = new FileGuard();
+		guard.record(file);
+		let tool:
+			{ execute: (...args: unknown[]) => Promise<{ details: { outcomes: Array<{ diff?: string }> } }> } | undefined;
+		registerFileTool(
+			{
+				registerTool: (t: typeof tool) => {
+					tool = t;
+					return tool;
+				},
+				on: () => undefined,
+			} as never,
+			guard,
+			fakePermission(),
+		);
+		const ctx = { cwd, hasUI: false };
+		const write = async (target: string, content: string) =>
+			(
+				await tool!.execute(
+					"c",
+					{ queries: [{ reasoning: "r", type: "write", path: target, content }] },
+					undefined,
+					undefined,
+					ctx,
+				)
+			).details.outcomes[0]!.diff;
+		const created = await write("b.txt", "alpha\nbeta\n");
+		expect(created?.split("\n").filter((line) => line.startsWith("+"))).toHaveLength(2);
+		expect(created).not.toMatch(/^-/m);
+		const replaced = await write("a.txt", "one\nTWO\n");
+		expect(replaced).toMatch(/^-2 two$/m);
+		expect(replaced).toMatch(/^\+2 TWO$/m);
+		expect(await write("a.txt", "one\nTWO\n")).toBeUndefined();
+	});
+
 	it("asks for a change in the home folder when the session started there: home is no workspace", async () => {
 		const home = tmp();
 		vi.stubEnv("HOME", home);
@@ -468,9 +507,7 @@ describe("file tool", () => {
 			tool!.execute(
 				"c",
 				{
-					queries: [
-						{ reasoning: "r", type: "edit", path: "notes.txt", edits: [{ oldText: "one", newText: "two" }] },
-					],
+					queries: [{ reasoning: "r", type: "edit", path: "notes.txt", edits: [{ oldText: "one", newText: "two" }] }],
 				},
 				undefined,
 				undefined,
@@ -510,9 +547,7 @@ describe("file tool", () => {
 				tool!.execute(
 					"c",
 					{
-						queries: [
-							{ reasoning: "r", type, path: "a.ts", edits, ...(type === "write" ? { content: "x" } : {}) },
-						],
+						queries: [{ reasoning: "r", type, path: "a.ts", edits, ...(type === "write" ? { content: "x" } : {}) }],
 					},
 					undefined,
 					undefined,
@@ -671,9 +706,7 @@ describe("file tool", () => {
 		await tool!.execute(
 			"c",
 			{
-				queries: [
-					{ reasoning: "r", type: "edit", path: "a.txt", edits: [{ oldText: "line 12", newText: "LINE 12" }] },
-				],
+				queries: [{ reasoning: "r", type: "edit", path: "a.txt", edits: [{ oldText: "line 12", newText: "LINE 12" }] }],
 			},
 			undefined,
 			undefined,
@@ -721,7 +754,9 @@ describe("file tool", () => {
 		expect(seenFiles([restored], dir).get(file)?.partial).toBe(true);
 		const guard = new FileGuard();
 		guard.restore([{ file, at: Date.now() + 1000, partial: true }]);
-		expect(guard.check(file, "write", "a.txt")).toMatch(/you have seen only part of its 1 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/);
+		expect(guard.check(file, "write", "a.txt")).toMatch(
+			/you have seen only part of its 1 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
+		);
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 	});
@@ -1138,9 +1173,7 @@ describe("file tool", () => {
 			await tool!.execute(
 				"c",
 				{
-					queries: [
-						{ reasoning: "r", type: "edit", path: "~/.bashrc", edits: [{ oldText: "one", newText: "two" }] },
-					],
+					queries: [{ reasoning: "r", type: "edit", path: "~/.bashrc", edits: [{ oldText: "one", newText: "two" }] }],
 				},
 				undefined,
 				undefined,
@@ -1272,9 +1305,9 @@ describe("file tool", () => {
 			/1\. OK write a\.txt.*checkpoint not saved[\s\S]*2\. OK write b\.txt.*checkpoint not saved/,
 		);
 		expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf8")).toBe("a");
-		expect(
-			ctx.ui.notes.filter((note) => /could not save a checkpoint \(disk full\)/.test(note.message)),
-		).toHaveLength(1);
+		expect(ctx.ui.notes.filter((note) => /could not save a checkpoint \(disk full\)/.test(note.message))).toHaveLength(
+			1,
+		);
 	});
 
 	it("reports each query independently", () => {
@@ -1391,7 +1424,7 @@ describe("file change rendering", () => {
 			.render(120)
 			.join("\n");
 		expect(collapsed.split("\n")[0]).toBe("  ⎿  Applied 1 of 2 changes");
-		expect(collapsed).toMatch(/✓ edit src\/a\.ts \+30 -0/);
+		expect(collapsed).toMatch(/✓ edit src\/a\.ts \+30(?! -)/);
 		expect(collapsed).toMatch(/… \+\d+ diff lines \(ctrl\+o to expand\)/);
 		expect(collapsed).toMatch(/✗ write test\/a\.test\.ts: has not been read/);
 		expect(collapsed).not.toContain("added line");
@@ -1405,7 +1438,7 @@ describe("file change rendering", () => {
 			.render(120)
 			.join("\n")
 			.split("\n");
-		expect(oneCollapsed[0]).toMatch(/^ {2}⎿ {2}✓ edit src\/a\.ts \+30 -0$/);
+		expect(oneCollapsed[0]).toMatch(/^ {2}⎿ {2}✓ edit src\/a\.ts \+30$/);
 		expect(oneCollapsed).toHaveLength(1 + 6 + 1);
 		expect(oneCollapsed.at(-1)).toMatch(/… \+\d+ lines \(ctrl\+o to expand\)/);
 		const failed = tool!
@@ -1433,6 +1466,9 @@ describe("file change rendering", () => {
 		expect(diffStats("+1 a\n-2 b\n-3 c\n 4 d")).toEqual({ added: 1, removed: 2 });
 		expect(querySize({ type: "edit", edits: [{}] })).toBe(" · 1 edit");
 		expect(querySize({ type: "delete" })).toBe("");
+		expect(querySize({ type: "write", content: "a\nb\n" })).toBe(" · 2 lines");
+		expect(querySize({ type: "write", content: "a\nb" })).toBe(" · 2 lines");
+		expect(querySize({ type: "write", content: "" })).toBe(" · 0 lines");
 	});
 });
 

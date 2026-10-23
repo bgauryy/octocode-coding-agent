@@ -306,9 +306,11 @@ function SessionComposer() {
 	const draftKey = `session-command:${session?.sessionId ?? ""}`;
 	const draft = useStore(workspace, (state) => state.drafts[draftKey]);
 	const [pending, setPending] = useState(false);
-	const [stopping, setStopping] = useState(false);
+	// Stopping belongs to one run: the next run gets its own button state and its own request id (a retry within a run
+	// reuses the id, so the host answers it from the same receipt).
+	const [stoppingRun, setStoppingRun] = useState<string>();
 	const [status, setStatus] = useState("");
-	const [stopId] = useState(() => crypto.randomUUID());
+	const stopIds = useRef(new Map<string, string>());
 	const announcement = useRunAnnouncement(session);
 	if (!session || !connection) return null;
 
@@ -348,19 +350,22 @@ function SessionComposer() {
 	}
 	async function stop() {
 		if (!session?.runId || !connection) return;
-		setStopping(true);
+		const runId = session.runId;
+		const id = stopIds.current.get(runId) ?? crypto.randomUUID();
+		stopIds.current.set(runId, id);
+		setStoppingRun(runId);
 		try {
 			const receipt = await connection.execute({
-				id: stopId,
+				id,
 				sessionId: session.sessionId,
 				action: "abort",
-				runId: session.runId,
+				runId,
 			});
 			sessionStore.setState({ application: connection.stream.snapshot });
 			setStatus(receipt.message || receipt.status);
 		} catch (error) {
 			setStatus(errorMessage(error));
-			setStopping(false);
+			setStoppingRun(undefined);
 		}
 	}
 
@@ -369,7 +374,7 @@ function SessionComposer() {
 			<Button
 				variant="danger"
 				icon={<StopIcon />}
-				loading={stopping}
+				loading={stoppingRun === session.runId}
 				onClick={stop}
 				title="Stopping keeps changes already made."
 			>

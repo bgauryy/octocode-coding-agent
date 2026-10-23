@@ -379,11 +379,7 @@ export function resolveModelScopeFromModels(
 			continue;
 		}
 
-		const result = resolveModelReference(
-			{ text: pattern, thinkingSuffix: "lenient", fuzzy: true },
-			models,
-			() => true,
-		);
+		const result = resolveModelReference({ text: pattern, thinkingSuffix: "lenient", fuzzy: true }, models, () => true);
 		if (result.status === "not-found") {
 			noMatch(pattern);
 			continue;

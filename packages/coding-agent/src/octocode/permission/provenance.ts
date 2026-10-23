@@ -263,9 +263,7 @@ class Provenance {
 		if (toolName === "externalAgent" && input.action === "prompt")
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
 		if (isMcpTool(toolName))
-			return this.annotations(toolName)?.openWorldHint === false
-				? undefined
-				: { kind: "untrusted", label: toolName };
+			return this.annotations(toolName)?.openWorldHint === false ? undefined : { kind: "untrusted", label: toolName };
 		// Octocode's built-in MCP resource reader: a server's text, like any open-world MCP result.
 		if (toolName === "read_mcp_resource")
 			return { kind: "untrusted", label: `${toolName} ${str(input.uri) ?? ""}`.trim() };

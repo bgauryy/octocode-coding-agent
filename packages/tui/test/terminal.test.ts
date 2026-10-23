@@ -6,12 +6,20 @@ import {
 	normalizeNativeShiftEnterInput,
 	ProcessTerminal,
 	resolveEscapeTimeoutMs,
+	resolvePasteTimeoutMs,
 } from "../src/terminal.ts";
 
 describe("resolveEscapeTimeoutMs", () => {
 	it("uses OCTOCODE_TUI_ESC_TIMEOUT when configured", () => {
 		assert.equal(resolveEscapeTimeoutMs({ OCTOCODE_TUI_ESC_TIMEOUT: "80" }), 80);
 		assert.equal(resolveEscapeTimeoutMs({ OCTOCODE_TUI_ESC_TIMEOUT: "80", SSH_TTY: "/dev/pts/1" }), 80);
+	});
+
+	it("waits for a paste's end marker 1 s locally, 3 s over SSH, or as OCTOCODE_TUI_PASTE_TIMEOUT says", () => {
+		assert.equal(resolvePasteTimeoutMs({}), 1000);
+		assert.equal(resolvePasteTimeoutMs({ SSH_TTY: "/dev/pts/1" }), 3000);
+		assert.equal(resolvePasteTimeoutMs({ OCTOCODE_TUI_PASTE_TIMEOUT: "8000" }), 8000);
+		assert.equal(resolvePasteTimeoutMs({ OCTOCODE_TUI_PASTE_TIMEOUT: "abc" }), 1000);
 	});
 
 	it("ignores invalid OCTOCODE_TUI_ESC_TIMEOUT values", () => {

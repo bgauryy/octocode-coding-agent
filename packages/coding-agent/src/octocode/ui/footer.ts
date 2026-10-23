@@ -188,9 +188,10 @@ export function footerLines(
 		],
 		[
 			{
-				text: state.runMs !== undefined && !state.running
-					? theme.fg("muted", `last run ${formatDuration(state.runMs)}`)
-					: "",
+				text:
+					state.runMs !== undefined && !state.running
+						? theme.fg("muted", `last run ${formatDuration(state.runMs)}`)
+						: "",
 				priority: 85,
 			},
 			{ text: status(OWN.speed) ? theme.fg("dim", status(OWN.speed)) : "", priority: 10 },
@@ -221,9 +222,10 @@ export function footerLines(
 			{ text: state.sessionName ? theme.fg("muted", plainRow(state.sessionName)) : "", priority: 50 },
 			{ text: usage ? `${tokens} ${theme.fg("dim", `(${usage})`)}` : tokens, short: tokens, priority: 80 },
 			{
-				text: state.compactions !== undefined
-					? theme.fg("muted", `${state.compactions} compaction${state.compactions === 1 ? "" : "s"}`)
-					: "",
+				text:
+					state.compactions !== undefined
+						? theme.fg("muted", `${state.compactions} compaction${state.compactions === 1 ? "" : "s"}`)
+						: "",
 				priority: 75,
 			},
 			{ text: status(OWN.backlog), priority: 20 },

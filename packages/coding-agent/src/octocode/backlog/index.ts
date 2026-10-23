@@ -18,7 +18,10 @@ interface RegisterBacklogOptions extends BacklogOptions {
  * The repository backlog: the `backlog` tool, `/backlog` (registered centrally after
  * `commands` is registered) and footer counts in words with the `/backlog` hint that opens the board.
  */
-export function registerBacklog(pi: ExtensionAPI, options: RegisterBacklogOptions): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void> {
+export function registerBacklog(
+	pi: ExtensionAPI,
+	options: RegisterBacklogOptions,
+): (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void> {
 	const { commands, open, ...backlogOptions } = options;
 
 	let currentContext: ExtensionContext | undefined;
@@ -38,14 +41,28 @@ export function registerBacklog(pi: ExtensionAPI, options: RegisterBacklogOption
 	const launch = webLauncher(pi, open);
 	const openView = async (ctx: ExtensionCommandContext, view: "board" | "activity") => {
 		const backlog = openBacklog(ctx, backlogOptions);
-		await launch(backlog.store.repo + ":" + backlog.session, async () => {
-			if (!options.openWeb) throw new Error("The workspace web app is unavailable in this host. Use /backlog tui or /backlog html.");
-			return options.openWeb(ctx, backlog, () => refresh(ctx));
-		}, view);
+		await launch(
+			backlog.store.repo + ":" + backlog.session,
+			async () => {
+				if (!options.openWeb)
+					throw new Error("The workspace web app is unavailable in this host. Use /backlog tui or /backlog html.");
+				return options.openWeb(ctx, backlog, () => refresh(ctx));
+			},
+			view,
+		);
 	};
 	registerBacklogTool(pi, { ...backlogOptions, changed: refresh });
 	if (!options.isSubagent)
-		commands.add("backlog", backlogCommand(pi, { ...backlogOptions, ...(open ? { open } : {}), changed: refresh, items: () => currentContext ? openBacklog(currentContext, backlogOptions).store.list().items : [], openView: (ctx) => openView(ctx, "board") }));
+		commands.add(
+			"backlog",
+			backlogCommand(pi, {
+				...backlogOptions,
+				...(open ? { open } : {}),
+				changed: refresh,
+				items: () => (currentContext ? openBacklog(currentContext, backlogOptions).store.list().items : []),
+				openView: (ctx) => openView(ctx, "board"),
+			}),
+		);
 	pi.on("session_start", (_event, ctx) => refresh(ctx));
 	// Another session or agent may have changed the board: repaint at the end of every run.
 	pi.on("agent_end", (_event, ctx) => refresh(ctx));

@@ -274,11 +274,7 @@ export class AltScreenSearchComponent implements Component, Focusable {
 		const previousKey = formatKey(keybindings.getKeys("tui.altScreen.searchPrevious")[0]);
 		const nextKey = formatKey(keybindings.getKeys("tui.altScreen.searchNext")[0]);
 		const query = this.input.getValue();
-		const result = !query
-			? ""
-			: this.resultCount === 0
-				? "No matches"
-				: `${this.resultIndex + 1}/${this.resultCount}`;
+		const result = !query ? "" : this.resultCount === 0 ? "No matches" : `${this.resultIndex + 1}/${this.resultCount}`;
 		const resultSpace = Math.max(0, innerWidth - 3);
 		const visibleResult = truncateToWidth(result, resultSpace, "");
 		const resultText = visibleResult ? `\x1b[2m ${visibleResult} \x1b[22m` : "";
@@ -307,10 +303,7 @@ export class AltScreenSearchComponent implements Component, Focusable {
 			: "";
 		const outerGapsWidth = showButtons ? outerGapWidth * 2 : 0;
 		const rightRuleWidth = renderedButtons && innerWidth > controlsWidth + outerGapsWidth ? 1 : 0;
-		const leftRuleWidth = Math.max(
-			0,
-			innerWidth - (showButtons ? controlsWidth : 0) - outerGapsWidth - rightRuleWidth,
-		);
+		const leftRuleWidth = Math.max(0, innerWidth - (showButtons ? controlsWidth : 0) - outerGapsWidth - rightRuleWidth);
 		const previousStart = 1 + leftRuleWidth + outerGapWidth;
 		this.previousButtonStart = showButtons ? previousStart : -1;
 		this.previousButtonEnd = showButtons ? previousStart + visibleWidth(previousButton) : -1;

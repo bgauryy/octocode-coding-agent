@@ -269,20 +269,27 @@ describe("InteractiveMode compaction events", () => {
 
 		await flushCompactionQueue.call(fakeThis, { willRetry: false });
 
-		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", { streamingBehavior: "steer", preflightResult: expect.any(Function) });
+		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", {
+			streamingBehavior: "steer",
+			preflightResult: expect.any(Function),
+		});
 		expect(fakeThis.compactionQueuedMessages).toEqual([]);
 		expect(fakeThis.showError).not.toHaveBeenCalled();
 	});
 });
 
-
 describe("queued message recovery", () => {
-	const flush = (ui: any, willRetry = false) => Reflect.get(InteractiveMode.prototype, "flushCompactionQueue").call(ui, { willRetry });
+	const flush = (ui: any, willRetry = false) =>
+		Reflect.get(InteractiveMode.prototype, "flushCompactionQueue").call(ui, { willRetry });
 	const fixture = () => ({
-		compactionQueuedMessages: [{ text: "first", mode: "steer" }, { text: "second", mode: "followUp" }],
+		compactionQueuedMessages: [
+			{ text: "first", mode: "steer" },
+			{ text: "second", mode: "followUp" },
+		],
 		session: { clearQueue: vi.fn(), prompt: vi.fn().mockResolvedValue(undefined), steer: vi.fn(), followUp: vi.fn() },
 		isExtensionCommand: () => false,
-		updatePendingMessagesDisplay: vi.fn(), showError: vi.fn(),
+		updatePendingMessagesDisplay: vi.fn(),
+		showError: vi.fn(),
 	});
 
 	test("restores only unaccepted messages and preserves newer input on a partial failure", async () => {
@@ -311,7 +318,9 @@ describe("queued message recovery", () => {
 		let fail!: (error: Error) => void;
 		ui.session.prompt.mockImplementation((_text, options) => {
 			options.preflightResult("started");
-			return new Promise((_, reject) => { fail = reject; });
+			return new Promise((_, reject) => {
+				fail = reject;
+			});
 		});
 		await flush(ui);
 		fail(new Error("provider failed"));
@@ -335,7 +344,8 @@ describe("queued message recovery", () => {
 		const ui = {
 			pendingMessagesContainer: new Container(),
 			getAllQueuedMessages: () => ({ steering: ["first\nsecond line", "two"], followUp: ["three", "four", "five"] }),
-			getAppKeyDisplay: () => "alt+up", session: { isCompacting: true },
+			getAppKeyDisplay: () => "alt+up",
+			session: { isCompacting: true },
 		};
 		Reflect.get(InteractiveMode.prototype, "updatePendingMessagesDisplay").call(ui);
 		const lines = ui.pendingMessagesContainer.render(100);
@@ -348,13 +358,25 @@ describe("queued message recovery", () => {
 	});
 });
 
-
 test("restores rejected queued input alongside a newer draft", async () => {
 	let draft = "original";
 	const ui = {
-		editor: { addToHistory: vi.fn(), setText: (text: string) => { draft = text; }, getText: () => draft },
-		session: { prompt: async () => { draft = "newer draft"; throw new Error("input rejected"); } },
-		showError: vi.fn(), updatePendingMessagesDisplay: vi.fn(), ui: { requestRender: vi.fn() },
+		editor: {
+			addToHistory: vi.fn(),
+			setText: (text: string) => {
+				draft = text;
+			},
+			getText: () => draft,
+		},
+		session: {
+			prompt: async () => {
+				draft = "newer draft";
+				throw new Error("input rejected");
+			},
+		},
+		showError: vi.fn(),
+		updatePendingMessagesDisplay: vi.fn(),
+		ui: { requestRender: vi.fn() },
 	};
 	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "steer");
 	expect(draft).toBe("original\n\nnewer draft");
@@ -364,11 +386,23 @@ test("restores rejected queued input alongside a newer draft", async () => {
 test("does not restore a queued prompt after acceptance if the run later fails", async () => {
 	let draft = "original";
 	const ui = {
-		editor: { addToHistory: vi.fn(), setText: (text: string) => { draft = text; }, getText: () => draft },
-		session: { prompt: async (_text: string, options: { preflightResult: () => void }) => {
-			options.preflightResult(); draft = "newer draft"; throw new Error("provider failed");
-		} },
-		showError: vi.fn(), updatePendingMessagesDisplay: vi.fn(), ui: { requestRender: vi.fn() },
+		editor: {
+			addToHistory: vi.fn(),
+			setText: (text: string) => {
+				draft = text;
+			},
+			getText: () => draft,
+		},
+		session: {
+			prompt: async (_text: string, options: { preflightResult: () => void }) => {
+				options.preflightResult();
+				draft = "newer draft";
+				throw new Error("provider failed");
+			},
+		},
+		showError: vi.fn(),
+		updatePendingMessagesDisplay: vi.fn(),
+		ui: { requestRender: vi.fn() },
 	};
 	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "followUp");
 	expect(draft).toBe("newer draft");

@@ -17,9 +17,7 @@ describe("snapshot spill", () => {
 				items,
 			}),
 		);
-		const file = /Full snapshot \(every element and all text\): (\S+);/
-			.exec(out)![1]!
-			.replace(/^~/, process.env.HOME!);
+		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1]!.replace(/^~/, process.env.HOME!);
 		const saved = fs.readFileSync(file, "utf8");
 		expect(saved).toContain('[1000] button "Action \\u{202e}1000"');
 		expect(saved).toContain("# Big \\u{1b}]0;pwned\\u{7}");
@@ -34,9 +32,7 @@ describe("snapshot spill", () => {
 		const out = await snapshot(
 			sessionOf({ title: "T", url: "https://example.com", text: `crlf\r\nline\rlone ${"word ".repeat(10)}`, items }),
 		);
-		const file = /Full snapshot \(every element and all text\): (\S+);/
-			.exec(out)![1]!
-			.replace(/^~/, process.env.HOME!);
+		const file = /Full snapshot \(every element and all text\): (\S+);/.exec(out)![1]!.replace(/^~/, process.env.HOME!);
 		const saved = fs.readFileSync(file, "utf8");
 		expect(saved).toContain("crlf\r\nline\\rlone ");
 	});
@@ -63,10 +59,7 @@ describe("formatSnapshot", () => {
 			textTotal: 250_000,
 			items: [],
 		};
-		for (const out of [
-			formatSnapshot(data),
-			formatSnapshot(data, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
-		]) {
+		for (const out of [formatSnapshot(data), formatSnapshot(data, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)]) {
 			expect(out).toContain(
 				"## Text (first 200000 of 250000 characters; scroll or wait for a specific text to reach the rest)\n",
 			);

@@ -217,9 +217,7 @@ export async function startFilteringProxy(options: FilteringProxyOptions = {}): 
 	const approved = options.approved ?? (() => false);
 	const sockets = new Set<Duplex>();
 
-	type Verdict =
-		| { ok: true; addresses: string[]; local: boolean }
-		| { ok: false; reason: BlockedConnection["reason"] };
+	type Verdict = { ok: true; addresses: string[]; local: boolean } | { ok: false; reason: BlockedConnection["reason"] };
 
 	/** The addresses a connection to `target` may use: resolved once, here, and vetted. */
 	async function vet({ url, hostname, port }: Target): Promise<Verdict> {
@@ -256,8 +254,7 @@ export async function startFilteringProxy(options: FilteringProxyOptions = {}): 
 	const server = http.createServer((request, response) => {
 		void (async () => {
 			const fail = (status: number, text: string) => {
-				if (!response.headersSent)
-					response.writeHead(status, { "content-type": "text/plain", connection: "close" });
+				if (!response.headersSent) response.writeHead(status, { "content-type": "text/plain", connection: "close" });
 				response.end(text);
 			};
 			let url: URL;

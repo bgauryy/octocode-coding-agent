@@ -20,7 +20,7 @@ export function inspectPluginHooks(entry: NonNullable<Settings["plugins"]>[numbe
 		if (!path.isAbsolute(entry.path)) throw new Error("Plugin path must be absolute");
 		const discovery = discoverPluginManifests(entry.path, { protocol: entry.protocol });
 		result.errors.push(...discovery.errors);
-		const manifest = discovery.manifests.find(m => m.protocol === entry.protocol);
+		const manifest = discovery.manifests.find((m) => m.protocol === entry.protocol);
 		if (!manifest) throw new Error(`No valid ${entry.protocol} plugin manifest found`);
 		result.manifest = manifest;
 		const components = discoverPluginComponents(manifest);
@@ -32,13 +32,24 @@ export function inspectPluginHooks(entry: NonNullable<Settings["plugins"]>[numbe
 			const source = component.kind === "path" ? component.path : `${manifest.sources.at(-1)}#hooks[${index}]`;
 			const text = component.kind === "path" ? readFileSync(component.path, "utf8") : JSON.stringify(component.value);
 			const value: unknown = JSON.parse(stripBom(text));
-			if (typeof value !== "object" || value === null || Array.isArray(value) || !("hooks" in value) || typeof value.hooks !== "object" || value.hooks === null || Array.isArray(value.hooks))
+			if (
+				typeof value !== "object" ||
+				value === null ||
+				Array.isArray(value) ||
+				!("hooks" in value) ||
+				typeof value.hooks !== "object" ||
+				value.hooks === null ||
+				Array.isArray(value.hooks)
+			)
 				throw new Error(`${source}: expected an object with a hooks event map`);
-			if ("modules" in value) result.errors.push(`${source}: modules require the unsupported Claude Mods runtime; plugin hooks not approved`);
+			if ("modules" in value)
+				result.errors.push(`${source}: modules require the unsupported Claude Mods runtime; plugin hooks not approved`);
 			hash.update(JSON.stringify([source, text]));
 			result.definitions.push({ source, value: value as Record<string, unknown> });
 		}
 		if (result.errors.length === 0) result.fingerprint = hash.digest("hex");
-	} catch (error) { result.errors.push(String(error)); }
+	} catch (error) {
+		result.errors.push(String(error));
+	}
 	return result;
 }

@@ -246,8 +246,7 @@ describe("delivery acknowledgement", () => {
 		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
 		b.team.leave(); // killed before Octocode drained its steering queue
 		await vi.waitFor(
-			() =>
-				expect(a.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to `))).toBe(true),
+			() => expect(a.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to `))).toBe(true),
 			{ timeout: 8_000 },
 		);
 	}, 10_000);
@@ -544,9 +543,7 @@ describe("headless subagent exit", () => {
 		await vi.waitFor(
 			() =>
 				expect(
-					parent.sent.some((entry) =>
-						String(entry.message.content).startsWith(`Message #${id} to general-333333`),
-					),
+					parent.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to general-333333`)),
 				).toBe(true),
 			{ timeout: 8_000 },
 		);
@@ -658,12 +655,7 @@ describe("panel sanitizing", () => {
 		).join("\n");
 		expect(lines).toContain("general-bbbbbb");
 		expect(lines).not.toMatch(/\u001b\]52|\u001b\[2J|\u0007/);
-		const traffic = trafficRow(
-			{ id: 1, from: "a", to: ["b"], text: evil, at: now, state: "queued" },
-			now,
-			theme,
-			120,
-		);
+		const traffic = trafficRow({ id: 1, from: "a", to: ["b"], text: evil, at: now, state: "queued" }, now, theme, 120);
 		expect(traffic).not.toMatch(/\u001b\]52|\u001b\[2J|\u0007/);
 		expect(traffic).toContain("hi");
 	});

@@ -1,79 +1,32 @@
 import {
 	applyEditsToNormalizedContent,
 	findAllEditOccurrences,
+	generateDiffString,
 	normalizeToLF,
 } from "../../core/tools/edit-diff.ts";
 import { splitBom } from "../../utils/text.ts";
-import {
-	type JsonObject,
-	validateToolArguments,
-} from "@octocodeai/octocode-ai";
+import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import {
-	rewriteFileQuery,
-	type FileInputReplacement,
-} from "../shared/claude-file.ts";
+import { rewriteFileQuery, type FileInputReplacement } from "../shared/claude-file.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { type Static, Type } from "typebox";
-import {
-	FileLockReleaseError,
-	withFileWriteLock,
-} from "../../utils/file-write-lock.ts";
-import type {
-	ExtensionAPI,
-	ExtensionToolContext,
-} from "../../core/extensions/index.ts";
-import {
-	createEditToolDefinition,
-	createWriteToolDefinition,
-	withFileMutationQueue,
-} from "../../core/tools/index.ts";
+import { FileLockReleaseError, withFileWriteLock } from "../../utils/file-write-lock.ts";
+import type { ExtensionAPI, ExtensionToolContext } from "../../core/extensions/index.ts";
+import { createEditToolDefinition, createWriteToolDefinition, withFileMutationQueue } from "../../core/tools/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { systemLines } from "../permission/effect.ts";
 import { runsLater, stateFolderRefusal } from "../permission/gate.ts";
-import {
-	atomicWriteFile,
-	changedOnDisk,
-	sha256,
-	sha256File,
-} from "../shared/atomic.ts";
+import { atomicWriteFile, changedOnDisk, sha256, sha256File } from "../shared/atomic.ts";
 import { notify } from "../shared/commands.ts";
-import {
-	canonicalPath,
-	isWithin,
-	readPaths,
-	resolveToolPath,
-	workspaceRoot,
-} from "../shared/home.ts";
+import { canonicalPath, isWithin, readPaths, resolveToolPath, workspaceRoot } from "../shared/home.ts";
 import { timedTool } from "../shared/render.ts";
-import {
-	contentText,
-	elisionMarkers,
-	errorMessage,
-	escapeRegExp,
-	isRecord,
-} from "../shared/util.ts";
+import { contentText, elisionMarkers, errorMessage, escapeRegExp, isRecord } from "../shared/util.ts";
 import { type Capture, type Checkpoints, lastUserEntry } from "./checkpoint.ts";
-import {
-	describeRanges,
-	firstGap,
-	type LineRange,
-	lineCount,
-	mergeRanges,
-	readView,
-} from "./coverage.ts";
-import {
-	type QueryOutcome,
-	renderFileCall,
-	renderFileResult,
-} from "./render.ts";
+import { describeRanges, firstGap, type LineRange, lineCount, mergeRanges, readView } from "./coverage.ts";
+import { type QueryOutcome, renderFileCall, renderFileResult } from "./render.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
-import {
-	parsePatch,
-	transformPatch,
-	type ParsedPatch,
-} from "../shared/codex-patch/patch.ts";
+import { parsePatch, transformPatch, type ParsedPatch } from "../shared/codex-patch/patch.ts";
 import { patchChanges, validateFileInput } from "../shared/file-input.ts";
 import { askReview } from "./review.ts";
 
@@ -161,15 +114,12 @@ function lostAnchor(
 ): string | undefined {
 	for (const [index, { oldText, replaceAll }] of edits.entries()) {
 		const count = replaceAll
-			? findAllEditOccurrences(normalizeToLF(content), normalizeToLF(oldText))
-					.length
+			? findAllEditOccurrences(normalizeToLF(content), normalizeToLF(oldText)).length
 			: oldText === ""
 				? 0
 				: content.split(oldText).length - 1;
 		if (replaceAll ? count > 0 : count === 1) continue;
-		const shown = JSON.stringify(
-			oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText,
-		);
+		const shown = JSON.stringify(oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText);
 		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.`;
 	}
 	return undefined;
@@ -188,12 +138,7 @@ function unreadRefusal(display: string, reader: Reader): string {
  * (each reader reaches any line by range, so this never asks for a whole-file read a big file cannot give). Undefined
  * when the reads covered every line.
  */
-function unseenRefusal(
-	display: string,
-	lines: readonly LineRange[],
-	data: Buffer,
-	reader: Reader,
-): string | undefined {
+function unseenRefusal(display: string, lines: readonly LineRange[], data: Buffer, reader: Reader): string | undefined {
 	const count = lineCount(data);
 	const gap = firstGap(lines, count);
 	if (gap === undefined) return undefined;
@@ -214,12 +159,9 @@ function judgeChange(
 	reader: Reader,
 ): { changed: boolean; refusal?: string } {
 	const { stale, expected, lines } = inspection;
-	const changed =
-		stale === true || (expected !== undefined && expected !== checked);
-	if (changed && mode !== "edit")
-		return { changed, refusal: staleRefusal(display, reader) };
-	const unseen =
-		lines && data ? unseenRefusal(display, lines, data, reader) : undefined;
+	const changed = stale === true || (expected !== undefined && expected !== checked);
+	if (changed && mode !== "edit") return { changed, refusal: staleRefusal(display, reader) };
+	const unseen = lines && data ? unseenRefusal(display, lines, data, reader) : undefined;
 	return unseen ? { changed, refusal: unseen } : { changed };
 }
 
@@ -244,12 +186,7 @@ export class FileGuard {
 	 * is what this read showed, when known); an edit or a delete does not. Reads of an unchanged file add up: a later
 	 * range joins the earlier ones, and never takes back a whole read.
 	 */
-	record(
-		file: string,
-		known?: KnownContent,
-		partial = false,
-		lines?: LineRange,
-	): void {
+	record(file: string, known?: KnownContent, partial = false, lines?: LineRange): void {
 		const real = canonicalPath(file);
 		const stat = statOf(real);
 		this.#reread.delete(real);
@@ -269,9 +206,7 @@ export class FileGuard {
 			before.size === stat.size &&
 			before.ino === stat.ino;
 		if (partial && same && !before.partial) return;
-		const covered = partial
-			? mergeRanges(same ? (before.lines ?? []) : [], lines)
-			: undefined;
+		const covered = partial ? mergeRanges(same ? (before.lines ?? []) : [], lines) : undefined;
 		this.#seen.set(real, {
 			...stat,
 			...(known && known.size === stat.size ? { sha256: known.sha256 } : {}),
@@ -285,11 +220,7 @@ export class FileGuard {
 	 * (`lineDelta` 0); a different count moved the lines below the edit, so they are dropped and the reads start over.
 	 * A file with no recorded read is not known to be seen at all.
 	 */
-	edited(
-		file: string,
-		known: KnownContent | undefined,
-		lineDelta: number | undefined,
-	): void {
+	edited(file: string, known: KnownContent | undefined, lineDelta: number | undefined): void {
 		const real = canonicalPath(file);
 		const before = this.#seen.get(real);
 		this.record(real, known);
@@ -353,23 +284,12 @@ export class FileGuard {
 	 * `runQuery` applies the same two steps (`inspect`, then `judgeChange` over the bytes it reads); this runs them for
 	 * callers that only ask (the guard's tests).
 	 */
-	check(
-		file: string,
-		mode: "edit" | "write" | "delete",
-		display: string,
-	): string | undefined {
+	check(file: string, mode: "edit" | "write" | "delete", display: string): string | undefined {
 		const inspection = this.inspect(file, mode, display);
 		if (inspection.refusal) return inspection.refusal;
 		try {
 			const data = inspection.current ? fs.readFileSync(file) : undefined;
-			return judgeChange(
-				display,
-				mode,
-				inspection,
-				data,
-				data ? sha256(data) : null,
-				this.reader,
-			).refusal;
+			return judgeChange(display, mode, inspection, data, data ? sha256(data) : null, this.reader).refusal;
 		} catch {
 			return staleRefusal(display, this.reader);
 		}
@@ -379,26 +299,16 @@ export class FileGuard {
 	 * Like check, by stat alone (no read). Also returns the current stat and the digest the file must still have; the
 	 * caller verifies that against the bytes it reads for the change.
 	 */
-	inspect(
-		file: string,
-		mode: "edit" | "write" | "delete",
-		display: string,
-	): Inspection {
+	inspect(file: string, mode: "edit" | "write" | "delete", display: string): Inspection {
 		const reserved = this.reservedBy?.(file);
 		if (reserved) return { refusal: reserved };
 		const real = canonicalPath(file);
 		const current = statOf(real);
-		if (!current)
-			return mode === "edit" || mode === "delete"
-				? { refusal: `${display} does not exist.` }
-				: {};
-		if (this.#reread.has(real))
-			return { refusal: rereadRefusal(display, this.reader) };
+		if (!current) return mode === "edit" || mode === "delete" ? { refusal: `${display} does not exist.` } : {};
+		if (this.#reread.has(real)) return { refusal: rereadRefusal(display, this.reader) };
 		const edit = mode === "edit";
 		if (this.#changed.has(real))
-			return edit
-				? { current, stale: true }
-				: { refusal: staleRefusal(display, this.reader) };
+			return edit ? { current, stale: true } : { refusal: staleRefusal(display, this.reader) };
 		const seen = this.#seen.get(real);
 		if (!seen) return { refusal: unreadRefusal(display, this.reader) };
 		// ctime and inode also move on a same-size rewrite that restored the mtime, or a rename over the file. With a
@@ -409,9 +319,7 @@ export class FileGuard {
 			seen.size !== current.size ||
 			seen.ino !== current.ino;
 		if (moved && (!seen.sha256 || seen.size !== current.size))
-			return edit
-				? { current, stale: true }
-				: { refusal: staleRefusal(display, this.reader) };
+			return edit ? { current, stale: true } : { refusal: staleRefusal(display, this.reader) };
 		return {
 			current,
 			...(seen.sha256 ? { expected: seen.sha256 } : {}),
@@ -469,6 +377,22 @@ async function settleCheckpoint(
 	}
 }
 
+/** Largest written content, in characters, whose change is kept as a diff for the transcript. */
+const WRITE_DIFF_MAX_CHARS = 64 * 1024;
+
+/**
+ * What a write changed, for display: every line added for a new file, else a diff against the bytes it replaced.
+ * Undefined for large or binary content (the transcript keeps the diff) and for writes that changed nothing.
+ */
+function writeDiff(before: Buffer | undefined, content: string | undefined): string | undefined {
+	if (content === undefined || content.length > WRITE_DIFF_MAX_CHARS) return undefined;
+	if (before && (before.length > WRITE_DIFF_MAX_CHARS || before.includes(0))) return undefined;
+	const old = before ? normalizeToLF(splitBom(before.toString("utf8")).text) : "";
+	const next = normalizeToLF(content);
+	if (old === next) return undefined;
+	return generateDiffString(old, next).diff || undefined;
+}
+
 const QuerySchema = Type.Object({
 	reasoning: Type.String({ description: "Why this change is needed" }),
 	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
@@ -476,7 +400,7 @@ const QuerySchema = Type.Object({
 		type: "string",
 		enum: ["edit", "write", "delete"],
 		description:
-			"edit: exact replacements; write: create/replace; delete: remove only when the task requires it",
+			"edit: exact replacements; write: create/replace; delete: irreversible, only when the task requires it",
 	}),
 	path: Type.String({ description: "Absolute path or relative to cwd" }),
 	edits: Type.Optional(
@@ -497,9 +421,7 @@ const QuerySchema = Type.Object({
 			},
 		),
 	),
-	content: Type.Optional(
-		Type.String({ description: "For write: complete file content" }),
-	),
+	content: Type.Optional(Type.String({ description: "For write: complete file content" })),
 });
 
 const Params = Type.Object({
@@ -509,9 +431,7 @@ const Params = Type.Object({
 			description: "Codex apply_patch text; use instead of queries",
 		}),
 	),
-	reasoning: Type.Optional(
-		Type.String({ description: "Why this patch is needed" }),
-	),
+	reasoning: Type.Optional(Type.String({ description: "Why this patch is needed" })),
 });
 type FileQuery = Static<typeof QuerySchema>;
 
@@ -566,13 +486,10 @@ function guardedOperations(
 						lines: lineCount(bytes),
 					};
 				}
-				throw /changed on disk/.test(errorMessage(error))
-					? changedOnDisk(display)
-					: error;
+				throw /changed on disk/.test(errorMessage(error)) ? changedOnDisk(display) : error;
 			}
 		},
-		access: (file: string) =>
-			fs.promises.access(file, fs.constants.R_OK | fs.constants.W_OK),
+		access: (file: string) => fs.promises.access(file, fs.constants.R_OK | fs.constants.W_OK),
 		mkdir: async (dir: string) => {
 			await fs.promises.mkdir(dir, { recursive: true });
 		},
@@ -599,10 +516,7 @@ async function preparePatch(
 	const destinations = new Set<string>();
 	for (const hunk of patch.hunks) {
 		const source = canonicalPath(resolveToolPath(ctx.cwd, hunk.path));
-		if (seen.has(source))
-			throw new Error(
-				`Duplicate patch operations target the same path: ${hunk.path}`,
-			);
+		if (seen.has(source)) throw new Error(`Duplicate patch operations target the same path: ${hunk.path}`);
 		seen.add(source);
 		const targets = new Set([
 			source,
@@ -611,36 +525,20 @@ async function preparePatch(
 				: []),
 		]);
 		if ([...targets].some((target) => destinations.has(target)))
-			throw new Error(
-				"Overlapping patch operation targets require a sequential patch adapter; no changes applied",
-			);
+			throw new Error("Overlapping patch operation targets require a sequential patch adapter; no changes applied");
 		for (const target of targets) destinations.add(target);
 	}
 	seen.clear();
 	const inspect = async (query: FileQuery, mode = query.type) => {
 		signal?.throwIfAborted();
 		const file = resolveToolPath(ctx.cwd, query.path);
-		const outside = await workspaceRefusal(
-			file,
-			query,
-			ctx,
-			signal,
-			permission,
-			id,
-		);
+		const outside = await workspaceRefusal(file, query, ctx, signal, permission, id);
 		if (outside) throw new Error(outside);
 		const check = guard.inspect(file, mode, query.path);
 		if (check.refusal) throw new Error(check.refusal);
 		const data = check.current ? await fs.promises.readFile(file) : undefined;
 		const digest = data ? sha256(data) : null;
-		const judged = judgeChange(
-			query.path,
-			mode,
-			check,
-			data,
-			digest,
-			guard.reader,
-		);
+		const judged = judgeChange(query.path, mode, check, data, digest, guard.reader);
 		if (judged.refusal) throw new Error(judged.refusal);
 		const copied = copiedElision(query, data?.toString("utf8") ?? "");
 		if (copied)
@@ -652,10 +550,7 @@ async function preparePatch(
 	for (const hunk of patch.hunks) {
 		const source = resolveToolPath(ctx.cwd, hunk.path);
 		const key = canonicalPath(source);
-		if (seen.has(key))
-			throw new Error(
-				`Duplicate patch operations target the same path: ${hunk.path}`,
-			);
+		if (seen.has(key)) throw new Error(`Duplicate patch operations target the same path: ${hunk.path}`);
 		seen.add(key);
 		if (hunk.kind === "add") {
 			const query: FileQuery = {
@@ -669,8 +564,7 @@ async function preparePatch(
 		} else if (hunk.kind === "delete") {
 			const query: FileQuery = { type: "delete", path: hunk.path, reasoning };
 			const checked = await inspect(query);
-			if (!checked.data)
-				throw new Error(`Cannot delete missing file ${hunk.path}`);
+			if (!checked.data) throw new Error(`Cannot delete missing file ${hunk.path}`);
 			prepared.push({ query, mode: "delete", digest: checked.digest });
 		} else {
 			const edits = hunk.chunks
@@ -683,22 +577,12 @@ async function preparePatch(
 				reasoning,
 			};
 			const checked = await inspect(query);
-			if (!checked.data)
-				throw new Error(`Cannot update missing file ${hunk.path}`);
+			if (!checked.data) throw new Error(`Cannot update missing file ${hunk.path}`);
 			if (checked.changed) {
-				const lost = lostAnchor(
-					hunk.path,
-					edits,
-					checked.data.toString("utf8"),
-					guard.reader,
-				);
-				if (lost || !edits.length)
-					throw new Error(lost ?? staleRefusal(hunk.path, guard.reader));
+				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader);
+				if (lost || !edits.length) throw new Error(lost ?? staleRefusal(hunk.path, guard.reader));
 			}
-			const content = transformPatch(
-				checked.data.toString("utf8"),
-				hunk.chunks,
-			);
+			const content = transformPatch(checked.data.toString("utf8"), hunk.chunks);
 			if (hunk.move_path !== null) {
 				const destination: FileQuery = {
 					type: "write",
@@ -750,18 +634,14 @@ async function inspectQueryBatch(
 		const real = canonicalPath(file);
 		const repeated = targets.has(real);
 		if (rejectOverlap && repeated)
-			throw new Error(
-				"Overlapping rewritten file targets require sequential preparation; no changes applied",
-			);
+			throw new Error("Overlapping rewritten file targets require sequential preparation; no changes applied");
 		targets.add(real);
 		const state = stateFolderRefusal(real, query.path, "the file tool");
 		if (state) throw new Error(state);
 		const root = workspaceRoot(ctx.cwd);
 		outside ||= !root || !isWithin(real, root) || runsLater(real, root);
-		if (query.type === "edit" && !query.edits?.length)
-			throw new Error("edit needs a non-empty edits array.");
-		if (query.type === "write" && query.content === undefined)
-			throw new Error("write needs content.");
+		if (query.type === "edit" && !query.edits?.length) throw new Error("edit needs a non-empty edits array.");
+		if (query.type === "write" && query.content === undefined) throw new Error("write needs content.");
 		if (repeated) {
 			const reserved = guard.reservedBy?.(file);
 			if (reserved) throw new Error(reserved);
@@ -776,42 +656,21 @@ async function inspectQueryBatch(
 		}
 		const inspection = guard.inspect(file, query.type, query.path);
 		if (inspection.refusal) throw new Error(inspection.refusal);
-		const data = inspection.current
-			? await fs.promises.readFile(file)
-			: undefined;
+		const data = inspection.current ? await fs.promises.readFile(file) : undefined;
 		signal?.throwIfAborted();
 		const digest = data ? sha256(data) : null;
-		const judged = judgeChange(
-			query.path,
-			query.type,
-			inspection,
-			data,
-			digest,
-			guard.reader,
-		);
+		const judged = judgeChange(query.path, query.type, inspection, data, digest, guard.reader);
 		if (judged.refusal) throw new Error(judged.refusal);
 		if (query.type === "edit") {
 			if (judged.changed) {
-				const lost = lostAnchor(
-					query.path,
-					query.edits ?? [],
-					data?.toString("utf8") ?? "",
-					guard.reader,
-				);
+				const lost = lostAnchor(query.path, query.edits ?? [], data?.toString("utf8") ?? "", guard.reader);
 				if (lost) throw new Error(lost);
 			}
 			const content = splitBom(data?.toString("utf8") ?? "").text;
-			applyEditsToNormalizedContent(
-				normalizeToLF(content),
-				query.edits ?? [],
-				query.path,
-			);
+			applyEditsToNormalizedContent(normalizeToLF(content), query.edits ?? [], query.path);
 		}
 		const copied = copiedElision(query, data?.toString("utf8") ?? "");
-		if (copied)
-			throw new Error(
-				`The new text contains "${copied}": an output-cut placeholder, not file content.`,
-			);
+		if (copied) throw new Error(`The new text contains "${copied}": an output-cut placeholder, not file content.`);
 		prepared.push({ query, mode: query.type, digest, canonicalPath: real });
 	}
 	return { prepared, outside };
@@ -837,19 +696,9 @@ async function runQuery(
 	let before: Buffer | undefined;
 	let deleted = false;
 	try {
-		if (query.type === "edit" && !query.edits?.length)
-			throw new Error("edit needs a non-empty edits array.");
-		if (query.type === "write" && query.content === undefined)
-			throw new Error("write needs content.");
-		const outside = await workspaceRefusal(
-			file,
-			query,
-			ctx,
-			signal,
-			permission,
-			id,
-			approvedTarget,
-		);
+		if (query.type === "edit" && !query.edits?.length) throw new Error("edit needs a non-empty edits array.");
+		if (query.type === "write" && query.content === undefined) throw new Error("write needs content.");
+		const outside = await workspaceRefusal(file, query, ctx, signal, permission, id, approvedTarget);
 		if (outside) throw new Error(outside);
 		const inspection = guard.inspect(file, mode, query.path);
 		if (inspection.refusal) throw new Error(inspection.refusal);
@@ -870,26 +719,13 @@ async function runQuery(
 			: undefined;
 		before = data;
 		const checked = data ? sha256(data) : null;
-		if (prepared && checked !== prepared.digest)
-			throw changedOnDisk(query.path);
+		if (prepared && checked !== prepared.digest) throw changedOnDisk(query.path);
 		// A write or delete over changed bytes is refused. An edit goes on when every anchor still matches once.
-		const { changed, refusal: unfit } = judgeChange(
-			query.path,
-			mode,
-			inspection,
-			data,
-			checked,
-			guard.reader,
-		);
+		const { changed, refusal: unfit } = judgeChange(query.path, mode, inspection, data, checked, guard.reader);
 		if (unfit) throw new Error(unfit);
 		const lost =
 			!prepared && changed && data
-				? lostAnchor(
-						query.path,
-						query.edits ?? [],
-						data.toString("utf8"),
-						guard.reader,
-					)
+				? lostAnchor(query.path, query.edits ?? [], data.toString("utf8"), guard.reader)
 				: undefined;
 		if (lost) throw new Error(lost);
 		const copied = copiedElision(query, data?.toString("utf8") ?? "");
@@ -901,9 +737,7 @@ async function runQuery(
 		capture = await checkpoints?.capture(
 			file,
 			() => lastUserEntry(ctx),
-			data && checked
-				? { data, sha256: checked, mode: current?.mode ?? 0o644 }
-				: null,
+			data && checked ? { data, sha256: checked, mode: current?.mode ?? 0o644 } : null,
 		);
 		const note = capture?.note ? ` (${capture.note})` : "";
 		if (query.type === "delete") {
@@ -912,8 +746,7 @@ async function runQuery(
 				await withFileWriteLock(
 					file,
 					async (_target, assertHeld) => {
-						if (((await sha256File(file)) ?? null) !== checked)
-							throw changedOnDisk(query.path);
+						if (((await sha256File(file)) ?? null) !== checked) throw changedOnDisk(query.path);
 						assertHeld();
 						reserved();
 						await fs.promises.rm(file);
@@ -923,62 +756,33 @@ async function runQuery(
 				);
 			});
 			guard.record(file);
-			const unsaved = await settleCheckpoint(
-				ctx,
-				checkpoints,
-				capture,
-				file,
-				true,
-				null,
-			);
+			const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, null);
 			return {
 				...base,
 				ok: true,
 				message: `Deleted ${query.path}${note}${unsaved}`,
 			};
 		}
-		operations = guardedOperations(
-			query.path,
-			checked,
-			data ? { file, data } : undefined,
-			reserved,
-			signal,
-		);
+		operations = guardedOperations(query.path, checked, data ? { file, data } : undefined, reserved, signal);
 		const tool =
 			query.type === "edit"
 				? createEditToolDefinition(ctx.cwd, { operations })
 				: createWriteToolDefinition(ctx.cwd, { operations });
 		const args =
-			query.type === "edit"
-				? { path: query.path, edits: query.edits }
-				: { path: query.path, content: query.content };
-		const result = await tool.execute(
-			`${id}:${index}`,
-			args as never,
-			signal,
-			undefined,
-			ctx,
-		);
+			query.type === "edit" ? { path: query.path, edits: query.edits } : { path: query.path, content: query.content };
+		const result = await tool.execute(`${id}:${index}`, args as never, signal, undefined, ctx);
 		const written = operations.written();
 		// An edit over outside changes leaves them unseen: later edits go on, a write or delete needs a fresh read.
 		const lineDelta = recordChange(guard, file, mode, before, written);
 		if (changed) guard.stale(file);
-		const unsaved = await settleCheckpoint(
-			ctx,
-			checkpoints,
-			capture,
-			file,
-			true,
-			written?.sha256,
-		);
-		const message =
-			(contentText(result.content).trim() || `${query.type} ${query.path}`) +
-			note +
-			unsaved;
+		const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, written?.sha256);
+		const message = (contentText(result.content).trim() || `${query.type} ${query.path}`) + note + unsaved;
 		const diff =
 			isRecord(result.details) && typeof result.details.diff === "string"
 				? result.details.diff
-				: undefined;
+				: query.type === "write"
+					? writeDiff(data, query.content)
+					: undefined;
 		return {
 			...base,
 			ok: true,
@@ -1023,8 +827,7 @@ function recordChange(
 		guard.record(file, written);
 		return undefined;
 	}
-	const lineDelta =
-		written && before ? written.lines - lineCount(before) : undefined;
+	const lineDelta = written && before ? written.lines - lineCount(before) : undefined;
 	guard.edited(file, written, lineDelta);
 	return lineDelta;
 }
@@ -1049,8 +852,7 @@ async function workspaceRefusal(
 		return home;
 	}
 	if (approvedTarget) {
-		if (real !== approvedTarget)
-			return "File target identity changed after approval; no changes applied";
+		if (real !== approvedTarget) return "File target identity changed after approval; no changes applied";
 		return undefined;
 	}
 	const root = workspaceRoot(ctx.cwd);
@@ -1059,13 +861,8 @@ async function workspaceRefusal(
 	const dir = path.dirname(real);
 	const verdict = await permission.check(ctx, {
 		action: "file.outside",
-		title: inside
-			? "Change a file that runs in later sessions?"
-			: "Change a file outside the workspace?",
-		what: [
-			`${query.type} ${real}`,
-			`workspace: ${root ?? "none (the home folder is not a workspace)"}`,
-		],
+		title: inside ? "Change a file that runs in later sessions?" : "Change a file outside the workspace?",
+		what: [`${query.type} ${real}`, `workspace: ${root ?? "none (the home folder is not a workspace)"}`],
 		purpose: query.reasoning,
 		toolCallId,
 		cwd: ctx.cwd,
@@ -1081,9 +878,7 @@ async function workspaceRefusal(
 function changePurpose(queries: readonly Pick<FileQuery, "reasoning">[]): {
 	purpose?: string;
 } {
-	const said = [
-		...new Set(queries.map((query) => query.reasoning?.trim()).filter(Boolean)),
-	];
+	const said = [...new Set(queries.map((query) => query.reasoning?.trim()).filter(Boolean))];
 	return said.length > 0 ? { purpose: said.join("; ") } : {};
 }
 
@@ -1099,9 +894,7 @@ export function copiedElision(
 				? (query.edits ?? [])
 				: [];
 	for (const { oldText, newText } of added) {
-		const found = elisionMarkers(newText).find(
-			(marker) => !oldText.includes(marker) && !original.includes(marker),
-		);
+		const found = elisionMarkers(newText).find((marker) => !oldText.includes(marker) && !original.includes(marker));
 		if (found) return found;
 	}
 	return undefined;
@@ -1109,9 +902,7 @@ export function copiedElision(
 
 /** Octocode's messages end with "in <path>." or "to <path>"; the outcome line already names the path. */
 function withoutPath(message: string, file: string): string {
-	return message
-		.replace(new RegExp(`\\s+(?:in|to) ${escapeRegExp(file)}\\.?$`), "")
-		.replace(/^Successfully /, "");
+	return message.replace(new RegExp(`\\s+(?:in|to) ${escapeRegExp(file)}\\.?$`), "").replace(/^Successfully /, "");
 }
 
 export function formatOutcomes(outcomes: QueryOutcome[]): string {
@@ -1133,19 +924,11 @@ export function returnedContent(
 	content: unknown,
 	details: unknown,
 ): KnownContent | undefined {
-	if (readView(toolName, input, content, details)?.whole !== true)
-		return undefined;
-	if (
-		!Array.isArray(content) ||
-		content.length !== 1 ||
-		!isRecord(content[0]) ||
-		content[0].type !== "text"
-	)
+	if (readView(toolName, input, content, details)?.whole !== true) return undefined;
+	if (!Array.isArray(content) || content.length !== 1 || !isRecord(content[0]) || content[0].type !== "text")
 		return undefined;
 	const text = content[0].text;
-	return typeof text === "string"
-		? { sha256: sha256(text), size: Buffer.byteLength(text) }
-		: undefined;
+	return typeof text === "string" ? { sha256: sha256(text), size: Buffer.byteLength(text) } : undefined;
 }
 
 export function registerFileTool(
@@ -1178,12 +961,9 @@ export function registerFileTool(
 					ctx: ExtensionToolContext,
 				) => {
 					validateFileInput(params);
-					const canonical =
-						params.patch !== undefined ? parsePatch(params.patch) : undefined;
+					const canonical = params.patch !== undefined ? parsePatch(params.patch) : undefined;
 					if (canonical?.environment_id)
-						throw new Error(
-							"Remote patch environment routing is not available in this local file tool",
-						);
+						throw new Error("Remote patch environment routing is not available in this local file tool");
 					let queries: FileQuery[] = canonical
 						? patchChanges(params.patch!, params.reasoning ?? "Apply patch")
 						: params.queries!;
@@ -1193,27 +973,18 @@ export function registerFileTool(
 								content: [{ type: "text" as const, text: "No files changed." }],
 								details: { outcomes: [] },
 							};
-						throw new Error(
-							"No queries: pass at least one edit, write or delete query.",
-						);
+						throw new Error("No queries: pass at least one edit, write or delete query.");
 					}
-					const sourceBatch =
-						!canonical && replacementOwner?.enabled(params, ctx.cwd) === true;
-					const originalInspection = sourceBatch
-						? await inspectQueryBatch(queries, guard, ctx, signal)
-						: undefined;
+					const sourceBatch = !canonical && replacementOwner?.enabled(params, ctx.cwd) === true;
+					const originalInspection = sourceBatch ? await inspectQueryBatch(queries, guard, ctx, signal) : undefined;
 					let effectivePrepared: PreparedChange[] | undefined;
 					let replacementCommitted = false;
 					let reviewQueries = queries;
 					const originalInvocation =
-						ctx.invocation ??
-						captureToolInvocation(id, "file", params, () => !signal?.aborted);
+						ctx.invocation ?? captureToolInvocation(id, "file", params, () => !signal?.aborted);
 					const invocationActive = () => originalInvocation?.active !== false;
-					const prepareReplacement = async (
-						proposals: FileInputReplacement[],
-					) => {
-						if (!sourceBatch || !replacementOwner)
-							throw new Error("File replacement is unavailable for this call");
+					const prepareReplacement = async (proposals: FileInputReplacement[]) => {
+						if (!sourceBatch || !replacementOwner) throw new Error("File replacement is unavailable for this call");
 						let candidate: Record<string, unknown> = structuredClone(params);
 						const indices = new Set<number>();
 						for (const proposal of proposals) {
@@ -1225,14 +996,9 @@ export function registerFileTool(
 							)
 								throw new Error("Invalid or duplicate file replacement index");
 							indices.add(proposal.index);
-							if (!isRecord(proposal.input))
-								throw new Error("File replacement must be an object");
+							if (!isRecord(proposal.input)) throw new Error("File replacement must be an object");
 							if (Object.keys(proposal.input).length)
-								candidate = rewriteFileQuery(
-									candidate,
-									proposal.index,
-									proposal.input,
-								);
+								candidate = rewriteFileQuery(candidate, proposal.index, proposal.input);
 						}
 						candidate = validateToolArguments(
 							{ name: "file", description: "File changes", parameters: Params },
@@ -1247,13 +1013,7 @@ export function registerFileTool(
 						const nextQueries = candidate.queries as FileQuery[];
 						await replacementOwner.refresh(ctx);
 						signal?.throwIfAborted();
-						const inspected = await inspectQueryBatch(
-							nextQueries,
-							guard,
-							ctx,
-							signal,
-							true,
-						);
+						const inspected = await inspectQueryBatch(nextQueries, guard, ctx, signal, true);
 						reviewQueries = nextQueries;
 						const invocation = captureToolInvocation(
 							id,
@@ -1265,9 +1025,7 @@ export function registerFileTool(
 							fileIndices: [...indices],
 							request: {
 								action: "file.workspace" as const,
-								...(inspected.outside
-									? { also: ["file.outside" as const] }
-									: {}),
+								...(inspected.outside ? { also: ["file.outside" as const] } : {}),
 								title: "Apply replacement file changes?",
 								what: nextQueries.map((query) => `${query.type} ${query.path}`),
 								...changePurpose(nextQueries),
@@ -1276,56 +1034,28 @@ export function registerFileTool(
 								signal,
 								invocation,
 							},
-							commit: async (
-								approvalSignal: AbortSignal,
-								approvedSource: ReturnType<Permission["sourceDecision"]>,
-							) => {
-								if (
-									replacementCommitted ||
-									approvalSignal.aborted ||
-									signal?.aborted ||
-									!invocationActive()
-								)
+							commit: async (approvalSignal: AbortSignal, approvedSource: ReturnType<Permission["sourceDecision"]>) => {
+								if (replacementCommitted || approvalSignal.aborted || signal?.aborted || !invocationActive())
 									throw new Error("File replacement expired before commit");
 								await replacementOwner.refresh(ctx);
-								const final = await inspectQueryBatch(
-									nextQueries,
-									guard,
-									ctx,
-									approvalSignal,
-									true,
-								);
+								const final = await inspectQueryBatch(nextQueries, guard, ctx, approvalSignal, true);
 								for (const [index, item] of final.prepared.entries())
 									if (
 										item.digest !== inspected.prepared[index]!.digest ||
-										item.canonicalPath !==
-											inspected.prepared[index]!.canonicalPath ||
+										item.canonicalPath !== inspected.prepared[index]!.canonicalPath ||
 										final.outside !== inspected.outside
 									)
 										throw changedOnDisk(item.query.path);
-								const source =
-									invocation &&
-									permission.replacementSourceDecision(invocation, ctx.cwd, [
-										...indices,
-									]);
+								const source = invocation && permission.replacementSourceDecision(invocation, ctx.cwd, [...indices]);
 								if (
 									source?.decision === "deny" ||
 									source?.decision === "unsupported" ||
-									(source?.decision === "ask" &&
-										approvedSource?.decision !== "ask")
+									(source?.decision === "ask" && approvedSource?.decision !== "ask")
 								)
-									throw new Error(
-										source.message ??
-											"Source policy changed before file replacement commit",
-									);
-								if (
-									approvalSignal.aborted ||
-									signal?.aborted ||
-									!invocationActive()
-								)
+									throw new Error(source.message ?? "Source policy changed before file replacement commit");
+								if (approvalSignal.aborted || signal?.aborted || !invocationActive())
 									throw new Error("File replacement expired before commit");
-								for (const key of Object.keys(params))
-									delete (params as Record<string, unknown>)[key];
+								for (const key of Object.keys(params)) delete (params as Record<string, unknown>)[key];
 								replacementOwner.committed?.(id, candidate);
 								Object.assign(params, candidate);
 								queries = params.queries!;
@@ -1336,12 +1066,7 @@ export function registerFileTool(
 					};
 					const approve: Permission["check"] = sourceBatch
 						? (context, request, dialog) =>
-								permission.checkWithFileReplacement(
-									context,
-									request,
-									prepareReplacement,
-									dialog,
-								)
+								permission.checkWithFileReplacement(context, request, prepareReplacement, dialog)
 						: permission.check.bind(permission);
 					const outcomes: QueryOutcome[] = [];
 					// When the mode asks (manual), the review is the ask: nothing is applied until the user has said yes to each
@@ -1351,9 +1076,7 @@ export function registerFileTool(
 						ctx,
 						{
 							action: "file.workspace",
-							...(originalInspection?.outside
-								? { also: ["file.outside" as const] }
-								: {}),
+							...(originalInspection?.outside ? { also: ["file.outside" as const] } : {}),
 							...(sourceBatch ? { invocation: originalInvocation } : {}),
 							title: "Apply these file changes?",
 							what: queries.map((query) => `${query.type} ${query.path}`),
@@ -1380,10 +1103,7 @@ export function registerFileTool(
 						},
 					);
 					// A dismissed or interrupted review is not a verdict on the changes.
-					if (
-						(!verdict.allowed && verdict.via === "cancelled") ||
-						signal?.aborted
-					)
+					if ((!verdict.allowed && verdict.via === "cancelled") || signal?.aborted)
 						throw new Error("Cancelled before any change was applied.");
 					if (!verdict.allowed) throw new Error(verdict.message);
 					if (sourceBatch && !replacementCommitted) {
@@ -1391,27 +1111,14 @@ export function registerFileTool(
 						if (
 							final.outside !== originalInspection!.outside ||
 							final.prepared.some(
-								(item, index) =>
-									item.canonicalPath !==
-									originalInspection!.prepared[index]!.canonicalPath,
+								(item, index) => item.canonicalPath !== originalInspection!.prepared[index]!.canonicalPath,
 							)
 						)
-							throw new Error(
-								"File target identity changed after approval; no changes applied",
-							);
+							throw new Error("File target identity changed after approval; no changes applied");
 					}
-					if (canonical && rejected.size)
-						throw new Error("Patch rejected; no changes applied");
+					if (canonical && rejected.size) throw new Error("Patch rejected; no changes applied");
 					const prepared = canonical
-						? await preparePatch(
-								canonical,
-								params.reasoning ?? "Apply patch",
-								guard,
-								ctx,
-								signal,
-								permission,
-								id,
-							)
+						? await preparePatch(canonical, params.reasoning ?? "Apply patch", guard, ctx, signal, permission, id)
 						: undefined;
 					if (prepared) queries = prepared.map((item) => item.query);
 					for (const [index, query] of queries.entries()) {
@@ -1442,37 +1149,20 @@ export function registerFileTool(
 									permission,
 									checkpoints,
 									prepared?.[index] ?? effectivePrepared?.[index],
-									sourceBatch
-										? (effectivePrepared ?? originalInspection!.prepared)[
-												index
-											]!.canonicalPath
-										: undefined,
+									sourceBatch ? (effectivePrepared ?? originalInspection!.prepared)[index]!.canonicalPath : undefined,
 								)),
 						);
-						if (canonical && !outcomes.at(-1)!.ok)
-							throw new Error(formatOutcomes(outcomes));
+						if (canonical && !outcomes.at(-1)!.ok) throw new Error(formatOutcomes(outcomes));
 						if (prepared) {
-							const target = canonicalPath(
-								resolveToolPath(ctx.cwd, query.path),
-							);
-							const digest =
-								query.type === "delete"
-									? null
-									: sha256(Buffer.from(query.content ?? ""));
+							const target = canonicalPath(resolveToolPath(ctx.cwd, query.path));
+							const digest = query.type === "delete" ? null : sha256(Buffer.from(query.content ?? ""));
 							for (const next of prepared.slice(index + 1))
-								if (
-									canonicalPath(resolveToolPath(ctx.cwd, next.query.path)) ===
-									target
-								)
-									next.digest = digest;
+								if (canonicalPath(resolveToolPath(ctx.cwd, next.query.path)) === target) next.digest = digest;
 						}
 					}
-					if (outcomes.every((outcome) => !outcome.ok))
-						throw new Error(formatOutcomes(outcomes));
+					if (outcomes.every((outcome) => !outcome.ok)) throw new Error(formatOutcomes(outcomes));
 					return {
-						content: [
-							{ type: "text" as const, text: formatOutcomes(outcomes) },
-						],
+						content: [{ type: "text" as const, text: formatOutcomes(outcomes) }],
 						details: { outcomes },
 					};
 				},
@@ -1486,20 +1176,9 @@ export function registerFileTool(
 	pi.on("tool_result", async (event, ctx) => {
 		// A call another tool made may return content the script never showed the model, so only the model's own calls count as reads.
 		if (event.isError || event.parentToolCallId) return;
-		for (const read of recordedLocalReads(event.details))
-			guard.record(read.file, read, !read.whole, read.lines);
-		const known = returnedContent(
-			event.toolName,
-			event.input,
-			event.content,
-			event.details,
-		);
-		const view = readView(
-			event.toolName,
-			event.input,
-			event.content,
-			event.details,
-		);
+		for (const read of recordedLocalReads(event.details)) guard.record(read.file, read, !read.whole, read.lines);
+		const known = returnedContent(event.toolName, event.input, event.content, event.details);
+		const view = readView(event.toolName, event.input, event.content, event.details);
 		for (const file of readPaths(event.toolName, event.input, ctx.cwd))
 			guard.record(file, known, view?.whole !== true, view?.lines);
 	});

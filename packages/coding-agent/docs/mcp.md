@@ -43,7 +43,7 @@ An explicit `OCTOCODE_HOME`, `OCTOCODE_CODING_AGENT_DIR`, or custom SDK agent di
 
 All these files use the common `mcpServers` JSON object. Line comments and trailing commas are accepted. `.mcp.json` lets a project share configuration with Claude Code; `.agents/mcp.json` is also accepted by Octocode, but is not an MCP protocol standard. Octocode does not automatically execute server configurations from unrelated desktop or editor profiles. Use the conversion table below for those clients.
 
-The session, MCP CLI commands, and built-in Octocode server ownership check use the same loader. A valid configured `octocode` entry takes precedence over the automatic research server, including `enabled: false`, so it is not launched twice. Global enablement and exposure changes save controls in the canonical file; they do not rewrite an inherited Pi or shared Octocode file or copy its credentials. Shell `mcp add` and `mcp remove` operate on Octocode's native file. Removing a canonical entry may reveal an inherited server again; disable it to keep it off. Saving JSON preserves unrelated fields but removes comments, so a file with comments is first copied to `<file>.bak`.
+The session, MCP CLI commands, and built-in Octocode server ownership check use the same loader. A valid configured `octocode` entry takes precedence over the automatic research server, including `enabled: false`, so it is not launched twice. Global enablement and exposure changes save controls in the canonical file; they do not rewrite an inherited Pi or shared Octocode file or copy its credentials. Shell `mcp add` and `mcp remove` operate on Octocode's native file. Removing a canonical entry may reveal an inherited server again; disable it to keep it off. Saving JSON atomically replaces the file and preserves unrelated fields but removes comments, so a file with comments is first copied to `<file>.bak`.
 
 An entry without `command`, `url`, or `type` overrides only `enabled`, `exposure`, and `toolExposure` of an earlier server with the same name and keeps the rest, including `env`, `headers`, and `auth`. This works across global layers and trusted projects. A control-only entry requires an earlier transport definition. For example, this turns off an inherited server:
 
@@ -108,7 +108,7 @@ Keep personal servers and servers with credentials in the user-level file. Use t
 
 From a shell, `octocode mcp tools [server] [tool]` connects enabled configured servers and prints their tools; specifying a server connects only that server. `octocode mcp tools --json` includes descriptions, input schemas and exposure. `octocode mcp config --json` prints only configuration locations and trust state, with no credentials or server connections.
 
-Global exposure and enabled-state changes are saved to the canonical global file. Existing project overrides remain the target for subsequent changes. In a trusted project, "Enable in this project" and "Disable in this project" add a project override for a user-level server. Disabled servers remain listed, and their exposure can be changed before enabling them. `/mcp list` and `/mcp status` print the current snapshot without waiting for a connection. `/mcp login <server>`, `/mcp logout <server>`, and `/mcp reconnect <server>` perform those actions directly.
+Global exposure and enabled-state changes are saved to the canonical global file. Existing project overrides remain the target for subsequent changes. In a trusted project, "Enable in this project" and "Disable in this project" add a project override for a user-level server. Disabled servers remain listed, and their exposure can be changed before enabling them. `/mcp list` and `/mcp status` print the current snapshot without waiting for a connection. `/mcp login <server>`, `/mcp logout <server>`, and `/mcp reconnect <server>` perform those actions directly. `/mcp reconnect all` reconnects every enabled server, including the automatic Octocode server, and reports the ones that failed.
 
 Configure a server from either interface:
 
@@ -122,6 +122,20 @@ Exposure accepts `auto`, `deferred`, `direct`, or `hidden`. Add `--local` to sav
 
 `/status` (aliases `/info` and `/session`) lists every loaded skill followed by MCP servers, including the automatic Octocode research server, with enabled state, connection state, exposure, tool count, and source. The startup resource display shows Skills followed by MCPs and refreshes as servers connect; quiet startup still applies. `/mcp list` also includes the automatic server. Without an explicit `octocode` configuration, its controls remain `OCTOCODE_MCP=0` and `/mcp reconnect octocode`. Configure an explicit server to manage its persistent enablement and exposure through `/mcp`.
 
+### Let the model manage servers
+
+The `mcp` tool lets the model check and recover the servers of its own session without changing any configuration file:
+
+| `intent` | Effect |
+| --- | --- |
+| `list`, `status` | State, tool count and last error of every server, or of `server` |
+| `connect`, `restart` | Start a stopped or failed server, or restart a running one. A second restart of the same server within 10 seconds is refused. |
+| `stop` | Stop `server` for the rest of the session and remove its tools; `connect` starts it again |
+| `add` | Run a new server for this session from `config` (`command`, `args`, `env`, `cwd`, or `url`, `headers`). The user confirms the command or URL first; a session that cannot ask the user refuses. |
+| `remove` | Remove a server that `add` started |
+
+A subagent acts on its own MCP connections, never on its parent's. Servers from configuration files are not removed; the user disables them with `/mcp disable`. The tool belongs to the default tool selection like a built-in tool: `--no-builtin-tools`, a `defaultTools` setting or a `--tools` list without `mcp` leaves it out.
+
 ### Diagnose connection problems
 
 Run `octocode mcp list` to connect to every enabled server and print its state, tools, and errors. It exits with status 1 when an entry is invalid or an enabled server is not connected. `/mcp` shows the full connection error and the tail of stderr from a failed stdio server.
@@ -129,6 +143,8 @@ Run `octocode mcp list` to connect to every enabled server and print its state, 
 Octocode reports configuration errors, failed connections, and required sign-ins once after startup. Server logging notifications are appended to `<agent directory>/mcp.log` as `<time> [<server>] <level> <logger>: <message>`. The file moves to `mcp.log.1` after it grows past 5 MB.
 
 Octocode connects enabled servers in the background. The first prompt waits up to 10 seconds for `direct` and `auto` catalogs. A native tool call waits for its server; scoped `tool_search` waits for its namespace, while unscoped discovery and resource calls wait for all relevant servers. HTTP network errors and transient statuses (408, 429, and 5xx) are retried twice. Dropped connections reconnect on the next call. Tool-list changes register new tools and make withdrawn tools unreachable.
+
+When an HTTP session expires, Octocode retries once with a new session. Calls already using the old connection can finish before its transport closes. Stopping the server or closing the agent session also closes these retired connections, even if their calls are still pending.
 
 Stdio is language-independent: `command` may be a native executable, a Python interpreter with the script in `args`, a Node process, or a container launcher. Arguments are passed as an array without a shell. To restrict filesystem or network access, configure an OS sandbox/container launcher as the command; the host does not silently add one. `inheritEnv: false` limits inherited credentials but does not isolate files or the network.
 

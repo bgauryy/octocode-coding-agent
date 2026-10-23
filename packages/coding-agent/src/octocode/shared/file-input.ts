@@ -25,8 +25,7 @@ export function validatePatchPath(value: string): string {
 export function patchChanges(patch: string, reasoning: string): PatchChange[] {
 	return parsePatch(patch).hunks.map((h) => {
 		validatePatchPath(h.path);
-		if (h.kind === "add")
-			return { type: "write", path: h.path, content: h.content, reasoning };
+		if (h.kind === "add") return { type: "write", path: h.path, content: h.content, reasoning };
 		if (h.kind === "delete") return { type: "delete", path: h.path, reasoning };
 		if (h.move_path !== null) validatePatchPath(h.move_path);
 		return {
@@ -44,20 +43,15 @@ export function patchChanges(patch: string, reasoning: string): PatchChange[] {
 export function validateFileInput(input: Record<string, unknown>): void {
 	if ((input.patch !== undefined) === (input.queries !== undefined))
 		throw new Error("Provide exactly one of queries or patch");
-	if (input.patch !== undefined && typeof input.patch !== "string")
-		throw new Error("Patch must be a string");
-	if (input.queries !== undefined && !Array.isArray(input.queries))
-		throw new Error("Queries must be an array");
+	if (input.patch !== undefined && typeof input.patch !== "string") throw new Error("Patch must be a string");
+	if (input.queries !== undefined && !Array.isArray(input.queries)) throw new Error("Queries must be an array");
 }
-export function fileChanges(
-	input: Record<string, unknown>,
-): Record<string, unknown>[] {
+export function fileChanges(input: Record<string, unknown>): Record<string, unknown>[] {
 	if (typeof input.patch === "string") {
 		try {
-			return patchChanges(
-				input.patch,
-				typeof input.reasoning === "string" ? input.reasoning : "Apply patch",
-			).map((change) => ({ ...change }));
+			return patchChanges(input.patch, typeof input.reasoning === "string" ? input.reasoning : "Apply patch").map(
+				(change) => ({ ...change }),
+			);
 		} catch {
 			return [];
 		}

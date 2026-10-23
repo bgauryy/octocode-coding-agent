@@ -40,7 +40,11 @@ export function readExtensionManifest(packageJsonPath: string): ExtensionManifes
 /** A resource marker prevents implicit index/module discovery; native declarations still take precedence. */
 export function hasPluginOrSkillMarker(directory: string): boolean {
 	return ["SKILL.md", "plugin.json", ".claude-plugin", ".codex-plugin"].some((marker) => {
-		try { lstatSync(join(directory, marker)); return true; }
-		catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
+		try {
+			lstatSync(join(directory, marker));
+			return true;
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code !== "ENOENT";
+		}
 	});
 }

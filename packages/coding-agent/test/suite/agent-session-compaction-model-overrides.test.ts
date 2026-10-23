@@ -132,7 +132,10 @@ describe("AgentSession built-in compaction policy", () => {
 
 	it("captures model identity before awaiting summarization auth", async () => {
 		const harness = await createHarness({
-			models: [{ id: "first", contextWindow: 4000 }, { id: "second", contextWindow: 8000 }],
+			models: [
+				{ id: "first", contextWindow: 4000 },
+				{ id: "second", contextWindow: 8000 },
+			],
 		});
 		harnesses.push(harness);
 		seedHistory(harness);

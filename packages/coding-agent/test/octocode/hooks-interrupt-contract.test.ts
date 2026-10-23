@@ -38,15 +38,8 @@ it("Interrupt accepts only optional systemMessage and cannot affect a turn", () 
 		stderr: "stderr",
 		timedOut: false,
 	});
-	expect(
-		interpret("Interrupt", run('{"systemMessage":"notice"}'), "codex"),
-	).toEqual({ systemMessage: "notice" });
-	for (const output of [
-		"plain",
-		"[]",
-		'{"continue":false}',
-		'{"hookSpecificOutput":{"additionalContext":"inject"}}',
-	])
+	expect(interpret("Interrupt", run('{"systemMessage":"notice"}'), "codex")).toEqual({ systemMessage: "notice" });
+	for (const output of ["plain", "[]", '{"continue":false}', '{"hookSpecificOutput":{"additionalContext":"inject"}}'])
 		expect(interpret("Interrupt", run(output), "codex").error).toBeDefined();
 	expect(interpret("Interrupt", run("", 2), "codex").error).toBeDefined();
 	expect(interpret("Interrupt", run(""), "codex")).toEqual({});
@@ -65,9 +58,7 @@ it.each(["command", "mcp_tool"] as const)(
 						{
 							hooks: values.map((timeout, index) => ({
 								type,
-								...(type === "command"
-									? { command: `echo ${index}` }
-									: { server: "policy", tool: `observe${index}` }),
+								...(type === "command" ? { command: `echo ${index}` } : { server: "policy", tool: `observe${index}` }),
 								timeout,
 							})),
 						},
@@ -76,9 +67,9 @@ it.each(["command", "mcp_tool"] as const)(
 			}),
 		);
 		const loaded = loadHooks(tmp(), false, home, { sourceProfiles: true });
-		expect(
-			commandsFor(loaded.config, "Interrupt", []).map((hook) => hook.timeoutMs),
-		).toEqual([1000, 1000, 1000, 1000, 3000, 3000]);
+		expect(commandsFor(loaded.config, "Interrupt", []).map((hook) => hook.timeoutMs)).toEqual([
+			1000, 1000, 1000, 1000, 3000, 3000,
+		]);
 		expect(loaded.errors).toHaveLength(3);
 	},
 );
@@ -86,17 +77,11 @@ it.each(["command", "mcp_tool"] as const)(
 it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 	"dispatches Interrupt through MCP with fresh signal and observable output %s",
 	async (output) => {
-		const stderr = vi
-			.spyOn(process.stderr, "write")
-			.mockImplementation(() => true);
-		const { registerHooks } = await import(
-			"../../src/octocode/hooks/register.ts"
-		);
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
 		const { createEventBus } = await import("../../src/core/event-bus.ts");
-		const { registerMcpHookCaller } = await import(
-			"../../src/extensions/mcp/hook-caller.ts"
-		);
+		const { registerMcpHookCaller } = await import("../../src/extensions/mcp/hook-caller.ts");
 		const home = tmp();
 		fs.mkdirSync(path.join(home, ".codex"));
 		fs.writeFileSync(
@@ -121,37 +106,26 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 		const fake = fakePi();
 		fake.pi.events = createEventBus();
 		let called = false;
-		const unregister = registerMcpHookCaller(
-			fake.pi.events,
-			async (request) => {
-				called = true;
-				expect(request.signal?.aborted).toBe(false);
-				expect(request.input).toEqual({
-					turn: "interrupted-turn",
-					model: "captured-model",
-				});
-				return { content: [{ type: "text", text: output }] };
-			},
-		);
+		const unregister = registerMcpHookCaller(fake.pi.events, async (request) => {
+			called = true;
+			expect(request.signal?.aborted).toBe(false);
+			expect(request.input).toEqual({
+				turn: "interrupted-turn",
+				model: "captured-model",
+			});
+			return { content: [{ type: "text", text: output }] };
+		});
 		const ctx = fakeCtx({
 			cwd: tmp(),
 			hasUI: false,
 			model: { id: "later-model" } as never,
 		});
 		ctx.signal = AbortSignal.abort();
-		registerHooks(
-			fake.pi,
-			{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-			home,
-			undefined,
-			() => ({ permissionMode: "workspace" }),
-		);
+		registerHooks(fake.pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home, undefined, () => ({
+			permissionMode: "workspace",
+		}));
 		try {
-			await fake.fire(
-				"session_start",
-				{ reason: "startup" },
-				{ ...ctx, signal: undefined },
-			);
+			await fake.fire("session_start", { reason: "startup" }, { ...ctx, signal: undefined });
 			const results = await fake.emit(
 				"agent_interrupted",
 				{

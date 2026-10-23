@@ -66,9 +66,9 @@ describe("leaving a session with running work", () => {
 			expect(asked).toBe("Stop 1 bash job and start a new session?");
 			ctx.ui.confirms.push(false);
 			// A No cancels the fork (with no checkpoints here, this does not exercise the restore offer).
-			expect(await decide(fake, "session_before_fork", { type: "session_before_fork", entryId: "e1" }, ctx)).toEqual(
-				{ cancel: true },
-			);
+			expect(await decide(fake, "session_before_fork", { type: "session_before_fork", entryId: "e1" }, ctx)).toEqual({
+				cancel: true,
+			});
 			expect(asked).toBe("Stop 1 bash job and fork?");
 			ctx.ui.confirms.push(true);
 			expect(

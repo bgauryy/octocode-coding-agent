@@ -2,6 +2,11 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { PluginContext } from "../../core/plugin-context.ts";
 import type { HookProtocol } from "./profiles.ts";
 
+/** Most bytes Octocode reads back from any hook: a command's stdout, an HTTP response, an MCP or prompt result. */
+export const HOOK_OUTPUT_MAX_BYTES = 64 * 1024;
+/** The longest timeout, in seconds, a hook may configure. */
+export const HOOK_MAX_TIMEOUT_S = 600;
+
 export const HOOK_EVENTS = [
 	"PreToolUse",
 	"PermissionRequest",
@@ -90,7 +95,6 @@ export interface HookRun {
 	/** Bytes of stdout and stderr past `OUTPUT_MAX_BYTES` that were not kept (memory stays bounded for a runaway hook). */
 	dropped?: { stdout: number; stderr: number };
 }
-
 
 export interface HookVerdict {
 	updatedPermissions?: import("../shared/permission-updates.ts").SourcePermissionUpdate[];

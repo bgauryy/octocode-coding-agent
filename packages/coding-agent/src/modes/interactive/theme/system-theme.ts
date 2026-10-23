@@ -496,8 +496,7 @@ export function generateSystemThemeColors(input: SystemThemeInput): SystemThemeC
 		if (reached === undefined && t === 0) return undefined;
 		const distance = (reached ?? extreme) - surfaceL;
 		const floor = (levelTarget(READABLE_FLOOR[appearance], appearance, surfaceL) ?? extreme) - surfaceL;
-		const compressed =
-			Math.abs(distance) > Math.abs(floor) ? distance - (distance - floor) * Math.min(t, 1) : distance;
+		const compressed = Math.abs(distance) > Math.abs(floor) ? distance - (distance - floor) * Math.min(t, 1) : distance;
 		return surfaceL + compressed * (1 - Math.max(0, t - 1));
 	};
 

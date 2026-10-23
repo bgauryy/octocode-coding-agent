@@ -64,7 +64,8 @@ const calls =
 	(...toolCalls: ReturnType<typeof fauxToolCall>[]) =>
 	() =>
 		fauxAssistantMessage(toolCalls, { stopReason: "toolUse" });
-const agentCall = (type: "task" | "coordinate" | "message", input: Parameters<typeof fauxToolCall>[1]) => fauxToolCall("agent", { type, input });
+const agentCall = (type: "task" | "coordinate" | "message", input: Parameters<typeof fauxToolCall>[1]) =>
+	fauxToolCall("agent", { type, input });
 const say = (text: string) => () => fauxAssistantMessage(text);
 type Reply = () => ReturnType<typeof fauxAssistantMessage>;
 
@@ -163,14 +164,12 @@ beforeAll(async () => {
 			streamSimple: faux.streamSimple,
 		} as never);
 	};
-	const settingsManager = SettingsManager.inMemory({  retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [
-			{ name: "faux-provider", factory: provider },
-		],
+		extensionFactories: [{ name: "faux-provider", factory: provider }],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -200,24 +199,27 @@ afterAll(async () => {
 describe("Native features through the SDK", () => {
 	it("registers every tool and command, keeps the banner out of the session and picks up ~/.claude skills", async () => {
 		const [turn] = await run("hello", [say("ready")]);
-		for (const name of [
-			"file",
-			"bash",
-			"web",
-			"agent",
-			"askUser",
-			"backlog",
-			"memory",
-		])
+		for (const name of ["file", "bash", "web", "agent", "askUser", "backlog", "memory"])
 			expect(turn!.tools).toContain(name);
 		// The bundled web profiles carry browser, so the main session leaves its schema out (it stays registered).
 		expect(turn!.tools).not.toContain("browser");
 		expect(session.getAllTools().map((tool) => tool.name)).toContain("browser");
 		const commands = session.extensionRunner.getRegisteredCommands().map((command) => command.name);
-		for (const name of ["status", "agents", "hooks", "resume", "permissions", "backlog", "memory", "rewind", "api", "mcp"])
+		for (const name of [
+			"status",
+			"agents",
+			"hooks",
+			"resume",
+			"permissions",
+			"backlog",
+			"memory",
+			"rewind",
+			"api",
+			"mcp",
+		])
 			expect(commands).toContain(name);
 		expect(commands).not.toContain("octocode");
-		expect(commands.filter(name => name === "mcp")).toHaveLength(1);
+		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn!.context).toMatch(/Delegation/);
 		// The banner is the TUI header (none over RPC), never a session entry.
@@ -317,12 +319,12 @@ describe("Native features through the SDK", () => {
 
 	it("checkpoints file changes and /rewind restores them", async () => {
 		await run("edit", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: path.join(cwd, "app.ts"), fullContent: true }] })),
+			calls(
+				fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: path.join(cwd, "app.ts"), fullContent: true }] }),
+			),
 			calls(
 				fauxToolCall("file", {
-					queries: [
-						{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] },
-					],
+					queries: [{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
 				}),
 			),
 			say("done"),
@@ -356,9 +358,7 @@ describe("Native features through the SDK", () => {
 		const replies = [
 			calls(agentCall("coordinate", { action: "join", goal: "main" })),
 			calls(agentCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
-			calls(
-				fauxToolCall("file", { queries: [{ reasoning: "try", type: "write", path: "held.txt", content: "x" }] }),
-			),
+			calls(fauxToolCall("file", { queries: [{ reasoning: "try", type: "write", path: "held.txt", content: "x" }] })),
 			calls(agentCall("coordinate", { action: "list" })),
 			calls(agentCall("message", { to: peer.id!, message: "please release held.txt", replyRequired: false })),
 			say("done"),
@@ -468,14 +468,27 @@ describe("Native features through the SDK", () => {
 				}),
 			),
 			calls(fauxToolCall("backlog", { op: "list", states: ["backlog"] })),
-			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "ongoing", why: "Keep the answer correct", goal: "The answer constant is 43; tests pass." })),
+			calls(
+				fauxToolCall("backlog", {
+					op: "update",
+					id: "B1",
+					state: "ongoing",
+					why: "Keep the answer correct",
+					goal: "The answer constant is 43; tests pass.",
+				}),
+			),
 			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "done" })),
 			calls(
 				fauxToolCall("backlog", {
 					op: "update",
 					id: "B1",
 					state: "done",
-					completion: { summary: "Changed app.ts; verified by reading it back.", files: [{ path: "app.ts", role: "changed" }], verification: { status: "passed", summary: "Read app.ts" }, operationKey: "feature-e2e-complete" },
+					completion: {
+						summary: "Changed app.ts; verified by reading it back.",
+						files: [{ path: "app.ts", role: "changed" }],
+						verification: { status: "passed", summary: "Read app.ts" },
+						operationKey: "feature-e2e-complete",
+					},
 				}),
 			),
 			calls(

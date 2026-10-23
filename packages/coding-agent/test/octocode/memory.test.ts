@@ -195,11 +195,7 @@ describe("MemoryStore", () => {
 
 	it("updates by id, moves scope, pins, and sanitizes text without cutting it", () => {
 		const store = new MemoryStore(freshDb(), "repo-a");
-		const memory = add(
-			store,
-			{ title: "Title \u001b[31mred\u001b[0m", body: "x".repeat(2000), kind: "gotcha" },
-			1000,
-		);
+		const memory = add(store, { title: "Title \u001b[31mred\u001b[0m", body: "x".repeat(2000), kind: "gotcha" }, 1000);
 		expect(memory.title).toBe("Title red");
 		expect(memory.body).toHaveLength(2000);
 		const updated = store.set(
@@ -452,9 +448,7 @@ describe("memory tool", () => {
 		await expect(run(tool, { op: "set", title: "Sneaky", pinned: true }, untrusted())).rejects.toThrow(
 			/untrusted project/,
 		);
-		await expect(run(tool, { op: "set", id: "M2", body: "changed" }, untrusted())).rejects.toThrow(
-			/untrusted project/,
-		);
+		await expect(run(tool, { op: "set", id: "M2", body: "changed" }, untrusted())).rejects.toThrow(/untrusted project/);
 		await expect(run(tool, { op: "delete", id: "M2" }, untrusted())).rejects.toThrow(/untrusted project/);
 		expect(text(await run(tool, { op: "set", title: "Plain project note" }, untrusted()))).toMatch(
 			/^Saved M4 \(project[\s\S]*hides project memories from reads until the user \/trusts it/,

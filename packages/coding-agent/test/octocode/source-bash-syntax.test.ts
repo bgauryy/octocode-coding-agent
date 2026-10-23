@@ -1,10 +1,7 @@
 import { initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
 beforeAll(initializeBashSyntax);
 import { beforeAll, describe, expect, it } from "vitest";
-import {
-	evaluateSourcePolicy,
-	parseSourcePolicy,
-} from "../../src/octocode/permission/source-policy.ts";
+import { evaluateSourcePolicy, parseSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
 const source = {
 	path: "/home/test/.claude/settings.json",
 	anchor: "/home/test/.claude",
@@ -40,9 +37,7 @@ describe("source Bash syntax matching", () => {
 		expect(evaluate(command, { deny: ["Bash(printf BLOCK*)"] })).toBe("deny");
 	});
 	it("requires an allow for every executable segment", () => {
-		expect(
-			evaluate("printf SAFE && printf OTHER", { allow: ["Bash(printf SAFE)"] }),
-		).toBe("none");
+		expect(evaluate("printf SAFE && printf OTHER", { allow: ["Bash(printf SAFE)"] })).toBe("none");
 		expect(
 			evaluate("printf SAFE && printf OTHER", {
 				allow: ["Bash(printf SAFE)", "Bash(printf OTHER)"],
@@ -69,22 +64,13 @@ it.each([
 	"if true; then printf BLOCK; fi",
 	"f(){ printf BLOCK; }; f",
 	"cat <<EOF\n$(printf BLOCK)\nEOF",
-])(
-	"retains executable descendants, even in an unsupported enclosing construct: %s",
-	(command) => {
-		expect(evaluate(command, { deny: ["Bash(printf BLOCK*)"] })).toBe("deny");
-	},
-);
+])("retains executable descendants, even in an unsupported enclosing construct: %s", (command) => {
+	expect(evaluate(command, { deny: ["Bash(printf BLOCK*)"] })).toBe("deny");
+});
 it("does not turn a file redirection into a complete shell allow", () => {
-	expect(evaluate("printf SAFE > output", { allow: ["Bash(printf *)"] })).toBe(
-		"none",
-	);
-	expect(
-		evaluate("printf SAFE > /dev/null", { allow: ["Bash(printf *)"] }),
-	).toBe("allow");
-	expect(evaluate("printf SAFE 2>&1", { allow: ["Bash(printf *)"] })).toBe(
-		"allow",
-	);
+	expect(evaluate("printf SAFE > output", { allow: ["Bash(printf *)"] })).toBe("none");
+	expect(evaluate("printf SAFE > /dev/null", { allow: ["Bash(printf *)"] })).toBe("allow");
+	expect(evaluate("printf SAFE 2>&1", { allow: ["Bash(printf *)"] })).toBe("allow");
 });
 it.each(['printf "$(other)"', "printf SAFE | other", "printf SAFE >$(other)"])(
 	"does not grant an unmatched nested command: %s",
@@ -93,9 +79,7 @@ it.each(['printf "$(other)"', "printf SAFE | other", "printf SAFE >$(other)"])(
 	},
 );
 it("keeps unsupported structural syntax explicit without partial approval", () => {
-	expect(
-		evaluate("if true; then printf SAFE; fi", { allow: ["Bash(printf *)"] }),
-	).toBe("unsupported");
+	expect(evaluate("if true; then printf SAFE; fi", { allow: ["Bash(printf *)"] })).toBe("unsupported");
 	expect(
 		evaluate("cat <<'EOF'\n$(printf BLOCK)\nEOF", {
 			deny: ["Bash(printf BLOCK*)"],
@@ -142,7 +126,5 @@ it("treats colons inside raw shell arguments as command text", () => {
 			deny: ["Bash(printf http://blocked)"],
 		}),
 	).toBe("deny");
-	expect(
-		evaluate("printf value:blocked", { ask: ["Bash(printf value:blocked)"] }),
-	).toBe("ask");
+	expect(evaluate("printf value:blocked", { ask: ["Bash(printf value:blocked)"] })).toBe("ask");
 });

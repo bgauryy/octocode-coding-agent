@@ -53,11 +53,8 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 		};
 		if (tool.name === "backlog") {
 			const full = parameters as { properties: Record<string, unknown> };
-			const oldFields = Object.fromEntries(
-				Object.entries(full.properties).filter(([key]) => !(key in EntityFields)),
-			);
-			backlogEntities =
-				JSON.stringify(parameters).length - JSON.stringify({ ...full, properties: oldFields }).length;
+			const oldFields = Object.fromEntries(Object.entries(full.properties).filter(([key]) => !(key in EntityFields)));
+			backlogEntities = JSON.stringify(parameters).length - JSON.stringify({ ...full, properties: oldFields }).length;
 		}
 		perTool[tool.name] =
 			description.length + JSON.stringify(parameters).length + (promptGuidelines ?? []).join("").length;

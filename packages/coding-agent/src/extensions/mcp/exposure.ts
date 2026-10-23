@@ -1,6 +1,14 @@
 import type { Model } from "@octocodeai/octocode-ai";
 import type { Tool } from "@octocodeai/octocode-mcp";
-import { type McpExposure, type McpServerConfig, OCTOCODE_SERVER } from "../../core/mcp-servers.ts";
+import {
+	DEFAULT_MCP_EXPOSURE,
+	getMcpToolExposure,
+	type McpExposure,
+	type McpServerConfig,
+	OCTOCODE_DIRECT_TOOLS,
+	OCTOCODE_SERVER,
+} from "../../core/mcp-servers.ts";
+import type { McpServerEntry } from "./config.ts";
 
 /**
  * Whether a server's automatic exposure prefers discovery: the `octocode` server without an exposure of its own declares
@@ -25,7 +33,8 @@ export function resolveMcpExposure(
 	if (exposure !== "auto") return exposure;
 	if (preferDeferred) return discoveryAvailable ? "deferred" : "direct";
 	const compat = model?.compat as Record<string, unknown> | undefined;
-	const nativeLoading = compat?.supportsToolSearch === true ||
+	const nativeLoading =
+		compat?.supportsToolSearch === true ||
 		(compat?.supportsMidConvoSystemMessages === true &&
 			(compat?.supportsAdditionalTools === true || compat?.supportsMidConvoToolChanges === true));
 	if (!model || !nativeLoading || !discoveryAvailable || model.contextWindow <= 0) return "direct";
@@ -33,4 +42,30 @@ export function resolveMcpExposure(
 	const estimatedTokens = Buffer.byteLength(JSON.stringify(tools), "utf8") / 4;
 	const inputWindow = Math.max(1, model.contextWindow - (model.maxTokens ?? 0));
 	return estimatedTokens >= inputWindow * 0.1 ? "deferred" : "direct";
+}
+
+export function exposureOf(entry: McpServerEntry): McpExposure {
+	return entry.config.exposure ?? DEFAULT_MCP_EXPOSURE;
+}
+
+/** Exposures the server's tools can have, known from its config before it connects. */
+export function configuredExposures(entry: McpServerEntry): Set<McpExposure> {
+	const exposures = new Set([exposureOf(entry), ...Object.values(entry.config.toolExposure ?? {})]);
+	// The `octocode` server's default split: local research tools direct, the rest through tool_search.
+	if (entry.name === OCTOCODE_SERVER && entry.config.exposure === undefined) {
+		for (const tool of OCTOCODE_DIRECT_TOOLS) exposures.add(getMcpToolExposure(entry.config, tool, entry.name));
+	}
+	return exposures;
+}
+
+/** Whether some of the server's tools are declared to the model, so the first prompt waits for them. */
+export function hasDirectTools(entry: McpServerEntry): boolean {
+	const exposures = configuredExposures(entry);
+	return exposures.has("direct") || exposures.has("auto");
+}
+
+/** Whether some of the server's tools are reached through tool_search. */
+export function hasIndirectTools(entry: McpServerEntry): boolean {
+	const exposures = configuredExposures(entry);
+	return exposures.has("deferred");
 }

@@ -131,9 +131,7 @@ describe("MCP OAuth sign-in", () => {
 							void fetch(url);
 						},
 						promptForRedirectUrl: (signal) =>
-							new Promise((resolve) =>
-								signal.addEventListener("abort", () => resolve(undefined), { once: true }),
-							),
+							new Promise((resolve) => signal.addEventListener("abort", () => resolve(undefined), { once: true })),
 					},
 				});
 
@@ -143,10 +141,7 @@ describe("MCP OAuth sign-in", () => {
 			// The step-up challenge lists only the missing scope. Requesting just that would lose
 			// issues:read, so the next request would ask for sign-in again.
 			await signInWith({ error: "insufficient_scope", scope: "issues:write" });
-			expect(opened.map((url) => url.searchParams.get("scope"))).toEqual([
-				"issues:read",
-				"issues:read issues:write",
-			]);
+			expect(opened.map((url) => url.searchParams.get("scope"))).toEqual(["issues:read", "issues:read issues:write"]);
 			expect((await store.load())?.tokens?.scope).toBe("issues:read issues:write");
 		} finally {
 			await server.close();

@@ -48,6 +48,24 @@ async function capturePayload(
 	return capturedPayload;
 }
 
+describe("Anthropic thinking budget near the context limit", () => {
+	it("sends no budget below the API minimum: thinking is off when the free context cannot hold 1024 thinking tokens", async () => {
+		const base = getModel("anthropic", "claude-sonnet-4-5");
+		const near = { ...base, contextWindow: 1800, compat: { ...base.compat, forceAdaptiveThinking: false } };
+		const payload = (await capturePayload(near, { reasoning: "high" })) as AnthropicThinkingPayload & {
+			max_tokens?: number;
+		};
+		expect(payload.thinking).toEqual({ type: "disabled" });
+		// With room to spare, budget-based thinking still applies with a valid budget.
+		const roomy = { ...base, compat: { ...base.compat, forceAdaptiveThinking: false } };
+		const enabled = (await capturePayload(roomy, { reasoning: "high" })) as AnthropicThinkingPayload & {
+			max_tokens: number;
+		};
+		expect(enabled.thinking?.budget_tokens).toBeGreaterThanOrEqual(1024);
+		expect(enabled.max_tokens).toBeGreaterThan(enabled.thinking!.budget_tokens!);
+	});
+});
+
 interface RunResult {
 	thinkingEventCount: number;
 	thinkingCharCount: number;
@@ -110,13 +128,20 @@ async function runWithoutReasoning(model: Model<"anthropic-messages">): Promise<
 }
 
 describe("Anthropic thinking disable payload", () => {
-	it.each(["claude-sonnet-4-5", "claude-opus-4-6"] as const)("preserves thinking cache parameters with a summary cap for %s", async (id) => {
-		const model = getModel("anthropic", id);
-		const normal = await capturePayload(model, { reasoning: "high", thinkingBudgets: { high: 4000 } });
-		const summary = await capturePayload(model, { reasoning: "high", thinkingBudgets: { high: 4000 }, maxTokens: 8000 });
-		expect(summary.thinking).toEqual(normal.thinking);
-		expect(summary.output_config).toEqual(normal.output_config);
-	});
+	it.each(["claude-sonnet-4-5", "claude-opus-4-6"] as const)(
+		"preserves thinking cache parameters with a summary cap for %s",
+		async (id) => {
+			const model = getModel("anthropic", id);
+			const normal = await capturePayload(model, { reasoning: "high", thinkingBudgets: { high: 4000 } });
+			const summary = await capturePayload(model, {
+				reasoning: "high",
+				thinkingBudgets: { high: 4000 },
+				maxTokens: 8000,
+			});
+			expect(summary.thinking).toEqual(normal.thinking);
+			expect(summary.output_config).toEqual(normal.output_config);
+		},
+	);
 
 	it("sends thinking.type=disabled for budget-based reasoning models when thinking is off", async () => {
 		const payload = await capturePayload(getModel("anthropic", "claude-sonnet-4-5"));

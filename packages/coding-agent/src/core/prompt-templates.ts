@@ -54,7 +54,13 @@ export function getPromptCommands(
 		while (occupied.has(qualifiedName)) qualifiedName = `${base}:${suffix++}`;
 		occupied.add(qualifiedName);
 		const name = reserved.has(template.name) || counts.get(template.name)! > 1 ? qualifiedName : template.name;
-		return { template, name, sourceName: template.name, qualifiedName, aliases: name === qualifiedName ? [] : [qualifiedName] };
+		return {
+			template,
+			name,
+			sourceName: template.name,
+			qualifiedName,
+			aliases: name === qualifiedName ? [] : [qualifiedName],
+		};
 	});
 }
 
@@ -165,7 +171,11 @@ function loadTemplateFromFile(
 }
 
 /** Parse a prompt resource without executing embedded commands. */
-export function parsePromptTemplate(rawContent: string, filePath: string, sourceInfo: SourceInfo): {
+export function parsePromptTemplate(
+	rawContent: string,
+	filePath: string,
+	sourceInfo: SourceInfo,
+): {
 	template: PromptTemplate | null;
 	diagnostics: ResourceDiagnostic[];
 	frontmatter?: Record<string, unknown>;
@@ -372,11 +382,17 @@ export function expandPromptTemplate(
 	const templateName = match[1];
 	const argsString = match[2] ?? "";
 
-	const template = getPromptCommands(templates, reservedCommands)
-		.find((command) => command.name === templateName || command.qualifiedName === templateName)?.template;
+	const template = getPromptCommands(templates, reservedCommands).find(
+		(command) => command.name === templateName || command.qualifiedName === templateName,
+	)?.template;
 	if (template) {
 		const args = parseCommandArgs(argsString);
-		if (template.argumentStyle === "claude") return expandClaudeVariables(expandClaudeArguments(template.content, argsString, args, template.argumentNames), { ...variables, pluginRoot: template.claudePluginRoot, pluginData: template.claudePluginData });
+		if (template.argumentStyle === "claude")
+			return expandClaudeVariables(expandClaudeArguments(template.content, argsString, args, template.argumentNames), {
+				...variables,
+				pluginRoot: template.claudePluginRoot,
+				pluginData: template.claudePluginData,
+			});
 		return substituteArgs(template.content, args);
 	}
 

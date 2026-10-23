@@ -133,9 +133,7 @@ export class AcpBackend implements ExternalBackend {
 				Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
 			);
 			const connection = client({ name: "octocode-pi-external" })
-				.onRequest(methods.client.session.requestPermission, (ctx) =>
-					backend.requestPermission(ctx.params, ctx.signal),
-				)
+				.onRequest(methods.client.session.requestPermission, (ctx) => backend.requestPermission(ctx.params, ctx.signal))
 				.onNotification(methods.client.session.update, (ctx) => backend.update(ctx.params))
 				.connect(stream);
 			backend.connection = connection;
@@ -275,10 +273,7 @@ export class AcpBackend implements ExternalBackend {
 			const response = await untilAborted(this.permission(request, signal), signal);
 			signal.throwIfAborted();
 			const outcome = response.outcome;
-			if (
-				outcome.outcome === "selected" &&
-				!request.options.some((option) => option.optionId === outcome.optionId)
-			) {
+			if (outcome.outcome === "selected" && !request.options.some((option) => option.optionId === outcome.optionId)) {
 				throw new Error("ACP permission callback selected an unadvertised option.");
 			}
 			return response;

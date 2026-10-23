@@ -11,9 +11,10 @@ export const builtInExtensions: InlineExtension[] = [
 	{ name: "tool-search", factory: toolSearchExtension, replaceable: true, builtin: true },
 	{
 		name: "mcp",
-		factory: (pi) => createMcpExtension({
-			prepareLaunch: (entry, cwd) => prepareOctocodeSkillLaunch(entry, cwd, pi.getSkillDirectories()),
-		})(pi),
+		factory: (pi) =>
+			createMcpExtension({
+				prepareLaunch: (entry, cwd) => prepareOctocodeSkillLaunch(entry, cwd, pi.getSkillDirectories()),
+			})(pi),
 		replaceable: true,
 		builtin: true,
 	},

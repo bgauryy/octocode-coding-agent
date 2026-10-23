@@ -55,6 +55,9 @@ export function MessageForm({ item, agentId }: { item?: Item; agentId?: string }
 			});
 			setStatus(receipt.message);
 			if (receipt.status === "accepted") workspace.getState().setDraft(draftKey, null);
+			// The host keeps a failed receipt under its id; a retry needs a new id to run again.
+			else if (receipt.status === "failed")
+				workspace.getState().setDraft(draftKey, { text, to, id: crypto.randomUUID() });
 		} catch (error) {
 			setStatus(`${errorMessage(error)} Retry sends the same request; it will not be delivered twice.`);
 		} finally {
@@ -128,7 +131,7 @@ export function CommandButton({
 	variant?: "secondary" | "danger";
 }) {
 	const { api } = useLive();
-	const [id] = useState(() => crypto.randomUUID());
+	const [id, setId] = useState(() => crypto.randomUUID());
 	const [state, setState] = useState<{ busy: boolean; sent: boolean; status: string }>({
 		busy: false,
 		sent: false,
@@ -151,6 +154,8 @@ export function CommandButton({
 				...(to ? { to } : {}),
 			});
 			setState({ busy: false, sent: receipt.status !== "failed", status: receipt.message });
+			// A failed receipt is final for this id (the item may also have changed); the next click is a new request.
+			if (receipt.status === "failed") setId(crypto.randomUUID());
 		} catch (error) {
 			setState({
 				busy: false,

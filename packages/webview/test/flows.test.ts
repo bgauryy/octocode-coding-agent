@@ -143,6 +143,16 @@ it("restores message drafts across navigation and only clears them after accepta
 	const restored = await app.screen.findByLabelText<HTMLTextAreaElement>("Message");
 	expect(restored.value).toBe("Please check the tests");
 	expect(app.screen.getByLabelText<HTMLSelectElement>("Recipient").required).toBe(true);
+	// A definitive failure keeps the text; the retry is a new request, since the host keeps the failure under its id.
+	app.fetch.mockImplementationOnce(async () => ({
+		ok: true,
+		json: async () => ({ receipt: { status: "failed", message: "Agent no longer available" } }),
+	}));
+	restored.closest("form")!.requestSubmit();
+	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
+	await vi.waitFor(() => expect(app.document.body.textContent).toContain("Agent no longer available"));
+	expect(restored.value).toBe("Please check the tests");
+	const failedId = JSON.parse(String(app.fetch.mock.calls[0][1]?.body)).id;
 	app.fetch.mockImplementationOnce(async () => {
 		app.emit({
 			...workspace,
@@ -151,7 +161,8 @@ it("restores message drafts across navigation and only clears them after accepta
 		return { ok: true, json: async () => ({ receipt: { status: "accepted", message: "Queued" } }) };
 	});
 	restored.closest("form")!.requestSubmit();
-	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
+	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledTimes(2));
+	expect(JSON.parse(String(app.fetch.mock.calls[1][1]?.body)).id).not.toBe(failedId);
 	await vi.waitFor(() => expect(restored.value).toBe(""));
 	expect(restored.isConnected).toBe(true);
 	app.navigate("activity");
@@ -254,6 +265,20 @@ it("renders assistant deltas before completion and exposes scoped session comman
 			"CompletedRun stopped",
 		),
 	);
+	// The next run gets a working Stop button with its own request id: an id belongs to one command.
+	emit(5, { type: "event", event: { type: "run.settled", runId: "run-live", aborted: true } });
+	emit(6, { type: "event", event: { type: "run.started", runId: "run-next" } });
+	app.fetch.mockResolvedValueOnce({
+		ok: true,
+		json: async () => ({ receipt: { id: "stop-next", status: "accepted", message: "Stopping" } }),
+	});
+	const nextStop = await app.findButton("Stop current run");
+	await vi.waitFor(() => expect(nextStop.hasAttribute("disabled")).toBe(false));
+	nextStop.click();
+	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledTimes(2));
+	const next = JSON.parse(String(app.fetch.mock.calls[1][1]?.body));
+	expect(next).toMatchObject({ action: "abort", runId: "run-next" });
+	expect(next.id).not.toBe(body.id);
 	app.navigate("agents");
 	await vi.waitFor(() => expect(document.querySelector('[aria-label="Recent session requests"]')).toBeNull());
 	app.navigate("activity");
@@ -391,4 +416,39 @@ it("shows the board loading until the live page receives its first backlog snaps
 	});
 	await vi.waitFor(() => expect(document.querySelectorAll(".column")).toHaveLength(4));
 	expect(document.querySelector('[aria-label="Loading board"]')).toBeNull();
+});
+
+it("keeps an older audit page of a previous filter out of the next one", async () => {
+	const app = await page();
+	const event = (id: number, backlogId: string) => ({
+		id,
+		backlogId,
+		at: 0,
+		actor: { id: "agent" },
+		action: "update",
+		entity: "item",
+		before: {},
+		after: {},
+	});
+	const ok = (body: unknown) => ({ ok: true, json: async () => body });
+	let releaseOlder: (() => void) | undefined;
+	app.fetch.mockImplementation((async (url?: string) => {
+		const query = new URL(String(url), "http://localhost").searchParams;
+		if (!String(url).includes("audit")) return ok({ receipt: { status: "accepted", message: "Queued" } });
+		if (query.get("before"))
+			return new Promise((resolve) => {
+				releaseOlder = () => resolve(ok({ events: [event(1, "OLD-1")] }));
+			});
+		if (query.get("backlogId")) return ok({ events: [event(3, "NEW-1")] });
+		return ok({ events: [event(2, "ALL-2")], before: 2 });
+	}) as never);
+	const refs = () => [...app.document.querySelectorAll(".audit-rows .ref")].map((element) => element.textContent);
+	app.navigate("audit");
+	(await app.findButton("Load older events")).click();
+	await vi.waitFor(() => expect(releaseOlder).toBeDefined());
+	app.navigate("audit?backlogId=NEW-1");
+	await vi.waitFor(() => expect(refs()).toEqual(["NEW-1"]));
+	releaseOlder!();
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	expect(refs()).toEqual(["NEW-1"]);
 });

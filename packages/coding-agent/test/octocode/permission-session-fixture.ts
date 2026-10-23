@@ -1,19 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-	createFauxCore,
-	type JsonObject,
-	fauxAssistantMessage,
-	fauxToolCall,
-} from "@octocodeai/octocode-ai";
+import { createFauxCore, type JsonObject, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { vi } from "vitest";
 import { Type } from "typebox";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import {
-	fingerprint,
-	projectConfigFiles,
-	saveDecision,
-} from "../../src/octocode/shared/trust.ts";
+import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { createReadTool } from "../../src/core/tools/read.ts";
 import { createWriteTool } from "../../src/core/tools/write.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
@@ -44,10 +35,7 @@ type Options = {
 	preDeny?: boolean;
 	conditionalPath?: boolean;
 };
-export async function fixture(
-	protocol: "claude" | "codex",
-	options: Options = {},
-) {
+export async function fixture(protocol: "claude" | "codex", options: Options = {}) {
 	const root = tmp("permission-hook-session-"),
 		cwd = path.join(root, "project"),
 		home = path.join(root, "home"),
@@ -74,16 +62,11 @@ export async function fixture(
 		script,
 		`const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(path.join(root, "hook.pid"))},String(process.pid));let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{fs.appendFileSync(${JSON.stringify(capture)},s+'\\n');if(${options.hold === true}){while(!fs.existsSync(${JSON.stringify(path.join(root, "release"))}))Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);}console.log(JSON.stringify(${options.conditionalPath ? "(JSON.parse(s).tool_input.file_path.endsWith('permitted.txt') ? {hookSpecificOutput:{hookEventName:'PermissionRequest',decision:{behavior:'allow'}}} : {})" : JSON.stringify(options.output ?? { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } })}));process.stderr.write(${JSON.stringify(options.stderr ?? "")});process.exitCode=${options.exit ?? 0};});`,
 	);
-	const configDir = options.customClaudeHome
-		? path.join(root, "custom-claude")
-		: path.join(home, `.${protocol}`);
+	const configDir = options.customClaudeHome ? path.join(root, "custom-claude") : path.join(home, `.${protocol}`);
 	if (options.customClaudeHome) vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
 	fs.mkdirSync(configDir, { recursive: true });
 	fs.writeFileSync(
-		path.join(
-			configDir,
-			protocol === "claude" ? "settings.json" : "hooks.json",
-		),
+		path.join(configDir, protocol === "claude" ? "settings.json" : "hooks.json"),
 		JSON.stringify({
 			permissions: options.rules,
 			hooks: {
@@ -125,17 +108,10 @@ export async function fixture(
 	);
 	if (options.projectRules) {
 		fs.mkdirSync(path.join(cwd, ".claude"));
-		fs.writeFileSync(
-			path.join(cwd, ".claude/settings.json"),
-			JSON.stringify({ permissions: options.projectRules }),
-		);
+		fs.writeFileSync(path.join(cwd, ".claude/settings.json"), JSON.stringify({ permissions: options.projectRules }));
 	}
 	if (options.projectRules && options.projectTrusted !== undefined)
-		saveDecision(
-			cwd,
-			fingerprint(projectConfigFiles(cwd)),
-			options.projectTrusted,
-		);
+		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), options.projectTrusted);
 	const mcpCapture = path.join(root, "mcp.jsonl");
 	if (options.deferredMcp) {
 		const serverFile = path.join(root, "mcp.cjs");
@@ -164,17 +140,14 @@ export async function fixture(
 	const settingsManager = SettingsManager.inMemory({
 		retry: { enabled: false },
 	});
-	if (options.projectTrusted !== undefined)
-		settingsManager.setProjectTrusted(options.projectTrusted);
+	if (options.projectTrusted !== undefined) settingsManager.setProjectTrusted(options.projectTrusted);
 	const makeResourceLoader = () =>
 		new DefaultResourceLoader({
 			cwd,
 			agentDir,
 			settingsManager,
 			noExtensions: true,
-			...(options.deferredMcp
-				? { additionalExtensionPaths: ["builtin:mcp"] }
-				: {}),
+			...(options.deferredMcp ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -190,10 +163,7 @@ export async function fixture(
 								description: "Read through the configured fixture MCP server",
 								parameters: Type.Object({}),
 								async execute(_id, _args, _signal, _update, ctx) {
-									const outcome = await ctx.executeTool(
-										"mcp__policy__observe",
-										{},
-									);
+									const outcome = await ctx.executeTool("mcp__policy__observe", {});
 									return {
 										content: [{ type: "text", text: JSON.stringify(outcome) }],
 										details: {},
@@ -279,9 +249,7 @@ export async function fixture(
 			mode: "json",
 			shutdownHandler: () => undefined,
 		} as never);
-		await session.setModel(
-			session.modelRuntime.getModel("permission-fixture", "fixture")!,
-		);
+		await session.setModel(session.modelRuntime.getModel("permission-fixture", "fixture")!);
 		return session;
 	};
 	let session = await makeSession();

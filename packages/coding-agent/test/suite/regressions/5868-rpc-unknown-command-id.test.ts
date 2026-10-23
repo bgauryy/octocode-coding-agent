@@ -5,7 +5,6 @@ import { createHarness, type Harness } from "../harness.ts";
 import { createTestResourceLoader } from "../../utilities.ts";
 import { createSyntheticSourceInfo } from "../../../src/core/source-info.ts";
 
-
 const rpcIo = vi.hoisted(() => ({
 	outputLines: [] as string[],
 	lineHandler: undefined as ((line: string) => void) | undefined,
@@ -115,8 +114,17 @@ describe("RPC unknown command responses (#5868)", () => {
 		const listenerSnapshot = takeListenerSnapshot();
 		const loader = createTestResourceLoader();
 		const skills = ["research", "model"].map((name) => ({
-			name, description: name, filePath: `/skills/${name}.md`, baseDir: "/skills", disableModelInvocation: false,
-			sourceInfo: createSyntheticSourceInfo(`/skills/${name}.md`, { source: "local", scope: "project", origin: "top-level", baseDir: "/skills" }),
+			name,
+			description: name,
+			filePath: `/skills/${name}.md`,
+			baseDir: "/skills",
+			disableModelInvocation: false,
+			sourceInfo: createSyntheticSourceInfo(`/skills/${name}.md`, {
+				source: "local",
+				scope: "project",
+				origin: "top-level",
+				baseDir: "/skills",
+			}),
 		}));
 		loader.getSkills = () => ({ skills, diagnostics: [] });
 		const harness = await createHarness({ resourceLoader: loader });
@@ -126,12 +134,19 @@ describe("RPC unknown command responses (#5868)", () => {
 			rpcIo.lineHandler?.(JSON.stringify({ id: "skills", type: "get_commands" }));
 			await vi.waitFor(() => {
 				expect(parseOutputLines()).toContainEqual({
-					id: "skills", type: "response", command: "get_commands", success: true,
-					data: { commands: skills.map((skill, index) => ({
-						name: index === 0 ? "research" : "skill:model",
-						aliases: index === 0 ? ["skill:research"] : [],
-						description: skill.description, source: "skill", sourceInfo: skill.sourceInfo,
-					})) },
+					id: "skills",
+					type: "response",
+					command: "get_commands",
+					success: true,
+					data: {
+						commands: skills.map((skill, index) => ({
+							name: index === 0 ? "research" : "skill:model",
+							aliases: index === 0 ? ["skill:research"] : [],
+							description: skill.description,
+							source: "skill",
+							sourceInfo: skill.sourceInfo,
+						})),
+					},
 				});
 			});
 		} finally {
@@ -140,4 +155,43 @@ describe("RPC unknown command responses (#5868)", () => {
 		}
 	});
 
+	test("binds a replaced session once: the runtime's rebind hook is the only rebind", async () => {
+		const listenerSnapshot = takeListenerSnapshot();
+		const harness = await createHarness();
+		const bind = vi.spyOn(harness.session, "bindExtensions");
+		let rebind: (() => Promise<void>) | undefined;
+		// Like the real runtime, each replacement calls the registered rebind hook itself.
+		const replaced = async () => {
+			await rebind?.();
+			return { cancelled: false, selectedText: "" };
+		};
+		const runtime = {
+			...createRuntimeHost(harness),
+			newSession: vi.fn(replaced),
+			switchSession: vi.fn(replaced),
+			fork: vi.fn(replaced),
+			setRebindSession: vi.fn((hook: () => Promise<void>) => {
+				rebind = hook;
+			}),
+		} as unknown as AgentSessionRuntime;
+		try {
+			void runRpcMode(runtime);
+			await vi.waitFor(() => expect(rpcIo.lineHandler).toBeDefined());
+			await vi.waitFor(() => expect(bind).toHaveBeenCalledTimes(1));
+			for (const [id, type] of [
+				["n", "new_session"],
+				["s", "switch_session"],
+				["f", "fork"],
+			] as const) {
+				rpcIo.lineHandler?.(JSON.stringify({ id, type, sessionPath: "/x.jsonl", entryId: "e" }));
+				await vi.waitFor(() =>
+					expect(parseOutputLines().some((line) => line.id === id && line.type === "response")).toBe(true),
+				);
+			}
+			expect(bind).toHaveBeenCalledTimes(4);
+		} finally {
+			harness.cleanup();
+			restoreListeners(listenerSnapshot);
+		}
+	});
 });

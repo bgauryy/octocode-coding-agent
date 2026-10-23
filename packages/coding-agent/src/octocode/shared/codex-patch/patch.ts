@@ -23,12 +23,9 @@ export interface ParsedPatch {
 	environment_id: string | null;
 	hunks: PatchHunk[];
 }
-const RUST_SPACE =
-	"[\\u0009-\\u000d \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
-const trimEnd = (text: string) =>
-	text.replace(new RegExp(`${RUST_SPACE}+$`), "");
-const trim = (text: string) =>
-	trimEnd(text.replace(new RegExp(`^${RUST_SPACE}+`), ""));
+const RUST_SPACE = "[\\u0009-\\u000d \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]";
+const trimEnd = (text: string) => text.replace(new RegExp(`${RUST_SPACE}+$`), "");
+const trim = (text: string) => trimEnd(text.replace(new RegExp(`^${RUST_SPACE}+`), ""));
 const chunk = (): PatchChunk => ({
 	context: null,
 	old: [],
@@ -42,16 +39,9 @@ const fail = (message: string): never => {
 
 export function parsePatch(value: string): ParsedPatch {
 	let lines = trim(value).split(/\r?\n/);
-	if (
-		lines.length >= 4 &&
-		["<<EOF", "<<'EOF'", '<<"EOF"'].includes(lines[0]!) &&
-		lines.at(-1)!.endsWith("EOF")
-	)
+	if (lines.length >= 4 && ["<<EOF", "<<'EOF'", '<<"EOF"'].includes(lines[0]!) && lines.at(-1)!.endsWith("EOF"))
 		lines = lines.slice(1, -1);
-	if (
-		trim(lines[0] ?? "") !== "*** Begin Patch" ||
-		trim(lines.at(-1) ?? "") !== "*** End Patch"
-	)
+	if (trim(lines[0] ?? "") !== "*** Begin Patch" || trim(lines.at(-1) ?? "") !== "*** End Patch")
 		fail("missing patch boundaries");
 	const result: ParsedPatch = {
 		patch: lines.join("\n"),
@@ -62,16 +52,14 @@ export function parsePatch(value: string): ParsedPatch {
 	const finish = () => {
 		if (
 			current?.kind === "update" &&
-			(!current.chunks.length ||
-				current.chunks.some((c) => !c.old.length && !c.new.length))
+			(!current.chunks.length || current.chunks.some((c) => !c.old.length && !c.new.length))
 		)
 			fail("empty update hunk");
 	};
 	for (const line of lines.slice(1, -1)) {
 		const trimmed = trim(line);
 		if (!current && trimmed.startsWith("*** Environment ID:")) {
-			if (result.environment_id !== null || !trim(trimmed.slice(19)))
-				fail("invalid environment id");
+			if (result.environment_id !== null || !trim(trimmed.slice(19))) fail("invalid environment id");
 			result.environment_id = trim(trimmed.slice(19));
 			continue;
 		}
@@ -97,28 +85,21 @@ export function parsePatch(value: string): ParsedPatch {
 		let last = update.chunks.at(-1);
 		if (last?.eof) {
 			if (!trimmed) continue;
-			if (trimmed !== "@@" && !trimmed.startsWith("@@ "))
-				fail("expected context after EOF");
+			if (trimmed !== "@@" && !trimmed.startsWith("@@ ")) fail("expected context after EOF");
 		}
-		if (
-			!update.chunks.length &&
-			update.move_path === null &&
-			trimmed.startsWith("*** Move to: ")
-		) {
+		if (!update.chunks.length && update.move_path === null && trimmed.startsWith("*** Move to: ")) {
 			update.move_path = trimmed.slice(13);
 			continue;
 		}
 		if (trimmed === "@@" || trimmed.startsWith("@@ ")) {
-			if (last && !last.old.length && !last.new.length)
-				fail("empty update chunk");
+			if (last && !last.old.length && !last.new.length) fail("empty update chunk");
 			last = chunk();
 			if (trimmed !== "@@") last.context = trimmed.slice(3);
 			update.chunks.push(last);
 			continue;
 		}
 		if (trimmed === "*** End of File") {
-			if (!last || (!last.old.length && !last.new.length))
-				fail("empty EOF chunk");
+			if (!last || (!last.old.length && !last.new.length)) fail("empty EOF chunk");
 			last!.eof = true;
 			continue;
 		}
@@ -145,24 +126,13 @@ function normalized(line: string): string {
 		.replace(/[\u201c-\u201f]/g, '"')
 		.replace(/[\u00a0\u2002-\u200a\u202f\u205f\u3000]/g, " ");
 }
-function seek(
-	lines: string[],
-	pattern: string[],
-	start: number,
-	eof: boolean,
-): number | undefined {
+function seek(lines: string[], pattern: string[], start: number, eof: boolean): number | undefined {
 	if (!pattern.length) return start;
 	if (pattern.length > lines.length) return undefined;
 	const first = eof ? Math.max(start, lines.length - pattern.length) : start;
-	for (const normalize of [
-		(s: string) => s,
-		(s: string) => trimEnd(s),
-		(s: string) => trim(s),
-		normalized,
-	]) {
+	for (const normalize of [(s: string) => s, (s: string) => trimEnd(s), (s: string) => trim(s), normalized]) {
 		for (let i = first; i <= lines.length - pattern.length; i++)
-			if (pattern.every((p, j) => normalize(p) === normalize(lines[i + j]!)))
-				return i;
+			if (pattern.every((p, j) => normalize(p) === normalize(lines[i + j]!))) return i;
 	}
 	return undefined;
 }
@@ -171,8 +141,7 @@ export function transformPatch(source: string, chunks: PatchChunk[]): string {
 	const sourceLines: { text: string; ending: string }[] = [];
 	const regex = /([^\r\n]*)(\r\n|\r|\n|$)/g;
 	let match: RegExpExecArray | null;
-	while ((match = regex.exec(source)) && match[0])
-		sourceLines.push({ text: match[1]!, ending: match[2]! });
+	while ((match = regex.exec(source)) && match[0]) sourceLines.push({ text: match[1]!, ending: match[2]! });
 	const ending = sourceLines.find((l) => l.ending)?.ending || "\n";
 	const lines = sourceLines.map((l) => l.text);
 	const replacements: { start: number; count: number; lines: string[] }[] = [];

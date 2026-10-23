@@ -90,9 +90,7 @@ export function registerBacklogTool(
 				...prompt,
 				parameters: Type.Object({
 					...EntityFields,
-					dependsOn: Type.Optional(
-						Type.Array(Type.String(), { description: "Prerequisite IDs; [] clears." }),
-					),
+					dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Prerequisite IDs; [] clears." })),
 					op: StringEnum(
 						subagent
 							? (["list", "get", "add", "update"] as const)
@@ -104,9 +102,7 @@ export function registerBacklogTool(
 							description: `${subagent ? "get/update" : "get/update/remove"}: item id, e.g. "B12"`,
 						}),
 					),
-					title: Type.Optional(
-						Type.String({ description: `${subagent ? "add" : "add/update"}: one-line summary` }),
-					),
+					title: Type.Optional(Type.String({ description: `${subagent ? "add" : "add/update"}: one-line summary` })),
 					goal: Type.Optional(
 						Type.String({
 							description: subagent
@@ -114,9 +110,7 @@ export function registerBacklogTool(
 								: "add/update: Definition of Done, checkable; add needs it",
 						}),
 					),
-					paths: Type.Optional(
-						Type.Array(Type.String(), { description: `files, dirs or components affected` }),
-					),
+					paths: Type.Optional(Type.Array(Type.String(), { description: `files, dirs or components affected` })),
 					why: Type.Optional(Type.String({ description: `why it matters` })),
 					evidence: Type.Optional(
 						Type.Array(Type.String(), { description: `observations: paths, measurements, links` }),
@@ -193,8 +187,7 @@ export function registerBacklogTool(
 					const summary = context.isError
 						? (text.split("\n", 1)[0] ?? "")
 						: backlogSummary(context.args?.op, details, text);
-					const firstIsSummary =
-						context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
+					const firstIsSummary = context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
 					return resultBlock(theme, context, {
 						summary,
 						body: firstIsSummary ? text.split("\n").slice(1).join("\n") : text,
@@ -238,9 +231,7 @@ export function registerBacklogTool(
 
 	function run({ store, actor, session }: Backlog, params: Params) {
 		const priority =
-			params.priority === undefined
-				? undefined
-				: PRIORITIES.indexOf(params.priority as (typeof PRIORITIES)[number]);
+			params.priority === undefined ? undefined : PRIORITIES.indexOf(params.priority as (typeof PRIORITIES)[number]);
 		if (params.op === "list") {
 			const states = params.states?.length ? params.states : DEFAULT_LIST_STATES;
 			const limit = Math.max(1, Math.floor(params.limit ?? DEFAULT_LIST_LIMIT));
@@ -341,14 +332,10 @@ export function registerBacklogTool(
 			from: params.from,
 		};
 		if (subagent && Object.values(fields).some((value) => value !== undefined))
-			throw new Error(
-				"A subagent changes only the state and notes of an item; report other changes to your parent.",
-			);
+			throw new Error("A subagent changes only the state and notes of an item; report other changes to your parent.");
 		// Moving an item back to todo or backlog would release the parent's claim behind its back.
 		if (subagent && (params.state === "todo" || params.state === "backlog"))
-			throw new Error(
-				`A subagent sets only ongoing or done; ask your parent to move an item to ${params.state}.`,
-			);
+			throw new Error(`A subagent sets only ongoing or done; ask your parent to move an item to ${params.state}.`);
 		if (
 			params.state === undefined &&
 			params.note === undefined &&
@@ -359,12 +346,9 @@ export function registerBacklogTool(
 			);
 		// The goal is the done criterion an agent's items always have (`store.add`): an update may change it, not blank it.
 		if (params.goal !== undefined && !storedText(params.goal))
-			throw new Error(
-				"update cannot clear the goal: give the new done criterion, a check someone else can run.",
-			);
+			throw new Error("update cannot clear the goal: give the new done criterion, a check someone else can run.");
 		const current = store.get(params.id);
-		if (params.state === "done" && current?.state !== "done" && !params.completion)
-			throw new Error(DONE_NOTE);
+		if (params.state === "done" && current?.state !== "done" && !params.completion) throw new Error(DONE_NOTE);
 		const item = store.update(
 			params.id,
 			{

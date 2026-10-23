@@ -185,10 +185,12 @@ export class TeamStore {
 	private prune(now = Date.now()): void {
 		if (now - this.prunedAt < PRUNE_INTERVAL_MS) return;
 		this.db
-			.prepare(`DELETE FROM messages WHERE created_at < ? AND NOT EXISTS (
+			.prepare(
+				`DELETE FROM messages WHERE created_at < ? AND NOT EXISTS (
       SELECT 1 FROM deliveries d WHERE d.message = messages.id AND d.completed_at IS NULL
         AND (d.dead_at IS NULL OR d.notified_at IS NULL)
-    )`)
+    )`,
+			)
 			.run(now - MESSAGE_RETENTION_MS);
 		this.db.prepare("DELETE FROM leases WHERE expires_at < ?").run(now);
 		this.edits.prune(now);
@@ -543,9 +545,12 @@ export class TeamStore {
 
 	/** One control message can pass an unseen ordinary batch: interrupts always, waking requests while idle. */
 	pendingUrgent(id: string, after: number, idle: boolean): Message | undefined {
-		const row = this.db.prepare(`SELECT m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, s.role AS sender_role, s.task AS sender_goal
+		const row = this.db
+			.prepare(
+				`SELECT m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, s.role AS sender_role, s.task AS sender_goal
          FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
-         WHERE d.recipient = ? AND d.message > ? AND d.delivered_at IS NULL AND d.dead_at IS NULL AND d.wake >= ? ORDER BY m.id LIMIT 1`)
+         WHERE d.recipient = ? AND d.message > ? AND d.delivered_at IS NULL AND d.dead_at IS NULL AND d.wake >= ? ORDER BY m.id LIMIT 1`,
+			)
 			.get(id, after, idle ? WAKE.wake : WAKE.interrupt) as Row | undefined;
 		return row ? toMessage(row, id) : undefined;
 	}
@@ -597,8 +602,7 @@ export class TeamStore {
 		);
 		for (;;) {
 			const row = query.get(this.workspace, self, now, key, ...ancestors, kind, `${key}/`, `${key}0`) as
-				| Row
-				| undefined;
+				Row | undefined;
 			if (!row) return undefined;
 			const lease = toLease(row);
 			// A crashed owner (killed, never left) frees its files now rather than when the lease runs out; a stalled one

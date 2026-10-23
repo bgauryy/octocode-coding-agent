@@ -68,7 +68,6 @@ describe("Delivery with the native Octocode session queue", () => {
 				});
 			};
 			const settingsManager = SettingsManager.inMemory({
-
 				retry: { enabled: false },
 			});
 			const resourceLoader = new DefaultResourceLoader({

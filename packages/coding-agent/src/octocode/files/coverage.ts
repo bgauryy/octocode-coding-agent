@@ -24,8 +24,7 @@ export function readView(
 	details: unknown,
 ): ReadView | undefined {
 	if (toolName !== "read") return undefined;
-	if (Array.isArray(content) && content.some((part) => isRecord(part) && part.type === "image"))
-		return { whole: true };
+	if (Array.isArray(content) && content.some((part) => isRecord(part) && part.type === "image")) return { whole: true };
 	const truncation = isRecord(details) ? details.truncation : undefined;
 	const { offset, limit } = input;
 	if (offset === undefined && limit === undefined && truncation === undefined) return { whole: true };

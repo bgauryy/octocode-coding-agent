@@ -3,10 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { registerSourcePolicy } from "../../src/octocode/permission/source-policy-loader.ts";
-import {
-	applySessionRuleUpdates,
-	parsePermissionUpdates,
-} from "../../src/octocode/shared/permission-updates.ts";
+import { applySessionRuleUpdates, parsePermissionUpdates } from "../../src/octocode/shared/permission-updates.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 
 const empty = () => ({ allow: [], deny: [], ask: [] });
@@ -21,11 +18,7 @@ it("applies ordered rules only within their destination behavior", () => {
 	expect(
 		applySessionRuleUpdates(
 			initial,
-			parsePermissionUpdates([
-				add("new", "replaceRules"),
-				add("new", "removeRules"),
-				add("final"),
-			]),
+			parsePermissionUpdates([add("new", "replaceRules"), add("new", "removeRules"), add("final")]),
 		),
 	).toEqual({ allow: ["Bash(final)"], deny: ["Bash(protected)"], ask: [] });
 	expect(initial.allow).toEqual(["Bash(old)"]);
@@ -35,18 +28,14 @@ it("rejects unsupported effects without changing prior session rules", () => {
 	expect(() =>
 		applySessionRuleUpdates(
 			initial,
-			parsePermissionUpdates([
-				add("new"),
-				{ type: "setMode", mode: "auto", destination: "session" },
-			]),
+			parsePermissionUpdates([add("new"), { type: "setMode", mode: "auto", destination: "session" }]),
 		),
 	).toThrow(/Unsupported/);
 	expect(initial).toEqual(empty());
 });
 const roots: string[] = [];
 afterEach(() => {
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	vi.unstubAllEnvs();
 });
 async function fixture() {
@@ -59,12 +48,7 @@ async function fixture() {
 	vi.stubEnv("CLAUDE_CONFIG_DIR", home);
 	const fake = fakePi();
 	const changed = vi.fn();
-	const owner = registerSourcePolicy(
-		fake.pi,
-		{ OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-		changed,
-	);
+	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home, changed);
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	await owner.refresh(ctx);
 	const decision = () =>
@@ -81,10 +65,7 @@ async function fixture() {
 }
 it("stages session updates without mutation and preserves them across refresh", async () => {
 	const f = await fixture();
-	const publish = f.owner.prepareUpdates(
-		f.ctx,
-		parsePermissionUpdates([add("node -p 42")]),
-	);
+	const publish = f.owner.prepareUpdates(f.ctx, parsePermissionUpdates([add("node -p 42")]));
 	expect(f.decision()).toBe("none");
 	await publish(new AbortController().signal, (change) => change());
 	expect(f.decision()).toBe("allow");
@@ -93,26 +74,21 @@ it("stages session updates without mutation and preserves them across refresh", 
 });
 it("rejects a stale staged update after another publication", async () => {
 	const f = await fixture();
-	const stale = f.owner.prepareUpdates(
-		f.ctx,
-		parsePermissionUpdates([add("node -p 42")]),
+	const stale = f.owner.prepareUpdates(f.ctx, parsePermissionUpdates([add("node -p 42")]));
+	await f.owner.prepareUpdates(f.ctx, parsePermissionUpdates([add("node -p 42", "addRules", "deny")]))(
+		new AbortController().signal,
+		(change) => change(),
 	);
-	await f.owner.prepareUpdates(
-		f.ctx,
-		parsePermissionUpdates([add("node -p 42", "addRules", "deny")]),
-	)(new AbortController().signal, (change) => change());
-	await expect(
-		stale(new AbortController().signal, (change) => change()),
-	).rejects.toThrow(/changed/);
+	await expect(stale(new AbortController().signal, (change) => change())).rejects.toThrow(/changed/);
 	expect(f.decision()).toBe("deny");
 });
 
 it("clears session updates for a different actual session", async () => {
 	const f = await fixture();
-	await f.owner.prepareUpdates(
-		f.ctx,
-		parsePermissionUpdates([add("node -p 42")]),
-	)(new AbortController().signal, (change) => change());
+	await f.owner.prepareUpdates(f.ctx, parsePermissionUpdates([add("node -p 42")]))(
+		new AbortController().signal,
+		(change) => change(),
+	);
 	const other = {
 		...f.ctx,
 		sessionManager: {
@@ -131,13 +107,8 @@ it("rejects an actual session switch even without a policy refresh", async () =>
 		...f.ctx,
 		sessionManager: { ...f.ctx.sessionManager, getSessionId: () => id },
 	};
-	const staged = f.owner.prepareUpdates(
-		ctx,
-		parsePermissionUpdates([add("node -p 42")]),
-	);
+	const staged = f.owner.prepareUpdates(ctx, parsePermissionUpdates([add("node -p 42")]));
 	id = "switched-without-refresh";
-	await expect(
-		staged(new AbortController().signal, (change) => change()),
-	).rejects.toThrow(/changed/);
+	await expect(staged(new AbortController().signal, (change) => change())).rejects.toThrow(/changed/);
 	expect(f.decision()).toBe("none");
 });

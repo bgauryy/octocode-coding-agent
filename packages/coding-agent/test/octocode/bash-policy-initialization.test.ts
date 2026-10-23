@@ -19,8 +19,7 @@ import { registerSourcePolicy } from "../../src/octocode/permission/source-polic
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 const roots: string[] = [];
 afterEach(() => {
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	state.initialize.mockReset().mockResolvedValue();
 	vi.unstubAllEnvs();
 });
@@ -31,15 +30,10 @@ function fixture(enabled = true) {
 	fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
 	const file = path.join(home, ".claude/settings.json");
-	const write = (permissions: unknown) =>
-		fs.writeFileSync(file, JSON.stringify({ permissions }));
+	const write = (permissions: unknown) => fs.writeFileSync(file, JSON.stringify({ permissions }));
 	const fake = fakePi();
 	fake.pi.setToolPolicy = vi.fn();
-	const owner = registerSourcePolicy(
-		fake.pi,
-		{ OCTOCODE_HOOKS_COMPAT: enabled ? "1" : "0" },
-		home,
-	);
+	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: enabled ? "1" : "0" }, home);
 	return { owner, write, ctx: fakeCtx({ cwd: root, hasUI: false }), fake };
 }
 const call = {

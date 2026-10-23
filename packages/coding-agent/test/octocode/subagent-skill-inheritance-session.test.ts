@@ -44,9 +44,7 @@ async function fixture() {
 				function?: { name?: string };
 			}>;
 			const reader = tools.find((tool) =>
-				/^mcp__octocode__(localFetch|localGetFileContent)$/.test(
-					tool.function?.name ?? "",
-				),
+				/^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool.function?.name ?? ""),
 			)?.function?.name;
 			if (!reader) {
 				res.end();
@@ -113,10 +111,7 @@ async function fixture() {
 		modelOnly,
 		"---\nname: model-only\ndescription: Model-only accepted resource\nuser-invocable: false\n---\nMODEL_ONLY_BODY\n",
 	);
-	fs.writeFileSync(
-		path.join(path.dirname(modelOnly), "reference.md"),
-		"REFERENCE_model-only\n",
-	);
+	fs.writeFileSync(path.join(path.dirname(modelOnly), "reference.md"), "REFERENCE_model-only\n");
 	const modelOnlyAlias = path.join(root, "model-only-alias");
 	fs.symlinkSync(path.dirname(modelOnly), modelOnlyAlias);
 	const modelOnlyReplacement = path.join(root, "model-only-replacement");
@@ -125,34 +120,20 @@ async function fixture() {
 		path.join(modelOnlyReplacement, "SKILL.md"),
 		"---\nname: model-only\ndescription: Replaced resource\nuser-invocable: false\n---\nUNACCEPTED_MODEL_BODY\n",
 	);
-	fs.writeFileSync(
-		path.join(modelOnlyReplacement, "reference.md"),
-		"UNACCEPTED_MODEL_REFERENCE\n",
-	);
+	fs.writeFileSync(path.join(modelOnlyReplacement, "reference.md"), "UNACCEPTED_MODEL_REFERENCE\n");
 	const plugin = path.join(root, "plugin"),
 		pluginSkill = path.join(plugin, "skills", "review", "SKILL.md");
 	fs.mkdirSync(path.dirname(pluginSkill), { recursive: true });
-	fs.writeFileSync(
-		path.join(plugin, "plugin.json"),
-		JSON.stringify({ name: "review-kit" }),
-	);
+	fs.writeFileSync(path.join(plugin, "plugin.json"), JSON.stringify({ name: "review-kit" }));
 
-	const pluginHeader =
-		"---\nname: review\ndescription: Qualified accepted resource\n---\nPLUGIN_QUALIFIED_BODY\n";
-	const pluginPrefix =
-		pluginHeader + "x".repeat(7999 - Buffer.byteLength(pluginHeader));
+	const pluginHeader = "---\nname: review\ndescription: Qualified accepted resource\n---\nPLUGIN_QUALIFIED_BODY\n";
+	const pluginPrefix = pluginHeader + "x".repeat(7999 - Buffer.byteLength(pluginHeader));
 	fs.writeFileSync(pluginSkill, pluginPrefix + "🙂PLUGIN_TAIL_EXCLUDED");
 	const makeSkill = (folder: string, name: string, body: string) => {
 		const file = path.join(root, folder, "SKILL.md");
 		fs.mkdirSync(path.dirname(file), { recursive: true });
-		fs.writeFileSync(
-			file,
-			`---\nname: ${name}\ndescription: ${folder} accepted fixture\n---\n${body}\n`,
-		);
-		fs.writeFileSync(
-			path.join(path.dirname(file), "reference.md"),
-			`REFERENCE_${folder}\n`,
-		);
+		fs.writeFileSync(file, `---\nname: ${name}\ndescription: ${folder} accepted fixture\n---\n${body}\n`);
+		fs.writeFileSync(path.join(path.dirname(file), "reference.md"), `REFERENCE_${folder}\n`);
 		return file;
 	};
 	const winner = makeSkill("winner", "collision", "WINNER_BODY"),
@@ -163,16 +144,8 @@ async function fixture() {
 	fs.symlinkSync(path.dirname(canonical), alias);
 	const claudePlugin = path.join(root, "claude-plugin");
 	fs.mkdirSync(path.join(claudePlugin, ".claude-plugin"), { recursive: true });
-	fs.writeFileSync(
-		path.join(claudePlugin, ".claude-plugin/plugin.json"),
-		JSON.stringify({ name: "argument-kit" }),
-	);
-	const claudeSkill = path.join(
-		claudePlugin,
-		"skills",
-		"arguments",
-		"SKILL.md",
-	);
+	fs.writeFileSync(path.join(claudePlugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: "argument-kit" }));
+	const claudeSkill = path.join(claudePlugin, "skills", "arguments", "SKILL.md");
 	fs.mkdirSync(path.dirname(claudeSkill), { recursive: true });
 	const claudeCanonical = path.join(claudePlugin, "accepted.md"),
 		claudeReplacement = path.join(claudePlugin, "replacement.md");
@@ -207,12 +180,7 @@ async function fixture() {
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
-		additionalSkillPaths: [
-			path.join(modelOnlyAlias, "SKILL.md"),
-			winner,
-			loser,
-			path.join(alias, "SKILL.md"),
-		],
+		additionalSkillPaths: [path.join(modelOnlyAlias, "SKILL.md"), winner, loser, path.join(alias, "SKILL.md")],
 		extensionFactories: [
 			{
 				name: "parent-fixture",
@@ -238,25 +206,15 @@ async function fixture() {
 		agentDir,
 		settingsManager,
 		resourceLoader,
-		sessionManager: SessionManager.create(
-			cwd,
-			path.join(root, "parent-sessions"),
-		),
+		sessionManager: SessionManager.create(cwd, path.join(root, "parent-sessions")),
 	});
 	await session.bindExtensions({
 		mode: "json",
 		shutdownHandler: () => undefined,
 	} as never);
-	await session.setModel(
-		session.modelRuntime.getModel("faux-parent", "parent")!,
-	);
+	await session.setModel(session.modelRuntime.getModel("faux-parent", "parent")!);
 	let parentCatalog = "";
-	const run = async (
-		task: string,
-		skills?: string[],
-		expectedError = false,
-		background = false,
-	) => {
+	const run = async (task: string, skills?: string[], expectedError = false, background = false) => {
 		faux.setResponses([
 			(context) => {
 				parentCatalog = getCurrentSystemPrompt(context.messages);
@@ -283,8 +241,7 @@ async function fixture() {
 		const result = session.messages.findLast((m) => m.role === "toolResult");
 		expect(result?.role).toBe("toolResult");
 		if (result?.role === "toolResult") {
-			if (expectedError)
-				expect(result.isError, JSON.stringify(result)).toBe(true);
+			if (expectedError) expect(result.isError, JSON.stringify(result)).toBe(true);
 			else expect(result.isError, JSON.stringify(result)).not.toBe(true);
 		}
 		return result;
@@ -308,8 +265,7 @@ async function fixture() {
 		await session.prompt("Send the approved follow-up to the existing child.");
 		const result = session.messages.findLast((m) => m.role === "toolResult");
 		expect(result?.role).toBe("toolResult");
-		if (result?.role === "toolResult")
-			expect(result.isError, JSON.stringify(result)).not.toBe(true);
+		if (result?.role === "toolResult") expect(result.isError, JSON.stringify(result)).not.toBe(true);
 	};
 	return {
 		root,
@@ -356,9 +312,7 @@ async function fixture() {
 it("inherits accepted model-only and qualified plugin resources through the actual parent agent tool", async () => {
 	const f = await fixture();
 	try {
-		await f.run(
-			"Inspect the inherited catalog and use $review-kit:review. Return a short report.",
-		);
+		await f.run("Inspect the inherited catalog and use $review-kit:review. Return a short report.");
 		expect(f.parentCatalog()).toContain("<name>model-only</name>");
 		expect(f.parentCatalog()).toContain("<name>review-kit:review</name>");
 		expect(f.commands()).not.toContain("model-only");
@@ -369,6 +323,20 @@ it("inherits accepted model-only and qualified plugin resources through the actu
 		expect(child).toContain("<name>review-kit:review</name>");
 		expect(child).toContain("PLUGIN_QUALIFIED_BODY");
 		expect(child).not.toContain("MODEL_ONLY_BODY");
+	} finally {
+		await f.close();
+	}
+}, 30000);
+
+it("declares the mcp tool to a real child, so it can restart its own servers", async () => {
+	const f = await fixture();
+	try {
+		await f.run("Inspect the inherited catalog and return a short report.");
+		const declared = (f.requests[0]!.tools as Array<{ function?: { name?: string } }>).map(
+			(tool) => tool.function?.name,
+		);
+		expect(declared).toContain("mcp");
+		expect(declared).toContain("tool_search");
 	} finally {
 		await f.close();
 	}
@@ -445,21 +413,11 @@ it.each([[["review-kit:review"]], [[]]])(
 		try {
 			await f.run("Use $review-kit:review and $collision.", skills);
 			const child = JSON.stringify(f.requests[0]);
-			if (skills.length === 0)
-				expect(child).not.toContain("<available_skills>");
-			for (const name of [
-				"model-only",
-				"review-kit:review",
-				"collision",
-				"argument-kit:arguments",
-				"aliased",
-			])
-				if (skills.includes(name))
-					expect(child).toContain(`<name>${name}</name>`);
+			if (skills.length === 0) expect(child).not.toContain("<available_skills>");
+			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
+				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
 				else expect(child).not.toContain(`<name>${name}</name>`);
-			expect(child.includes("PLUGIN_QUALIFIED_BODY")).toBe(
-				skills.includes("review-kit:review"),
-			);
+			expect(child.includes("PLUGIN_QUALIFIED_BODY")).toBe(skills.includes("review-kit:review"));
 		} finally {
 			await f.close();
 		}
@@ -480,9 +438,7 @@ it("keeps inherited explicit/model-only reference roots aligned with real child 
 			unrelated,
 			escape,
 		]);
-		await f.run(
-			`Use [$collision](${f.loser}) and inspect the loaded reference documents.`,
-		);
+		await f.run(`Use [$collision](${f.loser}) and inspect the loaded reference documents.`);
 		expect(f.requests).toHaveLength(2);
 		const second = JSON.stringify(f.requests[1]);
 		expect(second).toContain("LOSER_BODY");
@@ -512,12 +468,7 @@ it("resumes the actual named child with its captured inventory after the parent 
 	const f = await fixture();
 	vi.stubEnv("OCTOCODE_SUBAGENT_LINGER_SECONDS", "60");
 	try {
-		const result = await f.run(
-			"Inspect the accepted catalog without expanding workflows.",
-			undefined,
-			false,
-			true,
-		);
+		const result = await f.run("Inspect the accepted catalog without expanding workflows.", undefined, false, true);
 		await vi.waitFor(() => expect(f.requests).toHaveLength(1));
 		if (result?.role !== "toolResult") throw new Error("Missing child result");
 		const id = (result.details as { id: string }).id;
@@ -526,21 +477,14 @@ it("resumes the actual named child with its captured inventory after the parent 
 			expect(
 				f.session.sessionManager
 					.getEntries()
-					.some(
-						(e) =>
-							e.type === "custom_message" &&
-							e.customType === "octocode-agent-result",
-					),
+					.some((e) => e.type === "custom_message" && e.customType === "octocode-agent-result"),
 			).toBe(true),
 		);
 		await f.session.waitForIdle();
 		fs.unlinkSync(f.alias);
 		fs.symlinkSync(path.dirname(f.retarget), f.alias);
 		await f.resourceLoader.reload();
-		await f.message(
-			id,
-			`Use [$aliased](${path.join(f.alias, "SKILL.md")}) and return a short follow-up.`,
-		);
+		await f.message(id, `Use [$aliased](${path.join(f.alias, "SKILL.md")}) and return a short follow-up.`);
 		await vi.waitFor(() => expect(f.requests).toHaveLength(2));
 		const second = JSON.stringify(f.requests[1]);
 		expect(second).toContain("CANONICAL_BODY");
@@ -557,9 +501,7 @@ it("keeps live parent permission narrowing when handing accepted resources to th
 	try {
 		await f.session.prompt("/permissions workspace");
 		f.childBash('printf "CHILD_PERMISSION=%s\\n" "$OCTOCODE_PERMISSION"');
-		await f.run(
-			"Use $review-kit:review and inspect your inherited permission mode.",
-		);
+		await f.run("Use $review-kit:review and inspect your inherited permission mode.");
 		expect(f.requests).toHaveLength(2);
 		const second = JSON.stringify(f.requests[1]);
 		expect(second).toContain("CHILD_PERMISSION=workspace");
@@ -575,11 +517,7 @@ it.each([true, false])(
 	async (isChild) => {
 		const f = await fixture();
 		const file = path.join(f.root, "invalid-snapshot.json");
-		fs.writeFileSync(
-			file,
-			JSON.stringify({ version: 99, resources: [], explicitSkills: [] }),
-			{ mode: 0o600 },
-		);
+		fs.writeFileSync(file, JSON.stringify({ version: 99, resources: [], explicitSkills: [] }), { mode: 0o600 });
 		const launch = getCliInvocation();
 		const child = spawn(
 			launch.command,
@@ -640,16 +578,12 @@ it.each([true, false])(
 			const deadline = Date.now() + 15000;
 			while (isChild ? !exited : !settled) {
 				if (Date.now() > deadline || (!isChild && exited))
-					throw new Error(
-						`Startup fixture failed: code=${code} stderr=${stderr}`,
-					);
+					throw new Error(`Startup fixture failed: code=${code} stderr=${stderr}`);
 				await new Promise((resolve) => setTimeout(resolve, 10));
 			}
 			if (isChild) {
 				expect(code).not.toBe(0);
-				expect(stderr).toContain(
-					"Invalid or oversized child skill resource snapshot",
-				);
+				expect(stderr).toContain("Invalid or oversized child skill resource snapshot");
 				expect(f.requests).toHaveLength(0);
 			} else {
 				expect(f.requests).toHaveLength(1);
@@ -658,10 +592,7 @@ it.each([true, false])(
 		} finally {
 			if (!exited) {
 				child.stdin.end();
-				await Promise.race([
-					exit,
-					new Promise((resolve) => setTimeout(resolve, 3000)),
-				]);
+				await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 3000))]);
 				if (!exited) {
 					child.kill("SIGKILL");
 					await exit;
@@ -682,9 +613,7 @@ it("pins a model-only accepted alias for the child catalog and actual MCP refere
 			path.join(path.dirname(f.modelOnly), "reference.md"),
 			path.join(f.modelOnlyAlias, "reference.md"),
 		]);
-		await f.run(
-			"Inspect the inherited model-only catalog and its companion references.",
-		);
+		await f.run("Inspect the inherited model-only catalog and its companion references.");
 		expect(f.requests).toHaveLength(2);
 		const first = JSON.stringify(f.requests[0]),
 			second = JSON.stringify(f.requests[1]);

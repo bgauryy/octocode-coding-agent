@@ -102,20 +102,35 @@ describe("defaultTools setting", () => {
 		{ defaults: ["-web"], options: {}, expected: [] },
 		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: [] },
 		{ defaults: undefined, options: { tools: ["file"] }, expected: [] },
-	])("keeps browser opt-in and preserves web defaults and exclusions through startup: %j", async ({ defaults, options, expected }) => {
-		const session = await createSession(defaults, options, [], true);
-		try {
-			await session.bindExtensions({});
-			expect(session.getActiveToolNames().filter((name) => ["browser", "web"].includes(name)).sort()).toEqual(expected);
-			if (!options.tools) expect(session.getActiveToolNames()).toContain("agent");
-			expect(session.agent.state.tools.some((tool) => tool.name === "browser")).toBe(expected.some((name) => name === "browser"));
-			await session.reload();
-			expect(session.getActiveToolNames().filter((name) => ["browser", "web"].includes(name)).sort()).toEqual(expected);
-		} finally {
-			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
-			session.dispose();
-		}
-	});
+	])(
+		"keeps browser opt-in and preserves web defaults and exclusions through startup: %j",
+		async ({ defaults, options, expected }) => {
+			const session = await createSession(defaults, options, [], true);
+			try {
+				await session.bindExtensions({});
+				expect(
+					session
+						.getActiveToolNames()
+						.filter((name) => ["browser", "web"].includes(name))
+						.sort(),
+				).toEqual(expected);
+				if (!options.tools) expect(session.getActiveToolNames()).toContain("agent");
+				expect(session.agent.state.tools.some((tool) => tool.name === "browser")).toBe(
+					expected.some((name) => name === "browser"),
+				);
+				await session.reload();
+				expect(
+					session
+						.getActiveToolNames()
+						.filter((name) => ["browser", "web"].includes(name))
+						.sort(),
+				).toEqual(expected);
+			} finally {
+				await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+				session.dispose();
+			}
+		},
+	);
 
 	it.each([{ tools: ["file", "web"] }, { tools: ["agent", "browser"] }])(
 		"retains SDK selected native tools after session startup: $tools",
@@ -131,43 +146,104 @@ describe("defaultTools setting", () => {
 		},
 	);
 
-	it.each([{}, { tools: ["read", "file", "powershell", "edit", "write", "grep", "find", "ls", "coordinate", "sendMessage", "externalAgent"] }])(
-		"does not register removed native tools, including after reload: %j",
-		async (options) => {
-			const session = await createSession(["file"], options, [], true);
-			try {
-				for (let pass = 0; pass < 2; pass++) {
-					const names = session.getAllTools().map((tool) => tool.name);
-					for (const name of ["read", "powershell", "edit", "write", "grep", "find", "ls", "externalAgent", "coordinate", "sendMessage"]) expect(names).not.toContain(name);
-					expect(session.getActiveToolNames().sort()).toEqual(["file"]);
-					expect(session.systemPrompt).toContain("- file:");
-					expect(session.systemPrompt).not.toContain("- edit:");
-					if (pass === 0) await session.reload();
-				}
-			} finally {
-				session.dispose();
-			}
+	it.each([
+		{},
+		{
+			tools: [
+				"read",
+				"file",
+				"powershell",
+				"edit",
+				"write",
+				"grep",
+				"find",
+				"ls",
+				"coordinate",
+				"sendMessage",
+				"externalAgent",
+			],
 		},
-	);
+	])("does not register removed native tools, including after reload: %j", async (options) => {
+		const session = await createSession(["file"], options, [], true);
+		try {
+			for (let pass = 0; pass < 2; pass++) {
+				const names = session.getAllTools().map((tool) => tool.name);
+				for (const name of [
+					"read",
+					"powershell",
+					"edit",
+					"write",
+					"grep",
+					"find",
+					"ls",
+					"externalAgent",
+					"coordinate",
+					"sendMessage",
+				])
+					expect(names).not.toContain(name);
+				expect(session.getActiveToolNames().sort()).toEqual(["file"]);
+				expect(session.systemPrompt).toContain("- file:");
+				expect(session.systemPrompt).not.toContain("- edit:");
+				if (pass === 0) await session.reload();
+			}
+		} finally {
+			session.dispose();
+		}
+	});
 
 	it("credits an MCP fetch through the session event pipeline before a guarded edit", async () => {
 		const file = join(tempDir, "source.txt");
 		writeFileSync(file, "before\n");
 		const name = "mcp__octocode__localFetch";
-		const session = await createSession(["file"], {}, [(pi) => pi.registerTool({
-			name, label: "localFetch", description: "Read a source file", parameters: Type.Object({ queries: Type.Array(Type.Object({ path: Type.String() })) }),
-			annotations: { readOnlyHint: true, openWorldHint: false }, execute: async () => ({ content: [], details: {} }),
-		})], true);
+		const session = await createSession(
+			["file"],
+			{},
+			[
+				(pi) =>
+					pi.registerTool({
+						name,
+						label: "localFetch",
+						description: "Read a source file",
+						parameters: Type.Object({ queries: Type.Array(Type.Object({ path: Type.String() })) }),
+						annotations: { readOnlyHint: true, openWorldHint: false },
+						execute: async () => ({ content: [], details: {} }),
+					}),
+			],
+			true,
+		);
 		try {
 			await session.bindExtensions({});
 			const input = { queries: [{ path: file }] };
-			const blocked = await session.extensionRunner.emitToolCall({ type: "tool_call", toolName: name, toolCallId: "fetch", input });
+			const blocked = await session.extensionRunner.emitToolCall({
+				type: "tool_call",
+				toolName: name,
+				toolCallId: "fetch",
+				input,
+			});
 			expect(blocked?.block).not.toBe(true);
 			const structuredContent = { results: [{ data: { path: file, content: "1\tbefore\n", totalLines: 1 } }] };
-			const result = await session.extensionRunner.emitToolResult({ type: "tool_result", toolName: name, toolCallId: "fetch", input, content: [{ type: "text", text: JSON.stringify(structuredContent) }], details: {}, structuredContent, isError: false });
+			const result = await session.extensionRunner.emitToolResult({
+				type: "tool_result",
+				toolName: name,
+				toolCallId: "fetch",
+				input,
+				content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+				details: {},
+				structuredContent,
+				isError: false,
+			});
 			expect(result?.details).toMatchObject({ localReads: [{ whole: true }] });
 			const edit = session.agent.state.tools.find((tool) => tool.name === "file")!;
-			await edit.execute("edit", { queries: [{ type: "edit", path: file, reasoning: "Update the fixture", edits: [{ oldText: "before", newText: "after" }] }] });
+			await edit.execute("edit", {
+				queries: [
+					{
+						type: "edit",
+						path: file,
+						reasoning: "Update the fixture",
+						edits: [{ oldText: "before", newText: "after" }],
+					},
+				],
+			});
 			expect(readFileSync(file, "utf8")).toBe("after\n");
 		} finally {
 			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });

@@ -10,14 +10,17 @@ interface CachePayload {
 
 class PayloadCaptured extends Error {}
 
-async function cachePoints(model: Model<"bedrock-converse-stream">): Promise<Array<{ ttl?: string }>> {
+async function cachePoints(
+	model: Model<"bedrock-converse-stream">,
+	options: { cacheRetention?: "long"; env?: Record<string, string> } = { cacheRetention: "long" },
+): Promise<Array<{ ttl?: string }>> {
 	let payload: CachePayload | undefined;
 	const context = normalizeContext({
 		systemPrompt: "Be brief.",
 		messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
 	});
 	const s = streamBedrock(model, context, {
-		cacheRetention: "long",
+		...options,
 		onPayload: (value) => {
 			payload = value as CachePayload;
 			throw new PayloadCaptured();
@@ -37,6 +40,10 @@ describe("Bedrock long cache retention", () => {
 		const points = await cachePoints(model);
 		expect(points).toHaveLength(2);
 		for (const point of points) expect(point.ttl).toBeDefined();
+	});
+
+	it("adds no cache points when OCTOCODE_CACHE_RETENTION is none", async () => {
+		expect(await cachePoints(model, { env: { OCTOCODE_CACHE_RETENTION: "none" } })).toEqual([]);
 	});
 
 	it("keeps default cache points when the model does not support long retention", async () => {

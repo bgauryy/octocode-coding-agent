@@ -49,11 +49,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 		};
 		const winner = makeSkill("winner", "collision");
 		const loser = makeSkill("loser", "collision");
-		const modelOnly = makeSkill(
-			"model-only",
-			"model-only",
-			"user-invocable: false\n",
-		);
+		const modelOnly = makeSkill("model-only", "model-only", "user-invocable: false\n");
 		const unrelated = path.join(root, "unrelated.txt");
 		fs.writeFileSync(unrelated, "UNRELATED_SECRET\n");
 		fs.symlinkSync(unrelated, path.join(loser, "escape.txt"));
@@ -68,9 +64,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 							args,
 							env: {
 								WORKSPACE_ROOT: cwd,
-								...(owner === "configured-explicit"
-									? { ALLOWED_PATHS: cwd }
-									: {}),
+								...(owner === "configured-explicit" ? { ALLOWED_PATHS: cwd } : {}),
 							},
 							exposure: "direct",
 						},
@@ -95,9 +89,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			...(owner !== "native"
-				? { additionalExtensionPaths: ["builtin:mcp"] }
-				: {}),
+			...(owner !== "native" ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
 			extensionFactories: [
 				{
 					name: "faux",
@@ -141,24 +133,16 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 				(context) => {
 					reader = session
 						.getActiveToolNames()
-						.find((name) =>
-							/^mcp__octocode__(localFetch|localGetFileContent)$/.test(name),
-						);
+						.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
 					expect(reader).toBeDefined();
 					expect(commands).toContain("collision");
 					expect(commands).not.toContain("model-only");
 					expect(commands).not.toContain("skill:model-only");
-					const user = JSON.stringify(
-						context.messages
-							.filter((message) => message.role === "user")
-							.at(-1),
-					);
+					const user = JSON.stringify(context.messages.filter((message) => message.role === "user").at(-1));
 					expect(user).toContain("BODY_loser");
 					expect(user).not.toContain("BODY_winner");
 					expect(user).not.toContain("BODY_model-only");
-					expect(getCurrentSystemPrompt(context.messages)).toContain(
-						"<name>model-only</name>",
-					);
+					expect(getCurrentSystemPrompt(context.messages)).toContain("<name>model-only</name>");
 					return fauxAssistantMessage(
 						[
 							fauxToolCall(reader!, {
@@ -173,51 +157,30 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 					);
 				},
 				(context) => {
-					result = JSON.stringify(
-						context.messages
-							.filter((message) => message.role === "toolResult")
-							.at(-1),
-					);
+					result = JSON.stringify(context.messages.filter((message) => message.role === "toolResult").at(-1));
 					return fauxAssistantMessage("Read complete");
 				},
 			]);
-			await session.prompt(
-				`Use [$collision](${path.join(loser, "SKILL.md")}) and $model-only`,
-			);
+			await session.prompt(`Use [$collision](${path.join(loser, "SKILL.md")}) and $model-only`);
 			if (owner === "configured-explicit") {
-				expect(result).toMatch(
-					/outsideAllowedRoots|outside allowed directories/,
-				);
-				for (const name of ["loser", "model-only", "winner"])
-					expect(result).not.toContain(`REFERENCE_${name}`);
+				expect(result).toMatch(/outsideAllowedRoots|outside allowed directories/);
+				for (const name of ["loser", "model-only", "winner"]) expect(result).not.toContain(`REFERENCE_${name}`);
 			} else {
-				for (const name of ["loser", "model-only", "winner"])
-					expect(result).toContain(`REFERENCE_${name}`);
-				expect(result).not.toMatch(
-					/outsideAllowedRoots|outside allowed directories|isError":true/,
-				);
+				for (const name of ["loser", "model-only", "winner"]) expect(result).toContain(`REFERENCE_${name}`);
+				expect(result).not.toMatch(/outsideAllowedRoots|outside allowed directories|isError":true/);
 			}
 			for (const blockedPath of [unrelated, path.join(loser, "escape.txt")]) {
 				let blocked = "";
 				faux.setResponses([
 					() =>
-						fauxAssistantMessage(
-							[fauxToolCall(reader!, { queries: [read(blockedPath)] })],
-							{ stopReason: "toolUse" },
-						),
+						fauxAssistantMessage([fauxToolCall(reader!, { queries: [read(blockedPath)] })], { stopReason: "toolUse" }),
 					(context) => {
-						blocked = JSON.stringify(
-							context.messages
-								.filter((message) => message.role === "toolResult")
-								.at(-1),
-						);
+						blocked = JSON.stringify(context.messages.filter((message) => message.role === "toolResult").at(-1));
 						return fauxAssistantMessage("Blocked");
 					},
 				]);
 				await session.prompt("Check this unrelated path.");
-				expect(blocked).toMatch(
-					/outsideAllowedRoots|outside allowed directories/,
-				);
+				expect(blocked).toMatch(/outsideAllowedRoots|outside allowed directories/);
 				expect(blocked).not.toContain("UNRELATED_SECRET");
 			}
 		} finally {

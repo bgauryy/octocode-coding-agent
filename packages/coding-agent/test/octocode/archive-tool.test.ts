@@ -95,11 +95,9 @@ describe("the archive tool", () => {
 		const cwd = repo();
 		fileFor(
 			"me",
-			[
-				"intro",
-				"the login fix was a redirect",
-				...Array.from({ length: 200 }, (_, index) => `filler ${index}`),
-			].join("\n"),
+			["intro", "the login fix was a redirect", ...Array.from({ length: 200 }, (_, index) => `filler ${index}`)].join(
+				"\n",
+			),
 			cwd,
 		);
 		fileFor("sib", "login also failed here", cwd);

@@ -23,14 +23,16 @@ const preparation = {
 	fileOps: { read: new Set(), written: new Set(), edited: new Set() },
 	settings: { reserveTokens: 1000, keepRecentTokens: 10 },
 };
-const runDefault = (AgentSession.prototype as unknown as {
-	_runDefaultCompaction: (
-		preparation: unknown,
-		model: unknown,
-		signal: AbortSignal,
-		reason: string,
-	) => Promise<{ usage?: unknown }>;
-})._runDefaultCompaction;
+const runDefault = (
+	AgentSession.prototype as unknown as {
+		_runDefaultCompaction: (
+			preparation: unknown,
+			model: unknown,
+			signal: AbortSignal,
+			reason: string,
+		) => Promise<{ usage?: unknown }>;
+	}
+)._runDefaultCompaction;
 
 it.each([false, true])("preserves every split summary attempt when the second fails=%s", async (fail) => {
 	const manager = SessionManager.inMemory();

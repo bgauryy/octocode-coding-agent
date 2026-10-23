@@ -51,7 +51,11 @@ export function projectConfigFiles(cwd: string): string[] {
  * SHA-256 over the paths and bytes of `files`: any added, removed or edited file changes it. `as` names each file
  * by another path (a worktree's file as its parent repository's).
  */
-export function fingerprint(files: string[], as: (file: string) => string = (file) => file, read: (file: string) => string = readForFingerprint): string {
+export function fingerprint(
+	files: string[],
+	as: (file: string) => string = (file) => file,
+	read: (file: string) => string = readForFingerprint,
+): string {
 	return sha256(files.map((file) => `${as(file)}\0${read(file)}`).join("\0\0"));
 }
 
@@ -94,11 +98,12 @@ export function describeProjectConfig(cwd: string, files = projectConfigFiles(cw
 	for (const file of files) {
 		const shown = dialogLine(path.relative(realPath(cwd), file) || file);
 		// A profile that declares permissions is listed with them, and never folded into the count of plain files.
-		const runs = file.endsWith(".json") || file.endsWith(".toml")
-			? commandsIn(executableConfig(file))
-			: file.endsWith(".md")
-				? permissionsIn(readText(file))
-				: [];
+		const runs =
+			file.endsWith(".json") || file.endsWith(".toml")
+				? commandsIn(executableConfig(file))
+				: file.endsWith(".md")
+					? permissionsIn(readText(file))
+					: [];
 		if (runs.length === 0 && ++plain > MAX_PLAIN_FILES) continue;
 		lines.push(`- ${shown}${runs.length ? ":" : ""}`, ...runs.map((run) => `    ${dialogLine(run)}`));
 	}
@@ -111,13 +116,7 @@ function permissionsIn(text: string): string[] {
 	try {
 		const value = parseFrontmatter<Record<string, unknown>>(text).frontmatter.permissions;
 		const names = (
-			Array.isArray(value)
-				? value
-				: typeof value === "string"
-					? value.split(",")
-					: value === undefined
-						? []
-						: [value]
+			Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : value === undefined ? [] : [value]
 		)
 			.map((name) => String(name).trim())
 			.filter(Boolean);
@@ -137,8 +136,11 @@ function commandsIn(value: unknown, out: string[] = []): string[] {
 		// An MCP-tool hook calls a tool on the user's server with the user's credentials: it acts like a command and needs
 		// the same review. `input` is shown because its placeholders decide what the call sends.
 		if (value.type === "mcp_tool" && typeof value.server === "string" && typeof value.tool === "string")
-			out.push(`MCP ${value.server}/${value.tool}${value.input === undefined ? "" : ` ${JSON.stringify(value.input)}`}`);
-		for (const key of ["commandWindows", "command_windows"]) if (typeof value[key] === "string") out.push(`Windows: ${value[key]}`);
+			out.push(
+				`MCP ${value.server}/${value.tool}${value.input === undefined ? "" : ` ${JSON.stringify(value.input)}`}`,
+			);
+		for (const key of ["commandWindows", "command_windows"])
+			if (typeof value[key] === "string") out.push(`Windows: ${value[key]}`);
 		if (typeof value.url === "string") out.push(value.url);
 		const sends = envSent(value);
 		if (sends) out.push(sends);
@@ -193,10 +195,14 @@ export function projectTrustNow(
 }
 
 /** `projectTrustNow` with the files it saw: the gated files are walked once per call, and hashed only on a memo miss. */
-function trustState(ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">, home?: string, contents?: ReadonlyMap<string,string>): TrustState {
+function trustState(
+	ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">,
+	home?: string,
+	contents?: ReadonlyMap<string, string>,
+): TrustState {
 	const files = projectConfigFiles(ctx.cwd);
-	const captured = contents && new Map([...contents].map(([file,text]) => [realPath(file),text]));
-	if (captured && [...captured.keys()].some(file => !files.includes(file))) return {value:false,files,sha:""};
+	const captured = contents && new Map([...contents].map(([file, text]) => [realPath(file), text]));
+	if (captured && [...captured.keys()].some((file) => !files.includes(file))) return { value: false, files, sha: "" };
 	const read = (file: string) => captured?.get(file) ?? readForFingerprint(file);
 	// Keyed by the files' size and mtime too (a stat, not a read), so ordinary edits and added config files invalidate the memo.
 	const stamp = files.map((file) => {
@@ -279,7 +285,9 @@ function executableConfig(file: string, read: (file: string) => string = readTex
 	try {
 		const value = parseConfigDocument(read(file), file);
 		return file.endsWith(".toml") && isRecord(value) ? value.hooks : value;
-	} catch { return undefined; }
+	} catch {
+		return undefined;
+	}
 }
 
 /** Octocode resolved trust itself: protected resources exist, or `/trust` saved a decision. */
@@ -306,8 +314,7 @@ export async function projectTrust(ctx: ProjectContext, home?: string): Promise<
 	const key = `${storeKey(ctx.cwd)}\0${sha}`;
 	if (!noticed.has(key)) {
 		noticed.add(key);
-		if (ctx.ui)
-			notify(ctx.ui, `Project config not loaded (${files.length} files). Run /trust to review.`, "warning");
+		if (ctx.ui) notify(ctx.ui, `Project config not loaded (${files.length} files). Run /trust to review.`, "warning");
 	}
 	return false;
 }
@@ -478,62 +485,78 @@ function isFile(file: string): boolean {
 }
 
 /** Verify the same settings bytes the caller will parse against the existing project trust fingerprint. */
-export async function projectTrustForContents(ctx: ProjectContext, contents: ReadonlyMap<string, string>, home?: string): Promise<boolean> {
- return trustState(ctx, home, contents).value === true;
+export async function projectTrustForContents(
+	ctx: ProjectContext,
+	contents: ReadonlyMap<string, string>,
+	home?: string,
+): Promise<boolean> {
+	return trustState(ctx, home, contents).value === true;
 }
 
 /** Advance an existing exact-file approval only across the staged permission fields. */
 export function preparePermissionTrustUpdate(
- ctx: Pick<ProjectContext,"cwd"|"isProjectTrusted">,
- updates: ReadonlyMap<string,{before?:string;after:string}>,
- home?:string,
+	ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">,
+	updates: ReadonlyMap<string, { before?: string; after: string }>,
+	home?: string,
 ): (written: readonly string[]) => boolean {
- const files=projectConfigFiles(ctx.cwd);
- const before=new Map(files.map(file=>[file,readForFingerprint(file)]));
- const originalSha=fingerprint(files,undefined,file=>before.get(file)!);
- const key=storeKey(ctx.cwd);
- const prior=readStore(home)[key];
- if(!ctx.isProjectTrusted() || prior?.trusted!==true || prior.sha!==originalSha)return ()=>false;
- const permitted=new Set(projectHookFiles(ctx.cwd).map(realPath));
- const changes=new Map<string,{before?:string;after:string}>();
- const withoutPermissions=(text:string|undefined)=>{
-  const parsed:unknown=text===undefined?{}:JSON.parse(text);
-  if(!isRecord(parsed))throw new Error("Invalid permission settings object");
-  const permissions=parsed.permissions;
-  if(permissions!==undefined&&!isRecord(permissions))throw new Error("Invalid permissions object");
-  const rest={...(permissions as Record<string,unknown>|undefined)};
-  for(const field of ["allow","deny","ask","defaultMode","additionalDirectories"])delete rest[field];
-  return JSON.stringify({...parsed,permissions:rest});
- };
- for(const [file,change] of updates) {
-  const canonical=realPath(file);
-  if(!permitted.has(canonical))continue;
-  if(before.get(canonical)!==change.before)return ()=>false;
-  try {if(withoutPermissions(change.before)!==withoutPermissions(change.after))return ()=>false;}
-  catch {return ()=>false;}
-  changes.set(canonical,change);
- }
- return written=>{
-  const expected=new Map(before);
-  let changed=false;
-  for(const file of written) {
-   const canonical=realPath(file),change=changes.get(canonical);
-   if(change){expected.set(canonical,change.after);changed=true;}
-  }
-  if(!changed)return false;
-  const expectedFiles=[...expected.keys()].sort();
-  const actualFiles=projectConfigFiles(ctx.cwd);
-  if(JSON.stringify(actualFiles)!==JSON.stringify(expectedFiles) || expectedFiles.some(file=>readForFingerprint(file)!==expected.get(file)))return false;
-  const nextSha=fingerprint(expectedFiles,undefined,file=>expected.get(file)!);
-  const storeFile=storePath(home);
-  let advanced=false;
-  withFileLock(storeFile,()=>{
-   const store=readStore(home);
-   if(store[key]?.trusted!==true||store[key]?.sha!==originalSha)return;
-   store[key]={sha:nextSha,trusted:true};
-   atomicWriteFileSync(storeFile,`${JSON.stringify(store,null,2)}\n`,{mode:0o600});
-   trustMemo.clear();advanced=true;
-  });
-  return advanced;
- };
+	const files = projectConfigFiles(ctx.cwd);
+	const before = new Map(files.map((file) => [file, readForFingerprint(file)]));
+	const originalSha = fingerprint(files, undefined, (file) => before.get(file)!);
+	const key = storeKey(ctx.cwd);
+	const prior = readStore(home)[key];
+	if (!ctx.isProjectTrusted() || prior?.trusted !== true || prior.sha !== originalSha) return () => false;
+	const permitted = new Set(projectHookFiles(ctx.cwd).map(realPath));
+	const changes = new Map<string, { before?: string; after: string }>();
+	const withoutPermissions = (text: string | undefined) => {
+		const parsed: unknown = text === undefined ? {} : JSON.parse(text);
+		if (!isRecord(parsed)) throw new Error("Invalid permission settings object");
+		const permissions = parsed.permissions;
+		if (permissions !== undefined && !isRecord(permissions)) throw new Error("Invalid permissions object");
+		const rest = { ...(permissions as Record<string, unknown> | undefined) };
+		for (const field of ["allow", "deny", "ask", "defaultMode", "additionalDirectories"]) delete rest[field];
+		return JSON.stringify({ ...parsed, permissions: rest });
+	};
+	for (const [file, change] of updates) {
+		const canonical = realPath(file);
+		if (!permitted.has(canonical)) continue;
+		if (before.get(canonical) !== change.before) return () => false;
+		try {
+			if (withoutPermissions(change.before) !== withoutPermissions(change.after)) return () => false;
+		} catch {
+			return () => false;
+		}
+		changes.set(canonical, change);
+	}
+	return (written) => {
+		const expected = new Map(before);
+		let changed = false;
+		for (const file of written) {
+			const canonical = realPath(file),
+				change = changes.get(canonical);
+			if (change) {
+				expected.set(canonical, change.after);
+				changed = true;
+			}
+		}
+		if (!changed) return false;
+		const expectedFiles = [...expected.keys()].sort();
+		const actualFiles = projectConfigFiles(ctx.cwd);
+		if (
+			JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles) ||
+			expectedFiles.some((file) => readForFingerprint(file) !== expected.get(file))
+		)
+			return false;
+		const nextSha = fingerprint(expectedFiles, undefined, (file) => expected.get(file)!);
+		const storeFile = storePath(home);
+		let advanced = false;
+		withFileLock(storeFile, () => {
+			const store = readStore(home);
+			if (store[key]?.trusted !== true || store[key]?.sha !== originalSha) return;
+			store[key] = { sha: nextSha, trusted: true };
+			atomicWriteFileSync(storeFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+			trustMemo.clear();
+			advanced = true;
+		});
+		return advanced;
+	};
 }

@@ -9,73 +9,68 @@ vi.mock("node:fs", async (importOriginal) => ({
 }));
 afterEach(() => vi.restoreAllMocks());
 
-it.each(["success", "cancel", "failure"] as const)(
-	"waits for full output persistence on %s",
-	async (mode) => {
-		let release!: () => void, ending!: () => void;
-		const ended = new Promise<void>((resolve) => (ending = resolve));
-		let saved = "";
-		const expected = "line\n".repeat(3000);
-		const stream = new Writable({
-			write(chunk, _encoding, callback) {
-				saved += chunk.toString();
-				callback();
+it.each(["success", "cancel", "failure"] as const)("waits for full output persistence on %s", async (mode) => {
+	let release!: () => void, ending!: () => void;
+	const ended = new Promise<void>((resolve) => (ending = resolve));
+	let saved = "";
+	const expected = "line\n".repeat(3000);
+	const stream = new Writable({
+		write(chunk, _encoding, callback) {
+			saved += chunk.toString();
+			callback();
+		},
+		final(callback) {
+			release = callback;
+			ending();
+		},
+	});
+	vi.mocked(fs.createWriteStream).mockReturnValue(stream as fs.WriteStream);
+	const controller = new AbortController();
+	const error = new Error("execution failed");
+	let returned = false;
+	const result = executeBashWithOperations(
+		"fixture",
+		process.cwd(),
+		{
+			exec: async (_command, _cwd, { onData }) => {
+				onData(Buffer.from(mode === "failure" ? "x".repeat(100_000) : expected));
+				if (mode === "cancel") controller.abort();
+				if (mode !== "success") throw error;
+				return { exitCode: 0 };
 			},
-			final(callback) {
-				release = callback;
-				ending();
-			},
-		});
-		vi.mocked(fs.createWriteStream).mockReturnValue(stream as fs.WriteStream);
-		const controller = new AbortController();
-		const error = new Error("execution failed");
-		let returned = false;
-		const result = executeBashWithOperations(
-			"fixture",
-			process.cwd(),
-			{
-				exec: async (_command, _cwd, { onData }) => {
-					onData(
-						Buffer.from(mode === "failure" ? "x".repeat(100_000) : expected),
-					);
-					if (mode === "cancel") controller.abort();
-					if (mode !== "success") throw error;
-					return { exitCode: 0 };
-				},
-			},
-			{ signal: controller.signal },
+		},
+		{ signal: controller.signal },
+	)
+		.then(
+			(value) => ({ value }),
+			(failure) => ({ failure }),
 		)
-			.then(
-				(value) => ({ value }),
-				(failure) => ({ failure }),
-			)
-			.finally(() => {
-				returned = true;
+		.finally(() => {
+			returned = true;
+		});
+	try {
+		await ended;
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(returned).toBe(false);
+		release();
+		const outcome = await result;
+		if (mode === "failure") expect(outcome).toEqual({ failure: error });
+		else {
+			expect(outcome).toMatchObject({
+				value: {
+					truncated: true,
+					cancelled: mode === "cancel",
+					fullOutputPath: expect.any(String),
+				},
 			});
-		try {
-			await ended;
-			await new Promise((resolve) => setImmediate(resolve));
-			expect(returned).toBe(false);
-			release();
-			const outcome = await result;
-			if (mode === "failure") expect(outcome).toEqual({ failure: error });
-			else {
-				expect(outcome).toMatchObject({
-					value: {
-						truncated: true,
-						cancelled: mode === "cancel",
-						fullOutputPath: expect.any(String),
-					},
-				});
-				expect(saved).toBe(expected);
-			}
-		} finally {
-			release?.();
-			await result;
-			stream.destroy();
+			expect(saved).toBe(expected);
 		}
-	},
-);
+	} finally {
+		release?.();
+		await result;
+		stream.destroy();
+	}
+});
 
 it.each(["success", "cancel", "failure"] as const)(
 	"handles early output errors without losing the %s outcome",
@@ -103,16 +98,12 @@ it.each(["success", "cancel", "failure"] as const)(
 			},
 			{ signal: controller.signal },
 		);
-		await expect(result).rejects.toBe(
-			mode === "failure" ? execError : writeError,
-		);
+		await expect(result).rejects.toBe(mode === "failure" ? execError : writeError);
 	},
 );
 
 it("keeps concurrent and repeated accumulator closes attached to the same completion", async () => {
-	const { OutputAccumulator } = await import(
-		"../src/core/tools/output-accumulator.ts"
-	);
+	const { OutputAccumulator } = await import("../src/core/tools/output-accumulator.ts");
 	let release!: () => void, ending!: () => void;
 	const ended = new Promise<void>((resolve) => (ending = resolve));
 	const stream = new Writable({

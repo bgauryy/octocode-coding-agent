@@ -14,22 +14,13 @@ test("staged parser assets independently parse Bash and retain source licenses",
 			wasmBinary: readFileSync(join(target, "tree-sitter.wasm")),
 		});
 		parser = new Parser();
-		parser.setLanguage(
-			await Language.load(readFileSync(join(target, "tree-sitter-bash.wasm"))),
-		);
+		parser.setLanguage(await Language.load(readFileSync(join(target, "tree-sitter-bash.wasm"))));
 		tree = parser.parse('printf "$(printf nested)"');
 		assert.equal(tree.rootNode.hasError, false);
 		assert.match(tree.rootNode.toString(), /command_substitution/);
 		for (const name of ["LICENSE.bash", "LICENSE.tree-sitter"])
-			assert.match(
-				readFileSync(join(target, name), "utf8"),
-				/Permission is hereby granted/,
-			);
-		assert.equal(
-			JSON.parse(readFileSync(join(target, "manifest.json"), "utf8")).runtime
-				.version,
-			"0.25.10",
-		);
+			assert.match(readFileSync(join(target, name), "utf8"), /Permission is hereby granted/);
+		assert.equal(JSON.parse(readFileSync(join(target, "manifest.json"), "utf8")).runtime.version, "0.25.10");
 	} finally {
 		tree?.delete();
 		parser?.delete();

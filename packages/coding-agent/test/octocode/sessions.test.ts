@@ -244,6 +244,28 @@ describe("session extras", () => {
 		expect(row(host.id)?.branch).toBe("new");
 	});
 
+	it("does not reject a late git write when its context has become stale", async () => {
+		let finish!: (state: { branch: string }) => void;
+		vi.spyOn(sessionStore, "gitState").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const host = setup();
+		await host.start();
+		vi.spyOn(SessionIndex.prototype, "git").mockImplementation(() => {
+			throw new Error("index unavailable");
+		});
+		Object.defineProperty(host.ctx, "hasUI", {
+			get: () => {
+				throw new Error("stale Octocode context");
+			},
+		});
+		finish({ branch: "late" });
+		await new Promise((resolve) => setImmediate(resolve));
+	});
+
 	it("keeps no rows for a subagent and registers only the after-compaction running-work note", async () => {
 		const { handlers, commands } = setup({ subagent: true });
 		expect([...handlers.keys()].sort()).toEqual(["session_compact", "session_start"]);
@@ -284,14 +306,18 @@ const backgroundWork = (log: string, timestamp: string): Entry[] => {
 		result("c1", "bash", { job: "bash-1", pid: 1, log: "/tmp/bash-1-1.log" }),
 		call("c3", "bash", { command: "yarn test", background: true }),
 		result("c3", "bash", { job: "bash-3", pid: 3, log }),
-		call("c4", "agent", { task: `Review the parser ${"p".repeat(200)}\nsecond line`, background: true }),
+		call("c4", "agent", {
+			type: "task",
+			input: { task: `Review the parser ${"p".repeat(200)}\nsecond line`, background: true },
+		}),
 		result("c4", "agent", { id: "general-ab12", status: "background" }),
+		// Sessions recorded before the unified agent tool keep flat arguments.
 		call("c5", "agent", { task: "Done task", goal: "finish the done task", background: true }),
 		result("c5", "agent", { id: "general-done", status: "background" }),
 		// A foreground bash and a foreground subagent are not background work.
 		call("c6", "bash", { command: "ls" }),
 		result("c6", "bash", {}),
-		call("c7", "agent", { task: "Inline" }),
+		call("c7", "agent", { type: "task", input: { task: "Inline" } }),
 		result("c7", "agent", { id: "general-fg", status: "done" }),
 	];
 };
@@ -357,11 +383,9 @@ describe("resume brief", () => {
 		add.run(key, 4, "Also next", "todo", null);
 
 		await host.start("resume");
-		const result = (await host.fire(
-			"before_agent_start",
-			{ type: "before_agent_start", prompt: "go" },
-			host.ctx,
-		)) as { message: { customType: string; content: string; display: boolean } };
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { customType: string; content: string; display: boolean };
+		};
 		expect(result.message).toMatchObject({ customType: RESUME_MESSAGE_TYPE, display: true });
 		const text = result.message.content;
 		expect(text).toMatch(/^Resumed after 3h away/);
@@ -436,11 +460,9 @@ describe("resume brief", () => {
 	it("also briefs a startup that continues a session with messages (one from before Octocode too), and never a fresh one", async () => {
 		const host = setup({ id: "sess-c", entries: lastActive(2 * DAY) });
 		await host.start();
-		const result = (await host.fire(
-			"before_agent_start",
-			{ type: "before_agent_start", prompt: "go" },
-			host.ctx,
-		)) as { message: { content: string } };
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { content: string };
+		};
 		expect(result.message.content).toMatch(/^Resumed after 2d away/);
 		const fresh = setup({ id: "sess-f" });
 		await fresh.start();
@@ -491,18 +513,14 @@ describe("resume brief", () => {
 		run("checkout", "-q", "-b", "feature");
 		run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "two");
 		fs.writeFileSync(path.join(cwd, "new.txt"), "x");
-		const result = (await host.fire(
-			"before_agent_start",
-			{ type: "before_agent_start", prompt: "go" },
-			host.ctx,
-		)) as { message: { content: string } };
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { content: string };
+		};
 		const text = result.message.content;
 		expect(text.split("\n")[0]).toBe("Resumed after 10m away — Git branch changed: main → feature.");
 		expect(text).toMatch(/Git HEAD moved: [0-9a-f]{7} → [0-9a-f]{7} \(1 new commit\)\./);
 		expect(text).toMatch(/1 uncommitted change in the working tree\./);
-		const collapsed = rendered(
-			host.renderers.get(RESUME_MESSAGE_TYPE)({ content: text }, { expanded: false }, theme),
-		);
+		const collapsed = rendered(host.renderers.get(RESUME_MESSAGE_TYPE)({ content: text }, { expanded: false }, theme));
 		expect(collapsed).toMatch(/Git branch changed: main → feature\..* … \+2 lines \(ctrl\+o to expand\)/);
 		expect(collapsed).not.toContain("(+2)");
 	});
@@ -531,11 +549,9 @@ describe("resume brief", () => {
 		];
 		const host = setup({ id: "sess-w", entries });
 		await host.start("resume");
-		const result = (await host.fire(
-			"before_agent_start",
-			{ type: "before_agent_start", prompt: "go" },
-			host.ctx,
-		)) as { message: { content: string } };
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { content: string };
+		};
 		const first = result.message.content.split("\n")[0]!;
 		expect(first).toMatch(
 			/^Resumed after 5m away — Stopped when the session ended, without a report: bash-3 \(`yarn test`, log .*bash-3-1700000000000\.log\); general-ab12 \(task "Review the parser p{200} second line"\)\. Check their logs/,
@@ -575,9 +591,7 @@ describe("/octocode sessions", () => {
 		await current.start();
 		const agent = sharedAgentDb();
 		agent.db
-			.prepare(
-				"INSERT INTO sessions (id, cost, files_changed, branch, unpriced) VALUES ('other', 1.5, 2, 'feat/x', 1)",
-			)
+			.prepare("INSERT INTO sessions (id, cost, files_changed, branch, unpriced) VALUES ('other', 1.5, 2, 'feat/x', 1)")
 			.run();
 		agent.db.prepare("INSERT INTO sessions (id, cost, unpriced) VALUES ('elsewhere', 0, 1)").run();
 		piSessions = [
@@ -693,10 +707,7 @@ describe("/octocode sessions", () => {
 			piSessions.push(info(bad, { firstMessage: "Odd id", modified: new Date(Date.now() - HOUR) }));
 			const root = sessionsRoot();
 			const parent = path.dirname(root);
-			const [inside, outside] = [path.join(root, "keep", "x.txt"), path.join(parent, "marker.txt")] as [
-				string,
-				string,
-			];
+			const [inside, outside] = [path.join(root, "keep", "x.txt"), path.join(parent, "marker.txt")] as [string, string];
 			fs.mkdirSync(path.dirname(inside), { recursive: true });
 			fs.writeFileSync(inside, "x");
 			fs.writeFileSync(outside, "x");

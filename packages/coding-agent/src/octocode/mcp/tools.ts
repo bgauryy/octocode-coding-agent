@@ -120,7 +120,7 @@ export async function toToolResult(
 	let outputTruncated = false;
 	let structuredContent =
 		declaresOutput && result.structuredContent !== undefined
-			? sanitizeJson(result.structuredContent) as AgentToolResult["structuredContent"]
+			? (sanitizeJson(result.structuredContent) as AgentToolResult["structuredContent"])
 			: undefined;
 	let failed = result.isError;
 	if (structuredContent !== undefined) {
@@ -131,12 +131,14 @@ export async function toToolResult(
 			failed = true;
 			result = {
 				...result,
-				content: [{
-					type: "text",
-					text: file
-						? `Structured result exceeds ${TEXT_MAX_CHARS} characters. Full JSON: ${file}. Request a smaller page or read the saved JSON.`
-						: "Structured result exceeds the output limit and could not be saved. Request a smaller page.",
-				}],
+				content: [
+					{
+						type: "text",
+						text: file
+							? `Structured result exceeds ${TEXT_MAX_CHARS} characters. Full JSON: ${file}. Request a smaller page or read the saved JSON.`
+							: "Structured result exceeds the output limit and could not be saved. Request a smaller page.",
+					},
+				],
 			};
 		}
 	}
@@ -146,12 +148,18 @@ export async function toToolResult(
 				? budget.text(part.text, tool)
 				: part.text.length <= TEXT_MAX_CHARS
 					? part.text
-					: capOutputToFile(part.text, { label: `mcp ${tool}`, maxBytes: TEXT_MAX_CHARS, maxLines: TEXT_MAX_CHARS + 1 });
+					: capOutputToFile(part.text, {
+							label: `mcp ${tool}`,
+							maxBytes: TEXT_MAX_CHARS,
+							maxLines: TEXT_MAX_CHARS + 1,
+						});
 			outputTruncated ||= text !== part.text;
 			content.push({ ...part, text });
 		} else if (part.type === "image") {
 			for (const bounded of await boundImagePart(part, `mcp ${tool} image`, limits ? { limits } : {})) {
-				content.push(bounded.type === "text" && budget ? { ...bounded, text: budget.text(bounded.text, tool) } : bounded);
+				content.push(
+					bounded.type === "text" && budget ? { ...bounded, text: budget.text(bounded.text, tool) } : bounded,
+				);
 			}
 		} else content.push(part);
 	}

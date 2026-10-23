@@ -1,5 +1,5 @@
 import type { BacklogAudit } from "@octocodeai/octocode-contacts/snapshot";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewProps } from "../extension.ts";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import { errorMessage } from "../model/format.ts";
@@ -21,12 +21,15 @@ export function AuditView({ params }: ViewProps) {
 	const { api } = useLive();
 	const backlogId = params.backlogId;
 	const [page, setPage] = useState<Page>({ pages: [], loading: true, error: "" });
+	/** Aborted when the filter changes, so no page of the previous filter, first or older, lands in the new list. */
+	const filter = useRef<AbortController>(undefined);
 
 	const load = useCallback(
-		async (before: number | undefined, signal?: AbortSignal) => {
+		async (before: number | undefined, signal: AbortSignal | undefined) => {
 			setPage((current) => ({ ...current, loading: true, error: "" }));
 			try {
 				const result = await api.audit({ before, backlogId }, signal);
+				if (signal?.aborted) return;
 				setPage((current) => ({
 					pages: [...current.pages, result.events],
 					before: result.before,
@@ -42,6 +45,7 @@ export function AuditView({ params }: ViewProps) {
 	);
 	useEffect(() => {
 		const controller = new AbortController();
+		filter.current = controller;
 		setPage({ pages: [], loading: true, error: "" });
 		void load(undefined, controller.signal);
 		return () => controller.abort();
@@ -68,7 +72,7 @@ export function AuditView({ params }: ViewProps) {
 				</p>
 			)}
 			{page.before !== undefined && (
-				<Button loading={page.loading} onClick={() => load(page.before)}>
+				<Button loading={page.loading} onClick={() => load(page.before, filter.current?.signal)}>
 					Load older events
 				</Button>
 			)}

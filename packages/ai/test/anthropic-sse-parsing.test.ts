@@ -81,6 +81,35 @@ function createFakeAnthropicClient(response: Response): Anthropic {
 	} as unknown as Anthropic;
 }
 
+describe("Anthropic SSE body lifetime", () => {
+	it("cancels the response body when the consumer stops early", async () => {
+		let cancelled = false;
+		const first = `event: message_start\ndata: ${minimalAnthropicEvents[0]!.data}\n\n`;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(first));
+				// The server keeps the stream open; only a cancel releases it.
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+		const response = new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+		const result = await streamAnthropic(
+			getModel("anthropic", "claude-sonnet-4-5"),
+			normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
+			{
+				client: createFakeAnthropicClient(response),
+				onProviderStreamEvent: () => {
+					throw new Error("consumer failed");
+				},
+			},
+		).result();
+		expect(result.stopReason).toBe("error");
+		expect(cancelled).toBe(true);
+	});
+});
+
 type ResponseContentBlock = { type: "thinking"; thinking: string; signature: string } | { type: "text"; text: string };
 
 function createResponseModelSseResponse(model: string, contentBlock: ResponseContentBlock): Response {
@@ -695,5 +724,27 @@ describe("Anthropic raw SSE parsing", () => {
 		expect(result.stopReason).toBe("stop");
 		expect(result.errorMessage).toBeUndefined();
 		expect(result.content).toEqual([{ type: "text", text: "Hello" }]);
+	});
+});
+
+describe("Anthropic SSE chunk boundaries", () => {
+	it("preserves CRLF events at every possible byte split", async () => {
+		const wire = minimalAnthropicEvents.map(({ event, data }) => `event: ${event}\r\ndata: ${data}\r\n\r\n`).join("");
+		for (let split = 1; split < wire.length; split++) {
+			const body = new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(wire.slice(0, split)));
+					controller.enqueue(new TextEncoder().encode(wire.slice(split)));
+					controller.close();
+				},
+			});
+			const result = await streamAnthropic(
+				getModel("anthropic", "claude-sonnet-4-5"),
+				normalizeContext({ messages: [{ role: "user", content: "Hello", timestamp: 1 }] }),
+				{ client: createFakeAnthropicClient(new Response(body)) },
+			).result();
+			expect(result.stopReason, `split ${split}: ${result.errorMessage}`).toBe("stop");
+			expect(result.content).toEqual([{ type: "text", text: "Hello" }]);
+		}
 	});
 });

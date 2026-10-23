@@ -128,6 +128,26 @@ describe("item sheet", () => {
 });
 
 describe("command palette", () => {
+	it("keeps the top dialog focused and unlocks scrolling if the sheet beneath it closes", async () => {
+		const user = userEvent.setup();
+		renderApp();
+		const card = screen.getByRole("link", { name: "Fix login redirect" });
+		card.focus();
+		await go("#B1");
+		expect(await screen.findByRole("dialog", { name: "Fix login redirect" })).toBeInTheDocument();
+		await user.keyboard("{Meta>}k{/Meta}");
+		const input = screen.getByRole("combobox", { name: "Search commands and items" });
+		expect(input).toHaveFocus();
+		await go("#board");
+		expect(screen.queryByRole("dialog", { name: "Fix login redirect" })).not.toBeInTheDocument();
+		expect(input).toHaveFocus();
+		expect(document.body.style.overflow).toBe("hidden");
+		await user.keyboard("{Escape}");
+		expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+		expect(document.body.style.overflow).toBe("");
+		expect(card).toHaveFocus();
+	});
+
 	it("opens with ⌘K, filters items and opens the active one with Enter", async () => {
 		const user = userEvent.setup();
 		renderApp();

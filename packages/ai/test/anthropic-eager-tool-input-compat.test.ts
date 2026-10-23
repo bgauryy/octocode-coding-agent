@@ -71,14 +71,10 @@ async function captureAnthropicRequest(
 	const address = server.address() as AddressInfo;
 
 	try {
-		const stream = streamAnthropic(
-			createModel(`http://127.0.0.1:${address.port}`, compat),
-			normalizeContext(context),
-			{
-				apiKey: "test-key",
-				cacheRetention: "none",
-			},
-		);
+		const stream = streamAnthropic(createModel(`http://127.0.0.1:${address.port}`, compat), normalizeContext(context), {
+			apiKey: "test-key",
+			cacheRetention: "none",
+		});
 
 		for await (const event of stream) {
 			if (event.type === "done" || event.type === "error") break;

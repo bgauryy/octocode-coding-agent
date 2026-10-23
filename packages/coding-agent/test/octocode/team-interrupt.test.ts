@@ -70,12 +70,7 @@ describe("interrupt", () => {
 		const db = path.join(tmp(), "team.sqlite");
 		const parent = agent(db, cwd);
 		const parentId = parent.team.join().id;
-		const child = agent(
-			db,
-			cwd,
-			{ OCTOCODE_AGENT_ID: "general-retry", OCTOCODE_PARENT_ID: parentId },
-			{ idle: false },
-		);
+		const child = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-retry", OCTOCODE_PARENT_ID: parentId }, { idle: false });
 		child.team.join();
 		const { id } = (await parent.team.send(child.team.id!, "redirect", {
 			replyRequired: false,
@@ -320,9 +315,7 @@ describe("interrupt", () => {
 			undefined,
 			parent.ctx,
 		);
-		expect(result.content[0].text).toMatch(
-			/^Interrupt queued for general-777777 as message #\d+:.*within a second\.$/,
-		);
+		expect(result.content[0].text).toMatch(/^Interrupt queued for general-777777 as message #\d+:.*within a second\.$/);
 		const command = agentsCommand(parent.team, new Map());
 		await command.handler(`interrupt ${child.team.id} switch to the docs task`, parent.ctx);
 		expect(parent.ctx.ui.notes.at(-1)).toEqual({ message: "Interrupt queued for general-777777", type: "info" });

@@ -147,10 +147,8 @@ export class AssistantMessageComponent extends Container {
 				const thinkingComponent = new Container();
 				thinkingComponent.addChild(
 					new Text(
-						theme.fg(
-							interrupted ? "warning" : active ? "accent" : "thinkingText",
-							`${hidden ? "▸" : "▾"} ${label}`,
-						) + (hidden ? theme.fg("dim", " · click to expand") : ""),
+						theme.fg(interrupted ? "warning" : active ? "accent" : "thinkingText", `${hidden ? "▸" : "▾"} ${label}`) +
+							(hidden ? theme.fg("dim", " · click to expand") : ""),
 						this.outputPad,
 						0,
 					),
@@ -170,11 +168,7 @@ export class AssistantMessageComponent extends Container {
 								italic: true,
 							},
 							{
-								transform: createMarkdownTransform(
-									"assistant-thinking",
-									this.isStreaming,
-									this.markdownTransformers,
-								),
+								transform: createMarkdownTransform("assistant-thinking", this.isStreaming, this.markdownTransformers),
 							},
 						),
 					);

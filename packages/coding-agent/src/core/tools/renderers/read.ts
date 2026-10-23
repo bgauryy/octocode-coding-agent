@@ -46,12 +46,7 @@ function toPosixPath(filePath: string): string {
 function getPiDocsClassification(absolutePath: string): CompactReadClassification | undefined {
 	const packageRoot = dirname(getReadmePath());
 	const relativePath = relative(resolvePath(packageRoot), resolvePath(absolutePath));
-	if (
-		relativePath === "" ||
-		relativePath === ".." ||
-		relativePath.startsWith(`..${sep}`) ||
-		isAbsolute(relativePath)
-	) {
+	if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
 		return undefined;
 	}
 

@@ -174,7 +174,6 @@ export function detectCacheMiss(
 	return detectMiss(scan(entries, models).prev, message, models);
 }
 
-
 interface CacheUsageMetrics {
 	/** Number of recorded usage entries; tool usage may aggregate child requests. */
 	requests: number;
@@ -194,11 +193,20 @@ export type CacheMetrics = Record<
 /** Separate real conversation usage from auxiliary requests so refreshes cannot inflate its hit rate. */
 export function computeCacheMetrics(entries: readonly SessionEntry[]): CacheMetrics {
 	const empty = (): CacheUsageMetrics => ({
-		requests: 0, promptTokens: 0, cacheRead: 0, cacheWrite: 0, hitRate: null, cost: 0,
+		requests: 0,
+		promptTokens: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		hitRate: null,
+		cost: 0,
 	});
 	const metrics: CacheMetrics = {
-		conversation: empty(), warming: empty(), compaction: empty(),
-		branchSummary: empty(), tools: empty(), other: empty(),
+		conversation: empty(),
+		warming: empty(),
+		compaction: empty(),
+		branchSummary: empty(),
+		tools: empty(),
+		other: empty(),
 	};
 	const add = (purpose: keyof CacheMetrics, usage: Usage): void => {
 		const target = metrics[purpose];
@@ -214,7 +222,10 @@ export function computeCacheMetrics(entries: readonly SessionEntry[]): CacheMetr
 			if (entry.message.role === "assistant") add("conversation", entry.message.usage);
 			else if (entry.message.role === "toolResult" && entry.message.usage) add("tools", entry.message.usage);
 		} else if (entry.type === "usage") {
-			add(entry.kind === "cache_warm" ? "warming" : entry.kind === "compaction_attempt" ? "compaction" : "other", entry.usage);
+			add(
+				entry.kind === "cache_warm" ? "warming" : entry.kind === "compaction_attempt" ? "compaction" : "other",
+				entry.usage,
+			);
 		} else if (entry.type === "compaction" && entry.usage) add("compaction", entry.usage);
 		else if (entry.type === "branch_summary" && entry.usage) add("branchSummary", entry.usage);
 		else if (entry.type === "custom_message") {

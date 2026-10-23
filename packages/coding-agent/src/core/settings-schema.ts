@@ -250,21 +250,40 @@ export const SettingsSchema = Type.Object(
 		trackingId: Type.Optional(
 			Type.String({ description: "Analytics tracking identifier, generated when analytics is enabled." }),
 		),
-		plugins: Type.Optional(Type.Array(Type.Object({
-			path: Type.String({ description: "Absolute local plugin directory." }),
-			protocol: Type.Union([Type.Literal("claude"), Type.Literal("codex")]),
-			enabled: Type.Optional(Type.Boolean({ default: true })),
-			hooksFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$", description: "SHA-256 of reviewed plugin hook declarations. Changed definitions require review again." })),
-			mcpFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$", description: "SHA-256 of reviewed plugin MCP declarations. Changed definitions require review again." })),
-		}, { additionalProperties: false }), { description: "Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters." })),
+		plugins: Type.Optional(
+			Type.Array(
+				Type.Object(
+					{
+						path: Type.String({ description: "Absolute local plugin directory." }),
+						protocol: Type.Union([Type.Literal("claude"), Type.Literal("codex")]),
+						enabled: Type.Optional(Type.Boolean({ default: true })),
+						hooksFingerprint: Type.Optional(
+							Type.String({
+								pattern: "^[a-f0-9]{64}$",
+								description: "SHA-256 of reviewed plugin hook declarations. Changed definitions require review again.",
+							}),
+						),
+						mcpFingerprint: Type.Optional(
+							Type.String({
+								pattern: "^[a-f0-9]{64}$",
+								description: "SHA-256 of reviewed plugin MCP declarations. Changed definitions require review again.",
+							}),
+						),
+					},
+					{ additionalProperties: false },
+				),
+				{
+					description:
+						"Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters.",
+				},
+			),
+		),
 		packages: Type.Optional(
 			Type.Array(PackageSourceSchema, {
 				description: "npm or git package sources, as strings or objects with resource filtering.",
 			}),
 		),
-		extensions: Type.Optional(
-			Type.Array(Type.String(), { description: "Local extension file paths or directories." }),
-		),
+		extensions: Type.Optional(Type.Array(Type.String(), { description: "Local extension file paths or directories." })),
 		deviceId: Type.Optional(
 			Type.String({
 				description: "Stable installation UUID, generated when authentication first needs it. Global only.",
@@ -405,9 +424,7 @@ export const SettingsSchema = Type.Object(
 				deprecated: true,
 			}),
 		),
-		websockets: Type.Optional(
-			Type.Boolean({ description: "Legacy setting migrated to transport.", deprecated: true }),
-		),
+		websockets: Type.Optional(Type.Boolean({ description: "Legacy setting migrated to transport.", deprecated: true })),
 	},
 	{ additionalProperties: true },
 );

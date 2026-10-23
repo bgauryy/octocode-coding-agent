@@ -187,10 +187,10 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	const readers = ["read", "bash"] as const;
-	const skillFileReadTool =
-		selectedTools.some((tool) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool)) ? "octocode" :
-		readers.find((tool) => declaredTools.includes(tool)) ??
-		(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined);
+	const skillFileReadTool = selectedTools.some((tool) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool))
+		? "octocode"
+		: (readers.find((tool) => declaredTools.includes(tool)) ??
+			(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined));
 	if (skillFileReadTool && skills.length > 0) {
 		const skillsPrompt = formatSkillsForPrompt(skills, skillFileReadTool).trim();
 		if (skillsPrompt) promptSections.skills = skillsPrompt;

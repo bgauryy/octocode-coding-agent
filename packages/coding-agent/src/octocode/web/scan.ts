@@ -84,7 +84,7 @@ export function tagScanner(
 		const read: number[] = [];
 		let end: number;
 		let token = -1;
-		for (let at = lt + 1; ; ) {
+		for (let at = lt + 1; ;) {
 			if (ends[at] !== 0) {
 				end = ends[at]!;
 				token = tokens[at]! - 1;

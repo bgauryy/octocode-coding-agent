@@ -14,6 +14,7 @@ import type {
 	TranscriptContext,
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
+import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { safeJsonStringify } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
@@ -301,7 +302,10 @@ async function requestMistralStream(
 	// must not be cut off by a fixed deadline; body stalls are left to the HTTP client idle timeout.
 	const timeoutMs = options?.timeoutMs ?? 60_000;
 	const headerTimeoutSignal = AbortSignal.timeout(timeoutMs);
-	const combinedSignal = combineAbortSignals([options?.signal, headerTimeoutSignal]);
+	// Always combine two signals: the helper returns a single signal unchanged, which
+	// would leave the response body attached to the header deadline after cleanup.
+	const requestSignal = options?.signal ?? new AbortController().signal;
+	const combinedSignal = combineAbortSignals([requestSignal, headerTimeoutSignal]);
 	let response: Response;
 	try {
 		response = await (options?.fetch ?? globalThis.fetch)(url, {
@@ -541,7 +545,7 @@ function buildChatPayload(
 }
 
 function shouldUsePromptCaching(options?: MistralOptions): options is MistralOptions & { sessionId: string } {
-	return options?.cacheRetention !== "none" && !!options?.sessionId;
+	return resolveCacheRetention(options?.cacheRetention, options?.env) !== "none" && !!options?.sessionId;
 }
 
 function getMistralCachedPromptTokens(usage: unknown, promptTokens: number): number {

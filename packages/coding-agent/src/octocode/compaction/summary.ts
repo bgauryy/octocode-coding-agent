@@ -2,11 +2,7 @@ import { UsagePersistenceError } from "../../core/usage-totals.ts";
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { CheckpointPersistenceError, compact, persistCheckpointText } from "../../core/compaction/index.ts";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	SessionBeforeCompactEvent,
-} from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
@@ -181,14 +177,16 @@ export function userMessagesSection(
 	const all = [...earlier, ...added.map(inertUserText)];
 	if (all.length === 0) return "";
 	const render = (messages: readonly string[], omitted: number) => {
-		const note = omitted > 0 ? `\nEarlier user messages not kept here: ${omitted} (${fullTextIn(segment, true)} has them).` : "";
+		const note =
+			omitted > 0 ? `\nEarlier user messages not kept here: ${omitted} (${fullTextIn(segment, true)} has them).` : "";
 		return `\n\n${USER_HEADING}${note}\n${messages.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`;
 	};
 	const whole = render(all, omittedBefore);
 	if (whole.length <= budget.total && all.every((message) => message.length <= budget.perMessage)) return whole;
 	const reference = savedReference(whole, save);
 	const section = render([reference], omittedBefore);
-	if (section.length > budget.total) throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
+	if (section.length > budget.total)
+		throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
 	return section;
 }
 
@@ -222,7 +220,8 @@ export function summarizerView<T>(
 		const text = contentText(content);
 		if (text.length <= SUMMARIZER_RESULT_CHARS) return message;
 		const reference = savedReference(text, save);
-		if (reference.length > SUMMARIZER_RESULT_CHARS) throw new CheckpointPersistenceError("The summarizer budget cannot hold a complete-text reference.");
+		if (reference.length > SUMMARIZER_RESULT_CHARS)
+			throw new CheckpointPersistenceError("The summarizer budget cannot hold a complete-text reference.");
 		const others = content.filter((part) => !(isRecord(part) && part.type === "text"));
 		return { ...message, content: [{ type: "text", text: reference }, ...others] } as T;
 	});
@@ -248,9 +247,7 @@ export const SUMMARY_METHOD_DETAILS = "summaryMethod";
 /** How Octocode wrote the summary of a compaction entry's `details` (`cache-shared`, `standalone`); undefined when it did not (Octocode's default summary, another extension's). */
 export function summaryMethodOf(details: unknown): string | undefined {
 	const method =
-		isRecord(details) && isRecord(details[SUMMARY_METHOD_DETAILS])
-			? details[SUMMARY_METHOD_DETAILS].method
-			: undefined;
+		isRecord(details) && isRecord(details[SUMMARY_METHOD_DETAILS]) ? details[SUMMARY_METHOD_DETAILS].method : undefined;
 	return typeof method === "string" ? method : undefined;
 }
 
@@ -301,10 +298,18 @@ export async function writeSummary(
 				: `the summary ran on ${model.id}, the model before a downshift, not the session's own`;
 		const shared =
 			summaryModel === undefined
-				? await sharedSummary(pi, event, ctx, model, instructions, (reason, userChoice) => {
-						fallback = reason;
-						if (!userChoice) notifyStandalone(ctx, reason);
-					}, recordUsage)
+				? await sharedSummary(
+						pi,
+						event,
+						ctx,
+						model,
+						instructions,
+						(reason, userChoice) => {
+							fallback = reason;
+							if (!userChoice) notifyStandalone(ctx, reason);
+						},
+						recordUsage,
+					)
 				: undefined;
 		const result =
 			shared ??

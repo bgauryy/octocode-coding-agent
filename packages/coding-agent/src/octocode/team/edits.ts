@@ -51,8 +51,7 @@ export class EditLog {
 			.all(this.workspace, now - options.withinMs) as Row[];
 		const prefixes = options.prefixes?.map((prefix) => prefix.replace(/\/+$/, ""));
 		const under = (file: string) =>
-			!prefixes?.length ||
-			prefixes.some((prefix) => prefix === "" || file === prefix || file.startsWith(`${prefix}/`));
+			!prefixes?.length || prefixes.some((prefix) => prefix === "" || file === prefix || file.startsWith(`${prefix}/`));
 		return rows
 			.map((row) => ({
 				path: String(row.path),

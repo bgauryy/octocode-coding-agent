@@ -2,15 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { writeRolePrompt } from "../../src/octocode/instructions/role.ts";
-import {
-	runSubagent,
-	subagentProcessEnv,
-} from "../../src/octocode/subagents/process.ts";
+import { runSubagent, subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
 vi.mock("../../src/octocode/instructions/role.ts", async (original) => ({
-	...(await original<
-		typeof import("../../src/octocode/instructions/role.ts")
-	>()),
+	...(await original<typeof import("../../src/octocode/instructions/role.ts")>()),
 	writeRolePrompt: vi.fn(),
 }));
 afterEach(() => {
@@ -22,9 +17,7 @@ it("cleans snapshot when later role preparation throws", async () => {
 	const scratch = tmp();
 	const error = new Error("role failed");
 	vi.mocked(writeRolePrompt).mockImplementation(() => {
-		expect(
-			fs.readdirSync(scratch).some((name) => name.startsWith("skills-")),
-		).toBe(true);
+		expect(fs.readdirSync(scratch).some((name) => name.startsWith("skills-"))).toBe(true);
 		throw error;
 	});
 	await expect(
@@ -52,15 +45,7 @@ it("cleans partially written snapshot and preserves its write error", async () =
 		return write(file, ...args);
 	});
 	await expect(
-		runSubagent(
-			"task",
-			[],
-			scratch,
-			undefined,
-			{ id: "cleanup", scratch, skillResources: empty },
-			undefined,
-			() => {},
-		),
+		runSubagent("task", [], scratch, undefined, { id: "cleanup", scratch, skillResources: empty }, undefined, () => {}),
 	).rejects.toBe(error);
 	expect(fs.readdirSync(scratch)).toEqual([]);
 });
@@ -79,10 +64,6 @@ it("does not allocate a snapshot for a pre-cancelled child and clears inherited 
 	).rejects.toThrow("cancelled");
 	expect(fs.readdirSync(scratch)).toEqual([]);
 	expect(
-		subagentProcessEnv(
-			undefined,
-			{ OCTOCODE_SKILL_SNAPSHOT_FILE: path.join(scratch, "stale") },
-			{ id: "cleanup" },
-		),
+		subagentProcessEnv(undefined, { OCTOCODE_SKILL_SNAPSHOT_FILE: path.join(scratch, "stale") }, { id: "cleanup" }),
 	).not.toHaveProperty("OCTOCODE_SKILL_SNAPSHOT_FILE");
 });

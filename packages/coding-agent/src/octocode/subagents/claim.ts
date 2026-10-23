@@ -83,6 +83,8 @@ export class Slots {
 			};
 			this.waiting.push(grant);
 			signal?.addEventListener("abort", cancel, { once: true });
+			// onWait may abort synchronously before the listener is installed.
+			if (signal?.aborted) cancel();
 		});
 	}
 

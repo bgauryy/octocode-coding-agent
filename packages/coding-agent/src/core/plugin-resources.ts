@@ -9,30 +9,18 @@ import {
 } from "./plugin-manifest.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 import { claudeArgumentNames } from "./claude-arguments.ts";
-import {
-	parsePromptTemplate,
-	type PromptTemplate,
-} from "./prompt-templates.ts";
+import { parsePromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
 import { pluginContext } from "./plugin-context.ts";
 import { configuredPlugins } from "./plugin-settings.ts";
 import type { Settings } from "./settings-manager.ts";
 import { loadSkillsFromDir, type LoadSkillsResult } from "./skills.ts";
 
-function checkTree(
-	root: string,
-	directory: string,
-	seen = new Set<string>(),
-): void {
-	const real = resolvePluginPath(
-		root,
-		`./${path.relative(root, directory).split(path.sep).join("/")}`,
-	);
+function checkTree(root: string, directory: string, seen = new Set<string>()): void {
+	const real = resolvePluginPath(root, `./${path.relative(root, directory).split(path.sep).join("/")}`);
 	if (!statSync(real).isDirectory()) return;
-	if (seen.has(real))
-		throw new Error(`Plugin skill directory cycle: ${directory}`);
+	if (seen.has(real)) throw new Error(`Plugin skill directory cycle: ${directory}`);
 	seen.add(real);
-	for (const entry of readdirSync(real))
-		checkTree(root, path.join(real, entry), seen);
+	for (const entry of readdirSync(real)) checkTree(root, path.join(real, entry), seen);
 	seen.delete(real);
 }
 
@@ -52,8 +40,7 @@ function configuredComponents(
 		diagnostics.push({ type: "error", path: "settings.plugins", message }),
 	)) {
 		if (entry.enabled === false) continue;
-		const error = (message: string) =>
-			diagnostics.push({ type: "error", path: entry.path, message });
+		const error = (message: string) => diagnostics.push({ type: "error", path: entry.path, message });
 		if (!path.isAbsolute(entry.path)) {
 			error("Plugin path must be absolute");
 			continue;
@@ -63,9 +50,7 @@ function configuredComponents(
 				protocol: entry.protocol,
 			});
 			for (const message of discovery.errors) error(message);
-			const manifest = discovery.manifests.find(
-				(m) => m.protocol === entry.protocol,
-			);
+			const manifest = discovery.manifests.find((m) => m.protocol === entry.protocol);
 			if (!manifest) {
 				error(`No valid ${entry.protocol} plugin manifest found`);
 				continue;
@@ -84,24 +69,17 @@ function configuredComponents(
 }
 
 /** Activate instruction resources only; plugin code never enters the extension loader here. */
-export function loadConfiguredPluginSkills(
-	entries: Settings["plugins"],
-): LoadSkillsResult {
+export function loadConfiguredPluginSkills(entries: Settings["plugins"]): LoadSkillsResult {
 	const result: LoadSkillsResult = {
 		skills: [],
 		diagnostics: [],
 		explicitSkills: [],
 	};
 	const names = new Set<string>();
-	for (const { manifest, components } of configuredComponents(
-		entries,
-		result.diagnostics,
-	)) {
-		const error = (message: string) =>
-			result.diagnostics.push({ type: "error", path: manifest.root, message });
+	for (const { manifest, components } of configuredComponents(entries, result.diagnostics)) {
+		const error = (message: string) => result.diagnostics.push({ type: "error", path: manifest.root, message });
 		try {
-			for (const directory of components.skills)
-				checkTree(manifest.root, directory);
+			for (const directory of components.skills) checkTree(manifest.root, directory);
 			const files = new Set<string>();
 			for (const directory of components.skills) {
 				const loaded = loadSkillsFromDir({
@@ -134,22 +112,16 @@ export function loadConfiguredPluginSkills(
 							baseDir: manifest.root,
 						},
 					};
-					const discovered = loaded.explicitSkills?.find(
-						(candidate) => candidate.skill === skill,
-					);
+					const discovered = loaded.explicitSkills?.find((candidate) => candidate.skill === skill);
 					if (manifest.protocol === "codex" && discovered)
 						result.explicitSkills!.push({
 							...discovered,
 							skill: registered,
 							name,
-							...(manifest.format === "portable"
-								? { promptByteLimit: 8000 }
-								: {}),
+							...(manifest.format === "portable" ? { promptByteLimit: 8000 } : {}),
 						});
 					if (names.has(name)) {
-						error(
-							`Duplicate plugin skill name: ${name}; later definition skipped`,
-						);
+						error(`Duplicate plugin skill name: ${name}; later definition skipped`);
 						continue;
 					}
 					names.add(name);
@@ -173,38 +145,22 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 		diagnostics: ResourceDiagnostic[];
 	} = { prompts: [], diagnostics: [] };
 	const names = new Set<string>();
-	for (const { manifest, components } of configuredComponents(
-		entries,
-		result.diagnostics,
-	)) {
+	for (const { manifest, components } of configuredComponents(entries, result.diagnostics)) {
 		const error = (message: string, file = manifest.root) =>
 			result.diagnostics.push({ type: "error", path: file, message });
-		const add = (
-			name: string,
-			file: string,
-			inline?: string,
-			metadata: Record<string, unknown> = {},
-		) => {
+		const add = (name: string, file: string, inline?: string, metadata: Record<string, unknown> = {}) => {
 			try {
-				if (!isPluginIdentifier(name))
-					throw new Error(`Invalid plugin command name: ${name}`);
+				if (!isPluginIdentifier(name)) throw new Error(`Invalid plugin command name: ${name}`);
 				const unsupported = Object.keys(metadata).filter(
-					(key) =>
-						!["source", "content", "description", "argumentHint"].includes(key),
+					(key) => !["source", "content", "description", "argumentHint"].includes(key),
 				);
-				if (unsupported.length)
-					throw new Error(
-						`Unsupported command metadata: ${unsupported.join(", ")}`,
-					);
+				if (unsupported.length) throw new Error(`Unsupported command metadata: ${unsupported.join(", ")}`);
 				for (const key of ["description", "argumentHint"])
 					if (metadata[key] !== undefined && typeof metadata[key] !== "string")
 						throw new Error(`${key} must be a string`);
 				const source =
 					inline === undefined
-						? resolvePluginPath(
-								manifest.root,
-								`./${path.relative(manifest.root, file).split(path.sep).join("/")}`,
-							)
+						? resolvePluginPath(manifest.root, `./${path.relative(manifest.root, file).split(path.sep).join("/")}`)
 						: file;
 				const sourceInfo = {
 					path: source,
@@ -213,30 +169,18 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 					origin: "package" as const,
 					baseDir: manifest.root,
 				};
-				const parsed = parsePromptTemplate(
-					inline ?? readFileSync(source, "utf8"),
-					source,
-					sourceInfo,
-				);
+				const parsed = parsePromptTemplate(inline ?? readFileSync(source, "utf8"), source, sourceInfo);
 				result.diagnostics.push(...parsed.diagnostics);
 				if (!parsed.template) return;
 				const extra = Object.keys(parsed.frontmatter ?? {}).filter(
 					(key) => !["description", "argument-hint", "arguments"].includes(key),
 				);
-				if (extra.length)
-					throw new Error(
-						`Unsupported command frontmatter: ${extra.join(", ")}`,
-					);
-				const argumentNames = claudeArgumentNames(
-					parsed.frontmatter?.arguments,
-				);
+				if (extra.length) throw new Error(`Unsupported command frontmatter: ${extra.join(", ")}`);
+				const argumentNames = claudeArgumentNames(parsed.frontmatter?.arguments);
 				if (parsed.template.content.includes("!`"))
-					throw new Error(
-						"Dynamic shell expansion in plugin commands is unsupported",
-					);
+					throw new Error("Dynamic shell expansion in plugin commands is unsupported");
 				const qualified = `${manifest.name}:${name}`;
-				if (names.has(qualified))
-					throw new Error(`Duplicate plugin command: ${qualified}`);
+				if (names.has(qualified)) throw new Error(`Duplicate plugin command: ${qualified}`);
 				names.add(qualified);
 				result.prompts.push({
 					...parsed.template,
@@ -245,12 +189,8 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 					argumentNames,
 					claudePluginRoot: manifest.root,
 					claudePluginData: pluginContext(manifest).data,
-					...(typeof metadata.description === "string"
-						? { description: metadata.description }
-						: {}),
-					...(typeof metadata.argumentHint === "string"
-						? { argumentHint: metadata.argumentHint }
-						: {}),
+					...(typeof metadata.description === "string" ? { description: metadata.description } : {}),
+					...(typeof metadata.argumentHint === "string" ? { argumentHint: metadata.argumentHint } : {}),
 				});
 			} catch (cause) {
 				error(String(cause), file);
@@ -260,12 +200,8 @@ export function loadConfiguredPluginPrompts(entries: Settings["plugins"]): {
 			if (component.kind === "command")
 				add(
 					component.name,
-					typeof component.definition.source === "string"
-						? component.definition.source
-						: manifest.sources[0]!,
-					typeof component.definition.content === "string"
-						? component.definition.content
-						: undefined,
+					typeof component.definition.source === "string" ? component.definition.source : manifest.sources[0]!,
+					typeof component.definition.content === "string" ? component.definition.content : undefined,
 					component.definition,
 				);
 			else {

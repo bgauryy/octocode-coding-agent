@@ -84,6 +84,8 @@ export interface UsageEntry extends SessionEntryBase {
 	type: "usage";
 	/** Arbitrary usage category, such as "cache_warm". */
 	kind: string;
+	/** For cache_warm, when the provider request was sent; timestamp remains the receipt time. */
+	cacheRequestedAt?: string;
 	provider: string;
 	model: string;
 	usage: Usage;
@@ -169,10 +171,7 @@ export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 
 /** Content that an append-only context edit may replace without changing message metadata. */
 export type ContextEditableContent =
-	| UserMessage["content"]
-	| AssistantMessage["content"]
-	| ToolResultMessage["content"]
-	| CustomMessage["content"];
+	UserMessage["content"] | AssistantMessage["content"] | ToolResultMessage["content"] | CustomMessage["content"];
 
 /** Append-only change to one earlier entry's contribution to model context. */
 export interface ContextEditEntry extends SessionEntryBase {
@@ -466,9 +465,7 @@ export function sessionEntryToContextMessages(entry: SessionEntry): AgentMessage
 		return [message];
 	}
 	if (entry.type === "custom_message") {
-		return [
-			createCustomMessage(entry.customType, entry.content ?? [], entry.display, entry.details, entry.timestamp),
-		];
+		return [createCustomMessage(entry.customType, entry.content ?? [], entry.display, entry.details, entry.timestamp)];
 	}
 	if (entry.type === "branch_summary" && entry.summary) {
 		return [createBranchSummaryMessage(entry.summary, entry.fromId, entry.timestamp)];
@@ -567,18 +564,14 @@ export function buildSessionProjection(
 	for (const entry of contextEntries) {
 		if (entry.type === "context_edit") edits.set(entry.targetId, entry);
 	}
-	const projectedEntries = contextEntries.map(
-		(sourceEntry, index): ProjectedSessionEntry => ({
-			sourceEntry,
-			// buildContextEntries() may retain an older compaction entry because its
-			// raw ID lies inside the newest retained range. Only the newest compaction
-			// at index zero contributes a checkpoint and summary.
-			messages:
-				sourceEntry.type === "compaction" && index > 0
-					? []
-					: projectContextEntry(sourceEntry, edits.get(sourceEntry.id)),
-		}),
-	);
+	const projectedEntries = contextEntries.map((sourceEntry, index): ProjectedSessionEntry => ({
+		sourceEntry,
+		// buildContextEntries() may retain an older compaction entry because its
+		// raw ID lies inside the newest retained range. Only the newest compaction
+		// at index zero contributes a checkpoint and summary.
+		messages:
+			sourceEntry.type === "compaction" && index > 0 ? [] : projectContextEntry(sourceEntry, edits.get(sourceEntry.id)),
+	}));
 	return {
 		entries: projectedEntries,
 		messages: projectedEntries.flatMap((entry) => entry.messages),
@@ -1005,6 +998,8 @@ export class SessionManager {
 	private sessionDir: string;
 	private cwd: string;
 	private persist: boolean;
+	/** Set by `retire()` once the runtime replaced this manager. */
+	private retired = false;
 	private flushed: boolean = false;
 	private persistenceFailure: Error | undefined;
 	private fileEntries: FileEntry[] = [];
@@ -1217,7 +1212,10 @@ export class SessionManager {
 			this.fileEntries.pop();
 			this.byId.delete(entry.id);
 			this.leafId = previousLeaf;
-			this.persistenceFailure = new Error(`Session persistence failed: ${String(error)}. Further writes are blocked; reload or recover the transcript before continuing.`, { cause: error });
+			this.persistenceFailure = new Error(
+				`Session persistence failed: ${String(error)}. Further writes are blocked; reload or recover the transcript before continuing.`,
+				{ cause: error },
+			);
 			throw this.persistenceFailure;
 		}
 	}
@@ -1267,6 +1265,14 @@ export class SessionManager {
 		return entry.id;
 	}
 
+	/**
+	 * Mark this manager as replaced: the session it held may be opened again by another manager, so late writes captured
+	 * from this one reload the file instead of appending from this manager's leaf.
+	 */
+	retire(): void {
+		this.retired = true;
+	}
+
 	/** Capture the originating session for usage returned after a request has been cancelled or replaced. */
 	captureUsageWriter(): SessionManager["appendUsage"] {
 		const sessionId = this.sessionId;
@@ -1277,7 +1283,8 @@ export class SessionManager {
 		const persist = this.persist;
 		let detached: SessionManager | undefined;
 		return (...args) => {
-			if (this.sessionId === sessionId && this.sessionFile === sessionFile) return this.appendUsage(...args);
+			if (!this.retired && this.sessionId === sessionId && this.sessionFile === sessionFile)
+				return this.appendUsage(...args);
 			// Reload the original file so a late receipt never rewrites a stale snapshot or branches from an old leaf.
 			if (persist && sessionFile && existsSync(sessionFile)) {
 				const origin = SessionManager.open(sessionFile, sessionDir, cwd);
@@ -1291,13 +1298,23 @@ export class SessionManager {
 	}
 
 	/** Append model-attributed usage that does not participate in LLM context. Returns the appended entry. */
-	appendUsage(kind: string, provider: string, model: string, usage: Usage, note?: string): UsageEntry {
+	appendUsage(
+		kind: string,
+		provider: string,
+		model: string,
+		usage: Usage,
+		note?: string,
+		cacheRequestedAt?: number,
+	): UsageEntry {
 		const entry: UsageEntry = {
 			type: "usage",
 			id: generateId(this.byId),
 			parentId: this.leafId,
 			timestamp: new Date().toISOString(),
 			kind,
+			...(kind === "cache_warm" && cacheRequestedAt !== undefined && Number.isFinite(cacheRequestedAt)
+				? { cacheRequestedAt: new Date(cacheRequestedAt).toISOString() }
+				: {}),
 			provider,
 			model,
 			usage,

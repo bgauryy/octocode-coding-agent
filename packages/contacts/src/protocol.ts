@@ -5,9 +5,25 @@ import { STATES } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 import type { WorkspaceSnapshot } from "./workspace.ts";
 
-export const WORKSPACE_ROUTES = { application: "/api/application", backlogs: "/api/backlogs", workspace: "/api/workspace", audit: "/api/audit", live: "/api/backlogs/live" } as const;
+export const WORKSPACE_ROUTES = {
+	application: "/api/application",
+	backlogs: "/api/backlogs",
+	workspace: "/api/workspace",
+	audit: "/api/audit",
+	live: "/api/backlogs/live",
+} as const;
 
-export const WorkspaceCommandSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 128 }), action: StringEnum(["message", "work", "delegate", "stop"] as const), backlogId: Type.Optional(Type.String()), version: Type.Optional(Type.Integer()), to: Type.Optional(Type.String()), text: Type.Optional(Type.String({ maxLength: 64000 })) }, { additionalProperties: false });
+export const WorkspaceCommandSchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1, maxLength: 128 }),
+		action: StringEnum(["message", "work", "delegate", "stop"] as const),
+		backlogId: Type.Optional(Type.String()),
+		version: Type.Optional(Type.Integer()),
+		to: Type.Optional(Type.String()),
+		text: Type.Optional(Type.String({ maxLength: 64000 })),
+	},
+	{ additionalProperties: false },
+);
 
 export const BacklogMutationSchema = Type.Object(
 	{
@@ -30,4 +46,5 @@ export const BacklogMutationSchema = Type.Object(
 );
 
 export type BacklogMutation = Static<typeof BacklogMutationSchema>;
-export type WorkspaceServerEvent = { type: "snapshot"; data: Snapshot } | { type: "workspace"; data: WorkspaceSnapshot };
+export type WorkspaceServerEvent =
+	{ type: "snapshot"; data: Snapshot } | { type: "workspace"; data: WorkspaceSnapshot };

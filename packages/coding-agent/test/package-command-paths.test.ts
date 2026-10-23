@@ -599,9 +599,7 @@ if (process.platform !== "win32") fs.chmodSync(piPath, 0o755);
 
 			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stderr).toContain('Unknown option --unknown for "install".');
-			expect(stderr).toContain(
-				'Use "octocode --help" or "octocode install <source> [-l] [--approve|--no-approve]".',
-			);
+			expect(stderr).toContain('Use "octocode --help" or "octocode install <source> [-l] [--approve|--no-approve]".');
 			expect(process.exitCode).toBe(1);
 		} finally {
 			errorSpy.mockRestore();
@@ -930,8 +928,7 @@ else {
 			value: join(selfPackageDir, "dist", "cli.js"),
 			configurable: true,
 		});
-		const activePackageName =
-			PACKAGE_NAME === "@new-scope/octocode" ? "@newer-scope/octocode" : "@new-scope/octocode";
+		const activePackageName = PACKAGE_NAME === "@new-scope/octocode" ? "@newer-scope/octocode" : "@new-scope/octocode";
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => Response.json({ packageName: activePackageName, version: getNewerPatchVersion() })),
@@ -1027,8 +1024,7 @@ if(args.includes("install")) process.exit(23);
 			value: join(selfPackageDir, "dist", "cli.js"),
 			configurable: true,
 		});
-		const activePackageName =
-			PACKAGE_NAME === "@new-scope/octocode" ? "@newer-scope/octocode" : "@new-scope/octocode";
+		const activePackageName = PACKAGE_NAME === "@new-scope/octocode" ? "@newer-scope/octocode" : "@new-scope/octocode";
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => Response.json({ packageName: activePackageName, version: getNewerPatchVersion() })),

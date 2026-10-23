@@ -222,8 +222,6 @@ describe("validateToolArguments", () => {
 			argumentsError: "Unexpected token",
 		};
 
-		expect(() => validateToolArguments(tool, toolCall)).toThrow(
-			'Invalid arguments for tool "echo": Unexpected token',
-		);
+		expect(() => validateToolArguments(tool, toolCall)).toThrow('Invalid arguments for tool "echo": Unexpected token');
 	});
 });

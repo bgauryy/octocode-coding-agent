@@ -1,8 +1,24 @@
-import { type Component, Loader, type TUI, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	Loader,
+	mixColors,
+	shimmerText,
+	type TUI,
+	truncateToWidth,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
+
+/** Longer details are thoughts or targets, not a verb: they stay plain. */
+const SHIMMER_MAX_CHARS = 120;
+
+/** The interrupt key as the hints show it: `esc`, not `escape`. */
+function interruptKey(): string {
+	return keyText("app.interrupt").replace(/^escape$/, "esc");
+}
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
@@ -62,14 +78,30 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		const clip = (text: string) => truncateToWidth(text, Math.max(0, width), "…");
 		const [label, ...metrics] = summary!.split(" · ");
 		let heading = ` ${this.getRenderedIndicator()} ${theme.fg("accent", theme.bold(label!))}${theme.fg("muted", ` · ${metrics.join(" · ")}`)}`;
-		const hint = theme.fg("dim", `${keyText("app.interrupt")} interrupt`);
+		const key = interruptKey();
+		const hint = key ? `${theme.fg("muted", key)}${theme.fg("dim", " to interrupt")}` : "";
 		const gap = width - visibleWidth(heading) - visibleWidth(hint) - 1;
-		if (gap >= 4) heading += `${" ".repeat(gap)}${hint}`;
-		return [
-			"",
-			clip(heading),
-			clip(`   ${theme.fg("dim", "└ ")}${theme.fg("text", detail ?? "")}`),
-		];
+		if (hint && gap >= 4) heading += `${" ".repeat(gap)}${hint}`;
+		return ["", clip(heading), clip(`   ${theme.fg("dim", "└ ")}${this.paintDetail(detail ?? "")}`)];
+	}
+
+	/**
+	 * The detail (what the agent is doing now) with a light band sweeping across it while the indicator animates. The
+	 * loader's frame timer drives the redraws; a static indicator, or a theme without concrete colors, draws it plain.
+	 */
+	private paintDetail(detail: string): string {
+		const plain = detail.replace(/\x1b\[[0-9;]*m/g, "");
+		if (!this.isAnimated() || plain !== detail || plain.length > SHIMMER_MAX_CHARS) return theme.fg("text", detail);
+		try {
+			const colors = theme.colors;
+			const base = colors.text;
+			const accent = colors.accent;
+			if (!base || !accent) return theme.fg("text", detail);
+			const peak = mixColors(base, accent, theme.appearance === "light" ? 0.7 : 0.55);
+			return shimmerText(plain, { base, peak, mode: theme.getColorMode() });
+		} catch {
+			return theme.fg("text", detail);
+		}
 	}
 }
 
@@ -78,7 +110,7 @@ export class RetryStatusIndicator extends StatusIndicator {
 
 	constructor(ui: TUI, attempt: number, maxAttempts: number, delayMs: number) {
 		const retryMessage = (seconds: number) =>
-			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
+			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s… (${interruptKey()} to cancel)`;
 		super(
 			"retry",
 			ui,
@@ -109,7 +141,7 @@ type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
 	constructor(ui: TUI, reason: CompactionStatusReason, colorFn?: (text: string) => string) {
-		const cancelHint = `(${keyText("app.interrupt")} to cancel)`;
+		const cancelHint = `(${interruptKey()} to cancel)`;
 		const label =
 			reason === "manual"
 				? `Compacting context... ${cancelHint}`
@@ -131,7 +163,7 @@ export class BranchSummaryStatusIndicator extends StatusIndicator {
 			ui,
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
-			`Summarizing branch... (${keyText("app.interrupt")} to cancel)`,
+			`Summarizing branch… (${interruptKey()} to cancel)`,
 		);
 	}
 }

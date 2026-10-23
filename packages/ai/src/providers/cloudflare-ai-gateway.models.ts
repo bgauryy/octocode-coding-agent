@@ -2,7 +2,14 @@
 // Do not edit manually - run 'npm run generate-models' to update
 
 import values from "./data/cloudflare-ai-gateway.json" with { type: "json" };
-import { flattenChatModelCatalog, flattenClassifierModelCatalog, flattenImageModelCatalog, type ChatModelCatalog, type ClassifierModelCatalog, type ImageModelCatalog } from "../model-catalog.ts";
+import {
+	flattenChatModelCatalog,
+	flattenClassifierModelCatalog,
+	flattenImageModelCatalog,
+	type ChatModelCatalog,
+	type ClassifierModelCatalog,
+	type ImageModelCatalog,
+} from "../model-catalog.ts";
 
 export const CLOUDFLARE_AI_GATEWAY_MODELS: ChatModelCatalog<typeof values, "cloudflare-ai-gateway"> =
 	flattenChatModelCatalog("cloudflare-ai-gateway", values);

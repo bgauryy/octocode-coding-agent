@@ -89,6 +89,22 @@ describe("terminal transcript", () => {
 		expect(within(entries[2]).getByText("running · 1s")).toBeInTheDocument();
 	});
 
+	it("lets the reader scroll up even when the transcript started empty", () => {
+		const view = render(<TerminalTranscript entries={[]} />);
+		view.rerender(
+			<TerminalTranscript entries={[{ id: 1, at: 1_000, command: "bash", output: "line", status: "done" }]} />,
+		);
+		const log = screen.getByRole("log", { name: "Terminal transcript" });
+		// jsdom has no layout: give the log a scrolled-up geometry, then scroll.
+		Object.defineProperty(log, "scrollHeight", { configurable: true, value: 1_000 });
+		Object.defineProperty(log, "clientHeight", { configurable: true, value: 100 });
+		log.scrollTop = 0;
+		act(() => {
+			log.dispatchEvent(new Event("scroll"));
+		});
+		expect(screen.getByRole("button", { name: /latest/i })).toBeInTheDocument();
+	});
+
 	it("explains an empty transcript", () => {
 		render(<TerminalTranscript entries={[]} />);
 		expect(screen.getByText("No commands yet")).toBeInTheDocument();

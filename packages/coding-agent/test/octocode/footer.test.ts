@@ -474,7 +474,6 @@ describe("footer wiring", () => {
 	});
 });
 
-
 describe("run metrics", () => {
 	it("records wall time through tool waits and compaction without duplicating the live activity clock", async () => {
 		vi.useFakeTimers();
@@ -522,7 +521,13 @@ describe("run metrics", () => {
 
 	it("keeps compact totals readable without overflowing narrow terminals", () => {
 		for (const width of [0, 1, 20, 40, 80, 120, 200]) {
-			const lines = footerLines({ ...state, runMs: 125_000, running: true, compactions: 3 }, null, statuses, theme, width);
+			const lines = footerLines(
+				{ ...state, runMs: 125_000, running: true, compactions: 3 },
+				null,
+				statuses,
+				theme,
+				width,
+			);
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 			if (width >= 80) {
 				expect(lines.join("\n")).toContain("15.5k tokens");

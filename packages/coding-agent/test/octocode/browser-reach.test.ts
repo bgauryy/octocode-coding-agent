@@ -180,11 +180,7 @@ describe("browser reach", () => {
 			fs.writeFileSync(path.join(root, "top.txt"), "t");
 			// From a subfolder, a file elsewhere in the repository is inside the workspace: no outside reason.
 			const inside = ui(true);
-			await checkUploadPaths(
-				["../top.txt"],
-				{ ...inside, cwd: path.join(root, "pkg") },
-				fakePermission("workspace"),
-			);
+			await checkUploadPaths(["../top.txt"], { ...inside, cwd: path.join(root, "pkg") }, fakePermission("workspace"));
 			expect(inside.select.mock.calls[0]![0]).toMatch(/^Upload files to the page\?/);
 			// A session whose cwd is the home folder has no workspace: even a file under it is outside.
 			const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "octocode-upload-home-")));

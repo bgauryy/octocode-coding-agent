@@ -33,7 +33,7 @@ export type ExternalParams = Static<typeof ExternalParamsSchema>;
 
 export function parseExternalParams(value: unknown): ExternalParams {
 	if (!Check(ExternalParamsSchema, value))
-		throw new Error("Invalid externalAgent input; use the published externalAgent schema.");
+		throw new Error('Invalid agent external input; use the schema of `agent` type "external".');
 	const input = value as ExternalParams;
 	for (const [name, field] of Object.entries(input)) {
 		if (typeof field === "string" && !field.trim()) throw new Error(`${name} must be non-empty.`);

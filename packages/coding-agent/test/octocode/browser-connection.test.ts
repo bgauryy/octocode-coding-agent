@@ -167,9 +167,7 @@ describe("the browser connection", () => {
 			handle: (method) => (method === "Slow.never" ? NO_REPLY : {}),
 		});
 		const pending = [a.send("Slow.never"), b.send("Slow.never"), connection.send("Slow.never")];
-		await vi.waitFor(() =>
-			expect(stub.commands.filter((command) => command.method === "Slow.never")).toHaveLength(3),
-		);
+		await vi.waitFor(() => expect(stub.commands.filter((command) => command.method === "Slow.never")).toHaveLength(3));
 		stub.browser!.drop();
 		for (const call of pending) await expect(call).rejects.toThrow("Browser connection closed");
 		await vi.waitFor(() => expect(connection.open).toBe(false));
@@ -288,9 +286,7 @@ describe("the browser connection refuses a DevTools URL that is not the browser'
 
 	it("a browser that reports no DevTools URL", async () => {
 		const port = await versionServer(() => undefined);
-		await expect(CdpConnection.connect(port)).rejects.toThrow(
-			`Chrome on port ${port} reports no browser DevTools URL`,
-		);
+		await expect(CdpConnection.connect(port)).rejects.toThrow(`Chrome on port ${port} reports no browser DevTools URL`);
 	});
 
 	it("a target whose URL points elsewhere, before any command is sent for it", async () => {

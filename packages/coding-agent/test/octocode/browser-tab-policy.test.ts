@@ -162,9 +162,7 @@ describe("a tab the session moved away from", () => {
 		session.downloadDir = "/tmp/downloads";
 		await switchTo(session, socketOf(cdp, "page-1"));
 		expect(
-			cdp.commands.filter(
-				(command) => command.target === "page-1" && command.method === "Browser.setDownloadBehavior",
-			),
+			cdp.commands.filter((command) => command.target === "page-1" && command.method === "Browser.setDownloadBehavior"),
 		).toHaveLength(1);
 	});
 
@@ -232,11 +230,7 @@ describe("the user's Chrome (attached or shared)", () => {
 		const shared = cdp.autoAttach({ id: "shared-1", type: "shared_worker", url: "https://example.test/s.js" });
 		await vi.waitFor(() => expect([popup, worker, sw, shared].every((target) => target.running)).toBe(true));
 		expect(on(cdp, "popup-1")).toContain("Fetch.enable");
-		expect(on(cdp, "worker-1")).toEqual([
-			"Network.enable",
-			"Target.setAutoAttach",
-			"Runtime.runIfWaitingForDebugger",
-		]);
+		expect(on(cdp, "worker-1")).toEqual(["Network.enable", "Target.setAutoAttach", "Runtime.runIfWaitingForDebugger"]);
 		expect(on(cdp, "sw-1")).toEqual([
 			"Network.enable",
 			"Fetch.enable",

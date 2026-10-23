@@ -10,14 +10,11 @@ import { registerSourcePolicy } from "../../src/octocode/permission/source-polic
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 const roots: string[] = [];
 afterEach(() => {
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	vi.unstubAllEnvs();
 });
 async function run(kind: "plain" | "tracked" | "symlink" | "project") {
-	const root = fs.mkdtempSync(
-		path.join(os.tmpdir(), "local-permission-trust-"),
-	);
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "local-permission-trust-"));
 	roots.push(root);
 	const cwd = path.join(root, "work"),
 		home = path.join(root, "home");
@@ -28,11 +25,7 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 		fs.mkdirSync(path.join(root, "other"));
 		fs.symlinkSync(path.join(root, "other"), path.join(cwd, ".claude"));
 	} else fs.mkdirSync(path.join(cwd, ".claude"));
-	const settings = path.join(
-		cwd,
-		".claude",
-		kind === "project" ? "settings.json" : "settings.local.json",
-	);
+	const settings = path.join(cwd, ".claude", kind === "project" ? "settings.json" : "settings.local.json");
 	fs.writeFileSync(
 		settings,
 		JSON.stringify({
@@ -47,11 +40,7 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 		execFileSync("git", ["add", "-f", ".claude/settings.local.json"], { cwd });
 	}
 	const fake = fakePi();
-	const owner = registerSourcePolicy(
-		fake.pi,
-		{ OCTOCODE_HOOKS_COMPAT: "1" },
-		home,
-	);
+	const owner = registerSourcePolicy(fake.pi, { OCTOCODE_HOOKS_COMPAT: "1" }, home);
 	await owner.refresh(fakeCtx({ cwd, hasUI: false }));
 	return owner.evaluate(
 		{
@@ -66,9 +55,6 @@ async function run(kind: "plain" | "tracked" | "symlink" | "project") {
 it("loads untracked local source permission allowances without granting project hook trust", async () => {
 	expect(await run("plain")).toBe("allow");
 });
-it.each(["tracked", "symlink", "project"] as const)(
-	"withholds untrusted %s allowances",
-	async (kind) => {
-		expect(await run(kind)).toBe("none");
-	},
-);
+it.each(["tracked", "symlink", "project"] as const)("withholds untrusted %s allowances", async (kind) => {
+	expect(await run(kind)).toBe("none");
+});

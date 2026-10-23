@@ -143,8 +143,7 @@ describe("source layout", () => {
 		const hits = files
 			.map((file) => path.relative(sourceRoot, file).split(path.sep).join("/"))
 			.filter(
-				(relative) =>
-					!owners.has(relative) && segment.test(fs.readFileSync(path.join(sourceRoot, relative), "utf8")),
+				(relative) => !owners.has(relative) && segment.test(fs.readFileSync(path.join(sourceRoot, relative), "utf8")),
 			);
 		expect(hits).toEqual([]);
 	});
@@ -183,7 +182,9 @@ describe("source layout", () => {
 			const src = path.join(packagesDir, entry.name, "src");
 			if (!fs.existsSync(src)) return [];
 			return walk(src)
-				.filter((file) => /['"](?:octocode|octocode-mcp|@octocodeai\/octocode-native)['"/]/.test(fs.readFileSync(file, "utf8")))
+				.filter((file) =>
+					/['"](?:octocode|octocode-mcp|@octocodeai\/octocode-native)['"/]/.test(fs.readFileSync(file, "utf8")),
+				)
 				.map((file) => path.relative(packagesDir, file));
 		});
 		expect(offenders).toEqual([]);

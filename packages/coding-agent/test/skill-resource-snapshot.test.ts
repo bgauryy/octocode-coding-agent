@@ -14,30 +14,20 @@ function selectSkillResourceSnapshot(
 	names: readonly string[],
 	commands: Parameters<typeof captureSkillResourceSnapshot>[2],
 ) {
-	return captureSkillResourceSnapshot(
-		adoptSkillResourceSnapshot(snapshot),
-		names,
-		commands,
-	);
+	return captureSkillResourceSnapshot(adoptSkillResourceSnapshot(snapshot), names, commands);
 }
 const roots: string[] = [];
 afterEach(() => {
-	for (const root of roots.splice(0))
-		fs.rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-	const root = fs.realpathSync(
-		fs.mkdtempSync(path.join(os.tmpdir(), "skill-snapshot-")),
-	);
+	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "skill-snapshot-")));
 	roots.push(root);
 	const make = (name: string, folder = name): Skill => {
 		const dir = path.join(root, folder);
 		fs.mkdirSync(dir, { recursive: true });
 		const filePath = path.join(dir, "SKILL.md");
-		fs.writeFileSync(
-			filePath,
-			`---\nname: ${name}\ndescription: fixture\n---\nbody`,
-		);
+		fs.writeFileSync(filePath, `---\nname: ${name}\ndescription: fixture\n---\nbody`);
 		return {
 			name,
 			description: "fixture",
@@ -73,9 +63,7 @@ it("retains visible policy and hidden explicit identity without plugin discovery
 		],
 		diagnostics: [],
 	});
-	const loaded = adoptSkillResourceSnapshot(
-		JSON.parse(JSON.stringify(snapshot)),
-	);
+	const loaded = adoptSkillResourceSnapshot(JSON.parse(JSON.stringify(snapshot)));
 	expect(loaded.skills.map((s) => s.name)).toEqual(["model", "plugin:route"]);
 	expect(loaded.skills[0].userInvocable).toBe(false);
 	expect(loaded.explicitSkills?.[0]).toMatchObject({
@@ -123,9 +111,7 @@ it("rejects changed canonical identities, malformed metadata, synthetic resource
 		skills: [skill],
 		diagnostics: [],
 	});
-	expect(() =>
-		adoptSkillResourceSnapshot({ ...snapshot, version: 2 }),
-	).toThrow();
+	expect(() => adoptSkillResourceSnapshot({ ...snapshot, version: 2 })).toThrow();
 	const bad = structuredClone(snapshot);
 	bad.resources[0].skill.sourceInfo.scope = "invalid" as never;
 	expect(() => adoptSkillResourceSnapshot(bad)).toThrow();
@@ -155,29 +141,47 @@ it("keeps explicit empty selection empty and refuses unknown selection", () => {
 			sourceInfo: skill.sourceInfo,
 		},
 	];
+	expect(adoptSkillResourceSnapshot(selectSkillResourceSnapshot(snapshot, [], commands)).skills).toEqual([]);
 	expect(
-		adoptSkillResourceSnapshot(
-			selectSkillResourceSnapshot(snapshot, [], commands),
-		).skills,
-	).toEqual([]);
-	expect(
-		adoptSkillResourceSnapshot(
-			selectSkillResourceSnapshot(snapshot, ["skill:route"], commands),
-		).skills,
+		adoptSkillResourceSnapshot(selectSkillResourceSnapshot(snapshot, ["skill:route"], commands)).skills,
 	).toHaveLength(1);
-	expect(() =>
-		selectSkillResourceSnapshot(snapshot, ["unknown"], commands),
-	).toThrow();
+	expect(() => selectSkillResourceSnapshot(snapshot, ["unknown"], commands)).toThrow();
+});
+it("refuses to pass a user-only skill to a child, whose model could never see it", () => {
+	const { make } = fixture();
+	const skill = make("deploy");
+	skill.disableModelInvocation = true;
+	const commands = [
+		{ name: "deploy", aliases: [], description: "fixture", source: "skill" as const, sourceInfo: skill.sourceInfo },
+	];
+	expect(() => captureSkillResourceSnapshot({ skills: [skill], diagnostics: [] }, ["deploy"], commands)).toThrow(
+		'Skill "deploy" sets disable-model-invocation',
+	);
+	// Inheriting the whole catalog keeps it, hidden from the child's model as in the parent.
+	expect(captureSkillResourceSnapshot({ skills: [skill], diagnostics: [] }).resources).toHaveLength(1);
+});
+it("drops an inherited skill whose file was deleted, keeping the rest", () => {
+	const { make } = fixture();
+	const kept = make("kept");
+	const deleted = make("deleted");
+	const snapshot = captureSkillResourceSnapshot({ skills: [kept, deleted], diagnostics: [] });
+	fs.rmSync(path.dirname(deleted.filePath), { recursive: true });
+	const loaded = adoptSkillResourceSnapshot(snapshot);
+	expect(loaded.skills.map((skill) => skill.name)).toEqual(["kept"]);
+	expect(loaded.explicitSkills?.map((identity) => identity.name)).toEqual(["kept"]);
+	expect(loaded.diagnostics).toEqual([
+		{
+			type: "warning",
+			message: "Inherited skill file no longer exists; the skill was not loaded",
+			path: deleted.filePath,
+		},
+	]);
 });
 it("rejects symlink transport files and oversized input without fallback", () => {
 	const { root } = fixture();
 	const file = path.join(root, "snapshot.json"),
 		link = path.join(root, "link.json");
-	fs.writeFileSync(
-		file,
-		JSON.stringify({ version: 1, resources: [], explicitSkills: [] }),
-		{ mode: 0o600 },
-	);
+	fs.writeFileSync(file, JSON.stringify({ version: 1, resources: [], explicitSkills: [] }), { mode: 0o600 });
 	fs.symlinkSync(file, link);
 	expect(() => readSkillResourceSnapshot(link)).toThrow();
 	fs.writeFileSync(file, " ".repeat(4 * 1024 * 1024 + 1));
@@ -188,9 +192,7 @@ it("preserves undefined explicit fallback while honoring an explicitly empty inv
 	const { make } = fixture();
 	const skill = make("route");
 	expect(
-		adoptSkillResourceSnapshot(
-			captureSkillResourceSnapshot({ skills: [skill], diagnostics: [] }),
-		).explicitSkills,
+		adoptSkillResourceSnapshot(captureSkillResourceSnapshot({ skills: [skill], diagnostics: [] })).explicitSkills,
 	).toHaveLength(1);
 	expect(
 		adoptSkillResourceSnapshot(
@@ -222,9 +224,7 @@ it("recaptures the original discovery alias and byte cap after canonical adoptio
 		],
 		diagnostics: [],
 	});
-	expect(
-		captureSkillResourceSnapshot(adoptSkillResourceSnapshot(first)),
-	).toEqual({
+	expect(captureSkillResourceSnapshot(adoptSkillResourceSnapshot(first))).toEqual({
 		...first,
 		resources: first.resources.map((r) => ({
 			...r,
@@ -260,18 +260,13 @@ it("selects exact visible identities for shared paths, reserved names and duplic
 			sourceInfo: skill.sourceInfo,
 		})),
 	];
-	expect(
-		selectSkillResourceSnapshot(snapshot, ["other"], commands).resources.map(
-			(r) => r.skill.name,
-		),
-	).toEqual(["other"]);
-	expect(
-		selectSkillResourceSnapshot(snapshot, ["skill:route:2"], commands)
-			.resources[0].canonicalPath,
-	).toBe(duplicate.filePath);
-	expect(() =>
-		selectSkillResourceSnapshot(snapshot, ["route"], commands),
-	).toThrow();
+	expect(selectSkillResourceSnapshot(snapshot, ["other"], commands).resources.map((r) => r.skill.name)).toEqual([
+		"other",
+	]);
+	expect(selectSkillResourceSnapshot(snapshot, ["skill:route:2"], commands).resources[0].canonicalPath).toBe(
+		duplicate.filePath,
+	);
+	expect(() => selectSkillResourceSnapshot(snapshot, ["route"], commands)).toThrow();
 });
 it("rejects corrupt transport text, public mode, excess records and invalid references", () => {
 	const { root, make } = fixture();
@@ -294,8 +289,7 @@ it("rejects corrupt transport text, public mode, excess records and invalid refe
 	).toThrow();
 	const file = path.join(root, "bad.json");
 	const valid = JSON.stringify(snapshot);
-	const descriptionAt =
-		valid.indexOf('"description":"') + '"description":"'.length;
+	const descriptionAt = valid.indexOf('"description":"') + '"description":"'.length;
 	fs.writeFileSync(
 		file,
 		Buffer.concat([
@@ -305,21 +299,16 @@ it("rejects corrupt transport text, public mode, excess records and invalid refe
 		]),
 		{ mode: 0o600 },
 	);
-	expect(() => readSkillResourceSnapshot(file)).toThrow(
-		/encoded data|encoding/i,
-	);
+	expect(() => readSkillResourceSnapshot(file)).toThrow(/encoded data|encoding/i);
 	fs.writeFileSync(file, JSON.stringify(snapshot));
 	fs.chmodSync(file, 0o644);
-	if (process.platform !== "win32")
-		expect(() => readSkillResourceSnapshot(file)).toThrow();
+	if (process.platform !== "win32") expect(() => readSkillResourceSnapshot(file)).toThrow();
 });
 it("adopts snapshot skills authoritatively without default paths or skill overrides", async () => {
 	const { root, make } = fixture();
 	const skill = make("accepted"),
 		extra = make("unrelated");
-	const { DefaultResourceLoader } = await import(
-		"../src/core/resource-loader.ts"
-	);
+	const { DefaultResourceLoader } = await import("../src/core/resource-loader.ts");
 	const { SettingsManager } = await import("../src/core/settings-manager.ts");
 	const loader = new DefaultResourceLoader({
 		cwd: root,
@@ -353,14 +342,8 @@ it("captures empty or healthy subsets before checking unrelated invalid resource
 			sourceInfo: good.sourceInfo,
 		},
 	];
-	expect(captureSkillResourceSnapshot(loaded, [], commands).resources).toEqual(
-		[],
-	);
-	expect(
-		captureSkillResourceSnapshot(loaded, ["good"], commands).resources.map(
-			(r) => r.skill.name,
-		),
-	).toEqual(["good"]);
+	expect(captureSkillResourceSnapshot(loaded, [], commands).resources).toEqual([]);
+	expect(captureSkillResourceSnapshot(loaded, ["good"], commands).resources.map((r) => r.skill.name)).toEqual(["good"]);
 });
 
 it("the bound extension API selects healthy resources without inspecting unrelated invalid files", async () => {
@@ -384,11 +367,7 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 		});
 		await h.session.bindExtensions({});
 		expect(api!.getSkillResourceSnapshot([]).resources).toEqual([]);
-		expect(
-			api!
-				.getSkillResourceSnapshot(["good"])
-				.resources.map((r) => r.skill.name),
-		).toEqual(["good"]);
+		expect(api!.getSkillResourceSnapshot(["good"]).resources.map((r) => r.skill.name)).toEqual(["good"]);
 		expect(() => api!.getSkillResourceSnapshot()).toThrow(/Synthetic/);
 	} finally {
 		h.cleanup();
@@ -406,10 +385,7 @@ it.each(["model-only", "claude"] as const)(
 				original.filePath,
 				"---\nname: route\ndescription: original\nuser-invocable: false\n---\noriginal body",
 			);
-		const parent = path.join(
-			root,
-			kind === "claude" ? ".claude/skills" : "skills",
-		);
+		const parent = path.join(root, kind === "claude" ? ".claude/skills" : "skills");
 		fs.mkdirSync(parent, { recursive: true });
 		const alias = path.join(parent, "route");
 		fs.symlinkSync(original.baseDir, alias);
@@ -425,9 +401,7 @@ it.each(["model-only", "claude"] as const)(
 		fs.unlinkSync(alias);
 		fs.symlinkSync(replacement.baseDir, alias);
 		expect(loadedSkillDirectories(loaded)).toEqual([original.baseDir]);
-		const inherited = adoptSkillResourceSnapshot(
-			captureSkillResourceSnapshot(loaded),
-		);
+		const inherited = adoptSkillResourceSnapshot(captureSkillResourceSnapshot(loaded));
 		expect(inherited.skills[0].filePath).toBe(original.filePath);
 	},
 );
@@ -436,9 +410,7 @@ it("recaptures an override's changed file path without inheriting the old canoni
 	const { root, make } = fixture();
 	const original = make("route", "original"),
 		replacement = make("replacement");
-	const { DefaultResourceLoader } = await import(
-		"../src/core/resource-loader.ts"
-	);
+	const { DefaultResourceLoader } = await import("../src/core/resource-loader.ts");
 	const { SettingsManager } = await import("../src/core/settings-manager.ts");
 	const loader = new DefaultResourceLoader({
 		cwd: root,
@@ -458,12 +430,8 @@ it("recaptures an override's changed file path without inheriting the old canoni
 	});
 	await loader.reload();
 	expect(loader.getSkills().skills[0].canonicalPath).toBe(replacement.filePath);
-	expect(loadedSkillDirectories(loader.getSkills())).toEqual([
-		replacement.baseDir,
-	]);
-	expect(
-		captureSkillResourceSnapshot(loader.getSkills()).resources[0].canonicalPath,
-	).toBe(replacement.filePath);
+	expect(loadedSkillDirectories(loader.getSkills())).toEqual([replacement.baseDir]);
+	expect(captureSkillResourceSnapshot(loader.getSkills()).resources[0].canonicalPath).toBe(replacement.filePath);
 });
 
 it("reads Codex sidecar policy beside the canonical skill file", async () => {
@@ -472,14 +440,8 @@ it("reads Codex sidecar policy beside the canonical skill file", async () => {
 	const aliasDir = path.join(root, "alias");
 	fs.mkdirSync(path.join(aliasDir, "agents"), { recursive: true });
 	fs.mkdirSync(path.join(target.baseDir, "agents"), { recursive: true });
-	fs.writeFileSync(
-		path.join(aliasDir, "agents/openai.yaml"),
-		"policy:\n  allow_implicit_invocation: true\n",
-	);
-	fs.writeFileSync(
-		path.join(target.baseDir, "agents/openai.yaml"),
-		"policy:\n  allow_implicit_invocation: false\n",
-	);
+	fs.writeFileSync(path.join(aliasDir, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: true\n");
+	fs.writeFileSync(path.join(target.baseDir, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
 	const alias = path.join(aliasDir, "SKILL.md");
 	fs.symlinkSync(target.filePath, alias);
 	const { loadSkills } = await import("../src/core/skills.ts");

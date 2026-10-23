@@ -52,4 +52,3 @@ export function addIgnoreRules(ig: IgnoreMatcher, dir: string, rootDir: string):
 		} catch {}
 	}
 }
-

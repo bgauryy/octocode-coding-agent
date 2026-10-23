@@ -1,4 +1,4 @@
-import { isOctocodeDirectTool, OCTOCODE_SERVER } from "../../core/mcp-servers.ts";
+import { isOctocodeDirectTool, OCTOCODE_DIRECT_TOOLS, OCTOCODE_SERVER } from "../../core/mcp-servers.ts";
 
 /** The MCP server name this extension registers Octocode under (and looks for in Octocode's `mcp.json`). */
 export { OCTOCODE_SERVER };
@@ -15,20 +15,13 @@ export const OCTOCODE_TOOL_PREFIX = `${MCP_TOOL_PREFIX}${OCTOCODE_SERVER}__`;
 /** Whether `name` is an Octocode MCP tool. */
 export const isOctocodeTool = (name: string): boolean => name.startsWith(OCTOCODE_TOOL_PREFIX);
 
-/** Local research names in the current server and the supported legacy catalog. */
-export const LOCAL_RESEARCH_TOOLS = [
-	"localFetch",
-	"localSearch",
-	"structureSearch",
-	"astSearch",
-	"lspSearch",
-	"localGetFileContent",
-	"localSearchCode",
-	"localFindFiles",
-	"localViewStructure",
-	"localBinaryInspect",
-	"lspGetSemantics",
-].map((name) => `${OCTOCODE_TOOL_PREFIX}${name}`);
+/**
+ * Local research names in the current server and the supported legacy catalog: the ones core declares directly, plus
+ * `localBinaryInspect`, which is local but waits for tool_search.
+ */
+export const LOCAL_RESEARCH_TOOLS = [...OCTOCODE_DIRECT_TOOLS, "localBinaryInspect"].map(
+	(name) => `${OCTOCODE_TOOL_PREFIX}${name}`,
+);
 
 /** Whether an Octocode tool (full name) is declared to the model by default; the others are discovered through tool_search. */
 export const isDirectResearchTool = (name: string): boolean =>

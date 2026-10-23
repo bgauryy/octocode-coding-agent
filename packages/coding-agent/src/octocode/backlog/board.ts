@@ -8,10 +8,7 @@ import { type Item as BacklogItem, type State as BacklogState, priorityName } fr
 
 /** What the user picked on the board; the command runs it and reopens the board unless it handed work to the agent. */
 type BoardChoice =
-	| { action: "open" | "do"; ref: string }
-	| { action: "add" }
-	| { action: "export" }
-	| { action: "html" };
+	{ action: "open" | "do"; ref: string } | { action: "add" } | { action: "export" } | { action: "html" };
 
 interface BoardSource {
 	title: string;
@@ -152,9 +149,7 @@ export function showBoard(
 			// Keep the selection on screen when the board is taller than the terminal.
 			const room = Math.max(1, height - 6 - helpLines.length - (flash ? 1 : 0));
 			const start =
-				listed.length <= room
-					? 0
-					: Math.min(Math.max(0, selectedLine - Math.floor(room / 2)), listed.length - room);
+				listed.length <= room ? 0 : Math.min(Math.max(0, selectedLine - Math.floor(room / 2)), listed.length - room);
 			for (const line of listed.slice(start, start + room)) push(line);
 			lines.push("");
 			if (flash) push(` ${theme.fg("warning", sanitizeTerminalText(flash))}`);

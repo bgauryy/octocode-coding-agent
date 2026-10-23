@@ -83,10 +83,7 @@ describe("Anthropic strict tool schemas", () => {
 
 		const strictTool = await captureFirstTool(
 			createStrictTool(
-				Type.Object(
-					{ value: Type.String(), optional: Type.Optional(Type.Number()) },
-					{ title: "StrictLookupInput" },
-				),
+				Type.Object({ value: Type.String(), optional: Type.Optional(Type.Number()) }, { title: "StrictLookupInput" }),
 			),
 		);
 		expect(strictTool.strict).toBe(true);

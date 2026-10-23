@@ -16,7 +16,11 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { createReadToolDefinition, createEditToolDefinition, createWriteToolDefinition } from "../../src/core/tools/index.ts";
+import {
+	createReadToolDefinition,
+	createEditToolDefinition,
+	createWriteToolDefinition,
+} from "../../src/core/tools/index.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -129,7 +133,6 @@ async function startSession(
 		} as never);
 	};
 	const settingsManager = SettingsManager.inMemory({
-
 		retry: { enabled: false },
 		...options.settings,
 	});
@@ -150,7 +153,15 @@ async function startSession(
 		resourceLoader,
 		settingsManager,
 		sessionManager: SessionManager.inMemory(cwd),
-		...(options.legacyTools ? { customTools: [createReadToolDefinition(cwd), createEditToolDefinition(cwd), createWriteToolDefinition(cwd)] as unknown as ToolDefinition[] } : {}),
+		...(options.legacyTools
+			? {
+					customTools: [
+						createReadToolDefinition(cwd),
+						createEditToolDefinition(cwd),
+						createWriteToolDefinition(cwd),
+					] as unknown as ToolDefinition[],
+				}
+			: {}),
 		...(options.tools ? { tools: options.tools } : {}),
 	});
 	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
@@ -265,9 +276,7 @@ describe("with Octocode MCP (default)", () => {
 	it("reads through localFetch, then edits, writes and deletes with batched file calls", async () => {
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("fix the answer", [
-			calls(
-				fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath, fullContent: true }] }),
-			),
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath, fullContent: true }] })),
 			calls(
 				fauxToolCall("file", {
 					queries: [
@@ -282,9 +291,7 @@ describe("with Octocode MCP (default)", () => {
 					],
 				}),
 			),
-			calls(
-				fauxToolCall("file", { queries: [{ reasoning: "no longer needed", type: "delete", path: "NOTES.md" }] }),
-			),
+			calls(fauxToolCall("file", { queries: [{ reasoning: "no longer needed", type: "delete", path: "NOTES.md" }] })),
 			say("done"),
 		]);
 		const [afterRead, afterBatch, afterDelete] = turns.slice(-3);
@@ -311,9 +318,7 @@ describe("with Octocode MCP (default)", () => {
 				return fauxAssistantMessage(
 					[
 						fauxToolCall("file", {
-							queries: [
-								{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "42", newText: "43" }] },
-							],
+							queries: [{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "42", newText: "43" }] }],
 						}),
 					],
 					{ stopReason: "toolUse" },
@@ -403,26 +408,19 @@ describe("with the user's own octocode server in mcp.json", () => {
 describe("with another MCP server and Octocode disabled", () => {
 	let s: Awaited<ReturnType<typeof startSession>>;
 	beforeAll(async () => {
-		s = await startSession({
-			...OCTOCODE_OFF,
-			echo: { command: process.execPath, args: [FIXTURE], exposure: "direct" },
-		}, { legacyTools: true });
+		s = await startSession(
+			{
+				...OCTOCODE_OFF,
+				echo: { command: process.execPath, args: [FIXTURE], exposure: "direct" },
+			},
+			{ legacyTools: true },
+		);
 	}, 60_000);
 	afterAll(() => s.dispose());
 
 	it("keeps Octocode read, leaves MCP to Octocode, and drops the Octocode research line", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
-		for (const name of [
-			"read",
-			"file",
-			"bash",
-			"web",
-			"agent",
-			"askUser",
-			"backlog",
-			"memory",
-			"mcp__echo__shout",
-		])
+		for (const name of ["read", "file", "bash", "web", "agent", "askUser", "backlog", "memory", "mcp__echo__shout"])
 			expect(turn.tools).toContain(name);
 		for (const name of ["mcp"]) expect(turn.tools).not.toContain(name);
 		expect(turn.tools.some((name) => name.startsWith("mcp__octocode__"))).toBe(false);
@@ -678,8 +676,7 @@ describe("request too large (HTTP 413)", () => {
 			context.messages.reduce((sum, message) => {
 				const content = (message as { content?: unknown }).content;
 				return (
-					sum +
-					(Array.isArray(content) ? content.filter((part: { type?: string }) => part.type === "image").length : 0)
+					sum + (Array.isArray(content) ? content.filter((part: { type?: string }) => part.type === "image").length : 0)
 				);
 			}, 0);
 		const seen: number[] = [];

@@ -133,9 +133,7 @@ describe("http dispatcher", () => {
 			await expect(undici.fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
 			expect(proxyRequestLines).not.toHaveLength(0);
 			expect(proxyRequestLines).toEqual(
-				expect.arrayContaining([
-					expect.stringMatching(`^CONNECT 127\\.0\\.0\\.1:${originAddress.port} HTTP/1\\.1$`),
-				]),
+				expect.arrayContaining([expect.stringMatching(`^CONNECT 127\\.0\\.0\\.1:${originAddress.port} HTTP/1\\.1$`)]),
 			);
 		} finally {
 			await dispatcher.close();

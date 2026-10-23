@@ -148,7 +148,12 @@ export function createSessionUsageRecorder(
 	return (message) => {
 		if (recorded.has(message)) return;
 		const usage = message.usage;
-		if (usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0 && usage.totalTokens === 0 && usage.cost.total === 0) return;
+		if (
+			usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0 &&
+			usage.totalTokens === 0 &&
+			usage.cost.total === 0
+		)
+			return;
 		let entry: UsageEntry;
 		try {
 			entry = write(kind, message.provider, message.responseModel ?? message.model, usage);

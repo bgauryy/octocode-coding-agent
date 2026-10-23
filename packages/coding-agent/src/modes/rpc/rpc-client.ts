@@ -350,7 +350,7 @@ export class RpcClient {
 	 * Compact session context.
 	 */
 	async compact(): Promise<CompactionResult> {
-		const response = await this.send({ type: "compact" });
+		const response = await this.send({ type: "compact" }, null);
 		return this.getData(response);
 	}
 
@@ -372,7 +372,7 @@ export class RpcClient {
 	 * Execute a bash command.
 	 */
 	async bash(command: string): Promise<BashResult> {
-		const response = await this.send({ type: "bash", command });
+		const response = await this.send({ type: "bash", command }, null);
 		return this.getData(response);
 	}
 
@@ -604,16 +604,23 @@ export class RpcClient {
 		return stdin;
 	}
 
-	private async send(command: RpcCommandBody): Promise<RpcResponse> {
+	/**
+	 * Send a command and wait for its response. `timeoutMs` bounds short requests; commands that answer only after their
+	 * work finishes (compact, bash) pass `null` and wait, since the process exiting still rejects them.
+	 */
+	private async send(command: RpcCommandBody, timeoutMs: number | null = 30_000): Promise<RpcResponse> {
 		const stdin = this.getWritableStdin();
 		const id = `req_${++this.requestId}`;
 		const fullCommand = { ...command, id } as RpcCommand;
 
 		return new Promise((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				this.pendingRequests.delete(id);
-				reject(new Error(`Timeout waiting for response to ${command.type}. Stderr: ${this.stderr}`));
-			}, 30000);
+			const timeout =
+				timeoutMs === null
+					? undefined
+					: setTimeout(() => {
+							this.pendingRequests.delete(id);
+							reject(new Error(`Timeout waiting for response to ${command.type}. Stderr: ${this.stderr}`));
+						}, timeoutMs);
 
 			this.pendingRequests.set(id, {
 				resolve: (response) => {

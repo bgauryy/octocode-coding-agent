@@ -36,10 +36,7 @@ export function saveFullOutput(text: string, label: string): string | undefined 
 /** Writes `data` owner-only to a new `<session folder>/output/<label>-<timestamp>-<n>.<extension>`; undefined on failure. */
 function saveTimestamped(data: string | Uint8Array, label: string, extension: string): string | undefined {
 	try {
-		const file = path.join(
-			sessionOutputDir("output"),
-			`${spillLabel(label)}-${Date.now()}-${++written}.${extension}`,
-		);
+		const file = path.join(sessionOutputDir("output"), `${spillLabel(label)}-${Date.now()}-${++written}.${extension}`);
 		fs.writeFileSync(file, data, { flag: "wx", mode: PRIVATE_FILE_MODE });
 		return file;
 	} catch {

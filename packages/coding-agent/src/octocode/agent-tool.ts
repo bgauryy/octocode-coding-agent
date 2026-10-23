@@ -1,8 +1,8 @@
+import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
 import { Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
-import { Check } from "typebox/value";
 import type { ExtensionAPI, ToolDefinition } from "../core/extensions/index.ts";
-import { isRecord } from "./shared/util.ts";
+import { errorMessage, isRecord } from "./shared/util.ts";
 
 const MODES = { agent: "task", externalAgent: "external", coordinate: "coordinate", sendMessage: "message" } as const;
 type Mode = (typeof MODES)[keyof typeof MODES];
@@ -22,31 +22,68 @@ export function agentModes() {
 			pi.registerTool({
 				name: "agent",
 				label: "Agent",
-				description: "Choose type and supply its arguments in input. " + entries.map(([type, tool]) => `${type}: ${tool.description}`).join("\n"),
+				description:
+					"Choose type and supply its arguments in input. " +
+					entries.map(([type, tool]) => `${type}: ${tool.description}`).join("\n"),
 				promptSnippet: "Delegate work, coordinate agents and exchange messages",
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
-				parameters: Type.Object({
-					type: Type.Unsafe<Mode>({ type: "string", enum: entries.map(([type]) => type) }),
-					input: Type.Unsafe<Record<string, unknown>>({ anyOf: entries.map(([type, tool]) => ({ ...tool.parameters, description: `Arguments for type ${type}` })) }),
-				}, { additionalProperties: false }),
+				parameters: Type.Object(
+					{
+						type: Type.Unsafe<Mode>({ type: "string", enum: entries.map(([type]) => type) }),
+						input: Type.Unsafe<Record<string, unknown>>({
+							anyOf: entries.map(([type, tool]) => ({ ...tool.parameters, description: `Arguments for type ${type}` })),
+						}),
+					},
+					{ additionalProperties: false },
+				),
 				async execute(id, params, signal, onUpdate, ctx) {
 					if (Object.keys(params).some((key) => key !== "type" && key !== "input")) {
 						throw new Error("Agent arguments belong inside input; the envelope accepts only type and input.");
 					}
 					const tool = modes.get(params.type);
-					if (!tool || !Check(tool.parameters, params.input)) throw new Error(`Invalid agent ${params.type} input; use that mode's schema.`);
+					if (!tool) throw new Error(`Invalid agent ${params.type} input; use that mode's schema.`);
+					// The same validation a directly registered tool gets: optional nulls dropped, values coerced, the failing field named.
+					let input: Record<string, unknown>;
+					try {
+						input = validateToolArguments(
+							{ name: `agent ${params.type}`, description: tool.description, parameters: tool.parameters },
+							{ type: "toolCall", id, name: `agent ${params.type}`, arguments: params.input as JsonObject },
+						);
+					} catch (error) {
+						throw new Error(`Invalid agent ${params.type} input; use that mode's schema. ${errorMessage(error)}`);
+					}
 					const tagged = (result: Awaited<ReturnType<ToolDefinition["execute"]>>) => ({
 						...result,
 						details: { ...(isRecord(result.details) ? result.details : {}), agentType: params.type },
 					});
-					return tagged(await tool.execute(id, params.input, signal, onUpdate ? (update) => onUpdate(tagged(update)) : undefined, ctx));
+					return tagged(
+						await tool.execute(id, input, signal, onUpdate ? (update) => onUpdate(tagged(update)) : undefined, ctx),
+					);
 				},
+				// Mode renderers read their own arguments from `context.args`, so they get the mode input, not the envelope.
 				renderCall(args, theme, context) {
-					return modes.get(args.type as Mode)?.renderCall?.(isRecord(args.input) ? args.input : {}, theme, context) ?? new Text(`Agent ${args.type ?? ""}`, 0, 0);
+					const input = isRecord(args.input) ? args.input : {};
+					return (
+						modes.get(args.type as Mode)?.renderCall?.(input, theme, { ...context, args: input }) ??
+						new Text(`Agent ${args.type ?? ""}`, 0, 0)
+					);
 				},
 				renderResult(result, options, theme, context) {
-					const type = isRecord(result.details) ? result.details.agentType : undefined;
-					return modes.get(type as Mode)?.renderResult?.(result, options, theme, context) ?? new Text(result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n"), 0, 0);
+					const envelope: Record<string, unknown> = isRecord(context?.args) ? context.args : {};
+					// A thrown error has no agentType in its details; the call's own type still names the mode.
+					const type = (isRecord(result.details) ? result.details.agentType : undefined) ?? envelope.type;
+					const input = isRecord(envelope.input) ? envelope.input : {};
+					return (
+						modes.get(type as Mode)?.renderResult?.(result, options, theme, { ...context, args: input }) ??
+						new Text(
+							result.content
+								.filter((part) => part.type === "text")
+								.map((part) => part.text)
+								.join("\n"),
+							0,
+							0,
+						)
+					);
 				},
 			});
 		},

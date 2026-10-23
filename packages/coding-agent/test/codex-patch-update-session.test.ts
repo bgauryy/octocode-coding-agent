@@ -8,20 +8,11 @@ import { Checkpoints } from "../src/octocode/files/checkpoint.ts";
 import { FileGuard, registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
-import {
-	createHarness,
-	getMessageText,
-	getToolResult,
-} from "./suite/harness.ts";
+import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const envelope = (body: string) => `*** Begin Patch\n${body}\n*** End Patch`;
-async function fixture(
-	patch: string,
-	mode = "full",
-	once = false,
-	claudeGate = false,
-) {
+async function fixture(patch: string, mode = "full", once = false, claudeGate = false) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "patch-update-session-"));
 	const captured = path.join(home, "pre.json");
 	const claudeCaptured = path.join(home, "claude-invoked");
@@ -101,11 +92,7 @@ async function fixture(
 				pi.on("session_start", async (_event, ctx) => permission.start(ctx));
 				pi.registerTool(createReadToolDefinition(process.cwd()));
 				registerFileTool(pi, guard, permission, checkpoints);
-				const hooks = registerHooks(
-					pi,
-					{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-					home,
-				);
+				const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 				pi.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
 		],
@@ -130,18 +117,17 @@ async function run(
 	reads: Array<{ name: string; offset?: number; limit?: number }> = [],
 	beforeFile?: () => void,
 ) {
-	const responses: import("@octocodeai/octocode-ai/compat").FauxResponseStep[] =
-		reads.map(({ name, ...range }) =>
-			fauxAssistantMessage(
-				[
-					fauxToolCall("read", {
-						path: path.join(f.harness.tempDir, name),
-						...range,
-					}),
-				],
-				{ stopReason: "toolUse" },
-			),
-		);
+	const responses: import("@octocodeai/octocode-ai/compat").FauxResponseStep[] = reads.map(({ name, ...range }) =>
+		fauxAssistantMessage(
+			[
+				fauxToolCall("read", {
+					path: path.join(f.harness.tempDir, name),
+					...range,
+				}),
+			],
+			{ stopReason: "toolUse" },
+		),
+	);
 	responses.push(() => {
 		beforeFile?.();
 		return fauxAssistantMessage(
@@ -162,12 +148,8 @@ async function run(
 	}, fauxAssistantMessage("result inspected"));
 	f.harness.setResponses(responses);
 	await f.harness.session.prompt("Apply the fixture mutation.");
-	expect(JSON.parse(fs.readFileSync(f.captured, "utf8")).tool_name).toBe(
-		"apply_patch",
-	);
-	expect(fs.existsSync(path.join(f.harness.tempDir, "original.txt"))).toBe(
-		false,
-	);
+	expect(JSON.parse(fs.readFileSync(f.captured, "utf8")).tool_name).toBe("apply_patch");
+	expect(fs.existsSync(path.join(f.harness.tempDir, "original.txt"))).toBe(false);
 	return getToolResult(f.harness, "file");
 }
 
@@ -241,11 +223,7 @@ it.each([
 });
 
 it("moves updated bytes and rewinds both source and newly created destination", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Update File: source.txt\n*** Move to: moved.txt\n@@\n-old\n+new",
-		),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n*** Move to: moved.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt"),
 			destination = path.join(f.harness.tempDir, "moved.txt");
@@ -263,59 +241,36 @@ it("moves updated bytes and rewinds both source and newly created destination", 
 	}
 });
 
-it.each(["invalid update", "missing delete"])(
-	"preverifies a later %s before an earlier Add",
-	async (failure) => {
-		const later =
-			failure === "invalid update"
-				? "*** Update File: source.txt\n@@\n-missing\n+new"
-				: "*** Delete File: missing.txt";
-		const f = await fixture(
-			envelope(`*** Add File: earlier.txt\n+must not exist\n${later}`),
-		);
-		try {
-			fs.writeFileSync(path.join(f.harness.tempDir, "source.txt"), "old\n");
-			const result = await run(f, [{ name: "source.txt" }]);
-			expect(result.isError).toBe(true);
-			expect(getMessageText(result)).not.toContain(
-				"Only Add File and Delete File",
-			);
-			expect(fs.existsSync(path.join(f.harness.tempDir, "earlier.txt"))).toBe(
-				false,
-			);
-			expect(
-				fs.readFileSync(path.join(f.harness.tempDir, "source.txt"), "utf8"),
-			).toBe("old\n");
-		} finally {
-			f.cleanup();
-		}
-	},
-);
+it.each(["invalid update", "missing delete"])("preverifies a later %s before an earlier Add", async (failure) => {
+	const later =
+		failure === "invalid update" ? "*** Update File: source.txt\n@@\n-missing\n+new" : "*** Delete File: missing.txt";
+	const f = await fixture(envelope(`*** Add File: earlier.txt\n+must not exist\n${later}`));
+	try {
+		fs.writeFileSync(path.join(f.harness.tempDir, "source.txt"), "old\n");
+		const result = await run(f, [{ name: "source.txt" }]);
+		expect(result.isError).toBe(true);
+		expect(getMessageText(result)).not.toContain("Only Add File and Delete File");
+		expect(fs.existsSync(path.join(f.harness.tempDir, "earlier.txt"))).toBe(false);
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "source.txt"), "utf8")).toBe("old\n");
+	} finally {
+		f.cleanup();
+	}
+});
 
 it.each(["unread source", "reserved destination"])(
 	"preserves %s guards for rewritten Update/Move",
 	async (safeguard) => {
-		const f = await fixture(
-			envelope(
-				"*** Update File: source.txt\n*** Move to: moved.txt\n@@\n-old\n+new",
-			),
-		);
+		const f = await fixture(envelope("*** Update File: source.txt\n*** Move to: moved.txt\n@@\n-old\n+new"));
 		try {
 			const source = path.join(f.harness.tempDir, "source.txt"),
 				destination = path.join(f.harness.tempDir, "moved.txt");
 			fs.writeFileSync(source, "old\n");
 			if (safeguard === "reserved destination")
-				f.guard.reservedBy = (file) =>
-					file === destination ? "Reserved destination fixture" : undefined;
-			const result = await run(
-				f,
-				safeguard === "unread source" ? [] : [{ name: "source.txt" }],
-			);
+				f.guard.reservedBy = (file) => (file === destination ? "Reserved destination fixture" : undefined);
+			const result = await run(f, safeguard === "unread source" ? [] : [{ name: "source.txt" }]);
 			expect(result.isError).toBe(true);
 			expect(getMessageText(result)).toMatch(
-				safeguard === "unread source"
-					? /not read/
-					: /Reserved destination fixture/,
+				safeguard === "unread source" ? /not read/ : /Reserved destination fixture/,
 			);
 			expect(fs.readFileSync(source, "utf8")).toBe("old\n");
 			expect(fs.existsSync(destination)).toBe(false);
@@ -326,11 +281,7 @@ it.each(["unread source", "reserved destination"])(
 );
 
 it("rejects duplicate resolved source paths before creating either Add", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Add File: same.txt\n+first\n*** Add File: ./same.txt\n+second",
-		),
-	);
+	const f = await fixture(envelope("*** Add File: same.txt\n+first\n*** Add File: ./same.txt\n+second"));
 	try {
 		const result = await run(f);
 		expect(result.isError).toBe(true);
@@ -342,19 +293,13 @@ it("rejects duplicate resolved source paths before creating either Add", async (
 });
 
 it("does not overwrite a source whose anchor disappeared after the model read it", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "old\n");
-		const result = await run(f, [{ name: "source.txt" }], () =>
-			fs.writeFileSync(source, "external change\n"),
-		);
+		const result = await run(f, [{ name: "source.txt" }], () => fs.writeFileSync(source, "external change\n"));
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).not.toContain(
-			"Only Add File and Delete File",
-		);
+		expect(getMessageText(result)).not.toContain("Only Add File and Delete File");
 		expect(fs.readFileSync(source, "utf8")).toBe("external change\n");
 	} finally {
 		f.cleanup();
@@ -362,11 +307,7 @@ it("does not overwrite a source whose anchor disappeared after the model read it
 });
 
 it("preserves the first committed change and checkpoint when cancellation stops a later mutation", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Add File: first.txt\n+first\n*** Add File: later.txt\n+later",
-		),
-	);
+	const f = await fixture(envelope("*** Add File: first.txt\n+first\n*** Add File: later.txt\n+later"));
 	try {
 		const first = path.join(f.harness.tempDir, "first.txt"),
 			later = path.join(f.harness.tempDir, "later.txt");
@@ -395,9 +336,7 @@ it("preserves the first committed change and checkpoint when cancellation stops 
 it("requires approval for a rewritten move destination outside the workspace", async () => {
 	const outside = `../outside-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
 	const f = await fixture(
-		envelope(
-			`*** Update File: source.txt\n*** Move to: ${outside}\n@@\n-old\n+new`,
-		),
+		envelope(`*** Update File: source.txt\n*** Move to: ${outside}\n@@\n-old\n+new`),
 		"workspace",
 	);
 	try {
@@ -417,27 +356,18 @@ it("requires approval for a rewritten move destination outside the workspace", a
 it.each([false, true])(
 	"checks destination read state before overwrite and rewinds an approved overwrite: read=%s",
 	async (readDestination) => {
-		const f = await fixture(
-			envelope(
-				"*** Update File: source.txt\n*** Move to: existing.txt\n@@\n-old\n+new",
-			),
-		);
+		const f = await fixture(envelope("*** Update File: source.txt\n*** Move to: existing.txt\n@@\n-old\n+new"));
 		try {
 			const source = path.join(f.harness.tempDir, "source.txt"),
 				destination = path.join(f.harness.tempDir, "existing.txt");
 			fs.writeFileSync(source, "old\n");
 			fs.writeFileSync(destination, "prior destination\n");
-			const result = await run(f, [
-				{ name: "source.txt" },
-				...(readDestination ? [{ name: "existing.txt" }] : []),
-			]);
+			const result = await run(f, [{ name: "source.txt" }, ...(readDestination ? [{ name: "existing.txt" }] : [])]);
 			if (!readDestination) {
 				expect(result.isError).toBe(true);
 				expect(getMessageText(result)).toMatch(/not read/);
 				expect(fs.readFileSync(source, "utf8")).toBe("old\n");
-				expect(fs.readFileSync(destination, "utf8")).toBe(
-					"prior destination\n",
-				);
+				expect(fs.readFileSync(destination, "utf8")).toBe("prior destination\n");
 			} else {
 				expect(result.isError).toBe(false);
 				expect(fs.existsSync(source)).toBe(false);
@@ -446,9 +376,7 @@ it.each([false, true])(
 				expect(undo.skipped).toEqual([]);
 				expect(undo.partly).toEqual([]);
 				expect(fs.readFileSync(source, "utf8")).toBe("old\n");
-				expect(fs.readFileSync(destination, "utf8")).toBe(
-					"prior destination\n",
-				);
+				expect(fs.readFileSync(destination, "utf8")).toBe("prior destination\n");
 			}
 		} finally {
 			f.cleanup();
@@ -457,33 +385,23 @@ it.each([false, true])(
 );
 
 it("allows a focused Update after a partial read while preserving unseen lines", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "unseen before\nold\nunseen after\n");
-		expect(
-			(await run(f, [{ name: "source.txt", offset: 2, limit: 1 }])).isError,
-		).toBe(false);
-		expect(fs.readFileSync(source, "utf8")).toBe(
-			"unseen before\nnew\nunseen after\n",
-		);
+		expect((await run(f, [{ name: "source.txt", offset: 2, limit: 1 }])).isError).toBe(false);
+		expect(fs.readFileSync(source, "utf8")).toBe("unseen before\nnew\nunseen after\n");
 	} finally {
 		f.cleanup();
 	}
 });
 
 it("revalidates an unchanged unique anchor over an external unrelated change", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "old\n");
-		const result = await run(f, [{ name: "source.txt" }], () =>
-			fs.writeFileSync(source, "old\nexternal addition\n"),
-		);
+		const result = await run(f, [{ name: "source.txt" }], () => fs.writeFileSync(source, "old\nexternal addition\n"));
 		expect(result.isError).toBe(false);
 		expect(fs.readFileSync(source, "utf8")).toBe("new\nexternal addition\n");
 	} finally {
@@ -492,15 +410,11 @@ it("revalidates an unchanged unique anchor over an external unrelated change", a
 });
 
 it("rejects an anchor made ambiguous by an external change after reading", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "old\n");
-		const result = await run(f, [{ name: "source.txt" }], () =>
-			fs.writeFileSync(source, "old\nold\n"),
-		);
+		const result = await run(f, [{ name: "source.txt" }], () => fs.writeFileSync(source, "old\nold\n"));
 		expect(result.isError).toBe(true);
 		expect(getMessageText(result)).toMatch(/matches 2|unique|ambiguous/);
 		expect(fs.readFileSync(source, "utf8")).toBe("old\nold\n");
@@ -530,33 +444,22 @@ it("accepts the canonical patch alternative directly through the public file too
 		expect(JSON.parse(fs.readFileSync(f.captured, "utf8")).tool_input).toEqual({
 			command,
 		});
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "canonical.txt"), "utf8"),
-		).toBe("canonical\n");
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "canonical.txt"), "utf8")).toBe("canonical\n");
 	} finally {
 		f.cleanup();
 	}
 });
 
 it("refuses a move overwrite when the destination was only partly read", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Update File: source.txt\n*** Move to: destination.txt\n@@\n-old\n+new",
-		),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n*** Move to: destination.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt"),
 			destination = path.join(f.harness.tempDir, "destination.txt");
 		fs.writeFileSync(source, "old\n");
 		fs.writeFileSync(destination, "seen\nunseen\n");
-		const result = await run(f, [
-			{ name: "source.txt" },
-			{ name: "destination.txt", offset: 1, limit: 1 },
-		]);
+		const result = await run(f, [{ name: "source.txt" }, { name: "destination.txt", offset: 1, limit: 1 }]);
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toMatch(
-			/whole file|every line|read the rest/i,
-		);
+		expect(getMessageText(result)).toMatch(/whole file|every line|read the rest/i);
 		expect(fs.readFileSync(source, "utf8")).toBe("old\n");
 		expect(fs.readFileSync(destination, "utf8")).toBe("seen\nunseen\n");
 	} finally {
@@ -565,11 +468,7 @@ it("refuses a move overwrite when the destination was only partly read", async (
 });
 
 it("aborts before the first commit without leaving a mutation or rewind entry", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Add File: first.txt\n+first\n*** Add File: later.txt\n+later",
-		),
-	);
+	const f = await fixture(envelope("*** Add File: first.txt\n+first\n*** Add File: later.txt\n+later"));
 	try {
 		const capture = f.checkpoints.capture.bind(f.checkpoints);
 		let cancelled = false;
@@ -581,12 +480,8 @@ it("aborts before the first commit without leaving a mutation or rewind entry", 
 		};
 		await run(f);
 		expect(cancelled).toBe(true);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(
-			false,
-		);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "later.txt"))).toBe(
-			false,
-		);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "later.txt"))).toBe(false);
 		expect(f.checkpoints.turns()).toEqual([]);
 	} finally {
 		f.cleanup();
@@ -595,9 +490,7 @@ it("aborts before the first commit without leaving a mutation or rewind entry", 
 
 it("stops later patch mutations when a peer reserves the second target after the first commit", async () => {
 	const f = await fixture(
-		envelope(
-			"*** Add File: first.txt\n+first\n*** Add File: second.txt\n+second\n*** Add File: third.txt\n+third",
-		),
+		envelope("*** Add File: first.txt\n+first\n*** Add File: second.txt\n+second\n*** Add File: third.txt\n+third"),
 	);
 	try {
 		const first = path.join(f.harness.tempDir, "first.txt"),
@@ -605,10 +498,7 @@ it("stops later patch mutations when a peer reserves the second target after the
 			third = path.join(f.harness.tempDir, "third.txt");
 		const settle = f.checkpoints.settle.bind(f.checkpoints);
 		let reserved = false;
-		f.guard.reservedBy = (file) =>
-			reserved && file === second
-				? "Peer reserved target after preflight"
-				: undefined;
+		f.guard.reservedBy = (file) => (reserved && file === second ? "Peer reserved target after preflight" : undefined);
 		f.checkpoints.settle = async (...args) => {
 			await settle(...args);
 			if (args[0] === first && args[2]) reserved = true;
@@ -616,9 +506,7 @@ it("stops later patch mutations when a peer reserves the second target after the
 		const result = await run(f);
 		expect(reserved).toBe(true);
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toContain(
-			"Peer reserved target after preflight",
-		);
+		expect(getMessageText(result)).toContain("Peer reserved target after preflight");
 		expect(fs.readFileSync(first, "utf8")).toBe("first\n");
 		expect(fs.existsSync(second)).toBe(false);
 		expect(fs.existsSync(third)).toBe(false);
@@ -631,11 +519,7 @@ it("stops later patch mutations when a peer reserves the second target after the
 });
 
 it("matches a same-path Move's source behavior and can rewind its deletion", async () => {
-	const f = await fixture(
-		envelope(
-			"*** Update File: source.txt\n*** Move to: source.txt\n@@\n-old\n+new",
-		),
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n*** Move to: source.txt\n@@\n-old\n+new"));
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "old\n");
@@ -652,17 +536,11 @@ it("matches a same-path Move's source behavior and can rewind its deletion", asy
 });
 
 it("does not upgrade partial read coverage after a successful patch Update", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-		"full",
-		true,
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"), "full", true);
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "before\nold\nafter\n");
-		expect(
-			(await run(f, [{ name: "source.txt", offset: 2, limit: 1 }])).isError,
-		).toBe(false);
+		expect((await run(f, [{ name: "source.txt", offset: 2, limit: 1 }])).isError).toBe(false);
 		f.harness.setResponses([
 			fauxAssistantMessage(
 				[
@@ -681,14 +559,10 @@ it("does not upgrade partial read coverage after a successful patch Update", asy
 			),
 			fauxAssistantMessage("refusal accepted"),
 		]);
-		await f.harness.session.prompt(
-			"Try a whole-file replacement without rereading.",
-		);
+		await f.harness.session.prompt("Try a whole-file replacement without rereading.");
 		const result = getToolResult(f.harness, "file");
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toMatch(
-			/whole file|every line|read the rest/i,
-		);
+		expect(getMessageText(result)).toMatch(/whole file|every line|read the rest/i);
 		expect(fs.readFileSync(source, "utf8")).toBe("before\nnew\nafter\n");
 	} finally {
 		f.cleanup();
@@ -696,21 +570,13 @@ it("does not upgrade partial read coverage after a successful patch Update", asy
 });
 
 it("keeps stale status after applying a valid patch anchor over external changes", async () => {
-	const f = await fixture(
-		envelope("*** Update File: source.txt\n@@\n-old\n+new"),
-		"full",
-		true,
-	);
+	const f = await fixture(envelope("*** Update File: source.txt\n@@\n-old\n+new"), "full", true);
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt");
 		fs.writeFileSync(source, "old\n");
-		expect(
-			(
-				await run(f, [{ name: "source.txt" }], () =>
-					fs.writeFileSync(source, "old\nexternal\n"),
-				)
-			).isError,
-		).toBe(false);
+		expect((await run(f, [{ name: "source.txt" }], () => fs.writeFileSync(source, "old\nexternal\n"))).isError).toBe(
+			false,
+		);
 		f.harness.setResponses([
 			fauxAssistantMessage(
 				[
@@ -739,9 +605,7 @@ it("keeps stale status after applying a valid patch anchor over external changes
 });
 
 it("refuses a canonical Move when a Claude Write gate cannot receive a faithful destination projection", async () => {
-	const command = envelope(
-		"*** Update File: source.txt\n*** Move to: protected.txt\n@@\n-old\n+new",
-	);
+	const command = envelope("*** Update File: source.txt\n*** Move to: protected.txt\n@@\n-old\n+new");
 	const f = await fixture(command, "full", false, true);
 	try {
 		const source = path.join(f.harness.tempDir, "source.txt"),
@@ -802,12 +666,8 @@ it("rejects both input modes before invoking a source hook", async () => {
 		await f.harness.session.prompt("Try ambiguous input.");
 		expect(getToolResult(f.harness, "file").isError).toBe(true);
 		expect(fs.existsSync(f.captured)).toBe(false);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "canonical.txt"))).toBe(
-			false,
-		);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "native.txt"))).toBe(
-			false,
-		);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "canonical.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "native.txt"))).toBe(false);
 	} finally {
 		f.cleanup();
 	}
@@ -815,20 +675,14 @@ it("rejects both input modes before invoking a source hook", async () => {
 
 it("prechecks copied output markers in later Add content before earlier patch effects", async () => {
 	const f = await fixture(
-		envelope(
-			"*** Add File: earlier.txt\n+earlier\n*** Add File: marker.txt\n+[Output trimmed: fixture]",
-		),
+		envelope("*** Add File: earlier.txt\n+earlier\n*** Add File: marker.txt\n+[Output trimmed: fixture]"),
 	);
 	try {
 		const result = await run(f);
 		expect(result.isError).toBe(true);
 		expect(getMessageText(result)).toMatch(/placeholder|output.*cut|trimmed/i);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "earlier.txt"))).toBe(
-			false,
-		);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "marker.txt"))).toBe(
-			false,
-		);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "earlier.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "marker.txt"))).toBe(false);
 	} finally {
 		f.cleanup();
 	}
@@ -845,10 +699,7 @@ it("refuses overlapping move targets during preflight instead of applying stale 
 			destination = path.join(f.harness.tempDir, "destination.txt");
 		fs.writeFileSync(source, "old\n");
 		fs.writeFileSync(destination, "prior\n");
-		const result = await run(f, [
-			{ name: "source.txt" },
-			{ name: "destination.txt" },
-		]);
+		const result = await run(f, [{ name: "source.txt" }, { name: "destination.txt" }]);
 		expect(result.isError).toBe(true);
 		expect(getMessageText(result)).toMatch(/overlap|multiple.*target/i);
 		expect(fs.readFileSync(source, "utf8")).toBe("old\n");

@@ -97,7 +97,14 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 					signal: options?.signal,
 				},
 			);
-			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			try {
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			} catch (error) {
+				// Iteration has not started, so the SDK iterator cannot release this response yet.
+				openaiStream.controller.abort();
+				await response.body?.cancel().catch(() => {});
+				throw error;
+			}
 			stream.push({ type: "start", partial: output });
 
 			await processResponsesStream(openaiStream, output, stream, model, {
@@ -212,7 +219,10 @@ function buildParams(
 		model: deploymentName,
 		input: messages,
 		stream: true,
-		prompt_cache_key: resolveCacheRetention(options?.cacheRetention, options?.env) === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
+		prompt_cache_key:
+			resolveCacheRetention(options?.cacheRetention, options?.env) === "none"
+				? undefined
+				: clampOpenAIPromptCacheKey(options?.sessionId),
 		store: false,
 	};
 

@@ -42,8 +42,10 @@ describe("shared MCP discovery", () => {
 	it("layers Pi defaults, shared and legacy Octocode files, then writable native configuration", () => {
 		const { options, write, home } = globalSetup();
 		const paths = [
-			join(home, ".pi/mcp.json"), join(home, ".pi/agent/mcp.json"),
-			join(home, ".octocode/mcp.json"), join(home, ".octocode/agent/mcp.json"),
+			join(home, ".pi/mcp.json"),
+			join(home, ".pi/agent/mcp.json"),
+			join(home, ".octocode/mcp.json"),
+			join(home, ".octocode/agent/mcp.json"),
 			join(options.agentDir, "mcp.json"),
 		];
 		expect(globalMcpConfigPaths(options.agentDir)).toEqual(paths);
@@ -52,7 +54,9 @@ describe("shared MCP discovery", () => {
 			const loaded = loadMcpConfig({ ...options, projectTrusted: false });
 			expect(loaded.errors).toEqual([]);
 			expect(loaded.servers.find((entry) => entry.name === "shared")).toMatchObject({
-				config: { command: `layer-${index}` }, source: file, scope: "global",
+				config: { command: `layer-${index}` },
+				source: file,
+				scope: "global",
 			});
 			expect(loaded.servers).toHaveLength(index + 2);
 			expect(loaded.globalConfig).toBe(paths.at(-1));
@@ -71,11 +75,18 @@ describe("shared MCP discovery", () => {
 		expect(base.config.exposure).toBeUndefined();
 		updateMcpServerConfig(canonical, "octocode", { enabled: false }, { override: true });
 		const disabled = loadMcpConfig(options).servers[0];
-		expect(disabled).toMatchObject({ source: fallback, override: canonical, overrideScope: "global", config: { enabled: false } });
+		expect(disabled).toMatchObject({
+			source: fallback,
+			override: canonical,
+			overrideScope: "global",
+			config: { enabled: false },
+		});
 		expect(JSON.parse(readFileSync(canonical, "utf8"))).toEqual({ mcpServers: { octocode: { enabled: false } } });
 		write(project, { octocode: { enabled: true, exposure: "direct" } });
 		expect(loadMcpConfig(options).servers[0]).toMatchObject({
-			source: fallback, override: project, overrideScope: "project",
+			source: fallback,
+			override: project,
+			overrideScope: "project",
 			config: { command: "fallback", enabled: true, exposure: "direct", env: { TEST_TOKEN: "fixture-only" } },
 		});
 		expect(loadMcpConfig({ ...options, projectTrusted: false }).servers[0].config.enabled).toBe(false);
@@ -86,7 +97,10 @@ describe("shared MCP discovery", () => {
 		const { options, write, home } = globalSetup();
 		write(join(home, ".pi/mcp.json"), { "work-files": { command: "pi", env: { PRIVATE: "fixture" } } });
 		write(join(home, ".octocode/mcp.json"), { work_files: { command: "octocode" } });
-		write(join(options.agentDir, "mcp.json"), { "work-files": { enabled: false }, work_files: { command: "conflict" } });
+		write(join(options.agentDir, "mcp.json"), {
+			"work-files": { enabled: false },
+			work_files: { command: "conflict" },
+		});
 		const loaded = loadMcpConfig(options);
 		expect(loaded.servers).toHaveLength(1);
 		expect(loaded.servers[0]).toMatchObject({ name: "work-files", config: { command: "octocode", enabled: false } });
@@ -99,12 +113,17 @@ describe("shared MCP discovery", () => {
 		const fallback = join(home, ".pi/agent/mcp.json");
 		const canonical = join(options.agentDir, "mcp.json");
 		write(fallback, { tools: { command: "fallback" } });
-		writeFileSync(fallback, JSON.stringify({ autoEnableCodemode: false, mcpServers: { tools: { command: "fallback" } } }));
+		writeFileSync(
+			fallback,
+			JSON.stringify({ autoEnableCodemode: false, mcpServers: { tools: { command: "fallback" } } }),
+		);
 		write(canonical, { tools: { enabled: false, env: { EXTRA: "not-allowed-in-controls" } } });
 		const failed = loadMcpConfig(options);
 		expect(failed.servers[0]).toMatchObject({ source: fallback, config: { command: "fallback" } });
 		expect(failed.servers[0].config.enabled).toBeUndefined();
-		expect(failed.errors).toEqual([expect.stringContaining("an override can only set enabled, exposure, toolExposure")]);
+		expect(failed.errors).toEqual([
+			expect.stringContaining("an override can only set enabled, exposure, toolExposure"),
+		]);
 		writeFileSync(canonical, JSON.stringify({ autoEnableCodemode: true, mcpServers: { tools: { enabled: false } } }));
 	});
 

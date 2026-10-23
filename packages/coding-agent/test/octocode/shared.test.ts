@@ -403,16 +403,21 @@ describe("native commands", () => {
 	it("registers canonical commands and alias metadata once, with direct completions", async () => {
 		const commands = new Subcommands();
 		const handler = vi.fn(async () => {});
-		commands.add("permissions", {aliases:["permission"], description: "Permissions", handler, complete: prefix => wordCompletions(["manual", "workspace"], prefix)});
+		commands.add("permissions", {
+			aliases: ["permission"],
+			description: "Permissions",
+			handler,
+			complete: (prefix) => wordCompletions(["manual", "workspace"], prefix),
+		});
 		const fake = fakePi();
 		commands.register(fake.pi);
 		expect([...fake.commands.keys()]).toEqual(["permissions"]);
 		const command = fake.commands.get("permissions")!;
 		expect(command.aliases).toEqual(["permission"]);
-		expect(command.getArgumentCompletions(" ma")).toEqual([{value:"manual",label:"manual"}]);
-		const ctx = fakeCtx({cwd:"."});
-		await command.handler(" manual ",ctx);
-		expect(handler).toHaveBeenCalledWith("manual",ctx);
+		expect(command.getArgumentCompletions(" ma")).toEqual([{ value: "manual", label: "manual" }]);
+		const ctx = fakeCtx({ cwd: "." });
+		await command.handler(" manual ", ctx);
+		expect(handler).toHaveBeenCalledWith("manual", ctx);
 		expect(commands.get("permission")).toBe(commands.get("permissions"));
 	});
 	it("keeps status aliases on one registry entry", () => {
@@ -424,10 +429,10 @@ describe("native commands", () => {
 	it("handles retired namespace input before model execution and leaves ordinary text alone", async () => {
 		const fake = fakePi();
 		new Subcommands().register(fake.pi);
-		const ctx = fakeCtx({cwd:".",hasUI:true});
-		expect(await fake.fire("input",{text:"/octocode permission manual"},ctx)).toEqual({action:"handled"});
+		const ctx = fakeCtx({ cwd: ".", hasUI: true });
+		expect(await fake.fire("input", { text: "/octocode permission manual" }, ctx)).toEqual({ action: "handled" });
 		expect(ctx.ui.notes.at(-1)?.message).toContain("/permissions manual");
-		expect(await fake.fire("input",{text:"/octocode-example"},ctx)).toEqual({action:"continue"});
+		expect(await fake.fire("input", { text: "/octocode-example" }, ctx)).toEqual({ action: "continue" });
 		expect(fake.commands.has("octocode")).toBe(false);
 	});
 	it("maps retired namespace inputs to precise migration guidance", () => {
@@ -435,6 +440,11 @@ describe("native commands", () => {
 		expect(legacyNativeCommandGuidance("sessions")).toContain("/resume");
 		expect(legacyNativeCommandGuidance("mcp restart")).toContain("/mcp reconnect octocode");
 		expect(legacyNativeCommandGuidance("external list")).toContain("/agents external list");
+	});
+	it("lists the registered commands, not a fixed set, when asked for the old namespace", () => {
+		const help = legacyNativeCommandGuidance("", ["web", "agents", "status"]);
+		expect(help).toBe("Commands now have direct names: /agents, /mcp, /status and /web.");
+		expect(legacyNativeCommandGuidance("help")).toBe("Commands now have direct names: /mcp.");
 	});
 });
 
@@ -471,9 +481,7 @@ describe("usage display", () => {
 	});
 
 	it("shows new prompt tokens in ↑ and the cache reads beside them", () => {
-		expect(formatTokenUsage({ input: 1_200_000, cacheRead: 1_128_000, output: 35_000 })).toBe(
-			"↑72k +1.1M cached ↓35k",
-		);
+		expect(formatTokenUsage({ input: 1_200_000, cacheRead: 1_128_000, output: 35_000 })).toBe("↑72k +1.1M cached ↓35k");
 		expect(formatTokenUsage({ input: 900, cacheRead: 900, output: 10 })).toBe("↑0 +900 cached ↓10");
 		expect(formatTokenUsage({ input: 1_500, cacheRead: 0, output: 250 })).toBe("↑1.5k ↓250");
 	});

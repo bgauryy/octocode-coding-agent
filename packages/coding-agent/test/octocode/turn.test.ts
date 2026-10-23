@@ -67,8 +67,8 @@ describe("registerTurnSetup", () => {
 	it("keeps read-only shell restrictions when PowerShell is the only shell", async () => {
 		const { fake } = setup({ by: "off" });
 		const prompt = await run(fake, ["read", "powershell"]);
-		expect(prompt).toContain("Shell tools can still write, so run only read-only commands");
-		expect(await run(fake, ["read"])).not.toContain("Shell tools can still write");
+		expect(prompt).toContain("Run only read-only commands.");
+		expect(await run(fake, ["read"])).not.toContain("Run only read-only commands.");
 	});
 
 	it("keeps custom tools across reload and resume without name-based pruning", async () => {
@@ -128,7 +128,11 @@ describe("registerTurnSetup", () => {
 	it("routes browser work to the specialist only when the main agent can delegate and has no browser", async () => {
 		const fake = fakePi();
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => profiles, octocode: fakeOctocode({ by: "off" }).mcp });
+		registerTurnSetup(fake.pi, {
+			isSubagent: false,
+			profiles: () => profiles,
+			octocode: fakeOctocode({ by: "off" }).mcp,
+		});
 		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction to `browser`");
 		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
 		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
@@ -142,8 +146,17 @@ describe("registerTurnSetup", () => {
 			vi.stubEnv(ROLE_PROMPT_FILE_ENV, file);
 			vi.stubEnv("OCTOCODE_BROWSER_VISIBLE", headless ? "" : "1");
 			const fake = fakePi();
-			registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: fakeOctocode({ by: "off" }).mcp });
-			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["file", "agent", "archive", "browser", "web"] } };
+			registerTurnSetup(fake.pi, {
+				isSubagent: true,
+				profiles: () => new Map(),
+				octocode: fakeOctocode({ by: "off" }).mcp,
+			});
+			const event = {
+				systemPromptOptions: {
+					sections: {} as Record<string, string>,
+					selectedTools: ["file", "agent", "archive", "browser", "web"],
+				},
+			};
 			await fake.emit("before_agent_start", event, {});
 			expect(event.systemPromptOptions.sections.role).toBe(profile.prompt);
 			sections.push({ ...event.systemPromptOptions.sections });
@@ -173,7 +186,9 @@ describe("registerTurnSetup", () => {
 		state.instructions =
 			"Loop: SCOPE → ORIENT → SEARCH.\nReuse returned data.next.* exactly.\nEmpty does not prove absence.";
 		const first = await run(fake, ["read"]);
-		expect(first).toContain(`# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\n${state.instructions}\n`);
+		expect(first).toContain(
+			`# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\n${state.instructions}\n`,
+		);
 		expect(first.indexOf("# Research")).toBeLessThan(first.indexOf("# Using Octocode MCP tools"));
 		expect(first.indexOf("# Using Octocode MCP tools")).toBeLessThan(first.indexOf("# Safety"));
 		expect(await run(fake, ["read", "mcp__octocode__localSearch"])).toBe(first);
@@ -187,7 +202,9 @@ describe("registerTurnSetup", () => {
 		expect(failed).not.toContain("Octocode MCP");
 		expect(failed).not.toContain("server instructions");
 		state.connected = true;
-		expect(await run(fake, ["read"])).toContain("# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\nReuse next.*");
+		expect(await run(fake, ["read"])).toContain(
+			"# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\nReuse next.*",
+		);
 		expect(state.readyCalls).toBe(2);
 		// A session reset forgets what was seen: the next session decides for itself.
 		state.connected = false;

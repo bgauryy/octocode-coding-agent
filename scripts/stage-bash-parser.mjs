@@ -4,15 +4,10 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = join(
-	root,
-	"packages/coding-agent/src/octocode/permission/bash-parser",
-);
+const source = join(root, "packages/coding-agent/src/octocode/permission/bash-parser");
 
 const require = createRequire(import.meta.url);
-export function stageBashParser(
-	target = join(root, "packages/coding-agent/dist/bash-parser"),
-) {
+export function stageBashParser(target = join(root, "packages/coding-agent/dist/bash-parser")) {
 	const grammar = readFileSync(join(source, "tree-sitter-bash.wasm"));
 	if (
 		createHash("sha256").update(grammar).digest("hex") !==
@@ -27,20 +22,8 @@ export function stageBashParser(
 	)
 		throw new Error("Bash parser runtime asset hash mismatch");
 	mkdirSync(target, { recursive: true });
-	for (const name of [
-		"tree-sitter-bash.wasm",
-		"LICENSE.bash",
-		"LICENSE.tree-sitter",
-		"manifest.json",
-	])
+	for (const name of ["tree-sitter-bash.wasm", "LICENSE.bash", "LICENSE.tree-sitter", "manifest.json"])
 		copyFileSync(join(source, name), join(target, name));
-	copyFileSync(
-		require.resolve("web-tree-sitter/tree-sitter.wasm"),
-		join(target, "tree-sitter.wasm"),
-	);
+	copyFileSync(require.resolve("web-tree-sitter/tree-sitter.wasm"), join(target, "tree-sitter.wasm"));
 }
-if (
-	process.argv[1] &&
-	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-)
-	stageBashParser();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) stageBashParser();

@@ -304,9 +304,7 @@ export default function(pi) {
 			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
 			await loader.reload({
 				resolveProjectTrust: async ({ extensionsResult }) => {
-					expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([
-						join(userExtDir, "user.ts"),
-					]);
+					expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([join(userExtDir, "user.ts")]);
 					return true;
 				},
 			});
@@ -534,9 +532,7 @@ Project skill content`,
 			await loader.reload();
 
 			expect(loader.getSystemPrompt()).toBe("Global system prompt.");
-			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(
-				true,
-			);
+			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(true);
 			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(true);
 			expect(loader.getExtensions().extensions).toHaveLength(0);
 			expect(loader.getExtensions().errors).toEqual([]);
@@ -655,18 +651,45 @@ Project skill content`,
 	});
 
 	describe("extendResources", () => {
+		it("applies the skills setting's exclusions to folders an extension adds", async () => {
+			const host = join(tempDir, "host-skills");
+			for (const name of ["kept", "hidden"]) {
+				mkdirSync(join(host, name), { recursive: true });
+				writeFileSync(join(host, name, "SKILL.md"), `---\nname: ${name}\ndescription: Test skill\n---\nBody`);
+			}
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: ["!hidden"] }));
+			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir });
+			await loader.reload();
+			loader.extendResources({
+				skillPaths: [{ path: host, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }],
+			});
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["kept"]);
+			expect(loader.getSkills().skills[0]?.sourceInfo.source).toBe("extension:test");
+		});
 		it("keeps explicit skills but ignores extension discovery when skills are disabled", async () => {
 			const explicit = join(tempDir, "explicit", "SKILL.md");
 			const discovered = join(tempDir, "discovered", "SKILL.md");
-			for (const [file, name] of [[explicit, "explicit"], [discovered, "discovered"]]) {
+			for (const [file, name] of [
+				[explicit, "explicit"],
+				[discovered, "discovered"],
+			]) {
 				mkdirSync(join(file, ".."), { recursive: true });
 				writeFileSync(file, `---\nname: ${name}\ndescription: Test skill\n---\nInstructions`);
 			}
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir,
-				noSkills: true, additionalSkillPaths: [explicit] });
+			const loader = new DefaultResourceLoader({
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+				noSkills: true,
+				additionalSkillPaths: [explicit],
+			});
 			await loader.reload();
-			const discover = () => loader.extendResources({ skillPaths: [{ path: discovered,
-				metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }] });
+			const discover = () =>
+				loader.extendResources({
+					skillPaths: [
+						{ path: discovered, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } },
+					],
+				});
 			discover();
 			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
 			await loader.reload();
@@ -861,9 +884,9 @@ Extension prompt content`,
 			expect(loader.getSkills().skills.find((skill) => skill.name === "package-skill")?.sourceInfo).toMatchObject(
 				packageSourceInfo,
 			);
-			expect(
-				loader.getPrompts().prompts.find((prompt) => prompt.name === "package-prompt")?.sourceInfo,
-			).toMatchObject(packageSourceInfo);
+			expect(loader.getPrompts().prompts.find((prompt) => prompt.name === "package-prompt")?.sourceInfo).toMatchObject(
+				packageSourceInfo,
+			);
 			expect(loader.getThemes().themes.find((theme) => theme.name === "package-theme")?.sourceInfo).toMatchObject(
 				packageSourceInfo,
 			);
@@ -877,6 +900,47 @@ Extension prompt content`,
 			expect(loader.getThemes().themes.find((theme) => theme.name === "extension-theme")?.sourceInfo).toMatchObject(
 				extensionMetadata,
 			);
+		});
+	});
+
+	describe("explicit skill paths", () => {
+		it("lets a --skill path win over an installed skill with the same name", async () => {
+			const skill = (dir: string, description: string) => {
+				mkdirSync(dir, { recursive: true });
+				writeFileSync(join(dir, "SKILL.md"), `---\nname: review\ndescription: ${description}\n---\nBody`);
+			};
+			skill(join(agentDir, "skills", "review"), "installed copy");
+			const explicit = join(tempDir, "candidate", "review");
+			skill(explicit, "explicit copy");
+			const loader = new DefaultResourceLoader({
+				nativeFeatures: false,
+				cwd,
+				agentDir,
+				additionalSkillPaths: [explicit],
+			});
+			await loader.reload();
+			expect(loader.getSkills().skills.find((loaded) => loaded.name === "review")?.description).toBe("explicit copy");
+			const collision = loader.getSkills().diagnostics.find((diagnostic) => diagnostic.type === "collision");
+			expect(collision?.collision?.loserPath).toBe(join(agentDir, "skills", "review", "SKILL.md"));
+		});
+	});
+
+	describe("project skills from a subdirectory", () => {
+		it("loads the repository root's .octocode skills as project skills, ahead of user skills", async () => {
+			const skill = (dir: string, description: string) => {
+				mkdirSync(dir, { recursive: true });
+				writeFileSync(join(dir, "SKILL.md"), `---\nname: review\ndescription: ${description}\n---\nBody`);
+			};
+			mkdirSync(join(cwd, ".git"), { recursive: true });
+			skill(join(agentDir, "skills", "review"), "user copy");
+			skill(join(cwd, ".octocode", "skills", "review"), "project copy");
+			const sub = join(cwd, "packages", "a");
+			mkdirSync(sub, { recursive: true });
+			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd: sub, agentDir });
+			await loader.reload();
+			const { skills } = loader.getSkills();
+			expect(skills.find((loaded) => loaded.name === "review")?.description).toBe("project copy");
+			expect(skills.find((loaded) => loaded.name === "review")?.sourceInfo.scope).toBe("project");
 		});
 	});
 
@@ -1106,8 +1170,7 @@ export default function(pi: ExtensionAPI) {
 					{
 						name: "llama",
 						replaceable: true,
-						factory: (pi) =>
-							pi.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
+						factory: (pi) => pi.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
 					},
 				],
 			});

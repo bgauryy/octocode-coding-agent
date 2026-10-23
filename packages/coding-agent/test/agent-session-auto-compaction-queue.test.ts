@@ -74,7 +74,10 @@ describe("AgentSession auto-compaction queue resume", () => {
 		await session.steer("same");
 		await session.followUp("same");
 		const handle = Reflect.get(session, "_handleAgentEvent");
-		await handle({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "same" }], timestamp: 0 } });
+		await handle({
+			type: "message_start",
+			message: { role: "user", content: [{ type: "text", text: "same" }], timestamp: 0 },
+		});
 		expect(session.getSteeringMessages()).toEqual(["same"]);
 		expect(session.getFollowUpMessages()).toEqual(["same"]);
 		const queued = session.agent.peekQueuedMessages()[0];
@@ -83,91 +86,109 @@ describe("AgentSession auto-compaction queue resume", () => {
 		expect(session.getFollowUpMessages()).toEqual(["same"]);
 	});
 
-	it.each([[false, false], [true, false], [false, true], [true, true]])("resumes queued work after compaction unless a completion handler stops it (stop=%s, retry=%s)", async (stop, retry) => {
-		const ends: unknown[] = [];
-		session.subscribe((event) => { if (event.type === "compaction_end") ends.push(event); });
-		const emit = session.extensionRunner.emit.bind(session.extensionRunner);
-		vi.spyOn(session.extensionRunner, "emit").mockImplementation(async (event) => {
-			const result = await emit(event);
-			if (stop && event.type === "session_compact") void session.abort();
-			return result;
-		});
-		const policy = settingsManager.getCompactionSettings();
-		settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
-		const model = session.model!;
-		const now = Date.now();
-		sessionManager.appendMessage({
-			role: "user",
-			content: [{ type: "text", text: "message to compact" }],
-			timestamp: now - 1000,
-		});
-		sessionManager.appendMessage({
-			role: "assistant",
-			content: [{ type: "text", text: "assistant response to compact" }],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 100,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 100,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: "stop",
-			timestamp: now - 500,
-		});
-		session.agent.state.messages = sessionManager.buildSessionContext().messages;
-		session.agent.streamFunction = (summaryModel) => {
-			const stream = createAssistantMessageEventStream();
-			void Promise.resolve().then(() => {
-				stream.push({
-					type: "done",
-					reason: "stop",
-					message: {
-						...fauxAssistantMessage("compacted"),
-						api: summaryModel.api,
-						provider: summaryModel.provider,
-						model: summaryModel.id,
-						usage: {
-							input: 10,
-							output: 0,
-							cacheRead: 0,
-							cacheWrite: 0,
-							totalTokens: 10,
-							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-						},
-					},
-				});
+	it.each([
+		[false, false],
+		[true, false],
+		[false, true],
+		[true, true],
+	])(
+		"resumes queued work after compaction unless a completion handler stops it (stop=%s, retry=%s)",
+		async (stop, retry) => {
+			const ends: unknown[] = [];
+			session.subscribe((event) => {
+				if (event.type === "compaction_end") ends.push(event);
 			});
-			return stream;
-		};
+			const emit = session.extensionRunner.emit.bind(session.extensionRunner);
+			vi.spyOn(session.extensionRunner, "emit").mockImplementation(async (event) => {
+				const result = await emit(event);
+				if (stop && event.type === "session_compact") void session.abort();
+				return result;
+			});
+			const policy = settingsManager.getCompactionSettings();
+			settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
+			const model = session.model!;
+			const now = Date.now();
+			sessionManager.appendMessage({
+				role: "user",
+				content: [{ type: "text", text: "message to compact" }],
+				timestamp: now - 1000,
+			});
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "assistant response to compact" }],
+				api: model.api,
+				provider: model.provider,
+				model: model.id,
+				usage: {
+					input: 100,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 100,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: now - 500,
+			});
+			session.agent.state.messages = sessionManager.buildSessionContext().messages;
+			session.agent.streamFunction = (summaryModel) => {
+				const stream = createAssistantMessageEventStream();
+				void Promise.resolve().then(() => {
+					stream.push({
+						type: "done",
+						reason: "stop",
+						message: {
+							...fauxAssistantMessage("compacted"),
+							api: summaryModel.api,
+							provider: summaryModel.provider,
+							model: summaryModel.id,
+							usage: {
+								input: 10,
+								output: 0,
+								cacheRead: 0,
+								cacheWrite: 0,
+								totalTokens: 10,
+								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+							},
+						},
+					});
+				});
+				return stream;
+			};
 
-		session.agent.followUp({
-			role: "custom",
-			customType: "test",
-			content: [{ type: "text", text: "Queued custom" }],
-			display: false,
-			timestamp: Date.now(),
-		});
+			session.agent.followUp({
+				role: "custom",
+				customType: "test",
+				content: [{ type: "text", text: "Queued custom" }],
+				display: false,
+				timestamp: Date.now(),
+			});
 
-		expect(session.pendingMessageCount).toBe(0);
-		expect(session.agent.hasQueuedMessages()).toBe(true);
+			expect(session.pendingMessageCount).toBe(0);
+			expect(session.agent.hasQueuedMessages()).toBe(true);
 
-		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+			const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
 
-		const runAutoCompaction = (
-			session as unknown as {
-				_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<boolean>;
-			}
-		)._runAutoCompaction.bind(session);
+			const runAutoCompaction = (
+				session as unknown as {
+					_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<boolean>;
+				}
+			)._runAutoCompaction.bind(session);
 
-		await expect(runAutoCompaction(retry ? "overflow" : "threshold", retry)).resolves.toBe(!stop);
-		expect(ends).toContainEqual(expect.objectContaining({ aborted: false, willRetry: retry && !stop, result: expect.objectContaining({ summary: "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\ncompacted" }) }));
+			await expect(runAutoCompaction(retry ? "overflow" : "threshold", retry)).resolves.toBe(!stop);
+			expect(ends).toContainEqual(
+				expect.objectContaining({
+					aborted: false,
+					willRetry: retry && !stop,
+					result: expect.objectContaining({
+						summary: "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\ncompacted",
+					}),
+				}),
+			);
 
-		expect(continueSpy).not.toHaveBeenCalled();
-	});
+			expect(continueSpy).not.toHaveBeenCalled();
+		},
+	);
 
 	it("should not compact repeatedly after overflow recovery already attempted", async () => {
 		const model = session.model!;

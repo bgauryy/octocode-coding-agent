@@ -79,11 +79,7 @@ export class ModelRegistry {
 	}
 
 	/** Find a model of a non-chat type, e.g. `findOfType("classifier", "typesafe", "jev-latest")`. */
-	findOfType<TType extends ModelType>(
-		type: TType,
-		provider: string,
-		modelId: string,
-	): ModelTypeMap[TType] | undefined {
+	findOfType<TType extends ModelType>(type: TType, provider: string, modelId: string): ModelTypeMap[TType] | undefined {
 		return this.runtime.getModelOfType(type, provider, modelId);
 	}
 
@@ -110,14 +106,11 @@ export class ModelRegistry {
 			};
 		} catch (error) {
 			const cause = error instanceof Error ? error.cause : undefined;
-			const message =
-				cause instanceof Error ? cause.message : error instanceof Error ? error.message : String(error);
+			const message = cause instanceof Error ? cause.message : error instanceof Error ? error.message : String(error);
 			return {
 				ok: false,
 				error:
-					message === "authHeader requires a resolved API key"
-						? `No API key found for "${model.provider}"`
-						: message,
+					message === "authHeader requires a resolved API key" ? `No API key found for "${model.provider}"` : message,
 			};
 		}
 	}

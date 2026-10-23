@@ -3,10 +3,7 @@ import os from "node:os";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import path from "node:path";
-import {
-	fauxAssistantMessage,
-	getCurrentSystemPrompt,
-} from "@octocodeai/octocode-ai";
+import { fauxAssistantMessage, getCurrentSystemPrompt } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createReadTool } from "../src/core/tools/read.ts";
@@ -40,14 +37,10 @@ async function fixture(
 		file,
 		`---\nname: ${NAME}\ndescription: ${DESCRIPTION}\n${options.nativeDisabled ? "disable-model-invocation: true\n" : ""}---\n${BODY}\n`,
 	);
-	if (metadata !== undefined)
-		fs.writeFileSync(path.join(skillDir, "agents/openai.yaml"), metadata);
+	if (metadata !== undefined) fs.writeFileSync(path.join(skillDir, "agents/openai.yaml"), metadata);
 	if (options.plugin) {
 		fs.mkdirSync(path.join(root, "plugin/.codex-plugin"), { recursive: true });
-		fs.writeFileSync(
-			path.join(root, "plugin/.codex-plugin/plugin.json"),
-			JSON.stringify({ name: "policy-kit" }),
-		);
+		fs.writeFileSync(path.join(root, "plugin/.codex-plugin/plugin.json"), JSON.stringify({ name: "policy-kit" }));
 	}
 	const loader = new DefaultResourceLoader({
 		cwd,
@@ -60,9 +53,7 @@ async function fixture(
 		noContextFiles: true,
 		additionalSkillPaths: options.plugin ? [] : [file],
 		settingsManager: SettingsManager.inMemory(
-			options.plugin
-				? { plugins: [{ path: path.join(root, "plugin"), protocol: "codex" }] }
-				: {},
+			options.plugin ? { plugins: [{ path: path.join(root, "plugin"), protocol: "codex" }] } : {},
 		),
 	});
 	await loader.reload();
@@ -95,18 +86,14 @@ async function request(f: Fixture, prompt: string) {
 	]);
 	const start = f.harness.session.messages.length;
 	await f.harness.session.prompt(prompt);
-	const user = f.harness.session.messages
-		.slice(start)
-		.find((message) => message.role === "user");
+	const user = f.harness.session.messages.slice(start).find((message) => message.role === "user");
 	return { system, messages, user: user ? getMessageText(user) : "" };
 }
 
 it("hides implicit Codex sidecar skills from the actual provider catalog but keeps explicit slash invocation", async () => {
 	const f = await fixture("policy:\n  allow_implicit_invocation: false\n");
 	try {
-		expect(
-			f.loader.getSkills().skills.some((skill) => skill.name === NAME),
-		).toBe(true);
+		expect(f.loader.getSkills().skills.some((skill) => skill.name === NAME)).toBe(true);
 		const implicit = await request(f, "Explain the project.");
 		expect(implicit.system).not.toContain(DESCRIPTION);
 		expect(implicit.messages).not.toContain(BODY);
@@ -124,19 +111,14 @@ it.each([
 	"policy: null\n",
 	"policy:\n  allow_implicit_invocation: true\n",
 	"policy:\n  allow_implicit_invocation: null\n",
-])(
-	"defaults or enables implicit discovery with metadata %j",
-	async (metadata) => {
-		const f = await fixture(metadata);
-		try {
-			expect((await request(f, "Explain the project.")).system).toContain(
-				DESCRIPTION,
-			);
-		} finally {
-			f.cleanup();
-		}
-	},
-);
+])("defaults or enables implicit discovery with metadata %j", async (metadata) => {
+	const f = await fixture(metadata);
+	try {
+		expect((await request(f, "Explain the project.")).system).toContain(DESCRIPTION);
+	} finally {
+		f.cleanup();
+	}
+});
 
 it.each([
 	"policy: [broken\n",
@@ -144,39 +126,24 @@ it.each([
 	"policy:\n  allow_implicit_invocation: false\ninterface: []\n",
 	"policy:\n  allow_implicit_invocation: false\ndependencies:\n  tools: invalid\n",
 	"policy:\n  allow_implicit_invocation: false\n  products: [not-a-product]\n",
-])(
-	"discards invalid optional metadata while retaining the skill: %j",
-	async (metadata) => {
-		const f = await fixture(metadata);
-		try {
-			expect(
-				f.loader.getSkills().skills.some((skill) => skill.name === NAME),
-			).toBe(true);
-			expect(
-				f.loader
-					.getSkills()
-					.diagnostics.some((item) =>
-						JSON.stringify(item).includes("openai.yaml"),
-					),
-			).toBe(true);
-			expect((await request(f, "Explain the project.")).system).toContain(
-				DESCRIPTION,
-			);
-			expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
-		} finally {
-			f.cleanup();
-		}
-	},
-);
+])("discards invalid optional metadata while retaining the skill: %j", async (metadata) => {
+	const f = await fixture(metadata);
+	try {
+		expect(f.loader.getSkills().skills.some((skill) => skill.name === NAME)).toBe(true);
+		expect(f.loader.getSkills().diagnostics.some((item) => JSON.stringify(item).includes("openai.yaml"))).toBe(true);
+		expect((await request(f, "Explain the project.")).system).toContain(DESCRIPTION);
+		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
+	} finally {
+		f.cleanup();
+	}
+});
 
 it("accepts serde-compatible scalar interface values without discarding the false policy", async () => {
 	const f = await fixture(
 		"interface:\n  display_name: 1\n  icon_small: true\npolicy:\n  allow_implicit_invocation: false\n",
 	);
 	try {
-		expect((await request(f, "Explain the project.")).system).not.toContain(
-			DESCRIPTION,
-		);
+		expect((await request(f, "Explain the project.")).system).not.toContain(DESCRIPTION);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
 	} finally {
 		f.cleanup();
@@ -188,9 +155,7 @@ it("does not override a native model-invocation opt-out with sidecar true", asyn
 		nativeDisabled: true,
 	});
 	try {
-		expect((await request(f, "Explain the project.")).system).not.toContain(
-			DESCRIPTION,
-		);
+		expect((await request(f, "Explain the project.")).system).not.toContain(DESCRIPTION);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
 	} finally {
 		f.cleanup();
@@ -202,9 +167,7 @@ it("does not apply Codex sidecar policy to an inferred Claude skill", async () =
 		claude: true,
 	});
 	try {
-		expect((await request(f, "Explain the project.")).system).toContain(
-			DESCRIPTION,
-		);
+		expect((await request(f, "Explain the project.")).system).toContain(DESCRIPTION);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
 	} finally {
 		f.cleanup();
@@ -216,12 +179,8 @@ it.each(["codex", "chatgpt", "atlas"])(
 	async (product) => {
 		const f = await fixture(`policy:\n  products: [${product}]\n`);
 		try {
-			expect(
-				f.loader.getSkills().skills.some((skill) => skill.name === NAME),
-			).toBe(false);
-			expect((await request(f, "Explain the project.")).system).not.toContain(
-				DESCRIPTION,
-			);
+			expect(f.loader.getSkills().skills.some((skill) => skill.name === NAME)).toBe(false);
+			expect((await request(f, "Explain the project.")).system).not.toContain(DESCRIPTION);
 			const command = `/skill:${NAME}`;
 			expect((await request(f, command)).user).toBe(command);
 		} finally {
@@ -235,24 +194,16 @@ it("retains metadata policy through configured Codex plugin discovery", async ()
 		plugin: true,
 	});
 	try {
-		expect(f.loader.getSkills().skills.map((skill) => skill.name)).toContain(
-			`policy-kit:${NAME}`,
-		);
-		expect((await request(f, "Explain the project.")).system).not.toContain(
-			DESCRIPTION,
-		);
-		expect((await request(f, `/skill:policy-kit:${NAME}`)).user).toContain(
-			BODY,
-		);
+		expect(f.loader.getSkills().skills.map((skill) => skill.name)).toContain(`policy-kit:${NAME}`);
+		expect((await request(f, "Explain the project.")).system).not.toContain(DESCRIPTION);
+		expect((await request(f, `/skill:policy-kit:${NAME}`)).user).toContain(BODY);
 	} finally {
 		f.cleanup();
 	}
 });
 
 it("does not execute or connect declared dependencies during resource loading or explicit invocation", async () => {
-	const scratch = fs.mkdtempSync(
-		path.join(os.tmpdir(), "skill-dependency-sentinel-"),
-	);
+	const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "skill-dependency-sentinel-"));
 	const sentinel = path.join(scratch, "executed");
 	let connections = 0;
 	const server = createServer((_request, response) => {
@@ -262,8 +213,7 @@ it("does not execute or connect declared dependencies during resource loading or
 	server.listen(0, "127.0.0.1");
 	await once(server, "listening");
 	const address = server.address();
-	if (!address || typeof address === "string")
-		throw new Error("Expected local test port");
+	if (!address || typeof address === "string") throw new Error("Expected local test port");
 	const command = `${process.execPath} -e ${JSON.stringify(`require('node:fs').writeFileSync(${JSON.stringify(sentinel)},'executed')`)}`;
 	const metadata = JSON.stringify({
 		policy: { allow_implicit_invocation: false },
@@ -284,8 +234,7 @@ it("does not execute or connect declared dependencies during resource loading or
 		expect(f.loader.getSkills().diagnostics).toEqual([
 			expect.objectContaining({
 				type: "warning",
-				message:
-					"Codex skill interface and dependency metadata are validated but not activated by this host.",
+				message: "Codex skill interface and dependency metadata are validated but not activated by this host.",
 			}),
 		]);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
@@ -294,9 +243,7 @@ it("does not execute or connect declared dependencies during resource loading or
 		expect(connections).toBe(0);
 	} finally {
 		f.cleanup();
-		await new Promise<void>((resolve, reject) =>
-			server.close((error) => (error ? reject(error) : resolve())),
-		);
+		await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 		fs.rmSync(scratch, { recursive: true, force: true });
 	}
 });

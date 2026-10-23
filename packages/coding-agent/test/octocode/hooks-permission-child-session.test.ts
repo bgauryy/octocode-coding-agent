@@ -4,12 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import {
-	buildAgentArgs,
-	childSessionFile,
-	runSubagent,
-	type Identity,
-} from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs, childSessionFile, runSubagent, type Identity } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
 afterEach(() => vi.unstubAllEnvs());
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
@@ -50,9 +45,7 @@ async function fixture(
 			res.end(JSON.stringify(allowed));
 			return;
 		}
-		const isPrompt = JSON.stringify(body.messages).includes(
-			"Evaluate the supplied hook rule",
-		);
+		const isPrompt = JSON.stringify(body.messages).includes("Evaluate the supplied hook rule");
 		if (isPrompt) promptRequests++;
 		else requests.push(body);
 		res.writeHead(200, { "content-type": "text/event-stream" });
@@ -185,10 +178,7 @@ async function fixture(
 	const configDir = path.join(home, `.${protocol}`);
 	fs.mkdirSync(configDir, { recursive: true });
 	fs.writeFileSync(
-		path.join(
-			configDir,
-			protocol === "claude" ? "settings.json" : "hooks.json",
-		),
+		path.join(configDir, protocol === "claude" ? "settings.json" : "hooks.json"),
 		JSON.stringify({
 			permissions: options.rules,
 			hooks: { PermissionRequest: [{ hooks }] },
@@ -263,22 +253,9 @@ async function fixture(
 		records: () => read(capture),
 		mcpRecords: () => read(mcpCapture),
 		async run() {
-			const args = buildAgentArgs(
-				profile,
-				"fixture-local/fixture",
-				childSession,
-				[],
-			);
+			const args = buildAgentArgs(profile, "fixture-local/fixture", childSession, []);
 			if (transport === "mcp") args.push("--extension", "builtin:mcp");
-			return runSubagent(
-				"Run fixture command",
-				args,
-				cwd,
-				profile,
-				identity,
-				undefined,
-				() => undefined,
-			);
+			return runSubagent("Run fixture command", args, cwd, profile, identity, undefined, () => undefined);
 		},
 		async close() {
 			server.closeAllConnections();
@@ -294,9 +271,7 @@ it.each(["claude", "codex"] as const)(
 			const result = await f.run();
 			expect(result.error).toBeUndefined();
 			expect(f.requests).toHaveLength(2);
-			expect(JSON.stringify(f.requests[1])).toContain(
-				"CHILD_PERMISSION_ALLOWED",
-			);
+			expect(JSON.stringify(f.requests[1])).toContain("CHILD_PERMISSION_ALLOWED");
 			const records = f.records();
 			expect(records).toHaveLength(1);
 			expect(records[0]).toMatchObject({
@@ -387,22 +362,16 @@ it.each([
 			const result = await f.run();
 			expect(result.error).toBeUndefined();
 			expect(f.requests).toHaveLength(2);
-			expect(JSON.stringify(f.requests[1])).not.toContain(
-				'"content":"CHILD_PERMISSION_ALLOWED',
-			);
+			expect(JSON.stringify(f.requests[1])).not.toContain('"content":"CHILD_PERMISSION_ALLOWED');
 			expect(f.records()).toEqual([]);
 			const messages = f.requests[1].messages as Array<{
 				role: string;
 				content: unknown;
 			}>;
-			const toolMessages = messages.filter(
-				(message) => message.role === "tool",
-			);
+			const toolMessages = messages.filter((message) => message.role === "tool");
 			expect(toolMessages).toHaveLength(1);
 			expect(fs.existsSync(f.effect)).toBe(false);
-			expect(JSON.stringify(toolMessages)).toMatch(
-				/Not run|denied|not found|disabled/i,
-			);
+			expect(JSON.stringify(toolMessages)).toMatch(/Not run|denied|not found|disabled/i);
 		} finally {
 			await f.close();
 		}

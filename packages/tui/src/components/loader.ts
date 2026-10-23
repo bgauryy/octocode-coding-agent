@@ -85,6 +85,11 @@ export class Loader extends Text {
 		}, this.intervalMs);
 	}
 
+	/** Whether the indicator animates; a static one (a single frame, or none) never schedules a redraw. */
+	protected isAnimated(): boolean {
+		return this.frames.length > 1;
+	}
+
 	protected getRenderedIndicator(): string {
 		const frame = this.frames[this.currentFrame] ?? "";
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);

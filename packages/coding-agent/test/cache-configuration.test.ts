@@ -69,18 +69,16 @@ describe("cache configuration", () => {
 				.instructionCacheRetention,
 		).toBe("request");
 		expect(
-			resolveConfiguredCache(
-				model,
-				provider,
-				{ cacheRetention: "none", instructionCacheRetention: "long" },
-				settings,
-			).options,
+			resolveConfiguredCache(model, provider, { cacheRetention: "none", instructionCacheRetention: "long" }, settings)
+				.options,
 		).toEqual({ cacheRetention: "none", instructionCacheRetention: "none" });
 	});
 	it("caps history at the instruction retention, since a longer history breakpoint cannot follow a shorter one", () => {
 		environment();
 		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", "short");
-		const policy = resolveConfiguredCache(model, undefined, {}, [{ source: "global", values: { cacheRetention: "long" } }]);
+		const policy = resolveConfiguredCache(model, undefined, {}, [
+			{ source: "global", values: { cacheRetention: "long" } },
+		]);
 		expect(policy.options).toEqual({ cacheRetention: "short", instructionCacheRetention: "short" });
 		expect(policy.sources.cacheRetention).toBe("global (capped by instruction retention)");
 		// Equal or longer instruction retention is untouched; "none" instructions leave history as configured.

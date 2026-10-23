@@ -7,8 +7,10 @@ import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 function mode() {
 	const instance: any = {};
 	Object.assign(instance, {
-		defaultEditor: {}, editor: { setText: vi.fn() },
-		showError: vi.fn(), showWarning: vi.fn(),
+		defaultEditor: {},
+		editor: { setText: vi.fn() },
+		showError: vi.fn(),
+		showWarning: vi.fn(),
 		session: { extensionRunner: { getRegisteredCommands: () => [], createCommandContext: () => ({}) } },
 	});
 	Object.setPrototypeOf(instance, InteractiveMode.prototype);
@@ -124,9 +126,15 @@ describe("one-word command aliases", () => {
 	it("keeps both trust scopes accessible and cancellation does not change either", async () => {
 		const instance = mode();
 		instance.showTrustSelector = vi.fn();
-		instance.showExtensionSelector = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("Project resources").mockResolvedValueOnce("Native project configuration");
+		instance.showExtensionSelector = vi
+			.fn()
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce("Project resources")
+			.mockResolvedValueOnce("Native project configuration");
 		const trust = vi.fn();
-		instance.session.extensionRunner.getRegisteredCommands = () => [{ name: "trust", sourceInfo: { path: "<inline:octocode>" }, handler: trust }];
+		instance.session.extensionRunner.getRegisteredCommands = () => [
+			{ name: "trust", sourceInfo: { path: "<inline:octocode>" }, handler: trust },
+		];
 		await instance.defaultEditor.onSubmit("/trust");
 		expect(trust).not.toHaveBeenCalled();
 		expect(instance.showTrustSelector).not.toHaveBeenCalled();
@@ -140,9 +148,14 @@ describe("one-word command aliases", () => {
 	it("keeps model cycling and the catalog reachable from the same manager", async () => {
 		const instance = mode();
 		instance.showModelsSelector = vi.fn();
-		instance.showExtensionSelector = vi.fn().mockResolvedValueOnce("Model cycling").mockResolvedValueOnce("Catalog and agent routing");
+		instance.showExtensionSelector = vi
+			.fn()
+			.mockResolvedValueOnce("Model cycling")
+			.mockResolvedValueOnce("Catalog and agent routing");
 		const catalog = vi.fn();
-		instance.session.extensionRunner.getRegisteredCommands = () => [{ name: "models", sourceInfo: { path: "<inline:octocode>" }, handler: catalog }];
+		instance.session.extensionRunner.getRegisteredCommands = () => [
+			{ name: "models", sourceInfo: { path: "<inline:octocode>" }, handler: catalog },
+		];
 		instance.session.extensionRunner.getCommand = () => undefined;
 		await instance.defaultEditor.onSubmit("/scoped-models");
 		await instance.defaultEditor.onSubmit("/models");
@@ -182,11 +195,23 @@ it("keeps native resume hints and built-in trust options visible in the TUI", ()
 	const instance: any = Object.create(InteractiveMode.prototype);
 	instance.skillCommands = new Map();
 	const complete = vi.fn(() => [{ value: "all", label: "all" }]);
-	Object.defineProperty(instance, "session", { value: { promptTemplates: [], extensionRunner: { getRegisteredCommands: () => [
-		{ name: "resume", invocationName: "resume", getArgumentCompletions: complete },
-	] } } });
+	Object.defineProperty(instance, "session", {
+		value: {
+			promptTemplates: [],
+			extensionRunner: {
+				getRegisteredCommands: () => [{ name: "resume", invocationName: "resume", getArgumentCompletions: complete }],
+			},
+		},
+	});
 	const commands = instance.getSlashCommands(false);
-	expect(commands.find((command: any) => command.name === "trust").getArgumentCompletions("").map((item: any) => item.value)).toEqual(["project", "config", "off"]);
-	expect(commands.find((command: any) => command.name === "resume").getArgumentCompletions("")).toEqual([{ value: "all", label: "all" }]);
+	expect(
+		commands
+			.find((command: any) => command.name === "trust")
+			.getArgumentCompletions("")
+			.map((item: any) => item.value),
+	).toEqual(["project", "config", "off"]);
+	expect(commands.find((command: any) => command.name === "resume").getArgumentCompletions("")).toEqual([
+		{ value: "all", label: "all" },
+	]);
 	expect(commands.find((command: any) => command.name === "import").argumentKind).toBe("path");
 });

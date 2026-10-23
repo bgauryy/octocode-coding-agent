@@ -172,14 +172,7 @@ describe("generated configuration schemas", () => {
 		for (const binding of ["a", "9", "pageUp", "+", "ctrl+shift+x", "alt+ctrl+?", "ctrl+shift+alt+super+f12"]) {
 			expect(validator.Check({ "extension.action": binding }), binding).toBe(true);
 		}
-		for (const binding of [
-			"",
-			"Ctrl+x",
-			"control+x",
-			"ctrl+not-a-key",
-			"ctrl+ctrl+x",
-			"ctrl+shift+alt+super+ctrl+x",
-		]) {
+		for (const binding of ["", "Ctrl+x", "control+x", "ctrl+not-a-key", "ctrl+ctrl+x", "ctrl+shift+alt+super+ctrl+x"]) {
 			expect(validator.Check({ "extension.action": binding }), binding).toBe(false);
 		}
 	});

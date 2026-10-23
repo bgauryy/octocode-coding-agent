@@ -159,7 +159,9 @@ export class Bm25Ranker implements ToolRanker {
 
 const toolSearchSchema = Type.Object({
 	query: Type.String({ description: "Search query for deferred tools." }),
-	namespace: Type.Optional(Type.String({ description: "Limit discovery to a namespace or MCP server name from the available server list." })),
+	namespace: Type.Optional(
+		Type.String({ description: "Limit discovery to a namespace or MCP server name from the available server list." }),
+	),
 	limit: Type.Optional(
 		Type.Number({ description: `Maximum number of tools to return. Defaults to ${DEFAULT_TOOL_SEARCH_LIMIT}.` }),
 	),
@@ -184,7 +186,10 @@ interface ToolSearchToolOptions {
 }
 
 function normalizeNamespace(name: string): string {
-	return name.trim().replace(/^mcp__/, "").replace(/[^A-Za-z0-9_]/g, "_");
+	return name
+		.trim()
+		.replace(/^mcp__/, "")
+		.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
 /** Whether `tool_search` can load a tool with this exposure. */
@@ -203,10 +208,17 @@ function searchAndLoad(
 	namespace?: string,
 ): ToolSearchResultTool[] {
 	const active = tools.getActiveTools();
-	const candidates = tools.getAllTools().filter((tool) => isSearchable(tool.exposure) && !active.includes(tool.name) &&
-		(namespace === undefined || [tool.namespace?.name, ...(tool.namespace?.aliases ?? [])].some(
-			(name) => name !== undefined && normalizeNamespace(name) === normalizeNamespace(namespace),
-		)));
+	const candidates = tools
+		.getAllTools()
+		.filter(
+			(tool) =>
+				isSearchable(tool.exposure) &&
+				!active.includes(tool.name) &&
+				(namespace === undefined ||
+					[tool.namespace?.name, ...(tool.namespace?.aliases ?? [])].some(
+						(name) => name !== undefined && normalizeNamespace(name) === normalizeNamespace(namespace),
+					)),
+		);
 	const documents = candidates.map((tool) => createToolSearchDocument(tool, tool.namespace));
 	const matches = new Bm25Ranker().rank(query, documents, limit);
 	if (matches.length > 0) tools.setActiveTools([...active, ...matches.map((match) => match.name)]);
@@ -220,7 +232,8 @@ function searchAndLoad(
  * The `tool_search` description. It does not list the searchable tools or their namespaces, so it
  * stays the same while tools are registered, for example when MCP servers connect.
  */
-export const TOOL_SEARCH_DESCRIPTION = "Find and load tools for the next call. Search by the capability you need; use namespace to target one MCP server without waiting for unrelated servers. After discovery, call the loaded tool directly with its declared arguments.";
+export const TOOL_SEARCH_DESCRIPTION =
+	"Find and load tools for the next call. Search by the capability you need; use namespace to target one MCP server without waiting for unrelated servers. After discovery, call the loaded tool directly with its declared arguments.";
 
 export function createToolSearchToolDefinition(
 	options: ToolSearchToolOptions = {},
@@ -233,7 +246,10 @@ export function createToolSearchToolDefinition(
 		parameters: toolSearchSchema,
 		// Searching is not something scripts need; it changes what the model sees.
 		exposure: "model-only",
-		reachesTools: (input) => typeof input.namespace === "string" && input.namespace.trim() ? [`mcp__${normalizeNamespace(input.namespace)}`] : "all",
+		reachesTools: (input) =>
+			typeof input.namespace === "string" && input.namespace.trim()
+				? [`mcp__${normalizeNamespace(input.namespace)}`]
+				: "all",
 		async execute(_toolCallId, { query, limit, namespace }) {
 			if (query.trim() === "") throw new Error("query must not be empty");
 			if (namespace !== undefined && !namespace.trim()) throw new Error("namespace must not be empty");

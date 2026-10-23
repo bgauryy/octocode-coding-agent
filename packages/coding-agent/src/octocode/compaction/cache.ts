@@ -169,7 +169,9 @@ export function idleContinuation(gaps: readonly number[], idleMs: number, ttlMs:
 interface ClockState {
 	/** When the last reply was requested (its idle start). */
 	replyAt: number | undefined;
-	/** The latest refresh by Octocode's warmer (a `usage` entry of kind `cache_warm`, which reads the same prefix and so restarts the entry's lifetime). */
+	/** The latest reply that used the cache; an error with zero cache usage does not refresh it. */
+	cacheAt: number;
+	/** The latest refresh by Octocode's warmer, anchored to provider dispatch rather than the later usage receipt. */
 	warmAt: number;
 	/** Idle gaps: from a finished run's last reply to the next user prompt, in ms. */
 	gaps: number[];
@@ -178,22 +180,39 @@ interface ClockState {
 }
 
 function noteClock(state: ClockState, entry: unknown): void {
-	const { type, kind, timestamp, message, usage } = entry as {
+	const { type, kind, timestamp, cacheRequestedAt, message, usage } = entry as {
 		type?: string;
 		kind?: string;
 		usage?: { cacheRead?: number; cacheWrite?: number };
 		timestamp?: string;
-		message?: { role?: string; timestamp?: number; stopReason?: string };
+		cacheRequestedAt?: string;
+		message?: {
+			role?: string;
+			timestamp?: number;
+			stopReason?: string;
+			usage?: { cacheRead?: number; cacheWrite?: number };
+		};
 	};
 	if (type === "usage") {
 		if (usage && !(Number(usage.cacheRead) > 0 || Number(usage.cacheWrite) > 0)) return;
-		const at = kind === "cache_warm" && typeof timestamp === "string" ? Date.parse(timestamp) : Number.NaN;
+		const receiptAt = typeof timestamp === "string" ? Date.parse(timestamp) : Number.NaN;
+		const requestedAt = typeof cacheRequestedAt === "string" ? Date.parse(cacheRequestedAt) : Number.NaN;
+		const at =
+			kind !== "cache_warm"
+				? Number.NaN
+				: Number.isFinite(requestedAt) && requestedAt <= receiptAt
+					? requestedAt
+					: receiptAt;
 		if (at > state.warmAt) state.warmAt = at;
 		return;
 	}
 	if (type !== "message" || typeof message?.timestamp !== "number") return;
 	if (message.role === "assistant") {
 		state.replyAt = message.timestamp;
+		// Older sessions did not always record usage. Explicit zero usage, however, is not evidence of a cache refresh.
+		if (!message.usage || Number(message.usage.cacheRead) > 0 || Number(message.usage.cacheWrite) > 0) {
+			state.cacheAt = message.timestamp;
+		}
 		state.finished = message.stopReason === "stop" ? message.timestamp : undefined;
 	} else if (message.role === "user" && state.finished !== undefined) {
 		state.gaps.push(message.timestamp - state.finished);
@@ -202,20 +221,27 @@ function noteClock(state: ClockState, entry: unknown): void {
 }
 
 const clockIndex = new BranchIndex<ClockState>(
-	() => ({ replyAt: undefined, warmAt: Number.NEGATIVE_INFINITY, gaps: [], finished: undefined }),
+	() => ({
+		replyAt: undefined,
+		cacheAt: Number.NEGATIVE_INFINITY,
+		warmAt: Number.NEGATIVE_INFINITY,
+		gaps: [],
+		finished: undefined,
+	}),
 	noteClock,
 );
 
 /**
  * The prompt cache's clock on the session's branch, resumed rather than rescanned (`BranchIndex`): `replyAt`, when the
- * last reply was requested; `useAt`, when the entry was last used, the later of that reply and a refresh by Octocode's warmer
- * (undefined without a reply); `gaps`, the idle gaps (read-only).
+ * last reply was requested; `useAt`, when the entry was last used, the later of a reply with cache activity and a refresh
+ * by Octocode's warmer (undefined without a reply or cache activity); `gaps`, the idle gaps (read-only).
  */
 export function cacheClock(session: BranchSource): {
 	replyAt: number | undefined;
 	useAt: number | undefined;
 	gaps: readonly number[];
 } {
-	const { replyAt, warmAt, gaps } = clockIndex.read(session);
-	return { replyAt, useAt: replyAt === undefined ? undefined : Math.max(replyAt, warmAt), gaps };
+	const { replyAt, cacheAt, warmAt, gaps } = clockIndex.read(session);
+	const usedAt = Math.max(cacheAt, warmAt);
+	return { replyAt, useAt: replyAt === undefined || !Number.isFinite(usedAt) ? undefined : usedAt, gaps };
 }

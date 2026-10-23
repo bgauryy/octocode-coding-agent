@@ -5,7 +5,10 @@ import { sha256, sha256File } from "./atomic.ts";
 import { OCTOCODE_TOOL_PREFIX } from "./octocode-tools.ts";
 import { isRecord } from "./util.ts";
 
-export const LOCAL_READ_TOOLS = new Set([`${OCTOCODE_TOOL_PREFIX}localFetch`, `${OCTOCODE_TOOL_PREFIX}localGetFileContent`]);
+export const LOCAL_READ_TOOLS = new Set([
+	`${OCTOCODE_TOOL_PREFIX}localFetch`,
+	`${OCTOCODE_TOOL_PREFIX}localGetFileContent`,
+]);
 
 interface LocalRead {
 	file: string;
@@ -18,7 +21,11 @@ interface LocalRead {
 type Snapshot = { sha256: string; size: number; mtimeMs: number; ctimeMs: number };
 
 /** Capture requested files before retrieval so a changed file cannot be credited as the returned version. */
-export async function snapshotLocalReads(tool: string, input: Record<string, unknown>, cwd: string): Promise<Map<string, Snapshot>> {
+export async function snapshotLocalReads(
+	tool: string,
+	input: Record<string, unknown>,
+	cwd: string,
+): Promise<Map<string, Snapshot>> {
 	const snapshots = new Map<string, Snapshot>();
 	if (!LOCAL_READ_TOOLS.has(tool)) return snapshots;
 	for (const query of Array.isArray(input.queries) ? input.queries : []) {
@@ -28,13 +35,19 @@ export async function snapshotLocalReads(tool: string, input: Record<string, unk
 			const stat = fs.statSync(file);
 			const sha256 = stat.isFile() ? await sha256File(file) : undefined;
 			if (sha256) snapshots.set(file, { sha256, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
-		} catch { /* Retrieval reports unreadable paths. */ }
+		} catch {
+			/* Retrieval reports unreadable paths. */
+		}
 	}
 	return snapshots;
 }
 
 /** Credit only successful, untransformed source windows from files unchanged throughout retrieval. */
-export async function completedLocalReads(snapshots: Map<string, Snapshot>, output: unknown, cwd: string): Promise<LocalRead[]> {
+export async function completedLocalReads(
+	snapshots: Map<string, Snapshot>,
+	output: unknown,
+	cwd: string,
+): Promise<LocalRead[]> {
 	// The shared MCP adapter wraps server data in CallToolResult; the native adapter exposes it directly.
 	if (isRecord(output) && isRecord(output.structuredContent)) {
 		if (output.isError === true) return [];
@@ -45,7 +58,16 @@ export async function completedLocalReads(snapshots: Map<string, Snapshot>, outp
 	for (const row of output.results) {
 		if (!isRecord(row) || row.status === "error" || !isRecord(row.data)) continue;
 		const data = row.data;
-		if (data.error || (data.contentView && data.contentView !== "none") || data.selection || data.isSkeleton || data.matchNotFound || typeof data.content !== "string" || typeof data.path !== "string") continue;
+		if (
+			data.error ||
+			(data.contentView && data.contentView !== "none") ||
+			data.selection ||
+			data.isSkeleton ||
+			data.matchNotFound ||
+			typeof data.content !== "string" ||
+			typeof data.path !== "string"
+		)
+			continue;
 		const root = output.root ?? output.base;
 		const baseDir = typeof root === "string" && path.isAbsolute(root) ? root : cwd;
 		const file = canonicalPath(path.isAbsolute(data.path) ? data.path : resolveToolPath(baseDir, data.path));
@@ -53,11 +75,23 @@ export async function completedLocalReads(snapshots: Map<string, Snapshot>, outp
 		if (!before) continue;
 		try {
 			const stat = fs.statSync(file);
-			if (stat.size !== before.size || stat.mtimeMs !== before.mtimeMs || stat.ctimeMs !== before.ctimeMs || (await sha256File(file)) !== before.sha256) continue;
-		} catch { continue; }
+			if (
+				stat.size !== before.size ||
+				stat.mtimeMs !== before.mtimeMs ||
+				stat.ctimeMs !== before.ctimeMs ||
+				(await sha256File(file)) !== before.sha256
+			)
+				continue;
+		} catch {
+			continue;
+		}
 		const base = { file, sha256: before.sha256, size: before.size };
 		if (data.contentView === "none") {
-			if (data.isPartial || (isRecord(data.pagination) && (data.pagination.hasMore || data.pagination.charOffset !== 0))) continue;
+			if (
+				data.isPartial ||
+				(isRecord(data.pagination) && (data.pagination.hasMore || data.pagination.charOffset !== 0))
+			)
+				continue;
 			if (sha256(Buffer.from(data.content)) === before.sha256) reads.push({ ...base, whole: true });
 			else if (positive(data.startLine) && positive(data.endLine) && data.endLine >= data.startLine)
 				reads.push({ ...base, whole: false, lines: [data.startLine, data.endLine] });
@@ -78,7 +112,12 @@ export async function completedLocalReads(snapshots: Map<string, Snapshot>, outp
 			if (last && line === last[1] + 1) last[1] = line;
 			else spans.push([line, line]);
 		}
-		const whole = data.isPartial !== true && data.terminalLimit !== true && spans.length === 1 && spans[0]![0] === 1 && spans[0]![1] === data.totalLines;
+		const whole =
+			data.isPartial !== true &&
+			data.terminalLimit !== true &&
+			spans.length === 1 &&
+			spans[0]![0] === 1 &&
+			spans[0]![1] === data.totalLines;
 		if (whole) reads.push({ ...base, whole: true });
 		else for (const lines of spans) reads.push({ ...base, whole: false, lines });
 	}
@@ -91,5 +130,20 @@ const nonnegative = (value: unknown): value is number => Number.isSafeInteger(va
 /** Read metadata survives transcript persistence and read-result deduplication. */
 export function recordedLocalReads(details: unknown): LocalRead[] {
 	if (!isRecord(details) || !Array.isArray(details.localReads)) return [];
-	return details.localReads.filter((read): read is LocalRead => isRecord(read) && typeof read.file === "string" && path.isAbsolute(read.file) && typeof read.sha256 === "string" && /^[a-f0-9]{64}$/.test(read.sha256) && nonnegative(read.size) && typeof read.whole === "boolean" && (read.whole || (Array.isArray(read.lines) && read.lines.length === 2 && positive(read.lines[0]) && positive(read.lines[1]) && read.lines[1] >= read.lines[0])));
+	return details.localReads.filter(
+		(read): read is LocalRead =>
+			isRecord(read) &&
+			typeof read.file === "string" &&
+			path.isAbsolute(read.file) &&
+			typeof read.sha256 === "string" &&
+			/^[a-f0-9]{64}$/.test(read.sha256) &&
+			nonnegative(read.size) &&
+			typeof read.whole === "boolean" &&
+			(read.whole ||
+				(Array.isArray(read.lines) &&
+					read.lines.length === 2 &&
+					positive(read.lines[0]) &&
+					positive(read.lines[1]) &&
+					read.lines[1] >= read.lines[0])),
+	);
 }

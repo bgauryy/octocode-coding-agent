@@ -384,11 +384,7 @@ export async function ensureTool(
 		// timeout) hidden in the cause. Depth-capped to guard against
 		// circular cause chains.
 		const messages: string[] = [];
-		for (
-			let current: unknown = e, depth = 0;
-			current instanceof Error && depth < 5;
-			current = current.cause, depth++
-		) {
+		for (let current: unknown = e, depth = 0; current instanceof Error && depth < 5; current = current.cause, depth++) {
 			if (!messages.includes(current.message)) messages.push(current.message);
 		}
 		onStatus?.({

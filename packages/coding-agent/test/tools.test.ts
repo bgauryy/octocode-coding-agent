@@ -568,9 +568,7 @@ describe("Coding Agent Tools", () => {
 						command: `printf 'before-kill\\n'; kill -${signal} $$`,
 					});
 					expect(result.isError).toBe(true);
-					expect(getTextOutput(result)).toMatch(
-						new RegExp(`before-kill\\s+Command exited with code ${exitCode}$`),
-					);
+					expect(getTextOutput(result)).toMatch(new RegExp(`before-kill\\s+Command exited with code ${exitCode}$`));
 				}
 			},
 		);
@@ -840,7 +838,8 @@ describe("Coding Agent Tools", () => {
 		it("should leave terminal escape sequences out of the model's output, also when split across chunks", async () => {
 			const bash = createBashTool(testDir);
 			const result = await bash.execute("test-call-ansi", {
-				command: "printf '\\033[94mblue\\033[0m \\033[?1049hscreen\\033]0;title\\007'; sleep 0.2; printf '\\033[3'; sleep 0.2; printf '1mred\\033[0m\\n'",
+				command:
+					"printf '\\033[94mblue\\033[0m \\033[?1049hscreen\\033]0;title\\007'; sleep 0.2; printf '\\033[3'; sleep 0.2; printf '1mred\\033[0m\\n'",
 			});
 			const output = getTextOutput(result);
 			expect(output).toBe("blue screenred\n");
@@ -1131,13 +1130,7 @@ describe("tool cwd resolution", () => {
 
 	it("bash uses ctx.cwd when provided", async () => {
 		const tool = createBashToolDefinition("/", { exposeSessionEnvironment: false });
-		const result = await tool.execute(
-			"test-bash-ctx-cwd",
-			{ command: "pwd" },
-			undefined,
-			undefined,
-			fakeCtx(testDir),
-		);
+		const result = await tool.execute("test-bash-ctx-cwd", { command: "pwd" }, undefined, undefined, fakeCtx(testDir));
 		const output = getTextOutput(result);
 		expect(output).toContain(testDir);
 	});

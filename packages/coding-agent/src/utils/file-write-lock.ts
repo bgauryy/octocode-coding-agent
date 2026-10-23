@@ -7,13 +7,17 @@ import lockfile from "proper-lockfile";
 export class FileLockReleaseError extends Error {
 	readonly mutationCompleted = true;
 	constructor(file: string, cause: unknown) {
-		super(`The file mutation completed, but its lock could not be released: ${file}. Inspect the file before retrying.`, { cause });
+		super(
+			`The file mutation completed, but its lock could not be released: ${file}. Inspect the file before retrying.`,
+			{ cause },
+		);
 	}
 }
 
 async function writeTarget(file: string, hops = 40): Promise<string> {
-	try { return await realpath(file); }
-	catch (error) {
+	try {
+		return await realpath(file);
+	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		const link = await readlink(file).catch((failure: NodeJS.ErrnoException) => {
 			if (failure.code === "ENOENT" || failure.code === "EINVAL") return undefined;
@@ -47,7 +51,9 @@ export async function withFileWriteLock<T>(
 				lockfilePath: path.join(path.dirname(target), `.octocode-${key}.lock`),
 				stale: 30_000,
 				retries: 0,
-				onCompromised: (error) => { compromised = error; },
+				onCompromised: (error) => {
+					compromised = error;
+				},
 			});
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ELOCKED" || Date.now() >= deadline) throw error;
@@ -65,7 +71,10 @@ export async function withFileWriteLock<T>(
 		completed = true;
 		return result;
 	} finally {
-		try { await release(); }
-		catch (error) { if (completed) throw new FileLockReleaseError(file, error); }
+		try {
+			await release();
+		} catch (error) {
+			if (completed) throw new FileLockReleaseError(file, error);
+		}
 	}
 }

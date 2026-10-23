@@ -1,5 +1,6 @@
 import type { McpServerEntry } from "../../extensions/mcp/config.ts";
 import { octocodeHome } from "../shared/home.ts";
+import { OCTOCODE_SERVER } from "../shared/octocode-tools.ts";
 
 /** Supply default roots only for the configured local Octocode server; explicit policy always wins. */
 export function prepareOctocodeSkillLaunch(
@@ -8,8 +9,13 @@ export function prepareOctocodeSkillLaunch(
 	skillDirectories: readonly string[],
 	env: NodeJS.ProcessEnv = process.env,
 ): McpServerEntry {
-	if (entry.name !== "octocode" || "url" in entry.config ||
-		entry.config.env?.ALLOWED_PATHS !== undefined || env.ALLOWED_PATHS !== undefined) return entry;
+	if (
+		entry.name !== OCTOCODE_SERVER ||
+		"url" in entry.config ||
+		entry.config.env?.ALLOWED_PATHS !== undefined ||
+		env.ALLOWED_PATHS !== undefined
+	)
+		return entry;
 	return {
 		...entry,
 		config: {

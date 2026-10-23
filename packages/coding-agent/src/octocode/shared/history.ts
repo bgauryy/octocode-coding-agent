@@ -82,8 +82,7 @@ export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env):
 		if (seen.has(id)) return;
 		seen.add(id);
 		const segments = readSegments(id, env);
-		if (record || segments.length > 0)
-			sessions.push({ id, folder, relation, ...(record ? { record } : {}), segments });
+		if (record || segments.length > 0) sessions.push({ id, folder, relation, ...(record ? { record } : {}), segments });
 	};
 	const byId = (id: string | undefined, relation: Relation) => {
 		if (!id) return;
@@ -271,9 +270,7 @@ export async function searchHistory(
 			const from = Math.max(index - HIT_CONTEXT, end + 1);
 			if (end >= 0 && from > end + 1) shown.push("     …");
 			for (let at = from; at <= Math.min(index + HIT_CONTEXT, lines.length - 1); at++)
-				shown.push(
-					`${lineLabel(at + 1, hit.has(at))}${hit.has(at) ? lines[at]! : contextLine(lines[at]!, at + 1)}`,
-				);
+				shown.push(`${lineLabel(at + 1, hit.has(at))}${hit.has(at) ? lines[at]! : contextLine(lines[at]!, at + 1)}`);
 			end = Math.max(end, Math.min(index + HIT_CONTEXT, lines.length - 1));
 		}
 		blocks.push({ heading: `## ${file} · ${session.id} (${session.relation}) · ${label}`, lines: shown });

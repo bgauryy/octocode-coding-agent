@@ -4,8 +4,7 @@ import { lexer, type Token, type Tokens, walkTokens } from "marked";
 import { describe, expect, it } from "vitest";
 
 type NavigationItem =
-	| { title: string; path: string; items?: NavigationItem[] }
-	| { title: string; items: NavigationItem[] };
+	{ title: string; path: string; items?: NavigationItem[] } | { title: string; items: NavigationItem[] };
 
 interface NavigationGroup {
 	title: string;

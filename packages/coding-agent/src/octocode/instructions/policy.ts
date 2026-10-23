@@ -22,9 +22,11 @@ interface PromptInputs {
 	canUseAgent?: boolean;
 	/** Inside a subagent: it works with its sibling subagents, not only for its parent. */
 	collaborate?: boolean;
-	/** Whether a file-writing tool is active; a read-only subagent hands long results back in its report instead. */
+	/** Whether this agent may change the repository (a file-writing tool, and not a read-only role). */
 	canWrite?: boolean;
-	/** Whether `bash` is active; a read-only agent without it can write nothing, so it is told to put its results in the report. */
+	/** Whether `file` is active: even a read-only agent saves scratch evidence and the reports its task names with it. */
+	canSave?: boolean;
+	/** Whether `bash` is active; a read-only agent's commands must then be read-only. */
 	canShell?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
 	canMcp?: boolean;
@@ -36,6 +38,7 @@ const OUTCOMES = `${REPORT_STATUSES.slice(0, -1).join(", ")} or ${REPORT_STATUSE
 
 export function octocodePrompt(input: PromptInputs): string {
 	const readOnly = input.canWrite === false;
+	const canSave = input.canSave ?? !readOnly;
 	// Which Octocode tool does what is the server's own business (its tool descriptions and instructions); the prompt
 	// says when to reach for it (the triggers) and its precedence over Octocode's generic "use bash for ls, rg, find" rule.
 	const research = input.octocode
@@ -52,7 +55,12 @@ export function octocodePrompt(input: PromptInputs): string {
 	// The server's text, whole: how its tools combine, page and continue is the server's to say.
 	const serverInstructions =
 		input.octocode && input.octocodeInstructions
-			? ["", "# Using Octocode MCP tools", "These instructions govern code research, not writing from supplied facts.", input.octocodeInstructions]
+			? [
+					"",
+					"# Using Octocode MCP tools",
+					"These instructions govern code research, not writing from supplied facts.",
+					input.octocodeInstructions,
+				]
 			: [];
 
 	// The askUser tool description says when to ask; Safety owns the destructive-action rule.
@@ -61,9 +69,11 @@ export function octocodePrompt(input: PromptInputs): string {
 				"# Delegation",
 				// The agent tool description owns the mechanics: the parallel limit, background delivery and report files.
 				"- Use `agent` for bounded work needing separate context; handle small or conversation-dependent tasks yourself. Start independent tasks together. Own user communication, approvals and integration; verify reports against the Definition of Done.",
-				"- Keep sequential or coupled work in one agent; parallelize only independent or disjoint-file work, with shared interfaces and owners in one `.octocode/<topic>/contract.md`. Select skills in `input.skills`; explain their purpose in `input.task`.",
+				"- Keep sequential or coupled work in one agent; parallelize only independent or disjoint-file work, with shared interfaces and owners in one `.octocode/<topic>/contract.md`.",
 				...(input.browserProfiles?.length
-					? [`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}; give the specialist the task, URL and required evidence.`]
+					? [
+							`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}; give the specialist the task, URL and required evidence.`,
+						]
 					: []),
 				"- For durable results, have a subagent with `file` or bash save it as a Markdown doc under `.octocode/<topic>/` (or the user/skill destination). Name the path in its task and cite it; its scratch folder is cleared after a week.",
 				...(input.profiles.length > 0
@@ -79,7 +89,7 @@ export function octocodePrompt(input: PromptInputs): string {
 				"# Subagent",
 				"- You are a subagent; your task gives your name, role, goal, parent and scratch folder, and teammates address you by name. Finish the task yourself; first load any skill it names.",
 				`- Your final answer is your report and reaches your parent by itself: do not message it that you are done. Start it with one word, ${OUTCOMES}, then the result, how you verified it and open questions; a partial or blocked report is a handoff packet. Your parent keeps the first ${REPORT_MAX_BYTES / 1024} KB and gets the path of the whole, saved in your scratch folder.`,
-				...(readOnly
+				...(!canSave
 					? []
 					: [
 							"- Put substantial results (findings, tables, logs, a plan) in a Markdown doc in your scratch folder, cited by path; on a long task, keep it as a checkpoint the work can resume from. Scratch is cleared after a week, so save to the durable location your task or a loaded skill names (for example `.octocode/<skill>/`).",
@@ -92,15 +102,18 @@ export function octocodePrompt(input: PromptInputs): string {
 					: []),
 			];
 
-	// A read-only agent gets one investigate-and-report rule instead of the rules about changing files.
-	// It names only the tools this agent has that can still write (a web profile has neither bash nor MCP).
+	// A read-only agent gets one investigate-and-report rule instead of the rules about changing files. It says where
+	// its output goes (`file` into scratch, else the report) and limits only the tools it has that could still write.
 	const shell = input.canShell !== false;
-	const writers = [shell && "Shell", input.canMcp !== false && "MCP"].filter(Boolean).join(" and ");
-	const readOnlyRule = !writers
-		? "Put what you produce in your report."
-		: shell
-			? `${writers} tools can still write, so run only read-only commands, and write only your scratch folder and the output path your task names.`
-			: "MCP tools can still write, so call only read-only ones, and put what you produce in your report.";
+	const readOnlyRule = [
+		canSave
+			? "Write only your scratch folder and the output path your task names."
+			: "Put what you produce in your report.",
+		shell && "Run only read-only commands.",
+		input.canMcp !== false && "Call only read-only MCP tools.",
+	]
+		.filter(Boolean)
+		.join(" ");
 	const changing = readOnly
 		? [`- Investigate and report; do not modify the repository. ${readOnlyRule}`]
 		: ["- Make the smallest complete change: code, tests and docs. Preserve user changes; avoid unrelated edits."];
@@ -119,15 +132,9 @@ export function octocodePrompt(input: PromptInputs): string {
 		...changing,
 		"- Never claim an unrun check passed.",
 		...checks,
-		"- Hypothesis test: compare the likely cause with its strongest rival. Test, report uncertainty, and revise before retrying. Fix causes; never suppress errors.",
+		"- Hypothesis test: compare the likely cause with its strongest rival. Test, report uncertainty, and revise before retrying; if no revision remains, report the blocker. Fix causes; never suppress errors.",
 		"- Make reversible choices. Separate facts, assumptions and unknowns; never present a guess as a fact.",
 		"- Parallelize independent calls; sequence dependent calls.",
-		// Each bash call can return up to 50 KB; a plain `| tail` reports tail's status, so a failing build would read as passing.
-		...(shell
-			? [
-					"- Keep bash output small: pipe builds, tests and logs through `2>&1 | tail -n 50` (or grep, head) after `set -o pipefail;`, so failures still show.",
-				]
-			: []),
 		"- Continue beyond planning until the Definition of Done is met or you are blocked.",
 		"",
 		"# Research",
@@ -146,7 +153,7 @@ export function octocodePrompt(input: PromptInputs): string {
 		// A subagent's tools and task already name its teammates; only the main session meets a second coordination system.
 		...(input.canDelegate
 			? [
-					`- Inside an Octocode team use ${input.canUseAgent === false ? "`agent` coordinate and message modes" : "`agent` task, coordinate and message modes"}; use the agents-communication tools only to reach agents outside Octocode (Claude Code, Codex, other hosts); Octocode honors their file locks.`,
+					`- ${input.canUseAgent === false ? "Use" : "Inside an Octocode team use `agent` (task, coordinate and message types); for agents outside Octocode use `agent` type `external`, or"} the agents-communication tools to reach agents in other hosts (Claude Code, Codex); Octocode honors their file locks.`,
 				]
 			: []),
 		`- Lead with the result and include evidence where it helps verify a claim; omit preambles and repetition.${readOnly ? "" : " When you changed files, state what, where and verification."}`,

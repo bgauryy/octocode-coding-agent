@@ -3,6 +3,14 @@ import { describe, it } from "node:test";
 import { visibleWidth, wrapTextWithAnsi } from "../src/utils.ts";
 
 describe("wrapTextWithAnsi", () => {
+	it("splits a single grapheme wider than the line instead of overflowing it", () => {
+		// A base letter with 100 spacing marks is one grapheme 101 columns wide.
+		const cluster = `\u0915${"\u093e".repeat(100)}`;
+		const lines = wrapTextWithAnsi(cluster, 80);
+		assert.ok(lines.every((line) => visibleWidth(line) <= 80));
+		assert.strictEqual(lines.join(""), cluster);
+	});
+
 	describe("underline styling", () => {
 		it("should not apply underline style before the styled text", () => {
 			const underlineOn = "\x1b[4m";
@@ -89,10 +97,7 @@ describe("wrapTextWithAnsi", () => {
 			for (let i = 0; i < wrapped.length - 1; i++) {
 				const line = wrapped[i];
 				// If this line has underline on, it should end with underline off (not full reset)
-				if (
-					(line.includes("[4m") || line.includes("[4;") || line.includes(";4m")) &&
-					!line.includes(underlineOff)
-				) {
+				if ((line.includes("[4m") || line.includes("[4;") || line.includes(";4m")) && !line.includes(underlineOff)) {
 					assert.strictEqual(line.endsWith(underlineOff), true);
 					assert.strictEqual(line.endsWith("\x1b[0m"), false);
 				}

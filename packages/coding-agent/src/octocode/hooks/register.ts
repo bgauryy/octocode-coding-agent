@@ -18,7 +18,14 @@ import type {
 	ToolCallEventResult,
 } from "../../core/extensions/index.ts";
 import { notify, type Subcommands, say } from "../shared/commands.ts";
-import { envFlag, HOOKS_COMPAT_ENV, HOOKS_ENV, SUBAGENT_ENV, PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "../shared/env.ts";
+import {
+	envFlag,
+	HOOKS_COMPAT_ENV,
+	HOOKS_ENV,
+	SUBAGENT_ENV,
+	PARENT_SESSION_ENV,
+	PARENT_TRANSCRIPT_ENV,
+} from "../shared/env.ts";
 import { formatDuration } from "../shared/format.ts";
 import { configFileLines, repoKey, tildePath } from "../shared/home.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../shared/messages.ts";
@@ -127,14 +134,21 @@ const hookCount = (config: HookConfig): number =>
 
 /** What `/hooks` and `/octocode` show about hooks. */
 interface HooksView {
- hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
- fileInputCommitted(id: string, input: Record<string, unknown>): void;
+	hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
+	fileInputCommitted(id: string, input: Record<string, unknown>): void;
 	permissionRequest(
 		invocation: ToolInvocation,
 		ctx: ExtensionContext,
 		signal: AbortSignal,
 	): Promise<
-		| { decision: "allow" | "deny"; message?: string; interrupt?: boolean; updatedInput?: import("@octocodeai/octocode-ai").JsonObject; updatedFileInputs?: FileInputReplacement[]; updatedPermissions?: import("../shared/permission-updates.ts").SourcePermissionUpdate[] }
+		| {
+				decision: "allow" | "deny";
+				message?: string;
+				interrupt?: boolean;
+				updatedInput?: import("@octocodeai/octocode-ai").JsonObject;
+				updatedFileInputs?: FileInputReplacement[];
+				updatedPermissions?: import("../shared/permission-updates.ts").SourcePermissionUpdate[];
+		  }
 		| undefined
 	>;
 	/** One line for the `/octocode` status. */
@@ -346,7 +360,13 @@ function createDispatcher(
 	 * one does.
 	 */
 	const dispatch: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
-		const hooks = commandsFor(session.config, event, names).filter(hook => !protocol || (typeof protocol === "string" ? (hook.protocol ?? "octocode") === protocol : protocol.includes(hook.protocol ?? "octocode")));
+		const hooks = commandsFor(session.config, event, names).filter(
+			(hook) =>
+				!protocol ||
+				(typeof protocol === "string"
+					? (hook.protocol ?? "octocode") === protocol
+					: protocol.includes(hook.protocol ?? "octocode")),
+		);
 		if (hooks.length === 0) return {};
 		session.root ??= repoKey(ctx.cwd).root;
 		const payload: Record<string, unknown> = {
@@ -362,40 +382,26 @@ function createDispatcher(
 			...hostMetadata,
 			model: ctx.model?.id,
 			turnId: ctx.getTurnId?.(),
-			child: child ? {
-				sessionId: ctx.sessionManager.getSessionId(),
-				agentName: hostMetadata?.agentName,
-				agentType: hostMetadata?.agentType || "general",
-			} : undefined,
+			child: child
+				? {
+						sessionId: ctx.sessionManager.getSessionId(),
+						agentName: hostMetadata?.agentName,
+						agentType: hostMetadata?.agentType || "general",
+					}
+				: undefined,
 		};
-		const race =
-			event === "PermissionRequest" && protocol === "claude"
-				? new AbortController()
-				: undefined;
+		const race = event === "PermissionRequest" && protocol === "claude" ? new AbortController() : undefined;
 		let winner: HookVerdict | undefined;
-		const runOne = async (
-			hook: HookHandler,
-			signal: AbortSignal | undefined,
-		): Promise<HookVerdict> => {
+		const runOne = async (hook: HookHandler, signal: AbortSignal | undefined): Promise<HookVerdict> => {
 			if (hook.configurationError && event === "PermissionRequest") {
 				say(ctx, hook.configurationError, "warning");
 				onFailure?.(["PermissionRequest"], hook.configurationError, false);
 				return { permissionDecision: "deny", block: hook.configurationError };
 			}
-			if (hook.configurationError && event === "UserPromptSubmit")
-				return { block: hook.configurationError };
-			if (
-				hook.configurationError &&
-				(event === "PreToolUse" || event === "PreMessageSend")
-			) {
+			if (hook.configurationError && event === "UserPromptSubmit") return { block: hook.configurationError };
+			if (hook.configurationError && (event === "PreToolUse" || event === "PreMessageSend")) {
 				return {
-					block: hookFailed(
-						ctx,
-						hook,
-						hook.configurationError,
-						String(payload.tool_name ?? "message"),
-						event,
-					),
+					block: hookFailed(ctx, hook, hook.configurationError, String(payload.tool_name ?? "message"), event),
 				};
 			}
 			if (
@@ -413,11 +419,7 @@ function createDispatcher(
 							timeHook(ctx, event, hook, () =>
 								runHook(
 									hook,
-									hookPayload(
-										hook.protocol ?? "octocode",
-										payload,
-										dispatchMetadata,
-									),
+									hookPayload(hook.protocol ?? "octocode", payload, dispatchMetadata),
 									ctx.cwd,
 									env,
 									backgroundSignal,
@@ -447,37 +449,23 @@ function createDispatcher(
 					: interpret(event, run, hook.protocol);
 			if (verdict.systemMessage) say(ctx, verdict.systemMessage, "warning");
 			if (hook.protocol === "codex" && verdict.context)
-				verdict.context = limitCodexContext(
-					verdict.context,
-					hook.additionalContextLimit,
-				);
-			const gate =
-				event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
-			const failure = !signal?.aborted
-				? (verdict.error ?? failureOf(hook, run, false))
-				: undefined;
+				verdict.context = limitCodexContext(verdict.context, hook.additionalContextLimit);
+			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
+			const failure = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
 			const message = isRecord(payload.message) ? payload.message : {};
-			const target =
-				gate === "PreMessageSend"
-					? `${message.from} -> ${message.to}`
-					: String(payload.tool_name ?? "");
+			const target = gate === "PreMessageSend" ? `${message.from} -> ${message.to}` : String(payload.tool_name ?? "");
 			const block =
 				failure && gate
 					? hookFailed(ctx, hook, failure, target, gate)
 					: failure &&
-							hook.onFailure === "block" &&
-							(event === "PreCompact" ||
+						  hook.onFailure === "block" &&
+						  (event === "PreCompact" ||
 								event === "PostToolUse" ||
 								event === "PostToolBatch" ||
 								event === "UserPromptSubmit")
 						? `${event} hook ${failure}; onFailure: "block"`
 						: undefined;
-			if (
-				failure &&
-				!gate &&
-				hook.protocol &&
-				(ctx.hasUI || event === "Interrupt" || event === "PermissionRequest")
-			) {
+			if (failure && !gate && hook.protocol && (ctx.hasUI || event === "Interrupt" || event === "PermissionRequest")) {
 				const key = `${event}\0${hookIdentity(hook)}`;
 				if (!failureWarned.has(key)) {
 					failureWarned.add(key);
@@ -488,34 +476,21 @@ function createDispatcher(
 					);
 				}
 			}
-			if (failure && event === "PermissionRequest")
-				onFailure?.([`PermissionRequest ${target}`], failure, false);
+			if (failure && event === "PermissionRequest") onFailure?.([`PermissionRequest ${target}`], failure, false);
 			const outcome =
-				failure &&
-				event === "PermissionRequest" &&
-				(hook.failClosed || hook.onFailure === "block")
+				failure && event === "PermissionRequest" && (hook.failClosed || hook.onFailure === "block")
 					? { permissionDecision: "deny" as const, block: failure }
 					: block
 						? { ...verdict, block }
 						: verdict;
-			return event === "PreCompact" &&
-				hook.protocol &&
-				hook.protocol !== "octocode" &&
-				outcome.block
+			return event === "PreCompact" && hook.protocol && hook.protocol !== "octocode" && outcome.block
 				? { ...outcome, cancelCompaction: true }
 				: outcome;
 		};
 		const running = hooks.map(async (hook) => {
 			let verdict: HookVerdict;
 			try {
-				verdict = await runOne(
-					hook,
-					race
-						? signal
-							? AbortSignal.any([signal, race.signal])
-							: race.signal
-						: signal,
-				);
+				verdict = await runOne(hook, race ? (signal ? AbortSignal.any([signal, race.signal]) : race.signal) : signal);
 			} catch (error) {
 				if (!race) throw error;
 				if (winner || signal?.aborted) return {};
@@ -538,33 +513,27 @@ function createDispatcher(
 		}
 		const verdicts = await Promise.all(running);
 		if (event === "PermissionRequest") {
-			const deny = verdicts.find(verdict => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ?? verdicts.find(
-				(verdict) => verdict.permissionDecision === "deny",
-			);
+			const deny =
+				verdicts.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
+				verdicts.find((verdict) => verdict.permissionDecision === "deny");
 			if (deny)
 				return {
 					permissionDecision: "deny",
 					block: deny.block,
-					...(verdicts.some((verdict) => verdict.permissionInterrupt)
-						? { permissionInterrupt: true }
-						: {}),
+					...(verdicts.some((verdict) => verdict.permissionInterrupt) ? { permissionInterrupt: true } : {}),
 				};
-			return verdicts.some((verdict) => verdict.permissionDecision === "allow")
-				? { permissionDecision: "allow" }
-				: {};
+			return verdicts.some((verdict) => verdict.permissionDecision === "allow") ? { permissionDecision: "allow" } : {};
 		}
-		if (
-			(event === "Stop" || event === "SubagentStop") &&
-			verdicts.some((verdict) => verdict.stop)
-		)
+		if ((event === "Stop" || event === "SubagentStop") && verdicts.some((verdict) => verdict.stop))
 			return { stop: true };
-		const halted = verdicts.find(verdict => verdict.haltTurn);
+		const halted = verdicts.find((verdict) => verdict.haltTurn);
 		if (halted) {
 			say(ctx, halted.block ?? halted.context ?? "Stopped by a prompt hook", "warning");
 			ctx.abort("internal");
 		}
-		const rewrites = verdicts.flatMap(verdict => verdict.updatedInput ? [verdict.updatedInput] : []);
-		if (rewrites.length > 1 && rewrites.some(value => JSON.stringify(value) !== JSON.stringify(rewrites[0]))) return { block: "Conflicting hook input rewrites; call not executed" };
+		const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [verdict.updatedInput] : []));
+		if (rewrites.length > 1 && rewrites.some((value) => JSON.stringify(value) !== JSON.stringify(rewrites[0])))
+			return { block: "Conflicting hook input rewrites; call not executed" };
 		const block = verdicts
 			.map((verdict) => verdict.block)
 			.filter(Boolean)
@@ -578,10 +547,24 @@ function createDispatcher(
 			.filter(Boolean)
 			.join("\n\n");
 		return {
-			...(rewrites[0] ? { updatedInput: rewrites[0], updatedInputProtocol: verdicts.find(verdict => verdict.updatedInput)?.updatedInputProtocol } : {}),
-			...(verdicts.some(verdict => verdict.continueReason) ? { continueReason: capContext(verdicts.map(verdict => verdict.continueReason).filter(Boolean).join("\n\n")) } : {}),
-			...(verdicts.some(verdict => verdict.replaceResult) ? { replaceResult: true as const } : {}),
-			...(verdicts.some(verdict => verdict.rejectNested) ? { rejectNested: true as const } : {}),
+			...(rewrites[0]
+				? {
+						updatedInput: rewrites[0],
+						updatedInputProtocol: verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol,
+					}
+				: {}),
+			...(verdicts.some((verdict) => verdict.continueReason)
+				? {
+						continueReason: capContext(
+							verdicts
+								.map((verdict) => verdict.continueReason)
+								.filter(Boolean)
+								.join("\n\n"),
+						),
+					}
+				: {}),
+			...(verdicts.some((verdict) => verdict.replaceResult) ? { replaceResult: true as const } : {}),
+			...(verdicts.some((verdict) => verdict.rejectNested) ? { rejectNested: true as const } : {}),
 			...(event === "PostCompact" && verdicts.some((verdict) => verdict.stop) ? { stop: true as const } : {}),
 			...(verdicts.some((verdict) => verdict.cancelCompaction) ? { cancelCompaction: true as const } : {}),
 			...(block ? { block: capContext(block) } : {}),
@@ -635,10 +618,21 @@ function registerSessionStartHooks(
 		}
 		const abort = startAbort;
 		const previous = fresh ? undefined : starting;
-		const hooks = Promise.all((["octocode", "claude", "codex"] as const).filter(protocol => !child || protocol === "octocode").map(protocol => {
-			const profileSource = protocol === "octocode" && source === "fork" ? "resume" : source;
-			return dispatch(ctx, "SessionStart", [profileSource], () => ({ source: profileSource }), abort.signal, protocol);
-		}))
+		const hooks = Promise.all(
+			(["octocode", "claude", "codex"] as const)
+				.filter((protocol) => !child || protocol === "octocode")
+				.map((protocol) => {
+					const profileSource = protocol === "octocode" && source === "fork" ? "resume" : source;
+					return dispatch(
+						ctx,
+						"SessionStart",
+						[profileSource],
+						() => ({ source: profileSource }),
+						abort.signal,
+						protocol,
+					);
+				}),
+		)
 			.then((verdicts) => {
 				if (!abort.signal.aborted) for (const verdict of verdicts) if (verdict.context) pending.push(verdict.context);
 			})
@@ -654,7 +648,10 @@ function registerSessionStartHooks(
 	};
 
 	pi.on("session_start", async (event, ctx) => {
-		const loaded = loadHooks(ctx.cwd, await projectTrust(ctx), home, { sourceProfiles, plugins: pi.getSettings().plugins });
+		const loaded = loadHooks(ctx.cwd, await projectTrust(ctx), home, {
+			sourceProfiles,
+			plugins: pi.getSettings().plugins,
+		});
 		session.config = loaded.config;
 		session.errors = loaded.errors;
 		session.root = undefined;
@@ -693,71 +690,152 @@ function registerSessionStartHooks(
 const preToolUseGate =
 	(pi: ExtensionAPI, dispatch: Dispatch, session: HookSession, patches: Map<string, string>): HooksView["preToolUse"] =>
 	async (event, ctx) => {
-		if (event.toolName === "file") { try { validateFileInput(event.input); } catch(error) { return {block:true,reason:errorMessage(error)}; } }
+		if (event.toolName === "file") {
+			try {
+				validateFileInput(event.input);
+			} catch (error) {
+				return { block: true, reason: errorMessage(error) };
+			}
+		}
 		if (event.toolName === "file" && typeof event.input.patch === "string") {
 			try {
 				const patch = parsePatch(event.input.patch);
-				if (patch.hunks.some(h => h.kind === "update") && commandsFor(session.config,"PreToolUse",["file","Edit","MultiEdit","Write","Delete"]).some(h => h.protocol !== "codex")) {
-					return {block:true,reason:"Canonical Update/Move patches cannot be represented losslessly to matching native or Claude PreToolUse hooks; use native file queries"};
+				if (
+					patch.hunks.some((h) => h.kind === "update") &&
+					commandsFor(session.config, "PreToolUse", ["file", "Edit", "MultiEdit", "Write", "Delete"]).some(
+						(h) => h.protocol !== "codex",
+					)
+				) {
+					return {
+						block: true,
+						reason:
+							"Canonical Update/Move patches cannot be represented losslessly to matching native or Claude PreToolUse hooks; use native file queries",
+					};
 				}
-			} catch(error) { return {block:true,reason:errorMessage(error)}; }
+			} catch (error) {
+				return { block: true, reason: errorMessage(error) };
+			}
 		}
 		const calls = hookCalls(event.toolName, event.input, ctx.cwd);
-		const dispatches = event.toolName === "file"
-			? calls.flatMap((call, index) => (["octocode", "claude"] as const).map(protocol => ({ ...call, index, protocol })))
-			: calls.map((call, index) => ({ ...call, index, protocol: undefined as HookProtocol | undefined }));
-		const codexGate = event.toolName === "file" && commandsFor(session.config, "PreToolUse", CODEX_PATCH_NAMES).some(hook => hook.protocol === "codex");
-		const codexPost = event.toolName === "file" && commandsFor(session.config, "PostToolUse", CODEX_PATCH_NAMES).some(hook => hook.protocol === "codex");
+		const dispatches =
+			event.toolName === "file"
+				? calls.flatMap((call, index) =>
+						(["octocode", "claude"] as const).map((protocol) => ({ ...call, index, protocol })),
+					)
+				: calls.map((call, index) => ({ ...call, index, protocol: undefined as HookProtocol | undefined }));
+		const codexGate =
+			event.toolName === "file" &&
+			commandsFor(session.config, "PreToolUse", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex");
+		const codexPost =
+			event.toolName === "file" &&
+			commandsFor(session.config, "PostToolUse", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex");
 		if (codexGate || codexPost) {
 			try {
 				const command = projectCodexPatch(event.input);
 				patches.set(event.toolCallId, command);
-				if (codexGate) dispatches.push({ names: CODEX_PATCH_NAMES, tool_name: "apply_patch", tool_input: { command }, index: -1, protocol: "codex" });
+				if (codexGate)
+					dispatches.push({
+						names: CODEX_PATCH_NAMES,
+						tool_name: "apply_patch",
+						tool_input: { command },
+						index: -1,
+						protocol: "codex",
+					});
 			} catch (error) {
-				if (codexGate) return { block: true, reason: `Cannot run matching Codex apply_patch hook: ${errorMessage(error)}` };
+				if (codexGate)
+					return { block: true, reason: `Cannot run matching Codex apply_patch hook: ${errorMessage(error)}` };
 			}
 		}
-		const verdicts = await Promise.all(dispatches.map(call =>
-			dispatch(ctx, "PreToolUse", call.names, () => ({
-				tool_use_id: event.toolCallId,
-				tool_name: call.tool_name,
-				pi_tool_name: event.toolName,
-				tool_input: call.tool_input,
-			}), ctx.signal, call.protocol),
-		));
+		const verdicts = await Promise.all(
+			dispatches.map((call) =>
+				dispatch(
+					ctx,
+					"PreToolUse",
+					call.names,
+					() => ({
+						tool_use_id: event.toolCallId,
+						tool_name: call.tool_name,
+						pi_tool_name: event.toolName,
+						tool_input: call.tool_input,
+					}),
+					ctx.signal,
+					call.protocol,
+				),
+			),
+		);
 		const block = verdicts.find((verdict) => verdict.block)?.block;
 		if (block) return { block: true, reason: `Blocked by a PreToolUse hook: ${block}` };
-		const rewrites = verdicts.flatMap(verdict => verdict.updatedInput ? [verdict.updatedInput] : []);
+		const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [verdict.updatedInput] : []));
 		let rewritten = false;
 		if (rewrites.length) {
-			if (event.toolCallId === "user-bash" || ["read", "edit", "write"].includes(event.toolName) || (event.toolName !== "file" && calls.length !== 1))
-				return { block: true, reason: "Input rewrite requires an unavailable reverse adapter for this tool; call not executed" };
-			const definition = pi.getAllTools().find(tool => tool.name === event.toolName);
+			if (
+				event.toolCallId === "user-bash" ||
+				["read", "edit", "write"].includes(event.toolName) ||
+				(event.toolName !== "file" && calls.length !== 1)
+			)
+				return {
+					block: true,
+					reason: "Input rewrite requires an unavailable reverse adapter for this tool; call not executed",
+				};
+			const definition = pi.getAllTools().find((tool) => tool.name === event.toolName);
 			if (!definition) return { block: true, reason: "Cannot validate rewritten input for an unknown tool" };
 			try {
 				let replacement: Record<string, unknown> = rewrites[0]!;
-				if (event.toolName === "bash" && verdicts.find(verdict => verdict.updatedInput)?.updatedInputProtocol === "codex") replacement = rewriteCodexCommand(event.input, rewrites[0]!);
-                if (event.toolName === "bash" && verdicts.find(verdict => verdict.updatedInput)?.updatedInputProtocol === "claude") replacement = rewriteClaudeBash(event.input, rewrites[0]!);
+				if (
+					event.toolName === "bash" &&
+					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "codex"
+				)
+					replacement = rewriteCodexCommand(event.input, rewrites[0]!);
+				if (
+					event.toolName === "bash" &&
+					verdicts.find((verdict) => verdict.updatedInput)?.updatedInputProtocol === "claude"
+				)
+					replacement = rewriteClaudeBash(event.input, rewrites[0]!);
 				if (event.toolName === "file") {
-					const codexRewrite = verdicts.find(verdict => verdict.updatedInputProtocol === "codex" && verdict.updatedInput)?.updatedInput;
-					if (codexRewrite && verdicts.some(verdict => verdict.updatedInput && verdict.updatedInputProtocol !== "codex")) throw new Error("Conflicting source-profile file rewrites; call not executed");
+					const codexRewrite = verdicts.find(
+						(verdict) => verdict.updatedInputProtocol === "codex" && verdict.updatedInput,
+					)?.updatedInput;
+					if (
+						codexRewrite &&
+						verdicts.some((verdict) => verdict.updatedInput && verdict.updatedInputProtocol !== "codex")
+					)
+						throw new Error("Conflicting source-profile file rewrites; call not executed");
 					replacement = codexRewrite ? rewriteCodexPatch(event.input, codexRewrite) : structuredClone(event.input);
-					if (!codexRewrite) for (const [index, verdict] of verdicts.entries()) if (verdict.updatedInput) {
-						if (verdict.updatedInputProtocol !== "claude") throw new Error("Unsupported file rewrite profile");
-						replacement = rewriteFileQuery(replacement, dispatches[index]!.index, verdict.updatedInput);
-					}
+					if (!codexRewrite)
+						for (const [index, verdict] of verdicts.entries())
+							if (verdict.updatedInput) {
+								if (verdict.updatedInputProtocol !== "claude") throw new Error("Unsupported file rewrite profile");
+								replacement = rewriteFileQuery(replacement, dispatches[index]!.index, verdict.updatedInput);
+							}
 					if (codexGate || codexPost) {
-						try { patches.set(event.toolCallId, codexRewrite ? String(codexRewrite.command) : projectCodexPatch(replacement)); }
-						catch (error) { patches.delete(event.toolCallId); if (codexGate) throw error; }
+						try {
+							patches.set(
+								event.toolCallId,
+								codexRewrite ? String(codexRewrite.command) : projectCodexPatch(replacement),
+							);
+						} catch (error) {
+							patches.delete(event.toolCallId);
+							if (codexGate) throw error;
+						}
 					}
 				}
-				const validated = validateToolArguments(definition, { type: "toolCall", id: event.toolCallId, name: event.toolName, arguments: replacement as Parameters<typeof validateToolArguments>[1]["arguments"] });
+				const validated = validateToolArguments(definition, {
+					type: "toolCall",
+					id: event.toolCallId,
+					name: event.toolName,
+					arguments: replacement as Parameters<typeof validateToolArguments>[1]["arguments"],
+				});
 				for (const key of Object.keys(event.input)) delete (event.input as Record<string, unknown>)[key];
 				Object.assign(event.input, validated);
 				rewritten = true;
-			} catch (error) { return { block: true, reason: `Invalid hook input rewrite: ${errorMessage(error)}` }; }
+			} catch (error) {
+				return { block: true, reason: `Invalid hook input rewrite: ${errorMessage(error)}` };
+			}
 		}
-		const context = verdicts.map((verdict) => verdict.context).filter(Boolean).join("\n\n");
+		const context = verdicts
+			.map((verdict) => verdict.context)
+			.filter(Boolean)
+			.join("\n\n");
 		if (context && !ctx.signal?.aborted) {
 			await pi.sendMessage(
 				{ customType: CONTEXT_TYPE, content: capContext(`Context from PreToolUse hooks:\n${context}`), display: false },
@@ -768,7 +846,9 @@ const preToolUseGate =
 			.map((verdict) => verdict.ask)
 			.filter(Boolean)
 			.join("\n\n");
-		return ask || rewritten ? { ...(ask ? { ask: capContext(ask) } : {}), ...(rewritten ? { rewritten: true } : {}) } : undefined;
+		return ask || rewritten
+			? { ...(ask ? { ask: capContext(ask) } : {}), ...(rewritten ? { rewritten: true } : {}) }
+			: undefined;
 	};
 
 /**
@@ -859,7 +939,10 @@ function registerMessageHooks(
 }
 
 /** Notification observers outlive the foreground turn, but never their session. */
-function notificationHook(pi: ExtensionAPI, { dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure }): HooksView["notification"] {
+function notificationHook(
+	pi: ExtensionAPI,
+	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
+): HooksView["notification"] {
 	let controller = new AbortController();
 	let closed = false;
 	const active = new Set<Promise<void>>();
@@ -869,7 +952,11 @@ function notificationHook(pi: ExtensionAPI, { dispatch, reportFailure }: { dispa
 		await Promise.allSettled([...active]);
 	};
 	pi.on("session_shutdown", stop);
-	pi.on("session_start", async () => { await stop();controller = new AbortController();closed = false; });
+	pi.on("session_start", async () => {
+		await stop();
+		controller = new AbortController();
+		closed = false;
+	});
 	return (notice, ctx) => {
 		if (closed) return;
 		const input = {
@@ -878,7 +965,10 @@ function notificationHook(pi: ExtensionAPI, { dispatch, reportFailure }: { dispa
 			notification_type: notice.type,
 		};
 		const task = dispatch(ctx, "Notification", [notice.type], () => input, controller.signal)
-			.then(() => undefined, (error: unknown) => reportFailure(ctx, "Notification", error))
+			.then(
+				() => undefined,
+				(error: unknown) => reportFailure(ctx, "Notification", error),
+			)
 			.finally(() => active.delete(task));
 		active.add(task);
 	};
@@ -898,11 +988,7 @@ function registerSubagentHooks(
 	let codexStart = false;
 	let stopContinues = 0;
 	const agentType = metadata?.().agentType || "general";
-	const identity = (
-		ctx: ExtensionContext,
-		protocol: "claude" | "codex",
-		stop: boolean,
-	): Record<string, unknown> => ({
+	const identity = (ctx: ExtensionContext, protocol: "claude" | "codex", stop: boolean): Record<string, unknown> => ({
 		agent_id:
 			protocol === "codex"
 				? ctx.sessionManager.getSessionId()
@@ -916,18 +1002,12 @@ function registerSubagentHooks(
 			: {}),
 		...(stop
 			? {
-					transcript_path:
-						env[PARENT_TRANSCRIPT_ENV] || (protocol === "codex" ? null : ""),
-					agent_transcript_path:
-						ctx.sessionManager.getSessionFile() ??
-						(protocol === "codex" ? null : ""),
+					transcript_path: env[PARENT_TRANSCRIPT_ENV] || (protocol === "codex" ? null : ""),
+					agent_transcript_path: ctx.sessionManager.getSessionFile() ?? (protocol === "codex" ? null : ""),
 				}
 			: {}),
 	});
-	const ready = (
-		ctx: ExtensionContext,
-		protocol: "claude" | "codex",
-	): boolean => {
+	const ready = (ctx: ExtensionContext, protocol: "claude" | "codex"): boolean => {
 		const valid =
 			!!metadata?.().permissionMode &&
 			!!ctx.model &&
@@ -952,11 +1032,7 @@ function registerSubagentHooks(
 		const contexts: string[] = [];
 		const contextKeys: string[] = [];
 		for (const protocol of ["claude", "codex"] as const) {
-			if (
-				!commandsFor(session.config, "SubagentStart", [agentType]).some(
-					(hook) => hook.protocol === protocol,
-				)
-			)
+			if (!commandsFor(session.config, "SubagentStart", [agentType]).some((hook) => hook.protocol === protocol))
 				continue;
 			if (protocol === "codex" && !codexStart) continue;
 			if (protocol === "codex") codexStart = false;
@@ -985,11 +1061,7 @@ function registerSubagentHooks(
 							message.details.subagentStartKeys.includes(key),
 					);
 			if (!present) {
-				contexts.push(
-					capContext(
-						`Context from ${protocol} SubagentStart hooks:\n${verdict.context}`,
-					),
-				);
+				contexts.push(capContext(`Context from ${protocol} SubagentStart hooks:\n${verdict.context}`));
 				contextKeys.push(key);
 			}
 		}
@@ -1008,9 +1080,7 @@ function registerSubagentHooks(
 	});
 	pi.on("agent_before_settle", async (event, ctx) => {
 		if (event.outcome !== "completed") return;
-		const last = [...event.context.llmMessages]
-			.reverse()
-			.find((message) => message.role === "assistant");
+		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		const verdicts: HookVerdict[] = [
 			await dispatch(
 				ctx,
@@ -1026,9 +1096,7 @@ function registerSubagentHooks(
 		];
 		for (const protocol of ["claude", "codex"] as const) {
 			if (
-				!commandsFor(session.config, "SubagentStop", [agentType]).some(
-					(hook) => hook.protocol === protocol,
-				) ||
+				!commandsFor(session.config, "SubagentStop", [agentType]).some((hook) => hook.protocol === protocol) ||
 				!ready(ctx, protocol)
 			)
 				continue;
@@ -1060,7 +1128,7 @@ function registerSubagentHooks(
 				{
 					type: "custom_message" as const,
 					customType: STOP_TYPE,
-					content: `${verdicts.slice(1).some(verdict => verdict.block || verdict.continueReason) ? "SubagentStop hook feedback:\n" : STOP_PREFIX}${feedback}`,
+					content: `${verdicts.slice(1).some((verdict) => verdict.block || verdict.continueReason) ? "SubagentStop hook feedback:\n" : STOP_PREFIX}${feedback}`,
 					display: true,
 				},
 			],
@@ -1083,10 +1151,17 @@ function registerStopHook(pi: ExtensionAPI, session: HookSession, dispatch: Disp
 		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		if (event.outcome === "error") {
 			const details = last?.errorMessage;
-			await dispatch(ctx, "StopFailure", ["unknown"], () => ({
-				error: "unknown",
-				...(details ? { error_details: details, last_assistant_message: details } : {}),
-			}), ctx.signal, "claude");
+			await dispatch(
+				ctx,
+				"StopFailure",
+				["unknown"],
+				() => ({
+					error: "unknown",
+					...(details ? { error_details: details, last_assistant_message: details } : {}),
+				}),
+				ctx.signal,
+				"claude",
+			);
 			return undefined;
 		}
 		if (child) return undefined;
@@ -1119,10 +1194,17 @@ function registerStopHook(pi: ExtensionAPI, session: HookSession, dispatch: Disp
 }
 
 /** PostToolUse: feedback from the hooks is appended to the tool result the model reads. */
-function registerPostToolUseHook(pi: ExtensionAPI, dispatch: Dispatch, session: HookSession, patches: Map<string, string>): void {
+function registerPostToolUseHook(
+	pi: ExtensionAPI,
+	dispatch: Dispatch,
+	session: HookSession,
+	patches: Map<string, string>,
+): void {
 	pi.on("tool_result", async (event, ctx) => {
-		const outcomes = event.toolName === "file" && isRecord(event.details) && Array.isArray(event.details.outcomes)
-			? event.details.outcomes : undefined;
+		const outcomes =
+			event.toolName === "file" && isRecord(event.details) && Array.isArray(event.details.outcomes)
+				? event.details.outcomes
+				: undefined;
 		const patch = patches.get(event.toolCallId);
 		patches.delete(event.toolCallId);
 		const feedback: string[] = [];
@@ -1131,27 +1213,58 @@ function registerPostToolUseHook(pi: ExtensionAPI, dispatch: Dispatch, session: 
 		for (const protocol of ["octocode", "claude", "codex"] as const) {
 			if (event.isError && protocol !== "claude") continue;
 			// Codex's patch observer only follows a fully successful patch, not a partially applied native batch.
-			if (protocol === "codex" && outcomes?.some(outcome => !isRecord(outcome) || outcome.ok !== true)) continue;
+			if (protocol === "codex" && outcomes?.some((outcome) => !isRecord(outcome) || outcome.ok !== true)) continue;
 			const hookEvent = event.isError && protocol === "claude" ? "PostToolUseFailure" : "PostToolUse";
-			if (protocol !== "codex" && event.toolName === "file" && typeof event.input.patch === "string" && parsePatch(event.input.patch).hunks.some(h => h.kind === "update")) {
-				if (commandsFor(session.config,hookEvent,["file","Edit","MultiEdit","Write","Delete"]).some(h => (h.protocol ?? "octocode") === protocol)) feedback.push(`${protocol} ${hookEvent} hook unavailable: canonical Update/Move patches have no lossless per-query projection`);
+			if (
+				protocol !== "codex" &&
+				event.toolName === "file" &&
+				typeof event.input.patch === "string" &&
+				parsePatch(event.input.patch).hunks.some((h) => h.kind === "update")
+			) {
+				if (
+					commandsFor(session.config, hookEvent, ["file", "Edit", "MultiEdit", "Write", "Delete"]).some(
+						(h) => (h.protocol ?? "octocode") === protocol,
+					)
+				)
+					feedback.push(
+						`${protocol} ${hookEvent} hook unavailable: canonical Update/Move patches have no lossless per-query projection`,
+					);
 				continue;
 			}
 			const codexFile = protocol === "codex" && event.toolName === "file";
-			if (codexFile && !patch && commandsFor(session.config, "PostToolUse", CODEX_PATCH_NAMES).some(hook => hook.protocol === "codex")) {
-				feedback.push("Codex apply_patch PostToolUse hook unavailable: this file call has no lossless pre-call patch projection");
+			if (
+				codexFile &&
+				!patch &&
+				commandsFor(session.config, "PostToolUse", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex")
+			) {
+				feedback.push(
+					"Codex apply_patch PostToolUse hook unavailable: this file call has no lossless pre-call patch projection",
+				);
 			}
-			const calls = codexFile ? patch ? [{ names: CODEX_PATCH_NAMES, tool_name: "apply_patch", tool_input: { command: patch } }] : [] : hookCalls(event.toolName, event.input, ctx.cwd);
+			const calls = codexFile
+				? patch
+					? [{ names: CODEX_PATCH_NAMES, tool_name: "apply_patch", tool_input: { command: patch } }]
+					: []
+				: hookCalls(event.toolName, event.input, ctx.cwd);
 			for (const [index, call] of calls.entries()) {
 				// A denied or failed file query cannot be reported as a successful mutation.
 				if (!codexFile && outcomes && (!isRecord(outcomes[index]) || outcomes[index].ok !== true)) continue;
-				const verdict = await dispatch(ctx, hookEvent, call.names, () => ({
-					tool_use_id: event.toolCallId,
-					tool_name: call.tool_name,
-					pi_tool_name: event.toolName,
-					tool_input: call.tool_input,
-					...(hookEvent === "PostToolUseFailure" ? { error: contentText(event.content), ...(ctx.signal?.aborted ? { is_interrupt: true } : {}) } : { tool_response: contentText(event.content) }),
-				}), ctx.signal, protocol);
+				const verdict = await dispatch(
+					ctx,
+					hookEvent,
+					call.names,
+					() => ({
+						tool_use_id: event.toolCallId,
+						tool_name: call.tool_name,
+						pi_tool_name: event.toolName,
+						tool_input: call.tool_input,
+						...(hookEvent === "PostToolUseFailure"
+							? { error: contentText(event.content), ...(ctx.signal?.aborted ? { is_interrupt: true } : {}) }
+							: { tool_response: contentText(event.content) }),
+					}),
+					ctx.signal,
+					protocol,
+				);
 				feedback.push(...[verdict.block, verdict.context].filter((text): text is string => Boolean(text)));
 				replaceResult ||= verdict.replaceResult === true;
 				rejectNested ||= verdict.rejectNested === true;
@@ -1161,7 +1274,10 @@ function registerPostToolUseHook(pi: ExtensionAPI, dispatch: Dispatch, session: 
 			? {
 					content: [
 						...(replaceResult ? [] : event.content),
-						{ type: "text" as const, text: `\n[${event.isError ? "PostToolUseFailure/PostToolUse" : "PostToolUse"} hook] ${capContext(feedback.join("\n\n"))}` },
+						{
+							type: "text" as const,
+							text: `\n[${event.isError ? "PostToolUseFailure/PostToolUse" : "PostToolUse"} hook] ${capContext(feedback.join("\n\n"))}`,
+						},
 					],
 					...(replaceResult ? { details: null } : {}),
 					...(rejectNested && event.parentToolCallId ? { isError: true } : {}),
@@ -1174,26 +1290,46 @@ function registerPostToolUseHook(pi: ExtensionAPI, dispatch: Dispatch, session: 
 function registerPreCompactHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 	pi.on("session_before_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
-		const verdict = await dispatch(ctx, "PreCompact", [trigger], () => ({
-			trigger,
-			custom_instructions: "",
-		}), event.signal);
+		const verdict = await dispatch(
+			ctx,
+			"PreCompact",
+			[trigger],
+			() => ({
+				trigger,
+				custom_instructions: "",
+			}),
+			event.signal,
+		);
 		return verdict.cancelCompaction && !event.signal?.aborted ? { cancel: true } : undefined;
 	});
 }
 
-function registerSessionEndHook(pi: ExtensionAPI, session: HookSession, dispatch: Dispatch, env: NodeJS.ProcessEnv): void {
+function registerSessionEndHook(
+	pi: ExtensionAPI,
+	session: HookSession,
+	dispatch: Dispatch,
+	env: NodeJS.ProcessEnv,
+): void {
 	pi.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "reload") return;
 		const run = async (protocol: "claude" | "codex", reason: string) => {
-			const configuredBudget = Math.min(60_000, Math.max(1500, ...session.config.SessionEnd.flatMap(group =>
-				group.hooks.filter(hook => hook.protocol === "claude" && !hook.plugin).map(hook => hook.timeoutMs))));
-			const budget = protocol === "codex" ? 3000 : claudeSessionEndOverride(env) ?? configuredBudget;
+			const configuredBudget = Math.min(
+				60_000,
+				Math.max(
+					1500,
+					...session.config.SessionEnd.flatMap((group) =>
+						group.hooks.filter((hook) => hook.protocol === "claude" && !hook.plugin).map((hook) => hook.timeoutMs),
+					),
+				),
+			);
+			const budget = protocol === "codex" ? 3000 : (claudeSessionEndOverride(env) ?? configuredBudget);
 			const abort = new AbortController();
 			const timer = setTimeout(() => abort.abort(), budget);
 			try {
 				await dispatch(ctx, "SessionEnd", [reason], () => ({ reason }), abort.signal, protocol);
-			} finally { clearTimeout(timer); }
+			} finally {
+				clearTimeout(timer);
+			}
 		};
 		await Promise.all([
 			run("claude", event.reason === "new" ? "clear" : event.reason === "resume" ? "resume" : "other"),
@@ -1212,7 +1348,11 @@ function registerPostCompactHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 		if (verdict.stop) ctx.abort("internal");
 		if (verdict.context && !verdict.stop && !ctx.signal?.aborted) {
 			await pi.sendMessage(
-				{ customType: CONTEXT_TYPE, content: capContext(`Context from PostCompact hooks:\n${verdict.context}`), display: false },
+				{
+					customType: CONTEXT_TYPE,
+					content: capContext(`Context from PostCompact hooks:\n${verdict.context}`),
+					display: false,
+				},
 				{ triggerTurn: false },
 			);
 		}
@@ -1222,26 +1362,40 @@ function registerPostCompactHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 function registerPostToolBatchHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 	pi.on("turn_end", async (event, ctx) => {
 		if (ctx.signal?.aborted || event.toolResults.length === 0 || event.message.role !== "assistant") return;
-		const calls = event.message.content.filter(content => content.type === "toolCall");
-		const verdict = await dispatch(ctx, "PostToolBatch", [], () => ({
-			tool_calls: calls.map(call => {
-				const projected = call.name === "file" ? undefined : hookCalls(call.name, call.arguments, ctx.cwd)[0];
-				return {
-					tool_use_id: call.id,
-					tool_name: projected?.tool_name ?? call.name,
-					tool_input: projected?.tool_input ?? call.arguments,
-					tool_response: event.toolResults.find(result => result.toolCallId === call.id)?.content ?? [],
-				};
+		const calls = event.message.content.filter((content) => content.type === "toolCall");
+		const verdict = await dispatch(
+			ctx,
+			"PostToolBatch",
+			[],
+			() => ({
+				tool_calls: calls.map((call) => {
+					const projected = call.name === "file" ? undefined : hookCalls(call.name, call.arguments, ctx.cwd)[0];
+					return {
+						tool_use_id: call.id,
+						tool_name: projected?.tool_name ?? call.name,
+						tool_input: projected?.tool_input ?? call.arguments,
+						tool_response: event.toolResults.find((result) => result.toolCallId === call.id)?.content ?? [],
+					};
+				}),
 			}),
-		}), ctx.signal, "claude");
+			ctx.signal,
+			"claude",
+		);
 		if (ctx.signal?.aborted) return;
 		const feedback = verdict.block ?? verdict.context;
 		if (!feedback) return;
 		if (verdict.block) ctx.abort("internal");
-		return { entries: [...event.entries, {
-			type: "custom_message" as const, customType: CONTEXT_TYPE,
-			content: capContext(`PostToolBatch hook feedback:\n${feedback}`), display: Boolean(verdict.block),
-		}] };
+		return {
+			entries: [
+				...event.entries,
+				{
+					type: "custom_message" as const,
+					customType: CONTEXT_TYPE,
+					content: capContext(`PostToolBatch hook feedback:\n${feedback}`),
+					display: Boolean(verdict.block),
+				},
+			],
+		};
 	});
 }
 
@@ -1251,11 +1405,16 @@ function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 		if (verdict.block && ctx.hasUI) notify(ctx.ui, `Blocked by a UserPromptSubmit hook: ${verdict.block}`, "warning");
 		return {
 			block: !!verdict.block,
-			additionalContext: verdict.context ? [capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`)] : [],
+			additionalContext: verdict.context
+				? [capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`)]
+				: [],
 		};
 	});
 	pi.on("input", async (event, ctx) => {
-		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, ["octocode", "claude"]);
+		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, [
+			"octocode",
+			"claude",
+		]);
 		if (ctx.signal?.aborted) return { action: "handled" };
 		if (verdict.block) {
 			if (ctx.hasUI) notify(ctx.ui, `Blocked by a UserPromptSubmit hook: ${verdict.block}`, "warning");
@@ -1263,7 +1422,11 @@ function registerPromptHook(pi: ExtensionAPI, dispatch: Dispatch): void {
 		}
 		if (verdict.context) {
 			await pi.sendMessage(
-				{ customType: CONTEXT_TYPE, content: capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`), display: false },
+				{
+					customType: CONTEXT_TYPE,
+					content: capContext(`Context from UserPromptSubmit hooks:\n${verdict.context}`),
+					display: false,
+				},
 				{ triggerTurn: false },
 			);
 		}
@@ -1280,8 +1443,7 @@ function registerInterruptHook(
 	pi.on("agent_interrupted", async (event, ctx) => {
 		if (!commandsFor(session.config, "Interrupt", []).length) return;
 		if (!event.model || !metadata?.().permissionMode) {
-			const diagnostic =
-				"Skipping Codex Interrupt hook: live model or permission metadata is unavailable";
+			const diagnostic = "Skipping Codex Interrupt hook: live model or permission metadata is unavailable";
 			if (!session.errors.includes(diagnostic)) {
 				session.errors.push(diagnostic);
 				if (ctx.hasUI) notify(ctx.ui, diagnostic, "warning");
@@ -1321,11 +1483,12 @@ export function registerHooks(
 	const timings = new Map<string, HookTiming>();
 	const view: HooksView = {
 		summary: () => (enabled ? `on, ${hookCount(session.config)} commands` : `off (${HOOKS_ENV}=1 to enable)`),
-		report: (cwd) => hooksReport(enabled, session.config, session.errors, cwd, home, timings, envFlag(env, HOOKS_COMPAT_ENV)),
+		report: (cwd) =>
+			hooksReport(enabled, session.config, session.errors, cwd, home, timings, envFlag(env, HOOKS_COMPAT_ENV)),
 		preToolUse: async () => undefined,
 		permissionRequest: async () => undefined,
- hasFilePermissionRequest: () => false,
- fileInputCommitted: () => {},
+		hasFilePermissionRequest: () => false,
+		fileInputCommitted: () => {},
 		notification: () => undefined,
 		messageSend: async () => undefined,
 		messageReceive: async () => undefined,
@@ -1342,16 +1505,27 @@ export function registerHooks(
 	registerSessionStartHooks(pi, session, runner, home, envFlag(env, HOOKS_COMPAT_ENV), child);
 	if (child) registerSubagentHooks(pi, session, runner.dispatch, env, metadata);
 	const patches = new Map<string, string>();
-	pi.on("session_start", async () => { patches.clear(); });
-	pi.on("session_shutdown", async () => { patches.clear(); });
-	pi.on("turn_end", async () => { patches.clear(); });
- view.hasFilePermissionRequest = (input, cwd) =>
-  hookCalls("file", input, cwd).some(call => commandsFor(session.config, "PermissionRequest", call.names).some(hook => hook.protocol === "claude")) ||
-  commandsFor(session.config,"PermissionRequest",CODEX_PATCH_NAMES).some(hook=>hook.protocol === "codex");
- view.fileInputCommitted = (id,input) => {
-  patches.delete(id);
-  try { patches.set(id,projectCodexPatch(input)); } catch { /* Unsupported projections are diagnosed by the existing post-hook owner. */ }
- };
+	pi.on("session_start", async () => {
+		patches.clear();
+	});
+	pi.on("session_shutdown", async () => {
+		patches.clear();
+	});
+	pi.on("turn_end", async () => {
+		patches.clear();
+	});
+	view.hasFilePermissionRequest = (input, cwd) =>
+		hookCalls("file", input, cwd).some((call) =>
+			commandsFor(session.config, "PermissionRequest", call.names).some((hook) => hook.protocol === "claude"),
+		) || commandsFor(session.config, "PermissionRequest", CODEX_PATCH_NAMES).some((hook) => hook.protocol === "codex");
+	view.fileInputCommitted = (id, input) => {
+		patches.delete(id);
+		try {
+			patches.set(id, projectCodexPatch(input));
+		} catch {
+			/* Unsupported projections are diagnosed by the existing post-hook owner. */
+		}
+	};
 
 	view.permissionRequest = async (invocation, ctx, signal) => {
 		if (!isRecord(invocation.input)) return undefined;
@@ -1360,13 +1534,9 @@ export function registerHooks(
 			invocation.toolName === "file" &&
 			typeof input.patch === "string" &&
 			parsePatch(input.patch).hunks.some((hunk) => hunk.kind === "update") &&
-			commandsFor(session.config, "PermissionRequest", [
-				"file",
-				"Edit",
-				"MultiEdit",
-				"Write",
-				"Delete",
-			]).some((hook) => hook.protocol === "claude")
+			commandsFor(session.config, "PermissionRequest", ["file", "Edit", "MultiEdit", "Write", "Delete"]).some(
+				(hook) => hook.protocol === "claude",
+			)
 		) {
 			const message =
 				"Canonical Update/Move patches cannot be represented losslessly to matching Claude PermissionRequest hooks";
@@ -1375,10 +1545,7 @@ export function registerHooks(
 			return { decision: "deny", message };
 		}
 		const calls = hookCalls(invocation.toolName, input, ctx.cwd);
-		const run = (
-			call: { names: string[]; tool_name: string; tool_input: unknown },
-			protocol: HookProtocol,
-		) =>
+		const run = (call: { names: string[]; tool_name: string; tool_input: unknown }, protocol: HookProtocol) =>
 			runner.dispatch(
 				ctx,
 				"PermissionRequest",
@@ -1392,16 +1559,14 @@ export function registerHooks(
 				protocol,
 			);
 		const verdicts: HookVerdict[] = [];
- const fileReplacements: FileInputReplacement[] = [];
- const permissionUpdates: import("../shared/permission-updates.ts").SourcePermissionUpdate[] = [];
+		const fileReplacements: FileInputReplacement[] = [];
+		const permissionUpdates: import("../shared/permission-updates.ts").SourcePermissionUpdate[] = [];
 		for (const protocol of ["claude", "codex"] as const) {
 			if (protocol === "codex" && invocation.toolName === "file") {
 				if (
-					!commandsFor(
-						session.config,
-						"PermissionRequest",
-						CODEX_PATCH_NAMES,
-					).some((hook) => hook.protocol === protocol)
+					!commandsFor(session.config, "PermissionRequest", CODEX_PATCH_NAMES).some(
+						(hook) => hook.protocol === protocol,
+					)
 				)
 					continue;
 				try {
@@ -1422,43 +1587,35 @@ export function registerHooks(
 					verdicts.push({ permissionDecision: "deny", block: message });
 				}
 			} else {
-				const results = await Promise.all(
-					calls.map((call) => run(call, protocol)),
-				);
+				const results = await Promise.all(calls.map((call) => run(call, protocol)));
 				const deny =
-					results.find(
-						(verdict) =>
-							verdict.permissionDecision === "deny" &&
-							verdict.permissionInterrupt,
-					) ?? results.find((verdict) => verdict.permissionDecision === "deny");
+					results.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
+					results.find((verdict) => verdict.permissionDecision === "deny");
 				if (deny) verdicts.push(deny);
-				else if (
-					results.length &&
-					results.every((verdict) => verdict.permissionDecision === "allow")
-				)
-                {
-                 permissionUpdates.push(...results.flatMap(verdict => verdict.updatedPermissions ?? []));
-                 if (invocation.toolName === "file" && Array.isArray(input.queries)) {
-                  results.forEach((verdict,index) => { if (verdict.updatedInput !== undefined) fileReplacements.push({index,input:verdict.updatedInput}); });
-                  verdicts.push({permissionDecision:"allow"});
-                 } else verdicts.push(results.find(verdict => verdict.updatedInput !== undefined) ?? {permissionDecision:"allow"});
-                }
+				else if (results.length && results.every((verdict) => verdict.permissionDecision === "allow")) {
+					permissionUpdates.push(...results.flatMap((verdict) => verdict.updatedPermissions ?? []));
+					if (invocation.toolName === "file" && Array.isArray(input.queries)) {
+						results.forEach((verdict, index) => {
+							if (verdict.updatedInput !== undefined) fileReplacements.push({ index, input: verdict.updatedInput });
+						});
+						verdicts.push({ permissionDecision: "allow" });
+					} else
+						verdicts.push(
+							results.find((verdict) => verdict.updatedInput !== undefined) ?? { permissionDecision: "allow" },
+						);
+				}
 			}
 		}
 		const deny =
-			verdicts.find(
-				(verdict) =>
-					verdict.permissionDecision === "deny" && verdict.permissionInterrupt,
-			) ?? verdicts.find((verdict) => verdict.permissionDecision === "deny");
+			verdicts.find((verdict) => verdict.permissionDecision === "deny" && verdict.permissionInterrupt) ??
+			verdicts.find((verdict) => verdict.permissionDecision === "deny");
 		if (deny)
 			return {
 				decision: "deny",
 				message: deny.block,
 				interrupt: deny.permissionInterrupt,
 			};
-		const replacement = verdicts.find(
-			(verdict) => verdict.updatedInput !== undefined,
-		)?.updatedInput;
+		const replacement = verdicts.find((verdict) => verdict.updatedInput !== undefined)?.updatedInput;
 		if (replacement !== undefined && invocation.toolName !== "bash")
 			return {
 				decision: "deny",
@@ -1469,8 +1626,8 @@ export function registerHooks(
 			? {
 					decision: "allow",
 					...(replacement !== undefined ? { updatedInput: replacement } : {}),
- ...(fileReplacements.length ? { updatedFileInputs: fileReplacements } : {}),
- ...(permissionUpdates.length ? {updatedPermissions:permissionUpdates} : {}),
+					...(fileReplacements.length ? { updatedFileInputs: fileReplacements } : {}),
+					...(permissionUpdates.length ? { updatedPermissions: permissionUpdates } : {}),
 				}
 			: undefined;
 	};
@@ -1517,7 +1674,11 @@ export function registerHooksCommand(commands: Subcommands, hooks: HooksView): v
 		description: "hooks — inspect enablement, loaded commands, sources and diagnostics",
 		handler: async (args, ctx) => {
 			if (args.trim())
-				return say(ctx, "Usage: /hooks (inspection only). Start Octocode with OCTOCODE_HOOKS=1 to enable hooks, or OCTOCODE_HOOKS=0 to disable them.", "warning");
+				return say(
+					ctx,
+					"Usage: /hooks (inspection only). Start Octocode with OCTOCODE_HOOKS=1 to enable hooks, or OCTOCODE_HOOKS=0 to disable them.",
+					"warning",
+				);
 			say(ctx, hooks.report(ctx.cwd));
 		},
 	});

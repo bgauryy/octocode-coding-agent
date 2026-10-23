@@ -30,7 +30,7 @@ describe("native Octocode subagent completion", () => {
 				models: faux.models,
 				streamSimple: faux.streamSimple,
 			} as never);
-		const settingsManager = SettingsManager.inMemory({  retry: { enabled: false } });
+		const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
 		const resourceLoader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
@@ -82,7 +82,9 @@ describe("native Octocode subagent completion", () => {
 			await session.prompt("Inspect the evidence and report.");
 			await cancellation;
 			expect(aborted).toBe(boundary !== "completed");
-			expect(abortedMessage).toBe(false);
+			// Aborted during its tools, the loop ends with an aborted assistant message marking the interruption;
+			// an answer or a finished run is never replaced by one.
+			expect(abortedMessage).toBe(boundary === "tool");
 			// Replay the real native event sequence through the supervisor's child-process boundary.
 			const script = path.join(cwd, "pi");
 			fs.writeFileSync(script, `process.stdout.write(${JSON.stringify(`${records.join("\n")}\n`)});`);

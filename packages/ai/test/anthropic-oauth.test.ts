@@ -90,6 +90,8 @@ describe.sequential("Anthropic OAuth", () => {
 			expect(body.grant_type).toBe("authorization_code");
 			expect(body.code).toBe("copied-code");
 			expect(body.state).toBe(new URL(authUrl).searchParams.get("state"));
+			// The redirect carries the code and state; if state were the PKCE verifier, the redirect alone could redeem the code.
+			expect(body.code_verifier).not.toBe(body.state);
 			expect(body.redirect_uri).toBe("https://platform.claude.com/oauth/code/callback");
 			return jsonResponse({
 				access_token: "access-token",

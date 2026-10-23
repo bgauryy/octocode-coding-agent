@@ -9,7 +9,7 @@ import {
 	PROGRAM_STATUS_QUERY,
 	type ProgramStatus,
 } from "./program-status.ts";
-import { StdinBuffer } from "./stdin-buffer.ts";
+import { PASTE_IDLE_TIMEOUT_MS, StdinBuffer } from "./stdin-buffer.ts";
 
 const TERMINAL_PROGRESS_KEEPALIVE_MS = 1000;
 const TERMINAL_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07";
@@ -21,8 +21,7 @@ const KITTY_KEYBOARD_PROTOCOL_QUERY = `\x1b[>${DESIRED_KITTY_KEYBOARD_PROTOCOL_F
 const DEVICE_ATTRIBUTES_QUERY = "\x1b[c";
 
 export type KeyboardProtocolNegotiationSequence =
-	| { type: "kitty-flags"; flags: number }
-	| { type: "device-attributes" };
+	{ type: "kitty-flags"; flags: number } | { type: "device-attributes" };
 
 export function parseKeyboardProtocolNegotiationSequence(
 	sequence: string,
@@ -93,6 +92,11 @@ export interface Terminal {
 	// Write output to terminal
 	write(data: string): void;
 
+	/** Queued output bytes when the implementation can observe them; absent retains legacy rendering cadence. */
+	readonly pendingOutputBytes?: number;
+	/** Optional hint to omit decorative progress keepalives while scheduled frames are pressure-gated. */
+	setDecorativeOutputPressureThreshold?(bytes: number | undefined): void;
+
 	// Get terminal dimensions
 	get columns(): number;
 	get rows(): number;
@@ -144,10 +148,29 @@ export function resolveEscapeTimeoutMs(env: NodeJS.ProcessEnv = process.env): nu
 	return DEFAULT_ESCAPE_TIMEOUT_MS;
 }
 
+/** Over SSH a paste can stall longer between chunks, so its end marker is awaited longer. */
+const DEFAULT_SSH_PASTE_TIMEOUT_MS = 3000;
+
+/** How long a bracketed paste may go without input before it is emitted without its end marker. */
+export function resolvePasteTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+	const configured = Number(env.OCTOCODE_TUI_PASTE_TIMEOUT);
+	if (Number.isFinite(configured) && configured > 0) return configured;
+	return env.SSH_CONNECTION || env.SSH_TTY ? DEFAULT_SSH_PASTE_TIMEOUT_MS : PASTE_IDLE_TIMEOUT_MS;
+}
+
 /**
  * Real terminal using process.stdin/stdout
  */
 export class ProcessTerminal implements Terminal {
+	private decorativeOutputPressureThreshold: number | undefined;
+
+	get pendingOutputBytes(): number {
+		return process.stdout.writableLength;
+	}
+
+	setDecorativeOutputPressureThreshold(bytes: number | undefined): void {
+		this.decorativeOutputPressureThreshold = bytes;
+	}
 	private wasRaw = false;
 	private inputHandler?: (data: string) => void;
 	private resizeHandler?: () => void;
@@ -232,7 +255,10 @@ export class ProcessTerminal implements Terminal {
 	 * to handle the case where the response arrives split across multiple events.
 	 */
 	private setupStdinBuffer(): void {
-		this.stdinBuffer = new StdinBuffer({ escapeTimeout: resolveEscapeTimeoutMs() });
+		this.stdinBuffer = new StdinBuffer({
+			escapeTimeout: resolveEscapeTimeoutMs(),
+			pasteTimeout: resolvePasteTimeoutMs(),
+		});
 
 		// Forward individual sequences to the input handler
 		this.stdinBuffer.on("data", (sequence) => {
@@ -299,9 +325,7 @@ export class ProcessTerminal implements Terminal {
 		this.writeProgramStatus();
 	}
 
-	private handleKeyboardProtocolNegotiationSequence(
-		negotiationSequence: KeyboardProtocolNegotiationSequence,
-	): boolean {
+	private handleKeyboardProtocolNegotiationSequence(negotiationSequence: KeyboardProtocolNegotiationSequence): boolean {
 		this.clearKeyboardProtocolNegotiationBuffer();
 		if (negotiationSequence.type === "device-attributes") {
 			if (this.pendingKeyboardProtocolDeviceAttributes === 0) return false;
@@ -590,7 +614,12 @@ export class ProcessTerminal implements Terminal {
 			process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
 			if (!this.progressInterval) {
 				this.progressInterval = setInterval(() => {
-					process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
+					if (
+						this.decorativeOutputPressureThreshold === undefined ||
+						this.pendingOutputBytes <= this.decorativeOutputPressureThreshold
+					) {
+						process.stdout.write(TERMINAL_PROGRESS_ACTIVE_SEQUENCE);
+					}
 				}, TERMINAL_PROGRESS_KEEPALIVE_MS);
 			}
 		} else {

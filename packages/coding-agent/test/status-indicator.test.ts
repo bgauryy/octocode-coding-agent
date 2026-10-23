@@ -1,4 +1,4 @@
-import { type TUI, visibleWidth } from "@octocodeai/octocode-tui";
+import { getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
@@ -23,6 +23,34 @@ describe("status indicators", () => {
 		const lines = idleStatus.render(20);
 		expect(lines).toHaveLength(2);
 		expect(lines).toEqual([" ".repeat(20), " ".repeat(20)]);
+	});
+
+	it("shows the run summary with an esc hint and sweeps a light band across the detail", () => {
+		initTheme("octocode-dark");
+		const previousKeybindings = getKeybindings();
+		setKeybindings(new KeybindingsManager());
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Main · 3s · 1.2k tokens\nWriting the summary");
+		const at = (now: number) => {
+			vi.useFakeTimers({ now });
+			const lines = indicator.render(80);
+			vi.useRealTimers();
+			return lines;
+		};
+		const [, heading, detail] = at(1000);
+		expect(stripAnsi(heading!)).toMatch(/Main · 3s · 1\.2k tokens +esc to interrupt$/);
+		expect(stripAnsi(detail!)).toBe("   └ Writing the summary");
+		expect(at(1000)[2]).not.toBe(at(1600)[2]);
+		indicator.dispose();
+		setKeybindings(previousKeybindings);
+	});
+
+	it("draws the detail plain when the indicator does not animate", () => {
+		initTheme("octocode-dark");
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Main · 3s\nWriting", { frames: ["●"] });
+		expect(indicator.render(80)[2]).toBe(`   ${theme.fg("dim", "└ ")}${theme.fg("text", "Writing")}`);
+		indicator.dispose();
 	});
 
 	it("keeps the top border unchanged unless the editor opts in", () => {
@@ -100,7 +128,10 @@ describe("status indicators", () => {
 		initTheme(name);
 		vi.useFakeTimers();
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
-		const indicator = new WorkingStatusIndicator(tui, `Main · 5m24s · 28.8k tokens · 2 compactions\nRunning bash ${"long command ".repeat(20)}`);
+		const indicator = new WorkingStatusIndicator(
+			tui,
+			`Main · 5m24s · 28.8k tokens · 2 compactions\nRunning bash ${"long command ".repeat(20)}`,
+		);
 		try {
 			for (const width of [1, 20, 40, 80, 120, 200]) {
 				const rows = indicator.render(width);

@@ -52,9 +52,9 @@ function safeText(text: string): string {
 export function callTarget(name: string, args: unknown): { hint: string; more: number } {
 	const envelope = isRecord(args) ? args : {};
 	const input = name === "agent" && isRecord(envelope.input) ? envelope.input : envelope;
-	if (shortToolName(name) === "agent" && typeof input.goal === "string")
-		return { hint: safeText(input.goal), more: 0 };
-	const queries = name === "file" ? fileChanges(input) : Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
+	if (shortToolName(name) === "agent" && typeof input.goal === "string") return { hint: safeText(input.goal), more: 0 };
+	const queries =
+		name === "file" ? fileChanges(input) : Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
 	if (queries.length > 0) return { hint: safeText(queryTarget(queries[0]!)), more: queries.length - 1 };
 	return { hint: toolHint(args), more: 0 };
 }
@@ -270,9 +270,10 @@ export function registerActivity(
 		// The working line has the terminal's width; its renderer clips, so the detail is not cut to the stored line's budget.
 		const detail = activity.describe(now, dialogsWaiting(), WORKING_LINE_MAX) ?? "Waiting for model";
 		const compacted = compactions > 0 ? ` · ${compactions} compaction${compactions === 1 ? "" : "s"}` : "";
-		const working = activity.ticking() && runStartedAt !== undefined
-			? `Main · ${formatDuration(now - runStartedAt)} · ${formatTokens(usage.input + usage.output + streamingTokens)} tokens${compacted}\n${detail}`
-			: undefined;
+		const working =
+			activity.ticking() && runStartedAt !== undefined
+				? `Main · ${formatDuration(now - runStartedAt)} · ${formatTokens(usage.input + usage.output + streamingTokens)} tokens${compacted}\n${detail}`
+				: undefined;
 		if (working !== shown) {
 			shown = working;
 			try {
@@ -327,7 +328,10 @@ export function registerActivity(
 		const tokens = partial.input + partial.output;
 		const changed = tokens !== streamingTokens;
 		streamingTokens = tokens;
-		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined) || changed)
+		if (
+			activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined) ||
+			changed
+		)
 			paint();
 	});
 	pi.on("message_end", async (event) => {

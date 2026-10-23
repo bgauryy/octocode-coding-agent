@@ -54,7 +54,10 @@ export type McpExposure = "auto" | "deferred" | "direct" | "hidden";
 const MCP_EXPOSURES: readonly string[] = ["auto", "deferred", "direct", "hidden"] satisfies McpExposure[];
 
 /** Older exposure names, accepted in configs and replaced by their current name when validated. */
-const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = { codemode: "deferred", "codemode-deferred": "deferred" };
+const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = {
+	codemode: "deferred",
+	"codemode-deferred": "deferred",
+};
 
 interface McpServerConfigBase {
 	/** Default: `auto`. */
@@ -281,7 +284,8 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string, se
  * aliases resolved, or an error message.
  */
 export function validateMcpServerConfig(name: string, raw: unknown): McpServerConfig | string {
-	if (!SERVER_NAME.test(name) && !PLUGIN_SERVER_NAME.test(name)) return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
+	if (!SERVER_NAME.test(name) && !PLUGIN_SERVER_NAME.test(name))
+		return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
 	if (!isRecord(raw)) return `server "${name}" must be an object`;
 	const value = resolveExposureAliases(raw);
 	const { type, exposure, enabled, timeout, toolExposure, description } = value;
@@ -331,8 +335,7 @@ export function validateMcpServerConfig(name: string, raw: unknown): McpServerCo
 		) {
 			return `server "${name}": args must be an array of strings`;
 		}
-		if (value.env !== undefined && !isStringRecord(value.env))
-			return `server "${name}": env must map names to strings`;
+		if (value.env !== undefined && !isStringRecord(value.env)) return `server "${name}": env must map names to strings`;
 		if (value.inheritEnv !== undefined && typeof value.inheritEnv !== "boolean")
 			return `server "${name}": inheritEnv must be a boolean`;
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;

@@ -6,6 +6,30 @@ const fixture = fileURLToPath(new URL("./fixtures/stdio-server.mjs", import.meta
 const stubborn = fileURLToPath(new URL("./fixtures/stubborn-server.mjs", import.meta.url));
 
 describe("StdioTransport", () => {
+	it("drops an oversized message to its end and keeps reading the next one", async () => {
+		// The oversized line arrives in two writes, so the transport overflows before it sees the newline.
+		const script = `
+			const big = '{"jsonrpc":"2.0","method":"big","params":{"x":"' + "a".repeat(200);
+			process.stdout.write(big);
+			setTimeout(() => process.stdout.write('"}}\\n{"jsonrpc":"2.0","method":"next"}\\n'), 50);
+			setTimeout(() => {}, 5000);`;
+		const transport = new StdioTransport({
+			command: process.execPath,
+			args: ["-e", script],
+			maxMessageBytes: 100,
+			closeTimeoutMs: 100,
+		});
+		const errors: string[] = [];
+		const methods: string[] = [];
+		transport.onError((error) => errors.push(error.message));
+		transport.onMessage((message) => methods.push((message as { method: string }).method));
+		await transport.start();
+		for (let i = 0; i < 200 && methods.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+		await transport.close();
+		expect(methods).toEqual(["next"]);
+		expect(errors).toEqual(["MCP stdio message exceeds 100 bytes"]);
+	});
+
 	it("connects to a newline-delimited MCP server and captures stderr", async () => {
 		const stderr: string[] = [];
 		const transport = new StdioTransport({
@@ -26,6 +50,39 @@ describe("StdioTransport", () => {
 		await client.close();
 		expect(client.connectionState).toBe("closed");
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"stops the real server when its launcher already exited but the server still holds the pipes",
+		async () => {
+			// Like `npx`: the launcher exits, the server it started keeps running and keeps stdout open.
+			const transport = new StdioTransport({
+				command: "/bin/sh",
+				args: ["-c", "trap '' HUP; sleep 60 & echo server $! >&2; exit 0"],
+				closeTimeoutMs: 100,
+			});
+			await transport.start();
+			let server: number | undefined;
+			for (let i = 0; i < 200 && server === undefined; i++) {
+				const match = /server (\d+)/.exec(transport.stderr);
+				if (match) server = Number(match[1]);
+				else await new Promise((resolve) => setTimeout(resolve, 10));
+			}
+			expect(server).toBeTypeOf("number");
+			// Give the launcher time to exit while the server keeps the pipes.
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			await transport.close();
+			const alive = () => {
+				try {
+					process.kill(server!, 0);
+					return true;
+				} catch {
+					return false;
+				}
+			};
+			for (let i = 0; i < 100 && alive(); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(alive()).toBe(false);
+		},
+	);
 
 	it.skipIf(process.platform === "win32")(
 		"kills a server that ignores shutdown, including its children",

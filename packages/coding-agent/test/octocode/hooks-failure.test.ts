@@ -205,9 +205,6 @@ describe("observer hook dispatch failures", () => {
 			{ channel: "internal", direction: "inbound", from: "a", to: "b", text: "hi", id: "m-1" },
 			ctx as never,
 		);
-		expect(notify).toHaveBeenCalledWith(
-			"PostMessageReceive hooks could not run: session store unavailable",
-			"warning",
-		);
+		expect(notify).toHaveBeenCalledWith("PostMessageReceive hooks could not run: session store unavailable", "warning");
 	});
 });

@@ -899,6 +899,7 @@ class ModelsImpl implements MutableModels {
 				return provider.stream(requestModel, transcript, requestOptions as ApiStreamOptions<TApi>);
 			},
 			observeModelRequest(model, options, false),
+			options?.signal,
 		);
 	}
 
@@ -920,6 +921,7 @@ class ModelsImpl implements MutableModels {
 				return provider.streamSimple(requestModel, transcript, requestOptions as SimpleStreamOptions);
 			},
 			observeModelRequest(model, options, false),
+			options?.signal,
 		);
 	}
 
@@ -947,6 +949,7 @@ class ModelsImpl implements MutableModels {
 				return provider.fetchDeferred(requestModel, handle, requestOptions as DeferredFetchOptions);
 			},
 			observeModelRequest(model, options, true),
+			options?.signal,
 		);
 	}
 
@@ -1079,9 +1082,7 @@ export function createProvider<TApi extends Api = Api>(input: CreateProviderOpti
 	const currentModels = (): readonly ProviderModel<TApi>[] => {
 		const merged = [...baselineModels];
 		for (const model of dynamicModels) {
-			const index = merged.findIndex(
-				(entry) => getModelType(entry) === getModelType(model) && entry.id === model.id,
-			);
+			const index = merged.findIndex((entry) => getModelType(entry) === getModelType(model) && entry.id === model.id);
 			if (index >= 0) merged[index] = model;
 			else merged.push(model);
 		}
@@ -1162,10 +1163,7 @@ export function createProvider<TApi extends Api = Api>(input: CreateProviderOpti
 		provider.cancelDeferred = async (model, handle, options) => {
 			const implementation = apiFor(model);
 			if (!implementation?.cancelDeferred) {
-				throw new ModelsError(
-					"provider",
-					`Provider ${input.id} cannot cancel deferred responses for "${model.api}"`,
-				);
+				throw new ModelsError("provider", `Provider ${input.id} cannot cancel deferred responses for "${model.api}"`);
 			}
 			await implementation.cancelDeferred(model, handle, options);
 		};
@@ -1176,10 +1174,7 @@ export function createProvider<TApi extends Api = Api>(input: CreateProviderOpti
 			if (!implementation) {
 				return imageErrorResult(
 					model,
-					new ModelsError(
-						"provider",
-						`Provider ${input.id} has no image generation implementation for "${model.api}"`,
-					),
+					new ModelsError("provider", `Provider ${input.id} has no image generation implementation for "${model.api}"`),
 				);
 			}
 			return implementation.generateImages(model, context, options);

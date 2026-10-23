@@ -1,6 +1,7 @@
 import {
 	constants,
 	closeSync,
+	existsSync,
 	fstatSync,
 	lstatSync,
 	openSync,
@@ -13,12 +14,7 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { getSkillCommands } from "./skill-commands.ts";
 import { isSyntheticPath } from "./source-info.ts";
-import {
-	explicitSkillIdentity,
-	type ExplicitSkill,
-	type LoadSkillsResult,
-	type Skill,
-} from "./skills.ts";
+import { explicitSkillIdentity, type ExplicitSkill, type LoadSkillsResult, type Skill } from "./skills.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -28,11 +24,7 @@ const source = Type.Object(
 	{
 		path: text,
 		source: text,
-		scope: Type.Union([
-			Type.Literal("user"),
-			Type.Literal("project"),
-			Type.Literal("temporary"),
-		]),
+		scope: Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("temporary")]),
 		origin: Type.Union([Type.Literal("package"), Type.Literal("top-level")]),
 		baseDir: Type.Optional(text),
 	},
@@ -76,9 +68,7 @@ const validator = Compile(
 					{
 						resource: Type.Integer({ minimum: 0, maximum: MAX_RESOURCES - 1 }),
 						name: text,
-						promptByteLimit: Type.Optional(
-							Type.Integer({ minimum: 1, maximum: MAX_BYTES }),
-						),
+						promptByteLimit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_BYTES })),
 					},
 					{ additionalProperties: false },
 				),
@@ -104,30 +94,23 @@ export interface SkillResourceSnapshot {
 	}>;
 }
 
-function validate(
-	snapshot: unknown,
-): asserts snapshot is SkillResourceSnapshot {
-	if (
-		!validator.Check(snapshot) ||
-		Buffer.byteLength(JSON.stringify(snapshot)) > MAX_BYTES
-	)
+function validate(snapshot: unknown): asserts snapshot is SkillResourceSnapshot {
+	if (!validator.Check(snapshot) || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_BYTES)
 		throw new Error("Invalid or oversized child skill resource snapshot");
 	for (const resource of snapshot.resources) {
 		const { skill, canonicalPath, discoveryPath } = resource;
 		if (
 			!isAbsolute(canonicalPath) ||
-			(skill.canonicalPath !== undefined &&
-				skill.canonicalPath !== canonicalPath) ||
+			(skill.canonicalPath !== undefined && skill.canonicalPath !== canonicalPath) ||
 			!isAbsolute(discoveryPath) ||
 			resolve(discoveryPath) !== resolve(skill.filePath) ||
 			!isAbsolute(skill.baseDir) ||
 			isSyntheticPath(skill.sourceInfo.path)
 		)
 			throw new Error("Invalid child skill resource identity");
-		if (
-			realpathSync(canonicalPath) !== canonicalPath ||
-			!statSync(canonicalPath).isFile()
-		)
+		// A deleted or moved skill is dropped when the snapshot is adopted; a file that now resolves elsewhere is refused.
+		if (!existsSync(canonicalPath)) continue;
+		if (realpathSync(canonicalPath) !== canonicalPath || !statSync(canonicalPath).isFile())
 			throw new Error("Child skill canonical identity changed");
 	}
 	const seen = new Set<string>();
@@ -149,8 +132,7 @@ export function captureSkillResourceSnapshot(
 	names?: readonly string[],
 	commands: readonly SlashCommandInfo[] = [],
 ): SkillResourceSnapshot {
-	if (names?.length === 0)
-		return { version: 1, resources: [], explicitSkills: [] };
+	if (names?.length === 0) return { version: 1, resources: [], explicitSkills: [] };
 	if (names) {
 		const selected = selectSkills(loaded.skills, names, commands);
 		loaded = {
@@ -160,8 +142,7 @@ export function captureSkillResourceSnapshot(
 				[...selected].some(
 					(skill) =>
 						skill === identity.skill ||
-						(skill.name === identity.skill.name &&
-							skill.filePath === identity.skill.filePath),
+						(skill.name === identity.skill.name && skill.filePath === identity.skill.filePath),
 				),
 			),
 		};
@@ -177,35 +158,19 @@ export function captureSkillResourceSnapshot(
 			const identity = explicitSkillIdentity(skill);
 			return identity ? [identity] : [];
 		});
-	const add = (
-		skill: Skill,
-		visible: boolean,
-		captured?: ExplicitSkill,
-	): number => {
-		if (
-			isSyntheticPath(skill.filePath) ||
-			isSyntheticPath(skill.sourceInfo.path)
-		)
-			throw new Error(
-				"Synthetic skills cannot be inherited by a child process",
-			);
+	const add = (skill: Skill, visible: boolean, captured?: ExplicitSkill): number => {
+		if (isSyntheticPath(skill.filePath) || isSyntheticPath(skill.sourceInfo.path))
+			throw new Error("Synthetic skills cannot be inherited by a child process");
 		const identity =
 			captured ??
 			identities.find((candidate) => candidate.skill === skill) ??
 			identities.find(
-				(candidate) =>
-					candidate.skill.name === skill.name &&
-					candidate.skill.filePath === skill.filePath,
+				(candidate) => candidate.skill.name === skill.name && candidate.skill.filePath === skill.filePath,
 			);
 		const discoveryPath = identity?.discoveryPath ?? resolve(skill.filePath);
-		const canonicalPath =
-			identity?.canonicalPath ??
-			skill.canonicalPath ??
-			realpathSync(discoveryPath);
+		const canonicalPath = identity?.canonicalPath ?? skill.canonicalPath ?? realpathSync(discoveryPath);
 		const prior = snapshot.resources.findIndex(
-			(resource) =>
-				resource.discoveryPath === discoveryPath &&
-				resource.skill.name === skill.name,
+			(resource) => resource.discoveryPath === discoveryPath && resource.skill.name === skill.name,
 		);
 		if (prior >= 0) {
 			snapshot.resources[prior].visible ||= visible;
@@ -229,9 +194,7 @@ export function captureSkillResourceSnapshot(
 		snapshot.explicitSkills.push({
 			resource,
 			name: identity.name,
-			...(identity.promptByteLimit === undefined
-				? {}
-				: { promptByteLimit: identity.promptByteLimit }),
+			...(identity.promptByteLimit === undefined ? {} : { promptByteLimit: identity.promptByteLimit }),
 		});
 	}
 	validate(snapshot);
@@ -246,20 +209,27 @@ export function adoptSkillResourceSnapshot(value: unknown): LoadSkillsResult {
 		filePath: resource.canonicalPath,
 		baseDir: dirname(resource.canonicalPath),
 	}));
+	const gone = new Set(
+		snapshot.resources.flatMap((resource, index) => (existsSync(resource.canonicalPath) ? [] : [index])),
+	);
 	return {
 		skills: snapshot.resources.flatMap((resource, index) =>
-			resource.visible ? [resources[index]] : [],
+			resource.visible && !gone.has(index) ? [resources[index]] : [],
 		),
-		explicitSkills: snapshot.explicitSkills.map((entry) => ({
-			skill: resources[entry.resource],
-			name: entry.name,
-			canonicalPath: snapshot.resources[entry.resource].canonicalPath,
-			discoveryPath: snapshot.resources[entry.resource].discoveryPath,
-			...(entry.promptByteLimit === undefined
-				? {}
-				: { promptByteLimit: entry.promptByteLimit }),
+		explicitSkills: snapshot.explicitSkills
+			.filter((entry) => !gone.has(entry.resource))
+			.map((entry) => ({
+				skill: resources[entry.resource],
+				name: entry.name,
+				canonicalPath: snapshot.resources[entry.resource].canonicalPath,
+				discoveryPath: snapshot.resources[entry.resource].discoveryPath,
+				...(entry.promptByteLimit === undefined ? {} : { promptByteLimit: entry.promptByteLimit }),
+			})),
+		diagnostics: [...gone].map((index) => ({
+			type: "warning" as const,
+			message: "Inherited skill file no longer exists; the skill was not loaded",
+			path: snapshot.resources[index].canonicalPath,
 		})),
-		diagnostics: [],
 	};
 }
 
@@ -275,20 +245,15 @@ function selectSkills(
 	const selected = new Set<Skill>();
 	for (const name of names) {
 		const actual = commands.filter(
-			(command) =>
-				command.source === "skill" &&
-				(command.name === name || command.aliases?.includes(name)),
+			(command) => command.source === "skill" && (command.name === name || command.aliases?.includes(name)),
 		);
-		const matches = skillCommands.filter(
-			(command) => command.name === name || command.aliases.includes(name),
-		);
-		if (
-			actual.length !== 1 ||
-			matches.length !== 1 ||
-			actual[0].sourceInfo.path !== matches[0].skill.sourceInfo.path
-		)
+		const matches = skillCommands.filter((command) => command.name === name || command.aliases.includes(name));
+		if (actual.length !== 1 || matches.length !== 1 || actual[0].sourceInfo.path !== matches[0].skill.sourceInfo.path)
+			throw new Error(`Unknown or ambiguous skill "${name}". Use a skill command name from the current session.`);
+		// The child's model never lists such a skill, so selecting it would silently do nothing.
+		if (matches[0].skill.disableModelInvocation)
 			throw new Error(
-				`Unknown or ambiguous skill "${name}". Use a skill command name from the current session.`,
+				`Skill "${name}" sets disable-model-invocation, so a model cannot pass it to a subagent. Ask the user to run /${name}, or leave it out.`,
 			);
 		selected.add(matches[0].skill);
 	}
@@ -297,8 +262,7 @@ function selectSkills(
 
 export function readSkillResourceSnapshot(file: string): SkillResourceSnapshot {
 	const before = lstatSync(file);
-	if (!before.isFile() || before.isSymbolicLink())
-		throw new Error("Invalid child skill snapshot file");
+	if (!before.isFile() || before.isSymbolicLink()) throw new Error("Invalid child skill snapshot file");
 	const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 	try {
 		const stats = fstatSync(fd);
@@ -306,8 +270,7 @@ export function readSkillResourceSnapshot(file: string): SkillResourceSnapshot {
 			!stats.isFile() ||
 			stats.dev !== before.dev ||
 			stats.ino !== before.ino ||
-			(typeof process.getuid === "function" &&
-				stats.uid !== process.getuid()) ||
+			(typeof process.getuid === "function" && stats.uid !== process.getuid()) ||
 			(process.platform !== "win32" && (stats.mode & 0o077) !== 0)
 		)
 			throw new Error("Child skill snapshot must be a private owned file");
@@ -318,13 +281,8 @@ export function readSkillResourceSnapshot(file: string): SkillResourceSnapshot {
 			if (!count) break;
 			size += count;
 		}
-		if (size > MAX_BYTES)
-			throw new Error("Child skill snapshot exceeds size limit");
-		const snapshot: unknown = JSON.parse(
-			new TextDecoder("utf-8", { fatal: true }).decode(
-				buffer.subarray(0, size),
-			),
-		);
+		if (size > MAX_BYTES) throw new Error("Child skill snapshot exceeds size limit");
+		const snapshot: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size)));
 		validate(snapshot);
 		return snapshot;
 	} finally {

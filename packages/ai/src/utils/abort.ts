@@ -14,7 +14,8 @@ export function operationSignal(signal?: AbortSignal): AbortSignal {
  * Stop waiting for an operation when its signal aborts while continuing to
  * observe the abandoned promise so a later rejection is always handled.
  */
-export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+	if (!signal) return operation;
 	if (signal.aborted) {
 		void operation.catch(() => {});
 		return Promise.reject(abortReason(signal));
@@ -46,5 +47,31 @@ export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSigna
 			},
 		);
 		if (signal.aborted) onAbort();
+	});
+}
+
+/** Wait `ms`, or reject with `abortError()` once `signal` aborts; the abort listener is removed when the wait ends. */
+export function sleepUnlessAborted(
+	ms: number,
+	signal: AbortSignal | undefined,
+	abortError: () => Error,
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(abortError());
+			return;
+		}
+		const onAbort = () => {
+			clearTimeout(timeout);
+			reject(abortError());
+		};
+		const timeout = setTimeout(
+			() => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve();
+			},
+			Math.max(0, ms),
+		);
+		signal?.addEventListener("abort", onAbort, { once: true });
 	});
 }

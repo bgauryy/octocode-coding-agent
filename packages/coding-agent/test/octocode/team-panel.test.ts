@@ -272,10 +272,7 @@ describe("panel traffic", () => {
 
 	it("shows at most three messages and cuts long rows with a single-character ellipsis", () => {
 		const now = Date.now();
-		const panel = [
-			live("main-aaaaaa"),
-			live("researcher-bbbbbb", { parentId: "main-aaaaaa", goal: "x".repeat(300) }),
-		];
+		const panel = [live("main-aaaaaa"), live("researcher-bbbbbb", { parentId: "main-aaaaaa", goal: "x".repeat(300) })];
 		const traffic = [1, 2, 3, 4, 5].map((id) => ({
 			id,
 			from: "researcher-bbbbbb",

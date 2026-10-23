@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import lockfile from "proper-lockfile";
-import { atomicWriteFile, sha256 } from "../src/utils/atomic-file.ts";
+import { atomicWriteFile, atomicWriteFileSync, sha256 } from "../src/utils/atomic-file.ts";
 import { withFileWriteLock } from "../src/utils/file-write-lock.ts";
 
 const dirs: string[] = [];
@@ -17,13 +17,17 @@ function fixture() {
 	fs.writeFileSync(file, "old");
 	return file;
 }
-afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+	vi.restoreAllMocks();
+	for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("cooperative file mutation locks", () => {
 	it("allows only one concurrent replacement of the same expected bytes", async () => {
 		const file = fixture();
 		const outcomes = await Promise.allSettled([
-			atomicWriteFile(file, "first", sha256("old")), atomicWriteFile(file, "second", sha256("old")),
+			atomicWriteFile(file, "first", sha256("old")),
+			atomicWriteFile(file, "second", sha256("old")),
 		]);
 		expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
 		expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
@@ -55,11 +59,29 @@ describe("cooperative file mutation locks", () => {
 		await atomicWriteFile(long, "long", null);
 		expect(fs.readFileSync(long, "utf8")).toBe("long");
 	});
+	it("rejects a symlink cycle without replacing either link", async () => {
+		const file = fixture();
+		const dir = path.dirname(file);
+		const first = path.join(dir, "first.txt");
+		const second = path.join(dir, "second.txt");
+		fs.symlinkSync("second.txt", first);
+		fs.symlinkSync("first.txt", second);
+		expect(() => atomicWriteFileSync(first, "new")).toThrow();
+		await expect(atomicWriteFile(first, "new")).rejects.toThrow();
+		expect(fs.lstatSync(first).isSymbolicLink()).toBe(true);
+		expect(fs.lstatSync(second).isSymbolicLink()).toBe(true);
+	});
 	it("preserves mutation errors and identifies committed writes when lock cleanup fails", async () => {
 		const file = fixture();
-		vi.spyOn(lockfile, "lock").mockResolvedValue(async () => { throw new Error("release failed"); });
+		vi.spyOn(lockfile, "lock").mockResolvedValue(async () => {
+			throw new Error("release failed");
+		});
 		const original = new Error("mutation failed");
-		await expect(withFileWriteLock(file, async () => { throw original; })).rejects.toBe(original);
+		await expect(
+			withFileWriteLock(file, async () => {
+				throw original;
+			}),
+		).rejects.toBe(original);
 		await expect(atomicWriteFile(file, "new", sha256("old"))).rejects.toMatchObject({ mutationCompleted: true });
 		expect(fs.readFileSync(file, "utf8")).toBe("new");
 	});
@@ -70,15 +92,28 @@ describe("cooperative file mutation locks", () => {
 		const lockModule = new URL("../src/utils/file-write-lock.ts", import.meta.url).href;
 		const script = `import fs from 'node:fs'; import {once} from 'node:events'; import {withFileWriteLock} from ${JSON.stringify(lockModule)}; await withFileWriteLock(process.argv[1], async () => { process.stdout.write('locked'); await once(process.stdin, 'data'); fs.writeFileSync(process.argv[1], 'peer'); }); process.stdin.destroy();`;
 		const child = spawn(process.execPath, ["--input-type=module", "-e", script, file], {
-			cwd: path.dirname(fileURLToPath(import.meta.url)), stdio: ["pipe", "pipe", "pipe"],
+			cwd: path.dirname(fileURLToPath(import.meta.url)),
+			stdio: ["pipe", "pipe", "pipe"],
 		});
 		const closed = once(child, "close");
 		try {
-			await Promise.race([once(child.stdout, "data"), closed.then(([code]) => { throw new Error(`child exited ${code}`); })]);
+			await Promise.race([
+				once(child.stdout, "data"),
+				closed.then(([code]) => {
+					throw new Error(`child exited ${code}`);
+				}),
+			]);
 			const pending = atomicWriteFile(alias, "mine", sha256("old"));
 			const rejected = expect(pending).rejects.toThrow(/changed on disk/);
 			let settled = false;
-			void pending.then(() => { settled = true; }, () => { settled = true; });
+			void pending.then(
+				() => {
+					settled = true;
+				},
+				() => {
+					settled = true;
+				},
+			);
 			await new Promise((resolve) => setTimeout(resolve, 150));
 			expect(settled).toBe(false);
 			expect(fs.readFileSync(file, "utf8")).toBe("old");
@@ -87,6 +122,9 @@ describe("cooperative file mutation locks", () => {
 			expect(fs.readFileSync(file, "utf8")).toBe("peer");
 			expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
 			expect((await closed)[0]).toBe(0);
-		} finally { if (child.exitCode === null) child.kill(); await closed; }
+		} finally {
+			if (child.exitCode === null) child.kill();
+			await closed;
+		}
 	});
 });

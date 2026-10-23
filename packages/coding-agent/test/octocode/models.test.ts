@@ -133,13 +133,7 @@ describe("model purposes", () => {
 	});
 
 	it("keeps each family to its newest release, skips deprecated and stale models, and prefers the parent lab", () => {
-		const fam = (
-			id: string,
-			family: string,
-			released: string,
-			input: number,
-			extra: Record<string, unknown> = {},
-		) => [
+		const fam = (id: string, family: string, released: string, input: number, extra: Record<string, unknown> = {}) => [
 			id,
 			{
 				tool_call: true,

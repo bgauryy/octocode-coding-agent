@@ -95,8 +95,7 @@ function memberRows(
 	const used = () =>
 		1 + columns.reduce((sum, column) => sum + widthOf(column) + (column === "glyph" ? 1 : SEPARATOR.length), 0);
 	// Keep room for the activity: drop optional columns until it fits.
-	for (const column of OPTIONAL)
-		if (used() + ACTIVITY_MIN > width) columns = columns.filter((kept) => kept !== column);
+	for (const column of OPTIONAL) if (used() + ACTIVITY_MIN > width) columns = columns.filter((kept) => kept !== column);
 	// Still too wide for the columns that always stay: shorten the goal rather than cut tokens, time or model.
 	if (used() > width) goalCap = Math.max(GOAL_MIN, goalWidth - (used() - width));
 	if (used() > width) {
@@ -105,10 +104,7 @@ function memberRows(
 			const nameRoom = Math.max(1, width - visibleWidth(state) - 7);
 			const head = ` ${theme.fg(row.glyph.color, row.glyph.text)} ${theme.fg(row.name.color, fitWidth(row.name.text, nameRoom))} · ${theme.fg(row.flags.text ? "warning" : row.state.color, state)}`;
 			const detail = row.detail || row.goal.text;
-			const metadata = theme.fg(
-				"muted",
-				`age ${row.age.text} · model ${safe(tree[index]!.member.model) || "unknown"}`,
-			);
+			const metadata = theme.fg("muted", `age ${row.age.text} · model ${safe(tree[index]!.member.model) || "unknown"}`);
 			return [
 				truncateToWidth(head, Math.max(1, width), "…"),
 				...wrapTextWithAnsi(metadata, Math.max(1, width - 3)).map((line) =>
@@ -147,8 +143,7 @@ const STATE_COLOR = {
 /** `✉ #12 main-a → researcher-b · awaiting reply  "check the tests"` */
 export function trafficRow(message: Traffic, now: number, theme: Theme, width: number): string {
 	const to =
-		safe(message.to.length > 2 ? `${message.to[0]} +${message.to.length - 1}` : message.to.join(", "), 80) ||
-		"nobody";
+		safe(message.to.length > 2 ? `${message.to[0]} +${message.to.length - 1}` : message.to.join(", "), 80) || "nobody";
 	const head = `${theme.fg("accent", "✉")} ${theme.fg("dim", `#${message.id}${message.replyTo ? `↩#${message.replyTo}` : ""}`)} ${theme.fg("text", safe(message.from, 64))} ${theme.fg("dim", "→")} ${theme.fg("text", to)}`;
 	const state = theme.fg(STATE_COLOR[message.state], message.state);
 	const body = theme.fg("muted", `"${safe(message.text)}"`);

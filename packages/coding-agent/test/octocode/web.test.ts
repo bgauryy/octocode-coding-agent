@@ -234,9 +234,9 @@ describe("web private-address guard", () => {
 	});
 
 	it("still blocks a private address for a POST", async () => {
-		await expect(
-			publicFetch("http://127.0.0.1:9/", { method: "POST", body: "{}", redirect: "error" }),
-		).rejects.toThrow("Blocked private or non-public address");
+		await expect(publicFetch("http://127.0.0.1:9/", { method: "POST", body: "{}", redirect: "error" })).rejects.toThrow(
+			"Blocked private or non-public address",
+		);
 	});
 
 	it("keeps redirects to http(s), even with private addresses allowed", async () => {
@@ -381,9 +381,7 @@ describe("web", () => {
 			htmlToText("<html><head><title>T</title><link rel=icon href=data:,></head><body><p>x</p></body></html>"),
 		).toBe("x");
 		expect(
-			htmlToText(
-				`<body><p>This domain.<a href=https://iana.org/help>Learn more</a><p>Next <a href='/s'>s</a></body>`,
-			),
+			htmlToText(`<body><p>This domain.<a href=https://iana.org/help>Learn more</a><p>Next <a href='/s'>s</a></body>`),
 		).toBe("This domain.[Learn more](https://iana.org/help)\n\nNext [s](/s)");
 	});
 

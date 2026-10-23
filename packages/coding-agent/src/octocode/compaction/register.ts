@@ -61,8 +61,8 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	const archive = new ArchiveCapture();
 	const cacheEnv = (ctx: ExtensionContext): NodeJS.ProcessEnv => ({
 		[CACHE_RETENTION_ENV]: ctx.model
-			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: pi.getSettings() }])
-					.options.cacheRetention
+			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: pi.getSettings() }]).options
+					.cacheRetention
 			: undefined,
 	});
 	/** The model a pending downshift compaction summarizes on (the one the context still fits). */
@@ -90,9 +90,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 			guard.forget(file);
 		return { entries: [...event.entries, ...recovery] };
 	});
-	pi.on("agent_before_settle", async (event) =>
-		tooLarge.shouldRetry(event.outcome) ? { continue: true } : undefined,
-	);
+	pi.on("agent_before_settle", async (event) => (tooLarge.shouldRetry(event.outcome) ? { continue: true } : undefined));
 	// The files worked on in the summarized part, most recent first, come back after the compaction.
 	let restoreCandidates: WorkedFile[] = [];
 	let restoreBudget = RESTORE_TOTAL_CHARS;
@@ -153,12 +151,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	pi.on("model_select", async (event, ctx) => {
 		const reserve = reserveTokensFor(event.model);
 		if (
-			!needsDownshiftCompaction(
-				event.previousModel,
-				event.model,
-				contextTokens(ctx, toolDefinitionChars(pi)),
-				reserve,
-			)
+			!needsDownshiftCompaction(event.previousModel, event.model, contextTokens(ctx, toolDefinitionChars(pi)), reserve)
 		)
 			return;
 		downshiftFrom = event.previousModel;

@@ -205,17 +205,12 @@ export function telemetryStoreConformance(name: string, factory: () => Promise<S
 			expect(rows.reduce((sum, row) => sum + row.sum, 0)).toBe(5);
 			expect(Math.min(...rows.map((row) => row.min))).toBe(2);
 			expect(Math.max(...rows.map((row) => row.max))).toBe(3);
-			expect(rows.every((row) => row.kind === "counter" && row.unit === "By" && row.intervalMs === 20_000)).toBe(
-				true,
-			);
+			expect(rows.every((row) => row.kind === "counter" && row.unit === "By" && row.intervalMs === 20_000)).toBe(true);
 			rows[0]!.attributes.method = "changed";
 			expect((await f.store.findMetrics(query))[0]?.attributes.method).toBe("read");
 			expect(await f.store.findMetrics({ name: "missing" })).toEqual([]);
 			expect(
-				(await f.store.findMetrics({ name: "hits", attributes: { valid: 1 } })).reduce(
-					(sum, row) => sum + row.sum,
-					0,
-				),
+				(await f.store.findMetrics({ name: "hits", attributes: { valid: 1 } })).reduce((sum, row) => sum + row.sum, 0),
 			).toBe(11);
 			expect(
 				(await f.store.findMetrics({ name: "hits", startMin: 30_000 })).reduce((sum, row) => sum + row.sum, 0),

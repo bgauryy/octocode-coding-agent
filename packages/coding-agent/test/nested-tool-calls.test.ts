@@ -35,12 +35,7 @@ function createRunner(tools: AgentTool[], options: { sequential?: boolean } = {}
 					isError: true,
 				};
 			}
-			const result = await tool.execute(
-				toolCall.id,
-				toolCall.arguments,
-				signal,
-				(partial) => void onUpdate(partial),
-			);
+			const result = await tool.execute(toolCall.id, toolCall.arguments, signal, (partial) => void onUpdate(partial));
 			return { toolCall, result, isError: result.isError === true };
 		},
 		emit: async (event) => {
@@ -214,8 +209,7 @@ describe("NestedCallRecorder", () => {
 		expect(snapshot?.calls[1].argumentsBytes).toBeGreaterThan(NESTED_CALL_LIMITS.maxArgumentBytesPerCall);
 		expect(snapshot?.calls[1].error).toHaveLength(NESTED_CALL_LIMITS.maxErrorChars);
 
-		for (let i = 0; i < NESTED_CALL_LIMITS.maxCalls; i++)
-			recorder.finish(recorder.start(call(`c${i}`, {})), false, "");
+		for (let i = 0; i < NESTED_CALL_LIMITS.maxCalls; i++) recorder.finish(recorder.start(call(`c${i}`, {})), false, "");
 		expect(recorder.snapshot()?.calls).toHaveLength(NESTED_CALL_LIMITS.maxCalls);
 	});
 

@@ -29,24 +29,27 @@ function createTestSkill(options: {
 
 describe("skills", () => {
 	describe("loadSkillsFromDir", () => {
-		it.skipIf(process.getuid?.() === 0)("warns about a skill directory it cannot read instead of dropping it silently", () => {
-			const root = mkdtempSync(join(tmpdir(), "octocode-skills-unreadable-"));
-			const locked = join(root, "locked");
-			mkdirSync(join(root, "open"), { recursive: true });
-			mkdirSync(locked);
-			writeFileSync(join(root, "open", "SKILL.md"), "---\nname: open\ndescription: Readable skill.\n---\nBody");
-			chmodSync(locked, 0o000);
-			try {
-				const { skills, diagnostics } = loadSkillsFromDir({ dir: root, source: "test" });
-				expect(skills.map((skill) => skill.name)).toEqual(["open"]);
-				expect(diagnostics).toEqual([
-					expect.objectContaining({ type: "warning", path: locked, message: expect.stringContaining("EACCES") }),
-				]);
-			} finally {
-				chmodSync(locked, 0o755);
-				rmSync(root, { recursive: true, force: true });
-			}
-		});
+		it.skipIf(process.getuid?.() === 0)(
+			"warns about a skill directory it cannot read instead of dropping it silently",
+			() => {
+				const root = mkdtempSync(join(tmpdir(), "octocode-skills-unreadable-"));
+				const locked = join(root, "locked");
+				mkdirSync(join(root, "open"), { recursive: true });
+				mkdirSync(locked);
+				writeFileSync(join(root, "open", "SKILL.md"), "---\nname: open\ndescription: Readable skill.\n---\nBody");
+				chmodSync(locked, 0o000);
+				try {
+					const { skills, diagnostics } = loadSkillsFromDir({ dir: root, source: "test" });
+					expect(skills.map((skill) => skill.name)).toEqual(["open"]);
+					expect(diagnostics).toEqual([
+						expect.objectContaining({ type: "warning", path: locked, message: expect.stringContaining("EACCES") }),
+					]);
+				} finally {
+					chmodSync(locked, 0o755);
+					rmSync(root, { recursive: true, force: true });
+				}
+			},
+		);
 
 		it("should load a valid skill", () => {
 			const { skills, diagnostics } = loadSkillsFromDir({
@@ -69,9 +72,9 @@ describe("skills", () => {
 
 			expect(skills).toHaveLength(1);
 			expect(skills[0].name).toBe("different-name");
-			expect(
-				diagnostics.some((d: ResourceDiagnostic) => d.message.includes("does not match parent directory")),
-			).toBe(false);
+			expect(diagnostics.some((d: ResourceDiagnostic) => d.message.includes("does not match parent directory"))).toBe(
+				false,
+			);
 		});
 
 		it("should warn when name contains invalid characters", () => {
@@ -215,6 +218,26 @@ describe("skills", () => {
 			expect(skills[0].name).toBe("valid-skill");
 		});
 
+		it("names loose Markdown files after themselves and needs frontmatter for them in a Claude root", () => {
+			const root = mkdtempSync(join(tmpdir(), "octocode-skills-loose-"));
+			try {
+				writeFileSync(join(root, "deploy.md"), "---\ndescription: Deploy the app\n---\nSteps");
+				writeFileSync(join(root, "rollback.md"), "---\ndescription: Roll back\n---\nSteps");
+				const native = loadSkillsFromDir({ dir: root, source: "test" });
+				expect(native.skills.map((skill) => skill.name).sort()).toEqual(["deploy", "rollback"]);
+				expect(native.diagnostics.filter((diagnostic) => diagnostic.type === "collision")).toEqual([]);
+
+				const claude = join(root, "claude");
+				mkdirSync(join(claude, "real"), { recursive: true });
+				writeFileSync(join(claude, "README.md"), "# My Claude skills\nNotes");
+				writeFileSync(join(claude, "real", "SKILL.md"), "Real skill\nBody");
+				const loaded = loadSkillsFromDir({ dir: claude, source: "test", protocol: "claude" });
+				expect(loaded.skills.map((skill) => [skill.name, skill.description])).toEqual([["real", "Real skill"]]);
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+
 		it("should parse disable-model-invocation frontmatter field", () => {
 			const { skills, diagnostics } = loadSkillsFromDir({
 				dir: join(fixturesDir, "disable-model-invocation"),
@@ -225,9 +248,7 @@ describe("skills", () => {
 			expect(skills[0].name).toBe("disable-model-invocation");
 			expect(skills[0].disableModelInvocation).toBe(true);
 			// Should not warn about unknown field
-			expect(diagnostics.some((d: ResourceDiagnostic) => d.message.includes("unknown frontmatter field"))).toBe(
-				false,
-			);
+			expect(diagnostics.some((d: ResourceDiagnostic) => d.message.includes("unknown frontmatter field"))).toBe(false);
 		});
 
 		it("should default disableModelInvocation to false when not specified", () => {

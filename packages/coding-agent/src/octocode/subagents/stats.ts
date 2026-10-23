@@ -146,7 +146,8 @@ function describe(stats: ProfileStats): string[] {
 	]
 		.filter(Boolean)
 		.join(", ");
-	const cold = stats.cold.runs > 0 ? ` · cold start ${formatTokens(Math.round(stats.cold.tokens / stats.cold.runs))} avg` : "";
+	const cold =
+		stats.cold.runs > 0 ? ` · cold start ${formatTokens(Math.round(stats.cold.tokens / stats.cold.runs))} avg` : "";
 	const cost = formatCost(stats) || (stats.runs > 0 && !stats.unpriced ? "≈$0" : "cost n/a");
 	return [
 		`${stats.profile} — ${plural(stats.runs, "run")} (${split})`,

@@ -113,8 +113,10 @@ export interface CacheWarmingDecision {
  * Fired before each refresh with pi's decision filled in. Everything else an
  * extension might want (model, idle state, context size) is on the context.
  */
-export interface CacheWarmingDecisionEvent
-	extends Pick<CacheWarmingDecision, "warmCost" | "missCost" | "continuationProbability" | "action"> {
+export interface CacheWarmingDecisionEvent extends Pick<
+	CacheWarmingDecision,
+	"warmCost" | "missCost" | "continuationProbability" | "action"
+> {
 	type: "cache_warming_decision";
 }
 
@@ -225,9 +227,7 @@ export class CacheWarmer {
 		const ttlMs = getPromptCacheTtlMs(request.model, options);
 		if (ttlMs === undefined) {
 			this.stop(
-				request.options.cacheRetention === "none"
-					? "request disabled prompt caching"
-					: "cache lifetime unavailable",
+				request.options.cacheRetention === "none" ? "request disabled prompt caching" : "cache lifetime unavailable",
 			);
 			return;
 		}
@@ -291,13 +291,14 @@ export class CacheWarmer {
 		this.inactive = { state: "inactive", reason, ...stopped };
 	}
 
-	private schedule(run: ActiveRun): void {
+	private schedule(run: ActiveRun, refreshedAt = Date.now()): void {
 		run.extensionOverride = false;
-		run.nextWarmAt = Date.now() + run.delayMs;
+		run.nextWarmAt = refreshedAt + run.delayMs;
 		// A timer can run late after sleep or event-loop blockage. Keep half of
 		// the planned pre-expiry margin for that delay and request dispatch; a
 		// late refresh is likely a full-price cache write, not a cache warm.
 		run.refreshDeadlineAt = run.nextWarmAt + Math.floor((run.ttlMs - run.delayMs) / 2);
+		if (this.refreshDeadlineMissed(run)) return;
 		const deadline = run.startedAt + (run.phase === "idle" ? MAX_IDLE_WARMING_AGE_MS : MAX_WARMING_AGE_MS);
 		if (run.nextWarmAt > deadline || Date.now() >= deadline) {
 			this.stop(run.phase === "idle" ? "30-minute idle safety limit reached" : "one-hour safety limit reached");
@@ -311,21 +312,27 @@ export class CacheWarmer {
 		run.timer = undefined;
 		if (!this.validateRun(run)) return;
 		if (this.refreshDeadlineMissed(run)) return;
-		const decision = this.evaluate(run);
-		const { warmCost, missCost, continuationProbability } = decision;
-		let action = decision.action;
-		try {
-			action = await this.decide({
-				type: "cache_warming_decision",
-				warmCost,
-				missCost,
-				continuationProbability,
-				action,
-			});
-		} catch {
-			// Extension failures fall back to pi's own decision.
+		let decision: CacheWarmingDecision;
+		let action: CacheWarmingAction;
+		// The agent can settle while an extension is deciding. Its idle probability
+		// changes the economics, so send a fresh decision for the new phase.
+		while (true) {
+			decision = this.evaluate(run);
+			action = decision.action;
+			try {
+				action = await this.decide({
+					type: "cache_warming_decision",
+					warmCost: decision.warmCost,
+					missCost: decision.missCost,
+					continuationProbability: decision.continuationProbability,
+					action,
+				});
+			} catch {
+				// Extension failures fall back to the current economic decision.
+			}
+			if (!this.validateRun(run) || this.refreshDeadlineMissed(run)) return;
+			if (decision.phase === run.phase) break;
 		}
-		if (!this.validateRun(run) || this.refreshDeadlineMissed(run)) return;
 		const extensionOverride = action !== decision.action;
 		if (action === "stop") {
 			const reason = extensionOverride
@@ -340,6 +347,7 @@ export class CacheWarmer {
 		run.extensionOverride = extensionOverride;
 		const appendUsage = this.sessionManager.captureUsageWriter();
 		const sessionId = this.sessionManager.getSessionId();
+		const refreshedAt = Date.now();
 		try {
 			const message = await this.models
 				.streamSimple(run.model, run.context, {
@@ -369,6 +377,7 @@ export class CacheWarmer {
 					message.responseModel ?? message.model,
 					message.usage,
 					note,
+					refreshedAt,
 				);
 				if (this.sessionManager.getSessionId() === sessionId) this.onWarmed?.(entry);
 			}
@@ -386,7 +395,7 @@ export class CacheWarmer {
 			if (this.run === run) this.stop("cache refresh failed");
 			return;
 		}
-		if (this.run === run) this.schedule(run);
+		if (this.run === run) this.schedule(run, refreshedAt);
 	}
 
 	private refreshDeadlineMissed(run: ActiveRun): boolean {

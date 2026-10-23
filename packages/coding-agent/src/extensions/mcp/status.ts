@@ -26,7 +26,12 @@ export function registerMcpReconnect(events: EventBus, name: string, reconnect: 
 
 export function getMcpReconnect(events: EventBus, name: string): Reconnect | undefined {
 	let reconnect: Reconnect | undefined;
-	events.emit(REQUEST_RECONNECT, { name, reply: (handler: Reconnect) => { reconnect = handler; } });
+	events.emit(REQUEST_RECONNECT, {
+		name,
+		reply: (handler: Reconnect) => {
+			reconnect = handler;
+		},
+	});
 	return reconnect;
 }
 const publishersByOwner = new WeakMap<EventBus, Map<string, readonly McpServerStatus[]>>();
@@ -34,7 +39,9 @@ const publishersByOwner = new WeakMap<EventBus, Map<string, readonly McpServerSt
 /** Session status without transport arguments, credentials, or server error payloads. */
 export function getMcpSessionStatus(events: EventBus): McpServerStatus[] {
 	const publishers = new Map<string, readonly McpServerStatus[]>();
-	events.emit(REQUEST_STATUS, (publisher: string, servers: readonly McpServerStatus[]) => publishers.set(publisher, servers));
+	events.emit(REQUEST_STATUS, (publisher: string, servers: readonly McpServerStatus[]) =>
+		publishers.set(publisher, servers),
+	);
 	const merged = new Map<string, McpServerStatus>();
 	for (const [publisher, servers] of publishers) {
 		if (publisher === "configured") continue;
@@ -56,6 +63,9 @@ export function setMcpSessionStatus(events: EventBus, publisher: string, servers
 			for (const [name, snapshot] of owned) reply(name, snapshot);
 		});
 	}
-	publishers.set(publisher, servers.map((server) => ({ ...server })));
+	publishers.set(
+		publisher,
+		servers.map((server) => ({ ...server })),
+	);
 	events.emit(MCP_STATUS_EVENT, getMcpSessionStatus(events));
 }

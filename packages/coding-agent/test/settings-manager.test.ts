@@ -292,10 +292,7 @@ describe("SettingsManager", () => {
 
 		it("should read default project trust from global settings only", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
-			writeFileSync(
-				join(projectDir, ".octocode", "settings.json"),
-				JSON.stringify({ defaultProjectTrust: "never" }),
-			);
+			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ defaultProjectTrust: "never" }));
 
 			const manager = SettingsManager.create(projectDir, agentDir);
 
@@ -664,10 +661,7 @@ describe("SettingsManager", () => {
 		});
 
 		it("layers project modifiers on top of the global selection", () => {
-			writeFileSync(
-				join(agentDir, "settings.json"),
-				JSON.stringify({ defaultTools: ["read", "bash", "+codemode"] }),
-			);
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultTools: ["read", "bash", "+codemode"] }));
 			writeFileSync(
 				join(projectDir, ".octocode", "settings.json"),
 				JSON.stringify({ defaultTools: ["-codemode", "+tool_search"] }),
@@ -734,10 +728,7 @@ describe("SettingsManager", () => {
 		});
 
 		it("should expand ~ in shellPath", () => {
-			writeFileSync(
-				join(agentDir, "settings.json"),
-				JSON.stringify({ shellPath: "~/.local/bin/agent-shell-sandbox" }),
-			);
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ shellPath: "~/.local/bin/agent-shell-sandbox" }));
 			const manager = SettingsManager.create(projectDir, agentDir);
 			expect(manager.getShellPath()).toBe(join(homedir(), ".local/bin/agent-shell-sandbox"));
 		});

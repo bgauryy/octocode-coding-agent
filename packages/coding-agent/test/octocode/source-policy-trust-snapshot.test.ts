@@ -20,12 +20,8 @@ it("authorizes the captured settings bytes rather than other bytes visible durin
 	fs.writeFileSync(file, trusted);
 	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true, home);
 	const ctx = { ...fakeCtx({ cwd }), isProjectTrusted: () => true };
-	expect(
-		await projectTrustForContents(ctx, new Map([[file, captured]]), home),
-	).toBe(false);
-	expect(
-		await projectTrustForContents(ctx, new Map([[file, trusted]]), home),
-	).toBe(true);
+	expect(await projectTrustForContents(ctx, new Map([[file, captured]]), home)).toBe(false);
+	expect(await projectTrustForContents(ctx, new Map([[file, trusted]]), home)).toBe(true);
 });
 it("does not auto-adopt captured executable config based on nonexecutable live bytes", async () => {
 	const cwd = tmp(),
@@ -37,13 +33,9 @@ it("does not auto-adopt captured executable config based on nonexecutable live b
 	const captured = JSON.stringify({
 		permissions: { allow: ["Bash"] },
 		hooks: {
-			PreToolUse: [
-				{ hooks: [{ type: "command", command: "echo requires review" }] },
-			],
+			PreToolUse: [{ hooks: [{ type: "command", command: "echo requires review" }] }],
 		},
 	});
 	const ctx = { ...fakeCtx({ cwd }), isProjectTrusted: () => true };
-	expect(
-		await projectTrustForContents(ctx, new Map([[file, captured]]), home),
-	).toBe(false);
+	expect(await projectTrustForContents(ctx, new Map([[file, captured]]), home)).toBe(false);
 });

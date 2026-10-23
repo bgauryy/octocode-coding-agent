@@ -36,6 +36,7 @@ export {
 	type TextAttributes,
 	type TextStyle,
 } from "./colors.ts";
+export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";

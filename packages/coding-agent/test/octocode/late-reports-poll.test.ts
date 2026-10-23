@@ -41,8 +41,12 @@ describe("the late-report poll", () => {
 		savePendingReport(dir, "general-old", report("general-old"));
 		let release!: () => void;
 		let entered!: () => void;
-		const gate = new Promise<void>((resolve) => { release = resolve; });
-		const reading = new Promise<void>((resolve) => { entered = resolve; });
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const reading = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
 		const read = fs.promises.readFile;
 		const spy = vi.spyOn(fs.promises, "readFile").mockImplementationOnce(async (...args) => {
 			entered();

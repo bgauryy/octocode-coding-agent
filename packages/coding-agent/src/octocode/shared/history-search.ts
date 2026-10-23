@@ -81,7 +81,12 @@ export async function matchHistory(
 			abort = () => reject(signal?.reason ?? new Error("Archive search aborted."));
 			signal?.addEventListener("abort", abort, { once: true });
 			timer = setTimeout(
-				() => reject(new Error("Archive search exceeded 5 seconds; simplify query or narrow file to a session folder or one archive file.")),
+				() =>
+					reject(
+						new Error(
+							"Archive search exceeded 5 seconds; simplify query or narrow file to a session folder or one archive file.",
+						),
+					),
 				SEARCH_TIMEOUT_MS,
 			);
 			worker.on("message", (message: { type?: string; results?: HistoryMatches[]; error?: string }) => {
@@ -90,7 +95,9 @@ export async function matchHistory(
 				else resolve(message.results ?? []);
 			});
 			worker.once("error", reject);
-			worker.once("exit", (code) => reject(new Error(`Archive search worker exited before returning results (code ${code}).`)));
+			worker.once("exit", (code) =>
+				reject(new Error(`Archive search worker exited before returning results (code ${code}).`)),
+			);
 			if (signal?.aborted) abort();
 		});
 	} finally {

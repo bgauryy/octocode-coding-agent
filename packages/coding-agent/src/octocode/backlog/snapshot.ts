@@ -1,13 +1,7 @@
 import { storedSecret } from "../shared/sanitize.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { refText } from "./row.ts";
-import {
-	BacklogError,
-	type BacklogStore,
-	type Item,
-	priorityName,
-	STATES,
-} from "./store.ts";
+import { BacklogError, type BacklogStore, type Item, priorityName, STATES } from "./store.ts";
 
 /** An item idle for longer than this (and not done) is listed under Attention in the page. */
 const IDLE_MS = 7 * DAY_MS;
@@ -65,10 +59,14 @@ function refuseSecrets(snapshot: Snapshot): void {
 	if (found) throw new BacklogError(`Not written: the repository name ${found.problem.replace(/^it /, "")}.`);
 	for (const item of snapshot.items) {
 		const extra = storedSecret({
-			entities: JSON.stringify({ links: item.links, completions: item.completions, comments: item.comments, audits: item.audits }),
+			entities: JSON.stringify({
+				links: item.links,
+				completions: item.completions,
+				comments: item.comments,
+				audits: item.audits,
+			}),
 		});
-		const { title, goal, body, paths, why, evidence, plan, tags, assignee, createdBy, sourceSession, notes } =
-			item;
+		const { title, goal, body, paths, why, evidence, plan, tags, assignee, createdBy, sourceSession, notes } = item;
 		const noteFields = notes.flatMap(
 			(note, index) =>
 				[
@@ -110,9 +108,7 @@ export function backlogSnapshot(store: BacklogStore, repo: string, now: number, 
 	const byRef = new Map(snapshot.items.map((item) => [item.ref, item]));
 	for (const item of snapshot.items) {
 		item.children = snapshot.items.filter((child) => child.parentId === item.ref).map((child) => child.ref);
-		item.blockedBy = (item.dependsOn ?? [])
-			.filter((ref) => byRef.get(ref.id)?.state !== "done")
-			.map((ref) => ref.id);
+		item.blockedBy = (item.dependsOn ?? []).filter((ref) => byRef.get(ref.id)?.state !== "done").map((ref) => ref.id);
 		const openDescendant = (parent: string, seen = new Set<string>()): boolean => {
 			if (seen.has(parent)) return false;
 			seen.add(parent);

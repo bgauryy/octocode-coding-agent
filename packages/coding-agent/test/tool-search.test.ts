@@ -17,10 +17,28 @@ function tool(name: string, description: string, properties: Record<string, unkn
 describe("tokenize", () => {
 	it("preserves multilingual words and normalizes combining marks", () => {
 		expect(tokenize("חיפוש קבצים поиск файлов 搜索 文件 café cafe\u0301")).toEqual([
-			"חיפוש", "קבצים", "поиск", "файлов", "搜索", "文件", "café", "café",
+			"חיפוש",
+			"קבצים",
+			"поиск",
+			"файлов",
+			"搜索",
+			"文件",
+			"café",
+			"café",
 		]);
 		const ranker = new Bm25Ranker();
-		expect(ranker.rank("קבצים", [{ name: "files", text: "חיפוש קבצים" }, { name: "browser", text: "דפדפן" }], 8).map((match) => match.name)).toEqual(["files"]);
+		expect(
+			ranker
+				.rank(
+					"קבצים",
+					[
+						{ name: "files", text: "חיפוש קבצים" },
+						{ name: "browser", text: "דפדפן" },
+					],
+					8,
+				)
+				.map((match) => match.name),
+		).toEqual(["files"]);
 	});
 	it("splits camelCase and snake_case, drops stop words, and folds plurals", () => {
 		expect(tokenize("listIssues for the GitHub_repo")).toEqual(["list", "issue", "git", "hub", "repo"]);

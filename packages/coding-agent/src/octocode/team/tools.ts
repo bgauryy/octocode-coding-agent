@@ -45,7 +45,11 @@ interface CoordinateParams {
 export function registerCollab(
 	pi: ExtensionAPI,
 	team: Team,
-	options: { stopAgent?: StopAgent; beforeLeave?: (reason: string) => Promise<unknown>; registerTool?: ExtensionAPI["registerTool"] } = {},
+	options: {
+		stopAgent?: StopAgent;
+		beforeLeave?: (reason: string) => Promise<unknown>;
+		registerTool?: ExtensionAPI["registerTool"];
+	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(pi);
 	registerCoordinateTool(pi, team, options.stopAgent, options.registerTool);
@@ -96,7 +100,12 @@ function registerMessageRenderer(pi: ExtensionAPI): void {
 	});
 }
 
-function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAgent | undefined, registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool)): void {
+function registerCoordinateTool(
+	pi: ExtensionAPI,
+	team: Team,
+	stopAgent: StopAgent | undefined,
+	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+): void {
 	// `stop` exists only for an agent that can start subagents, which is also the one that joins and leaves by hand: a
 	// subagent joins when it starts and leaves when its run ends (`Team.start`, `onAgentSettled`), and would only be refused `stop`.
 	const canStop = stopAgent !== undefined;
@@ -117,9 +126,7 @@ function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAge
 				action: StringEnum(actions, {
 					description:
 						"list: live agents, their activity and held paths; " +
-						(canStop
-							? "join: register or update your goal; leave: unregister and release your reservations; "
-							: "") +
+						(canStop ? "join: register or update your goal; leave: unregister and release your reservations; " : "") +
 						"lock: reserve paths, all or none; unlock: release the given paths, or all without paths; " +
 						(canStop
 							? "stop: end a background subagent you started (id), killing its process tree; its report says it was stopped; "
@@ -183,8 +190,7 @@ function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAge
 						params.paths?.map((entry) =>
 							path.relative(log.workspace, resolveToolPath(ctx.cwd, entry)).split(path.sep).join("/"),
 						);
-					const changes =
-						log?.changes({ withinMs: minutes * 60_000, ...(prefixes?.length ? { prefixes } : {}) }) ?? [];
+					const changes = log?.changes({ withinMs: minutes * 60_000, ...(prefixes?.length ? { prefixes } : {}) }) ?? [];
 					const text = describeChanges(
 						changes,
 						{
@@ -241,7 +247,11 @@ function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAge
 	);
 }
 
-function registerSendMessageTool(pi: ExtensionAPI, team: Team, registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool)): void {
+function registerSendMessageTool(
+	pi: ExtensionAPI,
+	team: Team,
+	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
+): void {
 	registerTool(
 		timedTool({
 			name: "sendMessage",
@@ -255,8 +265,7 @@ function registerSendMessageTool(pi: ExtensionAPI, team: Team, registerTool: Ext
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
-						description:
-							'Agent id, role, "parent" or "all" (session tree). replyTo alone targets the original sender.',
+						description: 'Agent id, role, "parent" or "all" (session tree). replyTo alone targets the original sender.',
 					}),
 				),
 				message: Type.String({ description: "The message text" }),
@@ -268,8 +277,7 @@ function registerSendMessageTool(pi: ExtensionAPI, team: Team, registerTool: Ext
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description:
-							"Message number to answer; no to needed. Wakes the asker.",
+						description: "Message number to answer; no to needed. Wakes the asker.",
 					}),
 				),
 				interrupt: Type.Optional(
@@ -295,9 +303,7 @@ function registerSendMessageTool(pi: ExtensionAPI, team: Team, registerTool: Ext
 						`Interrupt queued for ${result.sent.join(", ")} as message #${result.id}: a busy subagent stops its current step within a second.`,
 						{ to: result.sent, id: result.id },
 					);
-				const departed = result.departed?.length
-					? ` Not sent to ${result.departed.join(", ")} (left the team).`
-					: "";
+				const departed = result.departed?.length ? ` Not sent to ${result.departed.join(", ")} (left the team).` : "";
 				const recipients = result.sent.join(", ");
 				const mode =
 					params.replyRequired === true

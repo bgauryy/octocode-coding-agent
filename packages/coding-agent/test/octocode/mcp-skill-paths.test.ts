@@ -6,7 +6,9 @@ import { prepareOctocodeSkillLaunch } from "../../src/octocode/mcp/skill-paths.t
 import { tmp } from "./helpers.ts";
 
 const entry = (env?: Record<string, string>): McpServerEntry => ({
-	name: "octocode", source: "mcp.json", config: { command: "octocode-mcp", ...(env ? { env } : {}) },
+	name: "octocode",
+	source: "mcp.json",
+	config: { command: "octocode-mcp", ...(env ? { env } : {}) },
 });
 
 describe("configured Octocode skill roots", () => {
@@ -19,10 +21,17 @@ describe("configured Octocode skill roots", () => {
 		const canonical = fs.realpathSync(skill);
 		const original = entry({ KEEP: "value", WORKSPACE_ROOT: "/explicit/workspace" });
 		const prepared = prepareOctocodeSkillLaunch(original, dir, directories, { OCTOCODE_HOME: "/native/home" });
-		expect(prepared.config).toMatchObject({ env: {
-			KEEP: "value", WORKSPACE_ROOT: "/explicit/workspace", ALLOWED_PATHS: `${dir},/native/home,${canonical}`,
-		} });
-		expect(original.config).toEqual({ command: "octocode-mcp", env: { KEEP: "value", WORKSPACE_ROOT: "/explicit/workspace" } });
+		expect(prepared.config).toMatchObject({
+			env: {
+				KEEP: "value",
+				WORKSPACE_ROOT: "/explicit/workspace",
+				ALLOWED_PATHS: `${dir},/native/home,${canonical}`,
+			},
+		});
+		expect(original.config).toEqual({
+			command: "octocode-mcp",
+			env: { KEEP: "value", WORKSPACE_ROOT: "/explicit/workspace" },
+		});
 	});
 
 	it.each(["/restricted", ""])("preserves explicit configured and inherited policy %j", (allowed) => {

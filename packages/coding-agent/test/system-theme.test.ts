@@ -51,10 +51,9 @@ describe("generateSystemThemeColors", () => {
 			for (const surface of [input.background!, resolved(input, "selectedBg")]) {
 				expect(wcagContrast(text, surface), name).toBeGreaterThanOrEqual(4.5);
 			}
-			expect(
-				wcagContrast(resolved(input, "toolTitle"), resolved(input, "toolErrorBg")),
-				name,
-			).toBeGreaterThanOrEqual(4.5);
+			expect(wcagContrast(resolved(input, "toolTitle"), resolved(input, "toolErrorBg")), name).toBeGreaterThanOrEqual(
+				4.5,
+			);
 		}
 	});
 

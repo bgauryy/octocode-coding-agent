@@ -22,6 +22,11 @@ import { EventEmitter } from "events";
 const ESC = "\x1b";
 const DEFAULT_SEQUENCE_TIMEOUT_MS = 50;
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
+/**
+ * A bracketed paste whose end marker has not arrived after this long without input is emitted as is, so a lost
+ * marker cannot capture all later typing. Terminals send a paste in quick chunks, even over SSH.
+ */
+export const PASTE_IDLE_TIMEOUT_MS = 1000;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 // Color and program-status OSC replies, XTVersion, and Kitty graphics replies.
@@ -291,6 +296,11 @@ export type StdinBufferOptions = {
 	 * (default: 10ms). Increase for high-latency Alt+key input (SSH).
 	 */
 	escapeTimeout?: number;
+	/**
+	 * Time without input after which a bracketed paste whose end marker never arrived is emitted
+	 * (default: PASTE_IDLE_TIMEOUT_MS). Increase for very slow links.
+	 */
+	pasteTimeout?: number;
 };
 
 export type StdinBufferEventMap = {
@@ -307,6 +317,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	private timeout: ReturnType<typeof setTimeout> | null = null;
 	private readonly timeoutMs: number;
 	private readonly escapeTimeoutMs: number;
+	private readonly pasteTimeoutMs: number;
 	private pasteMode: boolean = false;
 	private pasteBuffer: string = "";
 	private pendingKittyPrintableCodepoint: number | undefined;
@@ -315,6 +326,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		super();
 		this.timeoutMs = options.timeout ?? DEFAULT_SEQUENCE_TIMEOUT_MS;
 		this.escapeTimeoutMs = options.escapeTimeout ?? DEFAULT_ESCAPE_TIMEOUT_MS;
+		this.pasteTimeoutMs = options.pasteTimeout ?? PASTE_IDLE_TIMEOUT_MS;
 	}
 
 	public process(data: string | Buffer): void {
@@ -348,56 +360,26 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		if (this.pasteMode) {
 			this.pasteBuffer += this.buffer;
 			this.buffer = "";
-
-			const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END);
-			if (endIndex !== -1) {
-				const pastedContent = this.pasteBuffer.slice(0, endIndex);
-				const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length);
-
-				this.pasteMode = false;
-				this.pasteBuffer = "";
-				this.pendingKittyPrintableCodepoint = undefined;
-
-				this.emit("paste", pastedContent);
-
-				if (remaining.length > 0) {
-					this.process(remaining);
-				}
-			}
+			this.continuePaste();
 			return;
 		}
 
 		const startIndex = this.buffer.indexOf(BRACKETED_PASTE_START);
 		if (startIndex !== -1) {
 			if (startIndex > 0) {
-				const beforePaste = this.buffer.slice(0, startIndex);
-				const result = extractCompleteSequences(beforePaste);
+				// The paste marker ends whatever came before it, so an incomplete tail (a lone Escape) is emitted as is.
+				const result = extractCompleteSequences(this.buffer.slice(0, startIndex));
 				for (const sequence of result.sequences) {
 					this.emitDataSequence(sequence);
 				}
+				if (result.remainder) this.emitDataSequence(result.remainder);
 			}
 
 			this.pendingKittyPrintableCodepoint = undefined;
-			this.buffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length);
 			this.pasteMode = true;
-			this.pasteBuffer = this.buffer;
+			this.pasteBuffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length);
 			this.buffer = "";
-
-			const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END);
-			if (endIndex !== -1) {
-				const pastedContent = this.pasteBuffer.slice(0, endIndex);
-				const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length);
-
-				this.pasteMode = false;
-				this.pasteBuffer = "";
-				this.pendingKittyPrintableCodepoint = undefined;
-
-				this.emit("paste", pastedContent);
-
-				if (remaining.length > 0) {
-					this.process(remaining);
-				}
-			}
+			this.continuePaste();
 			return;
 		}
 
@@ -430,6 +412,25 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 				}
 			}, timeoutMs);
 		}
+	}
+
+	/** Emit the paste once its end marker arrived, then process what followed; otherwise wait for more of it. */
+	private continuePaste(): void {
+		const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END);
+		if (endIndex === -1) {
+			this.timeout = setTimeout(() => this.endPaste(this.pasteBuffer, ""), this.pasteTimeoutMs);
+			return;
+		}
+		this.endPaste(this.pasteBuffer.slice(0, endIndex), this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length));
+	}
+
+	private endPaste(content: string, remaining: string): void {
+		this.timeout = null;
+		this.pasteMode = false;
+		this.pasteBuffer = "";
+		this.pendingKittyPrintableCodepoint = undefined;
+		this.emit("paste", content);
+		if (remaining.length > 0) this.process(remaining);
 	}
 
 	private emitDataSequence(sequence: string): void {

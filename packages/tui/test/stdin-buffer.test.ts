@@ -8,7 +8,7 @@
 import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { matchesKey } from "../src/keys.ts";
-import { StdinBuffer } from "../src/stdin-buffer.ts";
+import { PASTE_IDLE_TIMEOUT_MS, StdinBuffer } from "../src/stdin-buffer.ts";
 
 describe("StdinBuffer", () => {
 	let buffer: StdinBuffer;
@@ -274,14 +274,7 @@ describe("StdinBuffer", () => {
 					t.mock.timers.tick(49);
 					assert.deepStrictEqual(sequences, []);
 					t.mock.timers.tick(1);
-					assert.deepStrictEqual(sequences, [
-						ambiguous.slice(0, 2),
-						...ambiguous.slice(2),
-						"x",
-						"\r",
-						"\x03",
-						"\x04",
-					]);
+					assert.deepStrictEqual(sequences, [ambiguous.slice(0, 2), ...ambiguous.slice(2), "x", "\r", "\x03", "\x04"]);
 					assert.strictEqual(legacyBuffer.getBuffer(), "");
 
 					legacyBuffer.process("y\r\x03\x04");
@@ -622,6 +615,44 @@ describe("StdinBuffer", () => {
 
 			assert.deepStrictEqual(emittedPaste, ["line1\nline2\nline3"]);
 			assert.deepStrictEqual(emittedSequences, []);
+		});
+
+		it("keeps an Escape that is still waiting when a paste starts", () => {
+			processInput("\x1b");
+			processInput("\x1b[200~pasted\x1b[201~");
+
+			assert.deepStrictEqual(emittedSequences, ["\x1b"]);
+			assert.deepStrictEqual(emittedPaste, ["pasted"]);
+		});
+
+		it("ends a paste whose end marker never arrives, so typing works again", (t) => {
+			t.mock.timers.enable({ apis: ["setTimeout"] });
+			processInput("\x1b[200~");
+			processInput("partial");
+			t.mock.timers.tick(PASTE_IDLE_TIMEOUT_MS - 1);
+			assert.deepStrictEqual(emittedPaste, []);
+			// More pasted text restarts the wait.
+			processInput(" text");
+			t.mock.timers.tick(PASTE_IDLE_TIMEOUT_MS - 1);
+			assert.deepStrictEqual(emittedPaste, []);
+			t.mock.timers.tick(1);
+			assert.deepStrictEqual(emittedPaste, ["partial text"]);
+
+			processInput("a");
+			assert.deepStrictEqual(emittedSequences, ["a"]);
+		});
+
+		it("waits longer for a paste's end marker when configured", (t) => {
+			t.mock.timers.enable({ apis: ["setTimeout"] });
+			const slow = new StdinBuffer({ pasteTimeout: 5000 });
+			const pasted: string[] = [];
+			slow.on("paste", (data) => pasted.push(data));
+			slow.process("\x1b[200~slow");
+			t.mock.timers.tick(PASTE_IDLE_TIMEOUT_MS);
+			assert.deepStrictEqual(pasted, []);
+			slow.process(" link\x1b[201~");
+			assert.deepStrictEqual(pasted, ["slow link"]);
+			slow.destroy();
 		});
 
 		it("should handle paste with unicode", () => {

@@ -17,9 +17,7 @@ for (const command of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toEqual([]);
@@ -36,9 +34,7 @@ it("command -v remains a lookup and cannot inherit the queried executable allowa
 	});
 	try {
 		await f.run("bash", { command: "command -v node" });
-		expect(
-			f.session.messages.findLast((m) => m.role === "toolResult"),
-		).toMatchObject({ isError: false });
+		expect(f.session.messages.findLast((m) => m.role === "toolResult")).toMatchObject({ isError: false });
 		expect(f.inputs()).toHaveLength(1);
 	} finally {
 		await f.close();
@@ -59,9 +55,7 @@ for (const [name, command, hooks] of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(hooks);
@@ -84,12 +78,9 @@ for (const behavior of ["deny", "ask"] as const) {
 			});
 			try {
 				await f.run("bash", { command });
-				const result = f.session.messages.findLast(
-					(m) => m.role === "toolResult",
-				);
+				const result = f.session.messages.findLast((m) => m.role === "toolResult");
 				expect(result).toMatchObject({ isError: behavior === "deny" });
-				if (behavior === "deny")
-					expect(JSON.stringify(result)).toContain("Claude permission deny:");
+				if (behavior === "deny") expect(JSON.stringify(result)).toContain("Claude permission deny:");
 				else expect(JSON.stringify(result)).toContain(output);
 				expect(f.inputs()).toHaveLength(behavior === "deny" ? 0 : 1);
 			} finally {
@@ -108,9 +99,7 @@ for (const exact of [false, true]) {
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(exact ? 0 : 1);
@@ -134,9 +123,7 @@ for (const [name, command, hooks] of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(hooks);
@@ -147,36 +134,11 @@ for (const [name, command, hooks] of [
 }
 
 for (const [name, suffix, allow, hooks] of [
-	[
-		"bare xargs with inner prefix",
-		"xargs node -p",
-		["Bash(printf *)", "Bash(node -p*)"],
-		0,
-	],
-	[
-		"flagged xargs",
-		"xargs -n1 node -p",
-		["Bash(printf *)", "Bash(node -p*)"],
-		1,
-	],
-	[
-		"xargs double dash",
-		"xargs -- node -p",
-		["Bash(printf *)", "Bash(node -p*)"],
-		1,
-	],
-	[
-		"xargs prefix rule",
-		"xargs node -p",
-		["Bash(printf *)", "Bash(xargs *)"],
-		0,
-	],
-	[
-		"exact xargs pipeline rule",
-		"xargs node -p",
-		[String.raw`Bash(printf '42\n' | xargs node -p)`],
-		1,
-	],
+	["bare xargs with inner prefix", "xargs node -p", ["Bash(printf *)", "Bash(node -p*)"], 0],
+	["flagged xargs", "xargs -n1 node -p", ["Bash(printf *)", "Bash(node -p*)"], 1],
+	["xargs double dash", "xargs -- node -p", ["Bash(printf *)", "Bash(node -p*)"], 1],
+	["xargs prefix rule", "xargs node -p", ["Bash(printf *)", "Bash(xargs *)"], 0],
+	["exact xargs pipeline rule", "xargs node -p", [String.raw`Bash(printf '42\n' | xargs node -p)`], 1],
 ] as const) {
 	it(`${name} keeps source approval semantics with actual stdin execution`, async () => {
 		const f = await fixture("claude", {
@@ -185,9 +147,7 @@ for (const [name, suffix, allow, hooks] of [
 		});
 		try {
 			await f.run("bash", { command: String.raw`printf '42\n' | ${suffix}` });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(hooks);
@@ -213,9 +173,7 @@ for (const [name, command, hooks] of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(hooks);
@@ -235,9 +193,7 @@ for (const prefix of ["FOO=bar", "NODE_ENV=test"]) {
 			await f.run("bash", {
 				command: String.raw`${prefix} find . -prune -exec node -p 42 \;`,
 			});
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("42");
 			expect(f.inputs()).toHaveLength(1);
@@ -255,9 +211,7 @@ for (const command of ["nice printf 'BLOCK'", String.raw`nice printf BL\OCK`]) {
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain("BLOCK");
 			expect(f.inputs()).toEqual([]);
@@ -271,12 +225,7 @@ for (const [name, command, allow, hooks] of [
 	["unapproved pipeline", "node -p 41 | cat", [], 1],
 	["exact pipeline", "node -p 41 | cat", ["Bash(node -p 41 | cat)"], 1],
 	["pipeline leaves", "node -p 41 | cat", ["Bash(node -p 41)", "Bash(cat)"], 0],
-	[
-		"exact and chain",
-		"node -p 41 && node -p 42",
-		["Bash(node -p 41 && node -p 42)"],
-		0,
-	],
+	["exact and chain", "node -p 41 && node -p 42", ["Bash(node -p 41 && node -p 42)"], 0],
 	["exact subshell", "(node -p 42)", ["Bash((node -p 42))"], 1],
 ] as const) {
 	it(`source whole command allowance respects ${name} boundaries`, async () => {
@@ -286,13 +235,9 @@ for (const [name, command, allow, hooks] of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
-			expect(JSON.stringify(result)).toContain(
-				name === "exact subshell" ? "42" : "41",
-			);
+			expect(JSON.stringify(result)).toContain(name === "exact subshell" ? "42" : "41");
 			expect(f.inputs()).toHaveLength(hooks);
 		} finally {
 			await f.close();
@@ -313,14 +258,11 @@ for (const behavior of ["deny", "ask"] as const) {
 			});
 			try {
 				await f.run("bash", { command });
-				const result = f.session.messages.findLast(
-					(m) => m.role === "toolResult",
-				);
+				const result = f.session.messages.findLast((m) => m.role === "toolResult");
 				expect(result).toMatchObject({
 					isError: matched && behavior === "deny",
 				});
-				if (matched && behavior === "deny")
-					expect(JSON.stringify(result)).toContain("Claude permission deny:");
+				if (matched && behavior === "deny") expect(JSON.stringify(result)).toContain("Claude permission deny:");
 				else expect(JSON.stringify(result)).toContain("42");
 				expect(f.inputs()).toHaveLength(matched && behavior === "ask" ? 1 : 0);
 			} finally {
@@ -331,36 +273,16 @@ for (const behavior of ["deny", "ask"] as const) {
 }
 
 for (const [name, command, rule, output] of [
-	[
-		"leading-space prefix",
-		String.raw` find . -prune -exec node -p 42 \;`,
-		"Bash( find *)",
-		"42",
-	],
+	["leading-space prefix", String.raw` find . -prune -exec node -p 42 \;`, "Bash( find *)", "42"],
 	[
 		"leading-space exact",
 		String.raw` find . -prune -exec node -p 42 \;`,
 		String.raw`Bash( find . -prune -exec node -p 42 \;)`,
 		"42",
 	],
-	[
-		"tab prefix",
-		"\t" + String.raw`find . -prune -exec node -p 42 \;`,
-		"Bash(\tfind *)",
-		"42",
-	],
-	[
-		"quoted nice option",
-		String.raw`nice "-n" 4 find . -prune -exec node -p 42 \;`,
-		"Bash(nice *)",
-		"42",
-	],
-	[
-		"unquoted nice option",
-		String.raw`nice -n 4 find . -prune -exec node -p 42 \;`,
-		"Bash(nice *)",
-		"42",
-	],
+	["tab prefix", "\t" + String.raw`find . -prune -exec node -p 42 \;`, "Bash(\tfind *)", "42"],
+	["quoted nice option", String.raw`nice "-n" 4 find . -prune -exec node -p 42 \;`, "Bash(nice *)", "42"],
+	["unquoted nice option", String.raw`nice -n 4 find . -prune -exec node -p 42 \;`, "Bash(nice *)", "42"],
 	[
 		"quoted command option",
 		String.raw`command "-p" find . -prune -exec /usr/bin/printf BLOCK \;`,
@@ -375,9 +297,7 @@ for (const [name, command, rule, output] of [
 		});
 		try {
 			await f.run("bash", { command });
-			const result = f.session.messages.findLast(
-				(m) => m.role === "toolResult",
-			);
+			const result = f.session.messages.findLast((m) => m.role === "toolResult");
 			expect(result).toMatchObject({ isError: false });
 			expect(JSON.stringify(result)).toContain(output);
 			expect(f.inputs()).toHaveLength(1);

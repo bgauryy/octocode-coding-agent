@@ -159,7 +159,14 @@ export class ApplicationProjection {
 		}
 		this.replace(this.messages, messages);
 		this.replace(this.tools, tools);
-		return [...messages.values(), ...tools.values()];
+		// Items new in one snapshot share its time, so the feed's time sort keeps this order: the host's, when it sent one.
+		const ordered = [
+			...(snapshot?.messages ?? []).map((message) => ({ event: messages.get(message.id), order: message.order })),
+			...(snapshot?.tools ?? []).map((tool) => ({ event: tools.get(tool.toolCallId), order: tool.order })),
+		];
+		return ordered
+			.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+			.flatMap(({ event }) => (event ? [event] : []));
 	}
 
 	private replace(target: Map<string, WorkspaceEvent>, source: Map<string, WorkspaceEvent>): void {
@@ -207,7 +214,7 @@ const isTool = (event: WorkspaceEvent) => event.type.startsWith("tool.");
 /** Runs of two or more consecutive tool events collapse into one group, keyed by its first event. */
 export function groupFeed(events: readonly WorkspaceEvent[]): FeedEntry[] {
 	const entries: FeedEntry[] = [];
-	for (let i = 0; i < events.length; ) {
+	for (let i = 0; i < events.length;) {
 		let end = i;
 		while (end < events.length && isTool(events[end])) end++;
 		if (end - i >= 2) {

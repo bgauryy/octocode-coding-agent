@@ -388,9 +388,7 @@ describe("collaboration prompt", () => {
 			{ view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
 			fakePermission(),
 		);
-		expect(tools[0]!.parameters.properties.collaborate?.description).toMatch(
-			/subagents that must coordinate directly/,
-		);
+		expect(tools[0]!.parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
 		// A child names its parent generically: its own id and parent arrive in its task.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate: true })).toMatch(
 			/your parent[\s\S]*agent[\s\S]*message/,
@@ -459,9 +457,7 @@ describe("Team", () => {
 			expect(content).toContain(`replyTo ${(asked as { id: number }).id}`);
 			expect(childLog[0]!.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 			// Awaiting a reply once Octocode puts it in front of the child's model.
-			child.onContext([
-				{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0]!.message.details },
-			]);
+			child.onContext([{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0]!.message.details }]);
 			expect(main.members().find((m) => m.id === "researcher-1234")?.pending).toBe(1);
 
 			// A reply defaults to FYI, so it never asks the asker to answer again (no ping-pong of woken agents).
@@ -489,9 +485,9 @@ describe("Team", () => {
 			expect(child.reservation(path.join(cwd, "src", "a.ts"), "src/a.ts")).toBeUndefined();
 
 			expect(await main.send("ghost", "hi")).toHaveProperty("error");
-			expect(
-				await main.send("researcher-1234", "from the user", { from: "user", replyRequired: false }),
-			).toMatchObject({ sent: ["researcher-1234"] });
+			expect(await main.send("researcher-1234", "from the user", { from: "user", replyRequired: false })).toMatchObject(
+				{ sent: ["researcher-1234"] },
+			);
 			child.stop();
 			expect(main.members().map((m) => m.id)).toEqual([parent.id]);
 			main.stop();
@@ -693,9 +689,7 @@ describe("Team safety", () => {
 		try {
 			const file = path.join(cwd, "a.ts");
 			fs.writeFileSync(file, "one");
-			expect(main.reservation(file, "a.ts")).toBe(
-				"Team database unavailable (database is locked); retry the change.",
-			);
+			expect(main.reservation(file, "a.ts")).toBe("Team database unavailable (database is locked); retry the change.");
 			// The file tool reports it as the query's failure.
 			const { FileGuard, registerFileTool } = await Promise.resolve(importedModule4);
 			const guard = new FileGuard();
@@ -716,9 +710,7 @@ describe("Team safety", () => {
 				tool!.execute(
 					"c",
 					{
-						queries: [
-							{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: "one", newText: "two" }] },
-						],
+						queries: [{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: "one", newText: "two" }] }],
 					},
 					undefined,
 					undefined,

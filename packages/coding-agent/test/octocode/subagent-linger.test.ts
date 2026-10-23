@@ -245,13 +245,11 @@ describe("a lingering background subagent", () => {
 			t.permission.setMode("manual", t.ctx);
 			await t.control.settle();
 			expect(t.control.background()).toBe(0);
-			expect(
-				t.f.sent.some((entry) => String(entry.message.content).includes("stopped by a permission change")),
-			).toBe(true);
-			t.ctx.ui.selects.push("Allow once");
-			expect(await t.team.send(id, "linger approved continuation", { replyRequired: false })).toHaveProperty(
-				"resumed",
+			expect(t.f.sent.some((entry) => String(entry.message.content).includes("stopped by a permission change"))).toBe(
+				true,
 			);
+			t.ctx.ui.selects.push("Allow once");
+			expect(await t.team.send(id, "linger approved continuation", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
 			expect(t.reports().at(-1)).toContain("mode=manual");
 		} finally {

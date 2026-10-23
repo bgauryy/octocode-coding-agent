@@ -86,17 +86,13 @@ it("reports missing standalone child metadata without inventing permission or pa
 		path.join(home, ".codex/hooks.json"),
 		JSON.stringify({
 			hooks: {
-				SubagentStart: [
-					{ hooks: [{ type: "command", command: "echo should-not-run" }] },
-				],
+				SubagentStart: [{ hooks: [{ type: "command", command: "echo should-not-run" }] }],
 			},
 		}),
 	);
 	const fake = fakePi();
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
-	const stderr = vi
-		.spyOn(process.stderr, "write")
-		.mockImplementation(() => true);
+	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	try {
 		const hooks = registerHooks(
 			fake.pi,
@@ -108,12 +104,8 @@ it("reports missing standalone child metadata without inventing permission or pa
 			home,
 		);
 		await fake.fire("session_start", { reason: "startup" }, ctx);
-		expect(
-			JSON.stringify(await fake.emit("before_agent_start", {}, ctx)),
-		).not.toContain("should-not-run");
-		expect(stderr).toHaveBeenCalledWith(
-			expect.stringContaining("live permission"),
-		);
+		expect(JSON.stringify(await fake.emit("before_agent_start", {}, ctx))).not.toContain("should-not-run");
+		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("live permission"));
 		expect(hooks.report(ctx.cwd)).toContain("live permission");
 	} finally {
 		stderr.mockRestore();
@@ -194,9 +186,7 @@ it("reads the live permission owner for each shell hook dispatch", async () => {
 			hooks: {
 				SubagentStop: [
 					{
-						hooks: [
-							{ type: "command", command: `${process.execPath} ${script}` },
-						],
+						hooks: [{ type: "command", command: `${process.execPath} ${script}` }],
 					},
 				],
 			},

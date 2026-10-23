@@ -32,10 +32,7 @@ function fixture(trusted = true) {
 	fs.writeFileSync(file, before);
 	const ctx = { cwd, isProjectTrusted: () => true };
 	saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), trusted);
-	const commit = preparePermissionTrustUpdate(
-		ctx,
-		new Map([[file, { before, after }]]),
-	);
+	const commit = preparePermissionTrustUpdate(ctx, new Map([[file, { before, after }]]));
 	return { cwd, file, before, after, ctx, commit };
 }
 it("advances only an already trusted permission-only successor", () => {
@@ -57,9 +54,7 @@ it("rejects concurrent executable settings changes", () => {
 		path.join(f.cwd, ".claude/settings.local.json"),
 		JSON.stringify({
 			hooks: {
-				SessionStart: [
-					{ hooks: [{ type: "command", command: "echo changed" }] },
-				],
+				SessionStart: [{ hooks: [{ type: "command", command: "echo changed" }] }],
 			},
 		}),
 	);
@@ -79,10 +74,7 @@ it("rejects a staged change to unrelated hook settings", () => {
 		hooks: { SessionStart: [{ command: "new" }] },
 		permissions: { allow: ["Bash"] },
 	});
-	const commit = preparePermissionTrustUpdate(
-		f.ctx,
-		new Map([[f.file, { before: f.before, after }]]),
-	);
+	const commit = preparePermissionTrustUpdate(f.ctx, new Map([[f.file, { before: f.before, after }]]));
 	fs.writeFileSync(f.file, after);
 	expect(commit([f.file])).toBe(false);
 });

@@ -28,5 +28,7 @@ it("does not prune stale instance records while completing", async () => {
 		writeRecord(dir, { id: "stale", pid: 99999999, cwd: dir, startedAt: 0, protocol: 1 });
 		expect(listInstances(dir, false)).toEqual([]);
 		expect(fs.readdirSync(instancesDir(dir))).toEqual(["stale.json"]);
-	} finally { fs.rmSync(dir, { recursive: true, force: true }); }
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
 import { OCTOCODE_TOOL_PREFIX } from "../shared/octocode-tools.ts";
 import { isRecord } from "../shared/util.ts";
 import { contextMessages, plainText, sessionCleared, toolCallArguments } from "./reads.ts";
@@ -12,7 +13,7 @@ import { contextMessages, plainText, sessionCleared, toolCallArguments } from ".
  */
 
 /** Tools whose result is the content of a file: Octocode's `read` and Octocode's `localFetch`. */
-const DEDUPED_TOOLS: ReadonlySet<string> = new Set(["read", `${OCTOCODE_TOOL_PREFIX}localFetch`, `${OCTOCODE_TOOL_PREFIX}localGetFileContent`]);
+const DEDUPED_TOOLS: ReadonlySet<string> = new Set(["read", ...LOCAL_READ_TOOLS]);
 
 /** The note that stands for a repeated result of `toolName` called with `input`. */
 function unchangedNote(toolName: string, input: Record<string, unknown>): string {

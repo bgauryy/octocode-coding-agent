@@ -156,12 +156,7 @@ export function renderBashResult(
 	}
 	// Collapsed, only the tail is sanitized and split: a streaming command redraws on every update. The tail is as long
 	// as the longest output shown whole, so a short output is not folded.
-	const outcome = bashOutcome(
-		text,
-		context.isError,
-		options.isPartial,
-		options.expanded ? undefined : SHOW_ALL_LINES,
-	);
+	const outcome = bashOutcome(text, context.isError, options.isPartial, options.expanded ? undefined : SHOW_ALL_LINES);
 	const spill = details.fullOutputPath ?? outcome.spill;
 	const total = outcome.lines !== undefined ? { totalLines: outcome.lines } : {};
 	return resultBlock(theme, context, {
@@ -220,7 +215,9 @@ export function querySize(query: { type?: string; edits?: unknown[]; content?: s
 	if (query?.type === "edit" && Array.isArray(query.edits) && query.edits.length > 0)
 		return ` · ${plural(query.edits.length, "edit")}`;
 	if (query?.type === "write" && typeof query.content === "string") {
-		return ` · ${plural(query.content.split("\n").length, "line")}`;
+		// A final newline ends the last line rather than starting another, as editors and `wc -l` count.
+		const content = query.content.endsWith("\n") ? query.content.slice(0, -1) : query.content;
+		return ` · ${plural(content === "" ? 0 : content.split("\n").length, "line")}`;
 	}
 	return "";
 }
@@ -237,14 +234,25 @@ export function diffStats(diff: string): { added: number; removed: number } {
 }
 
 type FileArgs = {
-	patch?: string; reasoning?: string;
-	queries?: Array<{ type?: string; path?: string; movePath?: string; reasoning?: string; edits?: unknown[]; content?: string }>;
+	patch?: string;
+	reasoning?: string;
+	queries?: Array<{
+		type?: string;
+		path?: string;
+		movePath?: string;
+		reasoning?: string;
+		edits?: unknown[];
+		content?: string;
+	}>;
 };
 
 export function renderFileCall(args: FileArgs, theme: Theme, context: RenderContext): Component {
 	const queries = fileChanges(args) as NonNullable<typeof args.queries>;
 	const describe = (query: (typeof queries)[number] | undefined) =>
-		clip(`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`, 200);
+		clip(
+			`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`,
+			200,
+		);
 	const why = (query: (typeof queries)[number] | undefined) =>
 		context.expanded && typeof query?.reasoning === "string" && query.reasoning.trim()
 			? [theme.fg("dim", `  ↳ ${clip(query.reasoning, 200)}`)]
@@ -284,7 +292,10 @@ export function renderFileResult(
 	for (const outcome of outcomes) {
 		const stats = outcome.diff ? diffStats(outcome.diff) : undefined;
 		const counts = stats
-			? ` ${theme.fg("toolDiffAdded", `+${stats.added}`)} ${theme.fg("toolDiffRemoved", `-${stats.removed}`)}`
+			? [
+					stats.added > 0 || stats.removed === 0 ? ` ${theme.fg("toolDiffAdded", `+${stats.added}`)}` : "",
+					stats.removed > 0 ? ` ${theme.fg("toolDiffRemoved", `-${stats.removed}`)}` : "",
+				].join("")
 			: "";
 		const target = `${clip(outcome.type, 20)} ${theme.fg("mdCode", clip(outcome.path, 200))}`;
 		const head = outcome.ok
@@ -293,7 +304,7 @@ export function renderFileResult(
 		heads.push(head);
 		details.push(head);
 		if (outcome.ok && outcome.diff) {
-			const diff = renderDiff(sanitizeTerminalText(outcome.diff)).split("\n");
+			const diff = renderDiff(sanitizeTerminalText(outcome.diff), { filePath: outcome.path }).split("\n");
 			diffLines += diff.length;
 			details.push(...diff);
 		}

@@ -26,7 +26,7 @@
  *
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { globalMcpConfigPaths, projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
@@ -39,6 +39,7 @@ import {
 } from "../../core/mcp-servers.ts";
 import { hasJsonComments, stripJsonComments } from "../../utils/json.ts";
 import { stripBom } from "../../utils/text.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 
 export type {
 	McpExposure,
@@ -115,9 +116,11 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 			const base = servers.get(namespace);
 			const extra = Object.keys(value).filter((key) => !OVERRIDE_KEYS.includes(key));
 			if (!base) {
-				errors.push(scope === "project"
-					? `${path}: server "${name}" needs "command" or "url", or a global server to override`
-					: `${path}: ${validateMcpServerConfig(name, value)}`);
+				errors.push(
+					scope === "project"
+						? `${path}: server "${name}" needs "command" or "url", or a global server to override`
+						: `${path}: ${validateMcpServerConfig(name, value)}`,
+				);
 			} else if (extra.length > 0) {
 				errors.push(`${path}: server "${name}": an override can only set ${OVERRIDE_KEYS.join(", ")}`);
 			} else {
@@ -248,6 +251,6 @@ function editMcpServers(
 	if (!edit(servers, parsed)) return;
 	const indent = (text && /^([ \t]+)\S/m.exec(text)?.[1]) || "  ";
 	mkdirSync(dirname(path), { recursive: true });
-	if (text && hasJsonComments(text)) writeFileSync(`${path}.bak`, text);
-	writeFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`);
+	if (text && hasJsonComments(text)) atomicWriteFileSync(`${path}.bak`, text);
+	atomicWriteFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`);
 }

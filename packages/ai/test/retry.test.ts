@@ -34,6 +34,24 @@ describe("provider retry classification", () => {
 		).toBe(true);
 	});
 
+	it.each([
+		'400 {"error":"max_tokens: 150000 > 64000, which is the maximum allowed"}',
+		"400 invalid request: messages.1500.content is empty",
+		'400 tool "timeout_tool" has an invalid schema',
+	])(
+		"does not retry a deterministic request error whose text only contains a status-like number or word: %s",
+		(errorMessage) => {
+			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
+		},
+	);
+
+	it.each(["HTTP 429", "OpenAI API error (500): server failed", "request timeout", "Request timed out", "terminated"])(
+		"still retries a standalone transient status or word: %s",
+		(errorMessage) => {
+			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+		},
+	);
+
 	it("matches Bun fetch socket drop wording", () => {
 		expect(
 			isRetryableAssistantError(
@@ -114,9 +132,7 @@ describe("provider retry classification", () => {
 
 	it("keeps provider limit errors non-retryable", () => {
 		expect(
-			isRetryableAssistantError(
-				fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 quota exceeded" }),
-			),
+			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 quota exceeded" })),
 		).toBe(false);
 	});
 

@@ -76,9 +76,7 @@ export async function newTab(
 	delete session.blocked;
 	const result = await session.page.send<{ errorText?: string }>("Page.navigate", { url }, signal);
 	if (result.errorText)
-		throw new Error(
-			`Navigation failed: ${result.errorText}${session.blocked ? ` (blocked ${session.blocked})` : ""}`,
-		);
+		throw new Error(`Navigation failed: ${result.errorText}${session.blocked ? ` (blocked ${session.blocked})` : ""}`);
 	await whenLoaded(session, signal, NAVIGATE_LOAD_MS);
 }
 

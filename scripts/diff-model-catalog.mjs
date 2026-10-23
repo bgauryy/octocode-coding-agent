@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -197,16 +206,7 @@ try {
 			writeModelSnapshot(join(temporaryRoot, beforeModelPath), beforeModel);
 			writeModelSnapshot(join(temporaryRoot, afterModelPath), afterModel);
 			const result = runDiff(
-				[
-					"diff",
-					"--no-index",
-					"--no-ext-diff",
-					"--color=always",
-					"--unified=0",
-					"--",
-					beforeModelPath,
-					afterModelPath,
-				],
+				["diff", "--no-index", "--no-ext-diff", "--color=always", "--unified=0", "--", beforeModelPath, afterModelPath],
 				temporaryRoot,
 			);
 			if (result.status === 1) {

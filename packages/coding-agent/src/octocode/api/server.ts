@@ -125,10 +125,7 @@ export class ApiServer {
 		const connection: Connection = {
 			subscribe: (options) => {
 				subscription?.close();
-				const sub = this.log.subscribe(
-					(event) => write({ jsonrpc: "2.0", method: "event", params: event }),
-					options,
-				);
+				const sub = this.log.subscribe((event) => write({ jsonrpc: "2.0", method: "event", params: event }), options);
 				subscription = sub;
 				return { seq: this.log.seq, gap: sub.gap };
 			},

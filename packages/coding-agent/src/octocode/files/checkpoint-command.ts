@@ -145,7 +145,10 @@ export function registerCheckpoints(
 			"rewind [turns] — undo file changes of the last N turns on this branch (default 1); files changed since are left alone",
 		complete: (prefix) => {
 			const count = currentContext ? checkpoints.turnsOn(branchIds(currentContext)).length : 0;
-			return wordCompletions(Array.from({ length: count }, (_, index) => [String(index + 1), `Undo ${index + 1} turn${index ? "s" : ""}`]), prefix);
+			return wordCompletions(
+				Array.from({ length: count }, (_, index) => [String(index + 1), `Undo ${index + 1} turn${index ? "s" : ""}`]),
+				prefix,
+			);
 		},
 		handler: async (args, ctx) => {
 			const value = args.trim();

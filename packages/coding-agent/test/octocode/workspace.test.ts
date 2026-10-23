@@ -17,14 +17,23 @@ beforeEach(() => {
 	db = openAgentDb(path.join(dir, "db"));
 	store = new BacklogStore(() => db, "repo");
 });
-afterEach(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+	db.close();
+	fs.rmSync(dir, { recursive: true, force: true });
+});
 const actor = { id: "parent", kind: "agent" as const };
 const add = () => store.add({ title: "Build it", goal: "Checks pass", reason: "Users need it", createdBy: "user" });
 function setup() {
 	const fake = fakePi();
 	const ctx = fakeCtx({ cwd: dir });
 	const tell = vi.fn(async () => ({ sent: ["worker"], id: 1 }));
-	const runtime = new WorkspaceRuntime(fake.pi, { database: () => db, members: () => [{ id: "worker", role: "general", status: "working" } as never], traffic: () => [], tell, stop: () => "Not owned by this session" });
+	const runtime = new WorkspaceRuntime(fake.pi, {
+		database: () => db,
+		members: () => [{ id: "worker", role: "general", status: "working" } as never],
+		traffic: () => [],
+		tell,
+		stop: () => "Not owned by this session",
+	});
 	const backlog = { store, actor, session: ctx.sessionManager.getSessionId(), repoName: "repo" };
 	return { ...fake, ctx, tell, runtime, backlog, connection: runtime.bind(ctx, backlog) };
 }
@@ -32,7 +41,15 @@ function setup() {
 describe("workspace data and commands", () => {
 	it("records all item fields, relationships, comments and deletion with actor identity", () => {
 		const item = add();
-		store.update(item.ref, { body: "Context", type: "epic", links: [{ relation: "evidence", target: { resource: "external", url: "https://example.com" } }] }, actor);
+		store.update(
+			item.ref,
+			{
+				body: "Context",
+				type: "epic",
+				links: [{ relation: "evidence", target: { resource: "external", url: "https://example.com" } }],
+			},
+			actor,
+		);
 		store.comment(item.ref, "A human comment", { id: "user", kind: "human" });
 		expect(store.comments(item.ref)[0]).toMatchObject({ backlogId: item.ref, author: "user", text: "A human comment" });
 		expect(store.comments(item.ref)[0].id).toBeGreaterThan(0);
@@ -42,12 +59,24 @@ describe("workspace data and commands", () => {
 		expect(events.some((e) => e.entity === "backlog" && (e.after as { body?: string })?.body === "Context")).toBe(true);
 		expect(() => db.db.prepare("DELETE FROM backlog_audits").run()).toThrow(/immutable/);
 		store.remove(item.ref, undefined, actor);
-		expect(store.audit(item.ref).some((e) => e.entity === "backlog" && e.action === "delete" && (e.before as { title: string }).title === "Build it")).toBe(true);
+		expect(
+			store
+				.audit(item.ref)
+				.some(
+					(e) =>
+						e.entity === "backlog" && e.action === "delete" && (e.before as { title: string }).title === "Build it",
+				),
+		).toBe(true);
 	});
 
 	it("rolls back audit and claim together when dispatch fails", () => {
-		const item = add(); const before = store.audit(item.ref);
-		expect(() => store.dispatch(item.ref, item.version, actor, () => { throw new Error("Disconnected"); })).toThrow("Disconnected");
+		const item = add();
+		const before = store.audit(item.ref);
+		expect(() =>
+			store.dispatch(item.ref, item.version, actor, () => {
+				throw new Error("Disconnected");
+			}),
+		).toThrow("Disconnected");
 		expect(store.get(item.ref)?.state).toBe("backlog");
 		expect(store.audit(item.ref)).toEqual(before);
 	});
@@ -55,18 +84,23 @@ describe("workspace data and commands", () => {
 	it("preserves legacy notes as comment entities once", () => {
 		const item = add();
 		db.db.exec("DROP TRIGGER backlog_note_comment");
-		db.db.prepare("INSERT INTO backlog_notes(item,at,author,kind,text) VALUES (?,123,'old-agent','note','Legacy note')").run(item.rowId);
+		db.db
+			.prepare("INSERT INTO backlog_notes(item,at,author,kind,text) VALUES (?,123,'old-agent','note','Legacy note')")
+			.run(item.rowId);
 		expect(store.comments(item.ref)).toEqual([]);
-		db.close(); db = openAgentDb(path.join(dir, "db"));
+		db.close();
+		db = openAgentDb(path.join(dir, "db"));
 		const migrated = store.comments(item.ref);
 		expect(migrated).toHaveLength(1);
 		expect(migrated[0]).toMatchObject({ backlogId: item.ref, author: "old-agent", at: 123, text: "Legacy note" });
-		db.close(); db = openAgentDb(path.join(dir, "db"));
+		db.close();
+		db = openAgentDb(path.join(dir, "db"));
 		expect(store.comments(item.ref)).toEqual(migrated);
 	});
 
 	it("queues a delegation once, retains receipts across reconnects and refuses altered retries", async () => {
-		const app = setup(); const item = add();
+		const app = setup();
+		const item = add();
 		const command = { id: "request-1", action: "delegate" as const, backlogId: item.ref, version: item.version };
 		expect((await app.connection.execute(command)).status).toBe("accepted");
 		expect(store.get(item.ref)?.state).toBe("ongoing");
@@ -82,12 +116,18 @@ describe("workspace data and commands", () => {
 	});
 
 	it("rejects stale work before delivery and isolates closed views", async () => {
-		const app = setup(); const item = add();
+		const app = setup();
+		const item = add();
 		store.update(item.ref, { title: "Changed" }, actor);
-		expect((await app.connection.execute({ id: "stale", action: "work", backlogId: item.ref, version: item.version })).status).toBe("failed");
+		expect(
+			(await app.connection.execute({ id: "stale", action: "work", backlogId: item.ref, version: item.version }))
+				.status,
+		).toBe("failed");
 		expect(app.sent).toHaveLength(0);
 		app.connection.close();
-		await expect(app.connection.execute({ id: "late", action: "message", to: "worker", text: "Hello" })).rejects.toThrow(/session changed/);
+		await expect(
+			app.connection.execute({ id: "late", action: "message", to: "worker", text: "Hello" }),
+		).rejects.toThrow(/session changed/);
 		expect(app.tell).not.toHaveBeenCalled();
 	});
 
@@ -95,32 +135,59 @@ describe("workspace data and commands", () => {
 		const app = setup();
 		await app.emit("session_start", {}, app.ctx);
 		await app.emit("agent_start", {}, app.ctx);
-		expect((await app.connection.execute({ id: "message-1", action: "message", to: "worker", text: "Please check" })).status).toBe("accepted");
+		expect(
+			(await app.connection.execute({ id: "message-1", action: "message", to: "worker", text: "Please check" })).status,
+		).toBe("accepted");
 		expect(app.tell).toHaveBeenCalledWith("worker", "Please check", expect.any(AbortSignal));
-		const details = { id: "worker", status: "done" as const, summary: "Checked", session: { id: "child", file: "/tmp/result.jsonl" } };
+		const details = {
+			id: "worker",
+			status: "done" as const,
+			summary: "Checked",
+			session: { id: "child", file: "/tmp/result.jsonl" },
+		};
 		const content = "Checked\nThe result";
-		await app.emit("message_end", { message: { role: "custom", customType: "octocode-agent-result", content, details } }, app.ctx);
+		await app.emit(
+			"message_end",
+			{ message: { role: "custom", customType: "octocode-agent-result", content, details } },
+			app.ctx,
+		);
 		expect(app.connection.snapshot().events.at(-1)?.details).toEqual(presentAgentReport(content, details));
-		await app.emit("tool_execution_end", { toolName: "verify", toolCallId: "test", isError: true, result: { content: [{ type: "text", text: "Check failed" }] } }, app.ctx);
+		await app.emit(
+			"tool_execution_end",
+			{
+				toolName: "verify",
+				toolCallId: "test",
+				isError: true,
+				result: { content: [{ type: "text", text: "Check failed" }] },
+			},
+			app.ctx,
+		);
 		expect(app.connection.snapshot().events.at(-1)?.outcome).toBe("failed");
 		app.connection.close();
 	});
 
 	it("exposes comments and scoped commands through authenticated HTTP", async () => {
-		const app = setup(); const item = add();
+		const app = setup();
+		const item = add();
 		const web = await startWorkspaceWeb(app.backlog, () => {}, app.connection);
 		try {
 			const url = new URL(web.url);
 			const headers = { Authorization: `Bearer ${url.hash.slice(8)}`, "Content-Type": "application/json" };
 			expect((await fetch(url.origin + "/api/workspace")).status).toBe(401);
-			const post = (route: string, body: unknown) => fetch(url.origin + route, { method: "POST", headers, body: JSON.stringify(body) });
-			expect((await post("/api/backlogs", { op: "comment", id: item.ref, version: item.version, note: "From browser" })).status).toBe(200);
+			const post = (route: string, body: unknown) =>
+				fetch(url.origin + route, { method: "POST", headers, body: JSON.stringify(body) });
+			expect(
+				(await post("/api/backlogs", { op: "comment", id: item.ref, version: item.version, note: "From browser" }))
+					.status,
+			).toBe(200);
 			expect(store.comments(item.ref)[0].author).toBe("user");
 			const sent = await post("/api/workspace", { id: "http-1", action: "message", to: "worker", text: "Hello" });
 			expect(await sent.json()).toMatchObject({ receipt: { status: "accepted" } });
 			expect((await post("/api/workspace", { id: "bad", action: "shell", text: "anything" })).status).toBe(400);
 			expect((await fetch(url.origin + "/api/audit", { headers })).status).toBe(200);
-		} finally { await web.close(); }
+		} finally {
+			await web.close();
+		}
 	});
 	it("redacts credentials from historical audit reads and pages without overlap", () => {
 		const item = add();
@@ -141,5 +208,4 @@ describe("workspace data and commands", () => {
 		expect(store.get(item.ref)?.assignee).toBe("holder");
 		expect(store.comments(item.ref)[0].text).toBe("Keep the owner");
 	});
-
 });

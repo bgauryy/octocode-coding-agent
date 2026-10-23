@@ -109,7 +109,7 @@ describe("untrusted text framing", () => {
 				return undefined;
 			},
 		} as never);
-		mail.createdForUser(7);
+		mail.createdForUser(7, "mine", [message().to]);
 		mail.deliver(
 			[
 				message({ id: 7, from: "user", text: "mine" }),
@@ -220,7 +220,7 @@ describe("the user's message to a subagent", () => {
 			} as never,
 			() => secret,
 		);
-		mail.createdForUser(5);
+		mail.createdForUser(5, "stale id", [message().to]);
 		mail.deliver([message({ id: 5, from: "peer-1111", text: "stale id" })], undefined);
 		expect(sent[0]).not.toContain("from the user at");
 		expect(sent[0]).toContain("<<<untrusted-");

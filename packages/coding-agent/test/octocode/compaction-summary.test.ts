@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 
 const savedTexts = vi.hoisted(() => [] as string[]);
 vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
-	...await original<typeof import("../../src/octocode/shared/spill.ts")>(),
-	saveFullOutput: (text: string) => { savedTexts.push(text); return `/checkpoint-${savedTexts.length}.txt`; },
+	...(await original<typeof import("../../src/octocode/shared/spill.ts")>()),
+	saveFullOutput: (text: string) => {
+		savedTexts.push(text);
+		return `/checkpoint-${savedTexts.length}.txt`;
+	},
 }));
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
@@ -132,11 +135,7 @@ describe("compaction summary", () => {
 		expect(notes).toHaveLength(1);
 		expect(notices).toEqual([]);
 		expect(
-			await writeSummary(
-				pi,
-				event(),
-				ctx({ id: "m", provider: "p", api: "x", maxTokens: 100, contextWindow: 1000 }),
-			),
+			await writeSummary(pi, event(), ctx({ id: "m", provider: "p", api: "x", maxTokens: 100, contextWindow: 1000 })),
 		).toBeUndefined();
 		expect(notices.at(-1)).toMatch(/compaction summary failed .*Octocode writes its default summary/);
 		expect(notes).toHaveLength(2);
@@ -199,12 +198,14 @@ describe("compaction summary", () => {
 		const section = userMessagesSection([], 0, [long]);
 		expect(section).toContain("Complete text saved at");
 		expect(savedTexts.at(-1)).toContain(long);
-		const many = Array.from({length:20}, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
+		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
 		const kept = userMessagesSection(["older kept"], 4, many);
 		expect(kept.length).toBeLessThanOrEqual(USER_MESSAGES_CHARS);
 		for (const message of ["older kept", ...many]) expect(savedTexts.at(-1)).toContain(message);
 		expect(splitSummary(kept).omitted).toBe(4);
-		expect(splitSummary(userMessagesSection([], 0, ["a </user-message> b"])).messages).toEqual(["a <\\/user-message> b"]);
+		expect(splitSummary(userMessagesSection([], 0, ["a </user-message> b"])).messages).toEqual([
+			"a <\\/user-message> b",
+		]);
 		expect(userMessagesSection([], 0, [])).toBe("");
 	});
 
@@ -229,7 +230,7 @@ describe("compaction summary", () => {
 
 	it("preserves the existing archive provenance when replacing a collection with a durable reference", () => {
 		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
-		const section = userMessagesSection([], 2, many, {total:USER_MESSAGES_CHARS,perMessage:USER_MESSAGE_CHARS}, 4);
+		const section = userMessagesSection([], 2, many, { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS }, 4);
 		expect(section).toContain("Complete text saved at");
 		expect(savedTexts.at(-1)).toContain("the archive (segment 4 and earlier) has them");
 		for (const message of many) expect(savedTexts.at(-1)).toContain(message);

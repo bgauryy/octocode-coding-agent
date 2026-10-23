@@ -36,10 +36,16 @@ export interface ConsumeSseOptions {
 	onId?(id: string): void;
 	/** Called for every valid `retry` field, in milliseconds. */
 	onRetry?(delayMs: number): void;
+	/** Stops reading and cancels the body, for example when the request this stream answers was cancelled. */
+	signal?: AbortSignal;
 }
 
 export async function consumeSseStream(stream: ReadableStream<Uint8Array>, options: ConsumeSseOptions): Promise<void> {
 	const reader = stream.getReader();
+	const onAbort = () => void reader.cancel().catch(() => {});
+	if (options.signal?.aborted) onAbort();
+	options.signal?.addEventListener("abort", onAbort, { once: true });
+	let finished = false;
 	const decoder = new TextDecoder();
 	let buffered = "";
 	let eventName: string | undefined;
@@ -97,13 +103,16 @@ export async function consumeSseStream(stream: ReadableStream<Uint8Array>, optio
 				buffered = buffered.slice(newline + 1);
 				newline = buffered.indexOf("\n");
 			}
-			if (Buffer.byteLength(buffered) > maxEventBytes)
-				throw new Error(`MCP SSE event exceeds ${maxEventBytes} bytes`);
+			if (Buffer.byteLength(buffered) > maxEventBytes) throw new Error(`MCP SSE event exceeds ${maxEventBytes} bytes`);
 		}
 		buffered += decoder.decode();
 		if (buffered) processLine(buffered);
 		dispatch();
+		finished = true;
 	} finally {
+		options.signal?.removeEventListener("abort", onAbort);
+		// Stopping early (an error, a rejected event) must release the body and its connection.
+		if (!finished) await reader.cancel().catch(() => {});
 		reader.releaseLock();
 	}
 }
@@ -176,6 +185,33 @@ function isTransientStatus(status: number): boolean {
 
 function discard(response: Response): Promise<void> {
 	return response.body?.cancel().catch(() => {}) ?? Promise.resolve();
+}
+
+/**
+ * The body as text, reading at most `maxBytes`: a longer body is cancelled, then refused, or cut at the limit with
+ * `truncate`. A plain `response.text()` would buffer whatever the server sends.
+ */
+async function readText(response: Response, maxBytes: number, truncate = false): Promise<string> {
+	if (!response.body) return "";
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (size + value.byteLength > maxBytes) {
+				if (!truncate) throw new Error(`MCP HTTP response exceeds ${maxBytes} bytes`);
+				chunks.push(value.subarray(0, maxBytes - size));
+				break;
+			}
+			chunks.push(value);
+			size += value.byteLength;
+		}
+	} finally {
+		reader.cancel().catch(() => {});
+	}
+	return Buffer.concat(chunks).toString("utf8");
 }
 
 function describeHttpFailure(status: number, body: string): string {
@@ -253,12 +289,14 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 		}
 		const type = contentType(response);
 		if (type === "application/json") {
-			const body: unknown = await response.json();
+			const body: unknown = JSON.parse(
+				await readText(response, this.options.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES),
+			);
 			for (const item of Array.isArray(body) ? body : [body]) this.emitMessage(parseJsonRpcMessage(item));
 			return;
 		}
 		if (type === "text/event-stream" && response.body) {
-			void this.consumeResponseStream(response.body, message.id);
+			void this.consumeResponseStream(response.body, message.id, signal);
 			return;
 		}
 		await discard(response);
@@ -338,7 +376,7 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 
 	private async checkResponse(response: Response): Promise<void> {
 		if (response.ok) return;
-		const body = (await response.text().catch(() => "")).slice(0, MAX_ERROR_BODY_BYTES);
+		const body = await readText(response, MAX_ERROR_BODY_BYTES, true).catch(() => "");
 		if (response.status === 401) throw new McpAuthRequiredError(response, body);
 		if (response.status === 404 && this.sessionIdValue) throw new McpSessionExpiredError(body);
 		throw new McpHttpError(response.status, describeHttpFailure(response.status, body), body);
@@ -348,8 +386,10 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 		stream: ReadableStream<Uint8Array>,
 		cursor: StreamCursor,
 		onMessage?: (message: JsonRpcMessage) => void,
+		signal?: AbortSignal,
 	): Promise<void> {
 		await consumeSseStream(stream, {
+			signal,
 			maxEventBytes: this.options.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES,
 			onId: (id) => {
 				cursor.lastEventId = id;
@@ -379,7 +419,11 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 	 * arrives and the server assigned event IDs, resume it with GET and `Last-Event-ID`, as the
 	 * server may close response streams at will. Otherwise only this request fails.
 	 */
-	private async consumeResponseStream(body: ReadableStream<Uint8Array>, requestId: JsonRpcId): Promise<void> {
+	private async consumeResponseStream(
+		body: ReadableStream<Uint8Array>,
+		requestId: JsonRpcId,
+		signal?: AbortSignal,
+	): Promise<void> {
 		const cursor: StreamCursor = { lastEventId: undefined, retryMs: undefined, received: false };
 		let answered = false;
 		const onMessage = (message: JsonRpcMessage) => {
@@ -387,16 +431,17 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 		};
 		let stream: ReadableStream<Uint8Array> | undefined = body;
 		let failure: unknown;
-		for (let attempt = 0; ; ) {
+		for (let attempt = 0; ;) {
 			if (stream) {
 				try {
-					await this.consumeSse(stream, cursor, onMessage);
+					await this.consumeSse(stream, cursor, onMessage, signal);
 					failure = undefined;
 				} catch (error) {
 					failure = error;
 				}
 			}
-			if (answered || this.closed) return;
+			// A settled request (answered, timed out or cancelled) needs neither this stream nor a resumption.
+			if (answered || this.closed || signal?.aborted) return;
 			if (failure !== undefined && !this.isRetryable(failure)) break;
 			if (cursor.lastEventId === undefined || attempt >= this.maxRetries()) break;
 			if (cursor.received) attempt = 0;
@@ -428,7 +473,7 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 	/** Keep the server-to-client stream open, reconnecting with backoff when it drops. */
 	private async runGetStream(): Promise<void> {
 		const cursor: StreamCursor = { lastEventId: undefined, retryMs: undefined, received: false };
-		for (let attempt = 0; !this.closed; ) {
+		for (let attempt = 0; !this.closed;) {
 			try {
 				const stream = await this.openSseStream(cursor.lastEventId);
 				// The server does not offer a GET stream.

@@ -70,9 +70,9 @@ describe("JSONL share export", () => {
 				.trim()
 				.split("\n")
 				.map((line) => JSON.parse(line) as Record<string, unknown>);
-			expect(
-				normalRecords.some((record) => record.type === "custom" && record.customType === "octocode.share"),
-			).toBe(false);
+			expect(normalRecords.some((record) => record.type === "custom" && record.customType === "octocode.share")).toBe(
+				false,
+			);
 
 			const sharePath = join(tempDir, "share.jsonl");
 			exportSessionToJsonl(session.sessionManager, sharePath, (parentId, timestamp) =>

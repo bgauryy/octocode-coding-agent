@@ -94,7 +94,9 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		guard.reader = unavailable ? CORE_READER : LOCAL_FETCH_READER;
 	});
 	const unregisterMcpReconnect = registerMcpReconnect(pi.events, "octocode", reconnectOctocodeMcp(octocodeMcp));
-	pi.on("session_shutdown", async () => { unregisterMcpReconnect(); });
+	pi.on("session_shutdown", async () => {
+		unregisterMcpReconnect();
+	});
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ pi, isSubagent, agent: () => team.id });
 	const annotations = (name: string) => pi.getAllTools().find((tool) => tool.name === name)?.annotations;
@@ -118,17 +120,19 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		const reads = await completedLocalReads(snapshots, event.structuredContent, ctx.cwd);
 		if (reads.length) return { details: { ...details, localReads: reads } };
 	});
-	pi.on("session_shutdown", () => { localReads.clear(); });
+	pi.on("session_shutdown", () => {
+		localReads.clear();
+	});
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	pi.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 
 	guard.reservedBy = (file) => team.reservation(file, file);
 	const checkpoints = new Checkpoints();
 	registerFileTool(pi, guard, permission, checkpoints, {
- enabled: (input,cwd) => hooks.hasFilePermissionRequest(input,cwd),
- committed: (id,input) => hooks.fileInputCommitted(id,input),
- refresh: ctx => sourcePolicy.refresh(ctx),
- });
+		enabled: (input, cwd) => hooks.hasFilePermissionRequest(input, cwd),
+		committed: (id, input) => hooks.fileInputCommitted(id, input),
+		refresh: (ctx) => sourcePolicy.refresh(ctx),
+	});
 	// Octocode's bash with a foreground deadline and background jobs.
 	const jobs = registerBashTool(pi, commands);
 	let agents: AgentControl | undefined;
@@ -158,14 +162,21 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		isSubagent,
 		filesChanged: () => new Set(checkpoints.list().map((entry) => entry.path)).size,
 	});
-	const workspace = isSubagent ? undefined : new WorkspaceRuntime(pi, {
-		application: (ctx) => getApplicationPortForSession(ctx.sessionManager.getSessionId()),
-		members: () => team.members(),
-		traffic: () => team.snapshot().traffic,
-		tell: (to, text, signal) => team.send(to, text, { from: "user", signal }),
-		stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
+	const workspace = isSubagent
+		? undefined
+		: new WorkspaceRuntime(pi, {
+				application: (ctx) => getApplicationPortForSession(ctx.sessionManager.getSessionId()),
+				members: () => team.members(),
+				traffic: () => team.snapshot().traffic,
+				tell: (to, text, signal) => team.send(to, text, { from: "user", signal }),
+				stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
+			});
+	const openWorkspace = registerBacklog(pi, {
+		commands,
+		isSubagent,
+		agentId: () => team.id,
+		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
-	const openWorkspace = registerBacklog(pi, { commands, isSubagent, agentId: () => team.id, openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)) });
 	if (!isSubagent) commands.add("web", webCommand(openWorkspace));
 	registerMemory(pi, { commands, isSubagent, permission });
 	const skillCount = () => pi.getCommands().filter((command) => command.source === "skill").length;
@@ -174,18 +185,26 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		description: "status — list loaded skills and MCP connection status",
 		dialog: "interaction",
 		handler: async (_args, ctx) => {
-			const skills = pi.getCommands().filter((command) => command.source === "skill")
+			const skills = pi
+				.getCommands()
+				.filter((command) => command.source === "skill")
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const servers = getMcpSessionStatus(pi.events);
-			say(ctx, [
-				`Skills (${skills.length})`,
-				...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
-				`MCPs (${servers.length})`,
-				...(servers.length ? servers.map((server) =>
-					`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.source}`,
-				) : ["  none"]),
-				"Configure servers with /mcp.",
-			].join("\n"));
+			say(
+				ctx,
+				[
+					`Skills (${skills.length})`,
+					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
+					`MCPs (${servers.length})`,
+					...(servers.length
+						? servers.map(
+								(server) =>
+									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.source}`,
+							)
+						: ["  none"]),
+					"Configure servers with /mcp.",
+				].join("\n"),
+			);
 		},
 	});
 	registerWebTool(pi, permission);
@@ -219,18 +238,29 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	// Every call a permission check lets through (full mode asks nothing) shows as a short line while its tool runs.
 	permission.onAction((event) => activity.consequential(event.action, event.what, event.warn));
 	const turn = registerTurnSetup(pi, { isSubagent, profiles: () => profiles, octocode: octocodeMcp });
-	const hooks = registerHooks(pi, process.env, undefined, (what, note, allowed) =>
-		permission.noted(what, note, { allowed, via: "hook" }),
-		() => ({ permissionMode: permission.mode, agentName: process.env[AGENT_ID_ENV], agentType: process.env[AGENT_ROLE_ENV] }),
+	const hooks = registerHooks(
+		pi,
+		process.env,
+		undefined,
+		(what, note, allowed) => permission.noted(what, note, { allowed, via: "hook" }),
+		() => ({
+			permissionMode: permission.mode,
+			agentName: process.env[AGENT_ID_ENV],
+			agentType: process.env[AGENT_ROLE_ENV],
+		}),
 	);
-	const sourcePolicy = registerSourcePolicy(pi, process.env, undefined, () => permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected));
+	const sourcePolicy = registerSourcePolicy(pi, process.env, undefined, () =>
+		permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected),
+	);
 	if (sourcePolicy.enabled) permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected);
-	permission.setResolver((ctx, invocation, signal) => hooks.permissionRequest(invocation, ctx as ExtensionContext, signal));
- permission.setUpdateHandler(async (ctx, updates, signal) => {
-  await sourcePolicy.refresh(ctx as ExtensionContext);
-  signal.throwIfAborted();
-  return sourcePolicy.prepareUpdates(ctx as ExtensionContext, updates);
- });
+	permission.setResolver((ctx, invocation, signal) =>
+		hooks.permissionRequest(invocation, ctx as ExtensionContext, signal),
+	);
+	permission.setUpdateHandler(async (ctx, updates, signal) => {
+		await sourcePolicy.refresh(ctx as ExtensionContext);
+		signal.throwIfAborted();
+		return sourcePolicy.prepareUpdates(ctx as ExtensionContext, updates);
+	});
 	const beforeMessage = async (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => {
 		const verdict = await hooks.messageSend(message, signal ? { ...ctx, signal } : ctx);
 		if (verdict?.block) {
@@ -251,23 +281,28 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	};
 	team.setMessageHook(beforeMessage);
 	if (!isSubagent) {
-		external = registerExternal(pi, commands, {
-			sender: (ctx) => team.id ?? ctx.sessionManager.getSessionId(),
-			beforeSend: beforeMessage,
-			afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
-			authorize: async (input, ctx, signal) => {
-				const checked = await permission.check(ctx, {
-					action: "agent.spawn",
-					title: input.action === "connect" ? "Connect this external agent?" : "Send this external prompt?",
-					what: [JSON.stringify(input)],
-					cwd: input.cwd ?? ctx.cwd,
-					signal,
-					effect: "The external agent uses its own credentials, tools and permission policy.",
-				});
-				if (!checked.allowed) throw new Error(checked.message);
+		external = registerExternal(
+			pi,
+			commands,
+			{
+				sender: (ctx) => team.id ?? ctx.sessionManager.getSessionId(),
+				beforeSend: beforeMessage,
+				afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
+				authorize: async (input, ctx, signal) => {
+					const checked = await permission.check(ctx, {
+						action: "agent.spawn",
+						title: input.action === "connect" ? "Connect this external agent?" : "Send this external prompt?",
+						what: [JSON.stringify(input)],
+						cwd: input.cwd ?? ctx.cwd,
+						signal,
+						effect: "The external agent uses its own credentials, tools and permission policy.",
+					});
+					if (!checked.allowed) throw new Error(checked.message);
+				},
+				permission: externalPermissionDialog,
 			},
-			permission: externalPermissionDialog,
-		}, agentTool.collect);
+			agentTool.collect,
+		);
 		permission.onRevoke(() => {
 			void external?.reset();
 		});
@@ -354,8 +389,8 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 				provenance,
 				annotations,
 				replacement: {
-					definition: name => pi.getAllTools().find(tool => tool.name === name),
-					refresh: ctx => sourcePolicy.refresh(ctx),
+					definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
+					refresh: (ctx) => sourcePolicy.refresh(ctx),
 					reserved: collab.reservationGate,
 				},
 			})(agentOperation(event), ctx, prior, event),
@@ -430,7 +465,8 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 			`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
 			`Skills: ${skillCount()}`,
 			`Hooks: ${hooks.summary()}`,
-			"Commands: /permissions, /agents, /hooks, /memory, /backlog, /resume, /mcp",
+			// The registered commands, so a child session lists only its own; `/mcp` belongs to the MCP extension.
+			`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,
 		].join("\n");
 	});
 }

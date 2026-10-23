@@ -21,26 +21,50 @@ describe("buildSystemPrompt", () => {
 		expect(trimmed).toContain("<rules>");
 	});
 
-	test.each(["localSearch", "localSearchCode", "structureSearch", "astSearch", "lspSearch", "localFindFiles", "localViewStructure"])("does not redirect %s searches to the shell", (name) => {
-		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash", `mcp__octocode__${name}`], contextFiles: [], skills: [] });
+	test.each([
+		"localSearch",
+		"localSearchCode",
+		"structureSearch",
+		"astSearch",
+		"lspSearch",
+		"localFindFiles",
+		"localViewStructure",
+	])("does not redirect %s searches to the shell", (name) => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			selectedTools: ["bash", `mcp__octocode__${name}`],
+			contextFiles: [],
+			skills: [],
+		});
 		expect(prompt).not.toContain("Use bash for file operations");
 	});
 
 	test("counts search tools that tool_search can load, so loading one keeps the rules unchanged", () => {
 		const base = { cwd: "/tmp", contextFiles: [], skills: [] };
-		const deferred = buildSystemPrompt({ ...base, selectedTools: ["bash", "tool_search"], deferredTools: ["mcp__octocode__localSearch"] });
+		const deferred = buildSystemPrompt({
+			...base,
+			selectedTools: ["bash", "tool_search"],
+			deferredTools: ["mcp__octocode__localSearch"],
+		});
 		expect(deferred).not.toContain("Use bash for file operations");
-		const loaded = buildSystemPrompt({ ...base, selectedTools: ["bash", "tool_search", "mcp__octocode__localSearch"], deferredTools: [] });
+		const loaded = buildSystemPrompt({
+			...base,
+			selectedTools: ["bash", "tool_search", "mcp__octocode__localSearch"],
+			deferredTools: [],
+		});
 		expect(loaded.match(/<rules>[\s\S]*<\/rules>/)?.[0]).toBe(deferred.match(/<rules>[\s\S]*<\/rules>/)?.[0]);
 		expect(buildSystemPrompt({ ...base, selectedTools: ["bash"] })).toContain("Use bash for file operations");
 	});
 
-	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])("loads skills through %s without read or bash", (reader) => {
-		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
-		expect(prompt).toContain("Use Octocode localFetch (or localGetFileContent)");
-		expect(prompt).toContain("/skills/test-skill/SKILL.md");
-		expect(prompt).not.toContain("Use the read tool");
-	});
+	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
+		"loads skills through %s without read or bash",
+		(reader) => {
+			const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
+			expect(prompt).toContain("Use Octocode localFetch (or localGetFileContent)");
+			expect(prompt).toContain("/skills/test-skill/SKILL.md");
+			expect(prompt).not.toContain("Use the read tool");
+		},
+	);
 
 	describe("empty tools", () => {
 		test("shows (none) for empty tools list", () => {

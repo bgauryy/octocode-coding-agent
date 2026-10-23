@@ -155,8 +155,7 @@ export function agentsCommand(
 			const space = prefix.indexOf(" ");
 			if (space === -1)
 				return (
-					wordCompletions(AGENTS_SUBCOMMANDS, prefix)?.map((item) => ({ ...item, value: `${item.value} ` })) ??
-					null
+					wordCompletions(AGENTS_SUBCOMMANDS, prefix)?.map((item) => ({ ...item, value: `${item.value} ` })) ?? null
 				);
 			const sub = prefix.slice(0, space);
 			const rest = prefix.slice(space + 1).trimStart();

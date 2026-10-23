@@ -251,6 +251,9 @@ export class McpClient {
 			this.instructionsValue = result.instructions;
 			transport.setProtocolVersion?.(result.protocolVersion);
 			await this.notifyInternal("notifications/initialized", undefined, true);
+			// close() may have run while the notification was being sent; it wins over finishing the connect.
+			if ((this.state as ClientState) === "closed")
+				throw new McpConnectionClosedError("MCP client closed while connecting");
 			this.state = "connected";
 			return result;
 		} catch (error) {
@@ -320,12 +323,7 @@ export class McpClient {
 
 	/** Every resource template, following `nextCursor` through all pages. */
 	async listResourceTemplates(options: McpRequestOptions = {}): Promise<ResourceTemplate[]> {
-		const templates = await this.listAll(
-			"resources/templates/list",
-			"resourceTemplates",
-			isResourceTemplate,
-			options,
-		);
+		const templates = await this.listAll("resources/templates/list", "resourceTemplates", isResourceTemplate, options);
 		return templates.map(toResourceTemplate);
 	}
 
@@ -377,8 +375,7 @@ export class McpClient {
 			const page = await this.listPage(method, key, isItem, cursor, options);
 			items.push(...page.items);
 			if (page.nextCursor === undefined) return items;
-			if (cursors.has(page.nextCursor))
-				throw new Error(`MCP ${method} returned duplicate cursor: ${page.nextCursor}`);
+			if (cursors.has(page.nextCursor)) throw new Error(`MCP ${method} returned duplicate cursor: ${page.nextCursor}`);
 			cursors.add(page.nextCursor);
 			cursor = page.nextCursor;
 		}

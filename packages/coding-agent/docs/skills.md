@@ -98,15 +98,17 @@ All public Octocode skills ship with the installed research CLI and are availabl
 
 Your configured, project, user, and Pi fallback skills take precedence over bundled skills with the same name. Existing symlink deduplication still applies. `--no-skills` disables automatic discovery, including the bundle; explicitly supplied skill paths still load. SDK embeddings setting `nativeFeatures: false` on `DefaultResourceLoader` do not load the Octocode bundle.
 
-Use the existing `skills` setting to disable bundled defaults, for example `"skills": ["!octocode-roast"]`, or `"skills": ["!octocode-*"]` for the collection. These patterns also apply to matching auto-discovered skills. A trusted project can override a global exclusion with an exact entry such as `"skills": ["+octocode-roast/SKILL.md"]`.
+Use the existing `skills` setting to disable bundled defaults, for example `"skills": ["!octocode-roast"]`, or `"skills": ["!octocode-*"]` for the collection. These patterns also apply to matching auto-discovered skills, including the native host folders below and skill folders that extensions add. A trusted project can override a global exclusion with an exact entry such as `"skills": ["+octocode-roast/SKILL.md"]`.
 
 Place the skill in your user or project skills directory. Directories containing `SKILL.md` are discovered recursively.
 
-Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists.
+Octocode also supports the Agent Skills locations `~/.agents/skills/` and `.agents/skills/`. Project `.agents/skills/` directories are discovered from the working directory through its ancestors, stopping at the repository root when one exists. From a subdirectory of a repository, the root's `.octocode/skills/` is loaded as a project folder as well, so it keeps precedence over user skills.
+
+Native sessions add the folders other agents use, so one install works everywhere: `~/.claude/skills/` without its `synced/` subtree, `$CODEX_HOME/skills/` (default `~/.codex/skills/`), and, after the project is trusted with `/trust`, `.claude/skills/` from the working directory up to the repository root. These host folders load after every folder above, so a same-name skill there loses with a collision warning. `OCTOCODE_EXTRA_SKILLS=0` turns them off.
 
 Extra user skill discovery honors `CLAUDE_CONFIG_DIR/skills` and `CODEX_HOME/skills` when those environment variables are set. Claude skills retain their description fallback, argument syntax and boolean parsing under a custom directory, including when discovery filters out the `synced/` subtree. Codex canonicalizes its selected home and requires it to exist. Missing or invalid selected homes do not fall back to another user profile; project roots and their trust checks are unchanged. These settings select local discovery paths, not vendor credentials or cloud connections.
 
-Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. See Settings and [Octocode Packages](packages.md) for additional locations.
+Octocode accepts some standalone Markdown skills, but a directory containing `SKILL.md` is the portable form and should be preferred. A standalone file without a `name` is named after the file, so `deploy.md` becomes `deploy`. In a Claude skills folder, standalone Markdown needs a `description` in frontmatter: notes such as a `README.md` are not loaded. See Settings and [Octocode Packages](packages.md) for additional locations.
 
 Project skills can instruct the model to run scripts or modify files. Review unfamiliar skills and their supporting files before granting project trust.
 
@@ -160,7 +162,7 @@ octocode --mode json --print --no-session --no-skills \
   "Prepare a release note for version 2.4: it fixes duplicate invoice emails."
 ```
 
-`--no-skills` suppresses automatic discovery, including extension-discovered skills, while the explicit `--skill` still loads. Inspect the effective skill list when evaluating an isolated skill. Use a skill appropriate to your test request and a configured model. In the JSON events, look for a completed file read of `SKILL.md`, reads of any required references, and an answer that follows the instructions. A statement that the agent will use the skill is not evidence of a successful read. Also test an unrelated request to check that it does not load the skill unnecessarily. Run each request in a fresh session and a disposable project when tools can modify files.
+`--no-skills` suppresses automatic discovery, including extension-discovered skills, while the explicit `--skill` still loads. A `--skill` path also wins a name collision: the installed skill with that name is skipped with a collision warning. Inspect the effective skill list when evaluating an isolated skill. Use a skill appropriate to your test request and a configured model. In the JSON events, look for a completed file read of `SKILL.md`, reads of any required references, and an answer that follows the instructions. A statement that the agent will use the skill is not evidence of a successful read. Also test an unrelated request to check that it does not load the skill unnecessarily. Run each request in a fresh session and a disposable project when tools can modify files.
 
 The initial system prompt carries skill metadata; file reads add the full instructions to conversation history. Compaction may summarize those reads, so retained skill metadata and paths allow the model to read them again. Do not assume that a skill body remains verbatim after compaction.
 

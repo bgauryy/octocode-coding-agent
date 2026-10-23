@@ -183,8 +183,9 @@ export class ChildRelay {
 		if (lines.length > 0) this.#host?.permission.relayNote(this.#who.id, lines.join("; "));
 	}
 
-	/** The child ended: the log gets the final counts of what was not recorded. */
+	/** The child ended: close any final buffered dialog and record the remaining audit counts. */
 	end(): void {
+		this.cancelAll();
 		this.#report();
 	}
 
@@ -229,10 +230,7 @@ export class ChildRelay {
 	/** `Subagent inky-kraken · implementer · fix login`: from the spawn, one line. */
 	#label(): string {
 		const { id, role, goal } = this.#who;
-		return headerText(
-			["Subagent", id, ...(role ? [`· ${role}`] : []), ...(goal ? [`· ${goal}`] : [])].join(" "),
-			200,
-		);
+		return headerText(["Subagent", id, ...(role ? [`· ${role}`] : []), ...(goal ? [`· ${goal}`] : [])].join(" "), 200);
 	}
 
 	#cancel(id: string): void {

@@ -44,7 +44,10 @@ const entries = [
 		"r1",
 	),
 	// Background researcher: done but named no outcome (non-compliant).
-	report({ id: "a2", profile: "researcher", status: "done", usage: usage(500, 100, 0, 0), firstTurnTokens: 15000 }, "r2"),
+	report(
+		{ id: "a2", profile: "researcher", status: "done", usage: usage(500, 100, 0, 0), firstTurnTokens: 15000 },
+		"r2",
+	),
 	// Background researcher: failed run.
 	report(
 		{

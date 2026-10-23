@@ -14,11 +14,7 @@ async function createTempDir(): Promise<string> {
 }
 
 afterEach(async () => {
-	await Promise.all(
-		tempDirs
-			.splice(0, tempDirs.length)
-			.map((dir) => rm(dir, { recursive: true, force: true })),
-	);
+	await Promise.all(tempDirs.splice(0, tempDirs.length).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("edit tool prepareArguments", () => {
@@ -87,16 +83,8 @@ describe("edit tool prepareArguments", () => {
 			newText: "after",
 		});
 
-		const result = await definition.execute(
-			"tool-1",
-			prepared,
-			undefined,
-			undefined,
-			{} as ExtensionToolContext,
-		);
-		expect(result.content).toEqual([
-			{ type: "text", text: "Successfully replaced 1 block(s) in legacy.txt." },
-		]);
+		const result = await definition.execute("tool-1", prepared, undefined, undefined, {} as ExtensionToolContext);
+		expect(result.content).toEqual([{ type: "text", text: "Successfully replaced 1 block(s) in legacy.txt." }]);
 		expect(await readFile(filePath, "utf8")).toBe("after\n");
 	});
 });
@@ -132,19 +120,11 @@ it("executes public replaceAll edits while preserving BOM and CRLF", async () =>
 	const filePath = join(dir, "all.txt");
 	await writeFile(filePath, "\uFEFFA\r\nA\r\n", "utf8");
 	const definition = createEditToolDefinition(dir);
-	expect(
-		definition.parameters.properties.edits.items.properties.replaceAll.type,
-	).toBe("boolean");
+	expect(definition.parameters.properties.edits.items.properties.replaceAll.type).toBe("boolean");
 	const prepared = definition.prepareArguments!({
 		path: "all.txt",
 		edits: [{ oldText: "A\n", newText: "B\n", replaceAll: true }],
 	});
-	await definition.execute(
-		"all-1",
-		prepared,
-		undefined,
-		undefined,
-		{} as ExtensionToolContext,
-	);
+	await definition.execute("all-1", prepared, undefined, undefined, {} as ExtensionToolContext);
 	expect(await readFile(filePath, "utf8")).toBe("\uFEFFB\r\nB\r\n");
 });

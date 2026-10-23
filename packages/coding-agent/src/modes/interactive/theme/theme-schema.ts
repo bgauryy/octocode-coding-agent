@@ -54,8 +54,7 @@ export const ThemeJsonSchema = Type.Object(
 		$schema: Type.Optional(Type.String({ description: "JSON schema reference" })),
 		name: Type.String({
 			pattern: "^[^/]+$",
-			description:
-				"Theme name. Must not contain '/' because it is reserved for automatic light/dark theme settings.",
+			description: "Theme name. Must not contain '/' because it is reserved for automatic light/dark theme settings.",
 		}),
 		appearance: Type.Optional(
 			Type.Union([Type.Literal("dark"), Type.Literal("light")], {

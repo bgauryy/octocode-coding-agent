@@ -22,11 +22,11 @@ import { tmp } from "./helpers.ts";
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
 
 describe("legacy direct child skill paths", () => {
- it("retains the direct launch path option independently of native resource snapshots", () => {
-  const files = ["/parent-only/release/SKILL.md"];
-  expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, files)).skills).toEqual(files);
-  expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, [])).noSkills).toBe(true);
- });
+	it("retains the direct launch path option independently of native resource snapshots", () => {
+		const files = ["/parent-only/release/SKILL.md"];
+		expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, files)).skills).toEqual(files);
+		expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, [])).noSkills).toBe(true);
+	});
 });
 
 describe("subagent permissions", () => {
@@ -106,7 +106,11 @@ describe("profile permissions", () => {
 		const { ctx, titles } = spawnCtx(["Allow once", "Allow once", "Deny"]);
 		permission.start(ctx);
 		const profile = parseProfile("x", text("[browser.control, net.private]"));
-		expect(await askSpawn(permission, ctx, profile, "look")).toEqual(["file.workspace", "browser.control", "net.private"]);
+		expect(await askSpawn(permission, ctx, profile, "look")).toEqual([
+			"file.workspace",
+			"browser.control",
+			"net.private",
+		]);
 		expect(titles).toHaveLength(1);
 		expect(titles[0]).toContain("permission it declares: browser.control");
 		expect(titles[0]).toContain("permission it declares: net.private");
@@ -115,7 +119,11 @@ describe("profile permissions", () => {
 		expect(await askSpawn(permission, ctx, profile, "look again")).toEqual(["browser.control", "net.private"]);
 		expect(titles).toHaveLength(1);
 		const edited = parseProfile("x", text("[browser.control, net.private]").replace("Browse.", "Browse more."));
-		expect(await askSpawn(permission, ctx, edited, "look")).toEqual(["file.workspace", "browser.control", "net.private"]);
+		expect(await askSpawn(permission, ctx, edited, "look")).toEqual([
+			"file.workspace",
+			"browser.control",
+			"net.private",
+		]);
 		expect(titles).toHaveLength(2);
 		permission.clearGrants();
 		await expect(askSpawn(permission, ctx, profile, "look")).rejects.toThrow(/denied starting a subagent/);
@@ -157,7 +165,9 @@ describe("subagents", () => {
 		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
 			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
 		);
-		expect(teamTask("Fix A", "main-1", [])).toMatch(/none yet; `agent` type `coordinate`, action `list` shows teammates that start later/);
+		expect(teamTask("Fix A", "main-1", [])).toMatch(
+			/none yet; `agent` type `coordinate`, action `list` shows teammates that start later/,
+		);
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1", collaborate: true }).OCTOCODE_AGENT_COLLABORATE).toBe("1");
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
@@ -184,10 +194,14 @@ describe("subagents", () => {
 		);
 		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe(true);
 		// Switches take YAML booleans only; a quoted string is refused rather than read as a guess.
-		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(/every specialist needs Octocode local research/);
+		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(
+			/every specialist needs Octocode local research/,
+		);
 		expect(parseProfile("x", "---\nvisibleBrowser: false\n---\nbody")).toMatchObject({ headless: true });
 		for (const value of ['"true"', '"false"', "1", "yes"])
-			expect(() => parseProfile("x", `---\nheadless: ${value}\n---\nbody`), value).toThrow(/headless must be true or false/);
+			expect(() => parseProfile("x", `---\nheadless: ${value}\n---\nbody`), value).toThrow(
+				/headless must be true or false/,
+			);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1" }).OCTOCODE_AGENT_COLLABORATE).toBeUndefined();
@@ -206,7 +220,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,file,agent,archive,tool_search,mcp__*",
+			tools: "read,grep,file,agent,archive,tool_search,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -225,7 +239,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,file,agent,archive,tool_search,mcp__*",
+			"read,grep,file,agent,archive,tool_search,mcp,mcp__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -260,7 +274,9 @@ describe("subagents", () => {
 	});
 
 	it("rejects programmatic profiles that disable the required local research", () => {
-		expect(() => buildAgentArgs({ name: "plain", description: "", prompt: "", mcp: false }, undefined, SESSION)).toThrow(/disables MCP/);
+		expect(() =>
+			buildAgentArgs({ name: "plain", description: "", prompt: "", mcp: false }, undefined, SESSION),
+		).toThrow(/disables MCP/);
 	});
 
 	it("maps excludeTools frontmatter to --exclude-tools", () => {
@@ -280,7 +296,7 @@ describe("subagents", () => {
 			"-e",
 			"builtin:tool-search",
 			"--tools",
-			["file", "agent", "archive", "tool_search", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
+			["file", "agent", "archive", "tool_search", "mcp", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
 			"--exclude-tools",
 			"browser,bash",
 		]);
@@ -371,6 +387,23 @@ describe("subagents", () => {
 		expect(slots.tryTake()).toBe(true);
 	});
 
+	it("does not strand a slot when progress reporting aborts before the waiter subscribes", async () => {
+		const slots = new Slots(() => 1);
+		await slots.take(undefined);
+		const controller = new AbortController();
+		const waiting = slots.take(controller.signal, () => controller.abort());
+		const result = await Promise.race([
+			waiting.then(
+				() => "acquired",
+				(error: Error) => error.message,
+			),
+			new Promise<string>((resolve) => setTimeout(() => resolve("still waiting"), 10)),
+		]);
+		expect(result).toBe("Cancelled while waiting for a subagent slot.");
+		slots.give();
+		expect(slots.tryTake()).toBe(true);
+	});
+
 	it("takes any task length, offers isolate, and registers /agents with kill and merge", async () => {
 		const tools: Array<{
 			name: string;
@@ -406,9 +439,7 @@ describe("subagents", () => {
 		const notes: string[] = [];
 		await commands.get("agents")!.handler("kill nobody-1", { ui: { notify: (text: string) => notes.push(text) } });
 		expect(notes[0]).toBe('No subagent "nobody-1". None is running.');
-		expect(subagentProcessEnv(undefined, {}, { id: "a-1", workspace: "/repo" }).OCTOCODE_TEAM_WORKSPACE).toBe(
-			"/repo",
-		);
+		expect(subagentProcessEnv(undefined, {}, { id: "a-1", workspace: "/repo" }).OCTOCODE_TEAM_WORKSPACE).toBe("/repo");
 	});
 
 	it("sums child model usage", () => {

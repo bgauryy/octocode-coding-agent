@@ -41,33 +41,30 @@ function setup(mode: "manual" | "workspace" | "full" = "manual", options: { snap
 }
 
 describe("the effect card", () => {
-	it.each(ACTION_CLASSES)(
-		"%s: shows effect, undo, why it asks and risk before what the agent says",
-		async (action) => {
-			const { permission, ctx, cwd, shown } = setup("manual");
-			const verdict = await permission.check(ctx, {
-				action,
-				title: "Do it?",
-				what: ["target"],
-				cwd,
-				purpose: "because I said so",
-			});
-			expect(verdict).toMatchObject({ allowed: true, via: "user" });
-			const lines = shown[0]!.title.split("\n");
-			const marks = ["▸ effect:", "▸ undo:", "▸ why it asks:", "▸ risk:"].map((mark) =>
-				lines.findIndex((line) => line.trimStart().startsWith(mark)),
-			);
-			expect(
-				marks.every((at) => at >= 0),
-				`${action}: ${lines.join(" / ")}`,
-			).toBe(true);
-			expect([...marks].sort((a, b) => a - b)).toEqual(marks);
-			expect(lines.at(-1)).toBe("  agent says (unverified): because I said so");
-			expect(Math.max(...marks)).toBeLessThan(lines.length - 1);
-			// The reason line is the class's own text.
-			expect(lines.some((line) => line.includes(actionWhy(action)))).toBe(true);
-		},
-	);
+	it.each(ACTION_CLASSES)("%s: shows effect, undo, why it asks and risk before what the agent says", async (action) => {
+		const { permission, ctx, cwd, shown } = setup("manual");
+		const verdict = await permission.check(ctx, {
+			action,
+			title: "Do it?",
+			what: ["target"],
+			cwd,
+			purpose: "because I said so",
+		});
+		expect(verdict).toMatchObject({ allowed: true, via: "user" });
+		const lines = shown[0]!.title.split("\n");
+		const marks = ["▸ effect:", "▸ undo:", "▸ why it asks:", "▸ risk:"].map((mark) =>
+			lines.findIndex((line) => line.trimStart().startsWith(mark)),
+		);
+		expect(
+			marks.every((at) => at >= 0),
+			`${action}: ${lines.join(" / ")}`,
+		).toBe(true);
+		expect([...marks].sort((a, b) => a - b)).toEqual(marks);
+		expect(lines.at(-1)).toBe("  agent says (unverified): because I said so");
+		expect(Math.max(...marks)).toBeLessThan(lines.length - 1);
+		// The reason line is the class's own text.
+		expect(lines.some((line) => line.includes(actionWhy(action)))).toBe(true);
+	});
 
 	it("gives every class reason text", () => {
 		for (const action of ACTION_CLASSES) expect(actionWhy(action).length, action).toBeGreaterThan(10);
@@ -181,10 +178,11 @@ describe("the audit", () => {
 	it("records one entry per effectful call in full, with no dialog for any class and the reasons it was run with", async () => {
 		const { permission, ctx, cwd, shown, audit } = setup("full");
 		for (const action of ACTION_CLASSES)
-			expect(
-				await permission.check(ctx, { action, title: "Do it?", what: ["x"], cwd, purpose: "p" }),
-				action,
-			).toEqual({ allowed: true, via: "mode", lasts: "call" });
+			expect(await permission.check(ctx, { action, title: "Do it?", what: ["x"], cwd, purpose: "p" }), action).toEqual({
+				allowed: true,
+				via: "mode",
+				lasts: "call",
+			});
 		await permission.check(ctx, {
 			action: "shell",
 			title: "Run?",

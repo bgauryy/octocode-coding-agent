@@ -75,7 +75,6 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			}),
 		);
 		const settingsManager = SettingsManager.inMemory({
-
 			retry: { enabled: false },
 			...(defaults ? { defaultTools: defaults } : {}),
 		});
@@ -99,7 +98,11 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				settingsManager,
 				sessionManager: SessionManager.inMemory(cwd),
 				customTools: [...LOCAL_RESEARCH_TOOLS, "mcp__example__lookup", "mcp__other__lookup"].map((name) => ({
-					name, label: name, description: name, defaultActive: false, parameters: Type.Object({}),
+					name,
+					label: name,
+					description: name,
+					defaultActive: false,
+					parameters: Type.Object({}),
 					execute: async () => ({ content: [], details: {} }),
 				})),
 				...(args.tools ? { tools: args.tools } : {}),
@@ -145,12 +148,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			const permission = fakePermission();
 			const check = vi.spyOn(permission, "check");
 			await expect(
-				askSpawn(
-					permission,
-					fakeCtx({ cwd: tmp() }),
-					{ name: "invalid", description: "", prompt: "", tools },
-					"task",
-				),
+				askSpawn(permission, fakeCtx({ cwd: tmp() }), { name: "invalid", description: "", prompt: "", tools }, "task"),
 			).rejects.toThrow(nativeError);
 			expect(check).not.toHaveBeenCalled();
 		},

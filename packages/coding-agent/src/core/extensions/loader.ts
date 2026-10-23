@@ -309,8 +309,11 @@ function createExtensionAPI(
 			if (typeof options?.handler !== "function") {
 				throw new Error(`Command "/${name}" registered by extension "${extension.path}" must define handler().`);
 			}
-			if (options.aliases !== undefined && (!Array.isArray(options.aliases) ||
-				options.aliases.some((alias) => typeof alias !== "string" || alias.length === 0 || /[\s/]/u.test(alias)))) {
+			if (
+				options.aliases !== undefined &&
+				(!Array.isArray(options.aliases) ||
+					options.aliases.some((alias) => typeof alias !== "string" || alias.length === 0 || /[\s/]/u.test(alias)))
+			) {
 				throw new Error(`Command "/${name}" aliases must be non-empty single tokens without slashes.`);
 			}
 			extension.commands.set(name, {
@@ -338,9 +341,7 @@ function createExtensionAPI(
 		): void {
 			assertActive();
 			if (options.default !== undefined && typeof options.default !== options.type) {
-				throw new Error(
-					`Invalid default for flag "${name}": expected ${options.type}, got ${typeof options.default}`,
-				);
+				throw new Error(`Invalid default for flag "${name}": expected ${options.type}, got ${typeof options.default}`);
 			}
 			extension.flags.set(name, { name, extensionPath: extension.path, ...options });
 			if (options.default !== undefined && !runtime.flagValues.has(name)) {
@@ -444,7 +445,8 @@ function createExtensionAPI(
 
 		setToolPolicy(allows) {
 			assertActive();
-			if (extension.sourceInfo.path !== NATIVE_FEATURE_PATH) throw new Error("Tool permission policy is owned by native features");
+			if (extension.sourceInfo.path !== NATIVE_FEATURE_PATH)
+				throw new Error("Tool permission policy is owned by native features");
 			runtime.setToolPolicy?.(allows);
 		},
 

@@ -22,13 +22,12 @@ describe("permission lifecycle", () => {
 	it("uses a new scoped grant for an already queued call without asking twice", async () => {
 		const { permission, ctx } = setup();
 		let answer!: (value: Answer) => void;
-		const dialog = vi.fn(
-			async (): Promise<Answer> =>
-				dialog.mock.calls.length === 1
-					? new Promise((resolve) => {
-							answer = resolve;
-						})
-					: undefined,
+		const dialog = vi.fn(async (): Promise<Answer> =>
+			dialog.mock.calls.length === 1
+				? new Promise((resolve) => {
+						answer = resolve;
+					})
+				: undefined,
 		);
 		const first = permission.check(ctx, request(), dialog);
 		const second = permission.check(ctx, request(), dialog);
@@ -75,10 +74,7 @@ describe("permission lifecycle", () => {
 		permission.setMode("manual", ctx);
 		expect(permission.grants()).toEqual([]);
 		expect(
-			await permission.check(
-				{ ...ctx, hasUI: false },
-				{ action: "file.outside", title: "Change?", what: ["/tmp/b"] },
-			),
+			await permission.check({ ...ctx, hasUI: false }, { action: "file.outside", title: "Change?", what: ["/tmp/b"] }),
 		).toMatchObject({ allowed: false, via: "headless" });
 	});
 

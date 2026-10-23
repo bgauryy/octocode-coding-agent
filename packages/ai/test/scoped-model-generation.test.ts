@@ -46,9 +46,7 @@ globalThis.fetch = async (input) => {
 				readFileSync(join(packageRoot, "src/providers/data", `${provider}.json`), "utf8"),
 			) as Record<string, Record<string, AnyModel>>;
 			const before = Object.values(groups).flatMap(Object.values);
-			const after = JSON.parse(
-				readFileSync(join(output, "providers", `${provider}.all.json`), "utf8"),
-			) as AnyModel[];
+			const after = JSON.parse(readFileSync(join(output, "providers", `${provider}.all.json`), "utf8")) as AnyModel[];
 			for (const model of before)
 				expect(after.find((entry) => entry.id === model.id && entry.type === model.type)).toEqual(model);
 			expect(after).toHaveLength(before.length + (provider === "opencode" ? 1 : 0));

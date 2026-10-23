@@ -76,7 +76,10 @@ const profiles = new Map<string, AgentProfile>([
 			model: "faux/model",
 		},
 	],
-	["browser", { name: "browser", description: "browser", prompt: "Drive the browser.", tools: "browser,web", headless: true }],
+	[
+		"browser",
+		{ name: "browser", description: "browser", prompt: "Drive the browser.", tools: "browser,web", headless: true },
+	],
 ]);
 
 /** Why profile files were refused when the profiles loaded, by file name (as `index.ts` collects them from `onSkip`). */
@@ -148,9 +151,7 @@ describe("subagent scratch sweep", () => {
 		fs.mkdirSync(fresh);
 		await s.fire("session_start", { type: "session_start" }, s.ctx);
 		await vi.waitFor(() =>
-			expect([dead, unowned, ...(started === undefined ? [] : [reused])].some((dir) => fs.existsSync(dir))).toBe(
-				false,
-			),
+			expect([dead, unowned, ...(started === undefined ? [] : [reused])].some((dir) => fs.existsSync(dir))).toBe(false),
 		);
 		expect(fs.existsSync(otherSession)).toBe(true);
 		expect(fs.existsSync(sameProcess)).toBe(true);
@@ -170,14 +171,34 @@ describe("agent tool with a scripted pi child", () => {
 	it("inherits the parent's skill files without rediscovery and rejects unknown selections before spawning", async () => {
 		const file = path.join(tmp(), "SKILL.md");
 		fs.writeFileSync(file, "---\nname: release\ndescription: Release notes\n---\nUse the house format.");
-		s.pi.getCommands = () => [{ name: "release", source: "skill", sourceInfo: {
-			path: file, source: "test", scope: "temporary", origin: "top-level",
-		} }];
-		s.pi.getSkillResourceSnapshot = (names) => captureSkillResourceSnapshot(loadSkills({cwd:s.ctx.cwd,agentDir:tmp(),skillPaths:[file],includeDefaults:false}), names, s.pi.getCommands());
+		s.pi.getCommands = () => [
+			{
+				name: "release",
+				source: "skill",
+				sourceInfo: {
+					path: file,
+					source: "test",
+					scope: "temporary",
+					origin: "top-level",
+				},
+			},
+		];
+		s.pi.getSkillResourceSnapshot = (names) =>
+			captureSkillResourceSnapshot(
+				loadSkills({ cwd: s.ctx.cwd, agentDir: tmp(), skillPaths: [file], includeDefaults: false }),
+				names,
+				s.pi.getCommands(),
+			);
 		const inherited = reportOf((await s.run({ task: "report back" })).content[0].text);
 		expect(inherited.args).toContain("--no-skills");
 		expect(inherited.args).not.toContain("--skill");
-		expect(inherited.skillResources.resources).toEqual([expect.objectContaining({visible:true,canonicalPath:fs.realpathSync(file),skill:expect.objectContaining({name:"release"})})]);
+		expect(inherited.skillResources.resources).toEqual([
+			expect.objectContaining({
+				visible: true,
+				canonicalPath: fs.realpathSync(file),
+				skill: expect.objectContaining({ name: "release" }),
+			}),
+		]);
 		expect(fs.existsSync(inherited.skillSnapshotFile)).toBe(false);
 		const empty = reportOf((await s.run({ task: "report back", skills: [] })).content[0].text);
 		expect(empty.args).toContain("--no-skills");
@@ -219,7 +240,7 @@ describe("agent tool with a scripted pi child", () => {
 				"--model",
 				"faux/model",
 				"--tools",
-				"read,bash,file,agent,archive,tool_search,mcp__*",
+				"read,bash,file,agent,archive,tool_search,mcp,mcp__*",
 				"--exclude-tools",
 				"browser",
 			]),
@@ -281,9 +302,7 @@ describe("agent tool with a scripted pi child", () => {
 		// The text already says it failed: no `Error:` in front of it.
 		expect(failed).toBe("  ⎿  Subagent x failed\n     detail");
 		expect(
-			rendered(
-				s.agent.renderCall({ task: "look\nmore", profile: "researcher", goal: "map the auth flow" }, theme, {}),
-			),
+			rendered(s.agent.renderCall({ task: "look\nmore", profile: "researcher", goal: "map the auth flow" }, theme, {})),
 		).toBe("○ Agent(map the auth flow)");
 		expect(
 			rendered(
@@ -350,7 +369,12 @@ describe("agent tool with a scripted pi child", () => {
 	it("passes the browser mode to each child without changing the shared profile or role instructions", async () => {
 		const facts = [];
 		for (const headless of [undefined, false, true]) {
-			facts.push(reportOf((await s.run({ task: "report back", profile: "browser", ...(headless === undefined ? {} : { headless }) })).content[0].text as string));
+			facts.push(
+				reportOf(
+					(await s.run({ task: "report back", profile: "browser", ...(headless === undefined ? {} : { headless }) }))
+						.content[0].text as string,
+				),
+			);
 		}
 		for (const [index, child] of facts.entries()) {
 			expect(child.browserVisible).toBe(index === 1 ? "1" : undefined);
@@ -364,7 +388,9 @@ describe("agent tool with a scripted pi child", () => {
 
 	it("rejects a browser mode on a non-browser profile before starting a child", async () => {
 		for (const profile of [undefined, "researcher"])
-			await expect(s.run({ task: "report back", profile, headless: false })).rejects.toThrow(/headless requires a browser-enabled profile/);
+			await expect(s.run({ task: "report back", profile, headless: false })).rejects.toThrow(
+				/headless requires a browser-enabled profile/,
+			);
 	});
 
 	it("names the parent's archive library in the child's task, once the parent has one, and not before", async () => {
@@ -588,9 +614,7 @@ describe("agent tool with a scripted pi child", () => {
 		expect(s.ctx.ui.notes.at(-1)).toEqual({ message: `Stopping ${id}…`, type: "info" });
 		await waiting;
 		await vi.waitFor(() => expect(s.sent.length).toBe(3), { timeout: 10_000 });
-		expect(s.sent[2]!.message.content).toBe(
-			`Background subagent ${id} (general: check things) cancelled by the user`,
-		);
+		expect(s.sent[2]!.message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2]!.message, { expanded: false }, theme))).toMatch(
 			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
@@ -663,8 +687,9 @@ describe("agent tool with a scripted pi child", () => {
 			cost: 0,
 			unpriced: false,
 		});
-		const first = store.send(id, [parentId], "Which database should the migration target?", { replyRequired: true })
-			.id!;
+		const first = store.send(id, [parentId], "Which database should the migration target?", {
+			replyRequired: true,
+		}).id!;
 		store.send(id, [parentId], "FYI: tests are slow", { replyRequired: false });
 		const second = store.send(id, [parentId], "Rename the column too?", { replyRequired: true }).id!;
 		return { store, parentId, first, second };
@@ -681,9 +706,7 @@ describe("agent tool with a scripted pi child", () => {
 			// The parent answers the first question; the second stays open. /agents shows the live count.
 			store.send(parentId, [id], "Postgres", { replyRequired: false, replyTo: first });
 			await s.commands.get("agents").handler("", s.ctx);
-			expect(s.ctx.ui.notes.at(-1)!.message).toMatch(
-				/\n {2}2 asks \(1 answered in \d+s, 1 unanswered\) to its parent/,
-			);
+			expect(s.ctx.ui.notes.at(-1)!.message).toMatch(/\n {2}2 asks \(1 answered in \d+s, 1 unanswered\) to its parent/);
 			fs.writeFileSync(gate, "");
 			await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
 		} finally {
@@ -797,7 +820,9 @@ describe("isolated subagents and /agents merge", () => {
 		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toMatch(/finished[\s\S]*changed no files/), {
 			timeout: 15_000,
 		});
-		await expect(s.run({ task: "fail isolated", isolate: true })).rejects.toThrow(/Subagent failed \(startup\): exited with code 3/);
+		await expect(s.run({ task: "fail isolated", isolate: true })).rejects.toThrow(
+			/Subagent failed \(startup\): exited with code 3/,
+		);
 		await s.emit("session_start", {}, s.ctx);
 	}, 60_000);
 });
@@ -848,10 +873,7 @@ describe("orphaned worktrees at session start", () => {
 		for (const worktree of [saved, stuck]) {
 			fs.writeFileSync(path.join(worktree.path, `${worktree.agentId}.txt`), "work\n");
 			const meta = `${worktree.path}.json`;
-			fs.writeFileSync(
-				meta,
-				JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }),
-			);
+			fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), owners: [{ pid: dead }] }));
 		}
 		fs.writeFileSync(path.join(git(stuck.path, "rev-parse", "--absolute-git-dir"), "index.lock"), "");
 		const s = setup(dir);
@@ -935,15 +957,7 @@ describe("runSubagent", () => {
 
 		it("stops what the child left in its process group before the run settles", async () => {
 			await withScript(holder, async (holderFile) => {
-				const outcome = await runSubagent(
-					"go",
-					[],
-					tmp(),
-					undefined,
-					{ id: "a-holder" },
-					undefined,
-					() => undefined,
-				);
+				const outcome = await runSubagent("go", [], tmp(), undefined, { id: "a-holder" }, undefined, () => undefined);
 				expect(outcome.text).toBe("DONE");
 				// The run has settled: the holder it left behind is already gone, so a worktree removal now races nothing.
 				expect(processAlive(Number(fs.readFileSync(holderFile, "utf8")))).toBe(false);
@@ -1169,17 +1183,7 @@ describe("subagent watchdog and exits", () => {
 				busy = resolve;
 				return undefined;
 			});
-			const run = runSubagent(
-				task,
-				[],
-				tmp(),
-				undefined,
-				{ id },
-				controller.signal,
-				() => busy(),
-				undefined,
-				limits,
-			);
+			const run = runSubagent(task, [], tmp(), undefined, { id }, controller.signal, () => busy(), undefined, limits);
 			const outcome = Promise.allSettled([run]);
 			await started;
 			await vi.advanceTimersByTimeAsync(ms);

@@ -50,9 +50,8 @@ export function injectedIds(entries: readonly unknown[]): Map<number, number | u
 		const updated = Array.isArray(details.updated) ? details.updated : [];
 		injections.push({
 			at,
-			ids: list.flatMap(
-				(id, index): Array<[number, number | undefined]> =>
-					typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
+			ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
+				typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
 			),
 		});
 	});

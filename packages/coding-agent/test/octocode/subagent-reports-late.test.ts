@@ -83,8 +83,7 @@ describe("late background reports", () => {
 		});
 		await f.emit("agent_settled", {}, ctx);
 		await vi.waitFor(
-			() =>
-				expect(f.sent.some((entry) => String(entry.message.content).includes("general-later finished"))).toBe(true),
+			() => expect(f.sent.some((entry) => String(entry.message.content).includes("general-later finished"))).toBe(true),
 			{ timeout: 5_000 },
 		);
 		await f.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }, ctx);

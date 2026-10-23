@@ -17,29 +17,90 @@ afterEach(() => {
 });
 
 it("keeps discovery and invocation aligned without shadowing templates or extensions", async () => {
-	const root = mkdtempSync(join(tmpdir(), "skill-commands-")); roots.push(root);
+	const root = mkdtempSync(join(tmpdir(), "skill-commands-"));
+	roots.push(root);
 	const skills: Skill[] = ["research", "review", "custom", "duplicate", "duplicate"].map((name, index) => {
-		const filePath = join(root, `${index}.md`); writeFileSync(filePath, `Body ${index}`);
-		return { name, filePath, description: name, baseDir: root, disableModelInvocation: false,
-			sourceInfo: createSyntheticSourceInfo(filePath, { source: "local", scope: "project", origin: "top-level", baseDir: root }) };
+		const filePath = join(root, `${index}.md`);
+		writeFileSync(filePath, `Body ${index}`);
+		return {
+			name,
+			filePath,
+			description: name,
+			baseDir: root,
+			disableModelInvocation: false,
+			sourceInfo: createSyntheticSourceInfo(filePath, {
+				source: "local",
+				scope: "project",
+				origin: "top-level",
+				baseDir: root,
+			}),
+		};
 	});
 	let api!: ExtensionAPI;
 	let extensionCalls = 0;
-	const extensionsResult = await createTestExtensionsResult([(pi) => {
-		api = pi;
-		pi.registerCommand("custom", { handler: async () => { extensionCalls++; } });
-	}], root);
+	const extensionsResult = await createTestExtensionsResult(
+		[
+			(pi) => {
+				api = pi;
+				pi.registerCommand("custom", {
+					handler: async () => {
+						extensionCalls++;
+					},
+				});
+			},
+		],
+		root,
+	);
 	const loader = createTestResourceLoader({ extensionsResult });
 	loader.getSkills = () => ({ skills, diagnostics: [] });
-	loader.getPrompts = () => ({ prompts: [{ name: "review", description: "Review", content: "Template $@", filePath: join(root, "review.md"), sourceInfo: skills[1].sourceInfo }, { name: "config", description: "Config", content: "Config $1", filePath: join(root, "config.md"), sourceInfo: skills[1].sourceInfo }], diagnostics: [] });
-	const harness = await createHarness({ resourceLoader: loader, settings: { enableSkillCommands: false } }); harnesses.push(harness);
+	loader.getPrompts = () => ({
+		prompts: [
+			{
+				name: "review",
+				description: "Review",
+				content: "Template $@",
+				filePath: join(root, "review.md"),
+				sourceInfo: skills[1].sourceInfo,
+			},
+			{
+				name: "config",
+				description: "Config",
+				content: "Config $1",
+				filePath: join(root, "config.md"),
+				sourceInfo: skills[1].sourceInfo,
+			},
+		],
+		diagnostics: [],
+	});
+	const harness = await createHarness({ resourceLoader: loader, settings: { enableSkillCommands: false } });
+	harnesses.push(harness);
 	await harness.session.bindExtensions({ mode: "rpc" });
-	expect(api.getCommands().filter((command) => command.source === "prompt").map((command) => command.name)).toEqual(["review", "prompt:config"]);
+	expect(
+		api
+			.getCommands()
+			.filter((command) => command.source === "prompt")
+			.map((command) => command.name),
+	).toEqual(["review", "prompt:config"]);
 	const discovered = api.getCommands().filter((command) => command.source === "skill");
-	expect(discovered.map((command) => command.name)).toEqual(["research", "skill:review", "skill:custom", "skill:duplicate:1", "skill:duplicate:2"]);
+	expect(discovered.map((command) => command.name)).toEqual([
+		"research",
+		"skill:review",
+		"skill:custom",
+		"skill:duplicate:1",
+		"skill:duplicate:2",
+	]);
 	expect(discovered[0].sourceInfo).toBe(skills[0].sourceInfo);
-	await harness.session.prompt("/custom arguments"); expect(extensionCalls).toBe(1);
-	for (const [command, expected] of [["/prompt:config \"quoted argument\"", "Config quoted argument"], ["/research\tkeep  two spaces", "Body 0"], ["/skill:research fallback", "Body 0"], ["/review argument", "Template argument"], ["/skill:review", "Body 1"], ["/skill:custom", "Body 2"], ["/skill:duplicate:2", "Body 4"]]) {
+	await harness.session.prompt("/custom arguments");
+	expect(extensionCalls).toBe(1);
+	for (const [command, expected] of [
+		['/prompt:config "quoted argument"', "Config quoted argument"],
+		["/research\tkeep  two spaces", "Body 0"],
+		["/skill:research fallback", "Body 0"],
+		["/review argument", "Template argument"],
+		["/skill:review", "Body 1"],
+		["/skill:custom", "Body 2"],
+		["/skill:duplicate:2", "Body 4"],
+	]) {
 		harness.setResponses([fauxAssistantMessage("done")]);
 		const before = harness.session.messages.length;
 		await harness.session.prompt(command);
@@ -49,5 +110,4 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 	}
 	await harness.session.steer('/prompt:config "steering argument"');
 	expect(harness.session.getSteeringMessages()).toEqual(["Config steering argument"]);
-
 });

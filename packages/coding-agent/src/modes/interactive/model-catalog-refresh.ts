@@ -1,6 +1,6 @@
 import type { ModelsRefreshResult } from "@octocodeai/octocode-ai";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
-import { raceWithAbortSignal } from "../../utils/abort.ts";
+import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 
 type ModelCatalogRuntime = Pick<ModelRuntime, "refresh">;
 

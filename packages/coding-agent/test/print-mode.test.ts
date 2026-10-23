@@ -140,6 +140,37 @@ describe("runPrintMode", () => {
 		expect(session.extensionRunner.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
 	});
 
+	it("returns non-zero in json mode when the run failed", async () => {
+		const runtimeHost = createRuntimeHost(
+			createAssistantMessage({ stopReason: "error", errorMessage: "provider failure" }),
+		);
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "json",
+			messages: ["hello"],
+		});
+		expect(exitCode).toBe(1);
+	});
+
+	it("returns non-zero when an earlier prompt failed and a later one succeeded", async () => {
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "unused" }));
+		const replies = [
+			createAssistantMessage({ stopReason: "error", errorMessage: "first failed" }),
+			createAssistantMessage({ text: "second ok" }),
+		];
+		runtimeHost.session.state.messages = [];
+		runtimeHost.session.prompt = vi.fn(async () => {
+			runtimeHost.session.state.messages.push(replies.shift()!);
+		});
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+			messages: ["one", "two"],
+		});
+		expect(exitCode).toBe(1);
+		expect(errorSpy).toHaveBeenCalledWith("first failed");
+	});
+
 	// #10799
 	it("warns on stderr and returns non-zero when the response was truncated", async () => {
 		const runtimeHost = createRuntimeHost(createAssistantMessage({ stopReason: "length" }));

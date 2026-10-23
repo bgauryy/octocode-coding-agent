@@ -13,16 +13,28 @@ describe("report delivery through the real session runtime", () => {
 		let pi!: ExtensionAPI;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
-		const harness = await createHarness({ sessionManager: manager, extensionFactories: [(api) => { pi = api; }] });
+		const harness = await createHarness({
+			sessionManager: manager,
+			extensionFactories: [
+				(api) => {
+					pi = api;
+				},
+			],
+		});
 		const errors: string[] = [];
 		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
 		const queue = new ReportQueue(pi, 60_000);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
-		const preparation = vi.spyOn(harness.session as unknown as { _prepareRun(): Promise<never> }, "_prepareRun")
+		const preparation = vi
+			.spyOn(harness.session as unknown as { _prepareRun(): Promise<never> }, "_prepareRun")
 			.mockRejectedValueOnce(new Error("preparation rejected"));
 		try {
-			queue.add({ content: "done: important result", details: { id: "worker", status: "done", summary: "Done" }, wake: true });
+			queue.add({
+				content: "done: important result",
+				details: { id: "worker", status: "done", summary: "Done" },
+				wake: true,
+			});
 			queue.flush();
 			await vi.waitFor(() => expect(errors).toContain("preparation rejected"));
 			queue.recorded();
@@ -31,7 +43,10 @@ describe("report delivery through the real session runtime", () => {
 			preparation.mockRestore();
 			harness.setResponses([fauxAssistantMessage("received")]);
 			// The live queue retries the rejected send without restarting or taking its saved claim.
-			await vi.waitFor(() => expect(harness.session.messages.some((message) => message.role === "assistant")).toBe(true), { timeout: 5000 });
+			await vi.waitFor(
+				() => expect(harness.session.messages.some((message) => message.role === "assistant")).toBe(true),
+				{ timeout: 5000 },
+			);
 			expect(manager.getEntries().filter((entry) => entry.type === "custom_message")).toHaveLength(1);
 			queue.recorded();
 			expect(fs.readdirSync(queue.pendingDir)).toEqual([]);
@@ -47,13 +62,24 @@ describe("report delivery through the real session runtime", () => {
 		let pi!: ExtensionAPI;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
-		const harness = await createHarness({ sessionManager: manager, extensionFactories: [(api) => { pi = api; }] });
+		const harness = await createHarness({
+			sessionManager: manager,
+			extensionFactories: [
+				(api) => {
+					pi = api;
+				},
+			],
+		});
 		await harness.session.bindExtensions({});
 		const queue = new ReportQueue(pi, 60_000);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
 		try {
-			queue.add({ content: "stopped result", details: { id: "worker", status: "stopped", summary: "Stopped" }, wake: false });
+			queue.add({
+				content: "stopped result",
+				details: { id: "worker", status: "stopped", summary: "Stopped" },
+				wake: false,
+			});
 			queue.flush();
 			expect(manager.getEntries().some((entry) => entry.type === "custom_message")).toBe(true);
 			expect(fs.existsSync(manager.getSessionFile()!)).toBe(false);

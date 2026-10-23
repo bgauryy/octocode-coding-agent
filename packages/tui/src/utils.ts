@@ -1019,6 +1019,24 @@ export function isPunctuationChar(char: string): boolean {
 	return PUNCTUATION_REGEX.test(char);
 }
 
+/**
+ * Split one grapheme wider than `width` (a base letter with many spacing marks) into code-point pieces that each fit.
+ * A single code point wider than `width` stays whole: it cannot be split further.
+ */
+export function splitWideGrapheme(grapheme: string, width: number): string[] {
+	const pieces: string[] = [];
+	let piece = "";
+	for (const codePoint of grapheme) {
+		if (piece && visibleWidth(piece + codePoint) > width) {
+			pieces.push(piece);
+			piece = "";
+		}
+		piece += codePoint;
+	}
+	if (piece) pieces.push(piece);
+	return pieces;
+}
+
 function breakLongWord(word: string, width: number, tracker: AnsiCodeTracker): string[] {
 	const lines: string[] = [];
 	let currentLine = tracker.getActiveCodes();
@@ -1045,7 +1063,8 @@ function breakLongWord(word: string, width: number, tracker: AnsiCodeTracker): s
 			// Segment this non-ANSI portion into graphemes
 			const textPortion = word.slice(i, end);
 			for (const seg of graphemeSegmenter.segment(textPortion)) {
-				segments.push({ type: "grapheme", value: seg.segment });
+				const pieces = visibleWidth(seg.segment) > width ? splitWideGrapheme(seg.segment, width) : [seg.segment];
+				for (const piece of pieces) segments.push({ type: "grapheme", value: piece });
 			}
 			i = end;
 		}
@@ -1351,11 +1370,7 @@ export function extractSegments(
 			// Include ANSI codes in their respective segments
 			if (currentCol < beforeEnd) {
 				pendingAnsiBefore += ansi.code;
-			} else if (
-				currentCol >= afterStart &&
-				currentCol < afterEnd &&
-				(afterStarted || ansi.code.startsWith("\x1b_"))
-			) {
+			} else if (currentCol >= afterStart && currentCol < afterEnd && (afterStarted || ansi.code.startsWith("\x1b_"))) {
 				// SGR codes are only included after "after" started (styling already prepended). Zero-width APC
 				// markers like CURSOR_MARKER are not tracked styling, so keep them at the boundary too.
 				after += ansi.code;

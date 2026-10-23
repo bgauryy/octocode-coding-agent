@@ -209,9 +209,7 @@ describe("places that run code later", () => {
 		]) {
 			expect(classify(call("write", { path: file, content: "x" }), ctx, noHints)?.action, file).toBe("file.outside");
 		}
-		expect(classify(call("write", { path: "src/app.ts", content: "x" }), ctx, noHints)?.action).toBe(
-			"file.workspace",
-		);
+		expect(classify(call("write", { path: "src/app.ts", content: "x" }), ctx, noHints)?.action).toBe("file.workspace");
 	});
 
 	it("resolves a dangling symlink to where a write through it would land", () => {
@@ -219,9 +217,7 @@ describe("places that run code later", () => {
 		const outside = path.join(tmp(), "not-yet.txt");
 		fs.symlinkSync(outside, path.join(cwd, "link.txt"));
 		expect(canonicalPath(path.join(cwd, "link.txt"))).toBe(canonicalPath(outside));
-		expect(classify(call("write", { path: "link.txt", content: "x" }), { cwd }, noHints)?.action).toBe(
-			"file.outside",
-		);
+		expect(classify(call("write", { path: "link.txt", content: "x" }), { cwd }, noHints)?.action).toBe("file.outside");
 		// A loop resolves without hanging.
 		fs.symlinkSync(path.join(cwd, "b"), path.join(cwd, "a"));
 		fs.symlinkSync(path.join(cwd, "a"), path.join(cwd, "b"));

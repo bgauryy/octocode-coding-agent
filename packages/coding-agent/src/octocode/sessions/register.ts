@@ -139,9 +139,15 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 		try {
 			work(index());
 		} catch (error) {
-			if (warned || !ctx.hasUI) return;
-			warned = true;
-			notify(ctx.ui, `Octocode session index unavailable: ${errorMessage(error)}`, "warning");
+			// A background git result can arrive after the host invalidates this
+			// context. The optional warning must not turn that failure into a rejection.
+			try {
+				if (warned || !ctx.hasUI) return;
+				warned = true;
+				notify(ctx.ui, `Octocode session index unavailable: ${errorMessage(error)}`, "warning");
+			} catch {
+				// The UI context was replaced while the background work completed.
+			}
 		}
 	};
 	/** Records where git stands now, without waiting for it. */

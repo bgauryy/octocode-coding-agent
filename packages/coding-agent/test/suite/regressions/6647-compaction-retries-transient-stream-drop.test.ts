@@ -36,7 +36,7 @@ describe("#6647 compaction retries transient summarization failures", () => {
 
 	function seedCompactableSession(harness: Harness): void {
 		const policy = harness.settingsManager.getCompactionSettings();
-	harness.settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
+		harness.settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 		const now = Date.now();
 		harness.sessionManager.appendMessage({
 			role: "user",

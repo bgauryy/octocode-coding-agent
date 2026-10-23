@@ -23,4 +23,3 @@ export function delegatePrompt(item: Item): string {
 		`Include this item id, saved goal, context and completion requirements in the subagent's task:\n${completion(item)}`
 	);
 }
-

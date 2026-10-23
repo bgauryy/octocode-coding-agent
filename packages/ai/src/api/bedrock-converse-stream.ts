@@ -73,6 +73,7 @@ import {
 	clampReasoning,
 } from "./simple-options.ts";
 import { splitErrorToolResultImages, transformMessages } from "./transform-messages.ts";
+import { resolveCacheRetention } from "../utils/cache-policy.ts";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
@@ -560,6 +561,11 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 		);
 
 		const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
+		const thinkingBudget = Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024));
+		// Budget-based Claude requires at least 1024 thinking tokens. If they cannot fit, answer without thinking.
+		if (thinkingBudget < 1024) {
+			return stream(model, context, { ...base, maxTokens, reasoning: undefined } satisfies BedrockOptions);
+		}
 
 		return stream(model, context, {
 			...base,
@@ -567,7 +573,7 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 			reasoning: options.reasoning,
 			thinkingBudgets: {
 				...(options.thinkingBudgets || {}),
-				[clampReasoning(options.reasoning)!]: Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024)),
+				[clampReasoning(options.reasoning)!]: thinkingBudget,
 			},
 		} satisfies BedrockOptions);
 	}
@@ -655,8 +661,7 @@ function handleContentBlockDelta(
 			// `thinkingSignature` holds either an Anthropic signature or an opaque redacted
 			// payload, never both: mixing them would corrupt whichever arrived first.
 			if (delta.reasoningContent.signature && !thinkingBlock.redacted) {
-				thinkingBlock.thinkingSignature =
-					(thinkingBlock.thinkingSignature || "") + delta.reasoningContent.signature;
+				thinkingBlock.thinkingSignature = (thinkingBlock.thinkingSignature || "") + delta.reasoningContent.signature;
 			}
 			if (delta.reasoningContent.redactedContent?.length) {
 				// Encrypted reasoning from non-Anthropic models on Bedrock (e.g. OpenAI GPT-5.6).
@@ -834,16 +839,6 @@ function mapThinkingLevelToEffort(
  * Resolve cache retention preference.
  * Defaults to "short" and uses OCTOCODE_CACHE_RETENTION for backward compatibility.
  */
-function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEnv): CacheRetention {
-	if (cacheRetention) {
-		return cacheRetention;
-	}
-	if (getProviderEnvValue("OCTOCODE_CACHE_RETENTION", env) === "long") {
-		return "long";
-	}
-	return "short";
-}
-
 /**
  * Check if the model is an Anthropic Claude model on Bedrock.
  * Checks both model ID and model name to support application inference profiles

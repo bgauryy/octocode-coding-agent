@@ -357,13 +357,17 @@ describe("Permission.check", () => {
 			shown += 1;
 			return "once" as const;
 		};
-		expect(
-			await permission.check(ctx, { action: "file.workspace", title: "Apply?", what: ["a.ts"] }, dialog),
-		).toEqual({ allowed: true, via: "user", lasts: "call" });
+		expect(await permission.check(ctx, { action: "file.workspace", title: "Apply?", what: ["a.ts"] }, dialog)).toEqual({
+			allowed: true,
+			via: "user",
+			lasts: "call",
+		});
 		permission.setMode("workspace", ctx);
-		expect(
-			await permission.check(ctx, { action: "file.workspace", title: "Apply?", what: ["a.ts"] }, dialog),
-		).toEqual({ allowed: true, via: "mode", lasts: "call" });
+		expect(await permission.check(ctx, { action: "file.workspace", title: "Apply?", what: ["a.ts"] }, dialog)).toEqual({
+			allowed: true,
+			via: "mode",
+			lasts: "call",
+		});
 		expect(shown).toBe(1);
 	});
 });

@@ -21,6 +21,7 @@ import type {
 	Usage,
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
+import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import {
 	appendAssistantMessageDiagnostic,
 	createAssistantMessageDiagnostic,
@@ -49,6 +50,7 @@ import {
 	processResponsesStream,
 } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
+import { sleepUnlessAborted } from "../utils/abort.ts";
 
 // ============================================================================
 // Configuration
@@ -180,18 +182,14 @@ function validateRetryDelayMs(delayMs: number, options?: StreamOptions): number 
 	return delayMs;
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (signal?.aborted) {
-			reject(new Error("Request was aborted"));
-			return;
-		}
-		const timeout = setTimeout(resolve, ms);
-		signal?.addEventListener("abort", () => {
-			clearTimeout(timeout);
-			reject(new Error("Request was aborted"));
-		});
-	});
+/** A final HTTP error from the Codex SSE endpoint, with its status (a 413 still reads as context overflow). */
+class CodexHttpError extends Error {
+	readonly status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "CodexHttpError";
+		this.status = status;
+	}
 }
 
 function normalizeTimeoutMs(value: number | undefined): number | undefined {
@@ -278,7 +276,8 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 				getDeclaredTools(normalizedContext.messages),
 				model.compat?.supportsOpenAIGrammarTools ?? false,
 			);
-			const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
+			const cacheSessionId =
+				resolveCacheRetention(options?.cacheRetention, options?.env) === "none" ? undefined : options?.sessionId;
 			const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);
 			let body = buildRequestBody(model, normalizedContext, options, codexSessionId, grammarToolInputProperties);
 			const nextBody = await options?.onPayload?.(body, model);
@@ -330,7 +329,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 							cacheSessionId,
 							accountId,
 							grammarToolInputProperties,
-							options,
+							{ ...options, transport },
 						);
 
 						if (options?.signal?.aborted) {
@@ -417,10 +416,12 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 					} finally {
 						combinedSignal.cleanup();
 					}
-					await options?.onResponse?.(
-						{ status: response.status, headers: headersToRecord(response.headers) },
-						model,
-					);
+					try {
+						await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+					} catch (error) {
+						await response.body?.cancel().catch(() => {});
+						throw new ProviderStreamEventCallbackError(error);
+					}
 
 					if (response.ok) {
 						break;
@@ -434,7 +435,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 								? BASE_DELAY_MS * 2 ** attempt
 								: validateRetryDelayMs(retryAfterDelayMs, options);
 
-						await sleep(delayMs, options?.signal);
+						await sleepUnlessAborted(delayMs, options?.signal, () => new Error("Request was aborted"));
 						continue;
 					}
 
@@ -444,8 +445,10 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						statusText: response.statusText,
 					});
 					const info = await parseErrorResponse(fakeResponse);
-					throw new Error(info.friendlyMessage || info.message);
+					throw new CodexHttpError(info.friendlyMessage || info.message, response.status);
 				} catch (error) {
+					// Final HTTP errors and caller hook failures must not resubmit the request.
+					if (error instanceof CodexHttpError || error instanceof ProviderStreamEventCallbackError) throw error;
 					if (error instanceof Error) {
 						if (error.name === "AbortError" || error.message === "Request was aborted") {
 							throw new Error("Request was aborted");
@@ -459,7 +462,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 						!lastError.message.includes("usage limit")
 					) {
 						const delayMs = BASE_DELAY_MS * 2 ** attempt;
-						await sleep(delayMs, options?.signal);
+						await sleepUnlessAborted(delayMs, options?.signal, () => new Error("Request was aborted"));
 						continue;
 					}
 					throw lastError;
@@ -789,9 +792,7 @@ async function* mapCodexEvents(
 			if (typeof response?.end_turn === "boolean") {
 				output.endTurn = response.end_turn;
 			}
-			const normalizedResponse = response
-				? { ...response, status: normalizeCodexStatus(response.status) }
-				: response;
+			const normalizedResponse = response ? { ...response, status: normalizeCodexStatus(response.status) } : response;
 			yield { ...event, type: "response.completed", response: normalizedResponse } as ResponseStreamEvent;
 			return;
 		}
@@ -815,6 +816,7 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
+	let dataLines: string[] = [];
 	const onAbort = () => {
 		void reader.cancel().catch(() => {});
 	};
@@ -830,20 +832,17 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 				throw new Error("Request was aborted");
 			}
 			buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-			// Treat EOF as terminating the residual SSE frame.
-			if (done && buffer.trim()) buffer += "\n\n";
-
-			let idx = buffer.indexOf("\n\n");
-			while (idx !== -1) {
-				const chunk = buffer.slice(0, idx);
-				buffer = buffer.slice(idx + 2);
-
-				const dataLines = chunk
-					.split("\n")
-					.filter((l) => l.startsWith("data:"))
-					.map((l) => l.slice(5).trim());
-				if (dataLines.length > 0) {
+			// Preserve compatibility with servers that omit the final blank line.
+			if (done) buffer += "\n\n";
+			for (;;) {
+				const end = buffer.search(/[\r\n]/);
+				// Wait for the next chunk before deciding whether a trailing CR begins CRLF.
+				if (end < 0 || (!done && end === buffer.length - 1 && buffer[end] === "\r")) break;
+				const line = buffer.slice(0, end);
+				buffer = buffer.slice(end + (buffer[end] === "\r" && buffer[end + 1] === "\n" ? 2 : 1));
+				if (line === "") {
 					const data = dataLines.join("\n").trim();
+					dataLines = [];
 					if (data && data !== "[DONE]") {
 						try {
 							yield JSON.parse(data) as Record<string, unknown>;
@@ -854,8 +853,9 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
 							});
 						}
 					}
+				} else if (line === "data" || line.startsWith("data:")) {
+					dataLines.push(line.slice(5).replace(/^ /, ""));
 				}
-				idx = buffer.indexOf("\n\n");
 			}
 
 			if (done) break;
@@ -897,6 +897,7 @@ interface CachedWebSocketContinuationState {
 
 interface CachedWebSocketConnection {
 	socket: WebSocketLike;
+	identity: string;
 	busy: boolean;
 	createdAt: number;
 	idleTimer?: ReturnType<typeof setTimeout>;
@@ -1186,6 +1187,12 @@ async function acquireWebSocket(
 		};
 	}
 
+	// A session/account can change endpoints, credentials, headers or proxy routing between turns.
+	const identity = JSON.stringify([
+		url,
+		[...headers.entries()].sort(([a], [b]) => a.localeCompare(b)),
+		resolveHttpProxyUrlForTarget(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:"), env)?.toString(),
+	]);
 	let accountEntries = websocketSessionCache.get(sessionId);
 	const cached = accountEntries?.get(accountId);
 	if (cached) {
@@ -1193,8 +1200,8 @@ async function acquireWebSocket(
 			clearTimeout(cached.idleTimer);
 			cached.idleTimer = undefined;
 		}
-		if (!cached.busy && isWebSocketSessionExpired(cached)) {
-			closeWebSocketSilently(cached.socket, 1000, "connection_age_limit");
+		if (!cached.busy && (isWebSocketSessionExpired(cached) || cached.identity !== identity)) {
+			closeWebSocketSilently(cached.socket, 1000, "connection_expired_or_changed");
 			accountEntries?.delete(accountId);
 			if (accountEntries?.size === 0) websocketSessionCache.delete(sessionId);
 		} else if (!cached.busy && isWebSocketReusable(cached.socket)) {
@@ -1234,7 +1241,7 @@ async function acquireWebSocket(
 	}
 
 	const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
-	const entry: CachedWebSocketConnection = { socket, busy: true, createdAt: Date.now() };
+	const entry: CachedWebSocketConnection = { socket, identity, busy: true, createdAt: Date.now() };
 	accountEntries = websocketSessionCache.get(sessionId);
 	if (!accountEntries) {
 		accountEntries = new Map();
@@ -1620,9 +1627,7 @@ async function parseErrorResponse(response: Response): Promise<{ message: string
 			const code = err.code || err.type || "";
 			if (/usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(code) || response.status === 429) {
 				const plan = err.plan_type ? ` (${err.plan_type.toLowerCase()} plan)` : "";
-				const mins = err.resets_at
-					? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000))
-					: undefined;
+				const mins = err.resets_at ? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000)) : undefined;
 				const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
 				friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
 			}

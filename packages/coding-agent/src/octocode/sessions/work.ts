@@ -63,11 +63,13 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 				...(log ? { log } : {}),
 			});
 		} else if (message.toolName === "agent" && details.status === "background" && typeof details.id === "string") {
-			const goal = typeof input.goal === "string" ? flatLine(input.goal) : "";
+			// The agent tool's arguments are `{type, input}`; sessions recorded before it keep them flat.
+			const task = isRecord(input.input) ? input.input : input;
+			const goal = typeof task.goal === "string" ? flatLine(task.goal) : "";
 			started.set(`agent:${details.id}`, {
 				kind: "agent",
 				id: details.id,
-				...(goal ? { label: goal, goal: true } : { label: flatLine(String(input.task ?? "")) }),
+				...(goal ? { label: goal, goal: true } : { label: flatLine(String(task.task ?? "")) }),
 			});
 		}
 	}
@@ -80,10 +82,6 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
  */
 export function describeWork(work: BackgroundWork, checkLog = true): string {
 	if (work.kind === "agent") return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}")`;
-	const log = work.log
-		? !checkLog || fs.existsSync(work.log)
-			? `, log ${tildePath(work.log)}`
-			: ", log deleted"
-		: "";
+	const log = work.log ? (!checkLog || fs.existsSync(work.log) ? `, log ${tildePath(work.log)}` : ", log deleted") : "";
 	return `${work.id} (\`${work.label}\`${log})`;
 }

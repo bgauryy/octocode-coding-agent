@@ -17,9 +17,7 @@ function setup(target: string, allowed = false) {
 	permission.start(ctx);
 	permission.setSourcePolicy(() => ({
 		decision: "allow",
-		shellTargets: [
-			{ kind: "write", path: target, raw: target, position: 0, allowed },
-		],
+		shellTargets: [{ kind: "write", path: target, raw: target, position: 0, allowed }],
 	}));
 	const invocation = captureToolInvocation("shell-one", "bash", {
 		command: `printf x > ${target}`,
@@ -54,10 +52,7 @@ it("uses one original invocation resolver for all target classes", async () => {
 	expect(resolver.mock.calls[0]?.[1]).toBe(request.invocation);
 });
 it("refuses state-folder writes before any hook even in full mode", async () => {
-	const { permission, ctx, request } = setup(
-		path.join(octocodeHome(), "trust.json"),
-		true,
-	);
+	const { permission, ctx, request } = setup(path.join(octocodeHome(), "trust.json"), true);
 	permission.setMode("full", ctx);
 	const resolver = vi.fn(async (..._args: unknown[]) => ({
 		decision: "allow" as const,
@@ -71,9 +66,10 @@ it("refuses state-folder writes before any hook even in full mode", async () => 
 });
 it("checks targets on user-authored requests without a primary action", async () => {
 	const { permission, ctx, request } = setup(path.join(tmp(), "out"));
-	expect(
-		await permission.check(ctx, { ...request, action: undefined }),
-	).toMatchObject({ allowed: false, via: "headless" });
+	expect(await permission.check(ctx, { ...request, action: undefined })).toMatchObject({
+		allowed: false,
+		via: "headless",
+	});
 });
 it("retains an explicit broad Bash allowance for ordinary outside targets", async () => {
 	const target = path.join(tmp(), "outside");
@@ -81,35 +77,28 @@ it("retains an explicit broad Bash allowance for ordinary outside targets", asyn
 	permission.setSourcePolicy(() => ({
 		decision: "allow",
 		shellBroadAllowance: true,
-		shellTargets: [
-			{ kind: "write", path: target, raw: target, position: 0, allowed: false },
-		],
+		shellTargets: [{ kind: "write", path: target, raw: target, position: 0, allowed: false }],
 	}));
 	expect(await permission.check(ctx, request)).toMatchObject({
 		allowed: true,
 		via: "policy",
 	});
 });
-it.each(["manual", "workspace", "full"] as const)(
-	"keeps unresolved targets explicit in %s mode",
-	async (mode) => {
-		const { permission, ctx, request } = setup("unknown");
-		permission.setMode(mode, ctx);
-		permission.setSourcePolicy(() => ({
-			decision: "allow",
-			shellBroadAllowance: true,
-			shellTargets: [
-				{
-					kind: "write",
-					raw: "$FILE",
-					uncertain: "dynamic target",
-					position: 0,
-					allowed: false,
-				},
-			],
-		}));
-		expect((await permission.check(ctx, request)).allowed).toBe(
-			mode === "full",
-		);
-	},
-);
+it.each(["manual", "workspace", "full"] as const)("keeps unresolved targets explicit in %s mode", async (mode) => {
+	const { permission, ctx, request } = setup("unknown");
+	permission.setMode(mode, ctx);
+	permission.setSourcePolicy(() => ({
+		decision: "allow",
+		shellBroadAllowance: true,
+		shellTargets: [
+			{
+				kind: "write",
+				raw: "$FILE",
+				uncertain: "dynamic target",
+				position: 0,
+				allowed: false,
+			},
+		],
+	}));
+	expect((await permission.check(ctx, request)).allowed).toBe(mode === "full");
+});

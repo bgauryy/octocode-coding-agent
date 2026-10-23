@@ -277,9 +277,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const toolListError = options.tools ? getToolListError(options.tools) : undefined;
 	if (toolListError) throw new Error(`Invalid tools option: ${toolListError}`);
 	const builtinDefaults = getDefaultToolNames(resourceLoader.getExtensions().extensions);
-	const defaultToolNames = options.noTools
-		? []
-		: (settingsManager.getDefaultTools(builtinDefaults) ?? builtinDefaults);
+	const defaultToolNames = options.noTools ? [] : (settingsManager.getDefaultTools(builtinDefaults) ?? builtinDefaults);
 	// A `tools` list of only `+name`/`-name` entries changes the default selection instead of
 	// replacing it, like the `defaultTools` setting.
 	const toolModifiers = options.tools?.some(isToolModifier) ? options.tools : undefined;
@@ -308,9 +306,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					const hasImages = content.some((c) => c.type === "image");
 					if (hasImages) {
 						const filteredContent = content
-							.map((c) =>
-								c.type === "image" ? { type: "text" as const, text: "Image reading is disabled." } : c,
-							)
+							.map((c) => (c.type === "image" ? { type: "text" as const, text: "Image reading is disabled." } : c))
 							.filter(
 								(c, i, arr) =>
 									// Dedupe consecutive "Image reading is disabled." texts
@@ -490,7 +486,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		allowedToolNames,
 		excludedToolNames,
 		extensionRunnerRef,
-		sessionStartEvent: options.sessionStartEvent ?? { type: "session_start", reason: resumedSession ? "resume" : "startup" },
+		sessionStartEvent: options.sessionStartEvent ?? {
+			type: "session_start",
+			reason: resumedSession ? "resume" : "startup",
+		},
 	});
 
 	const extensionsResult = resourceLoader.getExtensions();

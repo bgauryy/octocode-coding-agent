@@ -97,7 +97,12 @@ it("offers rewind counts from the current branch instead of a fixed list", async
 	const turns = vi.spyOn(checkpoints, "turnsOn").mockReturnValue([4, 3, 2, 1]);
 	registerCheckpoints(fake.pi, checkpoints, () => undefined, commands);
 	await fake.fire("session_start", {}, fakeCtx({ cwd: tmp() }));
-	expect(commands.complete("rewind ")?.map(item => item.value)).toEqual(["rewind 1", "rewind 2", "rewind 3", "rewind 4"]);
+	expect(commands.complete("rewind ")?.map((item) => item.value)).toEqual([
+		"rewind 1",
+		"rewind 2",
+		"rewind 3",
+		"rewind 4",
+	]);
 	turns.mockReturnValue([]);
 	expect(commands.complete("rewind ")).toBeNull();
 });

@@ -75,6 +75,14 @@ export function labelledRule(width: number, left: string, right: string, rule: (
 	return `${rule("─")}${l}${rule("─".repeat(gap))}${r}${rule("─")}`;
 }
 
+/** The top border's label: the `!` modes name themselves, so the tint is never their only signal. */
+export function promptLabel(text: string, theme: Paint): string {
+	const command = text.trimStart();
+	if (command.startsWith("!!")) return theme.fg("bashMode", " !! shell · no context ");
+	if (command.startsWith("!")) return theme.fg("bashMode", " ! shell ");
+	return theme.fg("accent", ` ${LABEL} `);
+}
+
 function borderTint(text: string, pi: (text: string) => string, theme: Paint): (text: string) => string {
 	if (text.trimStart().startsWith("!")) return pi;
 	return (part) => theme.fg("accent", part);
@@ -121,7 +129,7 @@ export function decorateEditor(
 	const rule = (text: string) => editor.borderColor(text);
 	Reflect.set(editor, "renderTopBorder", (width: number, hidden: number) => {
 		if (!boxed || working || hidden > 0) return topBorder(width, hidden);
-		return labelledRule(width, theme().fg("accent", ` ${LABEL} `), "", rule);
+		return labelledRule(width, promptLabel(editor.getText(), theme()), "", rule);
 	});
 	Reflect.set(editor, "renderBottomBorder", (width: number, hidden: number) => {
 		if (!boxed || hidden > 0) return bottomBorder(width, hidden);
@@ -183,9 +191,7 @@ export function registerEditor(pi: ExtensionAPI, permission: EditorPermission): 
 		// Replacing an editor closes its active selector. Session switches only need to update the callback's context.
 		if (installed && previous === installed) return;
 		installed = (tui, theme, keybindings) => {
-			const editor =
-				previous?.(tui, theme, keybindings) ??
-				new CustomEditor(tui, theme, keybindings);
+			const editor = previous?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
 			const transcript = thinkingTranscript(tui);
 			const handleInput = editor.handleInput?.bind(editor);
 			// Preserve the editor object: Octocode copies its native action handlers and appearance onto this instance.

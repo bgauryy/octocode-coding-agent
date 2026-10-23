@@ -428,9 +428,7 @@ describe("llama.cpp extension", () => {
 					systemOneRequests.push(payload);
 					json(response, {
 						model: payload.model,
-						answers: Object.fromEntries(
-							Object.keys(payload.questions).map((id) => [id, { type: "noul", noul: 0.82 }]),
-						),
+						answers: Object.fromEntries(Object.keys(payload.questions).map((id) => [id, { type: "noul", noul: 0.82 }])),
 						usage: { input_tokens: 42, output_tokens: 0 },
 					});
 					return;

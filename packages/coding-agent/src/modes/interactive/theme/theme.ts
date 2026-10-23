@@ -259,8 +259,7 @@ export class Theme {
 		const terminal = terminalColors;
 		if (this.resolvedColors?.terminal !== terminal) {
 			const guess = GUESSED_DEFAULT_COLORS[this.appearance];
-			const toColor = (rgb: RgbColor | undefined, fallback: Color) =>
-				rgb ? rgbColor(rgb.r, rgb.g, rgb.b) : fallback;
+			const toColor = (rgb: RgbColor | undefined, fallback: Color) => (rgb ? rgbColor(rgb.r, rgb.g, rgb.b) : fallback);
 			const foreground = toColor(terminal.foreground, guess.foreground);
 			const background = toColor(terminal.background, guess.background);
 			const colors = { ...this.concreteColors };

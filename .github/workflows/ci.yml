@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      octocode-ref:
+        description: Branch, tag or commit of bgauryy/octocode to build against
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Check & test (Node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # Three dependencies link to `../octocode/packages/*` (see packages/coding-agent/package.json), so both
+      # repositories are checked out side by side, as on a developer machine, and the sibling is built first.
+      - uses: actions/checkout@v5
+        with:
+          path: octocodecode
+      - uses: actions/checkout@v5
+        with:
+          repository: bgauryy/octocode
+          ref: ${{ inputs.octocode-ref || 'main' }}
+          path: octocode
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: corepack enable
+
+      # The sibling's native addon is Rust; rustup reads its rust-toolchain.toml.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: octocode/packages/octocode-native
+      - name: Build the sibling octocode packages
+        working-directory: octocode
+        run: |
+          yarn install --immutable
+          node skills-dev/octocode-dev/scripts/dev.mjs build:dev
+
+      # Filesystem-tool tests use fd and ripgrep; Ubuntu installs fd as `fdfind`.
+      - name: Install fd and ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fd-find ripgrep
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Install
+        working-directory: octocodecode
+        run: yarn install --immutable
+      - name: Hydrate model data
+        working-directory: octocodecode
+        run: npm run hydrate:model-data
+      - name: Check
+        working-directory: octocodecode
+        run: npm run check
+      # Isolated home and credentials; includes the native feature suite. Live provider tests stay off.
+      - name: Test
+        working-directory: octocodecode
+        run: ./test.sh

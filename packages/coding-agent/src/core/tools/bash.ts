@@ -183,6 +183,29 @@ export interface BashSpawnContext {
 
 export type BashSpawnHook = (context: BashSpawnContext) => BashSpawnContext;
 
+/**
+ * The environment a bash command runs with: the shell environment, with the OCTOCODE_* session variables set from `ctx`
+ * and never inherited from the parent process.
+ */
+export function bashSessionEnv(ctx: ExtensionContext | undefined): NodeJS.ProcessEnv {
+	const env = { ...getShellEnv() };
+	delete env.OCTOCODE_SESSION_ID;
+	delete env.OCTOCODE_SESSION_FILE;
+	delete env.OCTOCODE_PROVIDER;
+	delete env.OCTOCODE_MODEL;
+	delete env.OCTOCODE_REASONING_LEVEL;
+	if (!ctx) return env;
+	env.OCTOCODE_SESSION_ID = ctx.sessionManager.getSessionId();
+	const sessionFile = ctx.sessionManager.getSessionFile();
+	if (sessionFile) env.OCTOCODE_SESSION_FILE = sessionFile;
+	if (ctx.model) {
+		env.OCTOCODE_PROVIDER = ctx.model.provider;
+		env.OCTOCODE_MODEL = ctx.model.id;
+	}
+	if (ctx.thinkingLevel) env.OCTOCODE_REASONING_LEVEL = ctx.thinkingLevel;
+	return env;
+}
+
 function resolveSpawnContext(
 	command: string,
 	cwd: string,
@@ -190,23 +213,7 @@ function resolveSpawnContext(
 	exposeSessionEnvironment: boolean,
 	ctx: ExtensionContext | undefined,
 ): BashSpawnContext {
-	const env = { ...getShellEnv() };
-	delete env.OCTOCODE_SESSION_ID;
-	delete env.OCTOCODE_SESSION_FILE;
-	delete env.OCTOCODE_PROVIDER;
-	delete env.OCTOCODE_MODEL;
-	delete env.OCTOCODE_REASONING_LEVEL;
-	if (exposeSessionEnvironment && ctx) {
-		const model = ctx.model;
-		env.OCTOCODE_SESSION_ID = ctx.sessionManager.getSessionId();
-		const sessionFile = ctx.sessionManager.getSessionFile();
-		if (sessionFile) env.OCTOCODE_SESSION_FILE = sessionFile;
-		if (model) {
-			env.OCTOCODE_PROVIDER = model.provider;
-			env.OCTOCODE_MODEL = model.id;
-		}
-		if (ctx.thinkingLevel) env.OCTOCODE_REASONING_LEVEL = ctx.thinkingLevel;
-	}
+	const env = bashSessionEnv(exposeSessionEnvironment ? ctx : undefined);
 	const baseContext: BashSpawnContext = { command, cwd, env };
 	return spawnHook ? spawnHook(baseContext) : baseContext;
 }
@@ -396,9 +403,7 @@ export function createShellToolDefinition(
 				const structuredContent: BashToolOutput = {
 					output: fullOutput.content,
 					truncated: fullOutput.truncated,
-					...(fullOutput.truncated && snapshot.fullOutputPath
-						? { full_output_path: snapshot.fullOutputPath }
-						: {}),
+					...(fullOutput.truncated && snapshot.fullOutputPath ? { full_output_path: snapshot.fullOutputPath } : {}),
 					exit_code: exitCode,
 					wall_time_seconds: wallTimeSeconds,
 				};

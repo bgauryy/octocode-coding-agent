@@ -275,9 +275,9 @@ describe("resultBlock", () => {
 		expect(rendered(resultBlock(theme, {}, { summary: "page", body: text }))).toBe(
 			"  ⎿  page\n     # Title\n     Source: x\n     para\n     more",
 		);
-		expect(
-			rendered(resultBlock(theme, { expanded: true }, { summary: "page", body: text })).split("\n"),
-		).toHaveLength(8);
+		expect(rendered(resultBlock(theme, { expanded: true }, { summary: "page", body: text })).split("\n")).toHaveLength(
+			8,
+		);
 	});
 
 	it("shows a body of up to twelve lines whole, without an expand hint", () => {
@@ -313,7 +313,12 @@ describe("resultBlock", () => {
 		const text = rendered(resultBlock(theme, row({ isPartial: false, isError: true }), { summary: message }), 40);
 		expect(text).not.toContain("…");
 		expect(text.split("\n")[0]).toMatch(/^ {2}⎿ {2}Error: /);
-		expect(text.split("\n").slice(1).every((line) => line.startsWith("     "))).toBe(true);
+		expect(
+			text
+				.split("\n")
+				.slice(1)
+				.every((line) => line.startsWith("     ")),
+		).toBe(true);
 		expect(text.replace(/\s+/g, " ")).toContain("then retry the edit");
 	});
 

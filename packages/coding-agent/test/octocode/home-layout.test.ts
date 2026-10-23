@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
+import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { globalPaths, HOME_NAMES, sessionDir, sessionDirName, workspacePaths } from "../../src/octocode/shared/home.ts";
 import { fingerprint, projectConfigFiles, projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
@@ -129,15 +131,26 @@ describe("profiles, hooks and skills in .octocode", () => {
 		const { root, sub } = repo({ ".octocode/hooks.json": hook("project") });
 		expect(hookFiles(sub, true, home)).toContain(path.join(root, ".octocode", "hooks.json"));
 		const commands = (trusted: boolean) =>
-			loadHooks(sub, trusted, home).config.PreToolUse.flatMap((group) => group.hooks.map((item) => "command" in item ? item.command : undefined));
+			loadHooks(sub, trusted, home).config.PreToolUse.flatMap((group) =>
+				group.hooks.map((item) => ("command" in item ? item.command : undefined)),
+			);
 		expect(commands(true)).toEqual(["user", "project"]);
 		expect(commands(false)).toEqual(["user"]);
 	});
 
-	it("skills: adds <root>/.octocode/skills only when trusted", () => {
+	it("skills: loads <root>/.octocode/skills from a subdirectory only when trusted, through core discovery", async () => {
 		const home = tmp();
-		const { root, sub } = repo({ ".octocode/skills/s/SKILL.md": "x" });
-		expect(extraSkillDirs(sub, home, true, {})).toEqual([path.join(root, ".octocode", "skills")]);
-		expect(extraSkillDirs(sub, home, false, {})).toEqual([]);
+		const { sub } = repo({ ".octocode/skills/s/SKILL.md": "---\nname: s\ndescription: Root skill\n---\nBody" });
+		// Core discovery owns the folder, so the `skills` patterns and project precedence apply to it.
+		expect(extraSkillDirs(sub, home, true, {})).toEqual([]);
+		const names = async (projectTrusted: boolean) => {
+			const agentDir = tmp();
+			const settingsManager = SettingsManager.create(sub, agentDir, { projectTrusted });
+			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd: sub, agentDir, settingsManager });
+			await loader.reload();
+			return loader.getSkills().skills.map((skill) => skill.name);
+		};
+		expect(await names(true)).toContain("s");
+		expect(await names(false)).not.toContain("s");
 	});
 });

@@ -33,20 +33,17 @@ export function registerTurnSetup(
 		const available = [...selected, ...pi.getActiveTools().filter((name) => !before.has(name))];
 		// Deferred tools are reachable through discovery even before a tool is loaded.
 		const indirect = available.includes("tool_search")
-			? pi.getAllTools().filter(
-					(tool) =>
-						isOctocodeTool(tool.name) &&
-						!available.includes(tool.name) &&
-						tool.exposure === "deferred",
-				)
+			? pi
+					.getAllTools()
+					.filter((tool) => isOctocodeTool(tool.name) && !available.includes(tool.name) && tool.exposure === "deferred")
 			: [];
 		// A server from the user's mcp.json may still be connecting when the prompt is built; the prompt says how to recover
 		// when a tool turns out to be missing, so an enabled configured server counts as reachable (and the prompt stays cached).
 		const octocode =
-			available.some(isOctocodeTool) || indirect.length > 0 || (owner.by === "user" && owner.enabled && canReachMcp(available));
-		const instructions = octocode
-			? (options.octocode.instructions ?? octocodeNamespaceInstructions(pi))
-			: undefined;
+			available.some(isOctocodeTool) ||
+			indirect.length > 0 ||
+			(owner.by === "user" && owner.enabled && canReachMcp(available));
+		const instructions = octocode ? (options.octocode.instructions ?? octocodeNamespaceInstructions(pi)) : undefined;
 		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 		const canWrite = !readOnlyRole && ["file", "write", "edit"].some((name) => selected.includes(name));
 		const profiles = [...options.profiles().values()];
@@ -60,6 +57,7 @@ export function registerTurnSetup(
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
 			canWrite,
+			canSave: ["file", "write", "edit"].some((name) => selected.includes(name)),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: available.some((name) => name.startsWith("mcp__") || name === "mcp" || name === "tool_search"),
@@ -97,8 +95,8 @@ const canReachMcp = (available: readonly string[]): boolean =>
 	available.some((name) => name.startsWith("mcp__") || name === "tool_search");
 
 function octocodeNamespaceInstructions(pi: Pick<ExtensionAPI, "getAllTools">): string | undefined {
-	const text = pi.getAllTools().find((tool) => isOctocodeTool(tool.name) && tool.namespace?.instructions)?.namespace
-		?.instructions;
+	const text = pi.getAllTools().find((tool) => isOctocodeTool(tool.name) && tool.namespace?.instructions)
+		?.namespace?.instructions;
 	return text ? visibleControls(text).trim() || undefined : undefined;
 }
 

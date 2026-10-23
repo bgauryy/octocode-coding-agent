@@ -13,10 +13,7 @@ export function cloudflareWorkersAIProvider(): Provider<"openai-completions"> {
 		id: "cloudflare-workers-ai",
 		name: "Cloudflare Workers AI",
 		auth: { apiKey: cloudflareWorkersAIAuth() },
-		models: [
-			...Object.values(CLOUDFLARE_WORKERS_AI_MODELS),
-			...Object.values(CLOUDFLARE_WORKERS_AI_CLASSIFIER_MODELS),
-		],
+		models: [...Object.values(CLOUDFLARE_WORKERS_AI_MODELS), ...Object.values(CLOUDFLARE_WORKERS_AI_CLASSIFIER_MODELS)],
 		api: cloudflareStreams(openAICompletionsApi()),
 		classifiers: {
 			"cloudflare-workers-ai-system-one": cloudflareClassifier(cloudflareWorkersAISystemOneApi()),

@@ -72,7 +72,5 @@ function showsTargets(body: string, what: readonly string[]): boolean {
 			.filter((line) => line.startsWith("  "))
 			.map((line) => auditLine(line.slice(2))),
 	);
-	return what.every(
-		(target, index) => shown.has(target) || (index === what.length - 1 && /^\+\d+ more$/.test(target)),
-	);
+	return what.every((target, index) => shown.has(target) || (index === what.length - 1 && /^\+\d+ more$/.test(target)));
 }

@@ -1,4 +1,4 @@
-import { constants, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { constants, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join, parse, resolve } from "node:path";
 import { resolvePath } from "../utils/paths.ts";
 import type { AgentSession } from "./agent-session.ts";
@@ -11,7 +11,7 @@ import type {
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 import type { CreateAgentSessionResult } from "./sdk.ts";
-import { assertSessionCwdExists } from "./session-cwd.ts";
+import { assertSessionCwdExists, MissingSessionCwdError } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
 
 /**
@@ -43,6 +43,17 @@ export type CreateAgentSessionRuntimeFactory = (options: {
 /**
  * Thrown when /import references a JSONL file path that does not exist.
  */
+/** The file to import is not a usable session; nothing was copied and the current session is unchanged. */
+export class SessionImportInvalidError extends Error {
+	readonly filePath: string;
+
+	constructor(filePath: string, cause: unknown) {
+		super(`Not a session file: ${filePath} (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
+		this.name = "SessionImportInvalidError";
+		this.filePath = filePath;
+	}
+}
+
 export class SessionImportFileNotFoundError extends Error {
 	readonly filePath: string;
 
@@ -174,6 +185,7 @@ export class AgentSessionRuntime {
 			targetSessionFile,
 		});
 		this.beforeSessionInvalidate?.();
+		this.session.sessionManager.retire();
 		this.session.dispose();
 	}
 
@@ -386,8 +398,16 @@ export class AgentSessionRuntime {
 			copyFileSync(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
 		}
 
-		const sessionManager = SessionManager.open(destinationPath, sessionDir, cwdOverride);
-		assertSessionCwdExists(sessionManager, this.cwd);
+		// Validate the copy before the current session is torn down; a rejected file leaves no copy behind.
+		let sessionManager: SessionManager;
+		try {
+			sessionManager = SessionManager.open(destinationPath, sessionDir, cwdOverride);
+			assertSessionCwdExists(sessionManager, this.cwd);
+		} catch (error) {
+			if (!sourceAlreadyStored) rmSync(destinationPath, { force: true });
+			if (error instanceof MissingSessionCwdError) throw error;
+			throw new SessionImportInvalidError(resolvedPath, error);
+		}
 		await this.teardownCurrent("resume", sessionManager.getSessionFile());
 		this.apply(
 			await this.createRuntime({
@@ -401,13 +421,9 @@ export class AgentSessionRuntime {
 		return { cancelled: false };
 	}
 
+	/** Settle and save the active turn, then shut the session down. */
 	async dispose(): Promise<void> {
-		await emitSessionShutdownEvent(this.session.extensionRunner, {
-			type: "session_shutdown",
-			reason: "quit",
-		});
-		this.beforeSessionInvalidate?.();
-		this.session.dispose();
+		await this.teardownCurrent("quit");
 	}
 }
 

@@ -38,4 +38,8 @@ export interface BacklogWeb {
 	close(): Promise<void>;
 }
 
-export type OpenBacklogWeb = (ctx: ExtensionCommandContext, backlog: Backlog, changed: () => void) => Promise<BacklogWeb>;
+export type OpenBacklogWeb = (
+	ctx: ExtensionCommandContext,
+	backlog: Backlog,
+	changed: () => void,
+) => Promise<BacklogWeb>;

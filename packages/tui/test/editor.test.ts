@@ -42,6 +42,16 @@ async function flushAutocomplete(): Promise<void> {
 	await new Promise((resolve) => setImmediate(resolve));
 }
 
+describe("wordWrapLine with oversized graphemes", () => {
+	it("splits a grapheme wider than the line without recursing forever", () => {
+		const cluster = `\u0915${"\u093e".repeat(100)}`;
+		const chunks = wordWrapLine(cluster, 80);
+		assert.ok(chunks.length > 1);
+		assert.strictEqual(chunks.map((chunk) => chunk.text).join(""), cluster);
+		for (const chunk of chunks) assert.strictEqual(cluster.slice(chunk.startIndex, chunk.endIndex), chunk.text);
+	});
+});
+
 describe("Editor component", () => {
 	describe("Prompt history navigation", () => {
 		it("does nothing on Up arrow when history is empty", () => {
@@ -4380,15 +4390,23 @@ describe("Editor component", () => {
 });
 
 describe("command value hints", () => {
-  it("shows the next values immediately after Tab accepts a command", async () => {
-    const editor = new Editor(createTestTUI(), defaultEditorTheme);
-    editor.setAutocompleteProvider(new CombinedAutocompleteProvider([{ name: "web", getArgumentCompletions: () => [{ value: "backlogs", label: "backlogs" }] }], process.cwd()));
-    editor.handleInput("/web"); await flushAutocomplete();
-    editor.handleInput("\t"); await flushAutocomplete();
-    assert.strictEqual(editor.getText(), "/web ");
-    assert.ok(editor.render(80).join("\n").includes("backlogs"));
-    editor.handleInput("\x1b");
-    editor.handleInput("\t"); await flushAutocomplete();
-    assert.ok(editor.render(80).join("\n").includes("backlogs"));
-  });
+	it("shows the next values immediately after Tab accepts a command", async () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme);
+		editor.setAutocompleteProvider(
+			new CombinedAutocompleteProvider(
+				[{ name: "web", getArgumentCompletions: () => [{ value: "backlogs", label: "backlogs" }] }],
+				process.cwd(),
+			),
+		);
+		editor.handleInput("/web");
+		await flushAutocomplete();
+		editor.handleInput("\t");
+		await flushAutocomplete();
+		assert.strictEqual(editor.getText(), "/web ");
+		assert.ok(editor.render(80).join("\n").includes("backlogs"));
+		editor.handleInput("\x1b");
+		editor.handleInput("\t");
+		await flushAutocomplete();
+		assert.ok(editor.render(80).join("\n").includes("backlogs"));
+	});
 });

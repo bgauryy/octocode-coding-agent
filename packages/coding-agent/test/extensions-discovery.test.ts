@@ -132,17 +132,20 @@ describe("extensions discovery", () => {
 		expect(path.basename(result.extensions[0].path)).toBe("foo.js");
 	});
 
-	it.each(["SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"])("does not infer executable extensions from a %s resource directory", async (marker) => {
-		const directory = path.join(extensionsDir, "resource");
-		fs.mkdirSync(path.dirname(path.join(directory, marker)), { recursive: true });
-		fs.writeFileSync(path.join(directory, marker), marker.endsWith(".json") ? '{"name":"resource"}' : "# Skill");
-		fs.writeFileSync(path.join(directory, "index.ts"), extensionCode);
-		fs.writeFileSync(path.join(directory, "helper.ts"), extensionCode);
-		const automatic = await discoverAndLoadExtensions([], tempDir, tempDir);
-		expect(automatic.extensions).toEqual([]);
-		const explicit = await discoverAndLoadExtensions([directory], tempDir, tempDir);
-		expect(explicit.extensions).toEqual([]);
-	});
+	it.each(["SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"])(
+		"does not infer executable extensions from a %s resource directory",
+		async (marker) => {
+			const directory = path.join(extensionsDir, "resource");
+			fs.mkdirSync(path.dirname(path.join(directory, marker)), { recursive: true });
+			fs.writeFileSync(path.join(directory, marker), marker.endsWith(".json") ? '{"name":"resource"}' : "# Skill");
+			fs.writeFileSync(path.join(directory, "index.ts"), extensionCode);
+			fs.writeFileSync(path.join(directory, "helper.ts"), extensionCode);
+			const automatic = await discoverAndLoadExtensions([], tempDir, tempDir);
+			expect(automatic.extensions).toEqual([]);
+			const explicit = await discoverAndLoadExtensions([directory], tempDir, tempDir);
+			expect(explicit.extensions).toEqual([]);
+		},
+	);
 	it("allows an explicit native extension declaration in a plugin package", async () => {
 		const directory = path.join(extensionsDir, "hybrid");
 		fs.mkdirSync(directory);
@@ -345,10 +348,7 @@ describe("extensions discovery", () => {
 		const subdir2 = path.join(extensionsDir, "with-manifest");
 		fs.mkdirSync(subdir2);
 		fs.writeFileSync(path.join(subdir2, "entry.ts"), extensionCode);
-		fs.writeFileSync(
-			path.join(subdir2, "package.json"),
-			JSON.stringify({ octocode: { extensions: ["./entry.ts"] } }),
-		);
+		fs.writeFileSync(path.join(subdir2, "package.json"), JSON.stringify({ octocode: { extensions: ["./entry.ts"] } }));
 
 		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 

@@ -13,20 +13,34 @@ function fixture(id: string) {
 	let subscriptions = 0;
 	const delivered: string[] = [];
 	const session = {
-		sessionId: id, messages: [], isStreaming: false, model: undefined,
-		getSteeringMessages: () => [], getFollowUpMessages: () => [],
+		sessionId: id,
+		messages: [],
+		isStreaming: false,
+		model: undefined,
+		getSteeringMessages: () => [],
+		getFollowUpMessages: () => [],
 		subscribe(listener: (event: AgentSessionEvent) => void) {
-			subscriptions++; listeners.add(listener); return () => listeners.delete(listener);
+			subscriptions++;
+			listeners.add(listener);
+			return () => listeners.delete(listener);
 		},
 		async prompt(text: string, options?: { preflightResult?: () => void }) {
-			options?.preflightResult?.(); delivered.push(text);
+			options?.preflightResult?.();
+			delivered.push(text);
 		},
-		async abort() { delivered.push("aborted"); },
+		async abort() {
+			delivered.push("aborted");
+		},
 	} as unknown as AgentSession;
 	sessions.push(session);
-	return { session, delivered, subscriptions: () => subscriptions, emit: (event: AgentSessionEvent) => {
-		for (const listener of listeners) listener(event);
-	} };
+	return {
+		session,
+		delivered,
+		subscriptions: () => subscriptions,
+		emit: (event: AgentSessionEvent) => {
+			for (const listener of listeners) listener(event);
+		},
+	};
 }
 
 describe("terminal application port", () => {
@@ -34,15 +48,25 @@ describe("terminal application port", () => {
 		const source = fixture("terminal-session");
 		const port = getApplicationPort(source.session);
 		const observerEvents: AgentSessionEvent[] = [];
-		const closeObserver = port.subscribeNative((event) => { observerEvents.push(event); });
+		const closeObserver = port.subscribeNative((event) => {
+			observerEvents.push(event);
+		});
 		const terminalEvents: AgentSessionEvent[] = [];
 		const terminal = {
 			session: source.session,
-			handleEvent: async (event: AgentSessionEvent) => { terminalEvents.push(event); },
+			handleEvent: async (event: AgentSessionEvent) => {
+				terminalEvents.push(event);
+			},
 			unsubscribe: undefined as undefined | (() => void),
 		};
 		Reflect.get(InteractiveMode.prototype, "subscribeToAgent").call(terminal);
-		const progress = { type: "tool_execution_update", toolCallId: "tool-one", toolName: "read", args: {}, partialResult: { content: [{ type: "text", text: "partial output" }], details: { cursor: 7 } } } as AgentSessionEvent;
+		const progress = {
+			type: "tool_execution_update",
+			toolCallId: "tool-one",
+			toolName: "read",
+			args: {},
+			partialResult: { content: [{ type: "text", text: "partial output" }], details: { cursor: 7 } },
+		} as AgentSessionEvent;
 		source.emit(progress);
 		expect(terminalEvents).toEqual([progress]);
 		expect(terminalEvents[0]).toBe(progress);
@@ -62,7 +86,9 @@ describe("terminal application port", () => {
 		const events: AgentSessionEvent[] = [];
 		const terminal = {
 			session: previous.session,
-			handleEvent: async (event: AgentSessionEvent) => { events.push(event); },
+			handleEvent: async (event: AgentSessionEvent) => {
+				events.push(event);
+			},
 			unsubscribe: undefined as undefined | (() => void),
 		};
 		Reflect.get(InteractiveMode.prototype, "subscribeToAgent").call(terminal);
@@ -80,7 +106,9 @@ describe("terminal application port", () => {
 		const source = fixture("terminal-prompts");
 		let accepted = false;
 		await getApplicationPort(source.session).invoke("prompt", "continue", {
-			preflightResult: () => { accepted = true; },
+			preflightResult: () => {
+				accepted = true;
+			},
 		});
 		expect(accepted).toBe(true);
 		expect(source.delivered).toEqual(["continue"]);

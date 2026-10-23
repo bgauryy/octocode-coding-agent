@@ -29,7 +29,10 @@ export async function writeOutputFile(prefix: string, extension: string, data: s
 }
 
 /** Open a new output file for streamed output. */
-export function createOutputFileStream(prefix: string, extension: string): { path: string; stream: WriteStream; close: () => Promise<void> } {
+export function createOutputFileStream(
+	prefix: string,
+	extension: string,
+): { path: string; stream: WriteStream; close: () => Promise<void> } {
 	const path = createOutputFilePath(prefix, extension);
 	const stream = createWriteStream(path, { mode: OUTPUT_FILE_MODE, flags: "wx" });
 	const completion = finished(stream, { cleanup: true });

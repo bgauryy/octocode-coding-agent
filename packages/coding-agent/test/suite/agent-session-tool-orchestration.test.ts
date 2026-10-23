@@ -115,9 +115,7 @@ describe("AgentSession tool orchestration", () => {
 		const extensionFactories = [createToolSearchExtension()];
 		const plain = await createHarness({ extensionFactories });
 		harnesses.push(plain);
-		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(
-			expect.arrayContaining(["tool_search"]),
-		);
+		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(expect.arrayContaining(["tool_search"]));
 		expect(plain.session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);
 
 		// --tools and the defaultTools setting name them explicitly.

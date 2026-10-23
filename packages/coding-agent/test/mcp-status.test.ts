@@ -2,17 +2,33 @@ import { describe, expect, it } from "vitest";
 import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
 import { getMcpSessionStatus, setMcpSessionStatus, type McpServerStatus } from "../src/extensions/mcp/status.ts";
 
-const server = (name: string): McpServerStatus => ({ name, enabled: true, state: "connected", exposure: "deferred", toolCount: 2, source: "test" });
-const wrapper = (bus: EventBus): EventBus => ({ emit: (channel, value) => bus.emit(channel, value), on: (channel, handler) => bus.on(channel, handler) });
+const server = (name: string): McpServerStatus => ({
+	name,
+	enabled: true,
+	state: "connected",
+	exposure: "deferred",
+	toolCount: 2,
+	source: "test",
+});
+const wrapper = (bus: EventBus): EventBus => ({
+	emit: (channel, value) => bus.emit(channel, value),
+	on: (channel, handler) => bus.on(channel, handler),
+});
 
 describe("shared MCP status", () => {
 	it("collects independent extension publishers through distinct wrappers of the same session bus", () => {
 		const bus = createEventBus();
-		const native = wrapper(bus), configured = wrapper(bus), reader = wrapper(bus);
+		const native = wrapper(bus),
+			configured = wrapper(bus),
+			reader = wrapper(bus);
 		setMcpSessionStatus(native, "native", [server("octocode")]);
-		setMcpSessionStatus(configured, "configured", [server("docs"), { ...server("octocode"), enabled: false, state: "disabled" }]);
+		setMcpSessionStatus(configured, "configured", [
+			server("docs"),
+			{ ...server("octocode"), enabled: false, state: "disabled" },
+		]);
 		expect(getMcpSessionStatus(reader).map(({ name, enabled }) => ({ name, enabled }))).toEqual([
-			{ name: "docs", enabled: true }, { name: "octocode", enabled: false },
+			{ name: "docs", enabled: true },
+			{ name: "octocode", enabled: false },
 		]);
 		setMcpSessionStatus(configured, "configured", []);
 		expect(getMcpSessionStatus(reader)).toEqual([server("octocode")]);

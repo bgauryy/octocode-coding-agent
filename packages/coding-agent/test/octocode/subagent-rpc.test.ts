@@ -75,15 +75,7 @@ describe("a subagent child over RPC", () => {
 
 	it("closes the child's stdin once its run settles, so it leaves by itself", async () => {
 		const log = childLog();
-		const outcome = await runSubagent(
-			"grants",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-settled" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent("grants", [], tmp(), undefined, { id: "a-settled" }, undefined, () => undefined);
 		expect(outcome.text).toContain("mode=");
 		expect(log.lines()).toEqual(["stdin-closed"]);
 	});
@@ -100,15 +92,7 @@ describe("a subagent child over RPC", () => {
 	});
 
 	it("answers every dialog the child opens as cancelled, and nothing else", async () => {
-		const outcome = await runSubagent(
-			"dialogs",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-dialogs" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent("dialogs", [], tmp(), undefined, { id: "a-dialogs" }, undefined, () => undefined);
 		const [, answers, sent] = /^ANSWERS (.*) COMMANDS (.*)$/.exec(outcome.text)!;
 		expect(JSON.parse(answers!)).toEqual(
 			["d1", "d2", "d3", "d4"].map((id) => ({ type: "extension_ui_response", id, cancelled: true })),
@@ -157,15 +141,7 @@ describe("a subagent child over RPC", () => {
 
 	it("closes the child's input when an extension command consumed the prompt (no run, no agent_settled)", async () => {
 		const log = childLog();
-		const outcome = await runSubagent(
-			"handled",
-			[],
-			tmp(),
-			undefined,
-			{ id: "a-handled" },
-			undefined,
-			() => undefined,
-		);
+		const outcome = await runSubagent("handled", [], tmp(), undefined, { id: "a-handled" }, undefined, () => undefined);
 		expect(outcome.text).toBe("");
 		expect(log.lines()).toEqual(["stdin-closed"]);
 	});

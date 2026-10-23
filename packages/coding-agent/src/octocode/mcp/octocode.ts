@@ -115,9 +115,11 @@ export class OctocodeMcp {
 	private readonly onStatus: (() => void) | undefined;
 	private readonly ensureDiscovery: ((ctx: ExtensionContext | undefined) => void) | undefined;
 
-	private readonly pi: Pick<ExtensionAPI, "registerTool"> & Partial<Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">>;
+	private readonly pi: Pick<ExtensionAPI, "registerTool"> &
+		Partial<Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">>;
 	constructor(
-		pi: Pick<ExtensionAPI, "registerTool"> & Partial<Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">>,
+		pi: Pick<ExtensionAPI, "registerTool"> &
+			Partial<Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">>,
 		options: {
 			env?: NodeJS.ProcessEnv;
 			version?: string;
@@ -220,15 +222,17 @@ export class OctocodeMcp {
 	sessionStatus(): McpServerStatus[] {
 		if (this.owned.by === "user") return [];
 		const status = this.status();
-		return [{
-			name: OCTOCODE_SERVER,
-			enabled: this.owned.by === "extension",
-			state: this.owned.by === "off" ? "disabled" : status.state,
-			exposure: "auto",
-			toolCount: status.tools,
-			source: "built-in Octocode",
-			scope: "extension",
-		}];
+		return [
+			{
+				name: OCTOCODE_SERVER,
+				enabled: this.owned.by === "extension",
+				state: this.owned.by === "off" ? "disabled" : status.state,
+				exposure: "auto",
+				toolCount: status.tools,
+				source: "built-in Octocode",
+				scope: "extension",
+			},
+		];
 	}
 
 	/** `/mcp`: what runs the server and how it is doing; the first line is the summary. */
@@ -264,7 +268,8 @@ export class OctocodeMcp {
 	private register(tools: readonly Tool[], instructions: string | undefined): void {
 		this.catalogTools = tools;
 		// Local research tools stay direct (`octocodeToolDefinition`); the rest wait for tool_search when it is available.
-		const discovery = this.pi.getAllTools?.().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools) ?? false;
+		const discovery =
+			this.pi.getAllTools?.().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools) ?? false;
 		const exposure = resolveMcpExposure("auto", tools, this.ctx?.model, discovery, true) as "direct" | "deferred";
 		const namespace = {
 			name: OCTOCODE_TOOL_PREFIX.replace(/__$/, ""),
@@ -314,9 +319,7 @@ export class OctocodeMcp {
 	}
 
 	private notifyFailure(message: string): void {
-		this.notify(
-			`Octocode MCP failed to start: ${message}\nThe model has no Octocode tools this session. See /mcp.`,
-		);
+		this.notify(`Octocode MCP failed to start: ${message}\nThe model has no Octocode tools this session. See /mcp.`);
 	}
 
 	private notify(text: string): void {
@@ -403,7 +406,11 @@ export function fallbackReader(pi: Pick<ExtensionAPI, "getActiveTools" | "setAct
 function activateDiscovery(pi: ExtensionAPI): void {
 	try {
 		const active = pi.getActiveTools();
-		if (active.includes(TOOL_SEARCH_TOOL_NAME) || !pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)) return;
+		if (
+			active.includes(TOOL_SEARCH_TOOL_NAME) ||
+			!pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)
+		)
+			return;
 		pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
 	} catch {
 		// The session is shutting down or not bound yet; the next registration retries.

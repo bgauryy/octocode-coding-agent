@@ -126,7 +126,10 @@ describe("turn_end", () => {
 			await decide(event, { hasUI: false, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),
 		).toBeUndefined();
 		expect(
-			await decide({ ...event, continuationProbability: 0.15 }, { hasUI: false, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),
+			await decide(
+				{ ...event, continuationProbability: 0.15 },
+				{ hasUI: false, sessionManager: { getSessionId: () => "s", getBranch: () => [] } },
+			),
 		).toEqual({ action: "stop" });
 		expect(
 			await decide(event, { hasUI: true, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),

@@ -643,11 +643,7 @@ describe("Kitty image cursor movement", () => {
 	it("truncates long image fallback lines to render width", () => {
 		setCapabilities({ images: null, trueColor: false, hyperlinks: false });
 		try {
-			const longPath = join(
-				homedir(),
-				"images",
-				`${"generated-image-with-a-very-long-absolute-path".repeat(4)}.png`,
-			);
+			const longPath = join(homedir(), "images", `${"generated-image-with-a-very-long-absolute-path".repeat(4)}.png`);
 			const width = 40;
 			const image = new Image(
 				"AAAA",

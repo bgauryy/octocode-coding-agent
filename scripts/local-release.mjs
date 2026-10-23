@@ -37,14 +37,19 @@ function currentBinaryPlatform() {
 function buildBunBinaryRelease(targetDirectory, archiveDirectory) {
 	const platform = currentBinaryPlatform();
 	const binaryBuildDirectory = join(archiveDirectory, "binary-build");
-	execFileSync("bash", ["./scripts/build-binaries.sh",
-		"--skip-install",
-		"--skip-build",
-		"--platform",
-		platform,
-		"--out",
-		binaryBuildDirectory,
-	], { stdio: "inherit" });
+	execFileSync(
+		"bash",
+		[
+			"./scripts/build-binaries.sh",
+			"--skip-install",
+			"--skip-build",
+			"--platform",
+			platform,
+			"--out",
+			binaryBuildDirectory,
+		],
+		{ stdio: "inherit" },
+	);
 	rmSync(targetDirectory, { force: true, recursive: true });
 	cpSync(join(binaryBuildDirectory, platform), targetDirectory, { recursive: true });
 	const archiveName = platform.startsWith("windows-") ? `octocode-${platform}.zip` : `octocode-${platform}.tar.gz`;
@@ -56,11 +61,17 @@ function createOctocodeShim(installDirectory) {
 	const binDirectory = join(installDirectory, "node_modules", ".bin");
 	if (process.platform === "win32") {
 		if (existsSync(join(binDirectory, "octocode.cmd"))) {
-			writeFileSync(join(installDirectory, "octocode.cmd"), '@ECHO off\r\n"%~dp0node_modules\\.bin\\octocode.cmd" %*\r\n');
+			writeFileSync(
+				join(installDirectory, "octocode.cmd"),
+				'@ECHO off\r\n"%~dp0node_modules\\.bin\\octocode.cmd" %*\r\n',
+			);
 			writeFileSync(join(installDirectory, "octocode.ps1"), '& "$PSScriptRoot/node_modules/.bin/octocode.ps1" @args\n');
 			return;
 		}
-		writeFileSync(join(installDirectory, "octocode.cmd"), '@ECHO off\r\n"%~dp0node_modules\\.bin\\octocode.exe" %*\r\n');
+		writeFileSync(
+			join(installDirectory, "octocode.cmd"),
+			'@ECHO off\r\n"%~dp0node_modules\\.bin\\octocode.exe" %*\r\n',
+		);
 		writeFileSync(join(installDirectory, "octocode.ps1"), '& "$PSScriptRoot/node_modules/.bin/octocode.exe" @args\n');
 		return;
 	}
@@ -92,7 +103,8 @@ const options = {
 };
 const repoRoot = process.cwd();
 const rootPackageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
-if (rootPackageJson.name !== "@octocodeai/octocode-monorepo") throw new Error("Run this script from the repository root");
+if (rootPackageJson.name !== "@octocodeai/octocode-monorepo")
+	throw new Error("Run this script from the repository root");
 execFileSync(process.execPath, ["scripts/generate-coding-agent-install-lock.mjs", "--check", "--require-registry"], {
 	cwd: repoRoot,
 	stdio: "inherit",
@@ -121,9 +133,10 @@ if (!options.skipInstall) {
 	const validationRoot = mkdtempSync(join(tmpdir(), "octocode-local-release-consumers-"));
 	try {
 		for (const pkg of artifactSet.packages) {
-			const directory = pkg.name === codingAgentName
-				? nodeInstallDirectory
-				: join(validationRoot, "npm", packageConsumerDirectoryName(pkg.name));
+			const directory =
+				pkg.name === codingAgentName
+					? nodeInstallDirectory
+					: join(validationRoot, "npm", packageConsumerDirectoryName(pkg.name));
 			installConsumer({ artifactSet, directory, packageNames: [pkg.name] });
 			smokeTestNpmConsumer({ artifactSet, directory, packageName: pkg.name });
 			if (pkg.name === codingAgentName) smokeTestCodingAgent(directory);
@@ -131,7 +144,12 @@ if (!options.skipInstall) {
 		createOctocodeShim(nodeInstallDirectory);
 
 		if (!options.skipBunInstall) {
-			installConsumer({ artifactSet, directory: bunInstallDirectory, packageManager: "bun", packageNames: [codingAgentName] });
+			installConsumer({
+				artifactSet,
+				directory: bunInstallDirectory,
+				packageManager: "bun",
+				packageNames: [codingAgentName],
+			});
 			smokeTestCodingAgent(bunInstallDirectory, "bun");
 			createOctocodeShim(bunInstallDirectory);
 		}
@@ -148,9 +166,13 @@ for (const pkg of artifactSet.packages) console.log(`  ${pkg.tarballPath}`);
 if (!options.skipInstall) {
 	console.log("\nLocal Bun binary release:");
 	console.log(`  ${binaryDirectory}`);
-	console.log(`  ${join(outDir, `octocode-${binaryPlatform}.${String(binaryPlatform).startsWith("windows-") ? "zip" : "tar.gz"}`)}`);
+	console.log(
+		`  ${join(outDir, `octocode-${binaryPlatform}.${String(binaryPlatform).startsWith("windows-") ? "zip" : "tar.gz"}`)}`,
+	);
 	console.log("\nRun the local Bun binary release from outside the repository:");
-	console.log(`  ${join(binaryDirectory, String(binaryPlatform).startsWith("windows-") ? "octocode.exe" : "octocode")} --help`);
+	console.log(
+		`  ${join(binaryDirectory, String(binaryPlatform).startsWith("windows-") ? "octocode.exe" : "octocode")} --help`,
+	);
 
 	console.log("\nIsolated npm install:");
 	console.log(`  ${nodeInstallDirectory}`);

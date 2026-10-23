@@ -20,6 +20,7 @@ import {
 	getWordSegmenter,
 	isWhitespaceChar,
 	sliceByColumn,
+	splitWideGrapheme,
 	visibleWidth,
 } from "../utils.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
@@ -176,7 +177,17 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 
 			// The segment remains logically atomic for cursor
 			// movement / editing — the split is purely visual for word-wrap layout.
-			const subChunks = wordWrapLine(grapheme, maxWidth);
+			// A multi-grapheme segment re-wraps by grapheme; one grapheme would segment into itself and recurse forever,
+			// so it is cut into code-point pieces instead.
+			let offset = 0;
+			const subChunks =
+				[...graphemeSegmenter.segment(grapheme)].length > 1
+					? wordWrapLine(grapheme, maxWidth)
+					: splitWideGrapheme(grapheme, maxWidth).map((text) => {
+							const chunk = { text, startIndex: offset, endIndex: offset + text.length };
+							offset += text.length;
+							return chunk;
+						});
 			for (let j = 0; j < subChunks.length - 1; j++) {
 				const sc = subChunks[j]!;
 				chunks.push({ text: sc.text, startIndex: charIndex + sc.startIndex, endIndex: charIndex + sc.endIndex });
@@ -1886,9 +1897,7 @@ export class Editor implements Component, Focusable {
 	/**
 	 * Find the visual line index for the current cursor position.
 	 */
-	private findCurrentVisualLine(
-		visualLines: Array<{ logicalLine: number; startCol: number; length: number }>,
-	): number {
+	private findCurrentVisualLine(visualLines: Array<{ logicalLine: number; startCol: number; length: number }>): number {
 		return this.findVisualLineAt(visualLines, this.state.cursorLine, this.state.cursorCol);
 	}
 
@@ -2149,11 +2158,7 @@ export class Editor implements Component, Focusable {
 			const isCurrentLine = lineIdx === this.state.cursorLine;
 
 			// Current line: start after/before cursor; other lines: search full line
-			const searchFrom = isCurrentLine
-				? isForward
-					? this.state.cursorCol + 1
-					: this.state.cursorCol - 1
-				: undefined;
+			const searchFrom = isCurrentLine ? (isForward ? this.state.cursorCol + 1 : this.state.cursorCol - 1) : undefined;
 
 			const idx = isForward ? line.indexOf(char, searchFrom) : line.lastIndexOf(char, searchFrom);
 

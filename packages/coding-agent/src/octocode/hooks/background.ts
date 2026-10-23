@@ -6,17 +6,11 @@ import { capContext, failureOf, interpret } from "./runner.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
 
-function codexContext(
-	event: HookEvent,
-	stdout: string,
-	warn: (message: string) => void,
-): string | undefined {
+function codexContext(event: HookEvent, stdout: string, warn: (message: string) => void): string | undefined {
 	const value = parseJson(stdout);
 	if (!isRecord(value)) {
-		if (event === "SessionStart" || event === "UserPromptSubmit")
-			return visibleControls(stdout.trim()) || undefined;
-		if (event === "PreToolUse" && stdout.trim())
-			warn("Codex PreToolUse output must be a JSON object");
+		if (event === "SessionStart" || event === "UserPromptSubmit") return visibleControls(stdout.trim()) || undefined;
+		if (event === "PreToolUse" && stdout.trim()) warn("Codex PreToolUse output must be a JSON object");
 		return;
 	}
 	const error = validateCodexOutput(event, value);
@@ -24,11 +18,8 @@ function codexContext(
 		warn(error);
 		return;
 	}
-	if (typeof value.systemMessage === "string" && value.systemMessage.trim())
-		warn(value.systemMessage);
-	const specific = isRecord(value.hookSpecificOutput)
-		? value.hookSpecificOutput
-		: {};
+	if (typeof value.systemMessage === "string" && value.systemMessage.trim()) warn(value.systemMessage);
+	const specific = isRecord(value.hookSpecificOutput) ? value.hookSpecificOutput : {};
 	return typeof specific.additionalContext === "string"
 		? visibleControls(specific.additionalContext.trim()) || undefined
 		: undefined;
@@ -36,13 +27,9 @@ function codexContext(
 
 function backgroundContext(stdout: string): string | undefined {
 	const whole = parseJson(stdout);
-	const value = isRecord(whole)
-		? whole
-		: stdout.split(/\r?\n/).map(parseJson).findLast(isRecord);
+	const value = isRecord(whole) ? whole : stdout.split(/\r?\n/).map(parseJson).findLast(isRecord);
 	if (!isRecord(value)) return;
-	const specific = isRecord(value.hookSpecificOutput)
-		? value.hookSpecificOutput
-		: {};
+	const specific = isRecord(value.hookSpecificOutput) ? value.hookSpecificOutput : {};
 	const parts = [value.systemMessage, specific.additionalContext].filter(
 		(part): part is string => typeof part === "string" && Boolean(part.trim()),
 	);
@@ -72,9 +59,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => reset(true));
 	const takeContext = () => {
 		if (!pending.length) return undefined;
-		const content = capContext(
-			`Context from background hooks:\n${pending.join("\n\n")}`,
-		);
+		const content = capContext(`Context from background hooks:\n${pending.join("\n\n")}`);
 		pending = [];
 		return { customType: "octocode-hook-context", content, display: false };
 	};
@@ -94,10 +79,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 		const message = takeContext();
 		return message
 			? {
-					entries: [
-						...event.entries,
-						{ type: "custom_message" as const, ...message },
-					],
+					entries: [...event.entries, { type: "custom_message" as const, ...message }],
 				}
 			: undefined;
 	});
@@ -119,7 +101,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 						if (hook.protocol === "codex") {
 							if (event === "Interrupt") {
 								const verdict = interpret(event, result, "codex");
-								const message = verdict.error ?? failureOf(hook,result,false) ?? verdict.systemMessage;
+								const message = verdict.error ?? failureOf(hook, result, false) ?? verdict.systemMessage;
 								if (message) warn(message);
 								return;
 							}
@@ -131,13 +113,13 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 							if (result.code !== 0 || result.timedOut) return;
 							const context = codexContext(event, result.stdout, warn);
 							if (context)
-								pending = [capContext([...pending, limitCodexContext(context, hook.additionalContextLimit)].join("\n\n"))];
+								pending = [
+									capContext([...pending, limitCodexContext(context, hook.additionalContextLimit)].join("\n\n")),
+								];
 							return;
 						}
 						if (hook.asyncRewake && result.code === 2) {
-							const reason = visibleControls(
-								result.stderr.trim() || result.stdout.trim(),
-							);
+							const reason = visibleControls(result.stderr.trim() || result.stdout.trim());
 							// Sending may await an entire new turn; cleanup must not await that turn through this job.
 							void Promise.resolve(
 								pi.sendMessage(
@@ -153,8 +135,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 						}
 						if (result.code !== 0) return;
 						const context = backgroundContext(result.stdout);
-						if (context)
-							pending = [capContext([...pending, context].join("\n\n"))];
+						if (context) pending = [capContext([...pending, context].join("\n\n"))];
 					})
 					.catch(() => undefined)
 					.finally(() => {
@@ -166,8 +147,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 					});
 				active.add(task);
 			};
-			if (hook.protocol === "codex" && codexRunning >= 8)
-				codexQueue.push(launch);
+			if (hook.protocol === "codex" && codexRunning >= 8) codexQueue.push(launch);
 			else launch();
 		},
 	};

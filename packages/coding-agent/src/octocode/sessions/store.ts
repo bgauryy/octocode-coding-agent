@@ -58,9 +58,7 @@ const git = (cwd: string, args: string[]) =>
  */
 export async function gitState(cwd: string): Promise<{ branch?: string; head?: string }> {
 	try {
-		const [head = "", branch = ""] = (await git(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"]))
-			.trim()
-			.split("\n");
+		const [head = "", branch = ""] = (await git(cwd, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"])).trim().split("\n");
 		return {
 			...(branch && branch !== "HEAD" ? { branch: shownLine(branch, 120) } : {}),
 			...(/^[0-9a-f]{7,64}$/.test(head) ? { head } : {}),

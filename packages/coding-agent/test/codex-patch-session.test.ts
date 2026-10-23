@@ -7,14 +7,9 @@ import { expect, it } from "vitest";
 import { FileGuard, registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
-import {
-	createHarness,
-	getMessageText,
-	getToolResult,
-} from "./suite/harness.ts";
+import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
 
-const shellQuote = (value: string) =>
-	"'" + value.replaceAll("'", "'\\''") + "'";
+const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
 async function fixture(
 	rewrite: string,
@@ -173,8 +168,7 @@ const original = {
 		},
 	],
 };
-const patch = (target: string) =>
-	`*** Begin Patch\n*** Add File: ${target}\n+rewritten\n*** End Patch`;
+const patch = (target: string) => `*** Begin Patch\n*** Add File: ${target}\n+rewritten\n*** End Patch`;
 
 it("projects one native file batch as apply_patch and executes only its rewritten patch through AgentSession", async () => {
 	const f = await fixture(patch("rewritten.txt"));
@@ -195,18 +189,10 @@ it("projects one native file batch as apply_patch and executes only its rewritte
 		expect(payloads[0].tool_name).toBe("apply_patch");
 		expect(Object.keys(payloads[0].tool_input)).toEqual(["command"]);
 		expect(payloads[0].tool_input.command).toContain("*** Add File: first.txt");
-		expect(payloads[0].tool_input.command).toContain(
-			"*** Add File: second.txt",
-		);
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "rewritten.txt"), "utf8"),
-		).toBe("rewritten\n");
-		expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(
-			false,
-		);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "second.txt"))).toBe(
-			false,
-		);
+		expect(payloads[0].tool_input.command).toContain("*** Add File: second.txt");
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "rewritten.txt"), "utf8")).toBe("rewritten\n");
+		expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(f.harness.tempDir, "second.txt"))).toBe(false);
 		expect(getToolResult(f.harness, "file").isError).toBe(false);
 	} finally {
 		f.cleanup();
@@ -216,29 +202,21 @@ it("projects one native file batch as apply_patch and executes only its rewritte
 it.each(["unread", "stale", "reserved", "outside"])(
 	"preserves the native %s safeguard after a Codex rewrite",
 	async (safeguard) => {
-		const requestedTarget =
-			safeguard === "outside"
-				? `../outside-patch-${randomUUID()}.txt`
-				: "protected.txt";
+		const requestedTarget = safeguard === "outside" ? `../outside-patch-${randomUUID()}.txt` : "protected.txt";
 		const f = await fixture(patch(requestedTarget), "workspace");
 		const target = path.resolve(f.harness.tempDir, requestedTarget);
 		try {
-			if (safeguard === "unread" || safeguard === "stale")
-				fs.writeFileSync(target, "untouched\n");
+			if (safeguard === "unread" || safeguard === "stale") fs.writeFileSync(target, "untouched\n");
 			if (safeguard === "stale") {
 				f.guard.record(target);
 				fs.writeFileSync(target, "external change\n");
 			}
 			if (safeguard === "reserved")
-				f.guard.reservedBy = (file) =>
-					file === target ? "Reserved by peer fixture" : undefined;
+				f.guard.reservedBy = (file) => (file === target ? "Reserved by peer fixture" : undefined);
 			f.harness.setResponses([
-				fauxAssistantMessage(
-					[fauxToolCall("file", structuredClone(original))],
-					{
-						stopReason: "toolUse",
-					},
-				),
+				fauxAssistantMessage([fauxToolCall("file", structuredClone(original))], {
+					stopReason: "toolUse",
+				}),
 				fauxAssistantMessage("denial accepted"),
 			]);
 			await f.harness.session.prompt("Apply the fixture changes.");
@@ -254,14 +232,10 @@ it.each(["unread", "stale", "reserved", "outside"])(
 							? /Reserved by peer fixture/
 							: /needs approval/,
 			);
-			if (safeguard === "unread")
-				expect(fs.readFileSync(target, "utf8")).toBe("untouched\n");
-			else if (safeguard === "stale")
-				expect(fs.readFileSync(target, "utf8")).toBe("external change\n");
+			if (safeguard === "unread") expect(fs.readFileSync(target, "utf8")).toBe("untouched\n");
+			else if (safeguard === "stale") expect(fs.readFileSync(target, "utf8")).toBe("external change\n");
 			else expect(fs.existsSync(target)).toBe(false);
-			expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(
-				false,
-			);
+			expect(fs.existsSync(path.join(f.harness.tempDir, "first.txt"))).toBe(false);
 		} finally {
 			f.cleanup();
 		}
@@ -269,9 +243,7 @@ it.each(["unread", "stale", "reserved", "outside"])(
 );
 
 it("rejects an invalid replacement patch without falling back to the original native mutations", async () => {
-	const f = await fixture(
-		"*** Begin Patch\n*** Add File: rewritten.txt\nnot a patch content line\n*** End Patch",
-	);
+	const f = await fixture("*** Begin Patch\n*** Add File: rewritten.txt\nnot a patch content line\n*** End Patch");
 	try {
 		f.harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("file", structuredClone(original))], {
@@ -300,15 +272,9 @@ it("keeps native mutations unchanged when source compatibility is disabled", asy
 		]);
 		await f.harness.session.prompt("Apply the fixture changes.");
 		expect(fs.existsSync(f.captured)).toBe(false);
-		expect(fs.existsSync(path.join(f.harness.tempDir, "rewritten.txt"))).toBe(
-			false,
-		);
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "first.txt"), "utf8"),
-		).toBe("first\n");
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "second.txt"), "utf8"),
-		).toBe("second\n");
+		expect(fs.existsSync(path.join(f.harness.tempDir, "rewritten.txt"))).toBe(false);
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "first.txt"), "utf8")).toBe("first\n");
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "second.txt"), "utf8")).toBe("second\n");
 		expect(getToolResult(f.harness, "file").isError).toBe(false);
 	} finally {
 		f.cleanup();
@@ -335,12 +301,7 @@ it("reports the executed rewritten patch once to Codex PostToolUse", async () =>
 		expect(payloads[0].tool_name).toBe("apply_patch");
 		expect(payloads[0].tool_input).toEqual({ command: rewritten });
 		expect(payloads[0].tool_response).toContain("post-rewritten.txt");
-		expect(
-			fs.readFileSync(
-				path.join(f.harness.tempDir, "post-rewritten.txt"),
-				"utf8",
-			),
-		).toBe("rewritten\n");
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "post-rewritten.txt"), "utf8")).toBe("rewritten\n");
 	} finally {
 		f.cleanup();
 	}
@@ -349,47 +310,27 @@ it("reports the executed rewritten patch once to Codex PostToolUse", async () =>
 it.each(["denied", "invalid", "unread", "conflict"])(
 	"does not run Codex PostToolUse for a %s call",
 	async (failure) => {
-		const f = await fixture(
-			failure === "invalid" ? "not a patch" : patch("protected.txt"),
-			"full",
-			true,
-			{
-				post: true,
-				deny: failure === "denied",
-				claudeRewrite: failure === "conflict",
-			},
-		);
+		const f = await fixture(failure === "invalid" ? "not a patch" : patch("protected.txt"), "full", true, {
+			post: true,
+			deny: failure === "denied",
+			claudeRewrite: failure === "conflict",
+		});
 		try {
-			if (failure === "unread")
-				fs.writeFileSync(
-					path.join(f.harness.tempDir, "protected.txt"),
-					"keep\n",
-				);
+			if (failure === "unread") fs.writeFileSync(path.join(f.harness.tempDir, "protected.txt"), "keep\n");
 			f.harness.setResponses([
-				fauxAssistantMessage(
-					[fauxToolCall("file", structuredClone(original))],
-					{ stopReason: "toolUse" },
-				),
+				fauxAssistantMessage([fauxToolCall("file", structuredClone(original))], { stopReason: "toolUse" }),
 				fauxAssistantMessage("denial accepted"),
 			]);
 			await f.harness.session.prompt("Apply changes.");
 			expect(fs.existsSync(f.captured)).toBe(true);
 			const result = getToolResult(f.harness, "file");
 			expect(result.isError).toBe(true);
-			if (failure === "conflict")
-				expect(getMessageText(result)).toContain(
-					"Conflicting source-profile file rewrites",
-				);
+			if (failure === "conflict") expect(getMessageText(result)).toContain("Conflicting source-profile file rewrites");
 			expect(fs.existsSync(f.postCaptured)).toBe(false);
 			for (const name of ["first.txt", "second.txt", "claude.txt"])
 				expect(fs.existsSync(path.join(f.harness.tempDir, name))).toBe(false);
 			if (failure === "unread")
-				expect(
-					fs.readFileSync(
-						path.join(f.harness.tempDir, "protected.txt"),
-						"utf8",
-					),
-				).toBe("keep\n");
+				expect(fs.readFileSync(path.join(f.harness.tempDir, "protected.txt"), "utf8")).toBe("keep\n");
 		} finally {
 			f.cleanup();
 		}
@@ -412,12 +353,8 @@ it("preverifies every rewritten patch target before mutation and suppresses succ
 		const result = getToolResult(f.harness, "file");
 		expect(result.isError).toBe(true);
 		expect(getMessageText(result)).toContain("not read");
-		expect(fs.existsSync(path.join(f.harness.tempDir, "created.txt"))).toBe(
-			false,
-		);
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "protected.txt"), "utf8"),
-		).toBe("keep\n");
+		expect(fs.existsSync(path.join(f.harness.tempDir, "created.txt"))).toBe(false);
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "protected.txt"), "utf8")).toBe("keep\n");
 		expect(fs.existsSync(f.postCaptured)).toBe(false);
 	} finally {
 		f.cleanup();
@@ -500,9 +437,7 @@ it("preserves native query batches' continue-after-failure behavior independentl
 		expect(result.isError).toBe(false);
 		expect(getMessageText(result)).toMatch(/not read/);
 		expect(fs.readFileSync(first, "utf8")).toBe("first\n");
-		expect(
-			fs.readFileSync(path.join(f.harness.tempDir, "third.txt"), "utf8"),
-		).toBe("third\n");
+		expect(fs.readFileSync(path.join(f.harness.tempDir, "third.txt"), "utf8")).toBe("third\n");
 		expect(fs.readFileSync(second, "utf8")).toBe("unread existing content\n");
 	} finally {
 		f.cleanup();

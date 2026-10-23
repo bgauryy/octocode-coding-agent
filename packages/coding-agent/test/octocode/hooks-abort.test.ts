@@ -11,13 +11,7 @@ vi.mock("node:child_process", async (original) => {
 
 it("does not spawn a hook for an already aborted request", async () => {
 	const signal = AbortSignal.abort();
-	const run = await runHook(
-		{ command: "echo should-not-run", timeoutMs: 1000, source: "test" },
-		{},
-		tmp(),
-		{},
-		signal,
-	);
+	const run = await runHook({ command: "echo should-not-run", timeoutMs: 1000, source: "test" }, {}, tmp(), {}, signal);
 	expect(vi.mocked(spawn).mock.calls.length).toBe(0);
 	expect(interpret("PreToolUse", run)).toEqual({});
 	expect(run).toMatchObject({ code: null, stdout: "", timedOut: false });

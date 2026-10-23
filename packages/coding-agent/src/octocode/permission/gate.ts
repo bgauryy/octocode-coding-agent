@@ -10,13 +10,7 @@ import type {
 	ToolCallEventResult,
 } from "../../core/extensions/index.ts";
 import { readableHistory, readableSessionFolder } from "../shared/history.ts";
-import {
-	canonicalPath,
-	isWithin,
-	resolveToolPath,
-	sessionsRoot,
-	workspaceRoot,
-} from "../shared/home.ts";
+import { canonicalPath, isWithin, resolveToolPath, sessionsRoot, workspaceRoot } from "../shared/home.ts";
 import { isMcpTool } from "../shared/octocode-tools.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Classification } from "../shared/winclassify.ts";
@@ -121,7 +115,10 @@ function classOf(
 		if (forceDestructive || destructive(command, cwd))
 			return { action: "shell.destructive", title: "Run this destructive command?", what: [command, `cwd: ${cwd}`] };
 		const grant = simple
-			? { key: JSON.stringify([tool, input.type ?? "bash", canonicalPath(cwd), simple]), label: `\`${simple}\` with ${tool} in ${cwd}` }
+			? {
+					key: JSON.stringify([tool, input.type ?? "bash", canonicalPath(cwd), simple]),
+					label: `\`${simple}\` with ${tool} in ${cwd}`,
+				}
 			: undefined;
 		return {
 			action: "shell",
@@ -227,10 +224,7 @@ interface PermissionGateOptions {
 	permission: Permission;
 	/** The provenance tripwire's check (`permission/provenance`). */
 	provenance: {
-		check(
-			event: ToolCallEvent,
-			ctx: { cwd: string },
-		): { why: string } | undefined;
+		check(event: ToolCallEvent, ctx: { cwd: string }): { why: string } | undefined;
 	};
 	annotations: (toolName: string) => ToolAnnotations | undefined;
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
@@ -238,21 +232,13 @@ interface PermissionGateOptions {
 	replacement?: {
 		definition: (name: string) => Tool | undefined;
 		refresh: (ctx: ExtensionContext) => Promise<void>;
-		reserved: (
-			event: ToolCallEvent,
-			ctx: ExtensionContext,
-		) => Promise<GateVerdict | undefined>;
+		reserved: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>;
 	};
 }
 
 /** The `tool_call` gate: every call with an effect class (or a reason) reaches `Permission.check`, which applies the mode, records the call and asks when it must. A user's yes covers the call. */
 export function permissionGate(options: PermissionGateOptions) {
-	const {
-		permission,
-		provenance,
-		annotations,
-		powershell = powershellDestructive,
-	} = options;
+	const { permission, provenance, annotations, powershell = powershellDestructive } = options;
 	return async (
 		event: ToolCallEvent,
 		ctx: ExtensionContext,
@@ -269,40 +255,25 @@ export function permissionGate(options: PermissionGateOptions) {
 				() => active,
 			);
 			if (!capturedInvocation) {
-				const source = permission.unprojectedSourceDecision(
-					originalEvent.toolName,
-				);
+				const source = permission.unprojectedSourceDecision(originalEvent.toolName);
 				if (source?.decision === "unsupported") {
-					permission.noted(
-						[originalEvent.toolName],
-						source.message ?? "Cannot project source policy input",
-						{ allowed: false, via: "policy" },
-					);
+					permission.noted([originalEvent.toolName], source.message ?? "Cannot project source policy input", {
+						allowed: false,
+						via: "policy",
+					});
 					return { block: true, reason: source.message };
 				}
 			}
-			const target = CHANGE_TOOLS.has(event.toolName)
-				? optionalString(input.path)
-				: undefined;
+			const target = CHANGE_TOOLS.has(event.toolName) ? optionalString(input.path) : undefined;
 			const refused =
-				target &&
-				stateFolderRefusal(
-					resolveToolPath(ctx.cwd, target),
-					target,
-					`Octocode ${event.toolName}`,
-				);
+				target && stateFolderRefusal(resolveToolPath(ctx.cwd, target), target, `Octocode ${event.toolName}`);
 			if (refused) {
-				permission.refused(
-					[`${event.toolName} ${target}`],
-					refused,
-					event.toolName,
-				);
+				permission.refused([`${event.toolName} ${target}`], refused, event.toolName);
 				return { block: true, reason: refused };
 			}
 			// PowerShell's grammar is parsed by the Windows helper (async); classify itself stays synchronous.
 			const forceDestructive =
-				(event.toolName === "powershell" ||
-					(event.toolName === "bash" && input.type === "powershell")) &&
+				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
 			const request = classify(event, ctx, annotations, forceDestructive);
 			const hit = provenance.check(event, ctx);
@@ -323,9 +294,7 @@ export function permissionGate(options: PermissionGateOptions) {
 							reasons,
 							...(reason
 								? {
-										reason: [request?.reason, reason]
-											.filter(Boolean)
-											.join("\n"),
+										reason: [request?.reason, reason].filter(Boolean).join("\n"),
 									}
 								: {}),
 						}
@@ -333,14 +302,12 @@ export function permissionGate(options: PermissionGateOptions) {
 			if (!call && !permission.hasSourcePolicy) return undefined;
 			if (!call && originalEvent.toolName === "file") {
 				const invocation = capturedInvocation;
-				const source =
-					invocation && permission.sourceDecision(invocation, ctx.cwd);
+				const source = invocation && permission.sourceDecision(invocation, ctx.cwd);
 				if (source?.decision === "deny" || source?.decision === "unsupported") {
-					permission.noted(
-						[originalEvent.toolName],
-						source.message ?? "Source policy refused this call",
-						{ allowed: false, via: "policy" },
-					);
+					permission.noted([originalEvent.toolName], source.message ?? "Source policy refused this call", {
+						allowed: false,
+						via: "policy",
+					});
 					return {
 						block: true,
 						reason: source.message ?? "Source policy refused this call",
@@ -358,42 +325,29 @@ export function permissionGate(options: PermissionGateOptions) {
 				...(ctx.signal ? { signal: ctx.signal } : {}),
 			};
 			const prepare =
-				options.replacement &&
-				originalEvent.toolName === "bash" &&
-				originalEvent.toolCallId !== "user-bash"
+				options.replacement && originalEvent.toolName === "bash" && originalEvent.toolCallId !== "user-bash"
 					? async (updated: import("@octocodeai/octocode-ai").JsonObject) => {
 							const owner = options.replacement!;
-							if (!active || ctx.signal?.aborted)
-								throw new Error("PermissionRequest replacement cancelled");
+							if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");
 							const definition = owner.definition(originalEvent.toolName);
-							if (!definition)
-								throw new Error("Cannot validate replacement for unknown tool");
-							const replacement = rewriteClaudeBash(
-								originalEvent.input,
-								updated,
-							);
+							if (!definition) throw new Error("Cannot validate replacement for unknown tool");
+							const replacement = rewriteClaudeBash(originalEvent.input, updated);
 							const validated = validateToolArguments(definition, {
 								type: "toolCall",
 								id: originalEvent.toolCallId,
 								name: originalEvent.toolName,
-								arguments:
-									replacement as import("@octocodeai/octocode-ai").JsonObject,
+								arguments: replacement as import("@octocodeai/octocode-ai").JsonObject,
 							});
 							const candidate: ToolCallEvent = {
 								...originalEvent,
 								input: validated,
 							};
 							await owner.refresh(ctx);
-							if (!active || ctx.signal?.aborted)
-								throw new Error("PermissionRequest replacement cancelled");
+							if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");
 							const reservation = await owner.reserved(candidate, ctx);
-							if (reservation?.block)
-								throw new Error(
-									reservation.reason ?? "Replacement target is reserved",
-								);
+							if (reservation?.block) throw new Error(reservation.reason ?? "Replacement target is reserved");
 							const classified = classify(candidate, ctx, annotations, false);
-							if (!classified)
-								throw new Error("Cannot classify Bash replacement");
+							if (!classified) throw new Error("Cannot classify Bash replacement");
 							const candidateHit = provenance.check(candidate, ctx);
 							const nextInvocation = captureToolInvocation(
 								candidate.toolCallId,
@@ -401,8 +355,7 @@ export function permissionGate(options: PermissionGateOptions) {
 								validated,
 								() => active,
 							);
-							if (!nextInvocation)
-								throw new Error("Cannot capture replacement invocation");
+							if (!nextInvocation) throw new Error("Cannot capture replacement invocation");
 							const request: PermissionRequest = {
 								...classified,
 								invocation: nextInvocation,
@@ -413,9 +366,7 @@ export function permissionGate(options: PermissionGateOptions) {
 												...(candidateHit ? ["provenance" as const] : []),
 												...(prior?.ask ? ["hook.ask" as const] : []),
 											],
-											reason: [candidateHit?.why, prior?.ask]
-												.filter(Boolean)
-												.join("\n"),
+											reason: [candidateHit?.why, prior?.ask].filter(Boolean).join("\n"),
 										}
 									: {}),
 							};
@@ -424,52 +375,29 @@ export function permissionGate(options: PermissionGateOptions) {
 								request,
 								commit: async (
 									signal: AbortSignal,
-									approvedSource:
-										| import("./source-policy.ts").SourceDecision
-										| undefined,
+									approvedSource: import("./source-policy.ts").SourceDecision | undefined,
 								) => {
-									if (
-										committed ||
-										!active ||
-										signal.aborted ||
-										ctx.signal?.aborted
-									)
-										throw new Error(
-											"PermissionRequest replacement cancelled or already committed",
-										);
+									if (committed || !active || signal.aborted || ctx.signal?.aborted)
+										throw new Error("PermissionRequest replacement cancelled or already committed");
 									await owner.refresh(ctx);
 									const finalReservation = await owner.reserved(candidate, ctx);
 									if (finalReservation?.block)
-										throw new Error(
-											finalReservation.reason ??
-												"Replacement target is reserved",
-										);
-									const source = permission.sourceDecision(
-										nextInvocation,
-										ctx.cwd,
-									);
+										throw new Error(finalReservation.reason ?? "Replacement target is reserved");
+									const source = permission.sourceDecision(nextInvocation, ctx.cwd);
 									if (
 										source?.decision === "deny" ||
 										source?.decision === "unsupported" ||
-										(source?.decision === "ask" &&
-											approvedSource?.decision !== "ask")
+										(source?.decision === "ask" && approvedSource?.decision !== "ask")
 									)
-										throw new Error(
-											source.message ??
-												"Replacement refused by current source policy",
-										);
+										throw new Error(source.message ?? "Replacement refused by current source policy");
 									for (const target of source?.shellTargets ?? []) {
 										const access = shellTargetAccess(target, ctx.cwd);
 										if (access.refusal) throw new Error(access.refusal);
 									}
-									if (!active || ctx.signal?.aborted)
-										throw new Error("PermissionRequest replacement cancelled");
-									if (signal.aborted)
-										throw new Error("PermissionRequest replacement cancelled");
+									if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");
+									if (signal.aborted) throw new Error("PermissionRequest replacement cancelled");
 									for (const key of Object.keys(originalEvent.input))
-										delete (originalEvent.input as Record<string, unknown>)[
-											key
-										];
+										delete (originalEvent.input as Record<string, unknown>)[key];
 									Object.assign(originalEvent.input, validated);
 									committed = true;
 								},
@@ -479,9 +407,7 @@ export function permissionGate(options: PermissionGateOptions) {
 			const verdict = prepare
 				? await permission.checkWithReplacement(ctx, checkedRequest, prepare)
 				: await permission.check(ctx, checkedRequest);
-			return verdict.allowed
-				? undefined
-				: { block: true, reason: verdict.message };
+			return verdict.allowed ? undefined : { block: true, reason: verdict.message };
 		} finally {
 			active = false;
 		}

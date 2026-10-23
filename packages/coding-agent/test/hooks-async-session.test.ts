@@ -15,9 +15,7 @@ it("adds completed async context to the next model request without creating an e
 		path.join(home, ".claude/settings.json"),
 		JSON.stringify({
 			hooks: {
-				UserPromptSubmit: [
-					{ hooks: [{ type: "command", command: "fixture", async: true }] },
-				],
+				UserPromptSubmit: [{ hooks: [{ type: "command", command: "fixture", async: true }] }],
 			},
 		}),
 	);
@@ -52,11 +50,7 @@ it("adds completed async context to the next model request without creating an e
 		],
 		extensionFactories: [
 			(pi) => {
-				registerHooks(
-					pi,
-					{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-					home,
-				);
+				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 			},
 		],
 	});
@@ -67,9 +61,7 @@ it("adds completed async context to the next model request without creating an e
 				stopReason: "toolUse",
 			}),
 			(context) => {
-				expect(
-					JSON.stringify(context.messages).match(/async session evidence/g),
-				).toHaveLength(1);
+				expect(JSON.stringify(context.messages).match(/async session evidence/g)).toHaveLength(1);
 				return fauxAssistantMessage("finished");
 			},
 		]);
@@ -110,11 +102,7 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 		tools: [],
 		extensionFactories: [
 			(pi) => {
-				registerHooks(
-					pi,
-					{ OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" },
-					home,
-				);
+				registerHooks(pi, { OCTOCODE_HOOKS: "1", OCTOCODE_HOOKS_COMPAT: "1" }, home);
 			},
 		],
 	});
@@ -123,12 +111,8 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 		harness.setResponses([
 			fauxAssistantMessage("initial work finished"),
 			(context) => {
-				expect(JSON.stringify(context.messages)).toContain(
-					"background verification failed",
-				);
-				expect(JSON.stringify(context.messages)).not.toContain(
-					"ignored stdout",
-				);
+				expect(JSON.stringify(context.messages)).toContain("background verification failed");
+				expect(JSON.stringify(context.messages)).not.toContain("ignored stdout");
 				return fauxAssistantMessage("responded to background failure");
 			},
 		]);
@@ -141,9 +125,7 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 			timedOut: false,
 		});
 		await vi.waitFor(() =>
-			expect(JSON.stringify(harness.session.messages)).toContain(
-				"responded to background failure",
-			),
+			expect(JSON.stringify(harness.session.messages)).toContain("responded to background failure"),
 		);
 		expect(harness.faux.state.callCount).toBe(2);
 		expect(run).toHaveBeenCalledTimes(1);

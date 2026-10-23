@@ -134,8 +134,7 @@ function setup(
 		context: async (list: unknown[] = messages) =>
 			(
 				(await fake.fire("context", { type: "context", messages: structuredClone(list) }, ctx)) as
-					| { messages?: any[] }
-					| undefined
+					{ messages?: any[] } | undefined
 			)?.messages ?? list,
 	};
 }
@@ -409,16 +408,12 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 				// The placeholder names Octocode's own spill file; no second copy is written.
 				expect(byId.get(item.id)).toContain(`Full output: ${shortPath(file)}.`);
 			});
-			const saved = (s.entries[0]!.data as { results: Array<{ saved: string }> }).results.map(
-				(result) => result.saved,
-			);
+			const saved = (s.entries[0]!.data as { results: Array<{ saved: string }> }).results.map((result) => result.saved);
 			expect(saved).toEqual(spilled.map(({ item }) => shortPath((item.messages[1] as any).details.fullOutputPath)));
 		});
 
 		it("leaves them alone while the cache is warm", async () => {
-			const items = Array.from({ length: 12 }, (_, index) =>
-				bash(`cat a${index}.ts`, spill(`pi-bash-${index}.log`)),
-			);
+			const items = Array.from({ length: 12 }, (_, index) => bash(`cat a${index}.ts`, spill(`pi-bash-${index}.log`)));
 			const s = setup([{ role: "user", content: "go", timestamp: T0 }, ...flat(items), reply(T0 + 100)]);
 			await s.start(T0 + 100 + HOUR - 1_000);
 			expect(s.entries).toEqual([]);

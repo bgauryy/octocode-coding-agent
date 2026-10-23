@@ -18,12 +18,10 @@ export function projectCodexPatch(input: Record<string, unknown>): string {
 		parsePatch(input.patch);
 		return input.patch;
 	}
-	if (!Array.isArray(input.queries) || input.queries.length === 0)
-		throw new Error("Patch requires file queries");
+	if (!Array.isArray(input.queries) || input.queries.length === 0) throw new Error("Patch requires file queries");
 	const lines = [BEGIN];
 	for (const query of input.queries) {
-		if (!isRecord(query))
-			throw new Error("Invalid file query for patch projection");
+		if (!isRecord(query)) throw new Error("Invalid file query for patch projection");
 		const path = patchPath(query.path);
 		if (query.type === "delete") lines.push(`*** Delete File: ${path}`);
 		else if (query.type === "write") {
@@ -53,12 +51,8 @@ export function projectCodexPatch(input: Record<string, unknown>): string {
 }
 
 /** Reverse supported patch operations; the caller still validates schema, reservations and permissions. */
-export function rewriteCodexPatch(
-	input: Record<string, unknown>,
-	updated: JsonObject,
-): Record<string, unknown> {
-	if (typeof updated.command !== "string")
-		throw new Error("Rewritten patch command must be a string");
+export function rewriteCodexPatch(input: Record<string, unknown>, updated: JsonObject): Record<string, unknown> {
+	if (typeof updated.command !== "string") throw new Error("Rewritten patch command must be a string");
 	const parsed = parsePatch(updated.command);
 	for (const h of parsed.hunks) {
 		patchPath(h.path);
@@ -73,9 +67,6 @@ export function rewriteCodexPatch(
 		: input.reasoning;
 	return {
 		patch: updated.command,
-		reasoning:
-			typeof reason === "string" && reason
-				? reason
-				: "Apply the patch rewritten by a PreToolUse hook",
+		reasoning: typeof reason === "string" && reason ? reason : "Apply the patch rewritten by a PreToolUse hook",
 	};
 }

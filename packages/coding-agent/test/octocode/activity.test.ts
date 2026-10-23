@@ -193,9 +193,10 @@ describe("Activity", () => {
 			hint: "useState in src",
 			more: 0,
 		});
-		expect(
-			callTarget("ghSearchCode", { queries: [{ owner: "o", repo: "r", keywords: ["a", "b"] }, {}, {}] }),
-		).toEqual({ hint: "o/r a b", more: 2 });
+		expect(callTarget("ghSearchCode", { queries: [{ owner: "o", repo: "r", keywords: ["a", "b"] }, {}, {}] })).toEqual({
+			hint: "o/r a b",
+			more: 2,
+		});
 		expect(callTarget("agent", { goal: "Audit auth\nmore lines" })).toEqual({ hint: "Audit auth", more: 0 });
 		expect(callTarget("web", { queries: [{ url: "https://me:s3cret@example.com/x" }] }).hint).toBe(
 			"https://example.com/x",
@@ -432,7 +433,6 @@ describe("Activity: the working line stays within its columns", () => {
 		expect(activity.describe(0)).toBe("Running bash make test");
 	});
 });
-
 
 it("shows run totals above the action, updates streaming usage without double counting, and resets next run", async () => {
 	vi.useFakeTimers();

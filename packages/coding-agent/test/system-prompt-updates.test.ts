@@ -127,9 +127,7 @@ describe("system prompt updates", () => {
 				}),
 			);
 			for (const text of ["one", "two", "three", "four"]) await harness.session.prompt(text);
-			const systemMessages = requests.map((request) =>
-				request.messages.filter((message) => message.role === "system"),
-			);
+			const systemMessages = requests.map((request) => request.messages.filter((message) => message.role === "system"));
 			// Forced turns collapse to one leading message; the unforced fourth turn passes the
 			// recorded head and both plan_mode patches through.
 			expect(systemMessages.map((messages) => messages.length)).toEqual([1, 1, 1, 3]);

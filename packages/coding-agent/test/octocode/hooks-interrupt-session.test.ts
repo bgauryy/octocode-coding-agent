@@ -110,9 +110,7 @@ async function fixture(
 								type: "command",
 								command,
 								...(options.async ? { async: true } : {}),
-								...(options.timeout !== undefined
-									? { timeout: options.timeout }
-									: {}),
+								...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
 							},
 						],
 					},
@@ -228,8 +226,7 @@ async function fixture(
 	child.stderr.on("data", (chunk) => {
 		stderr += chunk;
 	});
-	const send = (command: Event) =>
-		child.stdin.write(JSON.stringify(command) + "\n");
+	const send = (command: Event) => child.stdin.write(JSON.stringify(command) + "\n");
 	const wait = async (predicate: () => boolean, timeout = 15000) => {
 		const deadline = Date.now() + timeout;
 		while (!predicate()) {
@@ -240,8 +237,7 @@ async function fixture(
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 	};
-	const response = (id: string) =>
-		events.find((event) => event.type === "response" && event.id === id);
+	const response = (id: string) => events.find((event) => event.type === "response" && event.id === id);
 	const records = (): HookRecord[] =>
 		fs.existsSync(capture)
 			? fs
@@ -254,10 +250,7 @@ async function fixture(
 	const close = async () => {
 		if (!exited) {
 			child.stdin.end();
-			await Promise.race([
-				exit,
-				new Promise((resolve) => setTimeout(resolve, 3000)),
-			]);
+			await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 3000))]);
 			if (!exited) {
 				child.kill("SIGKILL");
 				await exit;
@@ -322,9 +315,7 @@ it("runs one observational Interrupt after real RPC provider cancellation, inclu
 		expect(record.input.transcript_path).toEqual(expect.any(String));
 		expect(fs.existsSync(String(record.input.transcript_path))).toBe(true);
 		expect(f.requests).toHaveLength(1);
-		expect(
-			f.records().filter((record) => record.input.hook_event_name === "Stop"),
-		).toHaveLength(0);
+		expect(f.records().filter((record) => record.input.hook_event_name === "Stop")).toHaveLength(0);
 	} finally {
 		await f.close();
 	}
@@ -397,9 +388,7 @@ it("does not classify RPC shutdown as user interruption", async () => {
 		f.child.stdin.end();
 		await Promise.race([
 			f.exit,
-			new Promise((_, reject) =>
-				setTimeout(() => reject(new Error("Shutdown did not finish")), 10000),
-			),
+			new Promise((_, reject) => setTimeout(() => reject(new Error("Shutdown did not finish")), 10000)),
 		]);
 		expect(interrupts(f)).toHaveLength(0);
 		expect(f.requests).toHaveLength(1);
@@ -438,9 +427,7 @@ it.each([
 			}
 			expect(interrupts(f)).toHaveLength(1);
 			expect(f.requests).toHaveLength(1);
-			expect(
-				f.records().filter((r) => r.input.hook_event_name === "Stop"),
-			).toHaveLength(0);
+			expect(f.records().filter((r) => r.input.hook_event_name === "Stop")).toHaveLength(0);
 		} finally {
 			await f.close();
 		}
@@ -463,9 +450,7 @@ it.each([undefined, 30])(
 			f.send({ type: "abort", id: "cancel" });
 			await f.wait(() => !!f.response("cancel"), 6000);
 			expect(interrupts(f)).toHaveLength(1);
-			expect(Date.now() - started).toBeLessThan(
-				timeout === undefined ? 2500 : 4500,
-			);
+			expect(Date.now() - started).toBeLessThan(timeout === undefined ? 2500 : 4500);
 			expect(f.requests).toHaveLength(1);
 		} finally {
 			await f.close();
@@ -476,8 +461,7 @@ it.each([undefined, 30])(
 
 it("captures the current permission and persisted turn through direct AgentSession.abort", async () => {
 	const f = await fixture();
-	for (const [key, value] of Object.entries(f.env))
-		if (value !== undefined) vi.stubEnv(key, value);
+	for (const [key, value] of Object.entries(f.env)) if (value !== undefined) vi.stubEnv(key, value);
 	const settingsManager = SettingsManager.inMemory({
 		retry: { enabled: false },
 	});
@@ -505,9 +489,7 @@ it("captures the current permission and persisted turn through direct AgentSessi
 			mode: "json",
 			shutdownHandler: () => undefined,
 		} as never);
-		await session.setModel(
-			session.modelRuntime.getModel("fixture-local", "fixture")!,
-		);
+		await session.setModel(session.modelRuntime.getModel("fixture-local", "fixture")!);
 		await session.prompt("/permissions full");
 		const running = session.prompt("DIRECT_SESSION_INTERRUPT");
 		await f.wait(() => f.requests.length === 1);
@@ -520,9 +502,7 @@ it("captures the current permission and persisted turn through direct AgentSessi
 		expect(input.turn_id).toBe(id);
 		expect(input.session_id).toBe(session.sessionId);
 		expect(input.transcript_path).toBe(session.sessionFile);
-		expect(fs.readFileSync(String(input.transcript_path), "utf8")).toContain(
-			"DIRECT_SESSION_INTERRUPT",
-		);
+		expect(fs.readFileSync(String(input.transcript_path), "utf8")).toContain("DIRECT_SESSION_INTERRUPT");
 		expect(f.requests).toHaveLength(1);
 	} finally {
 		await session.abort("shutdown");
@@ -556,18 +536,12 @@ it.each(["success", "hold"] as const)(
 				id: "prompt",
 				message: "MCP interruption fixture",
 			});
-			await f.wait(
-				() =>
-					f.requests.length === 1 &&
-					f.mcpRecords().some((r) => r.message.method === "tools/list"),
-			);
+			await f.wait(() => f.requests.length === 1 && f.mcpRecords().some((r) => r.message.method === "tools/list"));
 			const started = Date.now();
 			f.send({ type: "abort", id: "cancel" });
 			await f.wait(() => !!f.response("cancel"), 6000);
 			expect(f.response("cancel")!.success).toBe(true);
-			const calls = f
-				.mcpRecords()
-				.filter((r) => r.message.method === "tools/call");
+			const calls = f.mcpRecords().filter((r) => r.message.method === "tools/call");
 			expect(calls).toHaveLength(1);
 			expect(calls[0]!.providerClosed).toBe(true);
 			const params = calls[0]!.message.params as {
@@ -582,9 +556,7 @@ it.each(["success", "hold"] as const)(
 				turn: expect.any(String),
 				transcript: expect.any(String),
 			});
-			expect(
-				fs.readFileSync(String(params.arguments.transcript), "utf8"),
-			).toContain("MCP interruption fixture");
+			expect(fs.readFileSync(String(params.arguments.transcript), "utf8")).toContain("MCP interruption fixture");
 			expect(f.requests).toHaveLength(1);
 			if (mcp === "success")
 				expect(f.events).toContainEqual(
@@ -596,11 +568,7 @@ it.each(["success", "hold"] as const)(
 				);
 			else {
 				expect(Date.now() - started).toBeLessThan(2500);
-				await f.wait(() =>
-					f
-						.mcpRecords()
-						.some((r) => r.message.method === "notifications/cancelled"),
-				);
+				await f.wait(() => f.mcpRecords().some((r) => r.message.method === "notifications/cancelled"));
 			}
 		} finally {
 			await f.close();

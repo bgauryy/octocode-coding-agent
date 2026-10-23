@@ -134,8 +134,7 @@ export function peerRegistryDir(env: NodeJS.ProcessEnv = process.env): string {
  */
 export function sessionDirName(id: string): string {
 	const name = id.replace(/[^\w.-]/g, "_");
-	if (/^\.*$/.test(name))
-		throw new Error(`Invalid session id ${JSON.stringify(id)}: it cannot name a session folder.`);
+	if (/^\.*$/.test(name)) throw new Error(`Invalid session id ${JSON.stringify(id)}: it cannot name a session folder.`);
 	return name;
 }
 
@@ -390,8 +389,18 @@ export function workspaceRoot(cwd: string): string | undefined {
 }
 
 /** Claude source settings share the hook compatibility discovery and project trust boundary. */
-export function claudeSettingsSources(cwd: string, trusted: boolean, home = os.homedir()): { path: string; anchor: string }[] {
- const user = claudeConfigDir(home);
- return [{ path: path.join(user, "settings.json"), anchor: user },
-  ...(trusted ? projectHookFiles(cwd).filter(file => path.basename(path.dirname(file)) === ".claude").map(file => ({path:file,anchor:cwd})) : [])];
+export function claudeSettingsSources(
+	cwd: string,
+	trusted: boolean,
+	home = os.homedir(),
+): { path: string; anchor: string }[] {
+	const user = claudeConfigDir(home);
+	return [
+		{ path: path.join(user, "settings.json"), anchor: user },
+		...(trusted
+			? projectHookFiles(cwd)
+					.filter((file) => path.basename(path.dirname(file)) === ".claude")
+					.map((file) => ({ path: file, anchor: cwd }))
+			: []),
+	];
 }

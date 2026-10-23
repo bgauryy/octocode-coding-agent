@@ -183,9 +183,7 @@ describe("provider error body passthrough (per-tier regression)", () => {
 		});
 
 		const model = getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
-		const output = await drainResult(
-			streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}),
-		);
+		const output = await drainResult(streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}));
 
 		expect(output.stopReason).toBe("error");
 		expect(output.errorMessage).toContain("403");
@@ -209,9 +207,7 @@ describe("provider error body passthrough (per-tier regression)", () => {
 		);
 
 		const model = getModel("amazon-bedrock", "global.anthropic.claude-opus-5");
-		const output = await drainResult(
-			streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}),
-		);
+		const output = await drainResult(streamSimpleBedrock(model, normalizeContext({ messages: context.messages }), {}));
 
 		expect(output.stopReason).toBe("error");
 		expect(output.errorMessage).toContain("on-demand throughput isn't supported");

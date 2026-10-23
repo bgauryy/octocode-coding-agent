@@ -177,13 +177,13 @@ describe("detectCacheMiss", () => {
 	});
 });
 
-
 describe("measured cache usage by purpose", () => {
 	it("does not inflate conversation hits with warming, summaries or tool usage", () => {
 		const usage = assistant({ cacheRead: 900, input: 100, cost: { total: 0.2 } }).usage;
 		const base = { id: "x", parentId: null, timestamp: "" };
 		const entries = [
-			entry(assistant({ input: 100 })), entry(assistant({ cacheRead: 50, input: 50 })),
+			entry(assistant({ input: 100 })),
+			entry(assistant({ cacheRead: 50, input: 50 })),
 			{ ...base, type: "usage", kind: "cache_warm", provider: "p", model: "m", usage },
 			{ ...base, type: "compaction", usage },
 			{ ...base, type: "branch_summary", usage },

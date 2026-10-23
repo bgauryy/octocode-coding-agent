@@ -113,9 +113,7 @@ describe("subagent renderers", () => {
 			rendered(
 				renderAgentResult(
 					{
-						content: [
-							{ type: "text", text: "Started general-0001 in the background.\n\nNot isolated: no git repo" },
-						],
+						content: [{ type: "text", text: "Started general-0001 in the background.\n\nNot isolated: no git repo" }],
 						details: details({ status: "background" }),
 					},
 					{ isPartial: false, expanded },

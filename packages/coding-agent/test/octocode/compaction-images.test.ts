@@ -191,9 +191,8 @@ describe("request too large (HTTP 413)", () => {
 		const entries = [pasted, ...history(2), { id: "fail", message: failed() }];
 		const edits = planTooLargeRecovery(entries, "fail", 1)!;
 		expect(edits.filter((edit) => edit.targetId !== "fail").map((edit) => edit.targetId)).toEqual(["u0", "r0"]);
-		const content = (
-			edits.find((edit) => edit.targetId === "u0")!.replacement as { content: Array<{ text: string }> }
-		).content;
+		const content = (edits.find((edit) => edit.targetId === "u0")!.replacement as { content: Array<{ text: string }> })
+			.content;
 		expect(content[0]!.text).toBe("see this");
 		expect(content[1]!.text).toMatch(/^\[image from an earlier user message omitted; saved at /);
 		// A text-only user message is never touched.
@@ -213,10 +212,7 @@ describe("request too large (HTTP 413)", () => {
 		};
 		expect(first.continue).toBeUndefined();
 		expect(first.entries.find((edit) => edit.targetId === "fail")!.replacement).toBeNull();
-		expect(first.entries.filter((edit) => edit.targetId !== "fail").map((edit) => edit.targetId)).toEqual([
-			"r0",
-			"r1",
-		]);
+		expect(first.entries.filter((edit) => edit.targetId !== "fail").map((edit) => edit.targetId)).toEqual(["r0", "r1"]);
 		expect(await settle()).toEqual({ continue: true });
 		// One continuation per recovery.
 		expect(await settle()).toBeUndefined();
