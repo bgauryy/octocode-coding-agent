@@ -1,5 +1,8 @@
 # Terminal UI
 
+
+For user-facing command navigation, `/help` (or `/commands`) opens a searchable command picker and `/skills` filters it to loaded skills. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for canonical names, aliases, and the combined status, models, and trust menus.
+
 `@octocodeai/octocode-tui` provides the terminal component system used by Octocode. Extensions use it when built-in dialogs, notifications, status text, and widgets are not enough for the interaction they need.
 
 Start with `ctx.ui` methods from an [extension](extensions.md#interact-with-the-user). Build a custom component only when the UI needs its own rendering, keyboard or mouse input, focus, layout, or lifecycle.
@@ -192,4 +195,4 @@ The checked extension examples cover the main patterns:
 - `widget-placement.ts` places persistent content around the editor.
 - `doom-overlay/` demonstrates a continuously rendered overlay.
 
-The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/earendil-works/pi/blob/main/packages/tui/src/index.ts). See [Extensions](extensions.md) for extension lifecycle, state, tools, events, and mode behavior.
+The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/tui/src/index.ts). See [Extensions](extensions.md) for extension lifecycle, state, tools, events, and mode behavior.

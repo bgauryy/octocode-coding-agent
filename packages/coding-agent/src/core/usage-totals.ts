@@ -1,5 +1,5 @@
-import type { Usage } from "@octocodeai/octocode-ai/compat";
-import type { SessionEntry } from "./session-manager.ts";
+import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
+import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager.ts";
 
 export interface UsageTotals {
 	input: number;
@@ -54,7 +54,39 @@ export function combineUsage(first: Usage, second: Usage): Usage {
 	};
 }
 
-export interface UsageCostBreakdownEntry {
+const finite = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
+/**
+ * The spend a `custom_message` entry carries in `details.usage`, normalized, or undefined. A background subagent's report
+ * carries its run's total there; foreground runs carry theirs on the tool result.
+ */
+export function customMessageUsage(entry: SessionEntry): Usage | undefined {
+	if (entry.type !== "custom_message") return undefined;
+	const details = entry.details;
+	if (!details || typeof details !== "object") return undefined;
+	const usage = (details as { usage?: unknown }).usage;
+	if (!usage || typeof usage !== "object") return undefined;
+	const raw = usage as Record<string, unknown>;
+	const cost = raw.cost && typeof raw.cost === "object" ? (raw.cost as Record<string, unknown>) : {};
+	const normalized: Usage = {
+		input: finite(raw.input),
+		output: finite(raw.output),
+		cacheRead: finite(raw.cacheRead),
+		cacheWrite: finite(raw.cacheWrite),
+		totalTokens: finite(raw.totalTokens),
+		cost: {
+			input: finite(cost.input),
+			output: finite(cost.output),
+			cacheRead: finite(cost.cacheRead),
+			cacheWrite: finite(cost.cacheWrite),
+			total: finite(cost.total),
+		},
+	};
+	const tokens = normalized.input + normalized.output + normalized.cacheRead + normalized.cacheWrite;
+	return tokens > 0 || normalized.cost.total > 0 ? normalized : undefined;
+}
+
+interface UsageCostBreakdownEntry {
 	key: string;
 	cost: number;
 	tokens: number;
@@ -79,6 +111,9 @@ export function getUsageCostBreakdown(entries: SessionEntry[]): UsageCostBreakdo
 		} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
 			key = "Tools/summaries";
 			usage = entry.usage;
+		} else if (entry.type === "custom_message") {
+			key = "Tools/summaries";
+			usage = customMessageUsage(entry);
 		}
 		if (!key || !usage) continue;
 
@@ -97,4 +132,30 @@ export function getUsageCostBreakdown(entries: SessionEntry[]): UsageCostBreakdo
 	}))
 		.filter((entry) => entry.cost > 0 || entry.tokens > 0)
 		.sort((a, b) => b.cost - a.cost);
+}
+
+export class UsagePersistenceError extends Error {}
+
+export function createSessionUsageRecorder(
+	manager: SessionManager,
+	kind: string,
+	onRecorded?: (entry: UsageEntry) => void,
+): (message: AssistantMessage) => void {
+	const write = manager.captureUsageWriter();
+	const sessionId = manager.getSessionId();
+	const sessionFile = manager.getSessionFile();
+	const recorded = new WeakSet<AssistantMessage>();
+	return (message) => {
+		if (recorded.has(message)) return;
+		const usage = message.usage;
+		if (usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0 && usage.totalTokens === 0 && usage.cost.total === 0) return;
+		let entry: UsageEntry;
+		try {
+			entry = write(kind, message.provider, message.responseModel ?? message.model, usage);
+		} catch (error) {
+			throw new UsagePersistenceError(`Could not preserve reported usage: ${String(error)}`);
+		}
+		recorded.add(message);
+		if (manager.getSessionId() === sessionId && manager.getSessionFile() === sessionFile) onRecorded?.(entry);
+	};
 }

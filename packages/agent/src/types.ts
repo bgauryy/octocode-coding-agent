@@ -190,7 +190,22 @@ export type PrepareRequest = (
 
 export interface PrepareNextTurnContext extends AgentTurnContext {}
 
+export interface InputBatch { kind: "initial" | "steer" | "followUp"; messages: AgentMessage[] }
+
+/** Record finalized input; an optional signal stops between messages without undoing prior records. */
+export type CommitInput = (messages: AgentMessage[], signal?: AbortSignal) => Promise<void>;
+
+/** Commit finalized items incrementally; return only remaining messages. Stop suppresses the next request. */
+export type PrepareInput = (
+	batch: InputBatch,
+	signal: AbortSignal | undefined,
+	commit: CommitInput,
+) => { messages: AgentMessage[]; stop?: boolean } | Promise<{ messages: AgentMessage[]; stop?: boolean }>;
+
 export interface AgentLoopConfig extends SimpleStreamOptions {
+	prepareInput?: PrepareInput;
+	/** Called when a nonempty batch is selected, before continuation preparation. */
+	onInputSelected?: (batch: InputBatch) => void;
 	model: Model<any>;
 
 	/**
@@ -354,7 +369,7 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
  *
  * @example
  * ```typescript
- * declare module "@mariozechner/agent" {
+ * declare module "@octocodeai/octocode-agent-core" {
  *   interface CustomAgentMessages {
  *     artifact: ArtifactMessage;
  *     notification: NotificationMessage;

@@ -1,5 +1,5 @@
 import { type ExecFileException, execFile, spawnSync } from "child_process";
-import { existsSync, type FSWatcher, readFileSync, type Stats, statSync, unwatchFile, watchFile } from "fs";
+import { existsSync, type FSWatcher, readdirSync, readFileSync, type Stats, statSync, unwatchFile, watchFile } from "fs";
 import { dirname, join, resolve } from "path";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
 
@@ -115,6 +115,8 @@ export class FooterDataProvider {
 	private gitWatcherRetryTimer: ReturnType<typeof setTimeout> | null = null;
 	private refreshInFlight = false;
 	private refreshPending = false;
+	/** Git state the cached branch was last resolved from; null forces the next refresh to resolve again. */
+	private lastRefreshSignature: string | null = null;
 	private disposed = false;
 
 	constructor(cwd: string) {
@@ -178,6 +180,7 @@ export class FooterDataProvider {
 		}
 		this.clearGitWatchers();
 		this.cachedBranch = undefined;
+		this.lastRefreshSignature = null;
 		this.gitPaths = findGitPaths(cwd);
 		this.setupGitWatcher();
 		this.notifyBranchChange();
@@ -217,10 +220,17 @@ export class FooterDataProvider {
 			return;
 		}
 
+		// One change reaches us through several watchers (HEAD dir, reftable dir, tables.list watch and
+		// poll), and fs.watch can replay events from before the watcher started. Skip the git call when
+		// the files that determine the branch are unchanged since the last successful resolution.
+		const signature = this.readGitStateSignature();
+		if (signature !== null && signature === this.lastRefreshSignature) return;
+
 		this.refreshInFlight = true;
 		try {
 			const nextBranch = await this.resolveGitBranchAsync();
 			if (this.disposed) return;
+			this.lastRefreshSignature = nextBranch === null ? null : signature;
 			if (this.cachedBranch !== undefined && this.cachedBranch !== nextBranch) {
 				this.cachedBranch = nextBranch;
 				this.notifyBranchChange();
@@ -233,6 +243,23 @@ export class FooterDataProvider {
 				this.refreshPending = false;
 				this.scheduleRefresh();
 			}
+		}
+	}
+
+	/** Fingerprint of the files that decide the current branch, or null when they cannot be read. */
+	private readGitStateSignature(): string | null {
+		if (!this.gitPaths) return null;
+		try {
+			const parts = [readFileSync(this.gitPaths.headPath, "utf8")];
+			const reftableDir = join(this.gitPaths.commonGitDir, "reftable");
+			if (existsSync(reftableDir)) {
+				parts.push(readdirSync(reftableDir).sort().join("\n"));
+				const tablesListPath = join(reftableDir, "tables.list");
+				parts.push(existsSync(tablesListPath) ? readFileSync(tablesListPath, "utf8") : "");
+			}
+			return parts.join("\0");
+		} catch {
+			return null;
 		}
 	}
 

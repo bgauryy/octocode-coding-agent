@@ -249,7 +249,7 @@ describe("generateSummary reasoning options", () => {
 		expect(completeSimpleMock.mock.calls[0][2]).not.toHaveProperty("reasoning");
 	});
 
-	it("leaves Anthropic refusal fallback handling to pi-ai model metadata", async () => {
+	it("leaves Anthropic refusal fallback handling to octocode-ai model metadata", async () => {
 		await generateSummary(
 			messages,
 			createModel(true, 8192, {

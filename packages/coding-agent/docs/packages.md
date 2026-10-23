@@ -2,6 +2,8 @@
 
 Octocode packages install and distribute extensions, skills, prompt templates, and themes as one unit. Use a package when a customization should be shared through npm or git, or when several resources belong together.
 
+These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [compatibility matrix](../../../PLUGINS_MODS_HOOKS.md) for supported contracts.
+
 A package is an ordinary directory or npm package. It can expose conventional resource directories, declare explicit paths under the `octocode` key in `package.json`, and carry its own runtime dependencies.
 
 ## Install and manage packages
@@ -16,7 +18,7 @@ octocode install ./local-package
 
 `octocode list` shows configured packages. Use `octocode remove <source>` to remove one and `octocode update --extensions` to reconcile package installations. See Command Line for every package command and option.
 
-Personal installs are written to `~/.octocode/agent/settings.json`. Add `--local` or `-l` to write the package declaration to `.octocode/settings.json`. Octocode reads declarations from that file only after project trust is granted.
+Personal installs are written to `~/.octocode/octocodecode/settings.json`. Add `--local` or `-l` to write the package declaration to `.octocode/settings.json`. Octocode reads declarations from that file only after project trust is granted.
 
 Project packages are installed and loaded only after project trust is resolved. Packages can execute extension code and can include skills that instruct the model to run programs. Review third-party package source before installing it. Review project package declarations before granting project trust.
 
@@ -59,7 +61,6 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 ```json
 {
   "name": "my-octocode-package",
-  "keywords": ["pi-package"],
   "octocode": {
     "extensions": ["./src/extension.ts"],
     "skills": ["./resources/skills"],
@@ -71,7 +72,7 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 
 Paths are relative to the package root. Arrays accept glob patterns and exclusions. List dot-prefixed or symlinked resource roots directly when traversal through a glob would not discover them.
 
-The `pi-package` keyword is an upstream ecosystem convention. This fork does not operate a package gallery; install packages by their npm or Git source. The `octocode` manifest declares the resources this runtime loads.
+Octocode does not operate a package gallery; install packages by their npm or Git source. The `octocode` manifest declares the resources this runtime loads.
 
 ## Declare dependencies
 

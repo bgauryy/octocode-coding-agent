@@ -1,0 +1,12 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "sha256": {
+    "codex-rs/apply-patch/src/parser.rs": "6b8086467d0500f4fc9aa9a35cd33a0bce53c01bcb74b915b9efc6fcf187f7ce",
+    "codex-rs/apply-patch/src/streaming_parser.rs": "5f4b8e60fd24ada7c1b6a696155de3da2b946f7b5436da90e377c9de04b1e578",
+    "codex-rs/apply-patch/src/file_update.rs": "9a2e4f4ccef98e34709bec522554729bfdfd188bb92b7db87ddc7bab87f866e6",
+    "codex-rs/apply-patch/src/seek_sequence.rs": "a6d0d35b628a4f1e6f8ba77c533046c27e585a8bdd94ee6cd21d2585b39e34e0",
+    "codex-rs/apply-patch/src/text_file.rs": "35cbbdeb91e86780d99fccd097a5dba2772f048730556b73d685e94658ddc6e3",
+    "LICENSE": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+    "NOTICE": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+  }
+}

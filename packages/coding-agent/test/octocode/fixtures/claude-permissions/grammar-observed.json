@@ -1,0 +1,1710 @@
+{
+  "identity": {
+    "executable": "$CLAUDE_EXECUTABLE",
+    "realpath": "$CLAUDE_REALPATH",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Isolated local provider, dummy credentials, executable hash guard. Shell effects are confined to owned temporary directories.",
+  "cases": [
+    {
+      "case": "quoted-semicolon",
+      "exit": 0,
+      "original": "SAFE; printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '%s' 'SAFE; printf BLOCK' > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "SAFE; printf BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "quoted-and",
+      "exit": 0,
+      "original": "SAFE && printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '%s' 'SAFE && printf BLOCK' > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "SAFE && printf BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "quoted-pipe",
+      "exit": 0,
+      "original": "SAFE | printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '%s' 'SAFE | printf BLOCK' > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "SAFE | printf BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "chain-semicolon",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf ORIGINAL > $CASE_ROOT/project/original.txt; printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER; printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "chain-and",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf ORIGINAL > $CASE_ROOT/project/original.txt && printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER && printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "pipe",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL | printf BLOCK > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "subshell",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command (printf BLOCK) > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "(printf BLOCK) > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "command-substitution",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf \\\"%s\\\" \\\"$(printf BLOCK)\\\" > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf \"%s\" \"$(printf BLOCK)\" > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirection",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf BLOCK > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf BLOCK > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "escaped-raw-word",
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf BL\\OCK > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-both-no-redirect",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf ORIGINAL*)",
+          "Bash(printf SAFE*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"ORIGINALSAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL; printf SAFE",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-first-no-redirect",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf ORIGINAL*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"ORIGINALSAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL; printf SAFE",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-whole-command",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf ORIGINAL; printf SAFE)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"ORIGINALSAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL; printf SAFE",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "or",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf ORIGINAL > $CASE_ROOT/project/original.txt || printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER || printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "newline",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf ORIGINAL > $CASE_ROOT/project/original.txt\\nprintf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER\nprintf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "background",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf BLOCK & printf ORIGINAL > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf BLOCK & printf ORIGINAL > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "pipe-stderr",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL |& printf BLOCK > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "backticks",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf \\\"%s\\\" \\\"`printf BLOCK`\\\" > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf \"%s\" \"`printf BLOCK`\" > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "process-substitution",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat <(printf BLOCK) > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat <(printf BLOCK) > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "malformed-quote",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 1\\n/bin/bash: eval: line 0: unexpected EOF while looking for matching `''\\n/bin/bash: eval: line 1: syntax error: unexpected end of file\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf 'BLOCK > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "malformed-chain",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 1\\n/bin/bash: eval: line 1: syntax error: unexpected end of file\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER &&",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-both",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf ORIGINAL*)",
+          "Bash(printf SAFE*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt; printf SAFE"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER; printf SAFE",
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-first-only",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf ORIGINAL*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt; printf SAFE"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER; printf SAFE",
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-second",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt; printf BLOCK"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"BLOCK\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER; printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-second-unreachable",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt || printf BLOCK"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf ORIGINAL > $MARKER || printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "node-none",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41; node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "node-first",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41; node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "node-both",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41)",
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "node-whole",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41; node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-middle",
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf > $MARKER BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": "BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-leading",
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "> $MARKER printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": "BLOCK",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-split-args",
+      "exit": 0,
+      "original": "A",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf A BLOCK*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf A > $MARKER BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": "A",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "whole-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 41; node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41; node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "whole-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 41; node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "whole-allow-leaf-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41; node -p 42)"
+        ],
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41; node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41; node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-node-no-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p >/dev/null 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p >/dev/null 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-node-short-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p >/dev/null 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p >/dev/null 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "redirect-node-whole-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p >/dev/null 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p >/dev/null 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "file-redirect-none",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "42\n",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "file-redirect-bare",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "42\n",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "file-redirect-wildcard",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "42\n",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "conditional-none",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "if true; then node -p 42; fi"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "if true; then node -p 42; fi",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "conditional-bare",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "if true; then node -p 42; fi",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "conditional-wildcard",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "if true; then node -p 42; fi",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "conditional-broad-leaf-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(*)"
+        ],
+        "deny": [
+          "Bash(node -p 42*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command if true; then node -p 42 > $CASE_ROOT/project/original.txt; fi has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "if true; then node -p 42 > $MARKER; fi",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "url-colon-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf http://blocked*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf http://blocked > $CASE_ROOT/project/original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf http://blocked > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "url-colon-control",
+      "exit": 0,
+      "original": "http://blocked",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf http://other*)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf http://blocked > $MARKER",
+      "expected": {
+        "exit": 0,
+        "original": "http://blocked",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    }
+  ],
+  "verified_date": "2026-10-23"
+}

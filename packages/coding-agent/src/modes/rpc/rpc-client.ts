@@ -349,16 +349,9 @@ export class RpcClient {
 	/**
 	 * Compact session context.
 	 */
-	async compact(customInstructions?: string): Promise<CompactionResult> {
-		const response = await this.send({ type: "compact", customInstructions });
+	async compact(): Promise<CompactionResult> {
+		const response = await this.send({ type: "compact" });
 		return this.getData(response);
-	}
-
-	/**
-	 * Set auto-compaction enabled/disabled.
-	 */
-	async setAutoCompaction(enabled: boolean): Promise<void> {
-		await this.send({ type: "set_auto_compaction", enabled });
 	}
 
 	/**

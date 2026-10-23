@@ -145,7 +145,7 @@ describe("agents panel", () => {
 		expect(narrow[1]).toMatch(/Find where[^·]*…/);
 	});
 
-	it("shows the cached share and marks a model without pricing in the row and the header", () => {
+	it("shows cache reads apart from new tokens and marks a model without pricing in the row and the header", () => {
 		const priced = member("researcher-3fa9", {
 			parentId: "main-aaaaaa",
 			toolCalls: 2,
@@ -165,7 +165,7 @@ describe("agents panel", () => {
 			line.replace(/ +/g, " "),
 		);
 		expect(lines[0]).toBe(" agents 2 idle · ≈$2.28 + n/a");
-		expect(lines[1]).toBe(" ○ researcher-3fa9 · idle · 1m · ↑1.2M (94% cached) ↓35k · 2 tool calls · ≈$2.28");
+		expect(lines[1]).toBe(" ○ researcher-3fa9 · idle · 1m · ↑72k +1.1M cached ↓35k · 2 tool calls · ≈$2.28");
 		expect(lines[2]).toBe(" ○ general-77aa · idle · 1m · ↑4k ↓500 · 1 tool call · cost n/a");
 	});
 

@@ -41,7 +41,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
   let sequence = 0;
   const report = {
     evidenceClass: 'Deterministic protocol stress and bounded real-process recovery; no production reliability estimate',
-    model: 'Official pi-ai fauxProvider: simulated model output; real Octocode AgentSession, extension, API and subprocesses',
+    model: 'Official octocode-ai fauxProvider: simulated model output; real Octocode AgentSession, extension, API and subprocesses',
     node: process.version, platform: process.platform,
     sdkVersion: JSON.parse(fs.readFileSync(path.join(packageRoot, '../../node_modules/@octocodeai/octocodecode/package.json'), 'utf8')).version,
     piAiVersion: JSON.parse(fs.readFileSync(path.join(packageRoot, '../../node_modules/@octocodeai/octocode-ai/package.json'), 'utf8')).version,
@@ -96,7 +96,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
       children.filter((entry) => entry.child.exitCode === null && entry.child.signalCode === null).length);
     return peer;
   }
-  const tool = (peer, input) => peer.command('tool', { tool: 'externalAgent', input });
+  const tool = (peer, input) => peer.command('tool', { tool: 'agent', input: { type: 'external', input } });
   const record = (id) => {
     const found = listInstances(apiDir(env)).find((entry) => entry.id === id);
     assert(found, `Exact instance missing: ${id}`); return found;

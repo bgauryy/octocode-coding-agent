@@ -35,6 +35,37 @@ export interface TruncationResult {
 	maxLines: number;
 	/** The max bytes limit that was applied */
 	maxBytes: number;
+	/** Head-and-tail truncation only: complete lines kept from the start of the output. */
+	headLines?: number;
+	/** Head-and-tail truncation only: bytes of those head lines. */
+	headBytes?: number;
+	/** Head-and-tail truncation only: lines between the head and the tail that are left out. */
+	elidedLines?: number;
+}
+
+/**
+ * Share of the line and byte budget that head-and-tail truncation gives to the start of the output.
+ * The first compiler or test error usually sits near the start and the final summary or exit status at
+ * the end. The tail gets the larger share; one fifth of the default budget (400 lines, 10KB) still holds
+ * the first error with its context.
+ */
+export const HEAD_SHARE = 0.2;
+
+/** Lines and bytes the head may use; the tail gets the rest of the same budget. */
+export function splitHeadTailBudget(maxLines: number, maxBytes: number): { headLines: number; headBytes: number } {
+	return { headLines: Math.floor(maxLines * HEAD_SHARE), headBytes: Math.floor(maxBytes * HEAD_SHARE) };
+}
+
+/**
+ * The line between the kept head and the kept tail. `elidedLines` is 0 when only the start of the last
+ * (very long) line is cut.
+ */
+export function formatElisionMarker(elidedLines: number, lastLine: number, fullOutputPath?: string): string {
+	const what =
+		elidedLines > 0
+			? `${elidedLines} ${elidedLines === 1 ? "line" : "lines"} elided`
+			: `start of line ${lastLine} elided`;
+	return `[... ${what}${fullOutputPath ? `; full output: ${fullOutputPath}` : ""}]`;
 }
 
 export interface TruncationOptions {

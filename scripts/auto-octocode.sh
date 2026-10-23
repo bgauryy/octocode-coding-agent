@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo octocodepefail
+set -euo pipefail
 
 # Developer wrapper that runs octocode from this checkout's latest `npm run build`.
 # Development invocations use OCTOCODE_EXPERIMENTAL=1 by default. Pass --stable to use

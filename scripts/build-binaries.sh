@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build octocode binaries for all platforms locally.
-# Mirrors .github/workflows/build-binaries.yml
+# This checkout has no .github/workflows; this script is the build recipe.
 #
 # Usage:
 #   ./scripts/build-binaries.sh [--skip-install] [--skip-build] [--offline-model-data] [--platform <platform>] [--out <dir>]
@@ -130,9 +130,9 @@ for platform in "${PLATFORMS[@]}"; do
     # standalone binary before octocode starts (see #7684). Disable cwd .env autoload so
     # project env files do not leak into octocode's environment (see #10473).
     if [[ "$platform" == windows-* ]]; then
-        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/octocode.exe"
+        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/octocode.exe"
     else
-        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/octocode"
+        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile "$OUTPUT_DIR/$platform/octocode"
     fi
 done
 
@@ -143,6 +143,8 @@ for platform in "${PLATFORMS[@]}"; do
     cp package.json "$OUTPUT_DIR/$platform/"
     cp README.md "$OUTPUT_DIR/$platform/"
     cp CHANGELOG.md "$OUTPUT_DIR/$platform/"
+    cp -r dist/licenses "$OUTPUT_DIR/$platform/"
+    cp -r dist/bash-parser "$OUTPUT_DIR/$platform/"
     cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm "$OUTPUT_DIR/$platform/"
     mkdir -p "$OUTPUT_DIR/$platform/theme"
     cp dist/modes/interactive/theme/*.json "$OUTPUT_DIR/$platform/theme/"

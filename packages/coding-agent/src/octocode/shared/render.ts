@@ -1,13 +1,14 @@
 import {
 	type Component,
 	type Keybinding,
+	Markdown,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../../core/extensions/index.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import { getMarkdownTheme, type Theme } from "../../modes/interactive/theme/theme.ts";
 import { formatDuration, shortPath } from "./format.ts";
 import { shortcutText } from "./keys.ts";
 import { exclusive, takeTiming } from "./locks.ts";
@@ -19,7 +20,7 @@ import { clipText, contentText, firstLine, isRecord } from "./util.ts";
  *
  *   ● Name(summary) · 1.2s
  *     ⎿  one-line summary
- *        up to 3 preview lines
+ *        the whole body up to 12 lines, else a 5-line preview
  *        … +K lines (ctrl+o to expand)
  *
  * The glyph is ○ before execution (`waiting` once Octocode started the call but its checks or approval still run), ● accent
@@ -27,7 +28,9 @@ import { clipText, contentText, firstLine, isRecord } from "./util.ts";
  */
 
 /** Result lines shown while collapsed. */
-export const COLLAPSED_LINES = 3;
+export const COLLAPSED_LINES = 5;
+/** A body this short shows whole even when collapsed: folding it would hide a few lines behind a one-line hint. */
+export const SHOW_ALL_LINES = 12;
 /** Header summary budget in characters, before the width clip. */
 const SUMMARY_CHARS = 120;
 const SUMMARY_CHARS_EXPANDED = 200;
@@ -156,7 +159,7 @@ function runStart(context: RenderContext, state: ToolRow): number | undefined {
 }
 
 /**
- * The one ticking row. A changed line above the viewport makes pi-tui clear and redraw the whole scrollback, so a
+ * The one ticking row. A changed line above the viewport makes octocode-tui clear and redraw the whole scrollback, so a
  * clock ticking on a row that scrolled off would flicker and yank the user out of scrollback every second. Only the
  * newest running row ticks (it is the last row, nearest the viewport); the working line shows how long the run took.
  */
@@ -216,10 +219,10 @@ const STOPPED =
 
 /**
  * A list of lines clipped to the render width (`wrap` lines wrap instead). The output is cached per width until the
- * next `set`: pi-tui draws up to 60 frames a second while streaming, and its Box compares a child's lines by identity.
+ * next `set`: octocode-tui draws up to 60 frames a second while streaming, and its Box compares a child's lines by identity.
  */
 class Lines implements Component {
-	private rows: Array<{ text: string; wrap?: boolean; indent?: string }> = [];
+	private rows: Array<{ text: string; wrap?: boolean; indent?: string; hanging?: boolean }> = [];
 	private header: { left: string; summary: string; right: string } | undefined;
 	private cache: { width: number; lines: string[] } | undefined;
 
@@ -254,8 +257,10 @@ class Lines implements Component {
 			const indent = row.indent ?? "";
 			const wrapped = wrapTextWithAnsi(row.text, Math.max(1, width - visibleWidth(indent)));
 			// A width narrower than the indent still gets lines that fit: the indent and text are clipped together.
-			for (const line of wrapped.length > 0 ? wrapped : [""])
-				out.push(truncateToWidth(`${indent}${line}`, width, "…"));
+			// A hanging row carries its own lead (such as the `⎿` gutter); only its continuation lines are indented.
+			(wrapped.length > 0 ? wrapped : [""]).forEach((line, index) => {
+				out.push(truncateToWidth(`${row.hanging && index === 0 ? "" : indent}${line}`, width, "…"));
+			});
 		}
 		this.cache = { width, lines: out };
 		return out;
@@ -381,10 +386,12 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	const error = failed && !stopped;
 	const color = stopped ? "warning" : error ? "error" : "toolOutput";
 	const summaryColor = stopped || error ? color : (options.summaryColor ?? color);
-	const rows: Array<{ text: string; wrap?: boolean; indent?: string }> = [];
+	const rows: Array<{ text: string; wrap?: boolean; indent?: string; hanging?: boolean }> = [];
 	if (summary)
 		rows.push({
 			text: `${theme.fg("dim", GUTTER)}${theme.fg(summaryColor, error && !/^(error|failed)\b|\bfailed\b/i.test(summary) ? `Error: ${summary}` : stopped ? summary.replace(/^error:\s*/i, "") : summary)}`,
+			// An error or stop explains what to do next: wrap it whole instead of clipping it to one row.
+			...(error || stopped ? { wrap: true, indent: INDENT, hanging: true } : {}),
 		});
 	// Raw body lines are coloured only where shown: a collapsed preview colours its few lines, not the whole output.
 	const raw = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
@@ -407,8 +414,12 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	} else {
 		// Blank lines waste preview rows; they still count as hidden and show when expanded.
 		const filled = body.filter((line) => (raw ? line : line.replace(/\u001b\[[0-9;]*m/g, "")).trim() !== "");
-		const shown = (options.tail ? filled.slice(Math.max(0, filled.length - max)) : filled.slice(0, max)).map(paint);
-		const hidden = Math.max(options.totalLines ?? 0, body.length) - shown.length;
+		const short =
+			max > 0 && preface.length === 0 && filled.length <= SHOW_ALL_LINES && (options.totalLines ?? 0) <= body.length;
+		const limit = short ? filled.length : max;
+		const shown = (options.tail ? filled.slice(Math.max(0, filled.length - limit)) : filled.slice(0, limit)).map(paint);
+		// Blank lines are not counted as hidden when nothing else is: a short body is shown whole.
+		const hidden = short ? 0 : Math.max(options.totalLines ?? 0, body.length) - shown.length;
 		// The preface is named, not counted: `+2 lines` must mean two more lines of the body.
 		const more = preface.length > 0 ? ` · ${options.prefaceLabel ?? "more"}` : "";
 		const folded = hidden > 0 || more !== "";
@@ -428,6 +439,52 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		if (folded && !options.tail) rows.push(hint);
 	}
 	return lines(context).set(undefined, rows);
+}
+
+/** Rendered report lines shown before folding: a report is the deliverable, so only a long one folds. */
+const REPORT_LINES = 24;
+
+/**
+ * A subagent's report under its result row, rendered as Markdown like an assistant answer. The text is untrusted, so
+ * it is sanitized first. Collapsed, a report longer than `REPORT_LINES` rendered lines folds with an expand hint.
+ */
+export class ReportView implements Component {
+	private readonly markdown: Markdown;
+	private readonly theme: Theme;
+	private readonly expanded: boolean;
+	private cache: { width: number; lines: string[] } | undefined;
+
+	private readonly more: string | undefined;
+
+	/** `more` names what expanding also shows (such as the prompt), for the hint after a report that does not fold. */
+	constructor(theme: Theme, report: string, expanded: boolean, more?: string) {
+		this.theme = theme;
+		this.expanded = expanded;
+		this.more = more;
+		this.markdown = new Markdown(sanitizeTerminalText(report).trim(), 0, 0, getMarkdownTheme(theme));
+	}
+
+	render(width: number): string[] {
+		if (this.cache?.width === width) return this.cache.lines;
+		const body = this.markdown.render(Math.max(1, width - visibleWidth(INDENT))).map((line) => `${INDENT}${line}`);
+		while (body.length > 0 && body.at(-1)!.trim() === "") body.pop();
+		const hidden = this.expanded ? 0 : body.length - REPORT_LINES;
+		const more = this.more && !this.expanded ? ` · ${this.more}` : "";
+		const hint = (text: string) => `${INDENT}${this.theme.fg("dim", `${text} (${expandKey()} to expand)`)}`;
+		const lines =
+			hidden > 0
+				? [...body.slice(0, REPORT_LINES), hint(`… +${plural(hidden, "line")}${more}`)]
+				: more
+					? [...body, hint(`… ${this.more}`)]
+					: body;
+		this.cache = { width, lines };
+		return lines;
+	}
+
+	invalidate(): void {
+		this.cache = undefined;
+		this.markdown.invalidate();
+	}
 }
 
 /** The file `capOutputToFile` (shared/spill.ts) saved the full output to, read back from its note. */

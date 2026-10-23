@@ -655,6 +655,25 @@ Project skill content`,
 	});
 
 	describe("extendResources", () => {
+		it("keeps explicit skills but ignores extension discovery when skills are disabled", async () => {
+			const explicit = join(tempDir, "explicit", "SKILL.md");
+			const discovered = join(tempDir, "discovered", "SKILL.md");
+			for (const [file, name] of [[explicit, "explicit"], [discovered, "discovered"]]) {
+				mkdirSync(join(file, ".."), { recursive: true });
+				writeFileSync(file, `---\nname: ${name}\ndescription: Test skill\n---\nInstructions`);
+			}
+			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir,
+				noSkills: true, additionalSkillPaths: [explicit] });
+			await loader.reload();
+			const discover = () => loader.extendResources({ skillPaths: [{ path: discovered,
+				metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }] });
+			discover();
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+			await loader.reload();
+			discover();
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+		});
+
 		it("should load skills and prompts with extension metadata", async () => {
 			const extraSkillDir = join(tempDir, "extra-skills", "extra-skill");
 			mkdirSync(extraSkillDir, { recursive: true });
@@ -1234,6 +1253,26 @@ export default function(pi: ExtensionAPI) {
 		});
 	});
 
+	describe("loadProjectContextFiles - size cap", () => {
+		it("truncates an oversized context file and says where the rest is", () => {
+			mkdirSync(cwd, { recursive: true });
+			const file = join(cwd, "AGENTS.md");
+			writeFileSync(file, `${"é".repeat(40_000)}TAIL`);
+			const [loaded] = loadProjectContextFiles({ cwd, agentDir }).filter((f) => f.path === file);
+			const [kept, note] = loaded.content.split("\n\n[");
+			expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(64 * 1024);
+			expect(kept).toMatch(/^é+$/);
+			expect(note).toContain(`truncated at 64 KiB; read ${file} for the rest`);
+			expect(loaded.content).not.toContain("TAIL");
+		});
+
+		it("keeps a context file under the cap whole", () => {
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(join(cwd, "AGENTS.md"), "small");
+			expect(loadProjectContextFiles({ cwd, agentDir }).at(-1)?.content).toBe("small");
+		});
+	});
+
 	describe("loadProjectContextFiles - nested worktree dedup", () => {
 		// Builds a linked-worktree skeleton (no git binary needed): the main repo's
 		// `.git/worktrees/<name>/` holds `HEAD` plus a `commondir` pointing back at the
@@ -1272,7 +1311,6 @@ export default function(pi: ExtensionAPI) {
 			expect(files.map((f) => f.content)).toEqual(["worktree instructions"]);
 		});
 
-		// https://github.com/earendil-works/pi/issues/10681
 		it("should load the worktree's context once when it symlinks to the main repo's file", () => {
 			const { main, worktree, worktreeSrc } = setupNestedWorktree();
 			writeFileSync(join(main, "AGENTS.md"), "main repo instructions");

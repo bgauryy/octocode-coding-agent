@@ -1,3 +1,4 @@
+import { fileChanges } from "../shared/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
 import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
@@ -54,7 +55,7 @@ export function messageText(
 	const footer = outside(message.from)
 		? ""
 		: message.replyRequired
-			? `(reply: sendMessage to ${headerText(message.from, 64)}, replyTo ${message.id})`
+			? `(reply: agent type message, input.to ${headerText(message.from, 64)}, input.replyTo ${message.id})`
 			: "(FYI: no reply needed.)";
 	// sendMessage saves a longer body to a file and sends its start with the path, so a body over the limit comes from a
 	// writer that bypassed it: withheld whole, since a cut instruction can lose the line that changes its meaning.
@@ -209,7 +210,7 @@ export function describeConflicts(conflicts: Array<{ path: string; heldBy: Lease
 				({ path, heldBy }) =>
 					`- ${path} is covered by ${heldBy.owner} (${heldBy.kind === "tree" ? `${heldBy.path}/` : heldBy.path}: ${heldBy.reason}; ${leaseAge(heldBy, now)}).`,
 			),
-			"Work on something else, or sendMessage the holder, then lock again after they unlock.",
+			"Work on something else, or message the holder with agent type message, then lock again after they unlock.",
 		].join("\n"),
 	);
 }
@@ -222,10 +223,10 @@ export function mutatedPaths(toolName: string, input: unknown): string[] {
 	const record = input as Record<string, unknown>;
 	if (toolName === "edit" || toolName === "write")
 		return PATH_KEYS.flatMap((key) => (typeof record[key] === "string" ? [record[key]] : []));
-	if (toolName !== "file" || !Array.isArray(record.queries)) return [];
-	return record.queries.flatMap((query) =>
+	if (toolName !== "file") return [];
+	return fileChanges(record).flatMap((query) =>
 		typeof query === "object" && query !== null && typeof (query as Record<string, unknown>).path === "string"
-			? [(query as { path: string }).path]
+			? [(query as { path: string }).path, ...(typeof query.movePath === "string" ? [query.movePath] : [])]
 			: [],
 	);
 }

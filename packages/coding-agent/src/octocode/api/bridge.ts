@@ -115,7 +115,7 @@ export function transportsFor(http: number | undefined, platform = process.platf
 }
 
 /**
- * Where a tool call sits in the call tree. Calls a tool makes itself (`ctx.executeTool`, e.g. codemode scripts) carry
+ * Where a tool call sits in the call tree. Calls a tool makes itself (`ctx.executeTool`, e.g. programmatic tool callers) carry
  * `parentToolCallId`, and Octocode names them `<parent>/<n>`; provider ids contain no `/`, so the parent's segment count is
  * the depth: `toolu_1` → 0, `toolu_1/1` (parent `toolu_1`) → 1, `toolu_1/1/2` (parent `toolu_1/1`) → 2.
  */

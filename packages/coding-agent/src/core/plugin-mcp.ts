@@ -1,0 +1,216 @@
+import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { stripBom } from "../utils/text.ts";
+import { repoKey } from "../octocode/shared/home.ts";
+import {
+	validateMcpServerConfig,
+	mcpNamespace,
+	type McpServerConfig,
+} from "./mcp-servers.ts";
+import { pluginContext } from "./plugin-context.ts";
+import {
+	discoverPluginManifests,
+	resolvePluginPath,
+	type PluginManifest,
+} from "./plugin-manifest.ts";
+import { configuredPlugins } from "./plugin-settings.ts";
+import type { Settings } from "./settings-manager.ts";
+
+type PluginEntry = NonNullable<Settings["plugins"]>[number];
+type Server = { name: string; config: McpServerConfig };
+const object = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Read and fingerprint declarations without connecting servers or running package code. */
+export function inspectPluginMcp(entry: PluginEntry): {
+	manifest?: PluginManifest;
+	fingerprint?: string;
+	servers: Server[];
+	errors: string[];
+} {
+	const result: ReturnType<typeof inspectPluginMcp> = {
+		servers: [],
+		errors: [],
+	};
+	try {
+		if (!path.isAbsolute(entry.path))
+			throw new Error("Plugin path must be absolute");
+		const discovery = discoverPluginManifests(entry.path, {
+			protocol: entry.protocol,
+		});
+		result.errors.push(...discovery.errors);
+		const manifest = discovery.manifests.find(
+			(item) => item.protocol === entry.protocol,
+		);
+		if (!manifest)
+			throw new Error(`No valid ${entry.protocol} plugin manifest found`);
+		result.manifest = manifest;
+		const hash = createHash("sha256").update(
+			JSON.stringify([manifest.root, manifest.protocol, manifest.name]),
+		);
+		for (const source of manifest.sources)
+			hash.update(JSON.stringify([source, readFileSync(source, "utf8")]));
+		const servers = new Map<string, McpServerConfig>();
+		const add = (value: unknown, source: string) => {
+			if (!object(value))
+				throw new Error(`${source}: expected an MCP server map`);
+			for (const [name, raw] of Object.entries(value)) {
+				if (!object(raw))
+					throw new Error(`${source}: server ${name} must be an object`);
+				const fields = [
+					"type",
+					"command",
+					"args",
+					"env",
+					"cwd",
+					"url",
+					"headers",
+				];
+				const extra = Object.keys(raw).filter((key) => !fields.includes(key));
+				if (extra.length)
+					throw new Error(
+						`${source}: unsupported server ${name} fields: ${extra.join(", ")}`,
+					);
+				if (
+					manifest.protocol === "claude" &&
+					raw.url !== undefined &&
+					raw.type === undefined
+				)
+					throw new Error(`${source}: HTTP server ${name} requires type`);
+				// Validate without expanding placeholders; URL placeholders need the actual project at activation.
+				const candidate =
+					typeof raw.url === "string"
+						? { ...raw, url: raw.url.replace(/\$\{[^}]+\}/g, "placeholder") }
+						: raw;
+				const checked = validateMcpServerConfig(name, candidate);
+				if (typeof checked === "string")
+					throw new Error(`${source}: ${checked}`);
+				servers.set(name, raw as unknown as McpServerConfig);
+			}
+		};
+		const read = (relative: string, optional = false) => {
+			try {
+				lstatSync(path.resolve(manifest.root, relative));
+			} catch (error) {
+				if (optional && (error as NodeJS.ErrnoException).code === "ENOENT")
+					return;
+				throw error;
+			}
+			const source = resolvePluginPath(manifest.root, relative);
+			if (path.extname(source) !== ".json")
+				throw new Error(`${relative}: MCP bundles are not supported`);
+			const text = readFileSync(source, "utf8");
+			hash.update(JSON.stringify([source, text]));
+			const value: unknown = JSON.parse(stripBom(text));
+			if (!object(value) || !object(value.mcpServers))
+				throw new Error(`${source}: expected an mcpServers object`);
+			add(value.mcpServers, source);
+		};
+		const declared = manifest.settings.mcpServers;
+		if (manifest.protocol === "claude" || declared === undefined)
+			read("./.mcp.json", true);
+		if (declared !== undefined) {
+			if (manifest.protocol === "codex" && Array.isArray(declared))
+				throw new Error("Codex mcpServers must be a path or object");
+			for (const item of Array.isArray(declared) ? declared : [declared]) {
+				if (typeof item === "string") read(item);
+				else add(item, `${manifest.root}#mcpServers`);
+			}
+		}
+		result.servers = [...servers].map(([name, config]) => ({ name, config }));
+		if (!result.errors.length) result.fingerprint = hash.digest("hex");
+	} catch (error) {
+		result.errors.push(String(error));
+	}
+	return result;
+}
+
+function expand(value: unknown, variables: Record<string, string>): unknown {
+	if (typeof value === "string")
+		return value.replace(
+			/\$\{([^}]+)\}/g,
+			(placeholder, key: string) => variables[key] ?? placeholder,
+		);
+	if (Array.isArray(value)) return value.map((item) => expand(item, variables));
+	if (object(value))
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [
+				key,
+				expand(item, variables),
+			]),
+		);
+	return value;
+}
+
+/** Activate reviewed declarations through the existing MCP registry; the transport owner manages connections. */
+export function loadConfiguredPluginMcp(
+	entries: Settings["plugins"],
+	projectRoot: string,
+): { servers: Server[]; errors: string[] } {
+	const result: ReturnType<typeof loadConfiguredPluginMcp> = {
+		servers: [],
+		errors: [],
+	};
+	const seen = new Set<string>();
+	for (const entry of configuredPlugins(entries, (message) =>
+		result.errors.push(message),
+	)) {
+		if (entry.enabled === false) continue;
+		const inspected = inspectPluginMcp(entry);
+		result.errors.push(...inspected.errors);
+		if (
+			!inspected.manifest ||
+			!inspected.fingerprint ||
+			!inspected.servers.length
+		)
+			continue;
+		if (entry.mcpFingerprint !== inspected.fingerprint) {
+			result.errors.push(
+				`${entry.path}: plugin MCP servers require review; mcpFingerprint=${inspected.fingerprint}`,
+			);
+			continue;
+		}
+		const context = pluginContext(inspected.manifest);
+		const variables = {
+			CLAUDE_PLUGIN_ROOT: context.root,
+			CLAUDE_PLUGIN_DATA: context.data,
+			CLAUDE_PROJECT_DIR: repoKey(projectRoot).root,
+			...(entry.protocol === "codex"
+				? { PLUGIN_ROOT: context.root, PLUGIN_DATA: context.data }
+				: {}),
+		};
+		for (const server of inspected.servers) {
+			const name = `plugin:${inspected.manifest.name}:${server.name}`;
+			const config = validateMcpServerConfig(
+				name,
+				expand(server.config, variables),
+			);
+			if (typeof config === "string") {
+				result.errors.push(`${entry.path}: ${config}`);
+				continue;
+			}
+			if ("command" in config) {
+				try {
+					mkdirSync(context.data, { recursive: true, mode: 0o700 });
+				} catch (error) {
+					result.errors.push(
+						`${entry.path}: cannot create plugin data directory: ${String(error)}`,
+					);
+					continue;
+				}
+				config.env = { ...config.env, ...variables };
+			}
+			const namespace = mcpNamespace(name);
+			if (seen.has(namespace)) {
+				result.errors.push(
+					`${entry.path}: duplicate plugin MCP namespace ${namespace}`,
+				);
+				continue;
+			}
+			seen.add(namespace);
+			result.servers.push({ name, config });
+		}
+	}
+	return result;
+}

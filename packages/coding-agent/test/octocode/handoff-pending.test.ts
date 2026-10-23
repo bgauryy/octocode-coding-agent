@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import {
 	type Report,
 	ReportQueue,
+	releasePendingReports,
 	savePendingReport,
 	takePendingReports,
 } from "../../src/octocode/subagents/handoff.ts";
@@ -17,6 +18,12 @@ const report = (id: string, wake = true): Report => ({
 	details: { id, status: "done", summary: "Done" },
 	wake,
 });
+function queueFor(f: ReturnType<typeof fakePi>) {
+	const queue = new ReportQueue(f.pi, 60_000);
+	queue.start({ getSessionFile: () => undefined, getEntries: () => f.sent.map(({ message }, index) => ({ ...message, type: "custom_message" as const, id: String(index), parentId: null, timestamp: new Date().toISOString() })) });
+	return queue;
+}
+
 const files = (dir: string) => fs.readdirSync(dir).sort();
 const delivered = (sent: Array<{ message: { content: unknown } }>) =>
 	sent.map((entry) => String(entry.message.content));
@@ -34,6 +41,123 @@ function flakyPi() {
 }
 
 describe("pending reports", () => {
+	it("does not retry a queued acceptance without a transcript receipt", async () => {
+		vi.useFakeTimers();
+		const f = fakePi();
+		const send = vi.fn(() => Promise.resolve());
+		f.pi.sendMessage = send;
+		const queue = new ReportQueue(f.pi, 60_000);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
+		queue.pendingDir = tmp();
+		try {
+			queue.add(report("queued"));
+			queue.flush();
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(send).toHaveBeenCalledTimes(1);
+		} finally { queue.persist(); vi.useRealTimers(); }
+	});
+
+	it("does not resend when an accepted run subsequently rejects", async () => {
+		vi.useFakeTimers();
+		const f = fakePi();
+		const append = f.pi.sendMessage;
+		f.pi.sendMessage = (...args) => {
+			append(...args);
+			return Promise.reject(new Error("later run failure"));
+		};
+		const queue = queueFor(f);
+		queue.pendingDir = tmp();
+		try {
+			queue.add(report("accepted"));
+			queue.flush();
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(f.sent).toHaveLength(1);
+			expect(files(queue.pendingDir)).toEqual([]);
+		} finally { queue.persist(); vi.useRealTimers(); }
+	});
+
+	it("bounds rejected delivery retries and preserves the complete report with a stable ID", async () => {
+		vi.useFakeTimers();
+		const f = fakePi();
+		const send = vi.fn((..._args: Parameters<typeof f.pi.sendMessage>) => Promise.reject(new Error("not ready")));
+		f.pi.sendMessage = send;
+		const queue = new ReportQueue(f.pi, 60_000);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
+		queue.pendingDir = tmp();
+		try {
+			const original = report("retry");
+			queue.add(original);
+			queue.flush();
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(send).toHaveBeenCalledTimes(4);
+			expect(new Set(send.mock.calls.map(([message]) => (message.details as { reportId: string }).reportId)).size).toBe(1);
+			queue.persist();
+			const recovered = await takePendingReports(queue.pendingDir);
+			expect(recovered).toHaveLength(1);
+			expect(recovered[0]!.content).toContain(original.content);
+			await releasePendingReports(recovered);
+		} finally { queue.persist(); vi.useRealTimers(); }
+	});
+
+	it("gives a legacy report a stable receipt ID across recovery", async () => {
+		const dir = tmp();
+		fs.writeFileSync(path.join(dir, "legacy.json"), JSON.stringify(report("general-old")));
+		const first = await takePendingReports(dir);
+		expect(first[0]?.reportId).toEqual(expect.any(String));
+		await releasePendingReports(first);
+		const second = await takePendingReports(dir);
+		expect(second[0]?.reportId).toBe(first[0]?.reportId);
+		await releasePendingReports(second);
+	});
+	it("retains a handed report through asynchronous rejection and replays it after restart", async () => {
+		const dir = tmp();
+		const f = fakePi();
+		const errors: string[] = [];
+		f.pi.sendMessage = () => { void Promise.reject(new Error("run preparation failed")).catch((error) => errors.push(error.message)); };
+		const queue = new ReportQueue(f.pi, 60_000);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
+		queue.pendingDir = dir;
+		queue.add(report("general-a"));
+		queue.flush();
+		await vi.waitFor(() => expect(errors).toEqual(["run preparation failed"]));
+		expect(files(dir)).toHaveLength(1);
+		queue.persist();
+		expect(files(dir)[0]).toMatch(/\.json$/);
+		const next = fakePi();
+		const resumed = queueFor(next);
+		for (const saved of await takePendingReports(dir)) resumed.add(saved);
+		resumed.flush();
+		expect(next.sent).toHaveLength(1);
+		expect(files(dir)).toEqual([]);
+	});
+
+	it("reconciles a recorded report after a crash before its recovery file was removed", async () => {
+		const dir = tmp();
+		const saved = { ...report("general-a"), reportId: "already-recorded" };
+		savePendingReport(dir, "general-a", saved);
+		const f = fakePi();
+		f.sent.push({ message: { ...saved, customType: "octocode-agent-result", details: { ...saved.details, reportId: saved.reportId } }, options: {} });
+		const queue = queueFor(f);
+		for (const pending of await takePendingReports(dir)) queue.add(pending);
+		queue.flush();
+		expect(f.sent).toHaveLength(1);
+		expect(files(dir)).toEqual([]);
+	});
+
+	it("does not acknowledge until the session records the report ID", () => {
+		const dir = tmp();
+		const f = fakePi();
+		let recorded = false;
+		const queue = new ReportQueue(f.pi, 60_000);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => recorded ? f.sent.map(({ message }) => ({ ...message, type: "custom_message" as const })) : [] });
+		queue.pendingDir = dir;
+		queue.add(report("general-a"));
+		queue.flush();
+		expect(files(dir)).toHaveLength(1);
+		recorded = true;
+		queue.recorded();
+		expect(files(dir)).toEqual([]);
+	});
 	it("claims a report by rename and deletes it only after Octocode accepted the message", async () => {
 		const dir = tmp();
 		savePendingReport(dir, "general-a", report("general-a"));
@@ -43,7 +167,7 @@ describe("pending reports", () => {
 		expect(files(dir)).toHaveLength(1);
 		expect(files(dir)[0]).toMatch(/\.json\.claim-\d+-\d+$/);
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		queue.add(taken!);
 		queue.flush();
 		expect(delivered(f.sent)).toHaveLength(1);
@@ -59,7 +183,7 @@ describe("pending reports", () => {
 		);
 		savePendingReport(dir, "general-a", { ...report("general-a"), content });
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		for (const taken of await takePendingReports(dir)) queue.add(taken);
 		queue.flush();
 		const [text] = delivered(f.sent);
@@ -77,13 +201,13 @@ describe("pending reports", () => {
 		savePendingReport(dir, "general-a", report("general-a", true));
 		savePendingReport(dir, "general-b", report("general-b", false));
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		for (const taken of await takePendingReports(dir)) queue.add(taken);
 		queue.flush();
 		// The batch wakes the parent once, on its last message, because one of its reports asked to.
 		expect(f.sent.map((entry) => entry.options.triggerTurn)).toEqual([false, true]);
 		const wake = fakePi();
-		const alone = new ReportQueue(wake.pi, 60_000);
+		const alone = queueFor(wake);
 		savePendingReport(dir, "general-c", report("general-c", true));
 		for (const taken of await takePendingReports(dir)) alone.add(taken);
 		alone.flush();
@@ -94,7 +218,7 @@ describe("pending reports", () => {
 		const dir = tmp();
 		savePendingReport(dir, "general-a", report("general-a"));
 		const f = flakyPi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		f.state.down = true;
 		for (const taken of await takePendingReports(dir)) queue.add(taken);
 		queue.flush();
@@ -126,7 +250,7 @@ describe("pending reports", () => {
 			path.join(dir, `${heldName}.claim-${process.ppid}-${processStartTime(process.ppid)}`),
 		);
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		for (const taken of await takePendingReports(dir)) queue.add(taken);
 		queue.flush();
 		expect(delivered(f.sent)).toHaveLength(1);
@@ -156,7 +280,7 @@ describe("pending reports", () => {
 		expect(taken).toHaveLength(1);
 		expect(files(dir)).toHaveLength(1);
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		queue.add(taken[0]!);
 		queue.add({ ...one });
 		queue.flush();
@@ -166,7 +290,7 @@ describe("pending reports", () => {
 
 	it("keeps two reports of the same agent that are not the same report", async () => {
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		queue.add(report("general-a"));
 		queue.add(report("general-a"));
 		queue.flush();
@@ -178,7 +302,7 @@ describe("report queue at shutdown", () => {
 	it("persists what is still queued to the pending folder for the next start", async () => {
 		const dir = tmp();
 		const f = fakePi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		queue.pendingDir = dir;
 		queue.add(report("general-a"));
 		queue.add(report("general-b", false));
@@ -187,7 +311,7 @@ describe("report queue at shutdown", () => {
 		expect(files(dir)).toHaveLength(2);
 		// The next start takes both, with their wake flags.
 		const next = fakePi();
-		const queue2 = new ReportQueue(next.pi, 60_000);
+		const queue2 = queueFor(next);
 		for (const taken of await takePendingReports(dir)) queue2.add(taken);
 		queue2.flush();
 		expect(delivered(next.sent).map((text) => /general-[ab]/.exec(text)![0])).toEqual(["general-a", "general-b"]);
@@ -198,7 +322,7 @@ describe("report queue at shutdown", () => {
 	it("saves a report Octocode refuses at the flush, and gives a claimed one back instead of saving a copy", async () => {
 		const dir = tmp();
 		const f = flakyPi();
-		const queue = new ReportQueue(f.pi, 60_000);
+		const queue = queueFor(f);
 		queue.pendingDir = dir;
 		f.state.down = true;
 		queue.add(report("general-fresh"));
@@ -208,7 +332,7 @@ describe("report queue at shutdown", () => {
 		expect(files(dir).every((name) => name.endsWith(".json"))).toBe(true);
 		expect(files(dir)).toHaveLength(2);
 		f.state.down = false;
-		const queue2 = new ReportQueue(f.pi, 60_000);
+		const queue2 = queueFor(f);
 		for (const taken of await takePendingReports(dir)) queue2.add(taken);
 		queue2.flush();
 		expect(delivered(f.sent)).toHaveLength(2);

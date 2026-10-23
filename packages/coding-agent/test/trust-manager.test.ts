@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -36,7 +36,7 @@ describe("ProjectTrustStore", () => {
 		expect(store.get(childDir)).toBe(true);
 	});
 
-	it("reads fingerprinted { sha, trusted } entries written by earlier builds instead of failing", () => {
+	it("ignores fingerprinted { sha, trusted } entries written by earlier builds, and keeps them on write", () => {
 		// Stored keys are canonical paths (macOS tmpdir is a symlink).
 		const project = realpathSync(cwd);
 		const parent = realpathSync(tempDir);
@@ -45,10 +45,19 @@ describe("ProjectTrustStore", () => {
 			JSON.stringify({ [project]: { sha: "abc", trusted: true }, [parent]: { sha: "def", trusted: false } }),
 		);
 		const store = new ProjectTrustStore(agentDir);
-		expect(store.get(cwd)).toBe(true);
+		// They approved specific config files, not the project: no core decision either way.
+		expect(store.get(cwd)).toBeNull();
 		const other = join(tempDir, "other");
 		mkdirSync(other);
-		expect(store.get(other)).toBe(false);
+		expect(store.get(other)).toBeNull();
+		store.set(other, true);
+		expect(store.get(other)).toBe(true);
+		expect(store.get(cwd)).toBeNull();
+		expect(JSON.parse(readFileSync(join(agentDir, "trust.json"), "utf-8"))).toEqual({
+			[project]: { sha: "abc", trusted: true },
+			[parent]: { sha: "def", trusted: false },
+			[realpathSync(other)]: true,
+		});
 		writeFileSync(join(agentDir, "trust.json"), JSON.stringify({ [project]: { trusted: "yes" } }));
 		expect(() => store.get(cwd)).toThrow(/must be true, false, or null/);
 	});

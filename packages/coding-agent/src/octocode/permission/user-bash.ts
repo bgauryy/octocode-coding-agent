@@ -1,3 +1,4 @@
+import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
 import type {
 	ExtensionContext,
 	ToolCallEvent,
@@ -10,7 +11,7 @@ import type { GateVerdict } from "./gate.ts";
 import { catastrophicCommand } from "./shell.ts";
 
 interface UserBashGateOptions {
-	permission: Pick<Permission, "check" | "refused" | "typed">;
+	permission: Pick<Permission, "check" | "refused" | "typed" | "hasSourcePolicy">;
 	/** The PreToolUse hook step of the `tool_call` pipeline; it sees the `!cmd` as a `bash` call. */
 	preToolUse: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>;
 }
@@ -47,11 +48,12 @@ export function userBashGate({ permission, preToolUse }: UserBashGateOptions) {
 		}
 		const hook = verdict?.ask;
 		const destructive = catastrophicCommand(event.command, ctx.cwd) !== undefined;
-		if (!destructive && !hook) {
+		if (!destructive && !hook && !permission.hasSourcePolicy) {
 			permission.typed(event.command, ctx.cwd);
 			return undefined;
 		}
 		const checked = await permission.check(ctx, {
+			invocation: captureToolInvocation(call.toolCallId, call.toolName, call.input),
 			...(destructive ? { action: "shell.destructive" as const } : {}),
 			title: destructive ? "Run this destructive command?" : "Run this command?",
 			what: [event.command, `cwd: ${ctx.cwd}`],

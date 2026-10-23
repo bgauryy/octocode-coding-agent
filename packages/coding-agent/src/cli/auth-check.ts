@@ -1,12 +1,11 @@
-import type { CredentialStore } from "@octocodeai/octocode-ai";
+import { type CredentialStore, InMemoryModelsStore } from "@octocodeai/octocode-ai";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
-import { InMemoryCodingAgentModelsStore } from "../core/models-store.ts";
 import type { Args } from "./args.ts";
 import { AuthCommandError, getAuthCredential, validateAuthCommandArgs } from "./auth-command.ts";
 
-export type AuthCheckStatus = "ready" | "not_ready" | "invalid";
-export type AuthCheckReason =
+type AuthCheckStatus = "ready" | "not_ready" | "invalid";
+type AuthCheckReason =
 	| "provider_not_found"
 	| "credentials_not_configured"
 	| "credential_not_available"
@@ -66,7 +65,7 @@ export async function getProviderCredential(
 export async function createAuthCheckModelRuntime(credentials: CredentialStore): Promise<ModelRuntime> {
 	return ModelRuntime.create({
 		credentials,
-		modelsStore: new InMemoryCodingAgentModelsStore(),
+		modelsStore: new InMemoryModelsStore(),
 		allowModelNetwork: false,
 		refreshOnCreate: false,
 	});

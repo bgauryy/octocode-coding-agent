@@ -3,29 +3,9 @@ import { type Static, type TSchemaOptions, Type } from "typebox";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 
-function nonNegativeSafeInteger(options: { default?: number } = {}) {
-	return Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER, ...options });
-}
-
 function timeoutSetting(options?: TSchemaOptions) {
 	return Type.Union([Type.Number({ minimum: 0 }), Type.Literal("disabled")], options);
 }
-
-const CompactionModelOverrideSchema = Type.Object({
-	reserveTokens: Type.Optional(nonNegativeSafeInteger()),
-	keepRecentTokens: Type.Optional(nonNegativeSafeInteger()),
-});
-
-const CompactionSettingsSchema = Type.Object({
-	enabled: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.compaction.enabled })),
-	reserveTokens: Type.Optional(nonNegativeSafeInteger({ default: SETTINGS_DEFAULTS.compaction.reserveTokens })),
-	keepRecentTokens: Type.Optional(nonNegativeSafeInteger({ default: SETTINGS_DEFAULTS.compaction.keepRecentTokens })),
-	modelOverrides: Type.Optional(
-		Type.Record(Type.String(), CompactionModelOverrideSchema, {
-			description: 'Per-model overrides keyed by exact "provider/modelId" strings.',
-		}),
-	),
-});
 
 const BranchSummarySettingsSchema = Type.Object({
 	reserveTokens: Type.Optional(
@@ -146,29 +126,6 @@ const WarningSettingsSchema = Type.Object({
 	anthropicExtraUsage: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.warnings.anthropicExtraUsage })),
 });
 
-function codemodeMode(options?: TSchemaOptions) {
-	return Type.Union([Type.Literal("on"), Type.Literal("only")], options);
-}
-
-const CodemodeModeSchema = codemodeMode();
-
-const CodemodeSettingsSchema = Type.Object({
-	mode: Type.Optional(
-		codemodeMode({
-			description:
-				'How codemode presents tools. "on" keeps direct tools declared and annotates tools callable from scripts; codemode lists only tools without direct exposure. "only" lists every script-callable tool in codemode and does not declare active direct tools.',
-			default: SETTINGS_DEFAULTS.codemode.mode,
-		}),
-	),
-	inlineBudget: Type.Optional(
-		Type.Number({
-			minimum: 0,
-			description: "Estimated tokens available for inline codemode tool declarations.",
-			default: SETTINGS_DEFAULTS.codemode.inlineBudget,
-		}),
-	),
-});
-
 const PackageSourceSchema = Type.Union(
 	[
 		Type.String({ description: "Load all resources from the package." }),
@@ -223,13 +180,6 @@ export const SettingsSchema = Type.Object(
 				{ default: SETTINGS_DEFAULTS.transport },
 			),
 		),
-		sessionShareDestination: Type.Optional(
-			Type.Union([Type.Literal("auto"), Type.Literal("gist"), Type.Literal("radius")], {
-				description:
-					'Destination used by /share. "auto" uses Radius when authenticated and otherwise creates a GitHub gist.',
-				default: SETTINGS_DEFAULTS.sessionShareDestination,
-			}),
-		),
 		steeringMode: Type.Optional(
 			Type.Union([Type.Literal("all"), Type.Literal("one-at-a-time")], {
 				default: SETTINGS_DEFAULTS.steeringMode,
@@ -241,7 +191,6 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		theme: Type.Optional(Type.String()),
-		compaction: Type.Optional(CompactionSettingsSchema),
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),
 		hideThinkingBlock: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.hideThinkingBlock })),
@@ -301,6 +250,13 @@ export const SettingsSchema = Type.Object(
 		trackingId: Type.Optional(
 			Type.String({ description: "Analytics tracking identifier, generated when analytics is enabled." }),
 		),
+		plugins: Type.Optional(Type.Array(Type.Object({
+			path: Type.String({ description: "Absolute local plugin directory." }),
+			protocol: Type.Union([Type.Literal("claude"), Type.Literal("codex")]),
+			enabled: Type.Optional(Type.Boolean({ default: true })),
+			hooksFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$", description: "SHA-256 of reviewed plugin hook declarations. Changed definitions require review again." })),
+			mcpFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$", description: "SHA-256 of reviewed plugin MCP declarations. Changed definitions require review again." })),
+		}, { additionalProperties: false }), { description: "Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters." })),
 		packages: Type.Optional(
 			Type.Array(PackageSourceSchema, {
 				description: "npm or git package sources, as strings or objects with resource filtering.",
@@ -387,7 +343,6 @@ export const SettingsSchema = Type.Object(
 		),
 		markdown: Type.Optional(MarkdownSettingsSchema),
 		warnings: Type.Optional(WarningSettingsSchema),
-		codemode: Type.Optional(CodemodeSettingsSchema),
 		sessionDir: Type.Optional(
 			Type.String({
 				description: "Custom session storage directory, in the same format as the --session-dir CLI flag.",
@@ -459,8 +414,6 @@ export const SettingsSchema = Type.Object(
 
 type SettingsInput = Static<typeof SettingsSchema>;
 
-export interface CompactionModelOverride extends Static<typeof CompactionModelOverrideSchema> {}
-export interface CompactionSettings extends Static<typeof CompactionSettingsSchema> {}
 export interface BranchSummarySettings extends Static<typeof BranchSummarySettingsSchema> {}
 export interface ProviderRetrySettings extends Static<typeof ProviderRetrySettingsSchema> {}
 export interface RetrySettings extends Omit<Static<typeof RetrySettingsSchema>, "maxDelayMs"> {}
@@ -470,12 +423,9 @@ export interface ThinkingBudgetsSettings extends Static<typeof ThinkingBudgetsSe
 export type MermaidRenderingMode = NonNullable<Static<typeof MarkdownSettingsSchema>["mermaid"]>;
 export interface MarkdownSettings extends Static<typeof MarkdownSettingsSchema> {}
 export interface WarningSettings extends Static<typeof WarningSettingsSchema> {}
-export type CodemodeMode = Static<typeof CodemodeModeSchema>;
-export interface CodemodeSettings extends Static<typeof CodemodeSettingsSchema> {}
 export type DefaultProjectTrust = NonNullable<SettingsInput["defaultProjectTrust"]>;
 export type QuietStartup = NonNullable<SettingsInput["quietStartup"]>;
 export type TransportSetting = NonNullable<SettingsInput["transport"]>;
-export type SessionShareDestination = NonNullable<SettingsInput["sessionShareDestination"]>;
 export type PackageSource = Static<typeof PackageSourceSchema>;
 export type FullscreenExitOutput = NonNullable<SettingsInput["fullscreenExitOutput"]>;
 export type TuiMode = NonNullable<SettingsInput["tuiMode"]>;

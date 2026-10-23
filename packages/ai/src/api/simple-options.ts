@@ -66,9 +66,9 @@ export function buildBaseOptions(
 }
 
 /** Tokens always left for the answer when a thinking budget shares the response ceiling. */
-export const MIN_ANSWER_TOKENS = 1024;
+const MIN_ANSWER_TOKENS = 1024;
 
-export const DEFAULT_THINKING_BUDGETS: ThinkingBudgets = {
+const DEFAULT_THINKING_BUDGETS: ThinkingBudgets = {
 	minimal: 1024,
 	low: 2048,
 	medium: 8192,

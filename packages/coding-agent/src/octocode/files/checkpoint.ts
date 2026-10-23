@@ -7,7 +7,7 @@ import { type CheckpointEntry, journalOf, readJournal, serialize } from "./check
 
 /**
  * Edit checkpoints: before the `file` tool first changes a path in a turn, its current bytes are saved
- * (content-addressed) with the turn number, and after the change the new digest is recorded. `/octocode rewind [turns]`
+ * (content-addressed) with the turn number, and after the change the new digest is recorded. `/rewind [turns]`
  * restores the last turns, newest first, but only files still exactly as the agent left them; a file changed since
  * (by the user, bash or a peer) is listed and left alone. Forking the session offers the same restore, and the fork
  * inherits the parent's checkpoints on its branch.
@@ -268,7 +268,7 @@ export class Checkpoints {
 
 	/**
 	 * Content-addressed: an existing blob of the right size already holds these bytes (blobs are written by temp file
-	 * and rename, and /octocode rewind verifies the digest before restoring), so it is not read again.
+	 * and rename, and /rewind verifies the digest before restoring), so it is not read again.
 	 */
 	private async storeBlob(state: CurrentContent): Promise<void> {
 		const blob = this.blob(state.sha256);

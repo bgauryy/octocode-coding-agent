@@ -14,9 +14,6 @@ export const workspaceSourcePaths = {
 	aiProviders: fileURLToPath(new URL("./packages/ai/src/providers", import.meta.url)),
 	aiUtils: fileURLToPath(new URL("./packages/ai/src/utils", import.meta.url)),
 	agentIndex: fileURLToPath(new URL("./packages/agent/src/index.ts", import.meta.url)),
-	codemodeIndex: fileURLToPath(new URL("./packages/codemode/src/index.ts", import.meta.url)),
-	codemodeDeclarations: fileURLToPath(new URL("./packages/codemode/src/declarations.ts", import.meta.url)),
-	codemodeSource: fileURLToPath(new URL("./packages/codemode/src/source.ts", import.meta.url)),
 	codingAgentIndex: fileURLToPath(new URL("./packages/coding-agent/src/index.ts", import.meta.url)),
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 } as const;
@@ -24,6 +21,11 @@ export const workspaceSourcePaths = {
 export default defineConfig({
 	resolve: {
 		alias: [
+			{ find: /^@octocodeai\/octocode-contacts$/, replacement: fileURLToPath(new URL("./packages/contacts/src/index.ts", import.meta.url)) },
+			{ find: /^@octocodeai\/octocode-contacts\/(.+)$/, replacement: fileURLToPath(new URL("./packages/contacts/src/", import.meta.url)) + "$1.ts" },
+			{ find: /^@octocodeai\/octocode-webview$/, replacement: fileURLToPath(new URL("./packages/webview/src/index.ts", import.meta.url)) },
+			{ find: /^@octocodeai\/octocode-webview\/(.+)$/, replacement: fileURLToPath(new URL("./packages/webview/src/", import.meta.url)) + "$1.ts" },
+
 			{ find: /^@octocodeai\/octocode-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
 			{ find: /^@octocodeai\/octocode-telemetry\/testing$/, replacement: workspaceSourcePaths.telemetryTesting },
 			{ find: /^@octocodeai\/octocode-mcp$/, replacement: workspaceSourcePaths.mcpIndex },
@@ -45,9 +47,6 @@ export default defineConfig({
 				replacement: `${workspaceSourcePaths.aiProviders}/$1.ts`,
 			},
 			{ find: /^@octocodeai\/octocode-agent-core$/, replacement: workspaceSourcePaths.agentIndex },
-			{ find: /^@octocodeai\/octocode-codemode$/, replacement: workspaceSourcePaths.codemodeIndex },
-			{ find: /^@octocodeai\/octocode-codemode\/declarations$/, replacement: workspaceSourcePaths.codemodeDeclarations },
-			{ find: /^@octocodeai\/octocode-codemode\/source$/, replacement: workspaceSourcePaths.codemodeSource },
 			{ find: /^@octocodeai\/octocode-tui$/, replacement: workspaceSourcePaths.tuiIndex },
 		],
 	},

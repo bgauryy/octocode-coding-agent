@@ -268,7 +268,7 @@ export function systemLines(request: PermissionRequest, mode: PermissionMode, in
 		...(request.undo !== undefined ? [`${indent}▸ undo: ${foldLines(request.undo)}`] : []),
 		...reasonLines(request, mode).map((line) => `${indent}▸ why it asks: ${line}`),
 		...(request.risk !== undefined ? [`${indent}▸ risk: ${foldLines(request.risk)}`] : []),
-		...(request.nested ? [`${indent}▸ issued by a codemode script`] : []),
+		...(request.nested ? [`${indent}▸ issued by another tool`] : []),
 	];
 }
 

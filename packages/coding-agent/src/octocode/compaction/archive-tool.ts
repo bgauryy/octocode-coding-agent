@@ -154,7 +154,7 @@ export function registerArchiveTool(pi: ExtensionAPI): void {
 									},
 								];
 				}
-				const found = searchHistory(files, query, page);
+				const found = await searchHistory(files, query, page, signal);
 				const sessions = new Set(files.map((file) => file.session.id)).size;
 				if (found.hits === 0) {
 					return textResult(

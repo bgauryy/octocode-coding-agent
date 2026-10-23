@@ -7,6 +7,7 @@ import type { Member } from "../team/model.ts";
 import { describeMembers } from "../team/routing.ts";
 import type { Team } from "../team/session.ts";
 import { USER_STOP } from "./process.ts";
+import { agentStats, renderStats } from "./stats.ts";
 import { mergeAgent, pendingRefs } from "./worktree.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
@@ -17,12 +18,14 @@ export interface BackgroundRun {
 }
 export type Background = Map<string, BackgroundRun>;
 
-const AGENTS_USAGE = "Usage: /agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id>]";
+const AGENTS_USAGE =
+	"Usage: /agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats]";
 const AGENTS_SUBCOMMANDS: Array<[string, string]> = [
 	["tell", "tell <agent|all> <message> — message an agent, or every agent of this session"],
 	["interrupt", "interrupt <id> <message> — stop a subagent's current step and continue it with the message"],
 	["kill", "kill <id> — stop a running subagent"],
 	["merge", "merge <id> — merge an isolated subagent into this tree"],
+	["stats", "stats — this session's subagent runs per profile: outcomes, tokens, cost, asks, compactions"],
 ];
 
 /** Stops a running subagent (its whole process tree); its report then says who stopped it. */
@@ -44,7 +47,7 @@ export function stopBackground(
 }
 
 /**
- * `/octocode agents` (aliased as `/agents`) lists the agents; `tell`, `kill` and `merge` act on one. `kill` stops a
+ * `/agents` (aliased as `/agents`) lists the agents; `tell`, `kill` and `merge` act on one. `kill` stops a
  * background subagent, or a foreground one (`foreground`) whose call then returns that the user stopped it.
  */
 export function agentsCommand(
@@ -147,7 +150,7 @@ export function agentsCommand(
 	};
 	return {
 		description:
-			"agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id>] — list agents, message, redirect or stop one",
+			"agents [tell <agent|all> <message> | interrupt <id> <message> | kill <id> | merge <id> | stats] — list agents, message, redirect or stop one, or show run statistics",
 		complete: (prefix) => {
 			const space = prefix.indexOf(" ");
 			if (space === -1)
@@ -157,7 +160,7 @@ export function agentsCommand(
 				);
 			const sub = prefix.slice(0, space);
 			const rest = prefix.slice(space + 1).trimStart();
-			if (!AGENTS_SUBCOMMANDS.some(([name]) => name === sub) || /\s/.test(rest)) return null;
+			if (sub === "stats" || !AGENTS_SUBCOMMANDS.some(([name]) => name === sub) || /\s/.test(rest)) return null;
 			const items = wordCompletions(ids(sub), rest);
 			return (
 				items?.map((item) => ({
@@ -175,6 +178,7 @@ export function agentsCommand(
 			if (sub === "interrupt") return tell(rest, ctx, true);
 			if (sub === "kill") return kill(rest, ctx);
 			if (sub === "merge") return merge(rest, ctx);
+			if (sub === "stats") return say(ctx, renderStats(agentStats(ctx.sessionManager.getEntries())));
 			if (sub) return say(ctx, AGENTS_USAGE, "warning");
 			const { members, error } = team.snapshot();
 			const listing = describeMembers(members, team.id, Date.now(), asksOf(members));

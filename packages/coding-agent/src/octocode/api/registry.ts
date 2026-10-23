@@ -46,8 +46,8 @@ export function removeRecord(dir: string, id: string): void {
 	fs.rmSync(recordFile(dir, id), { force: true });
 }
 
-/** Live instances, oldest first. Records of dead processes are swept (with their socket files). */
-export function listInstances(dir: string): InstanceRecord[] {
+/** Live instances, oldest first. By default, records of dead processes are swept with their socket files; completion disables pruning. */
+export function listInstances(dir: string, prune = true): InstanceRecord[] {
 	let names: string[];
 	try {
 		names = fs.readdirSync(instancesDir(dir));
@@ -61,7 +61,7 @@ export function listInstances(dir: string): InstanceRecord[] {
 			const record = JSON.parse(fs.readFileSync(file, "utf8")) as InstanceRecord;
 			if (typeof record.id !== "string" || typeof record.pid !== "number") continue;
 			if (processAlive(record.pid)) found.push(record);
-			else {
+			else if (prune) {
 				fs.rmSync(file, { force: true });
 				if (record.socket) removeSocket(record.socket);
 			}

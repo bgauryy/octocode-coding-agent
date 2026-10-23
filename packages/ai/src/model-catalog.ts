@@ -10,7 +10,7 @@ import type {
 } from "./types.ts";
 import { withCacheCapabilities } from "./utils/cache-capabilities.ts";
 
-export type ModelGroups = Record<string, Record<string, object>>;
+type ModelGroups = Record<string, Record<string, object>>;
 
 type ModelKey<TGroups extends ModelGroups> = {
 	[TApi in keyof TGroups]: keyof TGroups[TApi];

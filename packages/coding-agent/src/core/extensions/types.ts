@@ -1,3 +1,4 @@
+import type { SkillResourceSnapshot } from "../skill-resource-snapshot.ts";
 /**
  * Extension system types.
  *
@@ -20,6 +21,7 @@ import type {
 import type {
 	AnyModel,
 	Api,
+	AssistantMessage,
 	AssistantMessageEvent,
 	AssistantMessageEventStream,
 	ClassifierApi,
@@ -312,7 +314,6 @@ export interface ContextUsage {
 }
 
 export interface CompactOptions {
-	customInstructions?: string;
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
 }
@@ -353,13 +354,15 @@ export interface ExtensionContext {
 	/** The current abort signal, or undefined when the agent is not streaming. */
 	signal: AbortSignal | undefined;
 	/** Abort the current agent operation */
-	abort(): void;
+	abort(reason?: "interrupted" | "internal"): void;
 	/** Whether there are queued messages waiting */
 	hasPendingMessages(): boolean;
 	/** Gracefully shutdown pi and exit. Available in all contexts. */
 	shutdown(): void;
 	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
+	/** Current logical user turn, shared by its tool calls, steering and retries. */
+	getTurnId(): string | undefined;
 	/** Trigger compaction without awaiting completion. */
 	compact(options?: CompactOptions): void;
 	/** Get the current effective system prompt. */
@@ -374,6 +377,15 @@ export interface ExecuteToolOptions {
 	onUpdate?: AgentToolUpdateCallback;
 }
 
+/** Immutable arguments of the active tool execution; unavailable after that execution settles. */
+export interface ToolInvocation {
+	/** False after execution settles, including on contexts copied while the call was active. */
+	readonly active: boolean;
+	readonly toolCallId: string;
+	readonly toolName: string;
+	readonly input: unknown;
+}
+
 /**
  * Context passed to tool `execute()` in a session: the extension context plus `executeTool()`
  * for running other tools through the same validation, hooks, and permission checks as
@@ -383,6 +395,7 @@ export interface ExecuteToolOptions {
  * created with `createBashTool()` and run in a plain `Agent` or called directly, gets no context.
  */
 export interface ExtensionToolContext extends ExtensionContext {
+	readonly invocation?: ToolInvocation;
 	/** Tools {@link executeTool} can call. */
 	readonly tools: readonly AgentTool[];
 	/**
@@ -502,20 +515,18 @@ export interface ToolRenderContext<TState = any, TArgs = any> {
 
 /**
  * How the model reaches a tool. "Callable" means callable from other tools through
- * `ctx.executeTool()`, as the `codemode` tool does.
+ * `ctx.executeTool()`.
  *
  * - `direct`: declared to the model while active, and callable while active.
  * - `model-only`: declared to the model while active, never callable. Use it for orchestrating or
  *   interactive tools.
- * - `codemode`: callable whenever registered. Not declared to the model unless explicitly
- *   activated. Codemode tools list it in their description.
- * - `deferred`: like `codemode`, but codemode tools do not list it; tool search can find it.
+ * - `deferred`: callable whenever registered; declared only after discovery or explicit activation.
  * - `hidden`: registered but unreachable. Activating it has no effect.
  *
  * `direct` and `model-only` tools are activated when they are registered; the others are not.
  * The active tool set (`getActiveTools`/`setActiveTools`) is the set declared to the model.
  */
-export type ToolExposure = "direct" | "model-only" | "codemode" | "deferred" | "hidden";
+export type ToolExposure = "direct" | "model-only" | "deferred" | "hidden";
 
 /**
  * Hints about what a tool does, with the meaning of MCP tool annotations. They come from the tool's
@@ -532,20 +543,19 @@ export interface ToolAnnotations {
 	openWorldHint?: boolean;
 }
 
-/** A group of related tools, such as the tools of one MCP server. Codemode tools list them together. */
+/** A group of related tools, such as the tools of one MCP server. */
 export interface ToolNamespace {
 	/** For example `mcp__docs`. */
 	name: string;
 	/**
-	 * Other names that refer to the namespace where tools look it up by name (codemode's
-	 * `describeNamespace()` and the `namespace` option of `searchTools()`), for example `docs`.
+	 * Other names that refer to the namespace where tools look it up by name (namespace discovery and the `namespace` option of `tool_search`), for example `docs`.
 	 */
 	aliases?: readonly string[];
 	/** Short summary shown once with the group in model-facing tool listings. */
 	description?: string;
 	/**
 	 * Longer usage guidance, such as MCP server instructions. Not part of tool listings; tools that
-	 * describe the namespace on request (codemode's `describeNamespace()`) return it.
+	 * describe the namespace on request return it.
 	 */
 	instructions?: string;
 }
@@ -601,7 +611,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 
 	/**
 	 * JSON Schema of `structuredContent` in successful results. Tools that declare it should always
-	 * set `structuredContent`; codemode scripts then receive it instead of the text content.
+	 * set `structuredContent`; programmatic tool callers then receive it instead of the text content.
 	 */
 	outputSchema?: TSchema;
 
@@ -614,7 +624,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	namespace?: ToolNamespace;
 
 	/**
-	 * For tools that reach other tools (such as `codemode`, which calls them, and `tool_search`, which
+	 * For tools that reach other tools (such as `tool_search`, which
 	 * loads them): which tools a call with `input` may reach. `"all"`, or the words of the input that
 	 * may name them, where a word refers to a tool or namespace whose name it contains, so words may
 	 * over-match. Extensions that register tools late, such as MCP servers that are still connecting,
@@ -783,12 +793,11 @@ export interface SessionBeforeForkEvent {
 	position: "before" | "at";
 }
 
-/** Fired before context compaction (can be cancelled or customized) */
+/** Fired before context compaction. Return values are ignored; preparation is an isolated snapshot. */
 export interface SessionBeforeCompactEvent {
 	type: "session_before_compact";
 	preparation: CompactionPreparation;
 	branchEntries: SessionEntry[];
-	customInstructions?: string;
 	/** What triggered the compaction: manual /compact, the context threshold, or context overflow recovery */
 	reason: "manual" | "threshold" | "overflow";
 	/** True when the aborted turn is retried after this compaction (overflow recovery) */
@@ -991,20 +1000,7 @@ export interface ContextEditEntryDraft {
 	replacement: ContextEditEntry["replacement"];
 }
 
-export interface CompactionEntryDraft {
-	type: "compaction";
-	summary: string;
-	/** Null creates a self-retaining compaction that keeps no preceding entries. */
-	firstKeptEntryId: string | null;
-	details?: unknown;
-	usage?: Usage;
-}
-
-export type SessionBoundaryDraft =
-	| CustomEntryDraft
-	| CustomMessageEntryDraft
-	| ContextEditEntryDraft
-	| CompactionEntryDraft;
+export type SessionBoundaryDraft = CustomEntryDraft | CustomMessageEntryDraft | ContextEditEntryDraft;
 
 export interface BoundaryContextPreview {
 	contextEntries: ProjectedSessionEntry[];
@@ -1029,6 +1025,16 @@ export interface BoundaryResult {
 /** Fired before final settlement. May append entries and ensure one next provider request. */
 export interface AgentBeforeSettleEvent extends BoundaryState {
 	type: "agent_before_settle";
+}
+
+/** Observes an explicitly interrupted turn after its records are saved and before settlement. */
+export interface AgentInterruptedEvent {
+	type: "agent_interrupted";
+	turnId: string;
+	sessionId: string;
+	transcriptPath?: string;
+	cwd: string;
+	model: Model<any> | undefined;
 }
 
 /** Fired after an agent run has fully settled and no automatic retry, compaction, or queued continuation will run. */
@@ -1098,7 +1104,7 @@ export interface ToolExecutionStartEvent {
 	toolCallId: string;
 	toolName: string;
 	args: any;
-	/** Set when another tool (for example a codemode script) made this call. */
+	/** Set when another tool (for example another tool) made this call. */
 	parentToolCallId?: string;
 }
 
@@ -1109,7 +1115,7 @@ export interface ToolExecutionUpdateEvent {
 	toolName: string;
 	args: any;
 	partialResult: any;
-	/** Set when another tool (for example a codemode script) made this call. */
+	/** Set when another tool (for example another tool) made this call. */
 	parentToolCallId?: string;
 }
 
@@ -1122,7 +1128,7 @@ export interface ToolExecutionEndEvent {
 	isError: boolean;
 	/** Milliseconds `execute()` took, measured with a monotonic clock; absent when the tool did not run. */
 	durationMs?: number;
-	/** Set when another tool (for example a codemode script) made this call. */
+	/** Set when another tool (for example another tool) made this call. */
 	parentToolCallId?: string;
 }
 
@@ -1182,6 +1188,15 @@ export interface InputEvent {
 	streamingBehavior?: "steer" | "followUp";
 }
 
+/** A user item selected for consumption, before Codex mention expansion and persistence. */
+export interface UserInputEvent extends Omit<InputEvent, "type"> {
+	type: "user_input";
+}
+export interface UserInputEventResult {
+	block?: boolean;
+	additionalContext?: string[];
+}
+
 /** Result from input event handler */
 export type InputEventResult =
 	| { action: "continue" }
@@ -1200,7 +1215,7 @@ interface ToolCallEventBase {
 	 * in the parent result's `nestedCalls` record.
 	 */
 	toolCallId: string;
-	/** Set when another tool (for example a codemode script) issued this call. */
+	/** Set when another tool (for example another tool) issued this call. */
 	parentToolCallId?: string;
 }
 
@@ -1270,7 +1285,7 @@ interface ToolResultEventBase {
 	type: "tool_result";
 	/** The call's id; `<parent id>/<n>` for nested calls, see `ToolCallEvent`. */
 	toolCallId: string;
-	/** Set when another tool (for example a codemode script) issued this call. */
+	/** Set when another tool (for example another tool) issued this call. */
 	parentToolCallId?: string;
 	input: Record<string, unknown>;
 	content: (TextContent | ImageContent)[];
@@ -1420,6 +1435,7 @@ export type ExtensionEvent =
 	| AgentStartEvent
 	| AgentEndEvent
 	| AgentBeforeSettleEvent
+	| AgentInterruptedEvent
 	| AgentSettledEvent
 	| UIPromptStartEvent
 	| UIPromptEndEvent
@@ -1435,6 +1451,7 @@ export type ExtensionEvent =
 	| ThinkingLevelSelectEvent
 	| UserBashEvent
 	| InputEvent
+	| UserInputEvent
 	| ToolCallEvent
 	| ToolResultEvent;
 
@@ -1454,7 +1471,7 @@ export type BeforeProviderRequestEventResult = unknown;
 export type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../cache-warmer.ts";
 
 export interface ToolCallEventResult {
-	/** Block tool execution. To modify arguments, mutate `event.input` in place instead. */
+	/** Block tool execution. To modify arguments, mutate `event.input` in place instead. The tool schema is revalidated before execution. */
 	block?: boolean;
 	reason?: string;
 	/**
@@ -1508,11 +1525,6 @@ export interface SessionBeforeSwitchResult {
 export interface SessionBeforeForkResult {
 	cancel?: boolean;
 	skipConversationRestore?: boolean;
-}
-
-export interface SessionBeforeCompactResult {
-	cancel?: boolean;
-	compaction?: CompactionResult;
 }
 
 export interface SessionBeforeTreeResult {
@@ -1570,6 +1582,7 @@ export type EntryRenderer<T = unknown> = (
 
 export interface RegisteredCommand {
 	name: string;
+	aliases?: readonly string[];
 	sourceInfo: SourceInfo;
 	description?: string;
 	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
@@ -1613,7 +1626,7 @@ export interface ExtensionAPI {
 	): () => void;
 	on(
 		event: "session_before_compact",
-		handler: ExtensionHandler<SessionBeforeCompactEvent, SessionBeforeCompactResult>,
+		handler: ExtensionHandler<SessionBeforeCompactEvent, unknown>,
 	): () => void;
 	on(event: "session_compact", handler: ExtensionHandler<SessionCompactEvent>): () => void;
 	on(event: "session_compact_failed", handler: ExtensionHandler<SessionCompactFailedEvent>): () => void;
@@ -1647,6 +1660,7 @@ export interface ExtensionAPI {
 		event: "agent_before_settle",
 		handler: ExtensionHandler<AgentBeforeSettleEvent, AgentBeforeSettleEventResult>,
 	): () => void;
+	on(event: "agent_interrupted", handler: ExtensionHandler<AgentInterruptedEvent>): () => void;
 	on(event: "agent_settled", handler: ExtensionHandler<AgentSettledEvent>): () => void;
 	on(event: "ui_prompt_start", handler: ExtensionHandler<UIPromptStartEvent>): () => void;
 	on(event: "ui_prompt_end", handler: ExtensionHandler<UIPromptEndEvent>): () => void;
@@ -1664,6 +1678,7 @@ export interface ExtensionAPI {
 	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): () => void;
 	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): () => void;
 	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): () => void;
+	on(event: "user_input", handler: ExtensionHandler<UserInputEvent, UserInputEventResult>): () => void;
 
 	// =========================================================================
 	// Tool Registration
@@ -1729,11 +1744,11 @@ export interface ExtensionAPI {
 	// Actions
 	// =========================================================================
 
-	/** Send a custom message to the session. */
+	/** Send a custom message. The runtime returns a promise so callers can observe asynchronous failure; it also reports errors for callers that do not await. */
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
-	): void;
+	): void | Promise<void>;
 
 	/**
 	 * Send a user message to the agent. Always triggers a turn.
@@ -1747,6 +1762,10 @@ export interface ExtensionAPI {
 
 	/** Append a custom entry to the session for state persistence (not sent to LLM). */
 	appendEntry<T = unknown>(customType: string, data?: T): void;
+
+	/** Capture the current session before auxiliary requests; record each completed response once, including reported failed usage. */
+	createUsageRecorder(kind: string): (message: AssistantMessage) => void;
+
 
 	// =========================================================================
 	// Session Metadata
@@ -1774,13 +1793,19 @@ export interface ExtensionAPI {
 	getSettings(): Settings;
 
 	/**
-	 * Set the active tools by name. Unknown and `hidden` tools are ignored. Tools with `codemode` or
-	 * `deferred` exposure stay callable from codemode scripts whether active or not.
+	 * Set the active tools by name. Unknown and `hidden` tools are ignored. Tools with `deferred` exposure stay callable from programmatic tool callers whether active or not.
 	 */
 	setActiveTools(toolNames: string[]): void;
+	/** Native composition only: apply an additional tool permission filter without changing the requested loadout. */
+	setToolPolicy?(allows: (name: string) => boolean): void;
 
 	/** Get available slash commands in the current session. */
 	getCommands(): SlashCommandInfo[];
+
+	/** Get canonical reference directories for loaded skills, independent of slash-command visibility. */
+	getSkillDirectories(): string[];
+	/** Capture accepted skill resources after runtime initialization. Omit names for all; command names select a subset; [] is empty. No discovery or plugin activation. */
+	getSkillResourceSnapshot(names?: readonly string[]): SkillResourceSnapshot;
 
 	// =========================================================================
 	// Model and Thinking Level
@@ -2060,7 +2085,7 @@ export type InlineExtension =
 			/**
 			 * Leave this extension out when another extension registers a tool, command, or flag with a
 			 * name it registers during loading, instead of reporting a conflict. The CLI's built-in MCP,
-			 * codemode, and tool search extensions use it, so for example an MCP extension that registers
+			 * and tool search extensions use it, so for example an MCP extension that registers
 			 * `/mcp` replaces the built-in MCP support. The factory still runs, so it should only register
 			 * tools, commands, flags, and event handlers.
 			 */
@@ -2105,7 +2130,7 @@ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 export type SendMessageHandler = <T = unknown>(
 	message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
-) => void;
+) => void | Promise<void>;
 
 export type SendUserMessageHandler = (
 	content: string | (TextContent | ImageContent)[],
@@ -2157,12 +2182,13 @@ export interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
-	/** Native pi-ai provider registrations queued during extension loading, processed when runner binds. */
+	/** Native octocode-ai provider registrations queued during extension loading, processed when runner binds. */
 	pendingNativeProviderRegistrations: Array<{ provider: Provider; extensionPath: string }>;
 	/** Virtual model registrations queued during extension loading, processed when runner binds. */
 	pendingVirtualModelRegistrations: Array<{ definition: VirtualModelDefinition; extensionPath: string }>;
 	/** Create an extension context. Throws before the runner binds. */
 	createContext: () => ExtensionContext;
+	createUsageRecorder: (kind: string) => (message: AssistantMessage) => void;
 	/** Throws when this extension instance is stale after runtime replacement. */
 	assertActive: () => void;
 	/** Marks this extension instance as stale after runtime replacement or reload. */
@@ -2199,8 +2225,11 @@ export interface ExtensionActions {
 	getAllTools: GetAllToolsHandler;
 	getSettings: GetSettingsHandler;
 	setActiveTools: SetActiveToolsHandler;
+	setToolPolicy?: (allows: (name: string) => boolean) => void;
 	refreshTools: RefreshToolsHandler;
 	getCommands: GetCommandsHandler;
+	getSkillDirectories: () => string[];
+	getSkillResourceSnapshot: (names?: readonly string[]) => SkillResourceSnapshot;
 	setModel: SetModelHandler;
 	getThinkingLevel: GetThinkingLevelHandler;
 	setThinkingLevel: SetThinkingLevelHandler;
@@ -2211,13 +2240,15 @@ export interface ExtensionActions {
  * Required by all modes.
  */
 export interface ExtensionContextActions {
+	onUsageRecorded?: (entry: Extract<SessionEntry, { type: "usage" }>) => void;
 	getExplicitToolNames?: () => readonly string[];
 	getModel: () => Model<any> | undefined;
 	getScopedModels: () => readonly ScopedModel[];
 	isIdle: () => boolean;
 	isProjectTrusted: () => boolean;
 	getSignal: () => AbortSignal | undefined;
-	abort: () => void;
+	getTurnId?: () => string | undefined;
+	abort: (reason?: "interrupted" | "internal") => void;
 	hasPendingMessages: () => boolean;
 	shutdown: () => void;
 	getContextUsage: () => ContextUsage | undefined;

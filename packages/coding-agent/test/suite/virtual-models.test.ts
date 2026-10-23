@@ -45,8 +45,8 @@ describe("AgentSession virtual models", () => {
 				{ id: "large", contextWindow: 50_000, maxTokens: 4000, reasoning: true },
 			],
 			tools: [echoTool],
-			extensionFactories: [
-				...(options.extensionFactories ?? []),
+			builtinCompactionFactories: [
+				...(options.builtinCompactionFactories ?? options.extensionFactories ?? []),
 				(pi) => {
 					pi.registerVirtualModel({
 						provider: "router",
@@ -123,8 +123,8 @@ describe("AgentSession virtual models", () => {
 
 	it("routes the compact-and-retry after a truncated response as a retry", async () => {
 		const { harness, requests, reasons } = await createRoutedHarness(defaultRoute, {
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "overflow compacted", firstKeptEntryId, tokensBefore },
@@ -148,7 +148,7 @@ describe("AgentSession virtual models", () => {
 
 	it("routes requests after extension messages as continuations", async () => {
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					let continued = false;
 					pi.on("agent_before_settle", () => {
@@ -172,7 +172,7 @@ describe("AgentSession virtual models", () => {
 
 	it("routes the first request of a prompt as a user turn when extension messages follow the prompt", async () => {
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("before_agent_start", () => ({
 						message: { customType: "context", content: "Extra context.", display: false },
@@ -227,8 +227,8 @@ describe("AgentSession virtual models", () => {
 
 	it("compacts before a request routed to a model with a smaller window", async () => {
 		const { harness, dispatched } = await createRoutedHarness(defaultRoute, {
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
@@ -262,8 +262,8 @@ describe("AgentSession virtual models", () => {
 				? { model: ctx.modelRegistry.find("faux", "small")!, thinkingLevel: "off" }
 				: defaultRoute(request, ctx);
 		const { harness, dispatched } = await createRoutedHarness(route, {
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
@@ -313,7 +313,7 @@ describe("AgentSession virtual models", () => {
 				if (request.reason === "continuation") return { ...route, state: request.state };
 				return { ...route, state: { turns: turns + 1 } };
 			},
-			{ settings: { compaction: { keepRecentTokens: 1 } } },
+			{ compactionPolicy: { keepRecentTokens: 1 } },
 		);
 		harness.setResponses([
 			fauxAssistantMessage(fauxToolCall("echo", { text: "hi" }), { stopReason: "toolUse" }),
@@ -343,14 +343,14 @@ describe("AgentSession virtual models", () => {
 		expect(stored()).toHaveLength(2);
 	});
 
-	it("does not route compactions that an extension supplies", async () => {
+	it("does not route summaries supplied by the built-in compaction flow", async () => {
 		const route: Route = (request, ctx) => {
 			if (request.reason === "direct") throw new Error("router unavailable");
 			return defaultRoute(request, ctx);
 		};
 		const { harness, reasons } = await createRoutedHarness(route, {
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "extension summary", firstKeptEntryId, tokensBefore },
@@ -371,7 +371,7 @@ describe("AgentSession virtual models", () => {
 	it("routes compaction summaries to the resolved model", async () => {
 		const summaries: string[] = [];
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
-			settings: { compaction: { keepRecentTokens: 1 } },
+			compactionPolicy: { keepRecentTokens: 1 },
 		});
 		const summary: FauxResponseStep = (_context, options, _state, model) => {
 			summaries.push(`${model.id}:${options?.reasoning ?? "off"}`);

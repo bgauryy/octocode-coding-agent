@@ -1,0 +1,92 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { ApplicationCommand } from "@octocodeai/octocode-contacts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
+import { WorkspaceCommands } from "../../src/octocode/workspace/commands.ts";
+import { ApplicationCommands } from "../../src/octocode/workspace/application-commands.ts";
+
+let dir: string;
+let db: AgentDb;
+beforeEach(() => {
+	dir = fs.mkdtempSync(path.join(os.tmpdir(), "application-receipts-"));
+	db = openAgentDb(path.join(dir, "db"));
+});
+afterEach(() => { db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+const command = (sessionId = "session-one", text = "Review the implementation"): ApplicationCommand => ({
+	id: "request-one", sessionId, action: "prompt", text,
+});
+
+describe("durable application receipts", () => {
+	it("retains an uncertain accepted request across database reopen without fresh execution", () => {
+		expect(new ApplicationCommands(db, "repo").begin(command())).toMatchObject({ fresh: true, receipt: { status: "accepted" } });
+		db.close(); db = openAgentDb(path.join(dir, "db"));
+		expect(new ApplicationCommands(db, "repo").begin(command())).toMatchObject({ fresh: false, receipt: { id: "request-one", status: "accepted" } });
+	});
+
+	it("recognizes the same payload regardless of JSON field order", () => {
+		const receipts = new ApplicationCommands(db, "repo"); receipts.begin(command());
+		const reordered: ApplicationCommand = { text: "Review the implementation", action: "prompt", sessionId: "session-one", id: "request-one" };
+		expect(receipts.begin(reordered).fresh).toBe(false);
+	});
+
+	it("refuses altered payloads under the same request identity", () => {
+		const receipts = new ApplicationCommands(db, "repo");
+		receipts.begin(command());
+		expect(() => receipts.begin(command("session-one", "Different instruction"))).toThrow(/another command/);
+		expect(receipts.begin(command()).fresh).toBe(false);
+	});
+
+	it("isolates identical request IDs by session and repository", () => {
+		const first = new ApplicationCommands(db, "repo");
+		const second = new ApplicationCommands(db, "repo");
+		const otherRepo = new ApplicationCommands(db, "other-repo");
+		first.begin(command()); second.begin(command("session-two")); otherRepo.begin(command());
+		first.finish("request-one", "completed");
+		expect(first.begin(command()).receipt.status).toBe("completed");
+		expect(second.begin(command("session-two")).receipt.status).toBe("accepted");
+		expect(otherRepo.begin(command()).receipt.status).toBe("accepted");
+	});
+
+	it("persists a failed outcome and its explanation", () => {
+		const receipts = new ApplicationCommands(db, "repo"); receipts.begin(command());
+		receipts.finish("request-one", "failed", "The agent stopped before processing this request.");
+		expect(new ApplicationCommands(db, "repo").begin(command())).toMatchObject({ fresh: false, receipt: {
+			status: "failed", message: "The agent stopped before processing this request.",
+		} });
+	});
+
+	it("redacts credential-shaped failure details before persistence and return", () => {
+		const receipts = new ApplicationCommands(db, "repo"); receipts.begin(command());
+		const secret = "sk-test123456789012345678901234567890";
+		const receipt = receipts.finish("request-one", "failed", `Provider rejected credential ${secret}`);
+		expect(receipt.message).toContain("[redacted]");
+		expect(receipt.message).not.toContain(secret);
+		const row = db.db.prepare("SELECT message FROM workspace_commands WHERE id=?").get("application:request-one") as { message: string };
+		expect(row.message).toEqual(receipt.message);
+		expect(new ApplicationCommands(db, "repo").begin(command()).receipt.message).toEqual(receipt.message);
+	});
+
+	it("rejects credentials before creating a receipt", () => {
+		const receipts = new ApplicationCommands(db, "repo");
+		expect(() => receipts.begin(command("session-one", "api_key=sk-test123456789012345678901234567890"))).toThrow(/credentials/);
+		expect(receipts.begin(command()).fresh).toBe(true);
+	});
+
+	it("keeps application receipts out of workspace command snapshots", () => {
+		const receipts = new ApplicationCommands(db, "repo"); receipts.begin(command());
+		receipts.finish("request-one", "completed");
+		const workspace = new WorkspaceCommands(db, "repo", "session-one");
+		workspace.begin({ id: "application:user-selected-id", action: "message", to: "worker", text: "Review this" });
+		expect(workspace.list()).toEqual([expect.objectContaining({ id: "application:user-selected-id", action: "message", status: "pending" })]);
+	});
+
+	it("does not let a later session redirect the completion of accepted work", () => {
+		const receipts = new ApplicationCommands(db, "repo"); receipts.begin(command());
+		expect(() => receipts.begin(command("session-two"))).toThrow(/session/i);
+		receipts.finish("request-one", "completed");
+		expect(new ApplicationCommands(db, "repo").begin(command()).receipt.status).toBe("completed");
+		expect(new ApplicationCommands(db, "repo").begin(command("session-two")).fresh).toBe(true);
+	});
+});

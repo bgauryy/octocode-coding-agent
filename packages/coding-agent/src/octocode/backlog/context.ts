@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/extensions/index.ts";
+import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
 import { PARENT_SESSION_ENV } from "../shared/env.ts";
 import { repoKey } from "../shared/home.ts";
@@ -32,3 +32,10 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 	const owners = new Set(parent ? [parent] : []);
 	return { store, actor: { id, owners }, session, repoName: repo.name };
 }
+
+export interface BacklogWeb {
+	url: string;
+	close(): Promise<void>;
+}
+
+export type OpenBacklogWeb = (ctx: ExtensionCommandContext, backlog: Backlog, changed: () => void) => Promise<BacklogWeb>;

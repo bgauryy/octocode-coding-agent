@@ -20,8 +20,8 @@ describe("issue #9178: tree navigation during manual compaction", () => {
 		const compactionReleased = createDeferred();
 
 		harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => {
 						compactionStarted.resolve();

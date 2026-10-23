@@ -1,7 +1,8 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { constants } from "fs";
-import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
+import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
 import { type Static, Type } from "typebox";
+import { atomicWriteFile, sha256 } from "../../utils/atomic-file.ts";
 import { splitBom } from "../../utils/text.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import {
@@ -22,16 +23,25 @@ const replaceEditSchema = Type.Object(
 	{
 		oldText: Type.String({
 			description:
-				"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
+				"Exact text; unique unless replaceAll is true. Edits must not overlap.",
 		}),
-		newText: Type.String({ description: "Replacement text for this targeted edit." }),
+		newText: Type.String({
+			description: "Replacement text for this targeted edit.",
+		}),
+		replaceAll: Type.Optional(
+			Type.Boolean({
+				description: "All non-overlapping matches; default false.",
+			}),
+		),
 	},
 	{},
 );
 
 const editSchema = Type.Object(
 	{
-		path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
+		path: Type.String({
+			description: "Path to the file to edit (relative or absolute)",
+		}),
 		edits: Type.Array(replaceEditSchema, {
 			description:
 				"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
@@ -41,12 +51,13 @@ const editSchema = Type.Object(
 );
 
 export const editToolSystemPromptContribution = {
-	snippet: "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+	snippet:
+		"Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
 	guidelines: [
 		"Use edit for precise changes (edits[].oldText must match exactly)",
 		"When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
 		"Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-		"Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+		"Keep edits[].oldText small and unique unless replaceAll is true. Do not pad with large unchanged regions.",
 	],
 } as const;
 
@@ -91,7 +102,7 @@ export interface EditOperations {
 
 const defaultEditOperations: EditOperations = {
 	readFile: (path) => fsReadFile(path),
-	writeFile: (path, content) => fsWriteFile(path, content, "utf-8"),
+	writeFile: (path, content) => atomicWriteFile(path, content),
 	access: (path) => fsAccess(path, constants.R_OK | constants.W_OK),
 };
 
@@ -123,7 +134,10 @@ function prepareEditArguments(input: unknown): EditToolInput {
 	}
 
 	const legacy = args as LegacyEditToolInput;
-	if (typeof legacy.oldText !== "string" || typeof legacy.newText !== "string") {
+	if (
+		typeof legacy.oldText !== "string" ||
+		typeof legacy.newText !== "string"
+	) {
 		return args as EditToolInput;
 	}
 
@@ -133,9 +147,14 @@ function prepareEditArguments(input: unknown): EditToolInput {
 	return { ...rest, edits } as EditToolInput;
 }
 
-function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] } {
+function validateEditInput(input: EditToolInput): {
+	path: string;
+	edits: Edit[];
+} {
 	if (!Array.isArray(input.edits) || input.edits.length === 0) {
-		throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+		throw new Error(
+			"Edit tool input is invalid. edits must contain at least one replacement.",
+		);
 	}
 	return { path: input.path, edits: input.edits };
 }
@@ -143,20 +162,30 @@ function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] 
 export function createEditToolDefinition(
 	cwd: string,
 	options?: EditToolOptions,
-): ToolDefinition<typeof editSchema, EditToolDetails | undefined, EditRenderState> {
+): ToolDefinition<
+	typeof editSchema,
+	EditToolDetails | undefined,
+	EditRenderState
+> {
 	const ops = options?.operations ?? defaultEditOperations;
 	return {
 		name: "edit",
 		label: "edit",
 		description:
-			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+			"Edit a single file using exact text replacement. Each edits[].oldText must match once unless replaceAll is true; matches must not overlap. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
 		promptSnippet: editToolSystemPromptContribution.snippet,
 		promptGuidelines: [...editToolSystemPromptContribution.guidelines],
 		parameters: editSchema,
 		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderShell: "self",
 		prepareArguments: prepareEditArguments,
-		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, ctx?: ExtensionContext) {
+		async execute(
+			_toolCallId,
+			input: EditToolInput,
+			signal?: AbortSignal,
+			_onUpdate?,
+			ctx?: ExtensionContext,
+		) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, ctx?.cwd || cwd);
 
@@ -177,7 +206,9 @@ export function createEditToolDefinition(
 				} catch (error: unknown) {
 					throwIfAborted();
 					const errorMessage =
-						error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
+						error instanceof Error && "code" in error
+							? `Error code: ${error.code}`
+							: String(error);
 					throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
 				}
 				throwIfAborted();
@@ -191,11 +222,20 @@ export function createEditToolDefinition(
 				const { bom, text: content } = splitBom(rawContent);
 				const originalEnding = detectLineEnding(content);
 				const normalizedContent = normalizeToLF(content);
-				const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path);
+				const { baseContent, newContent } = applyEditsToNormalizedContent(
+					normalizedContent,
+					edits,
+					path,
+				);
 				throwIfAborted();
 
-				const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-				await ops.writeFile(absolutePath, finalContent);
+				const finalContent =
+					bom + restoreLineEndings(newContent, originalEnding);
+				if (ops === defaultEditOperations)
+					await atomicWriteFile(absolutePath, finalContent, sha256(buffer), {
+						signal,
+					});
+				else await ops.writeFile(absolutePath, finalContent);
 				throwIfAborted();
 
 				const diffResult = generateDiffString(baseContent, newContent);
@@ -207,7 +247,11 @@ export function createEditToolDefinition(
 							text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
 						},
 					],
-					details: { diff: diffResult.diff, patch, firstChangedLine: diffResult.firstChangedLine },
+					details: {
+						diff: diffResult.diff,
+						patch,
+						firstChangedLine: diffResult.firstChangedLine,
+					},
 				};
 			});
 		},
@@ -215,6 +259,9 @@ export function createEditToolDefinition(
 	};
 }
 
-export function createEditTool(cwd: string, options?: EditToolOptions): AgentTool<typeof editSchema> {
+export function createEditTool(
+	cwd: string,
+	options?: EditToolOptions,
+): AgentTool<typeof editSchema> {
 	return wrapToolDefinition(createEditToolDefinition(cwd, options));
 }

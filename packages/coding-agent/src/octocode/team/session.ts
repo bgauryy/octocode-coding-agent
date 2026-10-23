@@ -9,7 +9,7 @@ import { interactive } from "../shared/interactive.ts";
 import { type MessageEnvelope, USER_SENDER } from "../shared/messages.ts";
 import { parentGone, sameProcess, terminateSelf } from "../shared/process.ts";
 import { storedText, visibleControls } from "../shared/sanitize.ts";
-import { addReply, cutText, errorMessage } from "../shared/util.ts";
+import { addReply, cutText, emptyTotals, errorMessage, type UsageTotals } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 import { Delivery } from "./delivery.ts";
 import type { EditLog } from "./edits.ts";
@@ -175,6 +175,7 @@ export class Team {
 		}
 		this.ctx = ctx;
 		this.schemaProblem = undefined;
+		this.early = { usage: emptyTotals() };
 		this.watchParent();
 		if (this.env[AGENT_ID_ENV]) this.join();
 	}
@@ -238,6 +239,7 @@ export class Team {
 		if (!this.me) {
 			this.me = this.claimName(db, ctx, goal);
 			this.activeAt = this.me.joinedAt;
+			this.takeEarlyUsage(this.me);
 			this.ticker.sync();
 		} else if (goal !== undefined) {
 			this.me.goal = storedText(goal, LINE_MAX);
@@ -552,7 +554,7 @@ export class Team {
 			);
 		return lease
 			? visibleControls(
-					`${display} is reserved by ${lease.owner} (${lease.reason}; ${leaseAge(lease)}). Do other work, or sendMessage ${lease.owner} and retry after they unlock.`,
+					`${display} is reserved by ${lease.owner} (${lease.reason}; ${leaseAge(lease)}). Do other work, or message ${lease.owner} with agent type message and retry after they unlock.`,
 				)
 			: undefined;
 	}
@@ -612,12 +614,35 @@ export class Team {
 		});
 	}
 
+	/**
+	 * Replies of this session that finished before it joined (a resumed session's first reply can end before the join):
+	 * they belong to this agent's row too, so the panel and `coordinate list` add them on join.
+	 */
+	private early: { usage: UsageTotals; model?: string } = { usage: emptyTotals() };
+
 	/** One reply's usage; `model` wrote it (it changes when the user switches models); `unpriced`: that model has no pricing. */
 	onUsage(usage: unknown, model: string | undefined, unpriced: boolean): void {
+		if (!this.me) {
+			if (model) this.early.model = storedText(model, LINE_MAX);
+			addReply(this.early.usage, usage, unpriced);
+			return;
+		}
 		this.update((me) => {
 			if (model) me.model = storedText(model, LINE_MAX);
 			addReply(me, usage, unpriced);
 		});
+	}
+
+	/** Moves the replies counted before the join onto the new row. */
+	private takeEarlyUsage(me: Member): void {
+		const { usage, model } = this.early;
+		me.input += usage.input;
+		me.cacheRead += usage.cacheRead;
+		me.output += usage.output;
+		me.cost += usage.cost;
+		if (usage.unpriced) me.unpriced = true;
+		if (model) me.model = model;
+		this.early = { usage: emptyTotals() };
 	}
 
 	/** Changes this agent's row in memory; `status` changes are written on the next tick, the rest with the heartbeat. */

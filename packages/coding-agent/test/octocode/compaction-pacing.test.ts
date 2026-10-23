@@ -232,21 +232,10 @@ describe("pacing wired into the session", () => {
 	});
 });
 
-describe("per-model compaction reserve", () => {
-	it("reads the model's override, else the global reserve, else Octocode's default", () => {
-		const model = { provider: "p", id: "m" };
-		expect(
-			reserveTokensFor(
-				{ compaction: { reserveTokens: 40_000, modelOverrides: { "p/m": { reserveTokens: 8_000 } } } },
-				model,
-			),
-		).toBe(8_000);
-		expect(
-			reserveTokensFor(
-				{ compaction: { reserveTokens: 40_000, modelOverrides: { "p/other": { reserveTokens: 8_000 } } } },
-				model,
-			),
-		).toBe(40_000);
-		expect(reserveTokensFor({}, model)).toBe(16_384);
+describe("built-in compaction reserve", () => {
+	it("scales the reserve with the model context window", () => {
+		expect(reserveTokensFor({ provider: "p", id: "m" })).toBe(16_384);
+		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 32_768 })).toBe(4_096);
+		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 200_000 })).toBe(16_384);
 	});
 });

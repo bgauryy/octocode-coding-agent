@@ -16,9 +16,9 @@ import {
 	reasonAsks,
 } from "./mode.ts";
 
-/** Audit entries `/octocode permission log` shows, newest last. */
+/** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
-const USAGE = `Usage: /octocode permission [${PERMISSION_MODES.join("|")}|grants [clear]|log]`;
+const USAGE = `Usage: /permissions [${PERMISSION_MODES.join("|")}|grants [clear]|log]`;
 const NOT_A_SANDBOX =
 	"Modes and reasons decide what Octocode asks about and records; they are not a sandbox (the OS user's rights stay as they are).";
 
@@ -70,7 +70,7 @@ function logLines(ctx: ExtensionContext, permission: Permission): string {
 }
 
 /**
- * `/octocode permission [manual|workspace|full|grants [clear]|log]`. The command works everywhere, RPC included; the
+ * `/permissions [manual|workspace|full|grants [clear]|log]`. The command works everywhere, RPC included; the
  * editor shortcut lives in `ui/editor`.
  */
 export function registerPermissionCommand(
@@ -83,8 +83,9 @@ export function registerPermissionCommand(
 		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode}. ${modeSummary(mode)}`);
 	};
 
-	commands.add("permission", {
-		description: `permission [manual|workspace|full|grants [clear]|log] — what Octocode asks before it acts (${shortcutText("app.permission.cycle")} cycles in the editor)`,
+	commands.add("permissions", {
+		aliases: ["permission"],
+		description: `permissions [manual|workspace|full|grants [clear]|log] — what Octocode asks before it acts (${shortcutText("app.permission.cycle")} cycles in the editor)`,
 		complete: (prefix) => wordCompletions([...PERMISSION_MODES, "grants", "grants clear", "log"], prefix),
 		handler: async (args, ctx) => {
 			const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);

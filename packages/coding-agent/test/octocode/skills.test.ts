@@ -82,3 +82,14 @@ describe("skills", () => {
 		expect(extraSkillDirs(tmp(), home)).toEqual([root]);
 	});
 });
+
+it("keeps Claude parsing semantics through extra-directory and filtered-file discovery", () => {
+ const home = tmp();const cwd = tmp();
+ const root = path.join(home, ".claude", "skills");
+ fs.mkdirSync(path.join(root, "example"), { recursive: true });
+ fs.mkdirSync(path.join(root, "synced"), { recursive: true });
+ fs.writeFileSync(path.join(root, "example", "SKILL.md"), '---\nname: example\nuser-invocable: "no"\n---\nDescription from the body.\n$0');
+ const loaded = loadSkills({ cwd, agentDir: tmp(), includeDefaults: false, skillPaths: extraSkillDirs(cwd, home, false) });
+ expect(loaded.skills).toHaveLength(1);
+ expect(loaded.skills[0]).toMatchObject({ description: "Description from the body.", userInvocable: false, argumentStyle: "claude" });
+});

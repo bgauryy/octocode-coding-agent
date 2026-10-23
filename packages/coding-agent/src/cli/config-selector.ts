@@ -7,7 +7,7 @@ import type { SettingsManager } from "../core/settings-manager.ts";
 import { ConfigSelectorComponent, type ScopedResolvedPaths } from "../modes/interactive/components/config-selector.ts";
 import { initTheme, stopThemeWatcher } from "../modes/interactive/theme/theme.ts";
 
-export interface ConfigSelectorOptions {
+interface ConfigSelectorOptions {
 	resolvedPaths: ScopedResolvedPaths;
 	settingsManager: SettingsManager;
 	cwd: string;

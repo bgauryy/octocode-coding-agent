@@ -1,0 +1,3833 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "cases": [
+    {
+      "name": "ending-('\\n', 'alpha', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch",
+      "source": "alpha\ntail\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": [
+                  "alpha"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "beta\ntail\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\n', 'alpha', '')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch",
+      "source": "alpha\ntail\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  ""
+                ],
+                "old": [
+                  "alpha",
+                  ""
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "tail\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\n', '', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch",
+      "source": "alpha\ntail\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "alpha\ntail\nbeta\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r\\n', 'alpha', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch",
+      "source": "alpha\r\ntail\r\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": [
+                  "alpha"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "beta\r\ntail\r\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r\\n', 'alpha', '')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch",
+      "source": "alpha\r\ntail\r\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  ""
+                ],
+                "old": [
+                  "alpha",
+                  ""
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "tail\r\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r\\n', '', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch",
+      "source": "alpha\r\ntail\r\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "alpha\r\ntail\r\nbeta\r\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r', 'alpha', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch",
+      "source": "alpha\rtail\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": [
+                  "alpha"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "beta\rtail\r",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r', 'alpha', '')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch",
+      "source": "alpha\rtail\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  ""
+                ],
+                "old": [
+                  "alpha",
+                  ""
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "tail\r",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('\\r', '', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch",
+      "source": "alpha\rtail\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "alpha\rtail\rbeta\r",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('', 'alpha', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch",
+      "source": "alphatail",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": [
+                  "alpha"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nalpha",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('', 'alpha', '')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch",
+      "source": "alphatail",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  ""
+                ],
+                "old": [
+                  "alpha",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nalpha\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-alpha\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "ending-('', '', 'beta')",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch",
+      "source": "alphatail",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "beta"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "alphatail\nbeta\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+beta\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-12",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "two\none\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-13",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "one\ntwo\none\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-14",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "one\none\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-15",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-16",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-17",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-18",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-19",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "one\none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-20",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": " one \ntwo\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-21",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": " one \none\ntwo\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-22",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": " one \none\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-23",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-24",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-25",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-26",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-27",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": " one \none\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-28",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "two\nnext\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-29",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "one \ntwo\nnext\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-30",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "one \nnext\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-31",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-32",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-33",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-34",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-35",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "one \nnext\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-36",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-37",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-38",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "—x\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-39",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-40",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-41",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-42",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-43",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "—x\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-44",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-45",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-46",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "x\r\ny\nz\rappend\r\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-47",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "y\r\ny\nz\r",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-48",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-49",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-50",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-51",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "x\r\ny\nz\r",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-52",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-53",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-54",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "﻿a\nb\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-55",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-56",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-57",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-58",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-59",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "﻿a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-60",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-61",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-62",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nb\nappend\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-63",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-64",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-65",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nB\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-66",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "A\nB\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-67",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "a\nb",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-68",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-69",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "one",
+                  "two"
+                ],
+                "old": [
+                  "one"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\none",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n one\n+two\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-70",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "append"
+                ],
+                "old": []
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "append\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n+append\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-71",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "y"
+                ],
+                "old": [
+                  "x"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\nx",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-x\n+y\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-72",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n*** End of File\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-73",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": "a",
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find context 'a' in fixture",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@ a\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-74",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "A"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "B"
+                ],
+                "old": [
+                  "b"
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n@@\n-b\n+B\n*** End Patch"
+      }
+    },
+    {
+      "name": "transform-75",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch",
+      "source": "",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "A",
+                  "",
+                  ""
+                ],
+                "old": [
+                  "a",
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+A\n \n\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-76",
+      "patch": "*** Begin Patch\n\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, '' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-77",
+      "patch": "*** Begin Patch\r\n\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, '' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-78",
+      "patch": " \n*** Begin Patch\n\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, '' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-79",
+      "patch": "<<'EOF'\n*** Begin Patch\n\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, '' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-80",
+      "patch": "*** Begin Patch\n*** Add File: x\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-81",
+      "patch": "*** Begin Patch\r\n*** Add File: x\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-82",
+      "patch": " \n*** Begin Patch\n*** Add File: x\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-83",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Add File: x\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-84",
+      "patch": "*** Begin Patch\n*** Add File: x\n+\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-85",
+      "patch": "*** Begin Patch\r\n*** Add File: x\r\n+\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-86",
+      "patch": " \n*** Begin Patch\n*** Add File: x\n+\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-87",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Add File: x\n+\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-88",
+      "patch": "*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\nb\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-89",
+      "patch": "*** Begin Patch\r\n*** Add File: x\r\n+a\r\n+b\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\nb\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-90",
+      "patch": " \n*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\nb\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-91",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\nb\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-92",
+      "patch": "*** Begin Patch\n*** Delete File: x\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "kind": "delete",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Delete File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-93",
+      "patch": "*** Begin Patch\r\n*** Delete File: x\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "kind": "delete",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Delete File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-94",
+      "patch": " \n*** Begin Patch\n*** Delete File: x\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "kind": "delete",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Delete File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-95",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Delete File: x\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "kind": "delete",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Delete File: x\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-96",
+      "patch": "*** Begin Patch\n*** Update File: x\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, Update file hunk for path 'x' is empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-97",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, Update file hunk for path 'x' is empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-98",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, Update file hunk for path 'x' is empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-99",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 2, Update file hunk for path 'x' is empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-100",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 4, Update hunk does not contain any lines",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-101",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n@@\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 4, Update hunk does not contain any lines",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-102",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n@@\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 4, Update hunk does not contain any lines",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-103",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n@@\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 4, Update hunk does not contain any lines",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-104",
+      "patch": "*** Begin Patch\n*** Update File: x\n a\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "a"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-105",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n a\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "a"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-106",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n a\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "a"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-107",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n a\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "a"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": null,
+            "output": "a\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-108",
+      "patch": "*** Begin Patch\n*** Update File: x\n\n\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "",
+                  ""
+                ],
+                "old": [
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-109",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n\r\n\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "",
+                  ""
+                ],
+                "old": [
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-110",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n\n\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "",
+                  ""
+                ],
+                "old": [
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-111",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n\n\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "eof": false,
+                "new": [
+                  "",
+                  ""
+                ],
+                "old": [
+                  "",
+                  ""
+                ]
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\n\n",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n\n\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-112",
+      "patch": "*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": "y",
+            "output": "b\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-113",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n*** Move to: y\r\n-a\r\n+b\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": "y",
+            "output": "b\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-114",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": "y",
+            "output": "b\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-115",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              }
+            ],
+            "kind": "update",
+            "move_path": "y",
+            "output": "b\nb\n",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n*** Move to: y\n-a\n+b\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-116",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "c"
+                ],
+                "old": []
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-117",
+      "patch": "*** Begin Patch\r\n*** Update File: x\r\n@@\r\n-a\r\n+b\r\n*** End of File\r\n@@\r\n+c\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "c"
+                ],
+                "old": []
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-118",
+      "patch": " \n*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "c"
+                ],
+                "old": []
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-119",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "chunks": [
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": true,
+                "new": [
+                  "b"
+                ],
+                "old": [
+                  "a"
+                ]
+              },
+              {
+                "context": null,
+                "context_indices": [],
+                "eof": false,
+                "new": [
+                  "c"
+                ],
+                "old": []
+              }
+            ],
+            "error": "Failed to find expected lines in fixture:\na",
+            "kind": "update",
+            "move_path": null,
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\n*** End of File\n@@\n+c\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-120",
+      "patch": "*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": "remote",
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-121",
+      "patch": "*** Begin Patch\r\n*** Environment ID: remote\r\n*** Add File: x\r\n+a\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": "remote",
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-122",
+      "patch": " \n*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": "remote",
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-123",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": "remote",
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Environment ID: remote\n*** Add File: x\n+a\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-124",
+      "patch": "*** Begin Patch\n*** Environment ID:\n*** Add File: x\n+a\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid patch: apply_patch environment_id cannot be empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-125",
+      "patch": "*** Begin Patch\r\n*** Environment ID:\r\n*** Add File: x\r\n+a\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid patch: apply_patch environment_id cannot be empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-126",
+      "patch": " \n*** Begin Patch\n*** Environment ID:\n*** Add File: x\n+a\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid patch: apply_patch environment_id cannot be empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-127",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Environment ID:\n*** Add File: x\n+a\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid patch: apply_patch environment_id cannot be empty",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-128",
+      "patch": "*** Begin Patch\n*** Add File: x\nno prefix\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 3, 'no prefix' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-129",
+      "patch": "*** Begin Patch\r\n*** Add File: x\r\nno prefix\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 3, 'no prefix' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-130",
+      "patch": " \n*** Begin Patch\n*** Add File: x\nno prefix\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 3, 'no prefix' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-131",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Add File: x\nno prefix\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "error": "invalid hunk at line 3, 'no prefix' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'",
+        "ok": false
+      }
+    },
+    {
+      "name": "parse-132",
+      "patch": "*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          },
+          {
+            "kind": "delete",
+            "path": "y"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-133",
+      "patch": "*** Begin Patch\r\n*** Add File: x\r\n+a\r\n*** Delete File: y\r\n*** End Patch",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          },
+          {
+            "kind": "delete",
+            "path": "y"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-134",
+      "patch": " \n*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch\n ",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          },
+          {
+            "kind": "delete",
+            "path": "y"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch"
+      }
+    },
+    {
+      "name": "parse-135",
+      "patch": "<<'EOF'\n*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch\nEOF",
+      "source": "a\nb\n",
+      "expected": {
+        "environment_id": null,
+        "hunks": [
+          {
+            "content": "a\n",
+            "kind": "add",
+            "path": "x"
+          },
+          {
+            "kind": "delete",
+            "path": "y"
+          }
+        ],
+        "ok": true,
+        "patch": "*** Begin Patch\n*** Add File: x\n+a\n*** Delete File: y\n*** End Patch"
+      }
+    },
+    {
+      "name": "invalid-136",
+      "patch": "bad",
+      "source": "a\n",
+      "expected": {
+        "error": "invalid patch: The first line of the patch must be '*** Begin Patch'",
+        "ok": false
+      }
+    },
+    {
+      "name": "invalid-137",
+      "patch": "*** Begin Patch",
+      "source": "a\n",
+      "expected": {
+        "error": "invalid patch: The last line of the patch must be '*** End Patch'",
+        "ok": false
+      }
+    },
+    {
+      "name": "invalid-138",
+      "patch": "*** Begin Patch\n*** End Patch\nextra",
+      "source": "a\n",
+      "expected": {
+        "error": "invalid patch: The last line of the patch must be '*** End Patch'",
+        "ok": false
+      }
+    },
+    {
+      "name": "invalid-139",
+      "patch": "*** Begin Patch\n*** Update File: x\n@@\n-a\n+b\nwat\n*** End Patch",
+      "source": "a\n",
+      "expected": {
+        "error": "invalid hunk at line 6, Expected update hunk to start with a @@ context marker, got: 'wat'",
+        "ok": false
+      }
+    }
+  ]
+}

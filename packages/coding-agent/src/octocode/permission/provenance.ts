@@ -199,7 +199,7 @@ class Provenance {
 		this.now = options.now ?? Date.now;
 	}
 
-	/** Indexes a tool result by its source (a `tool_result` handler; nested codemode results included). */
+	/** Indexes a tool result by its source (a `tool_result` handler; nested tool results included). */
 	record(event: ToolResultEvent, ctx: { cwd: string }): void {
 		const text = capBytes(contentText(event.content), this.maxBytes);
 		if (!text) return;
@@ -298,6 +298,7 @@ class Provenance {
 		if (toolName === "externalAgent")
 			return input.action === "connect" || input.action === "prompt" ? leaves(input) : [];
 		if (toolName === "file" || toolName === "edit" || toolName === "write") {
+			if (toolName === "file" && typeof input.patch === "string") return leaves(input);
 			const changes = toolName === "file" ? (Array.isArray(input.queries) ? input.queries : []) : [input];
 			return changes.flatMap((change) => {
 				const target = isRecord(change) ? str(change.path) : undefined;

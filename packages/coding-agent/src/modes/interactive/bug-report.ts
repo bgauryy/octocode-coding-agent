@@ -1,3 +1,4 @@
+import { getApplicationPort } from "../../core/application/index.ts";
 import * as path from "node:path";
 import type { Container, EditorComponent, TUI } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../core/agent-session.ts";
@@ -63,7 +64,7 @@ export async function reportBug(context: BugReportContext, initialHint?: string)
 			`Writing summary with ${context.session.model?.name ?? "the current model"}...`,
 		);
 		try {
-			summary = await context.session.summarizeForBugReport({ hint: options.hint, signal: loader.signal });
+			summary = await getApplicationPort(context.session).invoke("summarizeForBugReport", { hint: options.hint, signal: loader.signal });
 		} catch (error: unknown) {
 			restoreEditor(context, loader);
 			if (loader.signal.aborted) context.showStatus("Bug report cancelled");

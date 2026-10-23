@@ -461,7 +461,7 @@ describe("the pointer in the summary and after a default summary", () => {
 	const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
 
 	it("puts the pointer in the Recovery section of Octocode's summary, and a rewritten summary does not carry it", async () => {
-		const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}) } as never;
+		const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}), createUsageRecorder: () => () => {}, appendEntry: () => {} } as never;
 		const ctx = {
 			model,
 			modelRegistry: {
@@ -610,7 +610,7 @@ describe("archive wiring in the session", () => {
 	});
 });
 
-describe("/octocode archive", () => {
+describe("/archive", () => {
 	const run = async (args: string) => {
 		const commands = new Subcommands();
 		registerArchiveCommand(commands);
@@ -657,7 +657,7 @@ describe("/octocode archive", () => {
 			type: "warning",
 		});
 		expect((await run("two"))[0]).toEqual({
-			message: "Usage: /octocode archive [<segment number>]",
+			message: "Usage: /archive [<segment number>]",
 			type: "warning",
 		});
 	});

@@ -16,7 +16,7 @@ npm run hydrate:model-data
 npm start
 ```
 
-Hydration downloads the provider model catalog. Use `/login` to connect a provider, then enter a task. `npm start -- --help` lists CLI options; `/octocode help` lists the native feature commands. For compiled artifacts, run `npm run build:offline` after hydration.
+Hydration downloads the provider model catalog. Use `/login` to connect a provider, then enter a task. `npm start -- --help` lists CLI options; `/help` lists the native feature commands. For compiled artifacts, run `npm run build:offline` after hydration.
 
 The package name is `@octocodeai/octocodecode`, and its agent executable is `octocode`. The research and native executables are available without name collisions through:
 
@@ -29,8 +29,10 @@ Local dependencies make this a development checkout. Publication is blocked whil
 
 ## Documentation
 
+- [Documentation index](packages/coding-agent/docs/index.md)
 - [Agent guide and runtime references](packages/coding-agent/README.md)
 - [Native features and extension migration](packages/coding-agent/docs/native-features.md)
+- [Configuration locations and controls](CONFIGURATIONS.md)
 - [Configuration and Pi compatibility](packages/coding-agent/docs/configuration.md)
 - [Agent instructions](packages/coding-agent/docs/instructions.md)
 - [Development guidance](AGENTS.md)
@@ -40,13 +42,14 @@ Local dependencies make this a development checkout. Publication is blocked whil
 
 | Directory | Responsibility |
 | --- | --- |
-| `packages/coding-agent` | CLI, sessions, native Octocode features and SDK |
-| `packages/agent` | Agent loop and tool execution |
-| `packages/ai` | Provider APIs and model catalog |
-| `packages/tui` | Terminal UI |
-| `packages/mcp` | MCP client |
-| `packages/codemode` | JavaScript tool sandbox |
-| `packages/telemetry` | Telemetry contracts and adapters |
+| [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native Octocode features and SDK |
+| [agent](packages/agent/README.md) | Agent loop and tool execution |
+| [ai](packages/ai/README.md) | Provider APIs and model catalog |
+| [tui](packages/tui/README.md) | Terminal UI |
+| [webview](packages/webview/README.md) | Browser workspace, board, Markdown/code rendering and UI state |
+| [contacts](packages/contacts/README.md) | Shared entity contracts, schemas and workspace protocols |
+| [mcp](packages/mcp/README.md) | MCP client |
+| [telemetry](packages/telemetry/README.md) | Telemetry contracts and adapters |
 
 ## Development
 
@@ -55,7 +58,7 @@ npm run check
 ./test.sh
 ```
 
-`check` runs TypeScript and browser import checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
+`check` runs TypeScript, browser imports, workspace bundle freshness and package-boundary checks without rewriting files. `test.sh` runs the tests with isolated configuration and credentials. See [AGENTS.md](AGENTS.md) for focused checks and generated files. The historical `octocode-test.sh` launcher runs the agent from source; it is not a test suite.
 
 ## License
 

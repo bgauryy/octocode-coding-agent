@@ -61,7 +61,7 @@ export function readJournal(dir: string): { entries: CheckpointEntry[]; dirty: b
 
 /**
  * Seed a forked session's checkpoint directory with the parent's entries whose turn is on the fork's branch, so
- * /octocode rewind reaches across the fork. Blobs are content-addressed: hard-linked (copied where links fail). Does nothing
+ * /rewind reaches across the fork. Blobs are content-addressed: hard-linked (copied where links fail). Does nothing
  * when the fork already has a journal. Returns how many entries it inherited with their blob (an entry whose blob is missing in the parent stays in the journal, but rewind skips it).
  */
 export async function inheritCheckpoints(from: string, to: string, branch: Iterable<string>): Promise<number> {
@@ -81,7 +81,7 @@ export async function inheritCheckpoints(from: string, to: string, branch: Itera
 	for (const digest of new Set(entries.flatMap((entry) => (entry.before ? [entry.before] : [])))) {
 		const source = path.join(from, "blobs", digest);
 		const target = path.join(to, "blobs", digest);
-		// A missing source blob only makes /octocode rewind skip that file: its entry stays but is not counted.
+		// A missing source blob only makes /rewind skip that file: its entry stays but is not counted.
 		await fs.promises
 			.link(source, target)
 			.catch(() => fs.promises.copyFile(source, target))

@@ -70,11 +70,6 @@
               "minLength": 1,
               "description": "API for the provider's models, such as \"openai-completions\", \"openai-responses\", \"anthropic-messages\", or \"google-generative-ai\"."
             },
-            "oauth": {
-              "type": "string",
-              "const": "radius",
-              "description": "OAuth login flow. Requires baseUrl."
-            },
             "headers": {
               "type": "object",
               "patternProperties": {
@@ -630,7 +625,7 @@
         },
         "supportsFinishReason": {
           "type": "boolean",
-          "description": "Whether streamed responses include finish_reason. When false, pi infers stop or toolUse when the stream ends.",
+          "description": "Whether streamed responses include finish_reason. When false, Octocode infers stop or toolUse when the stream ends.",
           "default": true
         },
         "maxTokensField": {
@@ -758,7 +753,7 @@
               ]
             }
           },
-          "description": "Kwargs sent as chat_template_kwargs when thinkingFormat is \"chat-template\". Use $var with \"thinking.enabled\", \"thinking.effort\", or \"thinking.budget\" for pi-controlled values."
+          "description": "Kwargs sent as chat_template_kwargs when thinkingFormat is \"chat-template\". Use $var with \"thinking.enabled\", \"thinking.effort\", or \"thinking.budget\" for Octocode-controlled values."
         },
         "chatTemplateArgs": {
           "type": "object",
@@ -807,7 +802,7 @@
               ]
             }
           },
-          "description": "Arguments sent as chat_template_args when thinkingFormat is \"baseten\". Use $var with \"thinking.enabled\", \"thinking.effort\", or \"thinking.budget\" for pi-controlled values."
+          "description": "Arguments sent as chat_template_args when thinkingFormat is \"baseten\". Use $var with \"thinking.enabled\", \"thinking.effort\", or \"thinking.budget\" for Octocode-controlled values."
         },
         "openRouterRouting": {
           "type": "object",

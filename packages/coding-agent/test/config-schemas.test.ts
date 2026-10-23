@@ -184,36 +184,32 @@ describe("generated configuration schemas", () => {
 		}
 	});
 
+	it("does not advertise the removed script executor configuration", () => {
+		const settings = JSON.parse(renderConfigSchemas().get("schemas/settings.schema.json") ?? "");
+		expect(settings.properties).not.toHaveProperty("codemode");
+	});
+
 	it("rejects settings values that runtime accessors reject", () => {
 		const validator = Compile(SettingsSchema);
 		for (const invalid of [
-			{ compaction: { reserveTokens: -1 } },
-			{ compaction: { keepRecentTokens: 1.5 } },
-			{
-				compaction: {
-					modelOverrides: { "provider/model": { reserveTokens: Number.MAX_SAFE_INTEGER + 1 } },
-				},
-			},
 			{ httpIdleTimeoutMs: -1 },
 			{ websocketConnectTimeoutMs: -1 },
 			{ httpIdleTimeoutMs: "bogus" },
 			{ websocketConnectTimeoutMs: "30000" },
-			{ codemode: { inlineBudget: -1 } },
 		]) {
 			expect(validator.Check(invalid)).toBe(false);
 		}
 		expect(
 			validator.Check({
-				compaction: {
-					reserveTokens: 0,
-					keepRecentTokens: Number.MAX_SAFE_INTEGER,
-					modelOverrides: { "provider/model": { reserveTokens: 0 } },
-				},
 				httpIdleTimeoutMs: 0,
 				websocketConnectTimeoutMs: "disabled",
-				codemode: { inlineBudget: 0 },
 			}),
 		).toBe(true);
+	});
+
+	it("does not advertise compaction customization and accepts ignored legacy keys", () => {
+		expect(SettingsSchema.properties).not.toHaveProperty("compaction");
+		expect(Compile(SettingsSchema).Check({ compaction: { enabled: false, reserveTokens: -1 } })).toBe(true);
 	});
 
 	it("describes legacy settings migrations accurately", () => {

@@ -59,7 +59,7 @@ function setup(options: { trusted?: boolean; env?: NodeJS.ProcessEnv; confirms?:
 	return { fake, permission, ctx, run, tab, cycle };
 }
 
-describe("/octocode permission and editor shortcut", () => {
+describe("/permissions and editor shortcut", () => {
 	it("starts in full; the editor shortcut cycles full → workspace → manual → full", async () => {
 		const { permission, cycle, ctx } = setup({ env: {} });
 		expect(permission.mode).toBe("full");
@@ -129,7 +129,7 @@ describe("/octocode permission and editor shortcut", () => {
 		await run("bogus");
 		expect(ctx.ui.notes.at(-1)).toMatchObject({
 			type: "warning",
-			message: expect.stringContaining("Usage: /octocode permission"),
+			message: expect.stringContaining("Usage: /permissions"),
 		});
 	});
 

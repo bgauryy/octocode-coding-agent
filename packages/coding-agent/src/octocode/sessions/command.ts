@@ -124,14 +124,15 @@ interface SessionsCommandOptions {
 	current: () => string | undefined;
 }
 
-/** `/octocode sessions [all|<query>]` (and `/sessions`): list, then resume, inspect, rename or forget one. */
+/** `/resume [all|<query>]` (and `/sessions`): list, then resume, inspect, rename or forget one. */
 export function registerSessionsCommand(
 	pi: ExtensionAPI,
 	commands: Subcommands,
 	options: SessionsCommandOptions,
 ): void {
-	commands.add("sessions", {
-		description: "sessions [all|<query>] — recent sessions of this directory: resume, details, rename, forget",
+	commands.add("resume", {
+		aliases: ["sessions"],
+		description: "resume [all|<query>] — recent sessions of this directory: resume, details, rename, forget",
 		complete: (prefix) => wordCompletions(["all"], prefix),
 		handler: async (args, ctx) => {
 			// Without the agent database the list still works; it only lacks cost, branch, files and liveness.
@@ -177,7 +178,6 @@ export function registerSessionsCommand(
 			if (action === ACTIONS.forget) return forget(ctx, index, row, current);
 		},
 	});
-	commands.alias(pi, "sessions");
 }
 
 /** `select` returns the chosen text, so every line must differ: a repeat (same id tail) gets ` #2`, ` #3`, … */

@@ -17,7 +17,7 @@ import { isModelTier, MODEL_TIERS, type ModelRef, resolveTier, routeModel } from
 import type { AgentProfile } from "./profiles.ts";
 
 /**
- * `/octocode models`: the models this session can use, what each costs and can do, and which one each subagent
+ * `/models`: the models this session can use, what each costs and can do, and which one each subagent
  * purpose (`small`, `medium`) and profile runs on. Refreshes the models.dev index first unless it is turned off.
  */
 

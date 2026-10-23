@@ -1,5 +1,6 @@
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { clampThinkingLevel } from "../models.ts";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
@@ -20,7 +21,7 @@ import {
 import { buildBaseOptions, resolveSamplingParams } from "./simple-options.ts";
 
 const AZURE_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode", "azure"]);
-// OpenAI Responses rejects max_output_tokens below 16: https://github.com/earendil-works/pi/issues/6265
+// OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 function formatAzureOpenAIError(error: unknown): string {
@@ -211,7 +212,7 @@ function buildParams(
 		model: deploymentName,
 		input: messages,
 		stream: true,
-		prompt_cache_key: clampOpenAIPromptCacheKey(options?.sessionId),
+		prompt_cache_key: resolveCacheRetention(options?.cacheRetention, options?.env) === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
 		store: false,
 	};
 

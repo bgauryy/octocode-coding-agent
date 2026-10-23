@@ -1,0 +1,5120 @@
+{
+  "identity": {
+    "executable": "/Users/bgaryy/.local/bin/claude",
+    "realpath": "/Users/bgaryy/.local/share/claude/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Sequential unique tool IDs in actual CLI; final request contains one result per invocation. Restart cases start a new CLI process in same owned home. Project allows remain untrusted in this fixture; bypass mode unavailable.",
+  "cases": [
+    {
+      "case": "control",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true,
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "session-next-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 3,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true,
+          false,
+          true
+        ],
+        "hook_count": 3
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-current-versus-next",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 3,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 41 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true,
+          true,
+          true
+        ],
+        "hook_count": 3
+      },
+      "passed": true
+    },
+    {
+      "case": "invalid-rewrite-no-retention",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "denied-rewrite-no-retention",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 5,
+      "rule_config": {
+        "deny": [
+          "Bash(printf REPLACED*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {
+          "deny": [
+            "Bash(printf REPLACED*)"
+          ]
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "deny": [
+              "Bash(printf REPLACED*)"
+            ]
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REPLACED > replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REPLACED > replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REPLACED > replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REPLACED > replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REPLACED > replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-current-versus-next",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true,
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "add-then-remove",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 3,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true
+        ],
+        "hook_count": 3
+      },
+      "passed": true
+    },
+    {
+      "case": "replace-removes-prior",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 3,
+      "request_count": 5,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"44\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_4",
+          "is_error": false,
+          "content": "\"44\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true,
+          false
+        ],
+        "hook_count": 3
+      },
+      "passed": true
+    },
+    {
+      "case": "same-list-add-remove",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "same-list-remove-add",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "missing-destination",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "unknown-destination",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "malformed-later-entry",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-and-deny-same-list",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Permission to use Bash with command node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-session-user",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 3,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 3
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-userSettings-user",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {
+          "allow": [
+            "Bash(node -p 42)"
+          ]
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-projectSettings-user",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-localSettings-user",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.local.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-projectSettings-user,project,local",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 4,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true,
+          true
+        ],
+        "hook_count": 4
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-localSettings-user,project,local",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.local.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "mode-dontAsk",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Permission to use Bash has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "mode-bypassPermissions",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42",
+          "input": {
+            "command": "node -p 42"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "mode-accept-edits",
+      "exit": 0,
+      "original": "MODE_WRITE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "directories-control",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Write",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/outside.txt",
+            "content": "OUTSIDE"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/outside.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/outside.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "directories-add",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {
+        "../outside.txt": "OUTSIDE"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/outside.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/outside.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "directories-add-remove",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Write",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/outside.txt",
+            "content": "OUTSIDE"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/outside.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/outside.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "directories-remove-add",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {
+        "../outside.txt": "OUTSIDE"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/outside.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n# Environment update\\n - Additional working directories added:\\n  - $CASE_ROOT\\n</system-reminder>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/outside.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "restart-project-trusted",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 3
+        },
+        {
+          "exit": 0,
+          "request_count": 3
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-userSettings-False",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Write",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "content": "PERSISTED_MODE"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {
+          "defaultMode": "acceptEdits"
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-userSettings-True",
+      "exit": 0,
+      "original": "PERSISTED_MODE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {
+          "defaultMode": "acceptEdits"
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-localSettings-False",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Write",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "content": "PERSISTED_MODE"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.local.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-localSettings-True",
+      "exit": 0,
+      "original": "PERSISTED_MODE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.local.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-projectSettings-False",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Write",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "content": "PERSISTED_MODE"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": true,
+          "content": "\"Claude requested permissions to write to $CASE_ROOT/project/original.txt, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "persist-mode-projectSettings-True",
+      "exit": 0,
+      "original": "PERSISTED_MODE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "launches": [
+        {
+          "exit": 0,
+          "request_count": 2
+        },
+        {
+          "exit": 0,
+          "request_count": 2
+        }
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "defaultMode": "acceptEdits"
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"File created successfully at: $CASE_ROOT/project/original.txt (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "write-failure-session-False",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:26.010Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:26.010Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "write-failure-session-True",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:27.003Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:27.003Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "write-failure-userSettings-False",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:27.992Z [ERROR] settings file read failed at /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:28.005Z [ERROR] settings file read failed at /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:28.008Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:28.008Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {
+          "allow": [
+            "Bash(node -p 42)"
+          ]
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "write-failure-userSettings-True",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:28.988Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:28.988Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:28.990Z [ERROR] settings file read failed at /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:29.003Z [ERROR] settings file read failed at /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {
+          "allow": [
+            "Bash(node -p 42)"
+          ]
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 42)"
+            ]
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "failed-project-only",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:29.962Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:29.962Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "healthy-session-project",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 2,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        },
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 43",
+          "input": {
+            "command": "node -p 43"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "project/.claude/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 43)"
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": true,
+          "content": "\"This command requires approval\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          true
+        ],
+        "hook_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "healthy-session-user",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "settings_after": {
+        "permissions": {
+          "allow": [
+            "Bash(node -p 43)"
+          ]
+        },
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {
+            "allow": [
+              "Bash(node -p 43)"
+            ]
+          },
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    },
+    {
+      "case": "failed-session-project",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 4,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41",
+          "input": {
+            "command": "node -p 41"
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "obstructed_paths_after": {
+        ".claude/settings.json": "directory"
+      },
+      "settings_diagnostics": [
+        "2026-10-23T05:51:32.917Z [ERROR] Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read",
+        "2026-10-23T05:51:32.917Z [ERROR] Failed to add permission rules to projectSettings settings: Failed to read raw settings from /private$CASE_ROOT/project/.claude/settings.json: Error: EISDIR: illegal operation on a directory, read"
+      ],
+      "settings_after": {
+        "permissions": {},
+        "hooks": {
+          "PermissionRequest": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "config_files_after": {
+        "config/settings.json": {
+          "permissions": {},
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "/Users/bgaryy/.npm/_npx/1c56de6e9acc34f8/node_modules/node/bin/node $CASE_ROOT/hook.cjs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "tool_result_sequence": [
+        {
+          "tool_use_id": "toolu_fixture_1",
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_2",
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "tool_use_id": "toolu_fixture_3",
+          "is_error": false,
+          "content": "\"43\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "tool_errors": [
+          false,
+          false,
+          false
+        ],
+        "hook_count": 1
+      },
+      "passed": true
+    }
+  ]
+}

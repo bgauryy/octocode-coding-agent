@@ -1,4 +1,4 @@
-import { type Component, Loader, type TUI, truncateToWidth } from "@octocodeai/octocode-tui";
+import { type Component, Loader, type TUI, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
@@ -36,15 +36,40 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
+	private workingMessage: string;
+
 	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions, colorFn?: (text: string) => string) {
 		super(
 			"working",
 			ui,
 			colorFn ?? ((text) => theme.fg("accent", text)),
-			colorFn ?? ((text) => theme.fg("muted", text)),
+			(text) => theme.fg("muted", text),
 			message,
 			indicator,
 		);
+		this.workingMessage = message;
+	}
+
+	override setMessage(message: string): void {
+		this.workingMessage = message;
+		super.setMessage(message);
+	}
+
+	override render(width: number): string[] {
+		const rows = this.workingMessage?.split("\n");
+		if (rows?.length !== 2 || !rows[0]?.startsWith("Main · ")) return super.render(width);
+		const [summary, detail] = rows;
+		const clip = (text: string) => truncateToWidth(text, Math.max(0, width), "…");
+		const [label, ...metrics] = summary!.split(" · ");
+		let heading = ` ${this.getRenderedIndicator()} ${theme.fg("accent", theme.bold(label!))}${theme.fg("muted", ` · ${metrics.join(" · ")}`)}`;
+		const hint = theme.fg("dim", `${keyText("app.interrupt")} interrupt`);
+		const gap = width - visibleWidth(heading) - visibleWidth(hint) - 1;
+		if (gap >= 4) heading += `${" ".repeat(gap)}${hint}`;
+		return [
+			"",
+			clip(heading),
+			clip(`   ${theme.fg("dim", "└ ")}${theme.fg("text", detail ?? "")}`),
+		];
 	}
 }
 
@@ -80,7 +105,7 @@ export class RetryStatusIndicator extends StatusIndicator {
 	}
 }
 
-export type CompactionStatusReason = "manual" | "threshold" | "overflow";
+type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
 	constructor(ui: TUI, reason: CompactionStatusReason, colorFn?: (text: string) => string) {

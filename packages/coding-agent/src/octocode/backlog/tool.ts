@@ -1,3 +1,4 @@
+import { EntityFields, type EntityInput } from "./model.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
@@ -10,7 +11,7 @@ import { type Item, PRIORITIES, refuseSecrets, STATES, type State } from "./stor
 
 const DEFAULT_LIST_LIMIT = 20;
 const DEFAULT_LIST_STATES: State[] = ["ongoing", "todo"];
-const DONE_NOTE = "Marking an item done needs a note: say what changed and how its goal was verified.";
+const DONE_NOTE = "Done needs completion with summary, files, verification and a unique operationKey.";
 
 interface BacklogToolDetails {
 	item?: Item;
@@ -45,16 +46,16 @@ function backlogPrompt(subagent: boolean): {
 	promptGuidelines: string[];
 } {
 	const description =
-		"Track repository work across sessions: title, goal (done criteria), body. States: backlog proposed, todo accepted, ongoing claimed, done. Changes and times are logged. " +
+		"Repository work: backlog proposed, todo accepted, ongoing claimed, done completed. History is retained. " +
 		(subagent
-			? "A subagent proposes items and updates only items its parent has claimed. "
+			? "A subagent proposes work and updates only items its parent has claimed. "
 			: "An item another running session holds takes only notes. ") +
-		"Text that looks like a secret is refused.";
+		"Start needs reason/goal; done needs completion. Use version for edits. Secrets are refused.";
 	const ops =
-		"list: items (default ongoing+todo; states/query/from filters); get: item details, times, origin, derived items, notes and changes; list/get: follow Next; " +
+		"list/get: read work and history; follow Next for more. " +
 		(subagent
-			? "add: propose an item (state backlog); update: set state ongoing or done, or log progress with a note alone"
-			: "add: new item (default backlog); update: edit or claim with state ongoing; a note alone logs progress; remove: delete item and notes only for duplicates or user-requested removal");
+			? "add: propose an item; update: ongoing/done or progress notes"
+			: "add: propose; update: edit, claim with ongoing, or append notes; remove: delete only duplicates or user-requested items without retained history");
 	return {
 		description,
 		ops,
@@ -63,7 +64,7 @@ function backlogPrompt(subagent: boolean): {
 			: "Propose, claim and close repository tasks",
 		promptGuidelines: subagent
 			? [
-					"Use backlog to note progress on the item your parent gave you and to propose follow-ups you find (from: that item, with a goal) instead of doing them; mark it done only after verifying its goal.",
+					"Record progress on assigned work. Propose follow-ups with goal and from; do not execute them. Verify the goal before done.",
 				]
 			: [
 					"Use backlog for work beyond this turn, not current-task steps. Propose follow-ups with a goal and from their source item; claim an item when starting it.",
@@ -88,6 +89,10 @@ export function registerBacklogTool(
 				label: "Backlog",
 				...prompt,
 				parameters: Type.Object({
+					...EntityFields,
+					dependsOn: Type.Optional(
+						Type.Array(Type.String(), { description: "Prerequisite IDs; [] clears." }),
+					),
 					op: StringEnum(
 						subagent
 							? (["list", "get", "add", "update"] as const)
@@ -95,7 +100,9 @@ export function registerBacklogTool(
 						{ description: ops },
 					),
 					id: Type.Optional(
-						Type.String({ description: `${subagent ? "get/update" : "get/update/remove"}: item id, e.g. "B12"` }),
+						Type.String({
+							description: `${subagent ? "get/update" : "get/update/remove"}: item id, e.g. "B12"`,
+						}),
 					),
 					title: Type.Optional(
 						Type.String({ description: `${subagent ? "add" : "add/update"}: one-line summary` }),
@@ -107,7 +114,9 @@ export function registerBacklogTool(
 								: "add/update: Definition of Done, checkable; add needs it",
 						}),
 					),
-					paths: Type.Optional(Type.Array(Type.String(), { description: `files, dirs or components affected` })),
+					paths: Type.Optional(
+						Type.Array(Type.String(), { description: `files, dirs or components affected` }),
+					),
 					why: Type.Optional(Type.String({ description: `why it matters` })),
 					evidence: Type.Optional(
 						Type.Array(Type.String(), { description: `observations: paths, measurements, links` }),
@@ -117,7 +126,9 @@ export function registerBacklogTool(
 					state: Type.Optional(
 						subagent
 							? StringEnum(SUBAGENT_STATES, { description: "update: ongoing or done" })
-							: StringEnum(STATES, { description: "add: initial state (default backlog); update: new state" }),
+							: StringEnum(STATES, {
+									description: "add: initial state (default backlog); update: new state",
+								}),
 					),
 					priority: Type.Optional(
 						StringEnum(PRIORITIES, {
@@ -131,12 +142,12 @@ export function registerBacklogTool(
 					),
 					from: Type.Optional(
 						Type.String({
-							description: `${subagent ? "add" : "add/update"}: the item this came from (split, follow-up, finding), e.g. "B12"${subagent ? "" : '; update "" clears'}; list: items derived from it`,
+							description: `Origin ID; list filters derived items${subagent ? "" : '; update "" clears'}`,
 						}),
 					),
 					note: Type.Optional(
 						Type.String({
-							description: `${subagent ? "update" : "update, or add with state ongoing/done"}: appended to the item log: why, or what you found`,
+							description: `${subagent ? "update" : "update, or add with state ongoing/done"}: append progress or findings`,
 						}),
 					),
 					query: Type.Optional(Type.String({ description: "list: text in any field, or a whole tag" })),
@@ -149,7 +160,9 @@ export function registerBacklogTool(
 						}),
 					),
 					offset: Type.Optional(
-						Type.Integer({ description: "list/get: items or newest notes to skip; copy from Next (default 0)" }),
+						Type.Integer({
+							description: "list/get: items or newest notes to skip; copy from Next (default 0)",
+						}),
 					),
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
@@ -180,7 +193,8 @@ export function registerBacklogTool(
 					const summary = context.isError
 						? (text.split("\n", 1)[0] ?? "")
 						: backlogSummary(context.args?.op, details, text);
-					const firstIsSummary = context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
+					const firstIsSummary =
+						context.isError || (context.args?.op !== "list" && context.args?.op !== "get");
 					return resultBlock(theme, context, {
 						summary,
 						body: firstIsSummary ? text.split("\n").slice(1).join("\n") : text,
@@ -192,7 +206,7 @@ export function registerBacklogTool(
 		),
 	);
 
-	type Params = {
+	type Params = EntityInput & {
 		op: "list" | "get" | "add" | "update" | "remove";
 		id?: string;
 		title?: string;
@@ -224,7 +238,9 @@ export function registerBacklogTool(
 
 	function run({ store, actor, session }: Backlog, params: Params) {
 		const priority =
-			params.priority === undefined ? undefined : PRIORITIES.indexOf(params.priority as (typeof PRIORITIES)[number]);
+			params.priority === undefined
+				? undefined
+				: PRIORITIES.indexOf(params.priority as (typeof PRIORITIES)[number]);
 		if (params.op === "list") {
 			const states = params.states?.length ? params.states : DEFAULT_LIST_STATES;
 			const limit = Math.max(1, Math.floor(params.limit ?? DEFAULT_LIST_LIMIT));
@@ -251,7 +267,7 @@ export function registerBacklogTool(
 			if (!params.title?.trim()) throw new Error("add needs a title.");
 			// A subagent proposes; the user or the parent accepts.
 			const wanted = subagent ? "backlog" : (params.state ?? "backlog");
-			// The note is stored by a second step: every refusal comes first, so a retry never leaves a duplicate behind.
+			// Creation, initial claim/completion and notes commit together in the store.
 			refuseSecrets({ note: params.note });
 			if (params.note !== undefined && subagent) {
 				// A proposal is not claimed by the parent, so a follow-up update with the note would be refused too.
@@ -262,21 +278,23 @@ export function registerBacklogTool(
 					"add takes a note only with state ongoing or done; put details in body, or add then update with the note.",
 				);
 			}
-			if (wanted === "done" && !params.note?.trim()) throw new Error(DONE_NOTE);
-			let item = store.add({
-				title: params.title,
-				...(params.goal !== undefined ? { goal: params.goal } : {}),
-				...text(params),
-				state: wanted === "ongoing" || wanted === "done" ? "todo" : wanted,
-				...(priority !== undefined ? { priority } : {}),
-				...(params.tags ? { tags: params.tags } : {}),
-				...(params.from ? { from: params.from } : {}),
-				createdBy: subagent ? `agent:${actor.id}` : "agent",
-				sourceSession: session,
-			});
-			if (wanted === "ongoing" || wanted === "done") {
-				item = store.update(item.ref, { state: wanted, ...(params.note ? { note: params.note } : {}) }, actor);
-			}
+			if (wanted === "done" && !params.completion) throw new Error(DONE_NOTE);
+			const item = store.add(
+				{
+					...entities(params),
+					note: params.note,
+					title: params.title,
+					...(params.goal !== undefined ? { goal: params.goal } : {}),
+					...text(params),
+					state: wanted,
+					...(priority !== undefined ? { priority } : {}),
+					...(params.tags ? { tags: params.tags } : {}),
+					...(params.from ? { from: params.from } : {}),
+					createdBy: subagent ? `agent:${actor.id}` : "agent",
+					sourceSession: session,
+				},
+				actor,
+			);
 			return textResult(`Added ${itemLine(item, actor.id, actor.owners)}`, { item } as BacklogToolDetails);
 		}
 		if (!params.id?.trim()) throw new Error(`${params.op} needs an id, e.g. "B12".`);
@@ -290,6 +308,7 @@ export function registerBacklogTool(
 			const origin = item.from === undefined ? undefined : store.get(item.from);
 			const detail = itemDetail(item, notes, total, Date.now(), {
 				self: actor.id,
+				version: true,
 				noteOffset: offset,
 				...(actor.owners ? { parents: actor.owners } : {}),
 				...(origin ? { origin } : {}),
@@ -303,12 +322,17 @@ export function registerBacklogTool(
 		}
 		if (params.op === "remove") {
 			if (subagent) throw new Error("A subagent cannot remove backlog items; report it to your parent.");
-			const item = store.remove(params.id, undefined, actor);
+			const item = store.remove(params.id, params.version, actor);
 			return textResult(`Removed ${item.ref} "${visibleControls(item.title)}" and its notes.`, {
 				removed: item.ref,
 			} as BacklogToolDetails);
 		}
 		const fields = {
+			type: params.type,
+			parentId: params.parentId,
+			dependsOn: params.dependsOn,
+			links: params.links,
+			reason: params.reason,
 			title: params.title,
 			goal: params.goal,
 			...text(params),
@@ -322,7 +346,9 @@ export function registerBacklogTool(
 			);
 		// Moving an item back to todo or backlog would release the parent's claim behind its back.
 		if (subagent && (params.state === "todo" || params.state === "backlog"))
-			throw new Error(`A subagent sets only ongoing or done; ask your parent to move an item to ${params.state}.`);
+			throw new Error(
+				`A subagent sets only ongoing or done; ask your parent to move an item to ${params.state}.`,
+			);
 		if (
 			params.state === undefined &&
 			params.note === undefined &&
@@ -333,12 +359,16 @@ export function registerBacklogTool(
 			);
 		// The goal is the done criterion an agent's items always have (`store.add`): an update may change it, not blank it.
 		if (params.goal !== undefined && !storedText(params.goal))
-			throw new Error("update cannot clear the goal: give the new done criterion, a check someone else can run.");
+			throw new Error(
+				"update cannot clear the goal: give the new done criterion, a check someone else can run.",
+			);
 		const current = store.get(params.id);
-		if (params.state === "done" && current?.state !== "done" && !params.note?.trim()) throw new Error(DONE_NOTE);
+		if (params.state === "done" && current?.state !== "done" && !params.completion)
+			throw new Error(DONE_NOTE);
 		const item = store.update(
 			params.id,
 			{
+				...entities(params),
 				...(params.title !== undefined ? { title: params.title } : {}),
 				...(params.goal !== undefined ? { goal: params.goal } : {}),
 				...text(params),
@@ -352,4 +382,12 @@ export function registerBacklogTool(
 		);
 		return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}`, { item } as BacklogToolDetails);
 	}
+}
+
+function entities(p: EntityInput): EntityInput {
+	return Object.fromEntries(
+		Object.keys(EntityFields)
+			.filter((key) => p[key as keyof EntityInput] !== undefined)
+			.map((key) => [key, p[key as keyof EntityInput]]),
+	);
 }

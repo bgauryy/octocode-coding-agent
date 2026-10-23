@@ -117,7 +117,11 @@ describe("AgentSession MCP OAuth", () => {
 		expect(notifications.at(-1)).toBe('Signed out of MCP server "issues".');
 		const result = await callWhoami(harness);
 		expect(result.isError).toBe(true);
-		expect(getMessageText(result)).toBe('MCP server "issues" requires sign-in. Run /mcp to sign in.');
+		expect(getMessageText(result)).toBe("Tool mcp__issues__whoami not found");
+
+		await harness.session.prompt("/mcp login issues");
+		expect(notifications.at(-1)).toBe('Signed in to MCP server "issues" (1 tools).');
+		expect((await callWhoami(harness)).isError).toBe(false);
 	});
 
 	it("accepts a pasted redirect URL when the browser cannot reach the callback", async () => {

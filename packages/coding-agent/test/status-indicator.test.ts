@@ -42,8 +42,8 @@ describe("status indicators", () => {
 		indicator.dispose();
 	});
 
-	it("embeds the working indicator when the editor opts in", () => {
-		initTheme("dark");
+	it.each(["dark", "light"])("embeds a readable working indicator in the %s theme", (name) => {
+		initTheme(name);
 		const tui = {
 			requestRender: vi.fn(),
 			terminal: { rows: 10 },
@@ -59,7 +59,8 @@ describe("status indicators", () => {
 		const topBorder = editor.render(20)[0]!;
 		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
 		expect(visibleWidth(topBorder)).toBe(20);
-		expect(topBorder.split(theme.getFgAnsi("thinkingHigh"))).toHaveLength(5);
+		expect(topBorder).toContain(theme.fg("muted", "Working"));
+		expect(topBorder).toContain(theme.fg("thinkingHigh", "⠋"));
 		indicator.dispose();
 	});
 
@@ -92,6 +93,28 @@ describe("status indicators", () => {
 			expect(stripAnsi(editor.render(120)[0]!)).toBe("─".repeat(120));
 		} finally {
 			for (const indicator of indicators) indicator.dispose();
+		}
+	});
+
+	it.each(["dark", "light"])("keeps the %s main activity at two rows without wrapping commands", (name) => {
+		initTheme(name);
+		vi.useFakeTimers();
+		const tui = { requestRender: vi.fn() } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, `Main · 5m24s · 28.8k tokens · 2 compactions\nRunning bash ${"long command ".repeat(20)}`);
+		try {
+			for (const width of [1, 20, 40, 80, 120, 200]) {
+				const rows = indicator.render(width);
+				expect(rows).toHaveLength(3);
+				expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
+			}
+			const rows = indicator.render(100);
+			expect(stripAnsi(rows[1]!)).toContain("Main · 5m24s · 28.8k tokens · 2 compactions");
+			expect(rows[1]).toContain(theme.fg("accent", theme.bold("Main")));
+			expect(stripAnsi(rows[2]!)).toContain("└ Running bash");
+			indicator.setMessage("Main · 5m25s · 29k tokens · 2 compactions\nWriting");
+			expect(stripAnsi(indicator.render(100)[2]!)).toContain("Writing");
+		} finally {
+			indicator.dispose();
 		}
 	});
 

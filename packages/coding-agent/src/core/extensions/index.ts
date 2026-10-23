@@ -26,6 +26,7 @@ export type {
 	AgentBeforeSettleEventResult,
 	AgentEndEvent,
 	AgentSettledEvent,
+	AgentInterruptedEvent,
 	AgentStartEvent,
 	// Re-exports
 	AgentToolResult,
@@ -50,7 +51,6 @@ export type {
 	BuildSystemPromptOptions,
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
-	CompactionEntryDraft,
 	// Context
 	CompactOptions,
 	ContextEditEntryDraft,
@@ -92,6 +92,7 @@ export type {
 	ExtensionRuntime,
 	ExtensionShortcut,
 	ExtensionToolContext,
+	ToolInvocation,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionVirtualModel,
@@ -108,6 +109,8 @@ export type {
 	// Events - Input
 	InputEvent,
 	InputEventResult,
+	UserInputEvent,
+	UserInputEventResult,
 	InputSource,
 	KeybindingsManager,
 	LoadExtensionsResult,
@@ -150,7 +153,6 @@ export type {
 	SendMessageHandler,
 	SendUserMessageHandler,
 	SessionBeforeCompactEvent,
-	SessionBeforeCompactResult,
 	SessionBeforeForkEvent,
 	SessionBeforeForkResult,
 	SessionBeforeSwitchEvent,
@@ -223,3 +225,5 @@ export {
 	isWriteToolResult,
 } from "./types.ts";
 export { wrapRegisteredTool, wrapRegisteredTools } from "./wrapper.ts";
+
+export type { SkillResourceSnapshot } from "../skill-resource-snapshot.ts";

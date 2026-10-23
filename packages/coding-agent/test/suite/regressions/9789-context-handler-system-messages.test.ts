@@ -40,7 +40,8 @@ function toolNames(context: TranscriptContext): string[] {
 }
 
 async function compactSession(harness: Harness): Promise<void> {
-	harness.settingsManager.applyOverrides({ compaction: { keepRecentTokens: 1 } });
+	const policy = harness.settingsManager.getCompactionSettings();
+	harness.settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 	harness.setResponses([fauxAssistantMessage("one"), fauxAssistantMessage("two")]);
 	await harness.session.prompt("first");
 	await harness.session.prompt("second");
@@ -59,7 +60,7 @@ describe("context handlers and system messages", () => {
 	it("keeps the prompt and tools when a handler slices from the compaction summary", async () => {
 		const seen: AgentMessage[][] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				compactViaHook,
 				(pi) => {
 					pi.on("context", async (event) => {
@@ -87,7 +88,7 @@ describe("context handlers and system messages", () => {
 	it("keeps mid-conversation system messages in place when a handler leaves the conversation unchanged", async () => {
 		let turn = 0;
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("before_agent_start", (event) => {
 						if (++turn === 2) event.systemPromptOptions.sections.plan_mode = "Plan only.";
@@ -110,7 +111,7 @@ describe("context handlers and system messages", () => {
 
 	it("applies in-place edits to event.messages without a return value", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("context", async (event) => {
 						event.messages.splice(0, 0, {
@@ -134,7 +135,7 @@ describe("context handlers and system messages", () => {
 
 	it("keeps system messages a handler adds after the replayed head", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("context", async (event) => ({
 						messages: [{ role: "system", content: "ephemeral reminder", timestamp: 0 }, ...event.messages],
@@ -165,7 +166,7 @@ describe("context_with_system handlers", () => {
 	it("runs after context handlers on the restored transcript and sends its output verbatim", async () => {
 		const seen: AgentMessage[][] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				compactViaHook,
 				(pi) => {
 					pi.on("context_with_system", async (event) => {
@@ -201,7 +202,7 @@ describe("context_with_system handlers", () => {
 
 	it("reports a handler that drops the leading system message but honors its output", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("context_with_system", async (event) => ({
 						messages: event.messages.filter((message) => message.role !== "system"),

@@ -7,7 +7,20 @@ import { fakeCtx, fakePi } from "./fake-pi.ts";
 
 afterEach(() => vi.useRealTimers());
 
+const detailOf = (working: string | undefined) => working?.split("\n")[1];
+
 describe("Activity: consequential calls", () => {
+	it("keeps a silent shell command timed without overflowing the working line", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.toolStart("1", "bash", { command: "brew upgrade bun" }, 0);
+		activity.consequential("shell", "brew upgrade bun " + "x".repeat(200), false, 0);
+		expect(activity.describe(18_000)).toMatch(/^shell: brew upgrade bun .* · 18s$/);
+		expect(visibleWidth(activity.describe(18_000)!)).toBeLessThanOrEqual(70);
+		expect(activity.describe()).not.toContain("18s");
+		activity.toolEnd("1", 20_000);
+		expect(activity.describe(20_000)).toBeUndefined();
+	});
 	it("shows one line per consequential call while its tool runs, at most one a second, bursts collapsed into +n", () => {
 		const activity = new Activity();
 		activity.start(0);
@@ -270,7 +283,7 @@ describe("registerActivity", () => {
 			{ message: { role: "user" }, assistantMessageEvent: { type: "text_delta" } },
 			ctx,
 		);
-		expect(ui.working).toBe("Thinking");
+		expect(detailOf(ui.working)).toBe("Thinking");
 		await fake.emit("message_end", { message: { role: "assistant" } }, ctx);
 		await fake.emit("message_end", { message: { role: "user" } }, ctx);
 		await fake.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: { command: "sleep 9" } }, ctx);
@@ -280,16 +293,16 @@ describe("registerActivity", () => {
 			{ toolCallId: "a/1", parentToolCallId: "a", toolName: "web", args: {} },
 			ctx,
 		);
-		expect(ui.working).toBe("Running bash sleep 9");
+		expect(detailOf(ui.working)).toBe("Running bash sleep 9");
 		vi.advanceTimersByTime(3_000);
-		expect(ui.working).toBe("Running bash sleep 9 · 3s");
+		expect(detailOf(ui.working)).toBe("Running bash sleep 9 · 3s");
 		await fake.emit("ui_prompt_start", { title: "Continue?" }, ctx);
-		expect(ui.working).toBe("Waiting for you: Continue?");
+		expect(detailOf(ui.working)).toBe("Waiting for you: Continue?");
 		await fake.emit("ui_prompt_end", {}, ctx);
 		await fake.emit("tool_execution_end", { toolCallId: "a/1", parentToolCallId: "a" }, ctx);
-		expect(ui.working).toBe("Running bash sleep 9 · 3s");
+		expect(detailOf(ui.working)).toBe("Running bash sleep 9 · 3s");
 		await fake.emit("tool_execution_end", { toolCallId: "a" }, ctx);
-		expect(ui.working).toBeUndefined();
+		expect(detailOf(ui.working)).toBe("Waiting for model");
 		await fake.emit("agent_settled", {}, ctx);
 		expect(ui.working).toBeUndefined();
 		// The team hears state changes only, never the ticking elapsed time.
@@ -352,12 +365,12 @@ describe("registerActivity", () => {
 				}),
 		);
 		await fake.emit("ui_prompt_start", { kind: "custom" }, ctx);
-		expect(ui.working).toBe("Waiting for you: 2 questions: Which database?");
+		expect(detailOf(ui.working)).toBe("Waiting for you: 2 questions: Which database?");
 		await fake.emit("ui_prompt_end", { kind: "custom" }, ctx);
 		close();
 		await open;
 		await fake.emit("ui_prompt_start", { kind: "custom" }, ctx);
-		expect(ui.working).toBe("Waiting for you");
+		expect(detailOf(ui.working)).toBe("Waiting for you");
 		await fake.emit("session_shutdown", {}, ctx);
 	});
 
@@ -372,12 +385,12 @@ describe("registerActivity", () => {
 		await fake.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: { command: "ls" } }, ctx);
 		await fake.emit("tool_execution_start", { toolCallId: "b", toolName: "web", args: {} }, ctx);
 		control.checking("a", true);
-		expect(ui.working).toBe("Checking bash ls");
+		expect(detailOf(ui.working)).toBe("Checking bash ls");
 		vi.advanceTimersByTime(2_000);
-		expect(ui.working).toBe("Checking bash ls · 2s");
+		expect(detailOf(ui.working)).toBe("Checking bash ls · 2s");
 		control.checking("a", false);
 		control.checking("missing", true);
-		expect(ui.working).toBe("Running 2 tools: bash · web · 2s");
+		expect(detailOf(ui.working)).toBe("Running 2 tools: bash · web · 2s");
 		let close!: () => void;
 		const open = withDialog(
 			() =>
@@ -389,7 +402,7 @@ describe("registerActivity", () => {
 		await fake.emit("ui_prompt_start", { title: "Pick" }, ctx);
 		const queued = withDialog(async () => undefined);
 		await Promise.resolve();
-		expect(ui.working).toMatch(/^Waiting for you: Pick \(\+1 queued\)/);
+		expect(detailOf(ui.working)).toMatch(/^Waiting for you: Pick \(\+1 queued\)/);
 		close();
 		await Promise.all([open, queued]);
 		await fake.emit("ui_prompt_end", {}, ctx);
@@ -418,4 +431,37 @@ describe("Activity: the working line stays within its columns", () => {
 		activity.toolStart("1", "bash", { command: "make test" }, 0);
 		expect(activity.describe(0)).toBe("Running bash make test");
 	});
+});
+
+
+it("shows run totals above the action, updates streaming usage without double counting, and resets next run", async () => {
+	vi.useFakeTimers();
+	vi.setSystemTime(0);
+	const fake = fakePi();
+	const ctx = fakeCtx({ cwd: "/work" });
+	const ui = ctx.ui as typeof ctx.ui & { working?: string };
+	registerActivity(fake.pi, { workingLine: true });
+	await fake.emit("session_start", {}, ctx);
+	await fake.emit("agent_start", {}, ctx);
+	expect(ui.working).toBe("Main · 0s · 0 tokens\nWaiting for model");
+	const message = { role: "assistant", usage: { input: 100, cacheRead: 200, output: 50 } };
+	await fake.emit("message_update", { message, assistantMessageEvent: { type: "text_delta", delta: "hello" } }, ctx);
+	expect(ui.working).toContain("350 tokens");
+	await fake.emit("message_end", { message }, ctx);
+	expect(ui.working).toContain("350 tokens");
+	await fake.emit("tool_execution_start", { toolCallId: "b", toolName: "bash", args: { command: "sleep 10" } }, ctx);
+	vi.advanceTimersByTime(5_000);
+	expect(ui.working).toBe("Main · 5s · 350 tokens\nRunning bash sleep 10 · 5s");
+	await fake.emit("agent_start", {}, ctx);
+	expect(ui.working).toContain("Main · 5s · 350 tokens");
+	ctx.sessionManager.getEntries = () => [{ type: "compaction" }] as never;
+	await fake.emit("session_compact", {}, ctx);
+	expect(ui.working).toContain("1 compaction\n");
+	await fake.emit("agent_settled", {}, ctx);
+	expect(ui.working).toBeUndefined();
+	expect(vi.getTimerCount()).toBe(0);
+	await fake.emit("agent_start", {}, ctx);
+	expect(ui.working).toContain("Main · 0s · 0 tokens");
+	await fake.emit("session_shutdown", {}, ctx);
+	expect(vi.getTimerCount()).toBe(0);
 });

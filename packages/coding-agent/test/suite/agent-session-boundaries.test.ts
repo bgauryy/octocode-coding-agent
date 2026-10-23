@@ -19,54 +19,18 @@ describe("AgentSession actionable boundaries", () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	it("commits a retain-none turn_end compaction and explicitly continues once", async () => {
-		let handled = false;
-		const observedIds: string[] = [];
-		const requests: string[] = [];
-		const harness = await createHarness({
-			extensionFactories: [
-				(pi) => {
-					pi.on("turn_end", (event) => {
-						observedIds.push(event.messageEntryId);
-						if (handled) return;
-						handled = true;
-						return {
-							entries: [
-								{
-									type: "compaction",
-									summary: "exact handoff",
-									firstKeptEntryId: null,
-									details: { source: "test" },
-								},
-							],
-							continue: true,
-						};
-					});
-				},
-			],
-		});
-		harnesses.push(harness);
-		harness.setResponses([
-			fauxAssistantMessage("discarded response"),
-			(context) => {
-				requests.push(JSON.stringify(context.messages));
-				return fauxAssistantMessage("continued from handoff");
-			},
-		]);
-
-		await harness.session.prompt("discarded prompt");
-
-		const compaction = harness.sessionManager.getEntries().find((entry) => entry.type === "compaction");
-		expect(compaction).toMatchObject({ type: "compaction", summary: "exact handoff" });
-		if (compaction?.type !== "compaction") throw new Error("expected compaction");
-		expect(compaction.firstKeptEntryId).toBe(compaction.id);
-		expect(requests).toHaveLength(1);
-		expect(requests[0]).toContain("exact handoff");
-		expect(requests[0]).not.toContain("discarded prompt");
-		expect(requests[0]).not.toContain("discarded response");
-		expect(observedIds).toHaveLength(2);
-		expect(harness.eventsOfType("agent_settled")).toHaveLength(1);
-	});
+	it("rejects legacy extension compaction drafts without deleting context or continuing", async () => {
+  const harness = await createHarness({ extensionFactories: [(pi) => {
+   pi.on("turn_end", () => ({ entries: [{ type: "compaction", summary: "injected", firstKeptEntryId: null }] as never, continue: true }));
+  }] });
+  harnesses.push(harness);
+  harness.setResponses([fauxAssistantMessage("retained response")]);
+  await harness.session.prompt("retained prompt");
+  expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
+  expect(JSON.stringify(harness.session.messages)).toContain("retained prompt");
+  expect(JSON.stringify(harness.session.messages)).toContain("retained response");
+  expect(harness.faux.state.callCount).toBe(1);
+ });
 
 	it.each(["steering", "follow-up", "both"] as const)(
 		"preserves %s queue scheduling around a turn_end handoff",
@@ -86,7 +50,7 @@ describe("AgentSession actionable boundaries", () => {
 								pi.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
 							}
 							return {
-								entries: [{ type: "compaction", summary: "exact handoff", firstKeptEntryId: null }],
+								entries: [{ type: "custom_message", customType: "handoff", content: "exact handoff", display: false }],
 								continue: true,
 							};
 						});
@@ -131,8 +95,8 @@ describe("AgentSession actionable boundaries", () => {
 		const instruction = "EXACT-REPLACEMENT-INSTRUCTION ".repeat(100);
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 2_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("turn_end", (event, ctx) => {
 						if (handled) return;
@@ -185,8 +149,8 @@ describe("AgentSession actionable boundaries", () => {
 		const instruction = "EXACT-UNSENT-INSTRUCTION ".repeat(100);
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 2_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("turn_end", () => {
 						if (handled) return;
@@ -507,7 +471,7 @@ describe("AgentSession actionable boundaries", () => {
 		let handled = false;
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 10_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 300 } },
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 300 },
 			extensionFactories: [
 				(pi) => {
 					pi.on("message_end", (event) => {
@@ -542,7 +506,7 @@ describe("AgentSession actionable boundaries", () => {
 		let handled = false;
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 5_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			extensionFactories: [
 				(pi) => {
 					pi.on("message_end", (event) => {
@@ -578,7 +542,7 @@ describe("AgentSession actionable boundaries", () => {
 	it("does not trigger threshold compaction from post-edit usage captured before a later compaction", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 10_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 		});
 		harnesses.push(harness);
 		const userId = harness.sessionManager.appendMessage({
@@ -787,9 +751,9 @@ describe("durable length recovery", () => {
 		};
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			tools: [tool],
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", (event) => ({
 						compaction: {
@@ -829,9 +793,11 @@ describe("durable length recovery", () => {
 	it("gives a distinct queued follow-up its own length-recovery budget", async () => {
 		let queued = false;
 		const harness = await createHarness({
+			// Keep the fixed prompt below the tiny test window; this case tests recovery, not an oversized tool catalog.
+			tools: [],
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", (event) => ({
 						compaction: {
@@ -895,8 +861,8 @@ describe("durable length recovery", () => {
 	it("omits a recoverable projected replacement by its source entry ID", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", () => ({ cancel: true }));
 				},
@@ -930,9 +896,11 @@ describe("durable length recovery", () => {
 		let replaced = false;
 		let overflowId: string | undefined;
 		const harness = await createHarness({
+			// Keep the fixed prompt below the tiny test window; this case tests recovery, not an oversized tool catalog.
+			tools: [],
 			models: [{ id: "faux-1", contextWindow: 1_000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("turn_end", (event) => {
 						if (replaced || event.outcome !== "error") return;
@@ -1033,8 +1001,9 @@ describe("durable length recovery", () => {
 	it("keeps omissions and does not retry when recovery compaction fails", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			settings: {
-				compaction: { keepRecentTokens: 1, reserveTokens: 0 },
+
 				retry: { enabled: false, maxRetries: 0, baseDelayMs: 1 },
 			},
 		});

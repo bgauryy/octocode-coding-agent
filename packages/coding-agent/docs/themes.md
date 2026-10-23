@@ -60,7 +60,7 @@ See CLI resources for the command-line option.
 
 Copy one of the [built-in themes](../src/modes/interactive/theme/) or create a new JSON file conforming to the [schema](../schemas/theme.schema.json). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
 
-1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/agent`.
+1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration locations](../../../CONFIGURATIONS.md).
 2. Set its `name` to `my-theme`.
 3. Change values in `vars` and `colors`.
 4. Select `my-theme` through `/settings`.

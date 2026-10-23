@@ -35,9 +35,9 @@ describe("issue #7253: manual compaction during an active response", () => {
 
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 1000 }],
-			settings: { compaction: { enabled: true, reserveTokens: 200, keepRecentTokens: 2 } },
+			compactionPolicy: { enabled: true, reserveTokens: 200, keepRecentTokens: 2 },
 			tools: [createNoopTool()],
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {

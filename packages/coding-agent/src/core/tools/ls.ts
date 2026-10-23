@@ -10,7 +10,8 @@ import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } fr
 
 const lsSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Directory to list (default: current directory)" })),
-	limit: Type.Optional(Type.Number({ description: "Maximum number of entries to return (default: 500)" })),
+	limit: Type.Optional(Type.Integer({ minimum: 1, description: "Maximum number of entries to return (default: 500)" })),
+	offset: Type.Optional(Type.Integer({ minimum: 0, description: "Skip this many sorted entries (default: 0); use the returned next offset to continue" })),
 });
 
 export const lsToolSystemPromptContribution = {
@@ -25,6 +26,7 @@ const DEFAULT_LIMIT = 500;
 export interface LsToolDetails {
 	truncation?: TruncationResult;
 	entryLimitReached?: number;
+	nextOffset?: number;
 }
 
 /**
@@ -64,11 +66,13 @@ export function createLsToolDefinition(
 		parameters: lsSchema,
 		async execute(
 			_toolCallId,
-			{ path, limit }: { path?: string; limit?: number },
+			{ path, limit, offset = 0 }: { path?: string; limit?: number; offset?: number },
 			signal?: AbortSignal,
 			_onUpdate?,
 			ctx?: ExtensionContext,
 		) {
+			if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("offset must be a non-negative integer");
+			if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error("limit must be a positive integer");
 			return new Promise((resolve, reject) => {
 				if (signal?.aborted) {
 					reject(new Error("Operation aborted"));
@@ -113,28 +117,28 @@ export function createLsToolDefinition(
 
 						// Format entries with directory indicators.
 						const results: string[] = [];
+						const positions: number[] = [];
 						let entryLimitReached = false;
-						for (const entry of entries) {
+						for (let index = offset; index < entries.length;) {
 							if (signal?.aborted) return;
 							if (results.length >= effectiveLimit) {
 								entryLimitReached = true;
 								break;
 							}
 
-							const fullPath = nodePath.join(dirPath, entry);
-							let suffix = "";
-							try {
-								const entryStat = await ops.stat(fullPath);
-								if (entryStat.isDirectory()) suffix = "/";
-							} catch {
-								// Skip entries we cannot stat.
-								continue;
+							const start = index;
+							const batch = entries.slice(index, index + Math.min(32, effectiveLimit - results.length));
+							const stats = await Promise.allSettled(batch.map((entry) => ops.stat(nodePath.join(dirPath, entry))));
+							for (const [relative, stat] of stats.entries()) {
+								if (stat.status !== "fulfilled") continue;
+								results.push(batch[relative]! + (stat.value.isDirectory() ? "/" : ""));
+								positions.push(start + relative);
 							}
-							results.push(entry + suffix);
+							index += batch.length;
 						}
 
 						if (results.length === 0) {
-							resolve({ content: [{ type: "text", text: "(empty directory)" }], details: undefined });
+							resolve({ content: [{ type: "text", text: offset > 0 ? "(no more entries)" : "(empty directory)" }], details: undefined });
 							return;
 						}
 
@@ -152,6 +156,11 @@ export function createLsToolDefinition(
 						if (truncation.truncated) {
 							notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
 							details.truncation = truncation;
+						}
+						if (entryLimitReached || truncation.truncated) {
+							const shown = truncation.truncated ? truncation.outputLines : results.length;
+							details.nextOffset = positions[shown - 1]! + 1;
+							notices.push(`Use offset=${details.nextOffset} to continue (entries must remain unchanged)`);
 						}
 						if (notices.length > 0) {
 							output += `\n\n[${notices.join(". ")}]`;

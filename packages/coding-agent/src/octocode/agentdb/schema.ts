@@ -42,13 +42,112 @@ CREATE TABLE backlog (
   assignee TEXT, created_by TEXT NOT NULL, source_session TEXT,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, started_at INTEGER, done_at INTEGER,
   from_item INTEGER, version INTEGER NOT NULL DEFAULT 1,
+  type TEXT NOT NULL DEFAULT 'task', parent_id INTEGER,
   UNIQUE(repo_key, seq));
+CREATE TABLE backlog_links (
+  item INTEGER NOT NULL REFERENCES backlog(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL, target TEXT NOT NULL, UNIQUE(item, relation, target));
+CREATE TABLE backlog_completions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, item INTEGER NOT NULL REFERENCES backlog(id),
+  operation_key TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(item, operation_key));
+CREATE INDEX backlog_parent ON backlog(parent_id);
+CREATE TRIGGER backlog_writer_insert BEFORE INSERT ON backlog BEGIN
+ SELECT CASE WHEN octocode_backlog_writer() != 1 THEN RAISE(ABORT, 'Upgrade Octocode to edit backlogs') END;
+END;
+CREATE TRIGGER backlog_writer_update BEFORE UPDATE ON backlog BEGIN
+ SELECT CASE WHEN octocode_backlog_writer() != 1 THEN RAISE(ABORT, 'Upgrade Octocode to edit backlogs') END;
+END;
+CREATE TRIGGER backlog_writer_delete BEFORE DELETE ON backlog BEGIN
+ SELECT CASE WHEN octocode_backlog_writer() != 1 THEN RAISE(ABORT, 'Upgrade Octocode to edit backlogs') END;
+END;
 CREATE INDEX backlog_board ON backlog(repo_key, state, priority, updated_at);
 CREATE INDEX backlog_from ON backlog(from_item) WHERE from_item IS NOT NULL;
 CREATE TABLE backlog_notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT, item INTEGER NOT NULL REFERENCES backlog(id) ON DELETE CASCADE,
   at INTEGER NOT NULL, author TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'note' CHECK(kind IN ('note','change')), text TEXT NOT NULL);
 CREATE INDEX backlog_notes_item ON backlog_notes(item, at);
+
+CREATE TABLE backlog_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, item INTEGER NOT NULL REFERENCES backlog(id) ON DELETE CASCADE,
+  legacy_note_id INTEGER UNIQUE, at INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL);
+CREATE INDEX backlog_comments_item ON backlog_comments(item, id);
+CREATE TABLE backlog_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, repo_key TEXT NOT NULL, backlog_id TEXT NOT NULL,
+  at INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, entity TEXT NOT NULL,
+  before_value TEXT, after_value TEXT);
+CREATE INDEX backlog_audits_item ON backlog_audits(repo_key, backlog_id, id);
+CREATE TRIGGER backlog_audits_immutable_update BEFORE UPDATE ON backlog_audits BEGIN
+ SELECT RAISE(ABORT, 'Audit events are immutable');
+END;
+CREATE TRIGGER backlog_audits_immutable_delete BEFORE DELETE ON backlog_audits BEGIN
+ SELECT RAISE(ABORT, 'Audit events are immutable');
+END;
+CREATE TRIGGER backlog_comments_immutable_update BEFORE UPDATE ON backlog_comments BEGIN
+ SELECT RAISE(ABORT, 'Comments are immutable; add a correction');
+END;
+CREATE TRIGGER backlog_comments_immutable_delete BEFORE DELETE ON backlog_comments WHEN EXISTS (SELECT 1 FROM backlog WHERE id = OLD.item) BEGIN
+ SELECT RAISE(ABORT, 'Comments are immutable; add a correction');
+END;
+CREATE TRIGGER backlog_notes_immutable_update BEFORE UPDATE ON backlog_notes BEGIN
+ SELECT RAISE(ABORT, 'Notes are immutable; add a correction');
+END;
+CREATE TRIGGER backlog_note_comment AFTER INSERT ON backlog_notes WHEN NEW.kind = 'note' BEGIN
+ INSERT INTO backlog_comments(item, legacy_note_id, at, author, text) VALUES (NEW.item, NEW.id, NEW.at, NEW.author, NEW.text);
+END;
+CREATE TRIGGER backlog_audits_insert AFTER INSERT ON backlog BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT NEW.repo_key, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog', NULL, json_object('id', NEW.id, 'repo_key', NEW.repo_key, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id);
+END;
+CREATE TRIGGER backlog_audits_update AFTER UPDATE ON backlog BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT NEW.repo_key, 'B' || NEW.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'update', 'backlog', json_object('id', OLD.id, 'repo_key', OLD.repo_key, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id), json_object('id', NEW.id, 'repo_key', NEW.repo_key, 'seq', NEW.seq, 'title', NEW.title, 'goal', NEW.goal, 'body', NEW.body, 'paths', NEW.paths, 'why', NEW.why, 'evidence', NEW.evidence, 'plan', NEW.plan, 'state', NEW.state, 'priority', NEW.priority, 'tags', NEW.tags, 'assignee', NEW.assignee, 'created_by', NEW.created_by, 'source_session', NEW.source_session, 'created_at', NEW.created_at, 'updated_at', NEW.updated_at, 'started_at', NEW.started_at, 'done_at', NEW.done_at, 'from_item', NEW.from_item, 'version', NEW.version, 'type', NEW.type, 'parent_id', NEW.parent_id);
+END;
+CREATE TRIGGER backlog_audits_delete AFTER DELETE ON backlog BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT OLD.repo_key, 'B' || OLD.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog', json_object('id', OLD.id, 'repo_key', OLD.repo_key, 'seq', OLD.seq, 'title', OLD.title, 'goal', OLD.goal, 'body', OLD.body, 'paths', OLD.paths, 'why', OLD.why, 'evidence', OLD.evidence, 'plan', OLD.plan, 'state', OLD.state, 'priority', OLD.priority, 'tags', OLD.tags, 'assignee', OLD.assignee, 'created_by', OLD.created_by, 'source_session', OLD.source_session, 'created_at', OLD.created_at, 'updated_at', OLD.updated_at, 'started_at', OLD.started_at, 'done_at', OLD.done_at, 'from_item', OLD.from_item, 'version', OLD.version, 'type', OLD.type, 'parent_id', OLD.parent_id), NULL;
+END;
+CREATE TRIGGER backlog_links_audit_insert AFTER INSERT ON backlog_links BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog_links', NULL, json_object('item', NEW.item, 'relation', NEW.relation, 'target', NEW.target) FROM backlog b WHERE b.id = NEW.item;
+END;
+CREATE TRIGGER backlog_links_audit_update AFTER UPDATE ON backlog_links BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'update', 'backlog_links', json_object('item', OLD.item, 'relation', OLD.relation, 'target', OLD.target), json_object('item', NEW.item, 'relation', NEW.relation, 'target', NEW.target) FROM backlog b WHERE b.id = NEW.item;
+END;
+CREATE TRIGGER backlog_links_audit_delete AFTER DELETE ON backlog_links BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog_links', json_object('item', OLD.item, 'relation', OLD.relation, 'target', OLD.target), NULL FROM backlog b WHERE b.id = OLD.item;
+END;
+CREATE TRIGGER backlog_completions_audit_insert AFTER INSERT ON backlog_completions BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog_completions', NULL, json_object('id', NEW.id, 'item', NEW.item, 'operation_key', NEW.operation_key, 'payload', NEW.payload) FROM backlog b WHERE b.id = NEW.item;
+END;
+CREATE TRIGGER backlog_completions_audit_delete AFTER DELETE ON backlog_completions BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog_completions', json_object('id', OLD.id, 'item', OLD.item, 'operation_key', OLD.operation_key, 'payload', OLD.payload), NULL FROM backlog b WHERE b.id = OLD.item;
+END;
+CREATE TRIGGER backlog_comments_audit_insert AFTER INSERT ON backlog_comments BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'insert', 'backlog_comments', NULL, json_object('id', NEW.id, 'item', NEW.item, 'at', NEW.at, 'author', NEW.author, 'text', NEW.text) FROM backlog b WHERE b.id = NEW.item;
+END;
+CREATE TRIGGER backlog_comments_audit_delete AFTER DELETE ON backlog_comments BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ SELECT b.repo_key, 'B' || b.seq, CAST(unixepoch('subsec') * 1000 AS INTEGER), octocode_audit_actor(), 'delete', 'backlog_comments', json_object('id', OLD.id, 'item', OLD.item, 'at', OLD.at, 'author', OLD.author, 'text', OLD.text), NULL FROM backlog b WHERE b.id = OLD.item;
+END;
+
+CREATE TABLE workspace_commands (
+  id TEXT NOT NULL, session_id TEXT NOT NULL, repo_key TEXT NOT NULL, backlog_id TEXT,
+  action TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, message TEXT NOT NULL,
+  PRIMARY KEY(repo_key, session_id, id));
+CREATE INDEX workspace_commands_repo ON workspace_commands(repo_key, session_id, at);
+CREATE TRIGGER workspace_commands_audit_insert AFTER INSERT ON workspace_commands WHEN NEW.backlog_id IS NOT NULL BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, after_value)
+ VALUES (NEW.repo_key, NEW.backlog_id, NEW.at, octocode_audit_actor(), 'insert', 'workspace_commands', json_object('id', NEW.id, 'action', NEW.action, 'input', NEW.input, 'status', NEW.status));
+END;
+CREATE TRIGGER workspace_commands_audit_update AFTER UPDATE ON workspace_commands WHEN NEW.backlog_id IS NOT NULL BEGIN
+ INSERT INTO backlog_audits(repo_key, backlog_id, at, actor, action, entity, before_value, after_value)
+ VALUES (NEW.repo_key, NEW.backlog_id, NEW.at, octocode_audit_actor(), 'update', 'workspace_commands', json_object('status', OLD.status, 'message', OLD.message), json_object('status', NEW.status, 'message', NEW.message));
+END;
 
 CREATE TABLE memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL CHECK(scope IN ('global','project')),

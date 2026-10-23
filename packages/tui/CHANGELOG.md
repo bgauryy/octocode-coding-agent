@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Deep module paths no longer export layout and search internals that only their own module used: `LayoutRect`, `LayoutBox`, `LayoutNode`, `LayoutComponent`, `ScrollLayoutState`, `AltScreenSearchSegment`, `AltScreenSearchResult`, `NativeModuleCandidateOptions` and `WordNavigationOptions`. The package root exports are unchanged.
+
 ### Fixed
 
 - Settings help wraps on narrow terminals, shows configured confirm/cancel keys, and only advertises Space when it changes a value.

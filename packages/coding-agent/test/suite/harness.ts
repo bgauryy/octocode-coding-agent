@@ -1,3 +1,6 @@
+import { createCodingTools } from "../../src/core/tools/index.ts";
+import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
+import type { CompactionSettings } from "../../src/core/compaction/compaction.ts";
 import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } from "../model-runtime-test-utils.ts";
 /**
  * Local test harness for the new coding-agent test suite.
@@ -22,7 +25,7 @@ import type { ExtensionRunner, ExtensionUIContext } from "../../src/core/extensi
 import { convertToLlm } from "../../src/core/messages.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
-import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { DEFAULT_TOOL_NAMES, SettingsManager } from "../../src/core/settings-manager.ts";
 import type { InlineExtension, ResourceLoader } from "../../src/index.ts";
 import { theme } from "../../src/modes/interactive/theme/theme.ts";
 import {
@@ -112,12 +115,14 @@ export interface HarnessOptions {
 	provider?: string;
 	models?: FauxModelDefinition[];
 	settings?: Partial<Settings>;
+	compactionPolicy?: Partial<CompactionSettings>;
 	tools?: AgentTool[];
 	initialActiveToolNames?: string[];
 	allowedToolNames?: string[];
 	excludedToolNames?: string[];
 	resourceLoader?: ResourceLoader;
 	extensionFactories?: Array<InlineExtension | CreateTestExtensionsResultInput>;
+	builtinCompactionFactories?: Array<InlineExtension | CreateTestExtensionsResultInput>;
 	withConfiguredAuth?: boolean;
 	modelsJson?: Record<string, unknown>;
 	/** Session to continue, for example to test a resume. Default: a new in-memory session. */
@@ -156,12 +161,18 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	});
 	fauxProvider.setResponses([]);
 	const model = fauxProvider.getModel();
-	const toolMap = options.tools ? Object.fromEntries(options.tools.map((tool) => [tool.name, tool])) : undefined;
+	const tools = options.tools ?? (options.builtinCompactionFactories ? createCodingTools(tempDir) : undefined);
+	const toolMap = tools ? Object.fromEntries(tools.map((tool) => [tool.name, tool])) : undefined;
 	const withConfiguredAuth = options.withConfiguredAuth ?? true;
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
 
 	const sessionManager = options.sessionManager ?? SessionManager.inMemory();
 	const settingsManager = SettingsManager.inMemory(options.settings);
+	if (options.compactionPolicy) {
+		const policy = { ...settingsManager.getCompactionSettings(model), ...options.compactionPolicy };
+		settingsManager.getCompactionSettings = () => ({ ...policy });
+		settingsManager.getCompactionEnabled = () => policy.enabled;
+	}
 
 	const authStorage = AuthStorage.inMemory();
 	if (withConfiguredAuth) {
@@ -225,9 +236,11 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			return runner.emitContext(messages);
 		},
 	});
-	const extensionsResult = options.extensionFactories
-		? await createTestExtensionsResult(options.extensionFactories, tempDir)
-		: undefined;
+	const factories = options.builtinCompactionFactories ?? options.extensionFactories;
+	const extensionsResult = factories ? await createTestExtensionsResult(factories, tempDir) : undefined;
+	if (options.builtinCompactionFactories && extensionsResult) {
+		for (const extension of extensionsResult.extensions) extension.sourceInfo.path = NATIVE_FEATURE_PATH;
+	}
 	const resourceLoader =
 		options.resourceLoader ?? createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);
 
@@ -239,8 +252,8 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader,
 		baseToolsOverride: toolMap,
-		initialActiveToolNames: options.initialActiveToolNames,
-		usesDefaultTools: options.initialActiveToolNames === undefined,
+		initialActiveToolNames: options.initialActiveToolNames ?? (options.builtinCompactionFactories ? (toolMap ? Object.keys(toolMap) : [...DEFAULT_TOOL_NAMES]) : undefined),
+		usesDefaultTools: options.initialActiveToolNames === undefined && !options.builtinCompactionFactories,
 		allowedToolNames: options.allowedToolNames,
 		excludedToolNames: options.excludedToolNames,
 		extensionRunnerRef,

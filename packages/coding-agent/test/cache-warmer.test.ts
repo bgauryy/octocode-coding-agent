@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type Api,
 	type AssistantMessage,
@@ -104,7 +107,7 @@ function fakeRuntime(
 				} as unknown as AssistantMessageEventStream;
 			},
 		},
-		{ appendUsage, getBranch: () => state.branch },
+		{ captureUsageWriter: () => appendUsage, getSessionId: () => usageManager.getSessionId(), getBranch: () => state.branch },
 		() => state.mode,
 		async (event) => {
 			events.push(event);
@@ -124,6 +127,81 @@ const current = () => true;
 afterEach(() => vi.useRealTimers());
 
 describe("cache warming", () => {
+	it("records late usage in the originating session without changing the new session", () => {
+		const dir = mkdtempSync(join(tmpdir(), "warm-usage-"));
+		try {
+			const manager = SessionManager.create(dir, dir);
+			manager.appendMessage({ role: "user", content: "original", timestamp: 0 });
+			const originalFile = manager.getSessionFile()!;
+			const append = manager.captureUsageWriter();
+			manager.newSession();
+			manager.appendMessage({ role: "user", content: "new", timestamp: 1 });
+			SessionManager.open(originalFile).appendMessage({ role: "user", content: "late original", timestamp: 2 });
+			append("cache_warm", adaptiveModel.provider, adaptiveModel.id, warmUsage);
+			expect(manager.getEntries().filter((entry) => entry.type === "usage")).toHaveLength(0);
+			const resumed = SessionManager.open(originalFile);
+			expect(resumed.getBranch().filter((entry) => entry.type === "usage")).toHaveLength(1);
+			expect(resumed.getBranch().filter((entry) => entry.type === "message")).toHaveLength(2);
+			expect(resumed.getBranch().find((entry) => entry.type === "usage")).toMatchObject({ usage: warmUsage });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("retains in-memory origin attribution when the active session changes", () => {
+		const manager = SessionManager.inMemory();
+		const parentId = manager.appendMessage({ role: "user", content: "origin", timestamp: 0 });
+		const append = manager.captureUsageWriter();
+		manager.newSession();
+		const first = append("cache_warm", adaptiveModel.provider, adaptiveModel.id, warmUsage);
+		const second = append("cache_warm", adaptiveModel.provider, adaptiveModel.id, warmUsage);
+		expect(first).toMatchObject({ parentId, usage: warmUsage });
+		expect(second.parentId).toBe(first.id);
+		expect(manager.getEntries()).toEqual([]);
+	});
+
+	it("does not replay reasoning through Bedrock's output-budget expansion", () => {
+		const bedrock = { ...budgetModel, api: "bedrock-converse-stream", provider: "amazon-bedrock" } as Model<Api>;
+		expect(isReplayable(bedrock, { reasoning: "high" })).toBe(false);
+		expect(isReplayable(bedrock, {})).toBe(true);
+	});
+
+	it("does not treat a large uncached tail as a reusable prefix", async () => {
+		vi.useFakeTimers();
+		const branch = branchWithPrompt(100);
+		const message = (branch[0] as { message: AssistantMessage }).message;
+		message.usage.input = 100_000;
+		const runtime = fakeRuntime({ branch });
+		runtime.warmer.start(request(), current);
+		await vi.advanceTimersByTimeAsync(270_000);
+		expect(runtime.calls).toHaveLength(0);
+		expect(runtime.warmer.status.state).toBe("inactive");
+	});
+
+ it.each(["error", "aborted", "throw", "miss"])("stops refreshing after %s until a new real request", async (outcome) => {
+  vi.useFakeTimers();
+  const runtime = fakeRuntime({ result: async (model) => {
+   if (outcome === "throw") throw new Error("offline");
+   const message = response(model, outcome === "error" || outcome === "aborted" ? outcome : "length");
+   return outcome === "miss" ? { ...message, usage: { ...message.usage, cacheRead: 0, cacheWrite: 100 } } : message;
+  } });
+  runtime.warmer.start(request(), current);
+  await vi.advanceTimersByTimeAsync(270_000);
+  expect(runtime.warmer.status.state).toBe("inactive");
+  expect(runtime.appendUsage).toHaveBeenCalledTimes(outcome === "throw" ? 0 : 1);
+  if (outcome === "miss") expect(formatCacheWarmingUsage(runtime.warmedEntries[0])).toContain("no hit");
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(runtime.calls).toHaveLength(1);
+  runtime.warmer.start(request(), current);
+  await vi.advanceTimersByTimeAsync(270_000);
+  expect(runtime.calls).toHaveLength(2);
+  runtime.warmer.cancel();
+ });
+ it.each([NaN, Infinity, -1, 0])("rejects invalid cache lifetime %s", (seconds) => {
+  expect(getPromptCacheTtlMs({ ...adaptiveModel, promptCache: { short: seconds } }, {})).toBeUndefined();
+  expect(getCacheWarmingDelayMs(seconds)).toBeUndefined();
+ });
+
 	it("derives eligibility and timing from retention and provider behavior", () => {
 		expect([
 			getPromptCacheTtlMs(adaptiveModel, undefined),
@@ -303,7 +381,7 @@ describe("cache warming", () => {
 		expect(streaming.warmer.status.reason).toBe("agent run settled");
 	});
 
-	it("aborts replaced requests and does not record failed refreshes", async () => {
+	it("aborts replaced requests and records returned usage independently of completion", async () => {
 		vi.useFakeTimers();
 		let release!: () => void;
 		const pending = fakeRuntime({
@@ -320,11 +398,12 @@ describe("cache warming", () => {
 		pending.warmer.cancel();
 		await vi.advanceTimersByTimeAsync(600_000);
 		expect(pending.calls).toHaveLength(1);
+		expect(pending.appendUsage).toHaveBeenCalledTimes(1);
 
 		const failed = fakeRuntime({ result: async (model) => response(model, "error") });
 		failed.warmer.start(request(), current);
 		await vi.advanceTimersByTimeAsync(270_000);
-		expect(failed.appendUsage).not.toHaveBeenCalled();
+		expect(failed.appendUsage).toHaveBeenCalledTimes(1);
 		failed.warmer.cancel();
 	});
 

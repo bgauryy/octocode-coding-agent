@@ -1,5 +1,6 @@
-import type { AssistantMessage } from "@octocodeai/octocode-ai";
+import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai";
 import type { SessionEntry } from "./session-manager.ts";
+import { customMessageUsage } from "./usage-totals.ts";
 
 /**
  * Prompt-cache TTL: idle gaps longer than this are worth mentioning as the
@@ -22,7 +23,7 @@ export interface CacheMiss {
 	modelChanged: boolean;
 }
 
-export interface CacheWasteTotals {
+interface CacheWasteTotals {
 	missedTokens: number;
 	missedCost: number;
 	/** Number of counted misses (turns above the noise floor). */
@@ -171,4 +172,55 @@ export function detectCacheMiss(
 	models: ModelPriceSource,
 ): CacheMiss | undefined {
 	return detectMiss(scan(entries, models).prev, message, models);
+}
+
+
+interface CacheUsageMetrics {
+	/** Number of recorded usage entries; tool usage may aggregate child requests. */
+	requests: number;
+	promptTokens: number;
+	cacheRead: number;
+	cacheWrite: number;
+	/** Token-weighted cache reads / prompt tokens, or null without input usage. */
+	hitRate: number | null;
+	cost: number;
+}
+
+export type CacheMetrics = Record<
+	"conversation" | "warming" | "compaction" | "branchSummary" | "tools" | "other",
+	CacheUsageMetrics
+>;
+
+/** Separate real conversation usage from auxiliary requests so refreshes cannot inflate its hit rate. */
+export function computeCacheMetrics(entries: readonly SessionEntry[]): CacheMetrics {
+	const empty = (): CacheUsageMetrics => ({
+		requests: 0, promptTokens: 0, cacheRead: 0, cacheWrite: 0, hitRate: null, cost: 0,
+	});
+	const metrics: CacheMetrics = {
+		conversation: empty(), warming: empty(), compaction: empty(),
+		branchSummary: empty(), tools: empty(), other: empty(),
+	};
+	const add = (purpose: keyof CacheMetrics, usage: Usage): void => {
+		const target = metrics[purpose];
+		target.requests++;
+		target.promptTokens += usage.input + usage.cacheRead + usage.cacheWrite;
+		target.cacheRead += usage.cacheRead;
+		target.cacheWrite += usage.cacheWrite;
+		target.cost += usage.cost.total;
+		target.hitRate = target.promptTokens > 0 ? target.cacheRead / target.promptTokens : null;
+	};
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			if (entry.message.role === "assistant") add("conversation", entry.message.usage);
+			else if (entry.message.role === "toolResult" && entry.message.usage) add("tools", entry.message.usage);
+		} else if (entry.type === "usage") {
+			add(entry.kind === "cache_warm" ? "warming" : entry.kind === "compaction_attempt" ? "compaction" : "other", entry.usage);
+		} else if (entry.type === "compaction" && entry.usage) add("compaction", entry.usage);
+		else if (entry.type === "branch_summary" && entry.usage) add("branchSummary", entry.usage);
+		else if (entry.type === "custom_message") {
+			const usage = customMessageUsage(entry);
+			if (usage) add("tools", usage);
+		}
+	}
+	return metrics;
 }

@@ -1,12 +1,14 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { USER_SENDER } from "../shared/messages.ts";
-import { type AgentRuns, claimRun, lingerSeconds, maxSubagents, type Run, subagentLimitError } from "./claim.ts";
+import type { ReportStatus } from "../instructions/report.ts";
+import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
 import { askSpawn } from "./profiles.ts";
 
 /**
- * Finished background runs that stay reachable (`OCTOCODE_SUBAGENT_LINGER_SECONDS`): a message from the parent or the
- * user resumes their saved conversation as a new background run.
+ * Finished background runs that stay reachable: a message from the parent or the user resumes their saved conversation
+ * as a new background run. Every run does for `OCTOCODE_SUBAGENT_LINGER_SECONDS`; a run that reported `blocked` does for
+ * at least `BLOCKED_LINGER_SECONDS` even when that is 0, because it waits for an answer.
  */
 
 interface LingeringRun {
@@ -56,11 +58,11 @@ export class Lingering {
 		for (const id of [...this.entries.keys()]) this.forget(id);
 	}
 
-	/** Called when the run reported: it stays reachable for the window, and the report says so. */
-	window(run: Run, ctx: ExtensionContext): () => string {
+	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */
+	window(run: Run, ctx: ExtensionContext): (outcome?: ReportStatus) => string {
 		const session = this.runs.session;
-		return (): string => {
-			const seconds = lingerSeconds();
+		return (outcome?: ReportStatus): string => {
+			const seconds = reachableSeconds(outcome);
 			if (session !== this.runs.session || seconds === 0) return "";
 			const id = run.identity.id;
 			this.forget(id);
@@ -77,7 +79,10 @@ export class Lingering {
 				entry.timer.unref();
 			};
 			expire();
-			return `\n\n${id} stays reachable for ${seconds} s: \`sendMessage\` to it continues this conversation; \`coordinate stop ${id}\` ends that.`;
+			const stop = `type \`coordinate\` with action \`stop\` and id ${id} ends that`;
+			if (outcome === "blocked")
+				return `\n\n${id} is blocked and stays resumable for ${seconds} s: answer it with \`agent\` type \`message\` to ${id} and it continues this conversation; ${stop}.`;
+			return `\n\n${id} stays reachable for ${seconds} s: \`agent\` type \`message\` to it continues this conversation; ${stop}.`;
 		};
 	}
 

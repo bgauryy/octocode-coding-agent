@@ -6,7 +6,7 @@ A template can accept arguments and appear in command completion. Octocode can l
 
 ## Create a template
 
-Create `~/.octocode/agent/prompts/review.md`:
+Create `~/.octocode/octocodecode/prompts/review.md`:
 
 ```markdown
 ---
@@ -16,7 +16,7 @@ argument-hint: "[focus]"
 Review the staged changes. Focus on ${1:-correctness, security, and error handling}.
 ```
 
-The filename becomes the command name, so this template is available as `/review`. The `description` appears in command completion. If it is omitted, Octocode uses the first non-empty line.
+The filename becomes the command name, so this template is available as `/review` when that name is unambiguous. If a core command, core alias, or extension command or alias reserves the name, discovery offers `/prompt:review` instead. `/prompt:review` also works for an unambiguous template. Additional collisions receive numeric suffixes; use the name shown by `/help`, SDK `getCommands()`, or RPC `get_commands`. The `description` appears in command completion. If it is omitted, Octocode uses the first non-empty line.
 
 `argument-hint` is optional. Use `<angle brackets>` for required arguments and `[square brackets]` for optional arguments.
 

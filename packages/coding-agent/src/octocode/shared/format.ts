@@ -31,15 +31,19 @@ export function formatTokens(count: number): string {
 	return count < 999_500 ? short(count / 1_000, "k") : short(count / 1_000_000, "M");
 }
 
+/** Prompt tokens that were not read from cache: uncached input and cache writes. */
+export const newPromptTokens = (usage: Pick<UsageTotals, "input" | "cacheRead">): number =>
+	Math.max(0, usage.input - usage.cacheRead);
+
 /**
- * The one token format: `↑1.2M (94% cached) ↓35k`. ↑ is every prompt token (uncached input, cache reads and writes), the
- * share is the part read from cache, shown when there is one. Empty when nothing was spent.
+ * The one token format: `↑72k +1.1M cached ↓35k`. ↑ is the prompt tokens not read from cache (uncached input and cache
+ * writes); `cached` is the cache reads, shown when there are any. Every request re-reads the whole conversation, so cache
+ * reads grow with each turn and dwarf the rest while costing a fraction of it. Empty when nothing was spent.
  */
 export function formatTokenUsage(usage: Pick<UsageTotals, "input" | "cacheRead" | "output">): string {
 	if (!usage.input && !usage.output) return "";
-	const cached =
-		usage.cacheRead > 0 && usage.input > 0 ? ` (${Math.round((usage.cacheRead / usage.input) * 100)}% cached)` : "";
-	return `↑${formatTokens(usage.input)}${cached} ↓${formatTokens(usage.output)}`;
+	const cached = usage.cacheRead > 0 ? ` +${formatTokens(usage.cacheRead)} cached` : "";
+	return `↑${formatTokens(newPromptTokens(usage))}${cached} ↓${formatTokens(usage.output)}`;
 }
 
 /**

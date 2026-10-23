@@ -98,8 +98,17 @@ export function getProjectTrustOptions(cwd: string, options?: { includeSessionOn
 }
 
 function readTrustFile(path: string): TrustFile {
+	return readTrustFileEntries(path).data;
+}
+
+/**
+ * Earlier builds also wrote the native extension's fingerprinted `{ sha, trusted }` decisions into this file. Each one
+ * approved specific hook, agent and skill files, not the project, so it is no core decision: it is returned apart and
+ * written back unchanged, for the native store (`pi-trust.json`) to migrate.
+ */
+function readTrustFileEntries(path: string): { data: TrustFile; legacy: Record<string, unknown> } {
 	if (!existsSync(path)) {
-		return {};
+		return { data: {}, legacy: {} };
 	}
 
 	let parsed: unknown;
@@ -115,10 +124,10 @@ function readTrustFile(path: string): TrustFile {
 	}
 
 	const data: TrustFile = {};
+	const legacy: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(parsed)) {
-		// Earlier builds wrote the native extension's fingerprinted `{ sha, trusted }` decisions into this file too.
 		if (isLegacyFingerprintEntry(value)) {
-			data[key] = value.trusted;
+			legacy[key] = value;
 			continue;
 		}
 		if (value !== true && value !== false && value !== null) {
@@ -126,7 +135,7 @@ function readTrustFile(path: string): TrustFile {
 		}
 		data[key] = value;
 	}
-	return data;
+	return { data, legacy };
 }
 
 function isLegacyFingerprintEntry(value: unknown): value is { sha: string; trusted: boolean } {
@@ -138,12 +147,14 @@ function isLegacyFingerprintEntry(value: unknown): value is { sha: string; trust
 	);
 }
 
-function writeTrustFile(path: string, data: TrustFile): void {
-	const sorted: TrustFile = {};
-	for (const key of Object.keys(data).sort()) {
+function writeTrustFile(path: string, data: TrustFile, legacy: Record<string, unknown> = {}): void {
+	const sorted: Record<string, unknown> = {};
+	for (const key of [...new Set([...Object.keys(data), ...Object.keys(legacy)])].sort()) {
 		const value = data[key];
 		if (value === true || value === false || value === null) {
 			sorted[key] = value;
+		} else if (key in legacy) {
+			sorted[key] = legacy[key];
 		}
 	}
 	mkdirSync(dirname(path), { recursive: true });
@@ -247,7 +258,7 @@ export class ProjectTrustStore {
 
 	setMany(decisions: ProjectTrustUpdate[]): void {
 		withTrustFileLock(this.trustPath, () => {
-			const data = readTrustFile(this.trustPath);
+			const { data, legacy } = readTrustFileEntries(this.trustPath);
 			for (const { path, decision } of decisions) {
 				const key = normalizeCwd(path);
 				if (decision === null) {
@@ -256,7 +267,7 @@ export class ProjectTrustStore {
 					data[key] = decision;
 				}
 			}
-			writeTrustFile(this.trustPath, data);
+			writeTrustFile(this.trustPath, data, legacy);
 		});
 	}
 }

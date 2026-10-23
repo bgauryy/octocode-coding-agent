@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getOctocodeHome } from "../../config.ts";
 import { resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 
@@ -45,12 +46,7 @@ export function resolveToolPath(cwd: string, raw: string): string {
 	return resolveToCwd(raw, cwd);
 }
 
-/**
- * The file a Octocode `read` call showed the model (any range: Octocode's own guard semantics); none for every other tool. For the
- * `file` tool's guard, the reads restored from a session's context (`files/reads`) and report-read tracking. MCP
- * tools are the server's own contract (Octocode's `localFetch` pages and minifies by its own rules), so the extension
- * does not parse their inputs or results.
- */
+/** Legacy core read paths; native MCP reads carry verified metadata from shared/local-reads. */
 export function readPaths(toolName: string, input: Record<string, unknown>, cwd: string): string[] {
 	return toolName === "read" && typeof input.path === "string" ? [resolveReadPath(input.path, cwd)] : [];
 }
@@ -248,6 +244,7 @@ export function projectHookFiles(cwd: string): string[] {
 		path.join(root, ".claude", "settings.json"),
 		path.join(root, ".claude", "settings.local.json"),
 		path.join(root, ".codex", "hooks.json"),
+		path.join(root, ".codex", "config.toml"),
 		hooks,
 	];
 }
@@ -275,7 +272,7 @@ export function tildePath(file: string, home = os.homedir()): string {
 export function configFileLines(files: string[], userFiles: string[], home = os.homedir()): string[] {
 	const user = new Set(userFiles);
 	return [...new Set(files)].map((file) => {
-		const note = user.has(file) ? "" : " (project: loads only when trusted, /octocode trust)";
+		const note = user.has(file) ? "" : " (project: loads only when trusted, /trust)";
 		return `  ${fs.existsSync(file) ? "✓" : "·"} ${tildePath(file, home)}${note}`;
 	});
 }
@@ -390,4 +387,11 @@ export function repoKey(cwd: string): RepoKey {
 export function workspaceRoot(cwd: string): string | undefined {
 	const { root } = repoKey(cwd);
 	return spansHome(root) ? undefined : root;
+}
+
+/** Claude source settings share the hook compatibility discovery and project trust boundary. */
+export function claudeSettingsSources(cwd: string, trusted: boolean, home = os.homedir()): { path: string; anchor: string }[] {
+ const user = claudeConfigDir(home);
+ return [{ path: path.join(user, "settings.json"), anchor: user },
+  ...(trusted ? projectHookFiles(cwd).filter(file => path.basename(path.dirname(file)) === ".claude").map(file => ({path:file,anchor:cwd})) : [])];
 }

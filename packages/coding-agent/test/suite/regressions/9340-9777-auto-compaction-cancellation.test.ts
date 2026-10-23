@@ -47,11 +47,12 @@ describe("automatic compaction cancellation regressions", () => {
 	it("does not start post-run auto-compaction after abort", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 200, maxTokens: 50 }],
+			compactionPolicy: { enabled: true, reserveTokens: 50, keepRecentTokens: 1 },
 			settings: {
-				compaction: { enabled: true, reserveTokens: 50, keepRecentTokens: 1 },
+
 				retry: { enabled: false },
 			},
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", () => ({ cancel: true }));
 				},
@@ -76,7 +77,7 @@ describe("automatic compaction cancellation regressions", () => {
 
 	// Regression test for #9777.
 	it("cancels summarization authentication", async () => {
-		const harness = await createHarness({ settings: { compaction: { keepRecentTokens: 1 } } });
+		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 		let markAuthStarted = () => {};
@@ -109,7 +110,7 @@ describe("automatic compaction cancellation regressions", () => {
 
 	// Regression test for #9777.
 	it("cancels synchronously from compaction_start", async () => {
-		const harness = await createHarness({ settings: { compaction: { keepRecentTokens: 1 } } });
+		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 		harness.session.subscribe((event) => {
@@ -127,7 +128,7 @@ describe("automatic compaction cancellation regressions", () => {
 		["matching error text", () => new Error("Compaction cancelled")],
 		["an unrelated AbortError", () => Object.assign(new Error("auth failed"), { name: "AbortError" })],
 	] as const)("reports %s as a failure", async (_label, createError) => {
-		const harness = await createHarness({ settings: { compaction: { keepRecentTokens: 1 } } });
+		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 		vi.spyOn(harness.session.modelRuntime, "getAuth").mockRejectedValue(createError());
@@ -141,8 +142,8 @@ describe("automatic compaction cancellation regressions", () => {
 
 	it("reports extension cancellation as aborted", async () => {
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", () => ({ cancel: true }));
 				},

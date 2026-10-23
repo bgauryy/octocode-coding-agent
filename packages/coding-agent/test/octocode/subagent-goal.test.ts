@@ -211,7 +211,7 @@ describe("child identity", () => {
 });
 
 describe("a subagent's usage", () => {
-	it("counts the whole prompt with its cached share and marks a child on a model without pricing", async () => {
+	it("shows new and cached prompt tokens and marks a child on a model without pricing", async () => {
 		const s = setup();
 		const result = await s.run({ goal: GOAL, task: "unpriced answer" });
 		expect(result.details).toMatchObject({ input: 400, cacheRead: 300, output: 20, cost: 0, unpriced: true });
@@ -221,7 +221,7 @@ describe("a subagent's usage", () => {
 				durationMs: 250,
 			}),
 		);
-		expect(done).toMatch(/Done \([a-z]+-[a-z]+ · 0 tool calls · ↑400 \(75% cached\) ↓20 · cost n\/a · /);
+		expect(done).toMatch(/Done \([a-z]+-[a-z]+ · 0 tool calls · ↑100 \+300 cached ↓20 · cost n\/a · /);
 	});
 });
 

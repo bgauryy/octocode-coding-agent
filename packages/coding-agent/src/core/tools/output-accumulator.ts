@@ -1,21 +1,48 @@
 import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
+import { splitIncompleteAnsiSuffix, stripAnsi } from "../../utils/ansi.ts";
 import { createOutputFileStream } from "../../utils/output-files.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	formatElisionMarker,
+	splitHeadTailBudget,
+	type TruncationResult,
+	truncateTail,
+} from "./truncate.ts";
 
-export interface OutputAccumulatorOptions {
+/** A line without a newline or carriage return that grows past this is counted before it ends. */
+const OPEN_LINE_CAP_BYTES = 64 * 1024;
+
+/** What a terminal shows after carriage-return redraws of one line: its last non-empty rewrite. */
+function collapseLine(line: string): string {
+	if (!line.includes("\r")) return line;
+	const parts = line.split("\r");
+	for (let i = parts.length - 1; i >= 0; i--) {
+		if (parts[i]) return parts[i]!;
+	}
+	return "";
+}
+
+/** `collapseLine` for each line of terminated text; CRLF is a newline. */
+function collapseCarriageReturns(text: string): string {
+	if (!text.includes("\r")) return text;
+	return text.split("\n").map(collapseLine).join("\n");
+}
+
+interface OutputAccumulatorOptions {
 	maxLines?: number;
 	maxBytes?: number;
 	tempFilePrefix?: string;
 }
 
-export interface OutputSnapshot {
+interface OutputSnapshot {
 	content: string;
 	truncation: TruncationResult;
 	fullOutputPath?: string;
 }
 
-export interface FullOutput {
+interface FullOutput {
 	content: string;
 	/** Whether `content` omits part of the output. */
 	truncated: boolean;
@@ -28,9 +55,14 @@ function byteLength(text: string): number {
 /**
  * Incrementally tracks streaming output with bounded memory.
  *
- * Appends decode chunks with a streaming UTF-8 decoder, keeps only a decoded
- * tail for display snapshots, and opens a temp file when the full output needs
- * to be preserved.
+ * Appends decode chunks with a streaming UTF-8 decoder, keeps a fixed-size head
+ * and a rolling decoded tail for display snapshots, and opens a temp file when
+ * the full output needs to be preserved. A truncated snapshot shows the first
+ * lines, an elision marker and the last lines (see `HEAD_SHARE`). Snapshots, line
+ * and byte counts leave out terminal escape sequences (colors, cursor moves, a
+ * full-screen program's redraws) and keep only the final state of a line that was
+ * rewritten with carriage returns (progress bars), which only cost the model
+ * tokens; the temp file and `readFullOutput` keep the raw bytes.
  */
 export class OutputAccumulator {
 	private readonly maxLines: number;
@@ -38,6 +70,22 @@ export class OutputAccumulator {
 	private readonly maxRollingBytes: number;
 	private readonly tempFilePrefix: string;
 	private readonly decoder = new TextDecoder();
+	/** An escape sequence cut by a chunk boundary, completed by the next chunk. */
+	private pendingAnsi = "";
+	/**
+	 * The current unterminated line, collapsed to its last carriage-return rewrite. It is counted and
+	 * stored in the tail only once it ends, so a later `\r` can still replace it.
+	 */
+	private openLine = "";
+	private openBytes = 0;
+	/** The raw line ended with `\r`: the next text replaces `openLine`, unless it is `\n` (CRLF). */
+	private openLineCr = false;
+	private readonly headMaxLines: number;
+	private readonly headMaxBytes: number;
+	/** The start of the output, at most `headMaxBytes + 1` bytes; complete lines are cut out of it on demand. */
+	private headBuffer = "";
+	private headBufferBytes = 0;
+	private headClosed = false;
 
 	private rawChunks: Buffer[] = [];
 	private tailText = "";
@@ -46,19 +94,22 @@ export class OutputAccumulator {
 	private totalRawBytes = 0;
 	private totalDecodedBytes = 0;
 	private completedLines = 0;
-	private totalLines = 0;
 	private currentLineBytes = 0;
 	private hasOpenLine = false;
 	private finished = false;
 
 	private tempFilePath: string | undefined;
 	private tempFileStream: WriteStream | undefined;
+	private closeOutputFile: (() => Promise<void>) | undefined;
 
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 		this.tempFilePrefix = options.tempFilePrefix ?? "octocode-output";
+		const head = splitHeadTailBudget(this.maxLines, this.maxBytes);
+		this.headMaxLines = head.headLines;
+		this.headMaxBytes = head.headBytes;
 	}
 
 	append(data: Buffer): void {
@@ -67,7 +118,7 @@ export class OutputAccumulator {
 		}
 
 		this.totalRawBytes += data.length;
-		this.appendDecodedText(this.decoder.decode(data, { stream: true }));
+		this.appendText(this.withoutAnsi(this.decoder.decode(data, { stream: true })));
 
 		if (this.tempFileStream || this.shouldUseTempFile()) {
 			this.ensureTempFile();
@@ -82,63 +133,61 @@ export class OutputAccumulator {
 			return;
 		}
 		this.finished = true;
-		this.appendDecodedText(this.decoder.decode());
+		this.appendText(this.withoutAnsi(this.decoder.decode(), true));
+		if (this.openLine) this.appendDecodedText(this.openLine);
+		this.openLine = "";
+		this.openBytes = 0;
+		this.openLineCr = false;
 		if (this.shouldUseTempFile()) {
 			this.ensureTempFile();
 		}
 	}
 
 	snapshot(options: { persistIfTruncated?: boolean } = {}): OutputSnapshot {
-		const tailTruncation = truncateTail(this.getSnapshotText(), {
-			maxLines: this.maxLines,
-			maxBytes: this.maxBytes,
-		});
-		const truncated = this.totalLines > this.maxLines || this.totalDecodedBytes > this.maxBytes;
-		const truncatedBy = truncated
-			? (tailTruncation.truncatedBy ?? (this.totalDecodedBytes > this.maxBytes ? "bytes" : "lines"))
-			: null;
-		const truncation: TruncationResult = {
-			...tailTruncation,
-			truncated,
-			truncatedBy,
-			totalLines: this.totalLines,
-			totalBytes: this.totalDecodedBytes,
-			maxLines: this.maxLines,
-			maxBytes: this.maxBytes,
-		};
+		const totalLines = this.countLines();
+		const totalBytes = this.totalDecodedBytes + this.openBytes;
+		const linesExceeded = totalLines > this.maxLines;
+		const bytesExceeded = totalBytes > this.maxBytes;
+		const text = this.getSnapshotText() + this.openLine;
 
-		if (options.persistIfTruncated && truncation.truncated) {
+		if (!linesExceeded && !bytesExceeded) {
+			const whole = truncateTail(text, { maxLines: this.maxLines, maxBytes: this.maxBytes });
+			return { content: whole.content, truncation: { ...whole, totalLines, totalBytes }, fullOutputPath: this.tempFilePath };
+		}
+
+		if (options.persistIfTruncated) {
 			this.ensureTempFile();
 		}
 
-		return {
-			content: truncation.content,
-			truncation,
-			fullOutputPath: this.tempFilePath,
+		const head = this.getHead();
+		const tail = truncateTail(text, {
+			maxLines: this.maxLines - head.lines,
+			maxBytes: this.maxBytes - head.bytes,
+		});
+		const elidedLines = Math.max(0, totalLines - head.lines - tail.outputLines);
+		const content =
+			head.lines > 0
+				? `${head.text}\n${formatElisionMarker(elidedLines, totalLines, this.tempFilePath)}\n${tail.content}`
+				: tail.content;
+		const truncation: TruncationResult = {
+			...tail,
+			content,
+			truncated: true,
+			truncatedBy: linesExceeded && bytesExceeded ? (tail.truncatedBy ?? "lines") : bytesExceeded ? "bytes" : "lines",
+			totalLines,
+			totalBytes,
+			outputLines: head.lines + tail.outputLines,
+			outputBytes: head.bytes + tail.outputBytes,
+			maxLines: this.maxLines,
+			maxBytes: this.maxBytes,
+			...(head.lines > 0 ? { headLines: head.lines, headBytes: head.bytes, elidedLines } : {}),
 		};
+		return { content, truncation, fullOutputPath: this.tempFilePath };
 	}
 
 	async closeTempFile(): Promise<void> {
-		if (!this.tempFileStream) {
-			return;
-		}
-
-		const stream = this.tempFileStream;
+		await this.closeOutputFile?.();
 		this.tempFileStream = undefined;
-
-		await new Promise<void>((resolve, reject) => {
-			const onError = (error: Error) => {
-				stream.off("finish", onFinish);
-				reject(error);
-			};
-			const onFinish = () => {
-				stream.off("error", onError);
-				resolve();
-			};
-			stream.once("error", onError);
-			stream.once("finish", onFinish);
-			stream.end();
-		});
 	}
 
 	/**
@@ -176,7 +225,45 @@ export class OutputAccumulator {
 	}
 
 	getLastLineBytes(): number {
-		return this.currentLineBytes;
+		return this.currentLineBytes + this.openBytes;
+	}
+
+	private withoutAnsi(text: string, final = false): string {
+		const joined = this.pendingAnsi + text;
+		if (final) {
+			this.pendingAnsi = "";
+			return stripAnsi(joined);
+		}
+		const { complete, pending } = splitIncompleteAnsiSuffix(joined);
+		this.pendingAnsi = pending;
+		return stripAnsi(complete);
+	}
+
+	/**
+	 * Takes text that has no terminal escapes. Complete lines are counted and stored right away, with each
+	 * line collapsed to its last carriage-return rewrite; the unterminated end is held back in `openLine`.
+	 */
+	private appendText(text: string): void {
+		if (text.length === 0) {
+			return;
+		}
+		if (this.openLineCr && text[0] !== "\n" && text[0] !== "\r") {
+			this.openLine = "";
+		}
+		let raw = this.openLine + text;
+		const lastNewline = raw.lastIndexOf("\n");
+		if (lastNewline !== -1) {
+			this.appendDecodedText(collapseCarriageReturns(raw.slice(0, lastNewline + 1)));
+			raw = raw.slice(lastNewline + 1);
+		}
+		this.openLineCr = raw.endsWith("\r");
+		this.openLine = collapseLine(raw);
+		this.openBytes = byteLength(this.openLine);
+		if (!this.openLineCr && this.openBytes > OPEN_LINE_CAP_BYTES) {
+			this.appendDecodedText(this.openLine);
+			this.openLine = "";
+			this.openBytes = 0;
+		}
 	}
 
 	private appendDecodedText(text: string): void {
@@ -186,6 +273,9 @@ export class OutputAccumulator {
 
 		const bytes = byteLength(text);
 		this.totalDecodedBytes += bytes;
+		if (!this.headClosed) {
+			this.captureHead(text, bytes);
+		}
 		this.tailText += text;
 		this.tailBytes += bytes;
 		if (this.tailBytes > this.maxRollingBytes * 2) {
@@ -207,7 +297,45 @@ export class OutputAccumulator {
 			this.currentLineBytes = byteLength(tail);
 			this.hasOpenLine = tail.length > 0;
 		}
-		this.totalLines = this.completedLines + (this.hasOpenLine ? 1 : 0);
+	}
+
+	private countLines(): number {
+		return this.completedLines + (this.hasOpenLine || this.openLine.length > 0 ? 1 : 0);
+	}
+
+	private captureHead(text: string, bytes: number): void {
+		const room = this.headMaxBytes + 1 - this.headBufferBytes;
+		if (bytes <= room) {
+			this.headBuffer += text;
+			this.headBufferBytes += bytes;
+			return;
+		}
+		const buffer = Buffer.from(text, "utf-8");
+		let end = room;
+		while (end > 0 && (buffer[end]! & 0xc0) === 0x80) {
+			end--;
+		}
+		this.headBuffer += buffer.subarray(0, end).toString("utf-8");
+		this.headBufferBytes += end;
+		this.headClosed = true;
+	}
+
+	/** The first complete lines that fit the head budget, without the final newline. */
+	private getHead(): { text: string; lines: number; bytes: number } {
+		let lines = 0;
+		let bytes = 0;
+		let end = 0;
+		for (let pos = 0; lines < this.headMaxLines; ) {
+			const newline = this.headBuffer.indexOf("\n", pos);
+			if (newline === -1) break;
+			const next = bytes + byteLength(this.headBuffer.slice(pos, newline)) + (lines > 0 ? 1 : 0);
+			if (next > this.headMaxBytes) break;
+			bytes = next;
+			lines++;
+			end = newline;
+			pos = newline + 1;
+		}
+		return { text: this.headBuffer.slice(0, end), lines, bytes };
 	}
 
 	private trimTail(): void {
@@ -238,7 +366,9 @@ export class OutputAccumulator {
 
 	private shouldUseTempFile(): boolean {
 		return (
-			this.totalRawBytes > this.maxBytes || this.totalDecodedBytes > this.maxBytes || this.totalLines > this.maxLines
+			this.totalRawBytes > this.maxBytes ||
+			this.totalDecodedBytes + this.openBytes > this.maxBytes ||
+			this.countLines() > this.maxLines
 		);
 	}
 
@@ -246,9 +376,10 @@ export class OutputAccumulator {
 		if (this.tempFilePath) {
 			return;
 		}
-		const { path, stream } = createOutputFileStream(this.tempFilePrefix, ".log");
+		const { path, stream, close } = createOutputFileStream(this.tempFilePrefix, ".log");
 		this.tempFilePath = path;
 		this.tempFileStream = stream;
+		this.closeOutputFile = close;
 		for (const chunk of this.rawChunks) {
 			this.tempFileStream.write(chunk);
 		}

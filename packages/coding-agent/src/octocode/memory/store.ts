@@ -320,7 +320,7 @@ export class MemoryStore {
 		});
 	}
 
-	/** `/octocode memory auto on|off`, shared by every session (the environment can still turn it off). */
+	/** `/memory auto on|off`, shared by every session (the environment can still turn it off). */
 	autoSetting(): boolean {
 		return readMeta(this.db, SETTING_AUTO) !== "off";
 	}

@@ -2,6 +2,8 @@
 
 Minimal terminal UI framework with differential rendering and synchronized output for flicker-free interactive CLI applications.
 
+This package owns terminal components and input/rendering primitives. The coding-agent host owns command routing, configuration discovery and MCP management; see [CONFIGURATIONS.md](../../CONFIGURATIONS.md) and its [terminal UI guide](../coding-agent/docs/tui.md).
+
 ## Features
 
 - **Interchangeable Renderers**: Shared `TUI` interface with main-screen and alternate-screen implementations

@@ -169,8 +169,8 @@ describe("browser tool over a shared Chrome", () => {
 			x: 10,
 			y: 20,
 		});
-		expect(await text({ action: "click", ref: 2 })).toMatch(
-			/^Note: div#overlay "Cookie banner" covers \[2\], so the click landed on it\./,
+		await expect(text({ action: "click", ref: 2 })).rejects.toThrow(
+			'div#overlay "Cookie banner" covers [2]; click was refused.',
 		);
 		await expect(run({ action: "click", ref: 9 })).rejects.toThrow(/No element \[9\]/);
 		await expect(run({ action: "click" })).rejects.toThrow(/needs ref/);
@@ -428,7 +428,9 @@ describe("browser tool over a shared Chrome", () => {
 				.join("\n");
 		const plain = render([{ type: "image" }, { type: "text", text: "one\ntwo\nthree\nfour\nfive" }]);
 		expect(plain).toContain("⎿  one");
-		expect(plain).toContain("… +1 line");
+		// Five lines are shown whole: folding a short result hides it behind a hint as long as itself.
+		expect(plain).toContain("five");
+		expect(plain).not.toContain("to expand");
 		expect(render([{ type: "image" }])).toContain("⎿  Screenshot");
 		const snapshot = render([
 			{
@@ -797,6 +799,7 @@ describe("browser input, forms, waits and tabs", () => {
 	) {
 		let stub: CdpStub | undefined;
 		let pointed = "";
+		let checked = false;
 		const handle: CdpHandler = (method, params, page) => {
 			if (method === "Runtime.evaluate") {
 				const expression = String(params.expression);
@@ -824,8 +827,9 @@ describe("browser input, forms, waits and tabs", () => {
 					if (expression.includes("elementFromPoint"))
 						return { result: { value: { x: 10 * Number(pointed), y: 20, covered: "" } } };
 					if (expression.includes("'aria-checked'"))
-						return { result: { value: pointed === "2" ? "unchecked" : "text" } };
+						return { result: { value: pointed === "2" ? (checked ? "checked" : "unchecked") : "text" } };
 					if (expression.includes("'no-focus'")) return { result: { value: options.typing ?? "field" } };
+					if (expression.includes("el.isContentEditable ? el.innerText")) return { result: { value: true } };
 				}
 				if (expression.includes("smallest visible element") || expression.includes("const want ="))
 					return { result: { value: 4 } };
@@ -834,6 +838,8 @@ describe("browser input, forms, waits and tabs", () => {
 				if (expression === "navigator.userAgent") return { result: { value: "Mozilla/5.0 HeadlessChrome/130" } };
 				return { result: { value: true } };
 			}
+			if (method === "Input.dispatchMouseEvent" && params.type === "mouseReleased" && pointed === "2")
+				checked = !checked;
 			if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed" && pointed === "3")
 				stub!.addTarget("popup-1");
 			if (

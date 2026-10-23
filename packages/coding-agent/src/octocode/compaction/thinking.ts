@@ -6,7 +6,7 @@ import { applyClearedResults } from "./clearing.ts";
  *
  * Newer Claude models bind each thinking block to the exact prefix it was produced after: system prompt, tools and every
  * earlier message. A compaction Octocode or Octocode writes on the client puts a summary in front of the turns it keeps, so the
- * thinking in those turns no longer matches its prefix. pi-ai asks the API to drop such a block instead of failing
+ * thinking in those turns no longer matches its prefix. octocode-ai asks the API to drop such a block instead of failing
  * (`prefix_mismatch_behavior: "drop_block"`), so every request until the next compaction carried the same dead blocks and
  * Octocode showed "Anthropic dropped N thinking blocks". Anthropic's fix for keep-tail compaction with a summary written on
  * the client: strip the thinking from the kept turns. Removing thinking is valid (earlier thinking is not part of any
@@ -17,7 +17,7 @@ import { applyClearedResults } from "./clearing.ts";
 /** Messages Octocode builds from a summary: every one sits before the turns it was written after. */
 const SUMMARY_ROLES: ReadonlySet<string> = new Set(["compactionSummary", "branchSummary"]);
 
-/** Whether `model` binds thinking to its prefix: the models pi-ai sends `drop_block` for (`compat.supportsMidConvoEffort`). */
+/** Whether `model` binds thinking to its prefix: the models octocode-ai sends `drop_block` for (`compat.supportsMidConvoEffort`). */
 export function bindsThinkingToPrefix(model: unknown): boolean {
 	return isRecord(model) && isRecord(model.compat) && model.compat.supportsMidConvoEffort === true;
 }

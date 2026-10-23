@@ -14,6 +14,12 @@ describe("the outcome word a report starts with", () => {
 		["  \n blocked - needs a decision", "blocked"],
 		["FAILED: tests red", "failed"],
 		["`done`", "done"],
+		["**Report: partial.** two of three", "partial"],
+		["Status: done", "done"],
+		["**Outcome:** blocked", "blocked"],
+		["**Report**: Failed - tests red", "failed"],
+		["report:\ndone", "done"],
+		["  Outcome : DONE.", "done"],
 	])("reads %j as %s", (text, status) => expect(reportStatus(text)).toBe(status));
 
 	it.each([
@@ -25,6 +31,13 @@ describe("the outcome word a report starts with", () => {
 		["done-ish"],
 		["The task is done"],
 		["1. done"],
+		["Report: not done yet"],
+		["Status: the task is done"],
+		["Report"],
+		["Report: 1. done"],
+		["Summary: done"],
+		["Report: Status: done"],
+		["Reporting: done"],
 	])("treats %j as unknown, never a failure", (text) => expect(reportStatus(text)).toBeUndefined());
 });
 
@@ -39,6 +52,29 @@ describe("a failed reply's error message", () => {
 });
 
 describe("incremental subagent reports", () => {
+	it("uses the latest outcome independently of the chronological preview", () => {
+		const report = new ReportTracker();
+		report.answer("done: first task", "stop");
+		report.incoming("custom");
+		report.answer("blocked: need a decision", "stop");
+		expect(report.result()).toMatchObject({ outcome: "blocked", answered: true });
+		expect(report.result().text).toContain("done: first task");
+		report.incoming("custom");
+		report.answer("No outcome word this time", "stop");
+		expect(report.result().outcome).toBeUndefined();
+	});
+
+	it("propagates a failed follow-up without discarding the earlier report, and clears it on recovery", () => {
+		const report = new ReportTracker();
+		report.answer("done: first task", "stop");
+		report.incoming("custom");
+		report.answer("", "error", "provider failed");
+		expect(report.result()).toMatchObject({ error: "provider failed", answered: true });
+		expect(report.result().text).toContain("done: first task");
+		report.answer("partial: recovered", "stop");
+		expect(report.result()).toMatchObject({ outcome: "partial" });
+		expect(report.result().error).toBeUndefined();
+	});
 	it("marks output-limit answers incomplete and accepts a later successful retry", () => {
 		const report = new ReportTracker(tmp());
 		report.answer("The analysis is unfinished", "length");

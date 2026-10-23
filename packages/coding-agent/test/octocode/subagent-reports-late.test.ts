@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { SessionManager } from "../../src/core/session-manager.ts";
 import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagents/handoff.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+
+function recordMessages(f: ReturnType<typeof fakePi>, ctx: ReturnType<typeof fakeCtx>): void {
+	const session = SessionManager.inMemory();
+	ctx.sessionManager.getEntries = () => session.getEntries();
+	const send = f.pi.sendMessage;
+	f.pi.sendMessage = (message, options) => {
+		session.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
+		send(message, options);
+	};
+}
 
 describe("late background reports", () => {
 	it("keeps a report that finished after its session ended, owner-only, and delivers it once at the next start of the same session", async () => {
@@ -25,6 +36,7 @@ describe("late background reports", () => {
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });
+		recordMessages(f, ctx);
 		const late = () => f.sent.filter((entry) => String(entry.message.content).includes("LATE REPORT"));
 		await f.emit("session_start", {}, ctx);
 		await vi.waitFor(() => expect(late()).toHaveLength(1), { timeout: 5_000 });
@@ -48,6 +60,7 @@ describe("late background reports", () => {
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });
+		recordMessages(f, ctx);
 		await f.emit("session_start", {}, ctx);
 		const dir = pendingReportsDir(ctx.sessionManager.getSessionId());
 		savePendingReport(dir, "general-slow", {
@@ -93,6 +106,7 @@ describe("late background reports", () => {
 			fakePermission(),
 		);
 		const ctx = fakeCtx({ cwd: tmp() });
+		recordMessages(f, ctx);
 		// Taken at the start: queued, claimed, not yet sent (the batch window is open).
 		await f.emit("session_start", {}, ctx);
 		expect(fs.readdirSync(dir)).not.toContain(saved);

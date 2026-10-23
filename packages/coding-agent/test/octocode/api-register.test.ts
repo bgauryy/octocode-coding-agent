@@ -46,7 +46,7 @@ function setup(env: Record<string, string> = {}) {
 
 const deadPid = (): number => spawnSync(process.execPath, ["-e", "0"]).pid!;
 
-describe("/octocode api", () => {
+describe("/api", () => {
 	it("rejects malformed or trailing arguments before starting or stopping a server", async () => {
 		const { run, notes, wired, dir } = setup();
 		const start = vi.spyOn(wired.api, "start");
@@ -54,7 +54,7 @@ describe("/octocode api", () => {
 		try {
 			for (const args of ["on httpp", "on http extra", "off http", "off extra", "sideways"]) {
 				await run(args);
-				expect(notes.at(-1)).toEqual({ type: "warning", message: "Usage: /octocode api [on [http] | off]" });
+				expect(notes.at(-1)).toEqual({ type: "warning", message: "Usage: /api [on [http] | off]" });
 			}
 			expect(start).not.toHaveBeenCalled();
 			expect(stop).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe("/octocode api", () => {
 		expect(wired.api.running).toBe(true);
 
 		await run("sideways");
-		expect(notes.at(-1)).toEqual({ type: "warning", message: "Usage: /octocode api [on [http] | off]" });
+		expect(notes.at(-1)).toEqual({ type: "warning", message: "Usage: /api [on [http] | off]" });
 		expect(setup().commands.get("api")!.complete!("o")?.map((item) => item.value)).toEqual(["on", "on http", "off"]);
 	});
 
@@ -143,7 +143,7 @@ describe("/octocode api", () => {
 		expect(headless.ui.notes).toEqual([]);
 	});
 
-	it("says why a bad OCTOCODE_API_HTTP keeps the API off, and still binds for /octocode api on", async () => {
+	it("says why a bad OCTOCODE_API_HTTP keeps the API off, and still binds for /api on", async () => {
 		const { wired, ctx, run, notes } = setup({ OCTOCODE_API: "1", OCTOCODE_API_HTTP: "abc" });
 		await wired.start(ctx);
 		expect(wired.api.instance).toBeUndefined();
@@ -157,7 +157,7 @@ describe("/octocode api", () => {
 		else expect(bound?.socket).toMatch(/\.sock$/);
 	});
 
-	it("stays off after /octocode api off even when OCTOCODE_API=1", async () => {
+	it("stays off after /api off even when OCTOCODE_API=1", async () => {
 		const { wired, ctx, run } = setup({ OCTOCODE_API: "1" });
 		await wired.start(ctx);
 		expect(wired.api.instance).toBeDefined();

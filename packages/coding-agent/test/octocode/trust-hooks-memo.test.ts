@@ -54,6 +54,20 @@ describe("trust memo and hook execution", () => {
 		expect(projectTrustNow(ctx(cwd))).toBeUndefined();
 	});
 
+	it("rechecks a command-free hook file before a same-stat command insertion", () => {
+		const before = JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", ignored: "echo a" }] }] } });
+		const after = before.replace('"ignored"', '"command"');
+		expect(Buffer.byteLength(after)).toBe(Buffer.byteLength(before));
+		const cwd = project(".codex/hooks.json", before);
+		const file = path.join(cwd, ".codex", "hooks.json");
+		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
+		expect(projectTrustNow(ctx(cwd))).toBe(true);
+		const { atime, mtime } = fs.statSync(file);
+		fs.writeFileSync(file, after);
+		fs.utimesSync(file, atime, mtime);
+		expect(projectTrustNow(ctx(cwd))).toBeUndefined();
+	});
+
 	it("still memoizes a project without hook commands", () => {
 		const cwd = project(".claude/skills/x/SKILL.md", "---\nname: x\n---\nbody");
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);

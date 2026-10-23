@@ -7,6 +7,7 @@ import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src
 import { teamTask } from "../../src/octocode/instructions/task.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
@@ -19,6 +20,14 @@ import { tmp } from "./helpers.ts";
 
 /** A child's saved session, as `childSession` names it. */
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
+
+describe("legacy direct child skill paths", () => {
+ it("retains the direct launch path option independently of native resource snapshots", () => {
+  const files = ["/parent-only/release/SKILL.md"];
+  expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, files)).skills).toEqual(files);
+  expect(parseArgs(buildAgentArgs(undefined, undefined, SESSION, [])).noSkills).toBe(true);
+ });
+});
 
 describe("subagent permissions", () => {
 	it("sets the child mode and grant from the parent, never from the inherited environment", () => {
@@ -40,10 +49,10 @@ describe("subagent permissions", () => {
 	it("grants only the workspace classes a profile's tools reach", () => {
 		const profile = (fields: object) => ({ name: "p", description: "", prompt: "", ...fields });
 		expect(profileReach(undefined)).toEqual(["file.workspace", "shell"]);
-		expect(profileReach(profile({ excludeTools: "file" }))).toEqual(["shell"]);
-		expect(profileReach(profile({ tools: "read,grep" }))).toEqual([]);
+		expect(() => profileReach(profile({ excludeTools: "file" }))).toThrow(/removes file/);
+		expect(profileReach(profile({ tools: "read,grep" }))).toEqual(["file.workspace"]);
 		expect(profileReach(profile({ tools: "read,file,bash", excludeTools: "bash" }))).toEqual(["file.workspace"]);
-		expect(profileReach(profile({ tools: "read,edit,write,bash", excludeTools: "bash" }))).toEqual([]);
+		expect(profileReach(profile({ tools: "read,edit,write,bash", excludeTools: "bash" }))).toEqual(["file.workspace"]);
 	});
 
 	it("asks once in manual and passes the grant; a denied spawn throws before anything starts", async () => {
@@ -69,7 +78,7 @@ describe("subagent permissions", () => {
 
 describe("profile permissions", () => {
 	const text = (permissions: string) =>
-		`---\nname: web\ndescription: Browses\nexcludeTools: file,bash\npermissions: ${permissions}\n---\nBrowse.`;
+		`---\nname: web\ndescription: Browses\nexcludeTools: bash\npermissions: ${permissions}\n---\nBrowse.`;
 	const spawnCtx = (selects: string[]) => {
 		const ctx = fakeCtx({ cwd: tmp(), ui: { selects } });
 		const titles: string[] = [];
@@ -97,7 +106,7 @@ describe("profile permissions", () => {
 		const { ctx, titles } = spawnCtx(["Allow once", "Allow once", "Deny"]);
 		permission.start(ctx);
 		const profile = parseProfile("x", text("[browser.control, net.private]"));
-		expect(await askSpawn(permission, ctx, profile, "look")).toEqual(["browser.control", "net.private"]);
+		expect(await askSpawn(permission, ctx, profile, "look")).toEqual(["file.workspace", "browser.control", "net.private"]);
 		expect(titles).toHaveLength(1);
 		expect(titles[0]).toContain("permission it declares: browser.control");
 		expect(titles[0]).toContain("permission it declares: net.private");
@@ -106,7 +115,7 @@ describe("profile permissions", () => {
 		expect(await askSpawn(permission, ctx, profile, "look again")).toEqual(["browser.control", "net.private"]);
 		expect(titles).toHaveLength(1);
 		const edited = parseProfile("x", text("[browser.control, net.private]").replace("Browse.", "Browse more."));
-		expect(await askSpawn(permission, ctx, edited, "look")).toEqual(["browser.control", "net.private"]);
+		expect(await askSpawn(permission, ctx, edited, "look")).toEqual(["file.workspace", "browser.control", "net.private"]);
 		expect(titles).toHaveLength(2);
 		permission.clearGrants();
 		await expect(askSpawn(permission, ctx, profile, "look")).rejects.toThrow(/denied starting a subagent/);
@@ -132,7 +141,7 @@ describe("profile permissions", () => {
 	});
 
 	it("keeps evaluate for the web profiles by declaring browser.control", () => {
-		for (const name of ["webHeadless", "webLive"]) {
+		for (const name of ["browser"]) {
 			const profile = parseProfile(
 				name,
 				fs.readFileSync(path.join(__dirname, "../..", "src/octocode/instructions/roles", `${name}.md`), "utf8"),
@@ -148,7 +157,7 @@ describe("subagents", () => {
 		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
 			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
 		);
-		expect(teamTask("Fix A", "main-1", [])).toMatch(/none yet; `coordinate list` shows teammates that start later/);
+		expect(teamTask("Fix A", "main-1", [])).toMatch(/none yet; `agent` type `coordinate`, action `list` shows teammates that start later/);
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1", collaborate: true }).OCTOCODE_AGENT_COLLABORATE).toBe("1");
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
@@ -175,7 +184,10 @@ describe("subagents", () => {
 		);
 		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe(true);
 		// Switches take YAML booleans only; a quoted string is refused rather than read as a guess.
-		expect(parseProfile("x", "---\nmcp: false\nvisibleBrowser: false\n---\nbody")).toMatchObject({ mcp: false });
+		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(/every specialist needs Octocode local research/);
+		expect(parseProfile("x", "---\nvisibleBrowser: false\n---\nbody")).toMatchObject({ headless: true });
+		for (const value of ['"true"', '"false"', "1", "yes"])
+			expect(() => parseProfile("x", `---\nheadless: ${value}\n---\nbody`), value).toThrow(/headless must be true or false/);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1" }).OCTOCODE_AGENT_COLLABORATE).toBeUndefined();
@@ -194,7 +206,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,sendMessage,coordinate,archive",
+			tools: "read,grep,file,agent,archive,tool_search,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -213,7 +225,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,sendMessage,coordinate,archive",
+			"read,grep,file,agent,archive,tool_search,mcp__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -247,15 +259,13 @@ describe("subagents", () => {
 		expect(parsed.diagnostics).toEqual([]);
 	});
 
-	it("loads Octocode's built-in MCP in children unless the profile turns MCP off", () => {
-		const args = buildAgentArgs({ name: "plain", description: "", prompt: "", mcp: false }, undefined, SESSION);
-		expect(args).not.toContain("builtin:mcp");
-		expect(args).not.toContain("builtin:tool-search");
+	it("rejects programmatic profiles that disable the required local research", () => {
+		expect(() => buildAgentArgs({ name: "plain", description: "", prompt: "", mcp: false }, undefined, SESSION)).toThrow(/disables MCP/);
 	});
 
 	it("maps excludeTools frontmatter to --exclude-tools", () => {
-		const profile = parseProfile("reviewer", "---\nexcludeTools: file\n---\nReview.");
-		expect(profile.excludeTools).toBe("file");
+		const profile = parseProfile("reviewer", "---\nexcludeTools: browser,bash\n---\nReview.");
+		expect(profile.excludeTools).toBe("browser,bash");
 		const args = buildAgentArgs(profile, undefined, SESSION);
 		expect(args).toEqual([
 			"--mode",
@@ -270,9 +280,9 @@ describe("subagents", () => {
 			"-e",
 			"builtin:tool-search",
 			"--tools",
-			"+read,+sendMessage,+coordinate,+archive",
+			["file", "agent", "archive", "tool_search", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
 			"--exclude-tools",
-			"file,edit,write",
+			"browser,bash",
 		]);
 	});
 
@@ -300,49 +310,30 @@ describe("subagents", () => {
 		expect(skipped.sort()).toEqual(["broken.md", "folder.md"]);
 	});
 
-	it("offers a headless web profile that never opens a visible browser", () => {
-		const headless = loadProfiles(tmp(), tmp()).get("webHeadless");
-		expect(headless?.excludeTools?.split(",")).toEqual(["file", "bash", "powershell"]);
-		// Browser subagents start no MCP servers at all, whatever servers are configured.
-		expect(headless?.mcp).toBe(false);
-		expect(headless).not.toHaveProperty("visibleBrowser");
-		expect(headless?.prompt).toContain("headless Chrome");
-		expect(subagentProcessEnv(headless, { PATH: "/usr/bin" })).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
-		const prompt = octocodePrompt({
-			octocode: false,
-			profiles: [
-				{ name: "webHeadless", description: "Headless" },
-				{ name: "webLive", description: "Visible" },
-			],
-			canDelegate: true,
-		});
-		expect(prompt).toContain("- webHeadless: Headless");
-		expect(prompt).toContain("- webLive: Visible");
+	it("bundles one browser specialist with shared instructions and a headless default", () => {
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		expect([...profiles.keys()].sort()).toEqual(["browser", "implementer", "researcher", "reviewer"]);
+		const profile = profiles.get("browser")!;
+		expect(profile.headless).toBe(true);
+		expect(profile.prompt.length).toBeLessThanOrEqual(2_000);
+		expect(profile.prompt).toContain("headless");
+		expect(profile.prompt).toContain("persistent");
+		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("builtin:mcp");
+		for (const name of ["researcher", "reviewer", "implementer"])
+			expect(profiles.get(name)?.excludeTools, name).toBe("browser");
 	});
 
-	it("bundles exactly the two browser profiles, lean, and restricts read-only profiles", () => {
-		const profiles = loadProfiles(tmp(), tmp());
-		expect([...profiles.keys()].sort()).toEqual(["implementer", "researcher", "reviewer", "webHeadless", "webLive"]);
-		for (const name of ["webHeadless", "webLive"])
-			expect(profiles.get(name)!.prompt.length, name).toBeLessThanOrEqual(2_000);
-		for (const name of ["researcher", "reviewer"])
-			expect(profiles.get(name)?.excludeTools, name).toBe("file,browser");
-		expect(profiles.get("implementer")?.excludeTools).toBe("browser");
-	});
-
-	it("loads webLive and marks only that child for a visible browser", () => {
-		const profile = loadProfiles(tmp(), tmp()).get("webLive");
-		expect(profile).toMatchObject({ name: "webLive", visibleBrowser: true });
-		expect(profile?.excludeTools?.split(",")).toContain("file");
-		expect(profile?.prompt).toContain("persistent profile");
-		expect(profile?.prompt).not.toContain("cua");
-		expect(subagentProcessEnv(profile, { PATH: "/usr/bin" })).toMatchObject({
+	it("sets visible Chrome only for headless=false and clears inherited browser mode", () => {
+		const profile = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
+		const inherited = { PATH: "/usr/bin", OCTOCODE_BROWSER_VISIBLE: "1" };
+		expect(subagentProcessEnv({ ...profile, headless: false }, inherited)).toMatchObject({
 			OCTOCODE_SUBAGENT: "1",
 			OCTOCODE_BROWSER_VISIBLE: "1",
 			PATH: "/usr/bin",
 		});
-		expect(subagentProcessEnv(undefined, {})).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
-		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("--exclude-tools");
+		expect(subagentProcessEnv(profile, inherited)).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
+		expect(subagentProcessEnv(undefined, inherited)).not.toHaveProperty("OCTOCODE_BROWSER_VISIBLE");
+		expect(profile.headless).toBe(true);
 	});
 
 	it("caps running subagents at OCTOCODE_MAX_SUBAGENTS, default 3", () => {
@@ -402,7 +393,7 @@ describe("subagents", () => {
 		// index.ts adds it as `/octocode agents` with the `/agents` shortcut.
 		const subcommands = new Subcommands();
 		subcommands.add("agents", control.command);
-		subcommands.alias(pi, "agents");
+		subcommands.register(pi);
 		const agent = tools.find((tool) => tool.name === "agent")!;
 		expect(agent.parameters.properties.task?.maxLength).toBeUndefined();
 		expect(agent.parameters.properties).toHaveProperty("isolate");

@@ -19,7 +19,9 @@ type CompactionNoteKind =
 	/** A model switch to a smaller window compacted first, on the previous model. */
 	| "downshift"
 	/** The compaction succeeded but its messages could not be archived. */
-	| "archive-failed";
+	| "archive-failed"
+	/** Complete checkpoint content could not be persisted, so compaction was cancelled. */
+	| "checkpoint-not-saved";
 
 /** Appends a compaction note to the session; a session replaced meanwhile (a stale `pi`) records nothing. */
 export function recordCompactionNote(

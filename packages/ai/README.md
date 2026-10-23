@@ -2,6 +2,8 @@
 
 Unified LLM API with provider collections, automatic auth resolution, token and cost tracking, and simple context persistence and hand-off to other models mid-session.
 
+This README covers the provider library API. The coding-agent application owns `models.json`, stored credentials and model selection; see [configuration locations](../../CONFIGURATIONS.md) and its [models guide](../coding-agent/docs/models.md).
+
 **Note**: The chat catalog only includes models that support tool calling (function calling), as this is essential for agentic workflows. Image and classifier catalogs use their operation-specific capabilities.
 
 ## Table of Contents
@@ -64,7 +66,6 @@ Unified LLM API with provider collections, automatic auth resolution, token and 
 - **Ant Ling**
 - **Azure OpenAI (Responses)**
 - **OpenAI Codex (legacy)** (ChatGPT Plus/Pro subscription, requires OAuth, see below)
-- **Radius** (API key or OAuth, with a dynamically refreshed gateway catalog)
 - **TypeSafe** (System One classifier API)
 - **DeepSeek**
 - **NVIDIA NIM**
@@ -344,7 +345,6 @@ import {
 } from '@octocodeai/octocode-ai/providers/all';
 
 const model = getBuiltinModel('openai', 'gpt-4o-mini'); // typed Model<'openai-responses'>
-const radius = getBuiltinModel('radius', 'balanced');   // typed Model<'pi-messages'>
 const flux = getBuiltinImageModel('openrouter', 'black-forest-labs/flux.2-pro');
 const jev = getBuiltinClassifierModel('typesafe', 'jev-latest');
 const providers = getBuiltinProviders();
@@ -365,7 +365,7 @@ await models.refresh();                            // refresh all providers conc
 const fresh = models.getModel('llamacpp', 'qwen3-30b');
 ```
 
-Static built-in providers are no-ops for `refresh()`. Radius is both static and dynamic: it ships the public `radius.pi.dev` catalog for synchronous API lookup, then overlays cached and freshly fetched `/v1/config` models when refreshed with configured auth. See [createProvider()](#createprovider) for building a dynamic provider.
+Static built-in providers are no-ops for `refresh()`. See [createProvider()](#createprovider) for building a dynamic provider.
 
 ## Auth
 
@@ -462,7 +462,6 @@ Built-in providers resolve these env vars (Node.js; in browsers pass `apiKey` ex
 | Ant Ling | `ANT_LING_API_KEY` |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL` (e.g. `https://{resource}.ai.azure.com`) or `AZURE_OPENAI_RESOURCE_NAME`. Supports `*.openai.azure.com`, `*.cognitiveservices.azure.com` and `*.ai.azure.com`; root endpoints auto-normalize to `/openai/v1`. Optional: `AZURE_OPENAI_API_VERSION` (default `v1`), `AZURE_OPENAI_DEPLOYMENT_NAME_MAP`. |
 | Anthropic | `ANTHROPIC_API_KEY` or `ANTHROPIC_OAUTH_TOKEN` |
-| Radius | `RADIUS_API_KEY` |
 | TypeSafe | `TYPESAFE_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | NVIDIA NIM | `NVIDIA_API_KEY` |
@@ -721,7 +720,7 @@ All streaming events emitted during assistant message generation:
 | `done` | Stream complete | `reason`: Stop reason ("stop", "length", "toolUse"), `message`: Final assistant message |
 | `error` | Error occurred | `reason`: Error type ("error" or "aborted"), `error`: AssistantMessage with partial content |
 
-Streaming events for different content blocks are not guaranteed to be contiguous. Providers may emit deltas for text, thinking, and tool calls in the same upstream chunk, and pi may surface corresponding events interleaved, for example `text_start`, `text_delta`, `toolcall_start`, `text_delta`, `toolcall_delta`. Consumers must use `contentIndex` to associate each delta/end event with its block and must not assume that a block's `*_start`/`*_delta`/`*_end` sequence is uninterrupted by events for other blocks.
+Streaming events for different content blocks are not guaranteed to be contiguous. Providers may emit deltas for text, thinking, and tool calls in the same upstream chunk, and Octocode may surface corresponding events interleaved, for example `text_start`, `text_delta`, `toolcall_start`, `text_delta`, `toolcall_delta`. Consumers must use `contentIndex` to associate each delta/end event with its block and must not assume that a block's `*_start`/`*_delta`/`*_end` sequence is uninterrupted by events for other blocks.
 
 ## Image Input
 
@@ -1086,7 +1085,7 @@ await telemetry.startSpan({ name: 'application.turn' }, async (span) => {
 
 `Models.stream()` and `streamSimple()` create `pi.ai.request`; `streamDeferred()` creates one `pi.ai.poll` per poll. Their completion helpers use the same spans. These spans include auth/setup, end at the terminal result, and do not require the caller to consume events. Direct provider/API calls are not instrumented.
 
-`AI_TELEMETRY_SCHEMA`, exported from the root and `@octocodeai/octocode-ai/models`, defines the typed Pi-owned vocabulary:
+`AI_TELEMETRY_SCHEMA`, exported from the root and `@octocodeai/octocode-ai/models`, defines the typed vocabulary (names keep the upstream `pi.ai.` prefix):
 
 - Start attributes: `provider`, `api`, `model`, and `reasoning` only when `options.reasoning` is a string. Provider-native reasoning objects are ignored.
 - End attributes: `stop`, `usage.input`, `usage.output`, `usage.cache_read`, `usage.cache_write`, `cost.total`, and optional `response.id`. `stop: "error"` sets error status with the fixed category `provider_error` and `AssistantMessage.errorMessage` truncated to 500 characters (empty when absent). Cancellation keeps status `ok` with `stop: "aborted"`.
@@ -1206,7 +1205,7 @@ The callback is supported by `stream`, `complete`, `streamSimple`, and `complete
 
 ### Observing Provider Stream Events
 
-Use `onProviderStreamEvent` to inspect provider-specific fields that Pi does not include in `AssistantMessage`. The callback receives the parsed event available to the adapter before Pi normalizes it. Treat the event as read-only because mutations can affect normalization. This is not guaranteed to be the original HTTP bytes or SSE frame.
+Use `onProviderStreamEvent` to inspect provider-specific fields that Octocode does not include in `AssistantMessage`. The callback receives the parsed event available to the adapter before Octocode normalizes it. Treat the event as read-only because mutations can affect normalization. This is not guaranteed to be the original HTTP bytes or SSE frame.
 
 ```typescript
 const openRouterModel = models.getModel('openrouter', 'openrouter/auto')!;
@@ -1337,7 +1336,7 @@ Custom models can carry `headers` (e.g. proxies behind bot detection) and `compa
 
 Some OpenAI-compatible servers do not understand the `developer` role used for reasoning-capable models. For those providers, set `compat.supportsDeveloperRole` to `false` so the system prompt is sent as a `system` message instead. If the server also does not support `reasoning_effort`, set `compat.supportsReasoningEffort` to `false` too. This commonly applies to Ollama, vLLM, SGLang, and similar OpenAI-compatible servers.
 
-Use model-level `thinkingLevelMap` to describe model-specific thinking controls. Keys are pi thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Missing standard levels through `high` use provider defaults; `xhigh` and `max` are opt-in and require a non-null map entry. String values are sent to the provider, `null` marks a level unsupported, and maps may skip levels.
+Use model-level `thinkingLevelMap` to describe model-specific thinking controls. Keys are Octocode thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Missing standard levels through `high` use provider defaults; `xhigh` and `max` are opt-in and require a non-null map entry. String values are sent to the provider, `null` marks a level unsupported, and maps may skip levels.
 
 ```typescript
 const ollamaReasoningModel: Model<'openai-completions'> = {
@@ -1418,8 +1417,8 @@ interface OpenAICompletionsCompat {
   requiresThinkingAsText?: boolean;  // Whether thinking blocks must be converted to text (default: false)
   requiresReasoningContentOnAssistantMessages?: boolean; // Whether all replayed assistant messages must include empty reasoning_content when reasoning is enabled (default: auto-detected for DeepSeek)
   thinkingFormat?: 'openai' | 'openrouter' | 'deepseek' | 'together' | 'baseten' | 'zai' | 'qwen' | 'chat-template' | 'qwen-chat-template' | 'string-thinking' | 'ant-ling'; // Format for reasoning param: 'openai' uses reasoning_effort, 'openrouter' uses reasoning: { effort }, 'deepseek' uses thinking: { type } plus reasoning_effort when supported, 'together' uses reasoning: { enabled } plus reasoning_effort when supported, 'baseten' uses configurable chat_template_args plus reasoning_effort when supported, 'zai' uses thinking: { type }, 'qwen' uses enable_thinking, 'chat-template' uses configurable chat_template_kwargs, 'qwen-chat-template' uses chat_template_kwargs.enable_thinking and preserve_thinking, 'string-thinking' uses top-level thinking, 'ant-ling' uses reasoning: { effort } only for mapped efforts (default: openai)
-  chatTemplateKwargs?: Record<string, string | number | boolean | null | { '$var': 'thinking.enabled' | 'thinking.effort' | 'thinking.budget'; omitWhenOff?: boolean }>; // chat_template_kwargs values; use $var for pi-controlled thinking values
-  chatTemplateArgs?: Record<string, string | number | boolean | null | { '$var': 'thinking.enabled' | 'thinking.effort' | 'thinking.budget'; omitWhenOff?: boolean }>; // chat_template_args values for thinkingFormat: 'baseten'; use $var for pi-controlled thinking values
+  chatTemplateKwargs?: Record<string, string | number | boolean | null | { '$var': 'thinking.enabled' | 'thinking.effort' | 'thinking.budget'; omitWhenOff?: boolean }>; // chat_template_kwargs values; use $var for Octocode-controlled thinking values
+  chatTemplateArgs?: Record<string, string | number | boolean | null | { '$var': 'thinking.enabled' | 'thinking.effort' | 'thinking.budget'; omitWhenOff?: boolean }>; // chat_template_args values for thinkingFormat: 'baseten'; use $var for Octocode-controlled thinking values
   thinkingTokenBudgetField?: 'thinking_token_budget' | 'thinking_budget' | 'thinking_budget_tokens'; // Top-level field that caps reasoning tokens from thinkingBudgets (vLLM / Qwen / llama.cpp). Off by default.
   supportsThinkingTokenBudget?: boolean; // Alias for thinkingTokenBudgetField: 'thinking_token_budget' (vLLM). Prefer thinkingTokenBudgetField. Default: false.
   cacheControlFormat?: 'anthropic';  // Anthropic-style cache_control on system prompt, last tool, and last user/assistant text content

@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { sameProcess } from "../shared/process.ts";
 
 /**
- * The one liveness test for a Octocode session (backlog claims, `/octocode sessions`, the sweep): the pid recorded in its
+ * The one liveness test for a Octocode session (backlog claims, `/resume`, the sweep): the pid recorded in its
  * `sessions` row, when that process still runs. The team's `agents` table cannot stand in for it: a session has a row
  * there only after it joins the team, and most never do. `started` is the process start time recorded with the pid
  * (`pid_started`): a crashed session whose pid the system gave to another process is not running. A row without one

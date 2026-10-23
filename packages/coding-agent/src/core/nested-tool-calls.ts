@@ -1,6 +1,5 @@
 /**
- * Tool calls that a tool makes while it runs (`ctx.executeTool()`), for example from codemode
- * scripts. The agent loop does not know about them: the session runs each one through the agent's
+ * Tool calls that a tool makes while it runs (`ctx.executeTool()`). The agent loop does not know about them: the session runs each one through the agent's
  * tool pipeline (`runToolCall`) with its own hooks, emits `tool_execution_*` events with
  * `parentToolCallId`, and records the calls and their usage on the model-issued call's tool result
  * message.
@@ -33,7 +32,7 @@ export const NESTED_CALL_LIMITS = {
 const encoder = new TextEncoder();
 
 /** What the nested calls of one model-issued tool call leave on its tool result message. */
-export interface NestedCallSummary {
+interface NestedCallSummary {
 	/** Becomes `nestedCalls`. Undefined when no nested call was made. */
 	calls: NestedToolCalls | undefined;
 	/** Summed `usage` of the nested results, added to the message's `usage`. */
@@ -100,7 +99,7 @@ export class NestedCallRecorder {
 	}
 }
 
-export interface NestedToolCallOptions {
+interface NestedToolCallOptions {
 	/** Defaults to the calling tool's signal. */
 	signal?: AbortSignal;
 	/** Receives partial results of the nested tool, in addition to `tool_execution_update` events. */

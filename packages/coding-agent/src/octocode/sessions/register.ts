@@ -119,7 +119,7 @@ const hasUserMessage = (entries: readonly Entry[]) =>
 	entries.some((entry) => entry.type === "message" && entry.message?.role === "user");
 
 /**
- * The session extras (`sessions` table of the agent database), its retention sweep, `/octocode sessions` (`/sessions`)
+ * The session extras (`sessions` table of the agent database), its retention sweep, `/resume` (`/sessions`)
  * and the resume brief shown when a saved session is resumed. Octocode owns the sessions themselves (files, names, first
  * messages). Database failures never break the session: the feature warns once and stays out of the way. Git runs off
  * the event loop, so a slow repository never stalls a turn.

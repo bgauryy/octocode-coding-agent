@@ -13,9 +13,9 @@ type OAuthDeviceCodeIncompletePollResult =
 	| { status: "slow_down"; intervalSeconds?: number }
 	| { status: "failed"; message: string };
 
-export type OAuthDeviceCodePollResult<T> = OAuthDeviceCodeIncompletePollResult | { status: "complete"; value: T };
+type OAuthDeviceCodePollResult<T> = OAuthDeviceCodeIncompletePollResult | { status: "complete"; value: T };
 
-export type OAuthDeviceCodePollOptions<T> = {
+type OAuthDeviceCodePollOptions<T> = {
 	intervalSeconds?: number;
 	expiresInSeconds?: number;
 	waitBeforeFirstPoll?: boolean;
@@ -23,7 +23,7 @@ export type OAuthDeviceCodePollOptions<T> = {
 	signal: AbortSignal;
 };
 
-export function abortableSleep(ms: number, signal: AbortSignal, cancelMessage: string): Promise<void> {
+function abortableSleep(ms: number, signal: AbortSignal, cancelMessage: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (signal.aborted) {
 			reject(new Error(cancelMessage));

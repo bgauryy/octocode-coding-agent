@@ -1,0 +1,1422 @@
+[
+  {
+    "name": "write-control",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": []
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "write-edit-deny",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "write-read-deny",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "write-edit-bare",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "read-control",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": []
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET"
+  },
+  {
+    "name": "read-read-deny",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "read-edit-deny",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET"
+  },
+  {
+    "name": "read-read-bare",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET"
+  },
+  {
+    "name": "cat-read-deny",
+    "command": "cat input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tee-edit-deny",
+    "command": "printf WRITE | tee original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "append-edit-deny",
+    "command": "printf APPEND >> original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "devnull-edit-deny",
+    "command": "printf WRITE > /dev/null",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(//dev/null)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "fddup-edit-deny",
+    "command": "printf DUP 1>&2",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "both-file-rules",
+    "command": "cat < input.txt > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)",
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "edit-star",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(*)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "read-star",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(*)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET"
+  },
+  {
+    "name": "only-edit-rule",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "only-read-rule",
+    "command": "cat < input.txt",
+    "rules": {
+      "deny": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "ask-edit-manual",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "ask": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "ask-edit-bypass",
+    "command": "printf WRITE > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "ask": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "ask-read-bypass",
+    "command": "cat < input.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "ask": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET"
+  },
+  {
+    "name": "ask-multiple",
+    "command": "printf FIRST > first.txt; printf SECOND > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "ask": [
+        "Edit(./original.txt)",
+        "Edit(./first.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "SECOND",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": "FIRST",
+        "original.txt": "SECOND",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "allow-edit-only",
+    "command": "node -p 42 > original.txt",
+    "rules": {
+      "allow": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": "42\n",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "deny-later-command",
+    "command": "printf FIRST > first.txt; printf SECOND > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-later-redirect",
+    "command": "printf WRITE > first.txt > original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-tee-multiple",
+    "command": "printf WRITE | tee first.txt original.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-quoted-target",
+    "command": "printf WRITE > 'original.txt'",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {},
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-output-symlink",
+    "command": "printf WRITE > alias.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n",
+      "original.txt": "BEFORE"
+    },
+    "symlinks": {
+      "alias.txt": "original.txt"
+    },
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": "BEFORE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": "BEFORE",
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-dangling-symlink",
+    "command": "printf WRITE > alias.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {
+      "alias.txt": "original.txt"
+    },
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-input-symlink",
+    "command": "cat < alias.txt",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "files": {
+      "input.txt": "INPUT_SECRET\n"
+    },
+    "symlinks": {
+      "alias.txt": "input.txt"
+    },
+    "observe_files": [
+      "first.txt",
+      "original.txt",
+      "input.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "inside-broad",
+    "rules": {
+      "allow": [
+        "Bash"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "inside-node-prefix",
+    "rules": {
+      "allow": [
+        "Bash(node *)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "inside-printf-prefix",
+    "rules": {
+      "allow": [
+        "Bash(printf *)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf WRITE > original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": "WRITE",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "inside-node-prefix-edit",
+    "rules": {
+      "allow": [
+        "Bash(node *)",
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "outside-node-prefix",
+    "rules": {
+      "allow": [
+        "Bash(node *)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > ../outside.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "outside-broad",
+    "rules": {
+      "allow": [
+        "Bash"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > ../outside.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "outside-prefix-edit-relative",
+    "rules": {
+      "allow": [
+        "Bash(node *)",
+        "Edit(../outside.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > ../outside.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "outside-prefix-edit-absolute",
+    "rules": {
+      "allow": [
+        "Bash(node *)",
+        "Edit(/$CASE_ROOT/outside.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > ../outside.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "protected-broad",
+    "rules": {
+      "allow": [
+        "Bash"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > .claude/generated.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      ".claude/generated.txt"
+    ],
+    "files": {
+      ".claude/.fixture": ""
+    }
+  },
+  {
+    "name": "protected-broad-edit",
+    "rules": {
+      "allow": [
+        "Bash",
+        "Edit(./.claude/generated.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > .claude/generated.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      ".claude/generated.txt"
+    ],
+    "files": {
+      ".claude/.fixture": ""
+    }
+  },
+  {
+    "name": "protected-scoped-edit",
+    "rules": {
+      "allow": [
+        "Bash(node *)",
+        "Edit(./.claude/generated.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > .claude/generated.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      ".claude/generated.txt"
+    ],
+    "files": {
+      ".claude/.fixture": ""
+    }
+  },
+  {
+    "name": "dynamic-broad",
+    "rules": {
+      "allow": [
+        "Bash(*)"
+      ]
+    },
+    "mode": "manual",
+    "command": "OUT=original.txt; printf WRITE > \"$OUT\"",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "WRITE",
+        ".claude/generated.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      ".claude/generated.txt"
+    ],
+    "files": {
+      ".claude/.fixture": ""
+    }
+  },
+  {
+    "name": "dynamic-scoped",
+    "rules": {
+      "allow": [
+        "Bash(printf *)"
+      ]
+    },
+    "mode": "manual",
+    "command": "OUT=original.txt; printf WRITE > \"$OUT\"",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": "WRITE",
+        ".claude/generated.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      ".claude/generated.txt"
+    ],
+    "files": {
+      ".claude/.fixture": ""
+    }
+  },
+  {
+    "name": "tee-redirected-pipeline",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf WRITE | tee > /dev/null original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "WRITE",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "tee-command-wrapper",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf WRITE | command tee original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": null
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied",
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "dynamic-scoped-deny",
+    "rules": {
+      "allow": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "OUT=original.txt; printf WRITE > \"$OUT\"",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null,
+        "../outside.txt": null
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied",
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  },
+  {
+    "name": "readwrite-edit-deny",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat <> original.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "",
+        "input.txt": "INPUT_SECRET"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "files": {
+      "input.txt": "INPUT_SECRET"
+    },
+    "observe_files": [
+      "original.txt",
+      "input.txt"
+    ]
+  },
+  {
+    "name": "readwrite-read-deny",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./input.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat <> input.txt",
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET"
+      }
+    },
+    "tool_error": false,
+    "result_contains": "INPUT_SECRET",
+    "files": {
+      "input.txt": "INPUT_SECRET"
+    },
+    "observe_files": [
+      "original.txt",
+      "input.txt"
+    ]
+  },
+  {
+    "name": "absolute-alias-target-grant",
+    "rules": {
+      "allow": [
+        "Bash(node *)",
+        "Edit(./original.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "node -p 42 > $MARKER",
+    "expected": {
+      "exit": 0,
+      "hook_count": 1,
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null,
+    "observe_files": [
+      "original.txt",
+      "../outside.txt"
+    ]
+  }
+]

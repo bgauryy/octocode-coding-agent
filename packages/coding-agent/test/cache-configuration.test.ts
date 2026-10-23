@@ -77,6 +77,22 @@ describe("cache configuration", () => {
 			).options,
 		).toEqual({ cacheRetention: "none", instructionCacheRetention: "none" });
 	});
+	it("caps history at the instruction retention, since a longer history breakpoint cannot follow a shorter one", () => {
+		environment();
+		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", "short");
+		const policy = resolveConfiguredCache(model, undefined, {}, [{ source: "global", values: { cacheRetention: "long" } }]);
+		expect(policy.options).toEqual({ cacheRetention: "short", instructionCacheRetention: "short" });
+		expect(policy.sources.cacheRetention).toBe("global (capped by instruction retention)");
+		// Equal or longer instruction retention is untouched; "none" instructions leave history as configured.
+		expect(resolveConfiguredCache(model, undefined, { cacheRetention: "long" }).options).toEqual({
+			cacheRetention: "long",
+			instructionCacheRetention: "long",
+		});
+		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", "none");
+		expect(
+			resolveConfiguredCache(model, undefined, {}, [{ source: "global", values: { cacheRetention: "long" } }]).options,
+		).toEqual({ cacheRetention: "long", instructionCacheRetention: "none" });
+	});
 	it("rejects invalid values without echoing them", () => {
 		environment();
 		vi.stubEnv("OCTOCODE_CACHE_RETENTION", "private-invalid-value");

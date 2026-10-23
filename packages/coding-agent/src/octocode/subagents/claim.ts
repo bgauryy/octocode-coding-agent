@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ReportStatus } from "../instructions/report.ts";
 import { teamTask } from "../instructions/task.ts";
 import { envInt } from "../shared/env.ts";
 import { shortPath } from "../shared/format.ts";
@@ -10,7 +11,7 @@ import type { Background } from "./command.ts";
 import { agentScratch, dropEmptyScratch, type ReadReports, type ReportQueue, scratchNames } from "./handoff.ts";
 import { type ModelRoute, routeModel } from "./model.ts";
 import type { Identity } from "./process.ts";
-import { type AgentProfile, GENERAL_PROFILE } from "./profiles.ts";
+import { type AgentProfile, GENERAL_PROFILE, profileSelectsTool, profileTools } from "./profiles.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
@@ -26,14 +27,23 @@ export function maxSubagents(env: NodeJS.ProcessEnv = process.env): number {
 const SUBAGENT_LINGER_ENV = "OCTOCODE_SUBAGENT_LINGER_SECONDS";
 
 /** Seconds a finished background subagent stays reachable (a message resumes its saved conversation); 0 = off. */
-export function lingerSeconds(env: NodeJS.ProcessEnv = process.env): number {
+function lingerSeconds(env: NodeJS.ProcessEnv = process.env): number {
 	return Math.max(0, envInt(env, SUBAGENT_LINGER_ENV, 0));
+}
+
+/** Seconds a background run that reported `blocked` stays resumable even with the linger setting at 0: it waits for an answer. */
+export const BLOCKED_LINGER_SECONDS = 600;
+
+/** The window a finished background run stays reachable: the setting, or at least `BLOCKED_LINGER_SECONDS` after a `blocked` report. */
+export function reachableSeconds(outcome: ReportStatus | undefined, env: NodeJS.ProcessEnv = process.env): number {
+	const seconds = lingerSeconds(env);
+	return outcome === "blocked" ? Math.max(seconds, BLOCKED_LINGER_SECONDS) : seconds;
 }
 
 /** The refusal for a resume while every slot is taken (a message is answered now; it does not wait for a slot). */
 export function subagentLimitError(active: Iterable<string>, limit: number): string {
 	const ids = [...active];
-	return `${ids.length} subagents are already running${ids.length ? ` (${ids.join(", ")})` : ""}; the limit is ${limit}. Wait for one to finish (background answers arrive as messages), pass the work to a running subagent with \`sendMessage\`, or do it yourself. The limit is set by ${MAX_SUBAGENTS_ENV}.`;
+	return `${ids.length} subagents are already running${ids.length ? ` (${ids.join(", ")})` : ""}; the limit is ${limit}. Wait for one to finish (background answers arrive as messages), pass the work to a running subagent with \`agent\` type \`message\`, or do it yourself. The limit is set by ${MAX_SUBAGENTS_ENV}.`;
 }
 
 /**
@@ -107,6 +117,7 @@ interface AgentParams {
 	goal: string;
 	profile?: string;
 	model?: string;
+	headless?: boolean;
 	collaborate?: boolean;
 }
 
@@ -130,16 +141,22 @@ type RunPlan = Pick<Run, "profile" | "route">;
  */
 export function planRun(
 	profiles: Map<string, AgentProfile>,
-	params: Pick<AgentParams, "profile" | "model">,
+	params: Pick<AgentParams, "profile" | "model" | "headless">,
 	ctx: Pick<ExtensionContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
 ): RunPlan {
-	const profile = params.profile ? profiles.get(params.profile) : undefined;
+	let profile = params.profile ? profiles.get(params.profile) : undefined;
 	if (params.profile && !profile) {
 		const why = refused.get(params.profile);
 		throw new Error(
 			`Unknown profile "${params.profile}". Available: ${[...profiles.keys()].join(", ")}${why ? `\n"${params.profile}" was refused when profiles loaded: ${why}` : ""}`,
 		);
+	}
+	profileTools(profile);
+	if (params.headless !== undefined) {
+		if (!profile || !profileSelectsTool(profile, "browser", []))
+			throw new Error("headless requires a browser-enabled profile; use profile: browser.");
+		profile = { ...profile, headless: params.headless };
 	}
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model.
 	const route = routeModel({
@@ -184,6 +201,7 @@ export function claimRun(
 		role: profile?.name ?? GENERAL_PROFILE,
 		goal: params.goal,
 		parentSession: ctx.sessionManager.getSessionId(),
+		parentTranscript: ctx.sessionManager.getSessionFile(),
 		...(parentId ? { parentId } : {}),
 		...(collaborate ? { collaborate } : {}),
 	};

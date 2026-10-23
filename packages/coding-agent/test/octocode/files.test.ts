@@ -7,7 +7,14 @@ import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
-import { FileGuard, formatOutcomes, registerFileTool, returnedContent } from "../../src/octocode/files/tool.ts";
+import {
+	CORE_READER,
+	FileGuard,
+	formatOutcomes,
+	LOCAL_FETCH_READER,
+	registerFileTool,
+	returnedContent,
+} from "../../src/octocode/files/tool.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell.ts";
 import { sha256 } from "../../src/octocode/shared/atomic.ts";
 import { canonicalPath, readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
@@ -25,11 +32,25 @@ describe("file tool", () => {
 		fs.writeFileSync(file, "one");
 		for (const mode of ["write", "edit", "delete"] as const)
 			expect(guard.check(file, mode, "a.txt")).toMatch(
-				/already exists and was not read in this session\. Read it with `read`/,
+				/already exists and was not read in this session\. Read it with `localFetch`/,
 			);
 		guard.record(file);
 		expect(guard.check(file, "write", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
+	});
+
+	it("names the reader the session actually has: core `read` when Octocode's local readers are unavailable", () => {
+		const dir = tmp();
+		const file = path.join(dir, "a.txt");
+		fs.writeFileSync(file, "one\ntwo\nthree\nfour");
+		const guard = new FileGuard();
+		guard.reader = CORE_READER;
+		expect(guard.check(file, "edit", "a.txt")).toMatch(/was not read in this session\. Read it with `read`/);
+		guard.record(file, undefined, true, [1, 2]);
+		expect(guard.check(file, "write", "a.txt")).toMatch(/Read the rest with `read` \(offset=3, limit=2\)/);
+		fs.writeFileSync(file, "changed");
+		expect(guard.check(file, "delete", "a.txt")).toMatch(/Read it again with `read`/);
+		expect(new FileGuard().reader).toBe(LOCAL_FETCH_READER);
 	});
 
 	it("detects files changed on disk after the last read and resets after compaction", () => {
@@ -269,6 +290,31 @@ describe("file tool", () => {
 		expect(guard.inspect(file, "edit", "a.txt").refusal).toBeUndefined();
 	});
 
+	it("credits a localFetch read only when the model called it: a codemode script's read, whose content it may withhold, is no evidence", async () => {
+		const cwd = tmp();
+		const file = path.join(cwd, "a.txt");
+		fs.writeFileSync(file, "one");
+		const guard = new FileGuard();
+		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
+		registerFileTool(
+			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
+			guard,
+			fakePermission(),
+		);
+		const localFetch = (extra: Record<string, unknown>) => ({
+			toolName: "mcp__octocode__localFetch",
+			input: { queries: [{ path: file, fullContent: true }] },
+			content: [{ type: "text", text: "read, content withheld" }],
+			details: { localReads: [{ file: fs.realpathSync(file), sha256: sha256("one"), size: 3, whole: true }] },
+			isError: false,
+			...extra,
+		});
+		await handlers.get("tool_result")!(localFetch({ toolCallId: "script/1", parentToolCallId: "script" }), { cwd });
+		expect(guard.inspect(file, "edit", "a.txt").refusal).toMatch(/not read in this session/);
+		await handlers.get("tool_result")!(localFetch({ toolCallId: "direct" }), { cwd });
+		expect(guard.inspect(file, "edit", "a.txt").refusal).toBeUndefined();
+	});
+
 	it("stops applying a batch once it is aborted: a later delete does not run", async () => {
 		const cwd = tmp();
 		fs.writeFileSync(path.join(cwd, "b.txt"), "keep");
@@ -494,7 +540,7 @@ describe("file tool", () => {
 					{ oldText: "const a=1;", newText: "x" },
 					{ oldText: "const b=2;", newText: "y" },
 				]),
-			).rejects.toThrow(/edits\[1\] \(oldText "const b=2;"\) is no longer in it[\s\S]*Read it again with `read`/);
+			).rejects.toThrow(/edits\[1\] \(oldText "const b=2;"\) is no longer in it[\s\S]*Read it again with `localFetch`/);
 			expect(fs.readFileSync(file, "utf8")).toBe("const a=1;\nconst b = 2;\n");
 		});
 
@@ -554,7 +600,7 @@ describe("file tool", () => {
 			},
 			{ cwd },
 		);
-		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*offset=1\)/;
+		const refusal = /you have seen lines 11–15 of its 30 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/;
 		expect(guard.check(file, "write", "a.txt")).toMatch(refusal);
 		// A delete needs only proof that the read was of the current file; an edit its exact match.
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
@@ -602,7 +648,7 @@ describe("file tool", () => {
 		const reloaded = new FileGuard();
 		reloaded.restore(contextReads(session as never));
 		expect(reloaded.check(file, "write", "a.txt")).toMatch(
-			/you have seen lines 1–5 of its 30 lines[\s\S]*offset=6\)/,
+			/you have seen lines 1–5 of its 30 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
 		);
 		expect(reloaded.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(reloaded.check(file, "edit", "a.txt")).toBeUndefined();
@@ -675,7 +721,7 @@ describe("file tool", () => {
 		expect(seenFiles([restored], dir).get(file)?.partial).toBe(true);
 		const guard = new FileGuard();
 		guard.restore([{ file, at: Date.now() + 1000, partial: true }]);
-		expect(guard.check(file, "write", "a.txt")).toMatch(/you have seen only part of its 1 lines[\s\S]*offset=1\)/);
+		expect(guard.check(file, "write", "a.txt")).toMatch(/you have seen only part of its 1 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/);
 		expect(guard.check(file, "delete", "a.txt")).toBeUndefined();
 		expect(guard.check(file, "edit", "a.txt")).toBeUndefined();
 	});
@@ -741,7 +787,7 @@ describe("file tool", () => {
 			await read({}, text(1, 2000), { details: cut });
 			const refusal = await run("write").catch((error: Error) => error.message);
 			expect(refusal).toMatch(
-				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `read` \(offset=2001\)/,
+				/a write replaces the whole file, but you have seen lines 1–2000 of its 3000 lines\. Read the rest with `localFetch` \(ranges=\["2001-[0-9]+"\]\)/,
 			);
 			// Never asks for what a big file cannot give.
 			expect(refusal).not.toMatch(/whole file \(no offset|read the whole file/);
@@ -770,7 +816,7 @@ describe("file tool", () => {
 				details: { truncation: { truncated: true, outputLines: 500 } },
 			});
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*offset=1\)/,
+				/you have seen lines 1501–2000 of its 3001 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
 			);
 		});
 
@@ -849,13 +895,13 @@ describe("file tool", () => {
 			// Same line count: the lines the agent saw are where it saw them.
 			await edit([{ oldText: "line 2\n", newText: "LINE 2\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*offset=6\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/offset=6\)/);
+			await expect(run("write")).rejects.toThrow(/ranges=\["6-[0-9]+"\]\)/);
 			// A different line count moved what lies below, so the ranges start over.
 			await edit([{ oldText: "LINE 2\n", newText: "LINE 2\nextra\n" }]);
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen only part of its 3001 lines[\s\S]*offset=1\)/,
+				/you have seen only part of its 3001 lines[\s\S]*ranges=\["1-[0-9]+"\]\)/,
 			);
 			// An edit keeps the digest it wrote, so the next edit and a delete still pass; reading the rest lifts the write refusal.
 			await edit([{ oldText: "LINE 2\nextra\n", newText: "LINE 2\n" }]);
@@ -877,8 +923,8 @@ describe("file tool", () => {
 		it("counts the tool's own write as a whole view", async () => {
 			const { file, guard, read, run } = setup();
 			await read({ offset: 1, limit: 5 }, text(1, 5));
-			expect(guard.check(file, "write", "big.txt")).toMatch(/offset=6\)/);
-			await expect(run("write")).rejects.toThrow(/offset=6\)/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges=\["6-[0-9]+"\]\)/);
+			await expect(run("write")).rejects.toThrow(/ranges=\["6-[0-9]+"\]\)/);
 			guard.restore([]);
 			guard.record(file);
 			await run("write");
@@ -894,9 +940,9 @@ describe("file tool", () => {
 			await read({ offset: 1, limit: 3 }, "one\n2\nthree");
 			// Only what the new read showed counts: the outside line (and the rest) are unseen.
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–3 of its 7 lines[\s\S]*offset=4\)/,
+				/you have seen lines 1–3 of its 7 lines[\s\S]*ranges=\["4-[0-9]+"\]\)/,
 			);
-			await expect(run("write")).rejects.toThrow(/offset=4\)/);
+			await expect(run("write")).rejects.toThrow(/ranges=\["4-[0-9]+"\]\)/);
 			await read({ offset: 4 }, "four\nfive\nsix\noutside");
 			await run("write");
 			expect(fs.readFileSync(file, "utf8")).toBe("new\n");
@@ -964,7 +1010,7 @@ describe("file tool", () => {
 			).toEqual([{ file, at: later + 20 }]);
 			guard.restore(reads(edit(0)));
 			expect(guard.check(file, "write", "big.txt")).toMatch(
-				/you have seen lines 1–5 of its 3000 lines[\s\S]*offset=6\)/,
+				/you have seen lines 1–5 of its 3000 lines[\s\S]*ranges=\["6-[0-9]+"\]\)/,
 			);
 			guard.restore(reads(whole));
 			expect(guard.check(file, "write", "big.txt")).toBeUndefined();
@@ -1022,7 +1068,7 @@ describe("file tool", () => {
 					},
 				} as never),
 			);
-			expect(guard.check(file, "write", "big.txt")).toMatch(/offset=2001/);
+			expect(guard.check(file, "write", "big.txt")).toMatch(/ranges=\["2001-/);
 		});
 	});
 
@@ -1162,7 +1208,7 @@ describe("file tool", () => {
 		);
 		expect(fs.existsSync(target)).toBe(false);
 		// Octocode's home (trust decisions, memory, sessions) is refused even when the user would allow it, in full too.
-		const state = path.join(process.env.OCTOCODE_HOME!, "trust.json");
+		const state = path.join(process.env.OCTOCODE_HOME!, "pi-trust.json");
 		const allowing = fakeCtx({ cwd, ui: { selects: ["Allow once"] } });
 		await expect(write(state, allowing)).rejects.toThrow(/Octocode's state folder/);
 		expect(allowing.ui.selects).toEqual(["Allow once"]);

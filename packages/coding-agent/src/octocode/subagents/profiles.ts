@@ -10,22 +10,28 @@ import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../shared/atomic.ts";
 import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
+import { isMcpTool, LOCAL_RESEARCH_TOOLS } from "../shared/octocode-tools.ts";
 
 export interface AgentProfile {
 	name: string;
 	description: string;
 	prompt: string;
 	tools?: string;
-	/** Comma-separated tools the child must not have (Octocode's --exclude-tools), e.g. `file` for read-only profiles. */
+	/** Comma-separated optional tools the child must not have (Octocode's --exclude-tools). */
 	excludeTools?: string;
 	/** Preferred model: `provider/id`, a bare id, or a purpose (`small`, `medium`), optionally `:thinking`. Unavailable here: the child runs on the parent's model. */
 	model?: string;
-	/** When set, the child's `browser` tool opens a visible Chrome on the persistent profile (logins stay). */
-	visibleBrowser?: boolean;
-	/** False: the child starts no MCP servers (their tool schemas would be paid on every request for nothing). */
+	/** Browser mode: true (default) is headless; false uses visible Chrome and its persistent login profile. */
+	headless?: boolean;
+	/** Legacy opt-out, rejected because specialists require local research. */
 	mcp?: false;
 	/** True: the child runs the user's command hooks (`OCTOCODE_HOOKS`); by default subagents do not. */
 	hooks?: true;
+	/**
+	 * True: the child investigates and reports without changing source. It keeps `file` for its own reports, so its tools
+	 * cannot say this; its policy does (`OCTOCODE_READ_ONLY`).
+	 */
+	readOnly?: true;
 	/** Classes the profile asks the user to allow its child (`permissions:` front matter, only the declarable ones); the spawn prompt lists them. */
 	permissions?: ActionClass[];
 	/** Names in `permissions:` that cannot be declared; ignored, and reported when the profiles load. */
@@ -37,13 +43,10 @@ export interface AgentProfile {
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
 
-/**
- * Tools every subagent keeps whatever its profile says: `sendMessage` and `coordinate` are how it reaches its parent
- * (a `--tools` allowlist drops extension tools it does not name), `read` is how it reads what it is sent, `archive`
- * how it reads its parent's history (read-only). A profile with an allowlist gets them added when it loads; one that
- * excludes or removes them is refused.
- */
-export const CORE_TOOLS = ["read", "sendMessage", "coordinate", "archive"] as const;
+/** Every child can save files, communicate and recover history; local research is added separately. */
+export const CORE_TOOLS = ["file", "agent", "archive"] as const;
+/** Deferred MCP catalogs need discovery before the child can call their tools directly. */
+export const MCP_ACCESS_TOOLS = ["tool_search"] as const;
 
 const BUNDLED_DIR = getSubagentsDir();
 
@@ -110,6 +113,9 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 		if (value === undefined || typeof value === "boolean") return value;
 		throw new Error(`${key} must be true or false, not ${JSON.stringify(value)}`);
 	};
+	if (flag("mcp") === false) throw new Error(mcpRequired(name));
+	const visibleBrowser = flag("visibleBrowser");
+	const headless = flag("headless") ?? (visibleBrowser === undefined ? undefined : !visibleBrowser);
 	return {
 		name,
 		description: field("description") ?? "",
@@ -117,9 +123,9 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 		...(tools ? { tools: withCoreTools(tools, selected) } : {}),
 		...(excludeTools ? { excludeTools } : {}),
 		...(model ? { model } : {}),
-		...(flag("visibleBrowser") === true ? { visibleBrowser: true } : {}),
-		...(flag("mcp") === false ? { mcp: false as const } : {}),
+		...(headless === undefined ? {} : { headless }),
 		...(flag("hooks") === true ? { hooks: true as const } : {}),
+		...(flag("readOnly") === true ? { readOnly: true as const } : {}),
 		...(declared.length > 0 ? { permissions: declared } : {}),
 		...(ignored.length > 0 ? { ignoredPermissions: ignored } : {}),
 		hash: shortHash(text),
@@ -154,16 +160,21 @@ const matchesTool = (patterns: readonly string[], name: string): boolean =>
 const isRelative = (selected: readonly string[] | undefined): boolean =>
 	selected?.some((name) => /^[+-]/.test(name)) === true;
 
+const mcpRequired = (name: string): string =>
+	`Profile "${name}" disables MCP, but every specialist needs Octocode local research. Remove mcp: false.`;
+
 /**
- * An absolute allowlist replaces Octocode's whole selection, extension tools included, so it gets the core tools it does
- * not already match. A relative list (`+name`/`-name`) changes the default selection, which has them: it is unchanged.
+ * An absolute allowlist replaces the selection, so add missing shared capabilities. Relative lists are completed
+ * by profileTools at launch, after the parent defaults have been resolved.
  */
 function withCoreTools(tools: string, selected: readonly string[] | undefined): string {
 	if (isRelative(selected)) return tools;
-	return [...toolList(tools), ...CORE_TOOLS.filter((name) => !matchesTool(selected ?? [], name))].join(",");
+	// An allowlist without MCP entries implicitly keeps all MCP servers. Preserve that reach when adding local tools.
+	const required = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...(selected?.some(isMcpTool) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"])];
+	return [...toolList(tools), ...required.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
 
-/** A profile that excludes (any pattern matching) or removes (`-name`) a core tool would cut its child off from its parent: refused when it loads. */
+/** Reject selectors that remove the shared specialist capabilities. */
 function refuseCoreRemoval(
 	profile: string,
 	selected: readonly string[] | undefined,
@@ -171,11 +182,23 @@ function refuseCoreRemoval(
 ): void {
 	const excluded = toolList(excludeTools);
 	const removed = (selected ?? []).filter((entry) => entry.startsWith("-")).map((entry) => entry.slice(1));
-	const named = CORE_TOOLS.filter((name) => matchesTool(excluded, name) || removed.includes(name));
+	const named = [...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].filter(
+		(name) => matchesTool(excluded, name) || removed.includes(name),
+	);
 	if (named.length === 0) return;
 	throw new Error(
-		`Profile "${profile}" removes ${named.join(", ")} with excludeTools or a "-" entry in tools, but every subagent keeps ${CORE_TOOLS.join(", ")} to reach its parent. Remove ${named.length > 1 ? "them" : "it"} from the profile's excludeTools (a pattern such as "*" counts) or tools.`,
+		`Profile "${profile}" removes ${named.join(", ")} with excludeTools or a "-" entry in tools, but every specialist keeps file, communication, history and Octocode local research. Remove ${named.length > 1 ? "them" : "it"} from the profile's excludeTools (a pattern such as "*" counts) or tools.`,
 	);
+}
+
+/** Resolve the same child selection for launch and permission reach, including programmatic profiles. */
+export function profileTools(profile?: AgentProfile): string {
+	const selected = selectedTools(profile?.tools);
+	refuseCoreRemoval(profile?.name ?? GENERAL_PROFILE, selected, profile?.excludeTools);
+	if (profile?.mcp === false) throw new Error(mcpRequired(profile.name));
+	return !selected || isRelative(selected)
+		? [...(selected ?? []), ...[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`)].join(",")
+		: withCoreTools(profile!.tools!, selected);
 }
 
 /** Excluding our file tool also excludes the native tools it replaces, including when a pattern matches it. */
@@ -189,7 +212,7 @@ export function profileSelectsTool(
 	name: string,
 	defaults: readonly string[],
 ): boolean {
-	const selected = selectedTools(profile?.tools);
+	const selected = selectedTools(profileTools(profile));
 	return (
 		!matchesTool(profileExcludes(profile?.excludeTools), name) &&
 		(selected && !isRelative(selected)
@@ -200,14 +223,14 @@ export function profileSelectsTool(
 
 /** The workspace classes exposed by the child's native selection and Octocode's direct extension tools. */
 export function profileReach(profile: AgentProfile | undefined, defaultTools?: readonly string[]): ActionClass[] {
-	const nativeDefaults = ["read", "bash", "file"];
+	const nativeDefaults = ["bash", "file"];
 	const configured =
 		SettingsManager.inMemory(defaultTools ? { defaultTools: [...defaultTools] } : {}).getDefaultTools(
 			nativeDefaults,
 		) ?? nativeDefaults;
 	return [
 		...(profileSelectsTool(profile, "file", configured) ? ["file.workspace" as const] : []),
-		...(["bash", "powershell"].some((name) => profileSelectsTool(profile, name, configured))
+		...(profileSelectsTool(profile, "bash", configured)
 			? ["shell" as const]
 			: []),
 	];
@@ -267,6 +290,6 @@ export async function askSpawn(
 		...(signal ? { signal } : {}),
 	});
 	if (!verdict.allowed) throw new Error(verdict.message);
-	if (needsAnswer && verdict.via === "user") permission.markProfileSeen(seen);
+	if (needsAnswer && (verdict.via === "user" || verdict.via === "hook")) permission.markProfileSeen(seen);
 	return [...new Set([...(verdict.via === "mode" ? [] : reach), ...declared])];
 }

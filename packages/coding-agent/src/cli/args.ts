@@ -58,7 +58,7 @@ export interface Args {
 	diagnostics: Array<{ type: "warning" | "error"; message: string }>;
 }
 
-const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export function isValidThinkingLevel(level: string): level is ThinkingLevel {
 	return VALID_THINKING_LEVELS.includes(level as ThinkingLevel);
@@ -294,7 +294,8 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
-  ${APP_NAME} mcp <command>             Check MCP servers, sign in to or out of OAuth servers
+  ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
+  ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
   ${APP_NAME} migrate                   Convert historical configuration in the active Octocode home and project
   ${APP_NAME} research <args...>        Run the installed Octocode research CLI
   ${APP_NAME} native <args...>          Run the installed Octocode native CLI
@@ -402,14 +403,11 @@ ${chalk.bold("Examples:")}
   # Start with a specific thinking level
   ${APP_NAME} --thinking high "Solve this complex problem"
 
-  # Read a known file with only the read tool (no MCP tools)
-  ${APP_NAME} --no-mcp --tools read -p "Review src/index.ts"
+  # Fetch a known file with Octocode MCP
+  ${APP_NAME} --tools 'mcp__octocode__localFetch' -p "Review src/index.ts"
 
-  # Add codemode to the default tools
-  ${APP_NAME} --tools +codemode
-
-  # Codemode with only the tools of one MCP server
-  ${APP_NAME} --tools read,bash,codemode,'mcp__radius__*'
+  # Limit native tools to one MCP server
+  ${APP_NAME} --tools bash,'mcp__github__*'
 
   # Disable one tool while keeping the rest available
   ${APP_NAME} --exclude-tools ask_question
@@ -470,23 +468,18 @@ ${chalk.bold("Environment Variables:")}
   OCTOCODE_SHARE_VIEWER_URL              - Base URL for /share command (default: GitHub gist)
 
 ${chalk.bold("Built-in Tool Names:")}
-  read       - Read file contents
-  bash       - Execute bash commands
-  powershell - Execute PowerShell commands on Windows
+  bash       - Execute commands (type: bash or powershell)
   file       - Guarded file edits, writes and deletions
   backlog    - Track tasks and progress
   memory     - Store and retrieve durable notes
   archive    - Retrieve compacted conversation history
   web        - Search and fetch public web content
   browser    - Inspect and interact with browser pages
-  agent      - Delegate work to Octocode agents
-  externalAgent - Work with external agents
-  coordinate - Manage team coordination and file reservations
-  sendMessage - Message teammates
+  agent      - Task, external-agent, coordination and message modes
   askUser    - Ask structured questions
 
 Tool availability follows session mode and selection. MCP servers supply code search
-and additional tools; bash remains available for local search commands. Optional
-built-in integrations also provide codemode, tool_search and MCP resource tools.
+and local file retrieval. Optional integrations also provide tool_search
+and MCP resource tools.
 `);
 }

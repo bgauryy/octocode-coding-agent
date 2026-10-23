@@ -101,6 +101,8 @@ export interface ChildState {
 	/** `agent_settled` arrived: the child leaves on its own once its input is closed. */
 	settledSeen: boolean;
 	toolsRunning: number;
+	/** A model turn, reply or tool call was seen: the child got past its startup, so a crash after it is no startup failure. */
+	turnSeen: boolean;
 	/** The answer is in and the child holds for its background jobs. */
 	settling: boolean;
 	/** While busy (tools running, or settling after the answer), the child is hung only past this moment. */
@@ -109,6 +111,8 @@ export interface ChildState {
 	jobsMs: number;
 	lastActivity: string;
 	usage: Usage;
+	usageEntryIds: Set<string>;
+	toolUsageIds: Set<string>;
 	thought: Thought;
 	compactions: Compactions;
 	notices: ChildNotices;
@@ -121,11 +125,14 @@ export function newChildState(): ChildState {
 		running: false,
 		settledSeen: false,
 		toolsRunning: 0,
+		turnSeen: false,
 		settling: false,
 		busyUntil: 0,
 		jobsMs: 0,
 		lastActivity: "started",
 		usage: emptyUsage(),
+		usageEntryIds: new Set(),
+		toolUsageIds: new Set(),
 		thought: new Thought(),
 		compactions: { done: 0, aborted: 0, failed: 0 },
 		notices: { kept: [], more: 0 },
@@ -273,12 +280,22 @@ export function reduceEvent(
 			? [ui, { kind: "progress", update: { notices: structuredClone(state.notices), usage: state.usage } }]
 			: [ui];
 	}
-	// Calls a tool makes itself (a codemode script) are part of that call, not activity of their own.
+	// Calls a tool makes itself (another tool) are part of that call, not activity of their own.
 	if (event.parentToolCallId) return [];
 	const effects: ChildEffect[] = [];
 	const progress = (update: Omit<ChildProgress, "usage">) =>
 		effects.push({ kind: "progress", update: { ...update, usage: state.usage } });
+	if (type === "entry_appended" && isRecord(event.entry) && event.entry.type === "usage") {
+		const entry = event.entry;
+		if (typeof entry.id !== "string" || state.usageEntryIds.has(entry.id)) return effects;
+		state.usageEntryIds.add(entry.id);
+		addUsage(state.usage, entry.usage);
+		progress({});
+		return effects;
+	}
 	if (type === "agent_start") state.running = true;
+	if (type === "turn_start" || type === "message_update" || type === "tool_execution_start") state.turnSeen = true;
+	if (type === "message_end" && isRecord(event.message) && event.message.role === "assistant") state.turnSeen = true;
 	if (type === "compaction_start") {
 		state.lastActivity = "compacting its context";
 		progress({ compacting: true });
@@ -327,7 +344,17 @@ export function reduceEvent(
 	}
 	if (type !== "message_end" || !isRecord(event.message)) return effects;
 	const message = event.message;
-	if (message.role !== "assistant") return [...effects, { kind: "incoming", role: message.role }];
+	if (message.role !== "assistant") {
+		if (message.role === "toolResult" && isRecord(message.usage)) {
+			const id = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+			if (id === undefined || !state.toolUsageIds.has(id)) {
+				if (id !== undefined) state.toolUsageIds.add(id);
+				addUsage(state.usage, message.usage);
+				progress({});
+			}
+		}
+		return [...effects, { kind: "incoming", role: message.role }];
+	}
 	addUsage(state.usage, message.usage);
 	delete state.notices.lastError;
 	state.thought.reset();

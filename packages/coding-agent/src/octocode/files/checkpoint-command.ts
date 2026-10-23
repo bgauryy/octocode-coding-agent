@@ -9,7 +9,7 @@ import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";
 
 /*
- * Checkpoints wired to the session (the store is checkpoint.ts): turns, `/octocode rewind`, anchor labels, and the
+ * Checkpoints wired to the session (the store is checkpoint.ts): turns, `/rewind`, anchor labels, and the
  * restore offer before a fork or a tree move.
  */
 
@@ -51,7 +51,7 @@ function treeLeaf(ctx: ExtensionContext, targetId: string): string | null {
 }
 
 /**
- * Wire checkpoints to the session: one directory per session, a turn per user prompt, `/octocode rewind`, and a restore
+ * Wire checkpoints to the session: one directory per session, a turn per user prompt, `/rewind`, and a restore
  * offer before a fork or a tree navigation leaves turns that changed files.
  */
 export function registerCheckpoints(
@@ -64,6 +64,7 @@ export function registerCheckpoints(
 	// The first run opens one even without a prompt event; a prompt typed mid-run (a steer or follow-up) opens its turn at
 	// the next run, so edits in flight settle in the turn they were captured in.
 	let [begun, pending] = [false, false];
+	let currentContext: ExtensionContext | undefined;
 	const begin = () => {
 		checkpoints.beginTurn();
 		begun = true;
@@ -71,6 +72,7 @@ export function registerCheckpoints(
 		return undefined;
 	};
 	pi.on("session_start", async (event, ctx) => {
+		currentContext = ctx;
 		[begun, pending] = [false, false];
 		const id = ctx.sessionManager.getSessionId();
 		const dir = checkpointDir(id);
@@ -84,7 +86,7 @@ export function registerCheckpoints(
 				if (ctx.hasUI)
 					notify(
 						ctx.ui,
-						`Octocode could not carry the checkpoints to this fork (${errorMessage(error)}); /octocode rewind will not reach the parent's turns.`,
+						`Octocode could not carry the checkpoints to this fork (${errorMessage(error)}); /rewind will not reach the parent's turns.`,
 						"warning",
 					);
 			});
@@ -141,12 +143,15 @@ export function registerCheckpoints(
 	commands.add("rewind", {
 		description:
 			"rewind [turns] — undo file changes of the last N turns on this branch (default 1); files changed since are left alone",
-		complete: (prefix) => wordCompletions(["1", "2", "3"], prefix),
+		complete: (prefix) => {
+			const count = currentContext ? checkpoints.turnsOn(branchIds(currentContext)).length : 0;
+			return wordCompletions(Array.from({ length: count }, (_, index) => [String(index + 1), `Undo ${index + 1} turn${index ? "s" : ""}`]), prefix);
+		},
 		handler: async (args, ctx) => {
 			const value = args.trim();
 			const count = value === "" ? 1 : Number(value);
 			if ((value !== "" && !/^\d+$/.test(value)) || !Number.isSafeInteger(count) || count < 1)
-				return say(ctx, "Usage: /octocode rewind [turns] (positive integer)", "warning");
+				return say(ctx, "Usage: /rewind [turns] (positive integer)", "warning");
 			// Only this branch's turns: after a /tree move, turns on the branch left behind are not this conversation's.
 			const turns = checkpoints.turnsOn(branchIds(ctx)).slice(0, count);
 			if (turns.length === 0) {
@@ -159,7 +164,7 @@ export function registerCheckpoints(
 				pi.sendMessage(
 					{
 						customType: "octocode-rewind",
-						content: `The user ran /octocode rewind. ${describe(result, ctx.cwd, turns.length)} Those files are back to their earlier content: read them again before editing.`,
+						content: `The user ran /rewind. ${describe(result, ctx.cwd, turns.length)} Those files are back to their earlier content: read them again before editing.`,
 						display: false,
 					},
 					{ triggerTurn: false },

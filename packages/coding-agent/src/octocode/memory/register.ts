@@ -30,7 +30,7 @@ function agentStartQuery(event: BeforeAgentStartEvent): string {
 
 /**
  * Durable memories: the `memory` tool, automatic injection of pinned and relevant memories before each prompt (hidden
- * from the transcript), and `/octocode memory`. Project memories reach the model only in a trusted project.
+ * from the transcript), and `/memory`. Project memories reach the model only in a trusted project.
  */
 export function registerMemory(
 	pi: ExtensionAPI,

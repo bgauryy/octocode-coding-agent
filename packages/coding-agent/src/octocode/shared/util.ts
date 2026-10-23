@@ -286,6 +286,9 @@ export function addUsage(total: Usage, usage: unknown): void {
 	total.output += num(usage.output);
 	total.cacheRead += num(usage.cacheRead);
 	total.cacheWrite += num(usage.cacheWrite);
+	for (const key of ["cacheWrite1h", "cacheWrite12h", "reasoning"] as const) {
+		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) total[key] = (total[key] ?? 0) + usage[key];
+	}
 	total.totalTokens += num(usage.totalTokens);
 	const cost = isRecord(usage.cost) ? usage.cost : {};
 	total.cost.input += num(cost.input);

@@ -36,6 +36,8 @@ import {
 import type { McpTransport } from "./transports/transport.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/** Progress renews a request's idle timeout; this bounds its total time, so a server reporting forever still ends. */
+const DEFAULT_MAX_TOTAL_TIMEOUT_MS = 30 * 60_000;
 const MAX_LIST_PAGES = 1_000;
 
 type ClientState = "idle" | "connecting" | "connected" | "closed";
@@ -48,12 +50,17 @@ export interface McpClientOptions extends Implementation {
 	capabilities?: ClientCapabilities;
 	protocolVersion?: SupportedProtocolVersion;
 	requestTimeoutMs?: number;
+	/** The longest any request may take in total, progress included; `Infinity` removes the cap. Default 30 minutes. */
+	maxTotalTimeoutMs?: number;
 	roots?: readonly Root[] | (() => readonly Root[] | Promise<readonly Root[]>);
 }
 
 export interface McpRequestOptions {
 	signal?: AbortSignal;
+	/** Idle timeout: renewed by each progress notification. */
 	timeoutMs?: number;
+	/** Total timeout: progress does not extend it. */
+	maxTotalTimeoutMs?: number;
 	onProgress?: (progress: ProgressNotification) => void;
 }
 
@@ -61,6 +68,9 @@ interface PendingRequest {
 	resolve: (value: unknown) => void;
 	reject: (reason: unknown) => void;
 	timeoutMs: number;
+	maxTotalTimeoutMs: number;
+	/** When the total timeout ends (epoch ms), or Infinity. */
+	deadline: number;
 	timer: ReturnType<typeof setTimeout> | undefined;
 	signal: AbortSignal | undefined;
 	onAbort: () => void;
@@ -413,11 +423,14 @@ export class McpClient {
 			method,
 			...(requestParams === undefined ? {} : { params: requestParams }),
 		};
+		const total = options.maxTotalTimeoutMs ?? this.options.maxTotalTimeoutMs ?? DEFAULT_MAX_TOTAL_TIMEOUT_MS;
 		return new Promise<unknown>((resolve, reject) => {
 			const entry: PendingRequest = {
 				resolve,
 				reject,
 				timeoutMs: options.timeoutMs ?? this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+				maxTotalTimeoutMs: total,
+				deadline: Number.isFinite(total) && total > 0 ? Date.now() + total : Number.POSITIVE_INFINITY,
 				timer: undefined,
 				signal: options.signal,
 				// The spec forbids cancelling `initialize`.
@@ -550,12 +563,21 @@ export class McpClient {
 		if (isObject(params) && isJsonRpcId(params.requestId)) this.incoming.get(params.requestId)?.abort(params.reason);
 	}
 
+	/** Arms whichever ends first: the idle timeout (renewed by progress) or the request's total deadline. */
 	private armTimeout(id: JsonRpcId, entry: PendingRequest): void {
 		if (entry.timer) clearTimeout(entry.timer);
-		if (!Number.isFinite(entry.timeoutMs) || entry.timeoutMs <= 0) return;
-		entry.timer = setTimeout(() => {
-			this.cancelPending(id, new McpTimeoutError(entry.timeoutMs), entry.cancellable, "Request timed out");
-		}, entry.timeoutMs);
+		const idle = Number.isFinite(entry.timeoutMs) && entry.timeoutMs > 0 ? entry.timeoutMs : Number.POSITIVE_INFINITY;
+		const remaining = entry.deadline - Date.now();
+		const delay = Math.min(idle, remaining);
+		if (!Number.isFinite(delay)) return;
+		const total = remaining <= idle;
+		entry.timer = setTimeout(
+			() => {
+				const error = new McpTimeoutError(total ? entry.maxTotalTimeoutMs : entry.timeoutMs);
+				this.cancelPending(id, error, entry.cancellable, "Request timed out");
+			},
+			Math.max(0, delay),
+		);
 	}
 
 	private cancelPending(id: JsonRpcId, error: unknown, notifyServer: boolean, reason?: string): void {

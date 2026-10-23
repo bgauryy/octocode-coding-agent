@@ -1,0 +1,359 @@
+{
+  "identity": {
+    "executable": "$CLAUDE_EXECUTABLE",
+    "realpath": "$CLAUDE_INSTALL/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Isolated local mock-provider behavior, not a live-service test. No permanent user configuration or credentials are loaded.",
+  "cases": [
+    {
+      "case": "original-ask-allow",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "original-deny-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "rewrite-new-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "rewrite-new-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "rewrite-no-rule",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "original-ask-bypass",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "original-deny-bypass",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "original-deny-pattern",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf ORIGINAL *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "same-input-rewrite-original-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "rewrite-new-ask-bypass",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": true,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "rewrite-both-ask-bypass",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf ORIGINAL *)",
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    }
+  ],
+  "verified_date": "2026-10-23"
+}

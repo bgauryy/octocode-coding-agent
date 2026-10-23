@@ -207,6 +207,29 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
+	it("caps a request's total time even while progress keeps renewing its idle timeout", async () => {
+		vi.useFakeTimers();
+		const { client, server } = await connect();
+		server.setHandler("tools/call", (request) => {
+			const token = ((request.params as Record<string, unknown>)._meta as Record<string, unknown>)
+				.progressToken as number;
+			// A server that reports progress forever and never answers.
+			setInterval(() => {
+				void server.transport.send({
+					jsonrpc: "2.0",
+					method: "notifications/progress",
+					params: { progressToken: token, progress: 1 },
+				});
+			}, 30);
+			return new Promise(() => {});
+		});
+		const result = client.callTool("forever", {}, { timeoutMs: 50, maxTotalTimeoutMs: 200, onProgress: () => {} });
+		const failure = expect(result).rejects.toMatchObject({ name: "McpTimeoutError", timeoutMs: 200 });
+		await vi.advanceTimersByTimeAsync(250);
+		await failure;
+		await client.close();
+	});
+
 	it("cancels aborted and timed-out requests", async () => {
 		const { client, server } = await connect();
 		server.setHandler("tools/call", () => new Promise(() => {}));

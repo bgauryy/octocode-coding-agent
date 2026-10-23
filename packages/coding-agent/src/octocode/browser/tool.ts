@@ -350,6 +350,7 @@ export function registerBrowserTool(pi: ExtensionAPI, browser: BrowserTool): voi
 			{
 				name: "browser",
 				label: "Browser",
+				defaultActive: false,
 				description:
 					"Drive one Chrome session (JavaScript pages, forms, logins); headless unless visible mode is on. One action per call:\n" +
 					"navigate(url), tab(url | index): snapshot = page text + numbered elements\n" +
@@ -429,7 +430,7 @@ const SESSION_HANDLERS: Record<
 		return pageResult("Browser closed.");
 	},
 	info: async (browser, _params, signal) => {
-		// A status query must not launch Chrome (a visible window under webLive).
+		// A status query must not launch Chrome (a visible window with headless=false).
 		if (!browser.isOpen) return pageResult("No browser is open. navigate or attach starts one.");
 		const { kind, port, headless, page, profile, dialog } = await browser.session(signal);
 		const where =
@@ -726,8 +727,11 @@ const PAGE_HANDLERS: Record<PageActionName, (action: PageAction) => Promise<Acti
 		else await selectTab(session, params.index, (target) => browser.open(target), signal);
 		return pageResult(withBlockedNote(session, await snapshot(session, signal)));
 	},
-	dialog: async ({ session, params, signal }) =>
-		pageResult(await answerDialog(session, params.accept ?? true, params.text, signal)),
+	dialog: async ({ session, params, signal }) => {
+		const answered = await answerDialog(session, params.accept ?? true, params.text, signal);
+		await session.page.untilDialog(settle(session.page, signal));
+		return pageResult(`${answered}\n\n${await snapshot(session, signal)}`);
+	},
 	upload: async ({ page, params, signal, ctx, browser, toolCallId }) => {
 		const files = await checkUploadPaths(params.files ?? [], ctx, browser.permission, toolCallId);
 		return pageResult(

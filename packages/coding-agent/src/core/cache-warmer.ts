@@ -27,7 +27,7 @@ const IDLE_CONTINUATION_PROBABILITY = 0.15;
 
 /** Refresh at 90% of the TTL while preserving at least ten seconds of margin. */
 export function getCacheWarmingDelayMs(ttlMs: number): number | undefined {
-	if (ttlMs <= 10_000) return undefined;
+	if (!Number.isFinite(ttlMs) || ttlMs <= 10_000) return undefined;
 	return Math.max(1, Math.floor(Math.min(ttlMs * 0.9, ttlMs - 10_000)));
 }
 
@@ -43,7 +43,7 @@ export function getPromptCacheTtlMs(model: Model<Api>, options: SimpleStreamOpti
 	// Whole-prompt warming economics cannot estimate a miss across separate lifetimes.
 	if (instructions !== undefined && instructions !== retention) return undefined;
 	const seconds = model.promptCache?.[retention];
-	return seconds === undefined ? undefined : seconds * 1000;
+	return seconds === undefined || !Number.isFinite(seconds) || seconds <= 0 ? undefined : seconds * 1000;
 }
 
 /**
@@ -54,20 +54,23 @@ export function getPromptCacheTtlMs(model: Model<Api>, options: SimpleStreamOpti
  * and the model could still think for thousands of tokens.
  */
 export function isReplayable(model: Model<Api>, options: SimpleStreamOptions | undefined): boolean {
-	if (!options?.reasoning || model.api !== "anthropic-messages") return true;
+	if (!options?.reasoning) return true;
+	// Bedrock can expand the output cap to accommodate reasoning; do not price that as a one-token replay.
+	if (model.api === "bedrock-converse-stream") return false;
+	if (model.api !== "anthropic-messages") return true;
 	return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true;
 }
 
-/** Prompt size of the most recent real request on the branch, as reported by the provider. */
-function lastPromptTokens(entries: SessionEntry[]): number {
+/** Reported reusable prefix and uncached tail of the latest real request. */
+function lastPromptTokens(entries: SessionEntry[]): { cached: number; input: number } {
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];
 		if (entry.type === "message" && entry.message.role === "assistant") {
 			const usage = entry.message.usage;
-			return usage.input + usage.cacheRead + usage.cacheWrite;
+			return { cached: usage.cacheRead + usage.cacheWrite, input: usage.input };
 		}
 	}
-	return 0;
+	return { cached: 0, input: 0 };
 }
 
 function price(
@@ -164,7 +167,7 @@ export class CacheWarmer {
 	private run?: ActiveRun;
 	private inactive: CacheWarmingStatus;
 	private readonly models: Pick<ModelRuntime, "streamSimple">;
-	private readonly sessionManager: Pick<SessionManager, "appendUsage" | "getBranch">;
+	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
 	private readonly getMode: () => CacheWarmingMode;
 	/** Lets extensions override `event.action`; failures fall back to pi's decision. */
 	private readonly decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction>;
@@ -173,7 +176,7 @@ export class CacheWarmer {
 
 	constructor(
 		models: Pick<ModelRuntime, "streamSimple">,
-		sessionManager: Pick<SessionManager, "appendUsage" | "getBranch">,
+		sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">,
 		getMode: () => CacheWarmingMode,
 		decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction> = async (event) => event.action,
 	) {
@@ -335,6 +338,8 @@ export class CacheWarmer {
 		}
 
 		run.extensionOverride = extensionOverride;
+		const appendUsage = this.sessionManager.captureUsageWriter();
+		const sessionId = this.sessionManager.getSessionId();
 		try {
 			const message = await this.models
 				.streamSimple(run.model, run.context, {
@@ -344,19 +349,42 @@ export class CacheWarmer {
 					signal: run.controller.signal,
 				})
 				.result();
-			if (!this.validateRun(run)) return;
-			if (message.stopReason !== "error" && message.stopReason !== "aborted") {
-				const entry = this.sessionManager.appendUsage(
+			const succeeded = message.stopReason !== "error" && message.stopReason !== "aborted";
+			const hasUsage = [
+				message.usage.input,
+				message.usage.output,
+				message.usage.cacheRead,
+				message.usage.cacheWrite,
+				message.usage.totalTokens,
+				message.usage.cost.total,
+			].some((value) => value > 0);
+			if (succeeded || hasUsage) {
+				const note =
+					[extensionOverride ? "extension override" : "", succeeded ? "" : message.stopReason]
+						.filter(Boolean)
+						.join(", ") || undefined;
+				const entry = appendUsage(
 					"cache_warm",
 					message.provider,
 					message.responseModel ?? message.model,
 					message.usage,
-					extensionOverride ? "extension override" : undefined,
+					note,
 				);
-				this.onWarmed?.(entry);
+				if (this.sessionManager.getSessionId() === sessionId) this.onWarmed?.(entry);
+			}
+			if (!this.validateRun(run)) return;
+			if (succeeded) {
+				if (!(message.usage.cacheRead > 0)) {
+					this.stop("refresh reported no cache hit");
+					return;
+				}
+			} else {
+				this.stop("cache refresh failed");
+				return;
 			}
 		} catch {
-			// Cache warming is best-effort and must not affect the active agent run.
+			if (this.run === run) this.stop("cache refresh failed");
+			return;
 		}
 		if (this.run === run) this.schedule(run);
 	}
@@ -384,13 +412,17 @@ export class CacheWarmer {
 
 	private evaluate(run: ActiveRun): CacheWarmingDecision {
 		const model = run.model;
-		const promptTokens = lastPromptTokens(this.sessionManager.getBranch());
+		const { cached: promptTokens, input } = lastPromptTokens(this.sessionManager.getBranch());
 		const cacheHitCost = price(model, { cacheRead: promptTokens });
 		const cacheMissCost = price(
 			model,
 			model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens },
 		);
-		const warmCost = price(model, { cacheRead: promptTokens, output: 1 });
+		const warmCost = price(model, {
+			cacheRead: promptTokens,
+			...(model.cost.cacheWrite > model.cost.input ? { cacheWrite: input } : { input }),
+			output: 1,
+		});
 		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
 		const continuationProbability = run.phase === "idle" ? IDLE_CONTINUATION_PROBABILITY : 1;
 		const economicsAvailable = promptTokens > 0 && (cacheHitCost > 0 || cacheMissCost > 0);
@@ -456,5 +488,5 @@ export function formatCacheWarmingStatus(status: CacheWarmingStatus, now = Date.
 export function formatCacheWarmingUsage(entry: UsageEntry): string {
 	const note = entry.note ? ` (${entry.note})` : "";
 	const cost = entry.usage.cost.total.toFixed(6).replace(/(\.\d{3}\d*?)0+$/, "$1");
-	return `Cache warmed${note}: $${cost}`;
+	return `${entry.usage.cacheRead > 0 ? "Cache warmed" : "Cache refresh (no hit)"}${note}: $${cost}`;
 }

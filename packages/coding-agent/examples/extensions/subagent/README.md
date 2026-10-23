@@ -1,6 +1,8 @@
 # Subagent Example
 
-Delegate tasks to specialized subagents with isolated context windows.
+This regression fixture demonstrates subprocess delegation through the extension API. Native sessions already provide the unified `agent` tool and [specialist profiles](../../../docs/instructions.md); installing this fixture is unnecessary.
+
+Its sample agents use the older core tool names (`read`, `grep`, `find`, `ls`). Those names are not registered in native sessions. Adapt the tool lists to the child runtime before using the fixture outside its tests.
 
 ## Features
 
@@ -31,24 +33,24 @@ subagent/
 
 ## Installation
 
-From the repository root, symlink the files:
+For extension development, the following installs the fixture under the default agent directory. If you override the agent directory, use that location instead; see [configuration locations](../../../../../CONFIGURATIONS.md). From the repository root:
 
 ```bash
 # Symlink the extension (must be in a subdirectory with index.ts)
-mkdir -p ~/.octocode/agent/extensions/subagent
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.octocode/agent/extensions/subagent/index.ts
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.octocode/agent/extensions/subagent/agents.ts
+mkdir -p ~/.octocode/octocodecode/extensions/subagent
+ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.octocode/octocodecode/extensions/subagent/index.ts
+ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.octocode/octocodecode/extensions/subagent/agents.ts
 
 # Symlink agents
-mkdir -p ~/.octocode/agent/agents
+mkdir -p ~/.octocode/octocodecode/agents
 for f in packages/coding-agent/examples/extensions/subagent/agents/*.md; do
-  ln -sf "$(pwd)/$f" ~/.octocode/agent/agents/$(basename "$f")
+  ln -sf "$(pwd)/$f" ~/.octocode/octocodecode/agents/$(basename "$f")
 done
 
 # Symlink workflow prompts
-mkdir -p ~/.octocode/agent/prompts
+mkdir -p ~/.octocode/octocodecode/prompts
 for f in packages/coding-agent/examples/extensions/subagent/prompts/*.md; do
-  ln -sf "$(pwd)/$f" ~/.octocode/agent/prompts/$(basename "$f")
+  ln -sf "$(pwd)/$f" ~/.octocode/octocodecode/prompts/$(basename "$f")
 done
 ```
 
@@ -58,7 +60,7 @@ This tool executes a separate `octocode` subprocess with a delegated system prom
 
 **Project-local agents** (`.octocode/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
-**Default behavior:** Only loads **user-level agents** from `~/.octocode/agent/agents`.
+**Default behavior:** Only loads **user-level agents** from `~/.octocode/octocodecode/agents`.
 
 To enable project-local agents, pass `agentScope: "both"` (or `"project"`). Only do this for repositories you trust.
 
@@ -140,7 +142,7 @@ System prompt for the agent goes here.
 When `model` is omitted, the subagent inherits the dispatching session's active model and thinking level.
 
 **Locations:**
-- `~/.octocode/agent/agents/*.md` - User-level (always loaded)
+- `~/.octocode/octocodecode/agents/*.md` - User-level (always loaded)
 - `.octocode/agents/*.md` - Project-level (only with `agentScope: "project"` or `"both"`)
 
 Project agents override user agents with the same name when `agentScope: "both"`.

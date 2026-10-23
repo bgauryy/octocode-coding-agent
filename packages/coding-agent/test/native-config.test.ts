@@ -110,7 +110,7 @@ describe("Octocode home and Pi configuration fallback", () => {
 		write(join(home, ".pi", "extensions", "root.ts"), extension("legacy-root"));
 		write(
 			join(legacy, "custom.ts"),
-			`import { Text } from "@earendil-works/pi-tui"; import { Text as OldText } from "@mariozechner/pi-tui"; if (Text !== OldText) throw new Error("duplicate TUI module"); ${extension("legacy-configured")}`,
+			`import { Text } from "@octocodeai/octocode-tui"; if (typeof Text !== "function") throw new Error("missing TUI module"); ${extension("legacy-configured")}`,
 		);
 		write(
 			join(legacy, "plugin", "package.json"),

@@ -292,7 +292,10 @@ describe("team resource bounds", () => {
 			vi.advanceTimersByTime(1_000);
 			expect(s.sent.length).toBeGreaterThan(0);
 			expect(s.sent.length).toBeLessThan(100);
-			vi.advanceTimersByTime(4_000);
+			for (let tick = 0; tick < 4; tick++) {
+				s.team.onContext(s.sent.map((entry) => ({ ...entry.message, role: "custom" })));
+				vi.advanceTimersByTime(1_000);
+			}
 			const texts = s.sent.flatMap((entry) =>
 				entry.message.details.messages.map((message: { text: string }) => message.text),
 			);

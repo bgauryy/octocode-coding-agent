@@ -1,0 +1,16 @@
+{
+	"runtime": {
+		"package": "web-tree-sitter",
+		"version": "0.25.10",
+		"license": "MIT",
+		"wasmSha256": "f38dcc4b43b818f9a0785bc1c6d5611a75ac4cdd428ff3f02757c34ca4e46d7f"
+	},
+	"grammar": {
+		"repository": "https://github.com/tree-sitter/tree-sitter-bash",
+		"tag": "v0.25.0",
+		"url": "https://github.com/tree-sitter/tree-sitter-bash/releases/download/v0.25.0/tree-sitter-bash.wasm",
+		"sha256": "364f0a2cd385c792239423026ef442dbd073d34c396b7bc9e5932426b8e4aa5d",
+		"license": "MIT",
+		"rebuild": "tree-sitter build --wasm (tree-sitter CLI 0.25.x and Emscripten; verify artifact against pinned release before replacement)"
+	}
+}

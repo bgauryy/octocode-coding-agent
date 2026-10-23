@@ -205,6 +205,18 @@ describe("createAgentSession stream options", () => {
 		}
 	});
 
+
+ it.each(["prompt", "tools"])("invalidates cache warming when %s changes", async (field) => {
+  const fixture = await createCacheWarmingSession();
+  try {
+   await fixture.session.prompt("test");
+   expect(fixture.session.cacheWarmingStatus?.nextWarmAt).toBeGreaterThan(Date.now());
+   if (field === "prompt") fixture.session.agent.state.messages.push({ role: "system", content: [{ type: "text", text: "changed" }] } as never);
+   else fixture.session.agent.state.tools = [];
+   expect(fixture.session.cacheWarmingStatus?.reason).toBe("conversation context changed");
+  } finally { fixture.dispose(); }
+ });
+
 	it("waits for the next request instead of restoring cache warming", async () => {
 		const fixture = await createCacheWarmingSession((manager, model) => {
 			manager.appendModelChange(model.provider, model.id);

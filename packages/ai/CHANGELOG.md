@@ -4,6 +4,8 @@
 
 ### Breaking Changes
 
+- Subpath modules no longer export 28 helpers and types that only their own module used, among them `estimateTextTokens`, `estimateMessageTokens`, `truncateErrorText`, `parseCacheRetention`, `DEFAULT_THINKING_BUDGETS`, `inferCopilotInitiator` and the OAuth callback/device-code option types. Use the root, `./models` or `./compat` entry points.
+
 - Renamed provider request option `telemetryContext` to `telemetry?: TelemetrySpan`, without a compatibility alias. Pass a parent span, not an adapter.
 - `resolveTranscriptTools()` now takes a `TranscriptToolSupport` (`"none"`, `"additions"`, or `"changes"`) instead of a boolean, and `TranscriptTools.anchorsAdditions` is replaced by `foldedSystemMessages`, the number of leading system messages folded into `requestTools` ([#10940](https://github.com/earendil-works/pi/issues/10940))
 

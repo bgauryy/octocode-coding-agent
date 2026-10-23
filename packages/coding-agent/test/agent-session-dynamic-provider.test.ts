@@ -122,7 +122,7 @@ describe("AgentSession dynamic provider registration", () => {
 		session.dispose();
 	});
 
-	it("registers native pi-ai providers during extension loading", async () => {
+	it("registers native octocode-ai providers during extension loading", async () => {
 		const session = await createSession([
 			(pi) => {
 				pi.registerProvider(nativeAnthropicProvider("http://localhost:8080/native-top-level"));
@@ -156,7 +156,7 @@ describe("AgentSession dynamic provider registration", () => {
 		session.dispose();
 	});
 
-	it("registers native pi-ai providers at command time", async () => {
+	it("registers native octocode-ai providers at command time", async () => {
 		const session = await createSession([
 			(pi) => {
 				pi.registerCommand("use-native", {

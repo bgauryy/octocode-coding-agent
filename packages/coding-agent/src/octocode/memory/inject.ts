@@ -68,7 +68,7 @@ export function unchangedIds(
 	return new Set([...injected].flatMap(([id, at]) => (at === undefined || current.get(id) === at ? [id] : [])));
 }
 
-/** The content of the latest `octocode-memory` message in `entries`, for `/octocode memory last`. */
+/** The content of the latest `octocode-memory` message in `entries`, for `/memory last`. */
 export function lastInjection(entries: readonly unknown[]): string | undefined {
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];

@@ -256,8 +256,10 @@ type Awaitable<T> = T | Promise<T>;
 
 export interface SlashCommand {
 	name: string;
+	aliases?: readonly string[];
 	description?: string;
 	argumentHint?: string;
+	argumentKind?: "path";
 	// Function to get argument completions for this command
 	// Returns null if no argument completion is available
 	getArgumentCompletions?(argumentPrefix: string): Awaitable<AutocompleteItem[] | null>;
@@ -337,7 +339,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 		const commandText = textBeforeCursor.trimStart();
 		if (!options.force && commandText.startsWith("/")) {
-			const spaceIndex = commandText.indexOf(" ");
+			const spaceIndex = commandText.search(/\s/);
 
 			if (spaceIndex === -1) {
 				const prefix = commandText.slice(1);
@@ -345,9 +347,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					const name = "name" in cmd ? cmd.name : cmd.value;
 					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
 					const desc = cmd.description ?? "";
-					const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+					const aliases = "aliases" in cmd ? cmd.aliases ?? [] : [];
+					const detail = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+					const fullDesc = [detail, aliases.length ? `Aliases: ${aliases.map((alias) => `/${alias}`).join(", ")}` : ""].filter(Boolean).join(" — ");
 					return {
 						name,
+						aliases,
 						label: name,
 						description: fullDesc || undefined,
 					};
@@ -362,7 +367,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					prefix,
 					(item) => item.name,
 				);
-				const filtered = [...bareNameMatches, ...fullNameOnlyMatches].map((item) => ({
+				const nameMatches = [...bareNameMatches, ...fullNameOnlyMatches];
+				const matched = new Set(nameMatches);
+				const aliasMatches = commandItems.filter((item) => !matched.has(item) &&
+					fuzzyFilter([...item.aliases], prefix, (alias) => alias).length > 0);
+				const filtered = [...nameMatches, ...aliasMatches].map((item) => ({
 					value: item.name,
 					label: item.label,
 					...(item.description && { description: item.description }),
@@ -382,7 +391,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const command = this.commands.find((cmd) => {
 				const name = "name" in cmd ? cmd.name : cmd.value;
 				return name === commandName;
-			});
+			}) ?? this.commands.find((cmd) => "aliases" in cmd && cmd.aliases?.includes(commandName));
+			if (command && "argumentKind" in command && command.argumentKind === "path") {
+				const items = this.getFileSuggestions(argumentText);
+				return items.length ? { items, prefix: argumentText } : null;
+			}
 			if (!command || !("getArgumentCompletions" in command) || !command.getArgumentCompletions) {
 				return null;
 			}

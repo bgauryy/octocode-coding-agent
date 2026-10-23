@@ -3,6 +3,7 @@ import path from "node:path";
 import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
+import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -56,6 +57,87 @@ function setup(mode: "manual" | "workspace" | "full" = "workspace") {
 		).details.id as string;
 	return { f, team, control, ctx, reports, start, permission };
 }
+
+describe("a background subagent that reported blocked", () => {
+	const run = async (setting: string | undefined, test: (t: ReturnType<typeof setup>) => Promise<void>) => {
+		if (setting === undefined) delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		else process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = setting;
+		const t = setup("full");
+		try {
+			await test(t);
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	};
+
+	it("stays resumable for the blocked window with the linger setting at 0, and a message resumes its saved session", async () => {
+		await run(undefined, async (t) => {
+			const id = await t.start("linger blocked on a decision");
+			await t.control.settle();
+			expect(t.reports()[0]).toContain(`reported blocked`);
+			expect(t.reports()[0]).toContain(
+				`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s: answer it with \`agent\` type \`message\` to ${id}`,
+			);
+			expect(await t.team.send(id, "linger answered: use the second option", { replyRequired: false })).toHaveProperty(
+				"resumed",
+			);
+			await t.control.settle();
+			expect(t.reports()).toHaveLength(2);
+			expect(t.reports()[1]).toContain("Follow-up from your parent:\nlinger answered: use the second option");
+			// The follow-up reported no outcome: with the setting at 0 nothing keeps the run reachable.
+			expect(t.reports()[1]).not.toContain("reachable");
+			expect(t.reports()[1]).not.toContain("resumable");
+		});
+	});
+
+	it("releases the saved context when the blocked window ends", async () => {
+		delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		const t = setup("full");
+		vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+		try {
+			const id = await t.start("linger blocked once");
+			await t.control.settle();
+			await vi.advanceTimersByTimeAsync((BLOCKED_LINGER_SECONDS - 1) * 1000);
+			expect(t.control.stop(id, "parent")).toBeUndefined();
+			const again = await t.start("linger blocked twice");
+			await t.control.settle();
+			await vi.advanceTimersByTimeAsync(BLOCKED_LINGER_SECONDS * 1000);
+			expect(t.control.stop(again, "parent")).toBe(`No background subagent "${again}". None is running.`);
+			expect(await t.team.send(again, "linger too late", { replyRequired: false })).toEqual({
+				error: expect.stringMatching(/has finished/),
+			});
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not keep a run that reported done reachable when the setting is 0", async () => {
+		await run(undefined, async (t) => {
+			const id = await t.start("linger finished");
+			await t.control.settle();
+			expect(t.reports()[0]).not.toContain("reachable");
+			expect(t.reports()[0]).not.toContain("resumable");
+			expect(await t.team.send(id, "linger later", { replyRequired: false })).toEqual({
+				error: expect.stringMatching(/has finished/),
+			});
+		});
+	});
+
+	it.each([
+		["60", BLOCKED_LINGER_SECONDS],
+		["900", 900],
+	])("uses the larger of the setting (%s) and the blocked window", async (setting, seconds) => {
+		await run(setting, async (t) => {
+			const id = await t.start("linger blocked");
+			await t.control.settle();
+			expect(t.reports()[0]).toContain(`${id} is blocked and stays resumable for ${seconds} s`);
+		});
+	});
+});
 
 describe("a lingering background subagent", () => {
 	it("releases expired continuations without waiting for a message to their names", async () => {

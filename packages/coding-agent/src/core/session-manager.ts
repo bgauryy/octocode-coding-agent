@@ -17,6 +17,8 @@ import {
 	closeSync,
 	createReadStream,
 	existsSync,
+	fstatSync,
+	fsyncSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -30,6 +32,7 @@ import { basename, join, resolve } from "path";
 import { createInterface } from "readline";
 import { StringDecoder } from "string_decoder";
 import { APP_NAME, getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.ts";
+import { atomicWriteFileSync } from "../utils/atomic-file.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import {
 	type BashExecutionMessage,
@@ -351,6 +354,18 @@ export function migrateSessionEntries(entries: FileEntry[]): void {
 	migrateToCurrentVersion(entries);
 }
 
+function assertCompleteSessionTail(file: string): void {
+	const fd = openSync(file, "r");
+	try {
+		const size = fstatSync(fd).size;
+		const last = Buffer.alloc(1);
+		if (size === 0 || readSync(fd, last, 0, 1, size - 1) !== 1 || last[0] !== 10)
+			throw new Error("Session has an incomplete final record; recover the transcript before writing.");
+	} finally {
+		closeSync(fd);
+	}
+}
+
 /** Exported for compaction.test.ts */
 export function parseSessionEntries(content: string): FileEntry[] {
 	const entries: FileEntry[] = [];
@@ -665,7 +680,7 @@ export function loadEntriesFromFile(filePath: string): FileEntry[] {
 		return [];
 	}
 
-	if (pending) appendFileSync(resolvedFilePath, "\n");
+	if (pending && parseSessionEntryLine(pending)) appendFileSync(resolvedFilePath, "\n");
 	return entries;
 }
 
@@ -991,6 +1006,7 @@ export class SessionManager {
 	private cwd: string;
 	private persist: boolean;
 	private flushed: boolean = false;
+	private persistenceFailure: Error | undefined;
 	private fileEntries: FileEntry[] = [];
 	private byId: Map<string, SessionEntry> = new Map();
 	private labelsById: Map<string, string> = new Map();
@@ -1045,6 +1061,8 @@ export class SessionManager {
 				return;
 			}
 
+			const header = entries.find((entry) => entry.type === "session") as SessionHeader | undefined;
+			if ((header?.version ?? 1) < CURRENT_SESSION_VERSION) assertCompleteSessionTail(resolvedFile);
 			this.sessionFile = resolvedFile;
 			this._loadEntries(entries);
 			this.flushed = true;
@@ -1053,6 +1071,7 @@ export class SessionManager {
 			this.newSession();
 			this.sessionFile = explicitPath; // preserve explicit path from --session flag
 		}
+		this.persistenceFailure = undefined;
 	}
 
 	newSession(options?: NewSessionOptions): string | undefined {
@@ -1075,6 +1094,7 @@ export class SessionManager {
 		this.labelTimestampsById.clear();
 		this.leafId = null;
 		this.flushed = false;
+		this.persistenceFailure = undefined;
 
 		if (this.persist) {
 			const fileTimestamp = timestamp.replace(/[:.]/g, "-");
@@ -1124,14 +1144,7 @@ export class SessionManager {
 
 	private _rewriteFile(): void {
 		if (!this.persist || !this.sessionFile) return;
-		const fd = openSync(this.sessionFile, "w");
-		try {
-			for (const entry of this.fileEntries) {
-				writeFileSync(fd, `${JSON.stringify(entry)}\n`);
-			}
-		} finally {
-			closeSync(fd);
-		}
+		atomicWriteFileSync(this.sessionFile, this.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
 	}
 
 	isPersisted(): boolean {
@@ -1172,6 +1185,7 @@ export class SessionManager {
 
 	_persist(entry: SessionEntry): void {
 		if (!this.persist || !this.sessionFile) return;
+		if (this.persistenceFailure) throw this.persistenceFailure;
 
 		if (!this.flushed) {
 			if (!this._hasConversation()) return;
@@ -1180,20 +1194,32 @@ export class SessionManager {
 				for (const e of this.fileEntries) {
 					writeFileSync(fd, `${JSON.stringify(e)}\n`);
 				}
+				fsyncSync(fd);
 			} finally {
 				closeSync(fd);
 			}
 			this.flushed = true;
 		} else {
-			appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
+			assertCompleteSessionTail(this.sessionFile);
+			appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`, { flush: true });
 		}
 	}
 
 	private _appendEntry(entry: SessionEntry): void {
+		if (this.persistenceFailure) throw this.persistenceFailure;
+		const previousLeaf = this.leafId;
 		this.fileEntries.push(entry);
 		this.byId.set(entry.id, entry);
 		this.leafId = entry.id;
-		this._persist(entry);
+		try {
+			this._persist(entry);
+		} catch (error) {
+			this.fileEntries.pop();
+			this.byId.delete(entry.id);
+			this.leafId = previousLeaf;
+			this.persistenceFailure = new Error(`Session persistence failed: ${String(error)}. Further writes are blocked; reload or recover the transcript before continuing.`, { cause: error });
+			throw this.persistenceFailure;
+		}
 	}
 
 	/** Append a message as child of current leaf, then advance leaf. Returns entry id.
@@ -1239,6 +1265,29 @@ export class SessionManager {
 		};
 		this._appendEntry(entry);
 		return entry.id;
+	}
+
+	/** Capture the originating session for usage returned after a request has been cancelled or replaced. */
+	captureUsageWriter(): SessionManager["appendUsage"] {
+		const sessionId = this.sessionId;
+		const sessionFile = this.sessionFile;
+		const entries = this.fileEntries;
+		const cwd = this.cwd;
+		const sessionDir = this.sessionDir;
+		const persist = this.persist;
+		let detached: SessionManager | undefined;
+		return (...args) => {
+			if (this.sessionId === sessionId && this.sessionFile === sessionFile) return this.appendUsage(...args);
+			// Reload the original file so a late receipt never rewrites a stale snapshot or branches from an old leaf.
+			if (persist && sessionFile && existsSync(sessionFile)) {
+				const origin = SessionManager.open(sessionFile, sessionDir, cwd);
+				if (origin.getSessionId() !== sessionId) throw new Error("Originating usage session identity changed");
+				return origin.appendUsage(...args);
+			}
+			detached ??= new SessionManager(cwd, sessionDir, undefined, persist, undefined, [...entries]);
+			if (persist) detached.sessionFile = sessionFile;
+			return detached.appendUsage(...args);
+		};
 	}
 
 	/** Append model-attributed usage that does not participate in LLM context. Returns the appended entry. */

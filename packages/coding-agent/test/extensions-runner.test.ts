@@ -48,6 +48,23 @@ describe("ExtensionRunner", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
+	it("emits each recorded usage receipt once and never emits another session's late receipt", () => {
+		const runtime = createExtensionRuntime();
+		const runner = new ExtensionRunner([], runtime, tempDir, sessionManager, modelRegistry);
+		const onUsageRecorded = vi.fn();
+		runner.bindCore(extensionActions, { ...extensionContextActions, onUsageRecorded });
+		const record = runtime.createUsageRecorder("compaction");
+		const message = { provider: "p", model: "m", usage: { input: 3, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 4, cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 } } } as unknown as import("@octocodeai/octocode-ai").AssistantMessage;
+		record(message);
+		record(message);
+		expect(onUsageRecorded).toHaveBeenCalledTimes(1);
+		expect(onUsageRecorded.mock.calls[0][0]).toMatchObject({ type: "usage", kind: "compaction" });
+		sessionManager.newSession();
+		record({ ...message, usage: { ...message.usage } } as never);
+		expect(onUsageRecorded).toHaveBeenCalledTimes(1);
+		expect(sessionManager.getEntries()).toHaveLength(0);
+	});
+
 	const providerModelConfig: ProviderConfig = {
 		baseUrl: "https://provider.test/v1",
 		apiKey: "provider-test-key",
@@ -92,6 +109,8 @@ describe("ExtensionRunner", () => {
 		setActiveTools: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],
+		getSkillDirectories: () => [],
+		getSkillResourceSnapshot: () => ({ version: 1 as const, resources: [], explicitSkills: [] }),
 		setModel: async () => false,
 		getThinkingLevel: () => "off",
 		setThinkingLevel: () => {},
@@ -463,6 +482,49 @@ describe("ExtensionRunner", () => {
 	});
 
 	describe("command collection", () => {
+		it("resolves aliases to one canonical command and qualifies collisions", async () => {
+			fs.writeFileSync(path.join(extensionsDir, "aliases.ts"), `export default function(pi) {
+				pi.registerCommand("first", { aliases: ["shortcut", "shared", "second", "model"], handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
+				pi.registerCommand("second", { aliases: ["shared"], handler: async () => {} });
+				pi.registerCommand("model", { handler: async () => {} });
+			}`);
+			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			const commands = runner.getRegisteredCommands();
+			expect(commands).toHaveLength(3);
+			const first = runner.getCommand("first")!;
+			expect(runner.getCommand("shortcut")?.handler).toBe(first.handler);
+			expect(runner.getCommand("shortcut")?.getArgumentCompletions).toBe(first.getArgumentCompletions);
+			expect(first.aliases).toEqual(["shortcut", "shared:1", "second:1", "model:2"]);
+			expect(runner.getCommand("shared:2")?.name).toBe("second");
+			expect(runner.getCommand("second")?.name).toBe("second");
+			expect(runner.getCommand("model")).toBeUndefined();
+			expect(runner.getCommand("model:1")?.name).toBe("model");
+			expect(runner.getCommand("model:2")?.name).toBe("first");
+		});
+
+		it("keeps the native implementation of built-in commands unqualified", async () => {
+			fs.writeFileSync(path.join(extensionsDir, "native.ts"), `export default function(pi) {
+				pi.registerCommand("model", { aliases: ["native-model"], handler: async () => {} });
+			}`);
+			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			result.extensions[0]!.commands.get("model")!.sourceInfo = {
+				...result.extensions[0]!.sourceInfo, path: "<inline:octocode>",
+			};
+			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			expect(runner.getCommand("model")?.invocationName).toBe("model");
+			expect(runner.getCommand("native-model")?.invocationName).toBe("model");
+		});
+
+		it.each(["", "two words", "/shortcut", "shortcut/path", "tab\tname", "trailing\n"])("rejects invalid alias %j", async (alias) => {
+			fs.writeFileSync(path.join(extensionsDir, "invalid.ts"), `export default function(pi) {
+				pi.registerCommand("valid", { aliases: [${JSON.stringify(alias)}], handler: async () => {} });
+			}`);
+			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			expect(result.errors).toHaveLength(1);
+			expect(result.errors[0]?.error).toContain("aliases must be non-empty single tokens");
+		});
+
 		it("collects commands from multiple extensions", async () => {
 			const cmdCode = (name: string) => `
 				export default function(pi) {

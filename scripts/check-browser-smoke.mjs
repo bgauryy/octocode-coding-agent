@@ -41,6 +41,7 @@ function includesNodePackage(inputs, packageName) {
 }
 
 try {
+	await build({ entryPoints: ["packages/contacts/src/index.ts", "packages/webview/src/index.ts"], bundle: true, platform: "browser", format: "esm", write: false, outdir: "browser-contract-smoke", logLevel: "silent" });
 	await build({
 		entryPoints: ["scripts/browser-smoke-entry.ts"],
 		bundle: true,

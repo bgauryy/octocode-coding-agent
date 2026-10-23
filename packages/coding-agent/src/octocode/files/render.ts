@@ -1,3 +1,4 @@
+import { fileChanges } from "../shared/file-input.ts";
 import { Box, type Component } from "@octocodeai/octocode-tui";
 import type { BashToolDetails } from "../../core/tools/index.ts";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
@@ -5,6 +6,7 @@ import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import {
 	COLLAPSED_LINES,
+	SHOW_ALL_LINES,
 	clip,
 	expandKey,
 	plural,
@@ -29,6 +31,8 @@ export interface BashDetails {
 	job?: string;
 	pid?: number;
 	log?: string;
+	/** A foreground command that reached its deadline and went on as this job. */
+	moved?: boolean;
 }
 
 const BASH_STATUS =
@@ -143,19 +147,20 @@ export function renderBashResult(
 	const timing = timingOf(details);
 	if (details.job && !context.isError) {
 		return resultBlock(theme, context, {
-			summary: `job ${details.job} started (pid ${details.pid ?? "?"})`,
+			summary: `job ${details.job} ${details.moved ? "moved to the background" : "started"} (pid ${details.pid ?? "?"})`,
 			max: 0,
 			expanded: options.expanded,
 			...(details.log ? { spill: details.log, spillLabel: "log" } : {}),
 			...timing,
 		});
 	}
-	// Collapsed, only the preview's tail is sanitized and split: a streaming command redraws on every update.
+	// Collapsed, only the tail is sanitized and split: a streaming command redraws on every update. The tail is as long
+	// as the longest output shown whole, so a short output is not folded.
 	const outcome = bashOutcome(
 		text,
 		context.isError,
 		options.isPartial,
-		options.expanded ? undefined : COLLAPSED_LINES,
+		options.expanded ? undefined : SHOW_ALL_LINES,
 	);
 	const spill = details.fullOutputPath ?? outcome.spill;
 	const total = outcome.lines !== undefined ? { totalLines: outcome.lines } : {};
@@ -232,13 +237,14 @@ export function diffStats(diff: string): { added: number; removed: number } {
 }
 
 type FileArgs = {
-	queries?: Array<{ type?: string; path?: string; reasoning?: string; edits?: unknown[]; content?: string }>;
+	patch?: string; reasoning?: string;
+	queries?: Array<{ type?: string; path?: string; movePath?: string; reasoning?: string; edits?: unknown[]; content?: string }>;
 };
 
 export function renderFileCall(args: FileArgs, theme: Theme, context: RenderContext): Component {
-	const queries = Array.isArray(args.queries) ? args.queries : [];
+	const queries = fileChanges(args) as NonNullable<typeof args.queries>;
 	const describe = (query: (typeof queries)[number] | undefined) =>
-		clip(`${query?.type ?? "…"} ${query?.path ?? ""}${querySize(query)}`, 200);
+		clip(`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`, 200);
 	const why = (query: (typeof queries)[number] | undefined) =>
 		context.expanded && typeof query?.reasoning === "string" && query.reasoning.trim()
 			? [theme.fg("dim", `  ↳ ${clip(query.reasoning, 200)}`)]

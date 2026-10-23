@@ -2,6 +2,7 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
 import { isRecord, partText } from "../shared/util.ts";
+import { recordedLocalReads } from "../shared/local-reads.ts";
 import { type LineRange, mergeRanges, type ReadView, readView } from "./coverage.ts";
 
 /**
@@ -160,6 +161,11 @@ export function seenFiles(
 		const unchangedOf = isRecord(message.details) ? message.details.unchangedOf : undefined;
 		if (cleared.has(String(message.toolCallId)) || (typeof unchangedOf === "string" && !shown.has(unchangedOf)))
 			continue;
+		for (const read of recordedLocalReads(message.details)) {
+			const at = typeof message.timestamp === "number" ? message.timestamp : undefined;
+			const view = { whole: read.whole, ...(read.lines ? { lines: read.lines } : {}) };
+			latest.set(read.file, { file: read.file, id, workedAt: at, ...shownBy(latest.get(read.file), view, at) });
+		}
 		const tool = String(message.toolName);
 		const args = tool === "read" ? calls.get(String(message.toolCallId)) : undefined;
 		const view = args ? readView(tool, args, message.content, message.details) : undefined;

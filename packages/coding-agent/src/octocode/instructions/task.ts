@@ -7,7 +7,7 @@ export function teamTask(task: string, parentId: string, others: Array<[string, 
 	const list =
 		others.length > 0
 			? others.map(([id, line]) => `- \`${id}\`: ${line}`).join("\n")
-			: "- none yet; `coordinate list` shows teammates that start later.";
+			: "- none yet; `agent` type `coordinate`, action `list` shows teammates that start later.";
 	return `${task}\n\n## Teammates\nYou collaborate with the other subagents that ${parentId} started for the same goal. Running now:\n${list}`;
 }
 

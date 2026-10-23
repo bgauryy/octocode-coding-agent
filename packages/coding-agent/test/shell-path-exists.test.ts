@@ -75,9 +75,8 @@ describe("Windows Store shell aliases", () => {
 	});
 });
 
-// The access(F_OK) check is intentionally used on every platform, matching
-// harness-v2 (packages/durable/src/env/node.ts pathExists). On Unix it is the
-// same syscall existsSync already performs.
+// The access(F_OK) check is intentionally used on every platform. On Unix it
+// is the same syscall existsSync already performs.
 describe("Unix shell existence checks", () => {
 	beforeEach(() => {
 		stubPlatform("linux");

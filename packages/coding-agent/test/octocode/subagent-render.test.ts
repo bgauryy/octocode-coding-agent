@@ -51,7 +51,7 @@ describe("subagent renderers", () => {
 		expect(doneSummary(details(), 38_000)).toBe("Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · 38s)");
 		expect(doneSummary(details({ toolCalls: 1 }), undefined)).toBe("Done (general-0001 · 1 tool call · ↑1.5k ↓500)");
 		expect(doneSummary(details({ cacheRead: 1_200, cost: 0.12 }), 38_000)).toBe(
-			"Done (general-0001 · 2 tool calls · ↑1.5k (80% cached) ↓500 · ≈$0.12 · 38s)",
+			"Done (general-0001 · 2 tool calls · ↑300 +1.2k cached ↓500 · ≈$0.12 · 38s)",
 		);
 		expect(doneSummary(details({ cost: 0.12, unpriced: true }), undefined)).toBe(
 			"Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · ≈$0.12 + n/a)",

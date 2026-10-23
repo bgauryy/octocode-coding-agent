@@ -2,7 +2,7 @@
 
 `@octocodeai/octocodecode` embeds Octocode in a Node.js or Bun process. It provides direct TypeScript access to the agent, sessions, tools, models, and resources used by the command-line application.
 
-Use the SDK for in-process TypeScript integration. For a language-independent or isolated subprocess, see CLI Integration.
+Use the SDK for in-process TypeScript integration. For an isolated subprocess, use `octocode --mode rpc`; the [RPC types](../src/modes/rpc/rpc-types.ts) define its messages and the [RPC client](../src/modes/rpc/rpc-client.ts) demonstrates the protocol.
 
 ```typescript
 import { createAgentSession } from "@octocodeai/octocodecode";
@@ -10,16 +10,21 @@ import { createAgentSession } from "@octocodeai/octocodecode";
 const { session } = await createAgentSession();
 
 try {
+  await session.bindExtensions({});
   await session.prompt("What files are in the current directory?");
   console.log(session.getLastAssistantText());
 } finally {
-  session.dispose();
+  try {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+  } finally {
+    session.dispose();
+  }
 }
 ```
 
 This uses the working directory, discovered resources, stored settings, and configured credentials. `prompt()` resolves when the run finishes.
 
-The complete minimal example also streams text events. All SDK examples are typechecked with the repository.
+`bindExtensions({})` starts the extension lifecycle, including MCP connections and native services. Supply UI and command-context bindings when the host supports them. Emit `session_shutdown` before disposal so extensions can release their resources; `session.dispose()` alone does not emit that event.
 
 <a id="session-management"></a>
 
@@ -49,7 +54,7 @@ const { session } = await createAgentSession({
 });
 ```
 
-See the checked sessions example for creating, opening, continuing, listing, and forking sessions. Session File Format defines the persisted JSONL contract, and Message Types defines transcript values. For exact methods and signatures, use the exported TypeScript declarations or [`session-manager.ts`](../src/core/session-manager.ts).
+For creating, opening, continuing, listing and forking sessions, use the exported TypeScript declarations or [`session-manager.ts`](../src/core/session-manager.ts). That module also defines persisted JSONL entries; [`messages.ts`](../src/core/messages.ts) defines coding-agent transcript additions.
 
 `cwd` selects the workspace used for project resource discovery, context files, session grouping, and built-in tool paths. Pass it explicitly when the target differs from `process.cwd()`.
 
@@ -57,7 +62,7 @@ See the checked sessions example for creating, opening, continuing, listing, and
 
 `AgentSessionRuntime` adds `newSession()`, `switchSession()`, `fork()`, and `importFromJsonl()`. Each operation replaces the active `AgentSession` and recreates services for the target working directory.
 
-After a runtime replacement, subscriptions belong to the old `AgentSession` and must be rebound. See the session runtime example.
+After a runtime replacement, subscriptions belong to the old `AgentSession` and must be rebound. [`AgentSessionRuntime`](../src/core/agent-session-runtime.ts) provides a rebind callback and an asynchronous `dispose()` that emits shutdown before disposing its session.
 
 ## Prompting
 
@@ -67,7 +72,7 @@ A prompt sent while the session is already streaming must specify whether it sho
 
 A steering message enters after the current assistant turn and its tool calls. A follow-up enters after the current run finishes its pending work. `steer()` and `followUp()` expose those behaviors directly and return `"queued"` if the input was queued (including after an extension transformed it), or `"handled"` if an extension consumed it.
 
-`abort()` stops the active operation and waits for the session to become idle. `waitForIdle()` waits without aborting it.
+`abort()` stops the active operation and waits for the session to become idle. Its default reason, `interrupted`, emits the observational `agent_interrupted` event for an active turn. Runtime owners can pass `replacement`, `shutdown` or `internal` for cancellation that should not emit it. The first cancellation reason wins for that run. `waitForIdle()` waits without aborting it.
 
 ## Subscribing to events
 
@@ -97,6 +102,8 @@ Use `agent_settled` when the host needs to know that Octocode will not continue 
 
 Without overrides, the factory creates a `ModelRuntime`, file-backed `SettingsManager`, persistent `SessionManager`, `DefaultResourceLoader`, and the configured default tools.
 
+The factory infers `session_start.reason` as `resume` when the supplied manager contains restored messages or refers to an existing session file, including a saved header-only session. A new, unflushed session starts with `startup`. An explicit `sessionStartEvent` takes precedence, preserving fork, new-session and reload lifecycle reasons.
+
 Each boundary can be supplied explicitly:
 
 - `modelRuntime`, `model`, `thinkingLevel`, and `scopedModels` control model access and selection.
@@ -105,43 +112,35 @@ Each boundary can be supplied explicitly:
 - `resourceLoader` supplies extensions, skills, prompt templates, themes, and context files.
 - `tools`, `noTools`, `excludeTools`, and `customTools` control the active tool set.
 
-Use `DefaultResourceLoader` when you want standard discovery with selected overrides. Supply a custom `ResourceLoader` when the host owns resource storage and discovery completely.
+`cwd` and `agentDir` select workspace and user resources. See [configuration locations and precedence](../../../CONFIGURATIONS.md). When supplying a loader or settings manager, construct it with the same directories as the session.
+
+Use `DefaultResourceLoader` when you want standard discovery with selected overrides. Its `nativeFeatures` option defaults to `true`, so CLI and default SDK sessions both load native Octocode features and the built-in extensions. Set `nativeFeatures: false` on the loader for a host that supplies its own tool policy; it is not a `createAgentSession()` option. Supply a custom `ResourceLoader` when the host owns resource storage and discovery completely.
+
+`DefaultResourceLoaderOptions.skillResourceSnapshot` adopts an accepted `SkillResourceSnapshot` as the authoritative skill inventory. It bypasses skill paths, default/plugin skill discovery and `skillsOverride`; other resource systems retain their normal loading behavior. The snapshot validates version, size, metadata and canonical file identities. It contains metadata and paths, not skill file bytes. Invalid snapshots fail rather than falling back to default skills. Obtain a snapshot from the bound extension API's `getSkillResourceSnapshot()`; the native child launcher manages its private transport and cleanup.
 
 <a id="inlineextension"></a>
 
-Inline extension factories can be supplied through `DefaultResourceLoader`. Give one an `InlineExtension` name only when it needs a stable name in diagnostics and startup output. A named inline extension with `replaceable: true` is left out when another extension registers a tool, command, or flag with a name it registers during loading, instead of both loading with a conflict. The CLI's built-in codemode, tool search, and MCP extensions are replaceable. A named entry with `builtin: true` is not an inline extension: it supplies the code of the `builtin:<name>` extension, which loads like a configured extension file. It loads by default, is listed in `octocode config`, and is disabled by `-builtin:<name>` in the `extensions` setting or by `noExtensions`; `additionalExtensionPaths: ["builtin:<name>"]` loads it explicitly. It loads after project trust is resolved, so it cannot handle `project_trust`. The CLI's built-in extensions use it.
+Inline extension factories can be supplied through `DefaultResourceLoader.extensionFactories`. Give one an `InlineExtension` name when it needs a stable name in diagnostics and startup output. A named inline extension with `replaceable: true` is left out when another extension registers a tool, command, or flag with a name it registers during loading, instead of both loading with a conflict. The built-in tool-search and MCP extensions are replaceable.
 
-<a id="codemode-mcp"></a>
+A named entry with `builtin: true` supplies the code of a `builtin:<name>` extension, which loads like a configured extension file. It loads by default, is listed in `octocode config`, and is disabled by `-builtin:<name>` in the `extensions` setting or by `noExtensions`; `additionalExtensionPaths: ["builtin:<name>"]` loads it explicitly. It loads after project trust is resolved, so it cannot handle `project_trust`. The standard loader's built-in extensions use this form.
 
-The CLI loads `codemode`, `tool_search`, and MCP as built-in extensions. SDK sessions do not; add `createCodemodeExtension()`, `createToolSearchExtension()`, and `createMcpExtension()` to the `extensionFactories` of `DefaultResourceLoader`. `codemode` and `tool_search` are registered inactive: enable them through the `defaultTools` setting (`["+codemode", "+tool_search"]` keeps the other default tools), or let the MCP extension activate them: `codemode` for servers with `codemode` exposure, `tool_search` for servers with `deferred` exposure. The MCP extension connects its servers on `session_start`, so call `session.bindExtensions()`. See Codemode and MCP.
+`discoverAndLoadExtensions(paths, cwd, agentDir?, eventBus?, { projectTrusted? })` loads extensions without a resource loader: global extensions, the given paths and, for a trusted project, `.octocode/extensions/` in `cwd`. Without `projectTrusted` it reads the user's saved trust decision, so an untrusted checkout's extension code does not run; pass `projectTrusted: true` only after your application has established trust.
 
-See the focused examples for models, tools, extensions, and full control.
+### MCP
 
-## Examples
+The default resource loader includes `tool_search` and MCP. A custom loader with `nativeFeatures: false` can supply `createToolSearchExtension()` and `createMcpExtension()` explicitly.
 
-| Example | Purpose |
-|---|---|
-| Minimal | Create, prompt, observe, and dispose a session |
-| Custom model | Select a model and thinking level |
-| System prompt | Replace or append to the system prompt |
-| Skills | Discover, filter, and add skills |
-| Tools | Select built-in tools and their working directory |
-| Extensions | Load file-based and inline extensions |
-| Context files | Add or replace project instructions |
-| Prompt templates | Add file-style prompt templates |
-| Credentials | Configure credential and model storage |
-| Settings | Supply file-backed or in-memory settings |
-| Sessions | Control session persistence and restoration |
-| Full control | Replace default discovery and state services |
-| Session runtime | Replace the active session safely |
-| Codemode and MCP | Add the `codemode`, `tool_search`, and MCP extensions |
+MCP defaults to automatic exposure: small catalogs are direct, and large catalogs use discovery when the provider supports incremental tool loading. Explicit `deferred` exposure activates `tool_search`. Discovered tools are called natively through the session pipeline.
+
+MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Connections may continue in the background; calls wait for the servers they need. On shutdown, emit `session_shutdown` before disposing the session, as in the opening example. See [MCP](mcp.md) for configuration and lifecycle.
 
 <a id="exports"></a>
 
 ## Resources
 
 - [Choose a Model](models.md) covers model selection and compatible endpoints; [Providers](providers.md) covers credentials and provider-specific setup.
-- Configuration explains normal discovery and settings; Settings lists every setting.
-- Sessions and Context explains session behavior; Session Format defines persisted entries; Message Types defines shared transcript values.
+- [Configuration](configuration.md) explains normal discovery; the generated [settings schema](../schemas/settings.schema.json) describes settings.
+- [Session storage](#session-storage) covers persistence and the source contracts.
 - [Extensions](extensions.md), [Skills](skills.md), and [Prompt Templates](prompt-templates.md) document resources supplied through a `ResourceLoader`.
-- CLI Integration covers print, JSON, and RPC alternatives to an in-process SDK integration.
+- [Extension fixtures](../examples/README.md) demonstrate API behavior used in regression tests.
+- [`CreateAgentSessionOptions`](../src/core/sdk.ts) and [`AgentSession`](../src/core/agent-session.ts) define the current SDK surface.

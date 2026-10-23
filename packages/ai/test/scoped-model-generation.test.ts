@@ -19,7 +19,6 @@ globalThis.fetch = async (input) => {
  const url = String(input);
  if (url === "https://models.dev/api.json") return Response.json({opencode:{models:{"scope-test-new-model":{name:"New model",tool_call:true}}}});
  if (url === "https://models.dev/models.json?type=decision") return Response.json({"typesafe/jev-latest":{name:"Jev",type:"decision"}});
- if (url === "https://radius.pi.dev/v1/config") return Response.json({baseUrl:"https://radius.pi.dev",models:[{id:"test",name:"Test",reasoning:false,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:4096,maxTokens:4096}]});
  if (url.startsWith("https://openrouter.ai/api/v1/models") || url === "https://ai-gateway.vercel.sh/v1/models") return Response.json({data:[]});
  throw new Error("Unexpected network request: " + url);
 };

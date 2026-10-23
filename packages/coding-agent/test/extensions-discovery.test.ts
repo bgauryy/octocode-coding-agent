@@ -51,7 +51,7 @@ describe("extensions discovery", () => {
 		expect(result.extensions.map((e) => path.basename(e.path)).sort()).toEqual(["bar.ts", "foo.ts"]);
 	});
 
-	it("loads the coding-agent entrypoint without rewriting pi-ai provider subpaths", async () => {
+	it("loads the coding-agent entrypoint without rewriting octocode-ai provider subpaths", async () => {
 		fs.writeFileSync(
 			path.join(extensionsDir, "coding-agent-import.ts"),
 			`
@@ -104,7 +104,7 @@ describe("extensions discovery", () => {
 		expect(result.warnings).toEqual([]);
 	});
 
-	it("keeps the type-only pi-ai OAuth compatibility barrel resolvable", async () => {
+	it("keeps the type-only octocode-ai OAuth compatibility barrel resolvable", async () => {
 		fs.writeFileSync(
 			path.join(extensionsDir, "oauth-import.ts"),
 			`
@@ -130,6 +130,28 @@ describe("extensions discovery", () => {
 		expect(result.errors).toHaveLength(0);
 		expect(result.extensions).toHaveLength(1);
 		expect(path.basename(result.extensions[0].path)).toBe("foo.js");
+	});
+
+	it.each(["SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"])("does not infer executable extensions from a %s resource directory", async (marker) => {
+		const directory = path.join(extensionsDir, "resource");
+		fs.mkdirSync(path.dirname(path.join(directory, marker)), { recursive: true });
+		fs.writeFileSync(path.join(directory, marker), marker.endsWith(".json") ? '{"name":"resource"}' : "# Skill");
+		fs.writeFileSync(path.join(directory, "index.ts"), extensionCode);
+		fs.writeFileSync(path.join(directory, "helper.ts"), extensionCode);
+		const automatic = await discoverAndLoadExtensions([], tempDir, tempDir);
+		expect(automatic.extensions).toEqual([]);
+		const explicit = await discoverAndLoadExtensions([directory], tempDir, tempDir);
+		expect(explicit.extensions).toEqual([]);
+	});
+	it("allows an explicit native extension declaration in a plugin package", async () => {
+		const directory = path.join(extensionsDir, "hybrid");
+		fs.mkdirSync(directory);
+		fs.writeFileSync(path.join(directory, "plugin.json"), '{"name":"hybrid"}');
+		fs.writeFileSync(path.join(directory, "package.json"), '{"octocode":{"extensions":["./native.ts"]}}');
+		fs.writeFileSync(path.join(directory, "native.ts"), extensionCode);
+		const result = await discoverAndLoadExtensions([directory], tempDir, tempDir);
+		expect(result.extensions).toHaveLength(1);
+		expect(result.extensions[0]?.path).toContain("native.ts");
 	});
 
 	it("discovers subdirectory with index.ts", async () => {

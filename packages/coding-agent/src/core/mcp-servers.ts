@@ -41,27 +41,27 @@ export function isMcpToolName(name: string): boolean {
 }
 
 /**
- * - `codemode`: tools are callable from codemode scripts but neither declared to the model nor
- *   listed in the codemode description, which lists only the server's namespace. Scripts find them
- *   with `searchTools()`. `codemode-deferred` is accepted as an alias.
+ * - `auto`: small catalogs are direct; large catalogs defer when native tool loading is supported.
  * - `deferred`: not declared to the model until the `tool_search` tool loads them; the model then
- *   calls them directly. Does not need codemode.
- * - `direct`: tools are declared to the model like any other tool (and callable from codemode).
+ *   calls them directly.
+ * - `direct`: tools are declared to the model like any other tool.
  * - `hidden`: tools are registered but unreachable.
  */
-export type McpExposure = "codemode" | "deferred" | "direct" | "hidden";
+export const DEFAULT_MCP_EXPOSURE = "auto";
 
-const MCP_EXPOSURES: readonly string[] = ["codemode", "deferred", "direct", "hidden"] satisfies McpExposure[];
+export type McpExposure = "auto" | "deferred" | "direct" | "hidden";
+
+const MCP_EXPOSURES: readonly string[] = ["auto", "deferred", "direct", "hidden"] satisfies McpExposure[];
 
 /** Older exposure names, accepted in configs and replaced by their current name when validated. */
-const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = { "codemode-deferred": "codemode" };
+const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = { codemode: "deferred", "codemode-deferred": "deferred" };
 
 interface McpServerConfigBase {
-	/** Default: `codemode`. */
+	/** Default: `auto`. */
 	exposure?: McpExposure;
 	/**
 	 * What the server offers, in a sentence. The `mcp_servers` system prompt section lists the server
-	 * with it, tool search ranks the server's tools by it, and codemode's `describeNamespace()` returns it.
+	 * with it, tool search ranks the server's tools by it.
 	 */
 	description?: string;
 	/**
@@ -83,6 +83,8 @@ export interface McpStdioServerConfig extends McpServerConfigBase {
 	args?: string[];
 	/** Values may reference environment variables (`${NAME}`) or commands (`!cmd`). */
 	env?: Record<string, string>;
+	/** Inherit the host environment. Set false to pass only the configured env. Default: true. */
+	inheritEnv?: boolean;
 	/** Relative paths resolve against the session working directory. */
 	cwd?: string;
 }
@@ -108,13 +110,14 @@ export interface McpOAuthConfig {
 	scope?: string;
 	/**
 	 * `client_name` sent with dynamic client registration, for servers that only accept known clients.
-	 * Default: `pi`.
+	 * Default: the app name.
 	 */
 	clientName?: string;
 	/**
-	 * How pi identifies itself without `clientId`. `dcr` (default): dynamic client registration. `cimd`:
-	 * pi's Client ID Metadata Document on pi.dev, for authorization servers that allow pi by that URL. The
-	 * server must support it for public clients, and the callback must use the default path `/callback`.
+	 * How the agent identifies itself without `clientId`. `dcr` (default): dynamic client registration. `cimd`:
+	 * a Client ID Metadata Document hosted at `OCTOCODE_MCP_CLIENT_METADATA_URL`, for authorization servers that
+	 * allow the client by that URL. The server must support it for public clients, and the callback must use the
+	 * default path `/callback`.
 	 */
 	clientRegistration?: "dcr" | "cimd";
 	/**
@@ -150,9 +153,12 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
+const PLUGIN_SERVER_NAME = /^plugin:[A-Za-z0-9_.-]+:[A-Za-z0-9_-]+$/;
+export const isPluginMcpServerName = (name: string): boolean => PLUGIN_SERVER_NAME.test(name);
 
 /** Namespace of a server's tools: `mcp__<server>` with `-` replaced by `_`, like the tool names. */
 export function mcpNamespace(server: string): string {
+	if (isPluginMcpServerName(server)) return `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 	return `mcp__${server.replace(/-/g, "_")}`;
 }
 
@@ -230,15 +236,44 @@ function resolveExposureAliases(value: Record<string, unknown>): Record<string, 
 	return resolved;
 }
 
-/** Exposure of one tool of a server: its `toolExposure` entry, else the server's `exposure`. */
-export function getMcpToolExposure(config: McpServerConfig, toolName: string): McpExposure {
+/** The MCP server name Octocode registers its research server under (and looks for in `mcp.json`). */
+export const OCTOCODE_SERVER = "octocode";
+
+/**
+ * Octocode research tools declared to the model whatever runs the `octocode` server: every local reader and search,
+ * and the names older servers use for the same jobs. The server's GitHub and package tools wait for tool_search
+ * (`prefersDeferred` in `extensions/mcp/exposure.ts`).
+ */
+export const OCTOCODE_DIRECT_TOOLS: readonly string[] = [
+	"localFetch",
+	"localSearch",
+	"structureSearch",
+	"astSearch",
+	"lspSearch",
+	"localGetFileContent",
+	"localSearchCode",
+	"localFindFiles",
+	"localViewStructure",
+	"lspGetSemantics",
+];
+
+/** Whether an `octocode` tool is declared directly by default (the user's exposure settings still win). */
+export const isOctocodeDirectTool = (toolName: string): boolean => OCTOCODE_DIRECT_TOOLS.includes(toolName);
+
+/**
+ * Exposure of one tool of a server: its `toolExposure` entry, else the server's `exposure`. The `octocode` server
+ * without an `exposure` declares its local research tools directly and uses automatic exposure for the rest; pass `server`
+ * for that default.
+ */
+export function getMcpToolExposure(config: McpServerConfig, toolName: string, server?: string): McpExposure {
 	const overrides = config.toolExposure ?? {};
 	const exact = overrides[toolName];
 	if (exact !== undefined) return exact;
 	for (const [pattern, exposure] of Object.entries(overrides)) {
 		if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return exposure;
 	}
-	return config.exposure ?? "codemode";
+	if (config.exposure === undefined && server === OCTOCODE_SERVER && isOctocodeDirectTool(toolName)) return "direct";
+	return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
 /**
@@ -246,7 +281,7 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
  * aliases resolved, or an error message.
  */
 export function validateMcpServerConfig(name: string, raw: unknown): McpServerConfig | string {
-	if (!SERVER_NAME.test(name)) return `invalid server name "${name}" (use letters, digits, "_" and "-")`;
+	if (!SERVER_NAME.test(name) && !PLUGIN_SERVER_NAME.test(name)) return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
 	if (!isRecord(raw)) return `server "${name}" must be an object`;
 	const value = resolveExposureAliases(raw);
 	const { type, exposure, enabled, timeout, toolExposure, description } = value;
@@ -298,6 +333,8 @@ export function validateMcpServerConfig(name: string, raw: unknown): McpServerCo
 		}
 		if (value.env !== undefined && !isStringRecord(value.env))
 			return `server "${name}": env must map names to strings`;
+		if (value.inheritEnv !== undefined && typeof value.inheritEnv !== "boolean")
+			return `server "${name}": inheritEnv must be a boolean`;
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;
 		return value as unknown as McpStdioServerConfig;
 	}

@@ -13,7 +13,7 @@ import {
 const METADATA_LEAD_CHARS = 1_500;
 /** What to do when the static HTML is not the page: the main session has no `browser`, so the advice names both routes. */
 export const RENDER_ADVICE =
-	"render it with the browser tool, or with a webHeadless subagent when browser is not active";
+	"render it with the browser tool, or with a browser subagent when browser is not active";
 /** Less visible text than this in the static HTML means the page is built by JavaScript. */
 const SHELL_TEXT_CHARS = 500;
 

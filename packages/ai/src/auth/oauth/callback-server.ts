@@ -9,7 +9,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { oauthErrorHtml, oauthSuccessHtml } from "../../utils/oauth-page.ts";
 import type { ProviderAuthInteraction } from "../types.ts";
 
-export interface OAuthCallbackServerOptions<T> {
+interface OAuthCallbackServerOptions<T> {
 	/** Provider name used on the browser page, for example `OpenAI`. */
 	providerName: string;
 	/** Address to listen on. */
@@ -30,7 +30,7 @@ export interface OAuthCallbackServerOptions<T> {
 	timeoutMs?: number;
 }
 
-export interface OAuthCallbackServer<T> {
+interface OAuthCallbackServer<T> {
 	redirectUri: string;
 	/**
 	 * Resolves with the result of `complete`, or `undefined` after `cancel()`. Rejects when the provider

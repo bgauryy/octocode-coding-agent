@@ -17,7 +17,7 @@ import { DEFAULT_MAX_BYTES, truncateTail } from "./tools/truncate.ts";
 // Types
 // ============================================================================
 
-export interface BashExecutorOptions {
+interface BashExecutorOptions {
 	/** Callback for streaming output chunks (already sanitized) */
 	onChunk?: (chunk: string) => void;
 	/** AbortSignal for cancellation */
@@ -57,13 +57,14 @@ export async function executeBashWithOperations(
 
 	let tempFilePath: string | undefined;
 	let tempFileStream: WriteStream | undefined;
+	let closeTempFile: (() => Promise<void>) | undefined;
 	let totalBytes = 0;
 
 	const ensureTempFile = () => {
 		if (tempFilePath) {
 			return;
 		}
-		({ path: tempFilePath, stream: tempFileStream } = createOutputFileStream("octocode-bash", ".log"));
+		({ path: tempFilePath, stream: tempFileStream, close: closeTempFile } = createOutputFileStream("octocode-bash", ".log"));
 		for (const chunk of outputChunks) {
 			tempFileStream.write(chunk);
 		}
@@ -122,8 +123,11 @@ export async function executeBashWithOperations(
 	} catch (err) {
 		// An aborted command still returns the output it produced so far
 		if (!options?.signal?.aborted) {
-			tempFileStream?.end();
-			throw err;
+			try {
+				await closeTempFile?.();
+			} finally {
+				throw err;
+			}
 		}
 	}
 
@@ -133,7 +137,7 @@ export async function executeBashWithOperations(
 	if (truncationResult.truncated) {
 		ensureTempFile();
 	}
-	tempFileStream?.end();
+	await closeTempFile?.();
 	const cancelled = options?.signal?.aborted ?? false;
 
 	return {

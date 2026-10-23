@@ -103,7 +103,7 @@ describe("turn_end", () => {
 		expect(guard.forget).not.toHaveBeenCalled();
 	});
 
-	it("never warms the cache of a headless run or a subagent", async () => {
+	it("keeps active refresh decisions but stops idle headless refreshes", async () => {
 		const handlers = new Map<string, Handler>();
 		const pi = {
 			on: (name: string, handler: Handler) => {
@@ -124,6 +124,9 @@ describe("turn_end", () => {
 		};
 		expect(
 			await decide(event, { hasUI: false, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),
+		).toBeUndefined();
+		expect(
+			await decide({ ...event, continuationProbability: 0.15 }, { hasUI: false, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),
 		).toEqual({ action: "stop" });
 		expect(
 			await decide(event, { hasUI: true, sessionManager: { getSessionId: () => "s", getBranch: () => [] } }),

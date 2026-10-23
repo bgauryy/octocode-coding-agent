@@ -33,6 +33,7 @@ import {
 	getDisabledGoogleThinkingConfig,
 	isThinkingPart,
 	mapStopReason,
+	normalizeGoogleUsage,
 	resolveGoogleFunctionCallingMode,
 	resolveGoogleThinkingLevel,
 	retainThoughtSignature,
@@ -230,23 +231,7 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
 				}
 
 				if (chunk.usageMetadata) {
-					output.usage = {
-						input:
-							(chunk.usageMetadata.promptTokenCount || 0) - (chunk.usageMetadata.cachedContentTokenCount || 0),
-						output:
-							(chunk.usageMetadata.candidatesTokenCount || 0) + (chunk.usageMetadata.thoughtsTokenCount || 0),
-						cacheRead: chunk.usageMetadata.cachedContentTokenCount || 0,
-						cacheWrite: 0,
-						reasoning: chunk.usageMetadata.thoughtsTokenCount || 0,
-						totalTokens: chunk.usageMetadata.totalTokenCount || 0,
-						cost: {
-							input: 0,
-							output: 0,
-							cacheRead: 0,
-							cacheWrite: 0,
-							total: 0,
-						},
-					};
+					output.usage = normalizeGoogleUsage(chunk.usageMetadata);
 					calculateCost(model, output.usage);
 				}
 			}

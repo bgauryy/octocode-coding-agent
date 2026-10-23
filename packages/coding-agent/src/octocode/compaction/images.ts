@@ -129,7 +129,7 @@ function jsonChars(value: unknown): number {
 	return value === undefined ? 0 : String(value).length;
 }
 
-/** The characters a message part adds to a request: pi-ai resends thinking with its signature, and tool calls as name and JSON arguments. */
+/** The characters a message part adds to a request: octocode-ai resends thinking with its signature, and tool calls as name and JSON arguments. */
 function partChars(part: unknown): number {
 	if (!isRecord(part)) return 0;
 	switch (part.type) {

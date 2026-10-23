@@ -222,8 +222,8 @@ export function collectBugReportDiagnostics(
 	};
 }
 
-export type BugReportMetadata = ReturnType<typeof collectBugReportMetadata>;
-export type BugReportDiagnostics = ReturnType<typeof collectBugReportDiagnostics>;
+type BugReportMetadata = ReturnType<typeof collectBugReportMetadata>;
+type BugReportDiagnostics = ReturnType<typeof collectBugReportDiagnostics>;
 
 export interface BugReportBundle {
 	metadata: BugReportMetadata;

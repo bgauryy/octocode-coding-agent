@@ -30,7 +30,7 @@ describe("native Octocode subagent completion", () => {
 				models: faux.models,
 				streamSimple: faux.streamSimple,
 			} as never);
-		const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
+		const settingsManager = SettingsManager.inMemory({  retry: { enabled: false } });
 		const resourceLoader = new DefaultResourceLoader({
 			cwd,
 			agentDir,

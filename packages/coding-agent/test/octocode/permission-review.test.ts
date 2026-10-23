@@ -188,7 +188,7 @@ describe("places that run code later", () => {
 			provenance: { check: () => undefined },
 			annotations: noHints,
 		});
-		const target = path.join(octocodeHome(), "trust.json");
+		const target = path.join(octocodeHome(), "pi-trust.json");
 		expect(await gate(call("write", { path: target, content: "{}" }), fakeCtx({ cwd }))).toMatchObject({
 			block: true,
 			reason: expect.stringMatching(/Octocode's state folder/),

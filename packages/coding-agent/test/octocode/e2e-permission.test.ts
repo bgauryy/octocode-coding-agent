@@ -99,7 +99,7 @@ async function headless(env: Record<string, string>) {
 			streamSimple: faux.streamSimple,
 		} as never);
 	};
-	const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({  retry: { enabled: false } });
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: path.join(root, "agent"),

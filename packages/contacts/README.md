@@ -1,0 +1,15 @@
+# Octocode shared contracts
+
+The `contacts` package owns common contracts for packages and interfaces. Its package name is `@octocodeai/octocode-contacts`. Hosts load configuration and enforce permissions; see [configuration ownership](../../CONFIGURATIONS.md) and the [application boundary](../../docs/INTERFACE_ARCHITECTURE.md).
+
+- `backlogs`: references, links, completion records and entity input schemas.
+- `snapshot`: backlog states, notes, comments, audit records and presentation snapshots.
+- `team`: agent presence and message delivery records.
+- `workspace`: event, command, receipt and snapshot types.
+- `protocol`: HTTP routes, runtime command/mutation schemas and WebSocket event union.
+- `application`: shared application commands, frames, snapshots, receipts and connection interfaces.
+- `schema`: the shared string-enum schema helper, also re-exported by the AI package.
+
+Only TypeBox is a runtime dependency. Keep application behavior, database access, browser DOM, provider code, and permission decisions out of this package. Validate untrusted requests at the host boundary with these schemas; types alone do not validate JSON.
+
+Run `npm run build --workspace=@octocodeai/octocode-contacts` and `npm run test --workspace=@octocodeai/octocode-contacts` from the repository root. Add a contract here when it crosses a real package or interface boundary; private persistence models stay with their owner.

@@ -22,6 +22,7 @@ import {
 	type ShellSettings,
 	shellEnv,
 	shellSettings,
+	shellScript,
 } from "./bash-jobs.ts";
 import { foregroundOperations, strayNote } from "./bash-run.ts";
 import { type BashDetails, RERUN_HINT, renderBashResult, renderJobMessage } from "./render.ts";
@@ -38,10 +39,19 @@ import { type BashDetails, RERUN_HINT, renderBashResult, renderJobMessage } from
 
 /** `structuredContent` of a background start; a foreground command returns Octocode's own bash output. */
 const BACKGROUND_OUTPUT = Type.Object({
-	job: Type.String({ description: "Job id, for `/octocode jobs kill <id>`" }),
+	job: Type.String({ description: "Job id, for `/jobs kill <id>`" }),
 	pid: Type.Number({ description: "Process group leader" }),
 	log: Type.String({ description: "Log file with the combined output" }),
 });
+
+/** A command starting with `sleep` is stopped at its deadline, not moved to the background (as Claude Code does). */
+const SLEEP_COMMAND = /^\s*sleep(?:\s|$)/;
+
+/** The three lines that say where a background job logs and how to check and stop it. */
+function jobLines(job: BashJob, cwd: string): string[] {
+	const log = shortPath(job.log, cwd);
+	return [`Log: ${log}`, `Check: tail -n 40 ${log}`, `Stop: kill -- -${job.pid}`];
+}
 
 /** Deadline of a foreground command whose call names none, in seconds. */
 export const DEFAULT_BASH_TIMEOUT = 15 * 60;
@@ -72,6 +82,38 @@ export function effectiveTimeout(requested: unknown): { seconds: number; clamped
 	return requested > MAX_FOREGROUND_TIMEOUT
 		? { seconds: MAX_FOREGROUND_TIMEOUT, clamped: true }
 		: { seconds: requested, clamped: false };
+}
+
+/**
+ * The result of a foreground command that reached its deadline and went on as `job`: the output it had printed (the
+ * message Octocode's bash built for the timeout, less its status line), then where it runs and how to stop it.
+ */
+function movedResult(
+	message: string,
+	job: BashJob,
+	seconds: number,
+	clamped: boolean,
+	cwd: string,
+	fullOutputPath?: string,
+) {
+	const output = message.replace(/(?:^|\n\n)Command timed out after [\d.]+ seconds$/, "").trimEnd();
+	const moved = [
+		`Did not finish within ${formatDuration(seconds * 1000)}; moved to the background as ${job.id} (pid ${job.pid}), still running. Its exit status and output tail arrive as a message.`,
+		...jobLines(job, cwd),
+	].join("\n");
+	const text = [output, moved, clamped ? `(${CLAMP_NOTE})` : ""].filter((part) => part !== "").join("\n\n");
+	const details: BashDetails = {
+		job: job.id,
+		pid: job.pid,
+		log: job.log,
+		moved: true,
+		...(fullOutputPath ? { fullOutputPath } : {}),
+	};
+	return {
+		content: [{ type: "text" as const, text }],
+		structuredContent: { job: job.id, pid: job.pid, log: job.log },
+		details,
+	};
 }
 
 /** The notice for jobs found running after their Octocode died (`reapOrphanJobs`). */
@@ -193,7 +235,7 @@ export function registerBashTool(
 		handler: async (args, ctx) => {
 			const [sub = "", id = ""] = args.split(/\s+/);
 			if (!sub) return say(ctx, jobs.describe(), "info");
-			if (sub !== "kill") return say(ctx, "Usage: /octocode jobs [kill <id>]", "warning");
+			if (sub !== "kill") return say(ctx, "Usage: /jobs [kill <id>]", "warning");
 			if (!jobs.stop(id, "user")) return say(ctx, `No background bash job "${id}".\n${jobs.describe()}`, "warning");
 			say(ctx, `Stopping ${id}…`, "info");
 		},
@@ -219,21 +261,24 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			description:
-				"Run shell commands in the working directory: builds, tests, git, formatters and installed CLIs. Foreground calls return combined output after completion; large output keeps a tail and names the full log. " +
+				"Run shell commands with type bash (default) or powershell (Windows) in the working directory: builds, tests, git, formatters and installed CLIs. Foreground calls return combined output after completion; large output keeps a tail and names the full log. " +
 				"Background calls return a job id, pid and log path; completion arrives automatically as a message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.",
 			// Octocode's own snippet ("ls, grep, find") would contradict the Octocode research routing.
 			promptSnippet: "Run shell commands: builds, tests, git",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
-			// Codemode scripts receive `structuredContent` only from tools that declare its schema.
+			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined
 				? { outputSchema: Type.Union([builtin.outputSchema, BACKGROUND_OUTPUT]) }
 				: {}),
 			promptGuidelines: builtin.promptGuidelines,
 			parameters: Type.Object({
-				command: Type.String({ description: "Shell command to execute" }),
+				type: Type.Optional(Type.Union([Type.Literal("bash"), Type.Literal("powershell")], {
+					description: "Shell syntax: bash (default, configured shell) or powershell (Windows)",
+				})),
+				command: Type.String({ description: "Shell command to execute in the selected syntax" }),
 				timeout: Type.Optional(
 					Type.Number({
-						description: `Timeout in seconds; foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s. A background job has none unless given`,
+						description: `Timeout in seconds; foreground default ${DEFAULT_BASH_TIMEOUT}s, at most ${MAX_FOREGROUND_TIMEOUT}s, then it moves to the background. A background job has none unless given`,
 					}),
 				),
 				background: Type.Optional(
@@ -246,7 +291,7 @@ export function registerBashTool(
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 				current = ctx;
-				const settings = settingsFor(ctx);
+				const settings = { ...settingsFor(ctx), type: params.type ?? "bash" };
 				if (params.background) {
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
 						env: shellEnv(ctx),
@@ -256,9 +301,7 @@ export function registerBashTool(
 					showJobs();
 					const text = [
 						`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, stopped after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
-						`Log: ${shortPath(job.log, ctx.cwd)}`,
-						`Check: tail -n 40 ${shortPath(job.log, ctx.cwd)}`,
-						`Stop: kill -- -${job.pid}`,
+						...jobLines(job, ctx.cwd),
 					].join("\n");
 					return {
 						content: [{ type: "text" as const, text }],
@@ -270,17 +313,30 @@ export function registerBashTool(
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
+				// A command still running at its deadline becomes a background job (see `adoptAtDeadline`).
+				let adopted: BashJob | undefined;
 				const run = createBashToolDefinition(process.cwd(), {
 					...settings,
-					operations: foregroundOperations(settings, (pid) => {
-						group = pid;
-						return group;
-					}),
+					commandPrefix: undefined,
+					operations: foregroundOperations(
+						settings,
+						(pid) => {
+							group = pid;
+							return group;
+						},
+						SLEEP_COMMAND.test(params.command)
+							? undefined
+							: (child, output, startedAt) => {
+									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, { output, startedAt });
+									showJobs();
+									return adopted;
+								},
+					),
 				});
 				try {
 					const raw = await run.execute(
 						toolCallId,
-						{ command: params.command, timeout },
+						{ command: shellScript(params.command, settings), timeout },
 						signal,
 						(update) => {
 							spilled = update.details?.fullOutputPath ?? spilled;
@@ -311,7 +367,9 @@ export function registerBashTool(
 						details: { ...details, fullOutputPath: moved.path },
 					};
 				} catch (error) {
-					const message = adoptFullOutput(errorMessage(error), spilled, jobs.logDir()).text;
+					const full = adoptFullOutput(errorMessage(error), spilled, jobs.logDir());
+					const message = full.text;
+					if (adopted) return movedResult(message, adopted, timeout, clamped, ctx.cwd, full.path);
 					if (!/Command timed out after/.test(message))
 						throw new Error(clamped ? `${message}\n\n(${CLAMP_NOTE})` : message);
 					const how = clamped
@@ -330,7 +388,7 @@ export function registerBashTool(
 				return toolHeader(
 					theme,
 					context,
-					"Bash",
+					args.type === "powershell" ? "PowerShell" : "Bash",
 					typeof args.command === "string" ? args.command : "",
 					meta ? { meta } : {},
 				);

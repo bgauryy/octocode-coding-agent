@@ -283,7 +283,7 @@ describe("agents view", () => {
 		expect(formatDuration(134_000)).toBe("2m14s");
 		expect(
 			memberStats(member("a-0000", { toolCalls: 7, input: 12_000, cacheRead: 3_000, output: 3_000, cost: 0.024 })),
-		).toBe("7 tool calls · ↑12k (25% cached) ↓3k · ≈$0.02");
+		).toBe("7 tool calls · ↑9k +3k cached ↓3k · ≈$0.02");
 		expect(memberStats(member("a-0000"))).toBe("0 tool calls");
 	});
 
@@ -374,7 +374,7 @@ describe("agents view", () => {
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
-			"You own user communication, missing approvals, review and integration",
+			"Own user communication, approvals and integration; verify reports against the Definition of Done",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
@@ -393,7 +393,7 @@ describe("collaboration prompt", () => {
 		);
 		// A child names its parent generically: its own id and parent arrive in its task.
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate: true })).toMatch(
-			/your parent[\s\S]*sendMessage/,
+			/your parent[\s\S]*agent[\s\S]*message/,
 		);
 	});
 });

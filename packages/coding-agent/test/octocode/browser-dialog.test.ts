@@ -119,7 +119,7 @@ describe("browser: an open dialog ends waits promptly", () => {
 		const { value, ms } = await timed(text({ action: "navigate", url: "https://example.com/" }));
 		expect(value).toContain('A alert dialog is open: "Hi!"');
 		expect(ms).toBeLessThan(3_000);
-		expect(await text({ action: "dialog", accept: true })).toBe("Accepted the alert dialog.");
+		expect(await text({ action: "dialog", accept: true })).toContain("Accepted the alert dialog.\n\n");
 		expect(await text({ action: "snapshot" })).toContain("# Stub");
 	}, 15_000);
 

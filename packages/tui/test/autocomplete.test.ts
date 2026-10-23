@@ -826,3 +826,18 @@ describe("CombinedAutocompleteProvider", () => {
 		});
 	});
 });
+
+test("path arguments complete inside slash commands, including aliases and spaces", async () => {
+	const folder = mkdtempSync(join(tmpdir(), "command-paths-"));
+	try {
+		writeFileSync(join(folder, "saved session.jsonl"), "{}");
+		const provider = new CombinedAutocompleteProvider([{ name: "import", aliases: ["load"], argumentKind: "path" }], folder);
+		for (const name of ["import", "load"]) {
+			const line = `/${name} sav`;
+			const result = await getSuggestions(provider, [line], 0, line.length);
+			assert.ok(result?.items.some(item => item.value.includes("saved session.jsonl")));
+			const item = result!.items.find(item => item.value.includes("saved session.jsonl"))!;
+			assert.ok(provider.applyCompletion([line], 0, line.length, item, result!.prefix).lines[0].startsWith(`/${name} `));
+		}
+	} finally { rmSync(folder, { recursive: true, force: true }); }
+});

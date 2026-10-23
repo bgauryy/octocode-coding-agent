@@ -70,7 +70,7 @@ const ENTRY_VIAS = [
 	"headless",
 	"cancelled",
 	"invariant",
-	"hook",
+	"hook", "policy",
 	"reported",
 	"typed",
 	RELAY_VIA,

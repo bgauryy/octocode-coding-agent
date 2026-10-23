@@ -37,6 +37,8 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 
 /** Reasons tighten an action. They are not action classes: manual, workspace, full. */
 const REASONS: Record<AskReason, [string, string, string]> = {
+	"source.ask": ["ask", "ask", "ask"],
+	"shell.target": ["ask", "ask", "allow"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],

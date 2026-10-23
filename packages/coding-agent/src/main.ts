@@ -1,3 +1,6 @@
+import { readSkillResourceSnapshot } from "./core/skill-resource-snapshot.ts";
+import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "./octocode/shared/env.ts";
+import { runCompletionCommand } from "./cli/completion.ts";
 /**
  * Main entry point for the coding agent CLI.
  *
@@ -572,6 +575,7 @@ export interface MainOptions {
 }
 
 export async function main(args: string[], options?: MainOptions) {
+	if (runCompletionCommand(args)) return;
 	resetTimings();
 	// Commands and startup selectors can load user-authored themes before runtime creation.
 	setThemeJsonValidator(validateThemeJson);
@@ -641,6 +645,8 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	const parsed = parseArgs(args);
+	const skillSnapshotFile = process.env[SKILL_SNAPSHOT_FILE_ENV];
+	const skillResourceSnapshot = envFlag(process.env, SUBAGENT_ENV) && skillSnapshotFile ? readSkillResourceSnapshot(skillSnapshotFile) : undefined;
 	if (parsed.diagnostics.length > 0) {
 		for (const d of parsed.diagnostics) {
 			const color = d.type === "error" ? chalk.red : chalk.yellow;
@@ -796,6 +802,7 @@ export async function main(args: string[], options?: MainOptions) {
 					}
 				: undefined,
 			resourceLoaderOptions: {
+				skillResourceSnapshot,
 				additionalExtensionPaths: resolvedExtensionPaths,
 				additionalSkillPaths: resolvedSkillPaths,
 				additionalPromptTemplatePaths: resolvedPromptTemplatePaths,

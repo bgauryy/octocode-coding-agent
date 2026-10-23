@@ -52,7 +52,7 @@ test("pins published and private dependencies without touching registry aliases,
 			private: true,
 			dependencies: {
 				"@octocodeai/octocodecode": "^1.0.0",
-				"@mariozechner/pi-ai": "npm:@octocodeai/octocode-ai@1.0.0",
+				"legacy-ai-alias": "npm:@octocodeai/octocode-ai@1.0.0",
 			},
 		});
 		await writeManifest(root, "packages/coding-agent/install-lock", {
@@ -73,7 +73,7 @@ test("pins published and private dependencies without touching registry aliases,
 		}
 		const evalsManifest = await readManifest(root, "packages/evals");
 		assert.equal(evalsManifest.dependencies["@octocodeai/octocodecode"], "2.0.0");
-		assert.equal(evalsManifest.dependencies["@mariozechner/pi-ai"], "npm:@octocodeai/octocode-ai@1.0.0");
+		assert.equal(evalsManifest.dependencies["legacy-ai-alias"], "npm:@octocodeai/octocode-ai@1.0.0");
 		const generatedManifest = await readManifest(root, "packages/coding-agent/install-lock");
 		assert.equal(generatedManifest.dependencies["@octocodeai/octocodecode"], "^1.0.0");
 

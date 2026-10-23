@@ -36,6 +36,30 @@ async function started() {
 }
 
 describe("the late-report poll", () => {
+	it("returns an in-flight scan to its original session after a switch", async () => {
+		const { reports, added, dir } = await started();
+		savePendingReport(dir, "general-old", report("general-old"));
+		let release!: () => void;
+		let entered!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const reading = new Promise<void>((resolve) => { entered = resolve; });
+		const read = fs.promises.readFile;
+		const spy = vi.spyOn(fs.promises, "readFile").mockImplementationOnce(async (...args) => {
+			entered();
+			await gate;
+			return read(...args);
+		});
+		const pending = reports.take();
+		await reading;
+		reports.stop();
+		const next = reports.start(`late-switch-${process.pid}-${++sessions}`);
+		release();
+		await Promise.all([pending, next]);
+		spy.mockRestore();
+		expect(added).toEqual([]);
+		expect(fs.readdirSync(dir)).toHaveLength(1);
+		expect(fs.readdirSync(dir)[0]).toMatch(/\.json$/);
+	});
 	it("reads the pending folder with async calls only, so a poll never blocks the event loop on the disk", async () => {
 		const { reports, added, dir } = await started();
 		savePendingReport(dir, "general-a", report("general-a"));

@@ -23,7 +23,7 @@ type CacheModel = Pick<Model<Api>, "provider" | "id" | "api" | "promptCache" | "
 
 /**
  * The lifetimes of a model that declares none. A long request gets a 5-minute entry when the model cannot hold a long one
- * (`supportsLongCacheRetention: false`: pi-ai then sends no `ttl`) or when its replies showed the provider granting only
+ * (`supportsLongCacheRetention: false`: octocode-ai then sends no `ttl`) or when its replies showed the provider granting only
  * 5 minutes (`grantedLong` false), so its long tier is then the short one.
  */
 export function inferredPromptCache(model: Pick<Model<Api>, "compat">, grantedLong = true): PromptCache {
@@ -49,7 +49,7 @@ export function promptCacheTtlMs(
 ): number | undefined {
 	const seconds = promptCache?.[env[CACHE_RETENTION_ENV] === "long" ? "long" : "short"];
 	if (env[CACHE_RETENTION_ENV] === "none") return undefined;
-	return seconds === undefined ? undefined : seconds * 1000;
+	return seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
 }
 
 /** An assistant reply's usage, when it has one. */
@@ -132,8 +132,8 @@ export class PromptCacheLifetimes {
 }
 
 /**
- * Octocode's say in a cache refresh Octocode is about to send. A headless run or a subagent is never warmed: it sends its
- * requests back to back and ends. An idle refresh (Octocode assumes a constant 15% chance the user returns) is decided from
+ * Octocode's say in a cache refresh Octocode is about to send. Active runs retain the core economic decision, including
+ * headless runs and subagents waiting for tools. Only interactive sessions receive idle refreshes. An idle refresh (Octocode assumes a constant 15% chance the user returns) is decided from
  * this session's own idle gaps at the current idle age instead: warm when q(t) × the miss cost beats the refresh cost.
  * Undefined keeps Octocode's decision (a streaming refresh, whose run is still going, or too little history).
  */
@@ -144,8 +144,9 @@ export function warmingDecision(
 	now = Date.now(),
 	isSubagent = envFlag(process.env, SUBAGENT_ENV),
 ): CacheWarmingDecisionEventResult | undefined {
+	if (event.continuationProbability >= 1) return undefined;
 	if (!interactive(ctx, isSubagent)) return event.action === "stop" ? undefined : { action: "stop" };
-	if (event.continuationProbability >= 1 || ttlMs === undefined) return undefined;
+	if (ttlMs === undefined) return undefined;
 	const { replyAt, gaps } = cacheClock(ctx.sessionManager);
 	const q = replyAt === undefined ? undefined : idleContinuation(gaps, now - replyAt, ttlMs);
 	if (q === undefined) return undefined;
@@ -177,13 +178,15 @@ interface ClockState {
 }
 
 function noteClock(state: ClockState, entry: unknown): void {
-	const { type, kind, timestamp, message } = entry as {
+	const { type, kind, timestamp, message, usage } = entry as {
 		type?: string;
 		kind?: string;
+		usage?: { cacheRead?: number; cacheWrite?: number };
 		timestamp?: string;
 		message?: { role?: string; timestamp?: number; stopReason?: string };
 	};
 	if (type === "usage") {
+		if (usage && !(Number(usage.cacheRead) > 0 || Number(usage.cacheWrite) > 0)) return;
 		const at = kind === "cache_warm" && typeof timestamp === "string" ? Date.parse(timestamp) : Number.NaN;
 		if (at > state.warmAt) state.warmAt = at;
 		return;

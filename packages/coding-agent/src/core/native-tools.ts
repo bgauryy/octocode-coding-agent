@@ -5,7 +5,7 @@ export const NATIVE_FEATURE_PATH = "<inline:octocode>";
 
 export function defaultToolNames(extensions: readonly Extension[]): string[] {
 	const native = extensions.find((extension) => extension.sourceInfo.path === NATIVE_FEATURE_PATH);
-	const names = native ? ["read"] : [...DEFAULT_TOOL_NAMES];
+	const names = native ? [] : [...DEFAULT_TOOL_NAMES];
 	for (const { definition } of native?.tools.values() ?? []) {
 		if (definition.defaultActive !== false && !names.includes(definition.name)) names.push(definition.name);
 	}

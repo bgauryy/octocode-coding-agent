@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const moduleRequire = createRequire(import.meta.url);
 const TUI_PACKAGE_NAME = "@octocodeai/octocode-tui";
 
-export interface NativeModuleCandidateOptions {
+interface NativeModuleCandidateOptions {
 	moduleUrl?: string;
 	execPath?: string;
 	resolvePackage?: (specifier: string) => string;

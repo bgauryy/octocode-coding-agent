@@ -5,6 +5,7 @@ import {
 	drag,
 	fillFields,
 	hover,
+	pressKey,
 	refForText,
 	settle,
 	typeInto,
@@ -60,30 +61,55 @@ const mouse = (sent: Sent[]) =>
 afterEach(() => vi.useRealTimers());
 
 describe("pointing at elements", () => {
-	it("clicks an element with no box directly, in the page, without pressing the mouse", async () => {
+	it("refuses hidden targets without invoking a DOM click", async () => {
 		const { page, sent, expressions } = fakePage(() => "hidden");
-		expect(await click(page, 4)).toBe("[4] has no visible box; it was clicked directly.");
-		expect(expressions[0]).toContain("el.click(); return 'hidden'");
+		await expect(click(page, 4)).rejects.toThrow("no visible box to click");
+		expect(expressions[0]).not.toContain("el.click()");
 		expect(sent).toEqual([]);
 	});
 
-	it("follows an element the mouse move shifted, and notes what covers it", async () => {
+	it("refuses a target covered after the mouse move without pressing", async () => {
 		const { page, sent } = fakePage(
 			inOrder({ x: 10, y: 10, covered: "" }, { x: 20, y: 30, covered: 'div#banner "Cookies"' }),
 		);
-		expect(await click(page, 2)).toBe('Note: div#banner "Cookies" covers [2], so the click landed on it.');
-		expect(mouse(sent)).toEqual([
-			"mouseMoved@10,10",
-			"mouseMoved@20,30",
-			"mousePressed@20,30",
-			"mouseReleased@20,30",
-		]);
+		await expect(click(page, 2)).rejects.toThrow('div#banner "Cookies" covers [2]; click was refused.');
+		expect(mouse(sent)).toEqual(["mouseMoved@10,10", "mouseMoved@20,30"]);
 	});
 
-	it("keeps the first point when the element loses its box after the move", async () => {
+	it("refuses a target that loses its box after the move", async () => {
 		const { page, sent } = fakePage(inOrder({ x: 1, y: 2, covered: "" }, "hidden"));
-		expect(await click(page, 1)).toBe("");
-		expect(mouse(sent)).toEqual(["mouseMoved@1,2", "mousePressed@1,2", "mouseReleased@1,2"]);
+		await expect(click(page, 1)).rejects.toThrow("no visible box to click");
+		expect(mouse(sent)).toEqual(["mouseMoved@1,2"]);
+	});
+
+	it("does not change link targets when hovering", async () => {
+		const { page, expressions } = fakePage(() => ({ x: 1, y: 2, covered: "" }));
+		await hover(page, 1);
+		expect(expressions.join("\n")).not.toContain("link.target =");
+	});
+
+	it.each(["abort", "error"])("releases the mouse when drag ends with %s", async (failure) => {
+		const controller = new AbortController();
+		const { page, sent } = fakePage(() => ({ x: 1, y: 2, covered: "" }));
+		const send = page.send.bind(page);
+		page.send = async <T = Record<string, unknown>>(method: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> => {
+			const result = await send<T>(method, params, signal);
+			if (params?.type === "mousePressed") {
+				if (failure === "abort") controller.abort(new Error("stop"));
+				else throw new Error("dispatch failed");
+			}
+			return result;
+		};
+		await expect(drag(page, 1, 2, controller.signal)).rejects.toThrow();
+		expect(mouse(sent).at(-1)).toBe("mouseReleased@1,2");
+		expect(sent).toContainEqual({ method: "Input.setInterceptDrags", params: { enabled: false } });
+	});
+
+	it.each(["+", "Control++", "Shift++"])("presses literal plus in %s", async (combo) => {
+		const { page, sent } = fakePage(() => undefined);
+		await pressKey(page, combo);
+		expect(sent.map(({ params }) => params.key)).toEqual(["+", "+"]);
+		expect(sent[0]?.params.modifiers).toBe(combo === "+" ? 0 : combo === "Control++" ? 2 : 8);
 	});
 
 	it("refuses gone and boxless elements for click, hover and drag", async () => {
@@ -119,10 +145,10 @@ describe("typing and filling", () => {
 	});
 
 	it("inserts text into a field (not into a select it already set), then presses Enter on submit", async () => {
-		const select = fakePage(() => "select");
+		const select = fakePage(inOrder("select", true));
 		await typeInto(select.page, 1, "Blue", false);
 		expect(select.sent).toEqual([]);
-		const field = fakePage(() => "field");
+		const field = fakePage(inOrder("field", true));
 		await typeInto(field.page, 1, "hello", true);
 		expect(field.sent.map((item) => `${item.method}:${String(item.params.text ?? item.params.type)}`)).toEqual([
 			"Input.insertText:hello",
@@ -135,7 +161,11 @@ describe("typing and filling", () => {
 		const states: Record<string, unknown> = { "0": "checked", "1": "unchecked", "2": null };
 		const { page, sent } = fakePage((expression) => {
 			const index = /__octoRefs \|\| \[\]\)\[(\d+)\]/.exec(expression)?.[1] ?? "";
-			if (expression.includes("aria-checked")) return states[index];
+			if (expression.includes("aria-checked")) {
+				const state = states[index];
+				if (index === "0") states[index] = "unchecked";
+				return state;
+			}
 			return { x: 3, y: 3, covered: "" };
 		});
 		const failures = await fillFields(page, [
@@ -146,6 +176,29 @@ describe("typing and filling", () => {
 		expect(failures).toEqual(["[3]: No element [3] — take a new snapshot."]);
 		expect(mouse(sent).filter((event) => event.startsWith("mousePressed"))).toEqual(["mousePressed@3,3"]);
 	});
+	it("does not submit text that the page did not retain", async () => {
+		const { page, sent } = fakePage(inOrder("field", false));
+		await expect(typeInto(page, 1, "rejected", true)).rejects.toThrow("did not retain");
+		expect(sent.some(({ method }) => method === "Input.dispatchKeyEvent")).toBe(false);
+	});
+
+	it("reports a toggle that remains checked after clicking, including a selected radio", async () => {
+		const { page } = fakePage((expression) =>
+			expression.includes("aria-checked") ? "checked" : { x: 1, y: 2, covered: "" },
+		);
+		expect(await fillFields(page, [{ ref: 1, value: "false" }])).toEqual([
+			"[1]: Toggle did not become unchecked; inspect the field before retrying.",
+		]);
+	});
+
+	it("rejects unrecognized toggle values without clicking", async () => {
+		const { page, sent } = fakePage(() => "checked");
+		expect(await fillFields(page, [{ ref: 1, value: "typo" }])).toEqual([
+			"[1]: Toggle value must be true or false.",
+		]);
+		expect(sent).toEqual([]);
+	});
+
 });
 
 describe("waits that honour abort", () => {

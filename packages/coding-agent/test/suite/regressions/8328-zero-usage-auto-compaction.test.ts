@@ -41,7 +41,7 @@ describe("issue #8328 zero-usage auto-compaction", () => {
 	async function createCompactionHarness(): Promise<Harness> {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 100, maxTokens: 20 }],
-			settings: { compaction: { enabled: true, reserveTokens: 10 } },
+			compactionPolicy: { enabled: true, reserveTokens: 10 },
 		});
 		harnesses.push(harness);
 		return harness;
@@ -60,7 +60,7 @@ describe("issue #8328 zero-usage auto-compaction", () => {
 		await sessionInternals._checkCompaction(assistant);
 
 		expect(runAutoCompactionSpy).toHaveBeenCalledOnce();
-		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
+		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false, harness.session.model);
 	});
 
 	it("does not compact when the zero-usage message estimate is below the threshold", async () => {

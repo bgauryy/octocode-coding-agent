@@ -15,6 +15,7 @@ export interface AgentDb {
 	readonly fts: boolean;
 	/** One BEGIN IMMEDIATE transaction; nested calls join the outer one. */
 	transaction<T>(fn: () => T): T;
+	withActor<T>(actor: { id: string; kind?: string }, fn: () => T): T;
 	close(): void;
 }
 
@@ -31,6 +32,14 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 	fs.closeSync(fs.openSync(target, "a", 0o600));
 	const { DatabaseSync: Database } = loadSqlite();
 	const db = new Database(target);
+	db.function("octocode_backlog_writer", () => 1);
+	let auditActor = JSON.stringify({ id: "system", kind: "system" });
+	db.function("octocode_audit_actor", () => auditActor);
+	const withActor = <T>(actor: { id: string; kind?: string }, fn: () => T): T => {
+		const previous = auditActor;
+		auditActor = JSON.stringify(actor);
+		try { return fn(); } finally { auditActor = previous; }
+	};
 	let depth = 0;
 	const transaction = <T>(fn: () => T): T => {
 		if (depth > 0) return fn();
@@ -58,6 +67,8 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 		db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
 		const { fts } = schemaCurrent(db) ? { fts: true } : transaction(() => ensureSchema(db, target));
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
+		if (db.prepare("SELECT 1 FROM backlog_notes n WHERE kind = 'note' AND NOT EXISTS (SELECT 1 FROM backlog_comments c WHERE c.legacy_note_id = n.id) LIMIT 1").get()) transaction(() => db.exec(`INSERT OR IGNORE INTO backlog_comments(item, legacy_note_id, at, author, text)
+ SELECT item, id, at, author, text FROM backlog_notes WHERE kind = 'note'`));
 		tighten(target);
 		let open = true;
 		return {
@@ -65,6 +76,7 @@ export function openAgentDb(file?: string, env: NodeJS.ProcessEnv = process.env)
 			db,
 			fts,
 			transaction,
+			withActor,
 			close: () => {
 				if (open) db.close();
 				open = false;

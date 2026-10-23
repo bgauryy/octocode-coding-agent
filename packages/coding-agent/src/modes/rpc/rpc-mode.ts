@@ -12,6 +12,8 @@
  */
 
 import * as crypto from "node:crypto";
+import { getPromptCommands } from "../../core/prompt-templates.ts";
+import { getSkillCommands } from "../../core/skill-commands.ts";
 import type { AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
 import type {
 	ExtensionUIContext,
@@ -531,13 +533,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			// =================================================================
 
 			case "compact": {
-				const result = await session.compact(command.customInstructions);
+				const result = await session.compact();
 				return success(id, "compact", result);
-			}
-
-			case "set_auto_compaction": {
-				session.setAutoCompactionEnabled(command.enabled);
-				return success(id, "set_auto_compaction");
 			}
 
 			// =================================================================
@@ -683,24 +680,29 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				for (const command of session.extensionRunner.getRegisteredCommands()) {
 					commands.push({
 						name: command.invocationName,
+						aliases: command.aliases,
 						description: command.description,
 						source: "extension",
 						sourceInfo: command.sourceInfo,
 					});
 				}
 
-				for (const template of session.promptTemplates) {
+				for (const { template, name, aliases } of getPromptCommands(session.promptTemplates, session.extensionRunner.getRegisteredCommands())) {
 					commands.push({
-						name: template.name,
+						name,
+						aliases,
 						description: template.description,
 						source: "prompt",
 						sourceInfo: template.sourceInfo,
 					});
 				}
 
-				for (const skill of session.resourceLoader.getSkills().skills) {
+				for (const { skill, name, aliases } of getSkillCommands(session.resourceLoader.getSkills().skills, [
+					...session.extensionRunner.getRegisteredCommands(), ...session.promptTemplates,
+				])) {
 					commands.push({
-						name: `skill:${skill.name}`,
+						name,
+						aliases,
 						description: skill.description,
 						source: "skill",
 						sourceInfo: skill.sourceInfo,

@@ -70,7 +70,7 @@ async function run() {
 async function scenario() {
 // The identity block the agent tool appends (`## You …`, with the goal) is not part of the scenario text.
 if (task.split('\n\n## You')[0].includes('linger')) {
-  emit(say(`LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ''} ${process.argv.slice(2).join(' ')} ${task}`));
+  emit(say(`${task.includes('blocked') ? 'blocked: ' : ''}LINGER mode=${process.env.OCTOCODE_PERMISSION} grants=${process.env.OCTOCODE_PERMISSION_GRANTS ?? ''} ${process.argv.slice(2).join(' ')} ${task}`));
 } else if (task.startsWith('think aloud')) {
   // Streams a thinking block, narrates, calls a tool, then answers.
   const think = (delta) => emit({ type: 'message_update', usage, assistantMessageEvent: { type: 'thinking_delta', contentIndex: 0, delta } });
@@ -123,7 +123,8 @@ if (task.split('\n\n## You')[0].includes('linger')) {
   for (let n = 1; n <= 8; n++) emit({ type: 'extension_ui_request', id: `d${n}`, method: 'notify', message: `distinct warning ${n}`, notifyType: 'warning' });
   emit(say('WORDY'));
 } else if (task.startsWith('noisy stderr')) {
-  // 300 numbered lines on stderr (well over the tail a failure shows), then a crash.
+  // A first reply, then 300 numbered lines on stderr (well over the tail a failure shows), then a crash.
+  emit(say('Reading the logs', { stopReason: 'toolUse' }));
   for (let n = 1; n <= 300; n++) process.stderr.write(`diagnostic line ${n} of the noisy child\n`);
   process.exit(3);
 } else if (task.startsWith('chatty')) {
@@ -206,6 +207,29 @@ if (task.split('\n\n## You')[0].includes('linger')) {
 } else if (task.startsWith('oversized')) {
   end = 'hold';
   process.stdout.write('x'.repeat(17 * 1024 * 1024));
+} else if (task.startsWith('startup')) {
+  // A crash before any model turn, as a source file edited at that moment causes: `startup flaky` works on its second start,
+  // `startup crash` never does, `startup plain` fails with an error that a second start would not change, `startup after tool`
+  // gets as far as a tool call. `<scratch>/attempts` counts the starts.
+  const dir = process.env.OCTOCODE_AGENT_SCRATCH || process.argv[process.argv.indexOf('--session-dir') + 1];
+  fs.mkdirSync(dir, { recursive: true });
+  fs.appendFileSync(`${dir}/attempts`, 'x');
+  const attempts = fs.readFileSync(`${dir}/attempts`, 'utf8').length;
+  const syntax = () => {
+    process.stderr.write('file:///repo/src/core/application/service.ts:42\n  const x: number = 1;\n           ^^^^^^\n\nSyntaxError [ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX]: TypeScript enum is not supported in strip-only mode\n    at compileSourceTextModule (node:internal/modules/esm/utils:318:16)\n');
+    process.exit(1);
+  };
+  if (task.startsWith('startup flaky')) {
+    if (attempts === 1) syntax();
+    emit(say('RECOVERED'));
+  } else if (task.startsWith('startup crash')) syntax();
+  else if (task.startsWith('startup plain')) {
+    process.stderr.write('No API key for provider\n');
+    process.exit(2);
+  } else if (task.startsWith('startup after tool')) {
+    emit({ type: 'tool_execution_start', toolName: 'bash', args: { command: 'ls' } });
+    syntax();
+  }
 } else if (task.startsWith('fail')) {
   process.stderr.write('boom\n');
   process.exit(3);
@@ -279,6 +303,10 @@ if (task.split('\n\n## You')[0].includes('linger')) {
   emit({ type: 'message_end', message: { role: 'assistant', content: [], usage, stopReason: 'stop' } });
 } else if (task.startsWith('long')) {
   emit(say(`summary first\n${'detail line\n'.repeat(1500)}the end`));
+} else if (task.startsWith('changed outcome')) {
+  emit(say('done: original task'));
+  emit({ type: 'message_end', message: { role: 'custom', content: 'Please check another condition' } });
+  emit(say('blocked: need a decision'));
 } else if (task.startsWith('late failure')) {
   emit(say('FULL REPORT'));
   emit({ type: 'message_end', message: { role: 'custom', content: 'Background bash job finished' } });
@@ -318,7 +346,7 @@ if (task.split('\n\n## You')[0].includes('linger')) {
   process.stdout.write('not json\n');
   emit({ type: 'message_end', message: { role: 'user', content: [] } });
   const env = process.env;
-  const facts = { id: env.OCTOCODE_AGENT_ID, role: env.OCTOCODE_AGENT_ROLE, goal: env.OCTOCODE_AGENT_GOAL, parent: env.OCTOCODE_PARENT_ID, subagent: env.OCTOCODE_SUBAGENT, collaborate: env.OCTOCODE_AGENT_COLLABORATE, scratch: env.OCTOCODE_AGENT_SCRATCH, workspace: env.OCTOCODE_TEAM_WORKSPACE, trustRoot: env.OCTOCODE_TRUST_ROOT, cwd: process.cwd(), args: process.argv.slice(2), task };
+  const facts = { skillSnapshotFile: env.OCTOCODE_SKILL_SNAPSHOT_FILE, skillResources: env.OCTOCODE_SKILL_SNAPSHOT_FILE ? JSON.parse(fs.readFileSync(env.OCTOCODE_SKILL_SNAPSHOT_FILE, "utf8")) : undefined, browserVisible: env.OCTOCODE_BROWSER_VISIBLE, rolePromptFile: env.OCTOCODE_ROLE_PROMPT_FILE, rolePrompt: env.OCTOCODE_ROLE_PROMPT_FILE ? fs.readFileSync(env.OCTOCODE_ROLE_PROMPT_FILE, "utf8") : undefined, id: env.OCTOCODE_AGENT_ID, role: env.OCTOCODE_AGENT_ROLE, goal: env.OCTOCODE_AGENT_GOAL, parent: env.OCTOCODE_PARENT_ID, subagent: env.OCTOCODE_SUBAGENT, collaborate: env.OCTOCODE_AGENT_COLLABORATE, scratch: env.OCTOCODE_AGENT_SCRATCH, workspace: env.OCTOCODE_TEAM_WORKSPACE, trustRoot: env.OCTOCODE_TRUST_ROOT, cwd: process.cwd(), args: process.argv.slice(2), task };
   // The last event has no trailing newline: the parent must still read it at exit.
   process.stdout.write(JSON.stringify(say(`report ${JSON.stringify(facts)}`)));
   end = 'exit';

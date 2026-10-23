@@ -14,7 +14,7 @@ const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not s
 const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
 
 /** An error tool result split into a text-only result and the images to send after the tool results. */
-export interface SplitErrorToolResult {
+interface SplitErrorToolResult {
 	/** The result content with each run of images replaced by a note. */
 	content: TextContent[];
 	/** Text naming the tool call, to send before `images`. */

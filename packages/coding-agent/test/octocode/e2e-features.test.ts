@@ -21,16 +21,8 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
-/**
- * README feature check through the real Octocode runtime with a scripted model. Runs the source by default;
- * `OCTOCODE_E2E_ENTRY=dist` loads the built extension (`dist/index.js`) instead.
- */
+/** Feature checks through the SDK defaults with a scripted model and isolated configuration. */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ENTRY =
-	process.env.OCTOCODE_E2E_ENTRY === "dist"
-		? path.join(HERE, "..", "dist", "index.js")
-		: path.join(HERE, "..", "src", "index.ts");
-const octocode = (await import(ENTRY)).default as ExtensionFactory;
 
 const savedEnv = { ...process.env };
 const savedArgv = process.argv[1];
@@ -72,6 +64,7 @@ const calls =
 	(...toolCalls: ReturnType<typeof fauxToolCall>[]) =>
 	() =>
 		fauxAssistantMessage(toolCalls, { stopReason: "toolUse" });
+const agentCall = (type: "task" | "coordinate" | "message", input: Parameters<typeof fauxToolCall>[1]) => fauxToolCall("agent", { type, input });
 const say = (text: string) => () => fauxAssistantMessage(text);
 type Reply = () => ReturnType<typeof fauxAssistantMessage>;
 
@@ -147,7 +140,8 @@ beforeAll(async () => {
 		OCTOCODE_HOME: path.join(home, ".octocode"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
 		OCTOCODE_HOOKS: "1",
-		OCTOCODE_MCP: "0",
+		OCTOCODE_MCP: "1",
+		OCTOCODE_PERMISSION: "workspace",
 	});
 	// Subagents re-run the current `pi` script: point it at the scripted stand-in.
 	const bin = path.join(root, "bin");
@@ -169,14 +163,13 @@ beforeAll(async () => {
 			streamSimple: faux.streamSimple,
 		} as never);
 	};
-	const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({  retry: { enabled: false } });
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
 		extensionFactories: [
 			{ name: "faux-provider", factory: provider },
-			{ name: "octocode", factory: octocode },
 		],
 		noPromptTemplates: true,
 		noThemes: true,
@@ -204,18 +197,15 @@ afterAll(async () => {
 	process.argv[1] = savedArgv!;
 });
 
-describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".."), ENTRY)})`, () => {
+describe("Native features through the SDK", () => {
 	it("registers every tool and command, keeps the banner out of the session and picks up ~/.claude skills", async () => {
 		const [turn] = await run("hello", [say("ready")]);
 		for (const name of [
-			"read",
 			"file",
 			"bash",
 			"web",
 			"agent",
 			"askUser",
-			"coordinate",
-			"sendMessage",
 			"backlog",
 			"memory",
 		])
@@ -224,12 +214,10 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		expect(turn!.tools).not.toContain("browser");
 		expect(session.getAllTools().map((tool) => tool.name)).toContain("browser");
 		const commands = session.extensionRunner.getRegisteredCommands().map((command) => command.name);
-		for (const name of ["octocode", "agents", "hooks", "sessions", "backlog", "memory"])
+		for (const name of ["status", "agents", "hooks", "resume", "permissions", "backlog", "memory", "rewind", "api", "mcp"])
 			expect(commands).toContain(name);
-		// Registering `/mcp` would make Octocode drop its built-in MCP (builtin:mcp); ours is `/octocode mcp`.
-		expect(commands).not.toContain("mcp");
-		// Everything else is an /octocode subcommand; the old top-level commands are gone.
-		for (const name of ["tell", "kill", "merge", "rewind", "review", "api"]) expect(commands).not.toContain(name);
+		expect(commands).not.toContain("octocode");
+		expect(commands.filter(name => name === "mcp")).toHaveLength(1);
 		expect(session.systemPrompt).toContain("demo-skill");
 		expect(turn!.context).toMatch(/Delegation/);
 		// The banner is the TUI header (none over RPC), never a session entry.
@@ -240,31 +228,28 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		expect(turn!.context).toContain("hook says: project uses tabs");
 	});
 
-	it("runs /octocode and its subcommands", async () => {
-		await session.prompt("/octocode");
-		expect(note(/^Octocode /)).toMatch(/Octocode MCP: off/);
-		expect(note(/^Octocode /)).toMatch(/Subagents: .*researcher/);
-		expect(note(/^Octocode /)).toMatch(/Skills: [1-9]\d*/);
-		expect(note(/^Octocode /)).toMatch(/Hooks: (off|on)/);
+	it("runs direct native commands and handles retired namespace input without a model call", async () => {
+		await session.prompt("/status");
+		expect(note(/^Octocode \d/)).toMatch(/Octocode MCP: connected/);
+		expect(note(/^Octocode \d/)).toMatch(/Subagents: .*researcher/);
+		expect(note(/^Octocode \d/)).toMatch(/Skills: [1-9]\d*/);
+		expect(note(/^Octocode \d/)).toMatch(/Hooks: (off|on)/);
 		await session.prompt("/hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
+		const beforeRequests = turns.length;
+		await session.prompt("/octocode permission manual");
+		expect(note(/^\/octocode permission moved/)).toContain("/permissions manual");
 		await session.prompt("/octocode help");
-		expect(note(/^Usage: \/octocode/)).toMatch(/api \[on[\s\S]*permission \[manual\|workspace\|full[\s\S]*rewind/);
-		expect(note(/^Usage: \/octocode/)).not.toMatch(/cua/);
-		// /agents is a shortcut for /octocode agents, listed with the rest.
-		expect(note(/^Usage: \/octocode/)).toMatch(/agents/);
-		for (const command of ["/octocode agents", "/agents"]) {
-			const before = ui.notes.length;
-			await session.prompt(command);
-			expect(ui.notes.length).toBeGreaterThan(before);
-		}
+		expect(note(/^Commands now have direct names/)).toContain("/agents");
+		expect(turns).toHaveLength(beforeRequests);
+		await session.prompt("/agents");
 		// A mode change reaches the model as one hidden message, never through the cached system prompt.
 		const prompt = session.systemPrompt;
-		await session.prompt("/octocode permission manual");
+		await session.prompt("/permissions manual");
 		expect(session.systemPrompt).toBe(prompt);
-		await session.prompt("/octocode permission");
+		await session.prompt("/permissions");
 		expect(note(/^Permission mode: manual —/)).toMatch(/not a sandbox/);
-		await session.prompt("/octocode permission workspace");
+		await session.prompt("/permissions workspace");
 		const notes = session.sessionManager
 			.getEntries()
 			.filter((entry) => entry.type === "custom_message" && entry.customType === "octocode-permission");
@@ -275,9 +260,10 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 
 	it("guards bash: a destructive command asks, a hook-blocked command is refused, hooks annotate results", async () => {
 		ui.selects.push("Deny");
+		const destructive = "rm -rf ~/.ssh/disposable-delete-target";
 		const [, second] = await run("bash", [
 			calls(
-				fauxToolCall("bash", { command: "rm -rf /" }),
+				fauxToolCall("bash", { command: destructive }),
 				fauxToolCall("bash", { command: "echo forbidden" }),
 				fauxToolCall("bash", { command: "echo fine" }),
 			),
@@ -285,7 +271,7 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		]);
 		const [danger, blocked, fine] = second!.results;
 		expect(danger).toMatchObject({ isError: true });
-		expect(danger!.text).toMatch(/The user denied the destructive shell command: rm -rf \//);
+		expect(danger!.text).toContain(`The user denied the destructive shell command: ${destructive}`);
 		expect(blocked).toMatchObject({ isError: true });
 		expect(blocked!.text).toMatch(/PreToolUse hook: no forbidden words/);
 		expect(fine!.text).toMatch(/fine[\s\S]*\[PostToolUse hook\] post hook saw Bash/);
@@ -329,9 +315,9 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		expect(second!.results[0]!.text).toContain("Provide exactly one of url or query.");
 	});
 
-	it("checkpoints file changes and /octocode rewind restores them", async () => {
+	it("checkpoints file changes and /rewind restores them", async () => {
 		await run("edit", [
-			calls(fauxToolCall("read", { path: "app.ts" })),
+			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: path.join(cwd, "app.ts"), fullContent: true }] })),
 			calls(
 				fauxToolCall("file", {
 					queries: [
@@ -342,7 +328,7 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 			say("done"),
 		]);
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 42;\n");
-		await session.prompt("/octocode rewind");
+		await session.prompt("/rewind");
 		expect(fs.readFileSync(path.join(cwd, "app.ts"), "utf8")).toBe("export const answer = 41;\n");
 		expect(note(/app\.ts/)).toBeDefined();
 	});
@@ -368,13 +354,13 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		peer.join("peer reviewer");
 		expect(peer.lock(["held.txt"], "review").ok).toBe(true);
 		const replies = [
-			calls(fauxToolCall("coordinate", { action: "join", goal: "main" })),
-			calls(fauxToolCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
+			calls(agentCall("coordinate", { action: "join", goal: "main" })),
+			calls(agentCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
 			calls(
 				fauxToolCall("file", { queries: [{ reasoning: "try", type: "write", path: "held.txt", content: "x" }] }),
 			),
-			calls(fauxToolCall("coordinate", { action: "list" })),
-			calls(fauxToolCall("sendMessage", { to: peer.id!, message: "please release held.txt", replyRequired: false })),
+			calls(agentCall("coordinate", { action: "list" })),
+			calls(agentCall("message", { to: peer.id!, message: "please release held.txt", replyRequired: false })),
 			say("done"),
 		];
 		const t = await run("team", replies);
@@ -400,8 +386,8 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 	it("runs a subagent and an isolated subagent whose changes /agents merge brings in", async () => {
 		const t = await run("delegate", [
 			calls(
-				fauxToolCall("agent", { goal: "check things", task: "report facts", profile: "researcher" }),
-				fauxToolCall("agent", { goal: "check things", task: "edit in a worktree", isolate: true }),
+				agentCall("task", { goal: "check things", task: "report facts", profile: "researcher" }),
+				agentCall("task", { goal: "check things", task: "edit in a worktree", isolate: true }),
 			),
 			say("done"),
 		]);
@@ -417,7 +403,7 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 
 	it("bounds a long child report through the real Octocode tool flow and preserves it on disk", async () => {
 		const t = await run("long delegation", [
-			calls(fauxToolCall("agent", { goal: "check things", task: "long report", profile: "researcher" })),
+			calls(agentCall("task", { goal: "check things", task: "long report", profile: "researcher" })),
 			say("done"),
 		]);
 		const result = t.at(-1)!.results[0]!;
@@ -431,8 +417,8 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		const before = turns.length;
 		const t = await run("background", [
 			calls(
-				fauxToolCall("agent", { goal: "check things", task: "report later", background: true }),
-				fauxToolCall("agent", { goal: "check things", task: "slow job", background: true }),
+				agentCall("task", { goal: "check things", task: "report later", background: true }),
+				agentCall("task", { goal: "check things", task: "slow job", background: true }),
 			),
 			say("waiting"),
 			say("got it"),
@@ -482,14 +468,14 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 				}),
 			),
 			calls(fauxToolCall("backlog", { op: "list", states: ["backlog"] })),
-			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "ongoing" })),
+			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "ongoing", why: "Keep the answer correct", goal: "The answer constant is 43; tests pass." })),
 			calls(fauxToolCall("backlog", { op: "update", id: "B1", state: "done" })),
 			calls(
 				fauxToolCall("backlog", {
 					op: "update",
 					id: "B1",
 					state: "done",
-					note: "Changed app.ts; verified by reading it back.",
+					completion: { summary: "Changed app.ts; verified by reading it back.", files: [{ path: "app.ts", role: "changed" }], verification: { status: "passed", summary: "Read app.ts" }, operationKey: "feature-e2e-complete" },
 				}),
 			),
 			calls(
@@ -509,7 +495,7 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		expect(listed!.text).toContain("B1");
 		expect(claimed!.text).toMatch(/^Updated B1\b/);
 		expect(noNote).toMatchObject({ isError: true });
-		expect(noNote!.text).toMatch(/needs a note/);
+		expect(noNote!.text).toMatch(/needs completion/);
 		expect(done).toMatchObject({ isError: false });
 		expect(saved!.text).toMatch(/^Saved M\d+/);
 		expect(found!.text).toContain("The answer constant lives in app.ts");
@@ -521,19 +507,19 @@ describe(`Octocode features through Octocode (${path.relative(path.join(HERE, ".
 		expect(next!.context).toContain("The answer constant lives in app.ts");
 	});
 
-	it("prints /octocode backlog, memory and sessions as text without a UI", async () => {
+	it("prints /backlog, memory and sessions as text without a UI", async () => {
 		const runner = session.extensionRunner;
 		runner.setUIContext(undefined, "print");
 		const notify = vi.spyOn(runner.getUIContext(), "notify");
 		let out: string[];
 		try {
-			await session.prompt("/octocode backlog add Document the board");
-			await session.prompt("/octocode backlog B2 todo");
-			await session.prompt("/octocode backlog");
-			await session.prompt("/octocode memory add Tabs everywhere — the project indents with tabs");
-			await session.prompt("/octocode memory");
-			await session.prompt("/octocode memory search answer");
-			await session.prompt("/octocode sessions");
+			await session.prompt("/backlog add Document the board");
+			await session.prompt("/backlog B2 todo");
+			await session.prompt("/backlog");
+			await session.prompt("/memory add Tabs everywhere — the project indents with tabs");
+			await session.prompt("/memory");
+			await session.prompt("/memory search answer");
+			await session.prompt("/resume");
 			out = notify.mock.calls.map((call) => String(call[0]));
 		} finally {
 			notify.mockRestore();

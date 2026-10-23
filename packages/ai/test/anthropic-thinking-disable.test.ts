@@ -110,6 +110,14 @@ async function runWithoutReasoning(model: Model<"anthropic-messages">): Promise<
 }
 
 describe("Anthropic thinking disable payload", () => {
+	it.each(["claude-sonnet-4-5", "claude-opus-4-6"] as const)("preserves thinking cache parameters with a summary cap for %s", async (id) => {
+		const model = getModel("anthropic", id);
+		const normal = await capturePayload(model, { reasoning: "high", thinkingBudgets: { high: 4000 } });
+		const summary = await capturePayload(model, { reasoning: "high", thinkingBudgets: { high: 4000 }, maxTokens: 8000 });
+		expect(summary.thinking).toEqual(normal.thinking);
+		expect(summary.output_config).toEqual(normal.output_config);
+	});
+
 	it("sends thinking.type=disabled for budget-based reasoning models when thinking is off", async () => {
 		const payload = await capturePayload(getModel("anthropic", "claude-sonnet-4-5"));
 

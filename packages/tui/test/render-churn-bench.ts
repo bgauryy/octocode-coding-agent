@@ -159,7 +159,7 @@ function report(name: string, result: ScenarioResult): void {
 
 async function main(): Promise<void> {
 	const terminal = new NullTerminal();
-	const tui = new TuiAltScreen(terminal, false, "/tmp/pi-tui-bench");
+	const tui = new TuiAltScreen(terminal, false, "/tmp/octocode-tui-bench");
 
 	const transcript = buildTranscript();
 	const editor = new EditorSim();

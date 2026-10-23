@@ -29,7 +29,7 @@ export function createFileOps(): FileOperations {
  */
 export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOperations): void {
 	if (message.role === "toolResult") {
-		// Calls made from codemode scripts are recorded on the script's result.
+		// Calls made from programmatic tool callers are recorded on the script's result.
 		for (const call of message.nestedCalls?.calls ?? []) addFileOp(call.name, call.arguments, fileOps);
 		return;
 	}
@@ -90,26 +90,13 @@ export function formatFileOperations(readFiles: string[], modifiedFiles: string[
 // Message Serialization
 // ============================================================================
 
-/** Maximum characters for a tool result in serialized summaries. */
-const TOOL_RESULT_MAX_CHARS = 2000;
-
-/**
- * Truncate text to a maximum character length for summarization.
- * Keeps the beginning and appends a truncation marker.
- */
-function truncateForSummary(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	const truncatedChars = text.length - maxChars;
-	return `${text.slice(0, maxChars)}\n\n[... ${truncatedChars} more characters truncated]`;
-}
-
 /**
  * Serialize LLM messages to text for summarization.
  * This prevents the model from treating it as a conversation to continue.
  * Call convertToLlm() first to handle custom message types.
  *
- * Tool results are truncated to keep the summarization request within
- * reasonable token budgets. Full content is not needed for summarization.
+ * Tool text is preserved. Callers may replace a complete result with a durable
+ * reference before serialization when a smaller request is needed.
  *
  * Thinking is omitted. Providers return summaries of the real reasoning, and
  * replayed thinking is often not part of the model's live context: for example,
@@ -146,7 +133,7 @@ export function serializeConversation(messages: Message[]): string {
 		} else if (msg.role === "toolResult") {
 			const content = contentText(msg.content, "");
 			if (content) {
-				parts.push(`[Tool result]: ${truncateForSummary(content, TOOL_RESULT_MAX_CHARS)}`);
+				parts.push(`[Tool result]: ${content}`);
 			}
 		}
 	}

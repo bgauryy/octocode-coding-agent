@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerMcpCommand } from "../../src/octocode/mcp/command.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	configuredOctocodeServer,
+	fallbackReader,
 	OCTOCODE_MCP_SPEC,
 	OctocodeMcp,
+	reconnectOctocodeMcp,
 	octocodeLaunch,
 	registerOctocodeMcp,
 } from "../../src/octocode/mcp/octocode.ts";
@@ -18,7 +19,6 @@ import {
 	TurnBudget,
 	toToolResult,
 } from "../../src/octocode/mcp/tools.ts";
-import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { isOctocodeTool } from "../../src/octocode/shared/octocode-tools.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
 import { noisyPng, pixelSize, tmp } from "./helpers.ts";
@@ -40,10 +40,13 @@ const alive = (pid: number) => {
 	}
 };
 
+const ensureDiscovery = vi.fn();
+beforeEach(() => ensureDiscovery.mockClear());
+
 /** An Octocode MCP wired to a fake Octocode and a stdio launch the test chooses. */
 function session(
 	launch: (cwd: string) => ReturnType<typeof echo>,
-	options: { env?: NodeJS.ProcessEnv; hasUI?: boolean; connectWaitMs?: number } = {},
+	options: { env?: NodeJS.ProcessEnv; hasUI?: boolean; connectWaitMs?: number; ensureDiscovery?: () => void } = {},
 ) {
 	const fake = fakePi();
 	const cwd = tmp();
@@ -53,6 +56,7 @@ function session(
 		env: { ...options.env },
 		version: "1.2.3",
 		connectWaitMs: options.connectWaitMs ?? 20_000,
+		...(options.ensureDiscovery ? { ensureDiscovery: options.ensureDiscovery } : {}),
 	});
 	const call = async (tool: string, params: Record<string, unknown> = {}, signal?: AbortSignal) =>
 		(await fake.tools.get(`mcp__octocode__${tool}`).execute("call-1", params, signal, undefined, ctx)) as {
@@ -198,8 +202,8 @@ describe("Octocode MCP launch and ownership", () => {
 });
 
 describe("Octocode MCP client", () => {
-	it("connects at session start, registers every listed tool directly, and keeps the instructions", async () => {
-		const { fake, ctx, mcp, call } = session(echo);
+	it("connects at session start, declares a small catalog directly, and keeps the instructions", async () => {
+		const { fake, ctx, mcp, call } = session(echo, { ensureDiscovery });
 		await mcp.start(ctx);
 		expect(await mcp.ready(ctx)).toBe(true);
 		const names = [...fake.tools.keys()].sort();
@@ -214,6 +218,8 @@ describe("Octocode MCP client", () => {
 			exposure: "direct",
 			namespace: { name: "mcp__octocode", instructions: "Echo test server." },
 		});
+		expect(fake.tools.get("mcp__octocode__localFetch")).toMatchObject({ exposure: "direct" });
+		expect(ensureDiscovery).not.toHaveBeenCalled();
 		// The server's JSON Schema is the tool's parameter schema as is.
 		expect(shout.parameters).toMatchObject({
 			type: "object",
@@ -289,17 +295,19 @@ describe("Octocode MCP client", () => {
 			const shout = fake.tools.get("mcp__octocode__shout");
 			registered.mockClear();
 			await mcp.restart(ctx);
-			expect(registered).not.toHaveBeenCalled();
+			expect(registered).toHaveBeenCalledTimes(mcp.status().tools * 2);
+			expect(registered.mock.calls.slice(0, mcp.status().tools).every(([definition]) => definition.exposure === "hidden")).toBe(true);
 			expect(fake.tools.get("mcp__octocode__shout")).toBe(shout);
 			expect(text(await call("shout", { text: "reconnected" }))).toBe("RECONNECTED");
+			registered.mockClear();
 			description = "Updated uppercase description";
 			await mcp.restart(ctx);
-			expect(registered).toHaveBeenCalledTimes(1);
+			expect(registered).toHaveBeenCalledTimes(mcp.status().tools * 2);
 			expect(fake.tools.get("mcp__octocode__shout").description).toBe(description);
 			registered.mockClear();
 			instructions = "New instructions";
 			await mcp.restart(ctx);
-			expect(registered).toHaveBeenCalledTimes(mcp.status().tools);
+			expect(registered).toHaveBeenCalledTimes(mcp.status().tools * 2);
 			expect(fake.tools.get("mcp__octocode__shout").namespace.instructions).toBe(instructions);
 		} finally {
 			await mcp.close();
@@ -488,34 +496,59 @@ describe("Octocode MCP client", () => {
 	});
 });
 
-describe("/octocode mcp", () => {
-	it("shows the status and restarts the server", async () => {
+describe("native discovery for deferred tools", () => {
+	const started = async (autoEnable?: boolean) => {
+		const agentDir = tmp();
+		if (autoEnable !== undefined) fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ autoEnableCodemode: autoEnable }));
+		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
+		vi.stubEnv("OCTOCODE_MCP", "1");
+		const fake = fakePi();
+		fake.pi.registerTool({ name: "tool_search", defaultActive: false, reachesTools: () => "all" } as never);
+		const mcp = registerOctocodeMcp(fake.pi);
+		const ctx = fakeCtx({ cwd: tmp(), model: { contextWindow: 100, compat: { supportsToolSearch: true } } as never });
+		await fake.emit("session_start", {}, ctx);
+		return { fake, mcp, ctx };
+	};
+
+	it("activates tool_search when the built-in server registers its non-local tools", async () => {
+		const { fake, mcp, ctx } = await started();
+		try {
+			expect(await mcp.ready(ctx)).toBe(true);
+			expect(fake.pi.getActiveTools()).toContain("tool_search");
+			expect(fake.tools.get("mcp__octocode__localFetch")).toMatchObject({ exposure: "direct" });
+			expect(fake.tools.get("mcp__octocode__ghSearchCode")).toMatchObject({ exposure: "deferred" });
+		} finally {
+			await fake.emit("session_shutdown", {}, ctx);
+		}
+	}, 60_000);
+
+	it("activates native discovery even when autoEnableCodemode is false", async () => {
+		const { fake, mcp, ctx } = await started(false);
+		try {
+			expect(await mcp.ready(ctx)).toBe(true);
+			expect(fake.pi.getActiveTools()).toContain("tool_search");
+			expect(fake.pi.getActiveTools()).not.toContain("codemode");
+		} finally {
+			await fake.emit("session_shutdown", {}, ctx);
+		}
+	}, 60_000);
+});
+
+describe("/mcp reconnect octocode", () => {
+	it("restarts the server Octocode runs and reports its state", async () => {
 		const { ctx, mcp } = session(echo);
-		const commands = new Subcommands();
-		registerMcpCommand(commands, mcp);
-		const run = (args: string) => commands.get("mcp")!.handler(args, ctx);
 		await mcp.start(ctx);
 		await mcp.ready(ctx);
 		const pid = mcp.status().pid;
-		await run("");
-		expect(ctx.ui.notes.at(-1)!.message).toBe(`Octocode MCP: connected (echo 1.0.0, 9 tools, pid ${pid})`);
-		await run("restart");
-		const restarted = ctx.ui.notes.at(-1)!.message;
-		expect(restarted).toMatch(/^Octocode MCP: connected/);
-		expect(restarted).not.toContain(`pid ${pid})`);
-		await run("bogus");
-		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning", message: "Usage: /octocode mcp [status|restart]" });
-		expect(commands.get("mcp")!.complete!("r")).toEqual([
-			{ value: "restart", label: "restart", description: "stop and start the server again" },
-		]);
+		// A successful restart returns nothing to show; the server runs again under a new process.
+		expect(await reconnectOctocodeMcp(mcp)(ctx)).toBeUndefined();
+		expect(mcp.describe()).toMatch(/^Octocode MCP: connected/);
+		expect(mcp.describe()).not.toContain(`pid ${pid})`);
 		await mcp.close();
 		// Nothing to restart when the user's own server or nobody runs it.
 		vi.stubEnv("OCTOCODE_MCP", "0");
 		const off = new OctocodeMcp(fakePi().pi, { env: { OCTOCODE_MCP: "0" } });
-		registerMcpCommand(commands, off);
-		await commands.get("mcp")!.handler("restart", ctx);
-		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
-		expect(ctx.ui.notes.at(-1)!.message).toContain("Nothing to restart");
+		expect(await reconnectOctocodeMcp(off)(ctx)).toContain("Nothing to restart");
 	});
 });
 
@@ -598,6 +631,12 @@ describe("Octocode tool results and rendering", () => {
 		expect(await toToolResult("t", structured, false)).not.toHaveProperty("structuredContent");
 	});
 
+	it("keeps local research direct when the host defers other tools", () => {
+		const exposure = (name: string) => octocodeToolDefinition({ ...tool, name }, { ...binding, exposure: "deferred" }).exposure;
+		for (const name of ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"]) expect(exposure(name)).toBe("direct");
+		for (const name of ["ghSearchCode", "artifactSearch", "ghStructure"]) expect(exposure(name)).toBe("deferred");
+	});
+
 	it("defines the Octocode tool from the listed tool: name, hints, schema, declared output", async () => {
 		const definition = octocodeToolDefinition(tool, binding);
 		expect(definition).toMatchObject({
@@ -608,7 +647,8 @@ describe("Octocode tool results and rendering", () => {
 			annotations: { readOnlyHint: true },
 			parameters: tool.inputSchema,
 		});
-		expect(definition).not.toHaveProperty("outputSchema");
+		expect(definition.outputSchema).toEqual({});
+		expect(octocodeToolDefinition({ ...tool, name: "localSearch" }, binding)).not.toHaveProperty("outputSchema");
 		const withOutput = octocodeToolDefinition(
 			{ ...tool, title: "Fetch", description: undefined, annotations: undefined, outputSchema: { type: "object" } },
 			binding,
@@ -740,25 +780,28 @@ describe("Octocode result size budgets", () => {
 		expect(fileOf(text)).toBe(huge);
 	});
 
-	it("counts the results of one turn and spills what passes the budget, each whole to its own file", async () => {
+	it("bounds all text across concurrent results and preserves overflow in one recoverable archive", async () => {
 		const budget = new TurnBudget();
-		const pages = Array.from({ length: 6 }, (_, i) => page(TEXT_MAX_CHARS - 100, String(i)));
-		const results = [];
-		for (const text of pages)
-			results.push(
-				shown(await toToolResult("localFetch", { content: [{ type: "text", text }] }, false, undefined, budget)),
-			);
-		// Whole while the turn is under budget: three results fit in 200,000 characters.
+		const pages = Array.from({ length: 30 }, (_, i) => page(TEXT_MAX_CHARS - 100, String(i)));
+		const results = await Promise.all(pages.map(async (text) =>
+			shown(await toToolResult("localFetch", { content: [{ type: "text", text }] }, false, undefined, budget))));
 		expect(results.slice(0, 3)).toEqual(pages.slice(0, 3));
-		// The fourth is cut to what is left; the later ones to a short preview. All keep the tail and name a file with the whole text.
-		for (const [i, text] of results.slice(3).entries()) {
-			expect(text).toContain(`continueChars: { charOffset: ${i + 3} }`);
-			expect(fileOf(text)).toBe(pages[i + 3]);
-		}
-		const sizes = results.map((text) => text.length);
-		expect(sizes.slice(0, 4).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(TURN_MAX_CHARS + 100);
-		expect(sizes[4]!).toBeLessThan(8_000);
-		expect(sizes[5]!).toBeLessThan(8_000);
+		expect(results.reduce((sum, text) => sum + text.length, 0)).toBeLessThanOrEqual(TURN_MAX_CHARS);
+		const archive = /saved as JSON lines at (.+)\.\]/.exec(results[3]!)![1]!;
+		const records = fs.readFileSync(archive, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+		expect(records.map((record) => record.text)).toEqual(pages.slice(3));
+		expect(results.slice(4).every((text) => text === "")).toBe(true);
+		budget.reset();
+		expect(shown(await toToolResult("t", { content: [{ type: "text", text: "new turn" }] }, false, undefined, budget))).toBe("new turn");
+	});
+
+	it("reports an oversized structured result as an error and saves complete JSON", async () => {
+		const value = { required: "x".repeat(TEXT_MAX_CHARS + 1) };
+		const result = await toToolResult("typed", { content: [{ type: "text", text: "success" }], structuredContent: value }, true);
+		expect(result.isError).toBe(true);
+		expect(result.structuredContent).toBeUndefined();
+		const file = /Full JSON: (.+)\. Request/.exec(shown(result))![1]!;
+		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual(value);
 	});
 
 	it("starts a new turn with the whole budget, and counts only what the model gets", async () => {
@@ -830,5 +873,32 @@ describe("Octocode result sanitizing", () => {
 		);
 		// Raw CR never stands alone: only the CR of a CRLF pair, which the terminal draws as a line break, is left.
 		expect((result.content[0] as { text: string }).text.replaceAll("\r\n", "")).not.toContain("\r");
+	});
+});
+
+describe("fallback reader when Octocode's local readers are unavailable", () => {
+	it("activates core read only while needed, and never removes a read the user chose", () => {
+		const { pi } = fakePi();
+		pi.registerTool({ name: "file" } as never);
+		pi.registerTool({ name: "read", defaultActive: false } as never);
+		const sync = fallbackReader(pi as never);
+		sync(true);
+		expect(pi.getActiveTools()).toEqual(["file", "read"]);
+		sync(true);
+		expect(pi.getActiveTools()).toEqual(["file", "read"]);
+		sync(false);
+		expect(pi.getActiveTools()).toEqual(["file"]);
+		// The user turned read on themselves: the fallback does not own it.
+		pi.setActiveTools(["file", "read"]);
+		sync(true);
+		sync(false);
+		expect(pi.getActiveTools()).toEqual(["file", "read"]);
+	});
+
+	it("does nothing when core read is not registered", () => {
+		const { pi } = fakePi();
+		pi.registerTool({ name: "file" } as never);
+		fallbackReader(pi as never)(true);
+		expect(pi.getActiveTools()).toEqual(["file"]);
 	});
 });

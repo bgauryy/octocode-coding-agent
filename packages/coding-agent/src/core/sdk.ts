@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
@@ -37,7 +38,7 @@ import { getBranchSelection } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
-// provider-agnostic and does not import pi-ai/compat itself.
+// provider-agnostic and does not import octocode-ai/compat itself.
 setDefaultStreamFn(streamSimple);
 
 export interface CreateAgentSessionOptions {
@@ -71,7 +72,7 @@ export interface CreateAgentSessionOptions {
 	 * selection when configured. Otherwise it enables the default built-in tools
 	 * from the loaded runtime, including native Octocode tools. Extension/custom tools remain enabled unless
 	 * `noTools` changes that default. When provided, only matching tools are
-	 * enabled. MCP tools stay registered for codemode and tool search unless an
+	 * enabled. MCP tools stay registered for tool search unless an
 	 * entry starts with `mcp__`; then only matching MCP tools are kept. An empty
 	 * list, like `noTools: "all"`, disables MCP tools too.
 	 *
@@ -112,7 +113,6 @@ export interface CreateAgentSessionResult {
 
 // Re-exports
 
-export * from "./agent-session-runtime.ts";
 export type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -204,6 +204,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// Check if session has existing data to restore
 	const existingSession = sessionManager.buildSessionContext();
 	const hasExistingSession = existingSession.messages.length > 0;
+	const sessionFile = sessionManager.getSessionFile();
+	const resumedSession = hasExistingSession || !!(sessionFile && existsSync(sessionFile));
 	const hasThinkingEntry = sessionManager.getBranch().some((entry) => entry.type === "thinking_level_change");
 
 	let model = options.model;
@@ -367,10 +369,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// extension redirected, may not be repeated by the next request, so warming them could be wasted.
 	const cacheContextIsCurrent = (requestModel: Model<any>) => {
 		const messages = agent.state.messages;
+		const systemPrompt = agent.state.systemPrompt;
+		const toolSnapshot = () =>
+			JSON.stringify(agent.state.tools.map(({ name, description, parameters }) => ({ name, description, parameters })));
+		const tools = toolSnapshot();
+		const sessionId = sessionManager.getSessionId();
+		const thinkingLevel = agent.state.thinkingLevel;
+		const cachePreferences = JSON.stringify(settingsManager.getCachePreferences());
 		return () => {
 			const currentModel = agent.state.model;
 			const currentMessages = agent.state.messages;
 			return (
+				!extensionRunnerRef.current?.hasHandlers("before_provider_request") &&
+				sessionManager.getSessionId() === sessionId &&
+				agent.state.thinkingLevel === thinkingLevel &&
+				JSON.stringify(settingsManager.getCachePreferences()) === cachePreferences &&
+				currentModel.api === requestModel.api &&
+				currentModel.baseUrl === requestModel.baseUrl &&
+				agent.state.systemPrompt === systemPrompt &&
+				toolSnapshot() === tools &&
 				currentModel.provider === requestModel.provider &&
 				currentModel.id === requestModel.id &&
 				messages.length <= currentMessages.length &&
@@ -473,7 +490,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		allowedToolNames,
 		excludedToolNames,
 		extensionRunnerRef,
-		sessionStartEvent: options.sessionStartEvent,
+		sessionStartEvent: options.sessionStartEvent ?? { type: "session_start", reason: resumedSession ? "resume" : "startup" },
 	});
 
 	const extensionsResult = resourceLoader.getExtensions();

@@ -1,12 +1,12 @@
 /**
  * MCP server configuration.
  *
- * Servers are read from `mcp.json` in the agent directory and trusted project paths from
- * `projectMcpConfigPaths`. Each uses the `mcpServers` shape shared by other MCP clients.
- * Later entries replace earlier transports with the same name.
+ * Servers are read from global fallbacks through the writable agent directory, then trusted project
+ * paths. Each uses the `mcpServers` shape shared by other MCP clients. Later entries replace earlier
+ * transports with the same namespace; conflicting spellings within one file are refused.
  *
- * A project entry without `command`, `url`, or `type` overrides only `enabled`, `exposure`, and
- * `toolExposure` of the global server with the same name, for example to turn it off in one project:
+ * An entry without `command`, `url`, or `type` overrides only `enabled`, `exposure`, and
+ * `toolExposure` of an earlier server with the same namespace, for example to turn it off in one project:
  * `{ "mcpServers": { "internal-tools": { "enabled": false } } }`. The rest of the global entry is kept,
  * including credentials the project could not set itself.
  *
@@ -24,21 +24,20 @@
  * `"auth": { "provider": "<provider>" }` sends the token of a `/login` provider instead. Project files
  * cannot use it, so a repository cannot pick where the credential goes.
  *
- * The top-level `autoEnableCodemode` (default true) activates the codemode tool when a server
- * with `codemode` exposure connects. A project value overrides the global one.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
-import { projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
+import { globalMcpConfigPaths, projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
 import {
+	DEFAULT_MCP_EXPOSURE,
 	type McpExposure,
 	type McpServerConfig,
 	mcpNamespace,
 	validateMcpServerConfig,
 } from "../../core/mcp-servers.ts";
-import { stripJsonComments } from "../../utils/json.ts";
+import { hasJsonComments, stripJsonComments } from "../../utils/json.ts";
 import { stripBom } from "../../utils/text.ts";
 
 export type {
@@ -60,15 +59,16 @@ export interface McpServerEntry {
 	 * `pi.registerMcpServer()`. Changes to extension servers are not saved.
 	 */
 	scope?: "global" | "project" | "extension";
-	/** Project `mcp.json` with an override of this global server's `enabled`, `exposure`, or `toolExposure`. */
+	/** Latest `mcp.json` overriding this server's `enabled`, `exposure`, or `toolExposure`. */
 	override?: string;
+	overrideScope?: "global" | "project";
 }
 
 export interface LoadedMcpConfig {
 	servers: McpServerEntry[];
-	/** Activate the codemode tool when `codemode` servers connect. Default: true. */
-	autoEnableCodemode?: boolean;
 	errors: string[];
+	/** Writable global configuration; fallback files are read-only defaults. */
+	globalConfig?: string;
 	/** The project `mcp.json` when the project is trusted, where `/mcp` saves project overrides. */
 	projectConfig?: string;
 }
@@ -86,7 +86,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 interface McpConfigState {
 	servers: Map<string, McpServerEntry>;
-	autoEnableCodemode?: boolean;
 	errors: string[];
 }
 
@@ -104,20 +103,30 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 		errors.push(`${path}: expected an object with an "mcpServers" object`);
 		return;
 	}
-	if (typeof parsed.autoEnableCodemode === "boolean") state.autoEnableCodemode = parsed.autoEnableCodemode;
-	else if (parsed.autoEnableCodemode !== undefined) errors.push(`${path}: autoEnableCodemode must be a boolean`);
+	const names = new Map<string, string>();
 	for (const [name, value] of Object.entries(parsed.mcpServers ?? {})) {
-		if (scope === "project" && isRecord(value) && isOverride(value)) {
-			const base = servers.get(name);
+		const namespace = mcpNamespace(name);
+		const clash = names.get(namespace);
+		if (clash && clash !== name) {
+			errors.push(`${path}: server "${name}" conflicts with "${clash}"`);
+			continue;
+		}
+		if (isRecord(value) && isOverride(value)) {
+			const base = servers.get(namespace);
 			const extra = Object.keys(value).filter((key) => !OVERRIDE_KEYS.includes(key));
 			if (!base) {
-				errors.push(`${path}: server "${name}" needs "command" or "url", or a global server to override`);
+				errors.push(scope === "project"
+					? `${path}: server "${name}" needs "command" or "url", or a global server to override`
+					: `${path}: ${validateMcpServerConfig(name, value)}`);
 			} else if (extra.length > 0) {
 				errors.push(`${path}: server "${name}": an override can only set ${OVERRIDE_KEYS.join(", ")}`);
 			} else {
 				const config = validateMcpServerConfig(name, { ...base.config, ...value });
 				if (typeof config === "string") errors.push(`${path}: ${config}`);
-				else servers.set(name, { ...base, config, override: path });
+				else {
+					servers.set(namespace, { ...base, name, config, override: path, overrideScope: scope });
+					names.set(namespace, name);
+				}
 			}
 			continue;
 		}
@@ -126,17 +135,12 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 			errors.push(`${path}: ${config}`);
 			continue;
 		}
-		// Names that differ only in `-` and `_` would share a namespace.
-		const clash = [...servers.keys()].find((other) => other !== name && mcpNamespace(other) === mcpNamespace(name));
-		if (clash) {
-			errors.push(`${path}: server "${name}" conflicts with "${clash}"`);
-			continue;
-		}
 		if (scope === "project" && "url" in config && config.auth) {
 			errors.push(`${path}: server "${name}": auth is only allowed in the global mcp.json`);
 			continue;
 		}
-		servers.set(name, { name, config, source: path, scope });
+		servers.set(namespace, { name, config, source: path, scope });
+		names.set(namespace, name);
 	}
 }
 
@@ -146,20 +150,21 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
  */
 export function loadMcpConfig(options: { agentDir: string; cwd: string; projectTrusted: boolean }): LoadedMcpConfig {
 	const state: McpConfigState = { servers: new Map(), errors: [] };
-	readConfigFile(join(options.agentDir, "mcp.json"), "global", state);
+	const globalConfig = join(options.agentDir, "mcp.json");
+	for (const file of globalMcpConfigPaths(options.agentDir)) readConfigFile(file, "global", state);
 	const projectConfig = options.projectTrusted ? join(options.cwd, CONFIG_DIR_NAME, "mcp.json") : undefined;
 	if (projectConfig) {
 		for (const file of projectMcpConfigPaths(options.cwd)) readConfigFile(file, "project", state);
 	}
 	return {
 		servers: [...state.servers.values()],
-		...(state.autoEnableCodemode === undefined ? {} : { autoEnableCodemode: state.autoEnableCodemode }),
 		errors: state.errors,
+		globalConfig,
 		...(projectConfig ? { projectConfig } : {}),
 	};
 }
 
-/** Settings `/mcp` changes. `enabled: true` and `exposure: "codemode"` are the defaults and remove the key. */
+/** Settings `/mcp` changes. `enabled: true` and `exposure: "auto"` are the defaults and remove the key. */
 export interface McpServerConfigPatch {
 	enabled?: boolean;
 	exposure?: McpExposure;
@@ -189,7 +194,7 @@ export function updateMcpServerConfig(
 			else server.enabled = patch.enabled;
 		}
 		if (patch.exposure !== undefined) {
-			if (patch.exposure === "codemode" && !keepDefaults) delete server.exposure;
+			if (patch.exposure === DEFAULT_MCP_EXPOSURE && !keepDefaults) delete server.exposure;
 			else server.exposure = patch.exposure;
 		}
 		return true;
@@ -227,7 +232,8 @@ export function removeMcpServerConfig(path: string, name: string): boolean {
 
 /**
  * Read an `mcp.json` (an empty config when missing), let `edit` change its `mcpServers`, and write
- * it back with its indentation when `edit` returns true. Other content is kept.
+ * it back with its indentation when `edit` returns true. Other content is kept; comments are not, so
+ * a commented file is first saved as `<file>.bak`.
  */
 function editMcpServers(
 	path: string,
@@ -242,5 +248,6 @@ function editMcpServers(
 	if (!edit(servers, parsed)) return;
 	const indent = (text && /^([ \t]+)\S/m.exec(text)?.[1]) || "  ";
 	mkdirSync(dirname(path), { recursive: true });
+	if (text && hasJsonComments(text)) writeFileSync(`${path}.bak`, text);
 	writeFileSync(path, `${JSON.stringify(parsed, null, indent)}\n`);
 }

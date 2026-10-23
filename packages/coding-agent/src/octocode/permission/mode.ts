@@ -123,10 +123,12 @@ export const actionWhy = (action: ActionClass): string => MATRIX[action].why;
  * profile that declares permissions ask in manual and workspace; full runs them and records the reason. A reason forces
  * one ask on the call's effect. It does not replace that effect, and a session grant of the effect does not answer it.
  */
-export const ASK_REASONS = ["hook.ask", "provenance", "profile.permissions"] as const;
+export const ASK_REASONS = ["hook.ask", "provenance", "profile.permissions", "source.ask", "shell.target"] as const;
 export type AskReason = (typeof ASK_REASONS)[number];
 
 const REASON_RULES: Record<AskReason, [Rule, Rule, Rule]> = {
+	"shell.target": ["ask", "ask", "allow"],
+	"source.ask": ["ask", "ask", "ask"],
 	"hook.ask": ["ask", "ask", "allow"],
 	provenance: ["ask", "ask", "allow"],
 	"profile.permissions": ["ask", "ask", "allow"],
@@ -189,7 +191,7 @@ export function declaredPermissions(value: unknown): { declared: ActionClass[]; 
 	return { declared: [...declared], ignored };
 }
 
-/** One line per mode for `/octocode permission`: what it asks about. */
+/** One line per mode for `/permissions`: what it asks about. */
 export function asksIn(mode: PermissionMode): ActionClass[] {
 	return ACTION_CLASSES.filter((action) => decide(mode, action) === "ask");
 }

@@ -7,7 +7,7 @@ interface UploadBugReportOptions {
 	gatewayUrl?: string;
 }
 
-/** Upload a report as multipart form data, anonymously or attributed to a Radius account. */
+/** Upload a report as multipart form data to `OCTOCODE_BUG_REPORT_URL`, optionally with a bearer token. */
 export async function uploadBugReport(
 	bundle: BugReportBundle,
 	options: UploadBugReportOptions = {},

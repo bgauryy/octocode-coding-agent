@@ -10,16 +10,17 @@ import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "./env.ts";
 import { globalPaths, projectAgentDirs, projectHookFiles, projectSkillDirs, workspacePaths } from "./home.ts";
 import { sanitizeTerminalText } from "./sanitize.ts";
 import { isRecord, parseJson } from "./util.ts";
+import { parseConfigDocument } from "../../utils/config-document.ts";
 
 /**
  * Project files that start commands or steer the agent (Claude Code / Codex / Octocode hooks, `.pi/agents`, `.octocode/agents`, `.claude/skills`, `.octocode/skills`) load only after an explicit trust decision. `ctx.isProjectTrusted()` alone is not one: Octocode (checked
  * against 0.x `hasTrustRequiringProjectResources`) reports a project trusted when it holds none of *Octocode's* protected
  * resources (`.pi/settings.json`, `.pi/extensions`, `.agents/skills`, …), so a clone with only a `.claude/settings.json`
  * would run its hooks without ever asking. A project is trusted here when the user accepted these exact files: the decision is
- * stored in `<Octocode home>/pi-trust.json` with a SHA-256 of their content, so a later change needs `/octocode trust`
+ * stored in `<Octocode home>/pi-trust.json` with a SHA-256 of their content, so a later change needs `/trust`
  * again. When Octocode really resolved trust (it has protected resources, or a saved `/trust` decision) and Octocode has no
  * decision yet, the files present then are recorded as trusted, unless a hooks file among them starts commands: the
- * user never saw those in Octocode's dialog, so they wait for `/octocode trust`, which shows them. A later change is asked
+ * user never saw those in Octocode's dialog, so they wait for `/trust`, which shows them. A later change is asked
  * about like any other.
  */
 
@@ -50,8 +51,8 @@ export function projectConfigFiles(cwd: string): string[] {
  * SHA-256 over the paths and bytes of `files`: any added, removed or edited file changes it. `as` names each file
  * by another path (a worktree's file as its parent repository's).
  */
-export function fingerprint(files: string[], as: (file: string) => string = (file) => file): string {
-	return sha256(files.map((file) => `${as(file)}\0${readForFingerprint(file)}`).join("\0\0"));
+export function fingerprint(files: string[], as: (file: string) => string = (file) => file, read: (file: string) => string = readForFingerprint): string {
+	return sha256(files.map((file) => `${as(file)}\0${read(file)}`).join("\0\0"));
 }
 
 /**
@@ -93,8 +94,8 @@ export function describeProjectConfig(cwd: string, files = projectConfigFiles(cw
 	for (const file of files) {
 		const shown = dialogLine(path.relative(realPath(cwd), file) || file);
 		// A profile that declares permissions is listed with them, and never folded into the count of plain files.
-		const runs = file.endsWith(".json")
-			? commandsIn(parseJson(readText(file)))
+		const runs = file.endsWith(".json") || file.endsWith(".toml")
+			? commandsIn(executableConfig(file))
 			: file.endsWith(".md")
 				? permissionsIn(readText(file))
 				: [];
@@ -133,6 +134,11 @@ function commandsIn(value: unknown, out: string[] = []): string[] {
 	else if (isRecord(value)) {
 		if (typeof value.command === "string")
 			out.push([value.command, ...(Array.isArray(value.args) ? value.args.map(String) : [])].join(" "));
+		// An MCP-tool hook calls a tool on the user's server with the user's credentials: it acts like a command and needs
+		// the same review. `input` is shown because its placeholders decide what the call sends.
+		if (value.type === "mcp_tool" && typeof value.server === "string" && typeof value.tool === "string")
+			out.push(`MCP ${value.server}/${value.tool}${value.input === undefined ? "" : ` ${JSON.stringify(value.input)}`}`);
+		for (const key of ["commandWindows", "command_windows"]) if (typeof value[key] === "string") out.push(`Windows: ${value[key]}`);
 		if (typeof value.url === "string") out.push(value.url);
 		const sends = envSent(value);
 		if (sends) out.push(sends);
@@ -161,8 +167,8 @@ function envSent(server: Record<string, unknown>): string | undefined {
 
 /**
  * Answers of `projectTrustNow` for a few seconds: a session start asks from four places (skills, hooks,
- * profiles, memory), and each answer re-reads and re-hashes the project's config files. A decision clears it. Only a
- * refusal is memoized: a `true` that lets a hook start commands is always computed fresh.
+ * profiles, memory), and each answer re-reads and re-hashes the project's config files. A decision clears it. Positive answers are
+ * memoized only when no hook-capable configuration is present; those files are always hashed afresh.
  */
 const TRUST_MEMO_MS = 5_000;
 
@@ -187,9 +193,12 @@ export function projectTrustNow(
 }
 
 /** `projectTrustNow` with the files it saw: the gated files are walked once per call, and hashed only on a memo miss. */
-function trustState(ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">, home?: string): TrustState {
+function trustState(ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">, home?: string, contents?: ReadonlyMap<string,string>): TrustState {
 	const files = projectConfigFiles(ctx.cwd);
-	// Keyed by the files' size and mtime too (a stat, not a read), so an edited or added config file is never missed.
+	const captured = contents && new Map([...contents].map(([file,text]) => [realPath(file),text]));
+	if (captured && [...captured.keys()].some(file => !files.includes(file))) return {value:false,files,sha:""};
+	const read = (file: string) => captured?.get(file) ?? readForFingerprint(file);
+	// Keyed by the files' size and mtime too (a stat, not a read), so ordinary edits and added config files invalidate the memo.
 	const stamp = files.map((file) => {
 		const stat = fs.statSync(file, { throwIfNoEntry: false });
 		return `${file}:${stat?.size}:${stat?.mtimeMs}`;
@@ -201,13 +210,16 @@ function trustState(ctx: Pick<ProjectContext, "cwd" | "isProjectTrusted">, home?
 	const memoKey = `${ctx.cwd}\0${process.env[TRUST_ROOT_ENV] ?? ""}\0${process.env[SUBAGENT_ENV] ?? ""}\0${home ?? ""}\0${trusted}\0${decided}\0${store}\0${stamp.join("|")}`;
 	const now = Date.now();
 	// A size and mtime stamp can miss a same-size rewrite within the window. A memoized refusal errs safe; a memoized
-	// `true` for a project whose hooks start commands would let an edited hook run unreviewed, so it is never kept.
+	// `true` for any hook-capable config could let a same-stat command insertion run unreviewed.
 	const memo = trustMemo.get(memoKey);
-	if (memo && now - memo.at < TRUST_MEMO_MS) return memo.state;
+	if (!contents && memo && now - memo.at < TRUST_MEMO_MS) return memo.state;
 	for (const [key, entry] of trustMemo) if (now - entry.at >= TRUST_MEMO_MS) trustMemo.delete(key);
-	const sha = fingerprint(files);
-	const state = { value: computeTrust(ctx.cwd, files, sha, trusted, decided, home), files, sha };
-	if (state.value !== true || !startsCommands(ctx.cwd, files)) trustMemo.set(memoKey, { at: now, state });
+	const sha = fingerprint(files, undefined, read);
+	const state = { value: computeTrust(ctx.cwd, files, sha, trusted, decided, home, read), files, sha };
+	const hookFiles = new Set(projectHookFiles(ctx.cwd).map(realPath));
+	if (!contents && (state.value !== true || !files.some((file) => hookFiles.has(file)))) {
+		trustMemo.set(memoKey, { at: now, state });
+	}
 	return state;
 }
 
@@ -229,6 +241,7 @@ function computeTrust(
 	trusted: boolean,
 	decided: boolean,
 	home?: string,
+	read: (file: string) => string = readForFingerprint,
 ): boolean | undefined {
 	// An isolated subagent works in a worktree of its parent's repository: it follows the decision stored for that
 	// repository, and only for the same files (no one can be asked in a subagent, so anything else stays closed).
@@ -241,15 +254,15 @@ function computeTrust(
 		return (
 			files.length === 0 ||
 			(stored?.trusted === true &&
-				stored.sha === fingerprint(files, (file) => path.join(parent, path.relative(root, file))))
+				stored.sha === fingerprint(files, (file) => path.join(parent, path.relative(root, file)), read))
 		);
 	}
 	if (!trusted && files.length > 0) return false;
 	const stored = trusted ? readStore(home)[storeKey(cwd)] : undefined;
 	if (stored?.sha === sha) return stored.trusted;
 	// Octocode's trust covers the files present now (even none); recording them makes a later change, such as a pulled
-	// hooks file, ask again. Hooks that start commands were never shown by Octocode: they need `/octocode trust`.
-	if (!stored && trusted && decided && !startsCommands(cwd, files)) {
+	// hooks file, ask again. Hooks that start commands were never shown by Octocode: they need `/trust`.
+	if (!stored && trusted && decided && !startsCommands(cwd, files, read)) {
 		saveDecision(cwd, sha, true, home);
 		return true;
 	}
@@ -257,9 +270,16 @@ function computeTrust(
 }
 
 /** Some hooks file among `files` (Claude Code, Codex, Octocode hooks) holds a command, URL or args to run. */
-function startsCommands(cwd: string, files: string[]): boolean {
+function startsCommands(cwd: string, files: string[], read: (file: string) => string = readText): boolean {
 	const hooks = new Set(projectHookFiles(cwd).map(realPath));
-	return files.some((file) => hooks.has(file) && commandsIn(parseJson(readText(file))).length > 0);
+	return files.some((file) => hooks.has(file) && commandsIn(executableConfig(file, read)).length > 0);
+}
+
+function executableConfig(file: string, read: (file: string) => string = readText): unknown {
+	try {
+		const value = parseConfigDocument(read(file), file);
+		return file.endsWith(".toml") && isRecord(value) ? value.hooks : value;
+	} catch { return undefined; }
 }
 
 /** Octocode resolved trust itself: protected resources exist, or `/trust` saved a decision. */
@@ -276,7 +296,7 @@ const noticed = new Set<string>();
 
 /**
  * Whether trust-gated project files may load. An undecided project is skipped with one notice pointing at
- * `/octocode trust`, which shows exactly what would run and asks. Startup never opens a dialog: Octocode (checked against
+ * `/trust`, which shows exactly what would run and asks. Startup never opens a dialog: Octocode (checked against
  * 0.x) ends an RPC session when a dialog is answered inside `session_start`, and print, JSON and subagent runs have
  * no one to ask.
  */
@@ -287,7 +307,7 @@ export async function projectTrust(ctx: ProjectContext, home?: string): Promise<
 	if (!noticed.has(key)) {
 		noticed.add(key);
 		if (ctx.ui)
-			notify(ctx.ui, `Project config not loaded (${files.length} files). Run /octocode trust to review.`, "warning");
+			notify(ctx.ui, `Project config not loaded (${files.length} files). Run /trust to review.`, "warning");
 	}
 	return false;
 }
@@ -339,14 +359,14 @@ export function saveDecision(cwd: string, sha: string, trusted: boolean, home?: 
 	});
 }
 
-/** `/octocode trust [off]`: show what the project would run and trust (or distrust) exactly that, then reload. */
+/** `/trust [off]`: show what the project would run and trust (or distrust) exactly that, then reload. */
 export function registerTrustCommand(commands: Subcommands, home?: string): void {
 	commands.add("trust", {
 		description: "trust [off] — load (or stop loading) this project's hooks, agents and skills",
 		complete: (prefix) => wordCompletions(["off"], prefix),
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			const action = args.trim();
-			if (action !== "" && action !== "off") return say(ctx, "Usage: /octocode trust [off]", "warning");
+			if (action !== "" && action !== "off") return say(ctx, "Usage: /trust [off]", "warning");
 			let files = projectConfigFiles(ctx.cwd);
 			if (files.length === 0) return say(ctx, "This project has no hook, agent or skill config to trust.");
 			const off = action === "off";
@@ -367,7 +387,7 @@ export function registerTrustCommand(commands: Subcommands, home?: string): void
 				if (attempt >= MAX_TRUST_ASKS)
 					return say(
 						ctx,
-						"Project config kept changing while you reviewed it; it stays unloaded. Run /octocode trust again.",
+						"Project config kept changing while you reviewed it; it stays unloaded. Run /trust again.",
 						"warning",
 					);
 				say(ctx, "Project config changed while you reviewed it; review it again.", "warning");
@@ -407,8 +427,13 @@ function realPath(file: string): string {
 	}
 }
 
+/** Where earlier builds kept this store: the core `/trust` file, which keeps these entries for this migration. */
+const legacyStorePath = (home?: string) => path.join(globalPaths(process.env, home).home, "trust.json");
+
 function readStore(home?: string): Record<string, StoredDecision> {
-	const parsed = parseJson(readText(storePath(home)));
+	// Until this store is first written, decisions saved by earlier builds (trusted or not) still apply.
+	const file = fs.existsSync(storePath(home)) ? storePath(home) : legacyStorePath(home);
+	const parsed = parseJson(readText(file));
 	if (!isRecord(parsed)) return {};
 	return Object.fromEntries(
 		Object.entries(parsed).flatMap(([key, value]) =>
@@ -450,4 +475,65 @@ function isFile(file: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** Verify the same settings bytes the caller will parse against the existing project trust fingerprint. */
+export async function projectTrustForContents(ctx: ProjectContext, contents: ReadonlyMap<string, string>, home?: string): Promise<boolean> {
+ return trustState(ctx, home, contents).value === true;
+}
+
+/** Advance an existing exact-file approval only across the staged permission fields. */
+export function preparePermissionTrustUpdate(
+ ctx: Pick<ProjectContext,"cwd"|"isProjectTrusted">,
+ updates: ReadonlyMap<string,{before?:string;after:string}>,
+ home?:string,
+): (written: readonly string[]) => boolean {
+ const files=projectConfigFiles(ctx.cwd);
+ const before=new Map(files.map(file=>[file,readForFingerprint(file)]));
+ const originalSha=fingerprint(files,undefined,file=>before.get(file)!);
+ const key=storeKey(ctx.cwd);
+ const prior=readStore(home)[key];
+ if(!ctx.isProjectTrusted() || prior?.trusted!==true || prior.sha!==originalSha)return ()=>false;
+ const permitted=new Set(projectHookFiles(ctx.cwd).map(realPath));
+ const changes=new Map<string,{before?:string;after:string}>();
+ const withoutPermissions=(text:string|undefined)=>{
+  const parsed:unknown=text===undefined?{}:JSON.parse(text);
+  if(!isRecord(parsed))throw new Error("Invalid permission settings object");
+  const permissions=parsed.permissions;
+  if(permissions!==undefined&&!isRecord(permissions))throw new Error("Invalid permissions object");
+  const rest={...(permissions as Record<string,unknown>|undefined)};
+  for(const field of ["allow","deny","ask","defaultMode","additionalDirectories"])delete rest[field];
+  return JSON.stringify({...parsed,permissions:rest});
+ };
+ for(const [file,change] of updates) {
+  const canonical=realPath(file);
+  if(!permitted.has(canonical))continue;
+  if(before.get(canonical)!==change.before)return ()=>false;
+  try {if(withoutPermissions(change.before)!==withoutPermissions(change.after))return ()=>false;}
+  catch {return ()=>false;}
+  changes.set(canonical,change);
+ }
+ return written=>{
+  const expected=new Map(before);
+  let changed=false;
+  for(const file of written) {
+   const canonical=realPath(file),change=changes.get(canonical);
+   if(change){expected.set(canonical,change.after);changed=true;}
+  }
+  if(!changed)return false;
+  const expectedFiles=[...expected.keys()].sort();
+  const actualFiles=projectConfigFiles(ctx.cwd);
+  if(JSON.stringify(actualFiles)!==JSON.stringify(expectedFiles) || expectedFiles.some(file=>readForFingerprint(file)!==expected.get(file)))return false;
+  const nextSha=fingerprint(expectedFiles,undefined,file=>expected.get(file)!);
+  const storeFile=storePath(home);
+  let advanced=false;
+  withFileLock(storeFile,()=>{
+   const store=readStore(home);
+   if(store[key]?.trusted!==true||store[key]?.sha!==originalSha)return;
+   store[key]={sha:nextSha,trusted:true};
+   atomicWriteFileSync(storeFile,`${JSON.stringify(store,null,2)}\n`,{mode:0o600});
+   trustMemo.clear();advanced=true;
+  });
+  return advanced;
+ };
 }

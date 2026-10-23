@@ -796,7 +796,7 @@ describe("/rewind and the fork offer", () => {
 		await child.handlers.get("session_start")!({ type: "session_start", reason: "startup" }, child.ctx);
 		expect(child.notices).toEqual([
 			expect.stringMatching(
-				/could not carry the checkpoints to this fork \(.+\); \/octocode rewind will not reach the parent's turns/,
+				/could not carry the checkpoints to this fork \(.+\); \/rewind will not reach the parent's turns/,
 			),
 		]);
 	});

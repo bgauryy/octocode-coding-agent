@@ -19,7 +19,7 @@ Child processes inherit both markers. They are not session-specific and are not 
 
 ## Shell Tool Session Environment
 
-Commands run by the `bash` and `powershell` tools receive the current Octocode session state:
+Commands run by the native `bash` tool, using either `type: "bash"` or `type: "powershell"`, receive the current Octocode session state:
 
 | Variable | Description |
 |----------|-------------|
@@ -46,7 +46,7 @@ if [ -n "$OCTOCODE_SESSION_FILE" ]; then
 fi
 ```
 
-These variables are injected into the LLM-callable `bash` and `powershell` tools. They are not injected into user-entered `!` or `!!` commands.
+These variables are injected into both shell modes of the LLM-callable `bash` tool and the standalone SDK shell tools. They are not injected into user-entered `!` or `!!` commands.
 
 ### Custom Shell Tools
 
@@ -89,11 +89,11 @@ These variables are read by Octocode itself:
 | `OCTOCODE_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
 | `OCTOCODE_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
 | `OCTOCODE_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
-| `OCTOCODE_RADIUS_GATEWAY` | Override the Radius gateway origin used by `/bug` uploads |
-| `OCTOCODE_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor; see Terminal setup |
+| `OCTOCODE_BUG_REPORT_URL` | Endpoint that `/bug` uploads reports to; without it, reports are exported as Zip files |
+| `OCTOCODE_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor |
 | `OCTOCODE_CLIPBOARD_OSC52` | Set to `1` to also send copied text to the terminal with OSC 52 after the local clipboard write, as Octocode does over SSH. Use it when a remote client reaches Octocode without SSH variables, such as a multiplexer attached from another machine or a remote IDE daemon |
 | `OCTOCODE_HYPERLINKS` | Override OSC 8 hyperlink detection with `1`, `0`, or `auto` |
-| `OCTOCODE_PROGRAM_STATUS` | Override OSC 7501 program status detection: `1` always reports, `0` never reports; otherwise Octocode reports only after the terminal confirms support. See Terminal setup |
+| `OCTOCODE_PROGRAM_STATUS` | Override OSC 7501 program status detection: `1` always reports, `0` never reports; otherwise Octocode reports only after the terminal confirms support |
 | `OCTOCODE_IMAGE_PROTOCOL` | Override inline image detection with `kitty`, `iterm2`, `none`, or `auto` |
 | `OCTOCODE_TRUE_COLOR` | Override truecolor detection with `1`, `0`, or `auto` |
 | `OCTOCODE_TUI_ESC_TIMEOUT` | How long to wait after a lone ESC before treating it as Escape, in milliseconds; defaults to `100` over SSH and `10` otherwise. Increase if Alt-key input is misread as Escape |
@@ -110,9 +110,13 @@ These controls belong to the integrated Octocode features. Child identity, grant
 | --- | --- |
 | `OCTOCODE_PERMISSION` | Session start mode: `manual`, `workspace` or `full`; default `full` |
 | `OCTOCODE_MAX_SUBAGENTS` | Maximum concurrent subagents; default `3` |
-| `OCTOCODE_MCP` | Set to `0` to disable the Octocode research MCP integration |
-| `OCTOCODE_HOOKS` | Set to `1` to enable command hooks; off by default; children also need profile opt-in |
+| `OCTOCODE_SUBAGENT_LINGER_SECONDS` | Seconds a finished background subagent stays resumable by a message to its id; default `0` (off). A subagent that reported `blocked` stays resumable for at least 600 seconds regardless |
+| `OCTOCODE_MCP` | Set to `0` to disable automatic Octocode research MCP startup; an explicitly configured `octocode` server is managed through [MCP configuration](mcp.md) |
+| `OCTOCODE_HOOKS` | Set to `1` at startup to enable [command hooks](hooks.md); off by default; children also require `hooks: true` in their profile |
+| `OCTOCODE_HOOKS_COMPAT` | Set to `1` for the partial [Claude permission-rule preview](permissions.md#claude-permission-rule-preview); also set `OCTOCODE_HOOKS=1` to execute [source-profile hooks](hooks.md#source-profile-preview). Unset/`0` keeps source rules inactive and legacy hook behavior |
 | `OCTOCODE_EXTRA_SKILLS` | Set to `0` to disable extra skill directories |
+| `CLAUDE_CONFIG_DIR` | Select Claude user settings for hook/permission previews and Claude extra skills; project paths remain unchanged. See [hook discovery](hooks.md#discovery) |
+| `CODEX_HOME` | Select an existing Codex user directory for hook preview and extra skills; invalid overrides do not fall back to the default directory |
 | `OCTOCODE_MEMORY_AUTO` | Set to `0` to disable automatic memory injection for this process |
 | `OCTOCODE_AGENT_DB` | Override the durable agent database file |
 | `OCTOCODE_CLEANUP_DAYS` | Retention for kept session output and bash logs; default `30` days; `0` disables the sweep |

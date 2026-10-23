@@ -18,6 +18,11 @@ export interface BuildSystemPromptOptions {
 	 * They are reachable only through another tool, so the tool list and rules leave them out too.
 	 */
 	hiddenTools?: string[];
+	/**
+	 * Deferred tools that `tool_search` can load. They are not declared, but rules that depend on which
+	 * tools exist count them, so loading one does not change the rules.
+	 */
+	deferredTools?: string[];
 	/** Optional one-line tool snippets keyed by tool name. */
 	toolSnippets?: Record<string, string>;
 	/** Guideline bullets contributed by each tool, keyed by tool name. */
@@ -39,6 +44,7 @@ export interface BuildSystemPromptOptions {
 export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	selectedTools: string[];
 	hiddenTools: string[];
+	deferredTools: string[];
 	toolSnippets: Record<string, string>;
 	toolGuidelines: Record<string, string[]>;
 	promptGuidelines: string[];
@@ -63,6 +69,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		forceSystemPrompt: input.forceSystemPrompt,
 		selectedTools: [...(input.selectedTools ?? ["read", "bash", "edit", "write"])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
+		deferredTools: [...(input.deferredTools ?? [])],
 		toolSnippets: { ...(input.toolSnippets ?? {}) },
 		toolGuidelines: Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
@@ -87,6 +94,7 @@ function renderProjectContext(contextFiles: Array<{ path: string; content: strin
 
 function buildRules(
 	selectedTools: string[],
+	deferredTools: string[],
 	toolGuidelines: Record<string, string[]>,
 	promptGuidelines: string[],
 ): string {
@@ -104,8 +112,13 @@ function buildRules(
 	const hasGrep = selectedTools.includes("grep");
 	const hasFind = selectedTools.includes("find");
 	const hasLs = selectedTools.includes("ls");
+	const hasLocalSearch = [...selectedTools, ...deferredTools].some((name) =>
+		/^mcp__octocode__(localSearch|localSearchCode|structureSearch|astSearch|lspSearch|localFindFiles|localViewStructure)$/.test(
+			name,
+		),
+	);
 
-	if ((hasBash || hasPowerShell) && !hasGrep && !hasFind && !hasLs) {
+	if ((hasBash || hasPowerShell) && !hasGrep && !hasFind && !hasLs && !hasLocalSearch) {
 		if (hasBash && hasPowerShell) {
 			addRule("Use bash or PowerShell for file operations like listing, searching, and finding files");
 		} else if (hasPowerShell) {
@@ -131,6 +144,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		customPrompt,
 		selectedTools,
 		hiddenTools,
+		deferredTools,
 		toolSnippets,
 		toolGuidelines,
 		promptGuidelines,
@@ -158,15 +172,15 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
 		promptSections.tools = `${tools}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
-		promptSections.rules = buildRules(declaredTools, toolGuidelines, promptGuidelines);
+		promptSections.rules = buildRules(declaredTools, deferredTools, toolGuidelines, promptGuidelines);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
 - Additional docs: ${getDocsPath()}
 - Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
 - When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), Octocode packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), Octocode packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), non-LLM models (docs/models.md)
 - When working on Octocode topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read Octocode .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
+- Read the documentation that defines the behavior you need; follow links when they resolve a task dependency. Read a complete section when its conditions or exceptions affect the change.`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
@@ -174,6 +188,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	const readers = ["read", "bash"] as const;
 	const skillFileReadTool =
+		selectedTools.some((tool) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool)) ? "octocode" :
 		readers.find((tool) => declaredTools.includes(tool)) ??
 		(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined);
 	if (skillFileReadTool && skills.length > 0) {
@@ -181,8 +196,10 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		if (skillsPrompt) promptSections.skills = skillsPrompt;
 	}
 	promptSections.cwd = cwd.replace(/\\/g, "/");
+	// An empty custom section removes the default section of that name.
 	for (const [name, content] of Object.entries(customSections)) {
 		if (content) promptSections[name] = content;
+		else if (content === "") delete promptSections[name];
 	}
 
 	const sections: SystemPromptSections = { preamble: promptSections.preamble };

@@ -25,12 +25,12 @@ describe("subagent screenshots", () => {
 	it("saves the picture, draws small ones inline and keeps only the newest files", () => {
 		const dir = path.join(tmp(), "shots");
 		const png = Buffer.from("png-bytes").toString("base64");
-		const shot = saveShot(dir, "webHeadless-1", 1, { data: png, mimeType: "image/png" });
+		const shot = saveShot(dir, "browser-1", 1, { data: png, mimeType: "image/png" });
 		expect(fs.readFileSync(shot.path).toString()).toBe("png-bytes");
 		expect(shot.data).toBe(png);
-		const big = saveShot(dir, "webHeadless-1", 2, { data: "A".repeat(INLINE_MAX_CHARS + 4), mimeType: "image/png" });
+		const big = saveShot(dir, "browser-1", 2, { data: "A".repeat(INLINE_MAX_CHARS + 4), mimeType: "image/png" });
 		expect(big.data).toBeUndefined();
-		for (let i = 3; i < 45; i++) saveShot(dir, "webHeadless-1", i, { data: png, mimeType: "image/png" });
+		for (let i = 3; i < 45; i++) saveShot(dir, "browser-1", i, { data: png, mimeType: "image/png" });
 		expect(fs.readdirSync(dir)).toHaveLength(30);
 	});
 

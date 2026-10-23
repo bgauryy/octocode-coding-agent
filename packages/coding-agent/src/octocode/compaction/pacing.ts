@@ -43,7 +43,7 @@ export class ThrashBreaker {
 export const THRASH_MESSAGE =
 	`Automatic compaction stopped: the context refilled to the limit within ${THRASH_TURNS} turns of the previous compaction, ` +
 	`${THRASH_STREAK} times in a row, so another summary would not make room. Something keeps adding more than the summary ` +
-	"frees (a large file read, tool output or attachment). Start a new session, or run /compact with a focus that drops it.";
+	"frees (a large file read, tool output or attachment). Start a new session, or reduce the large inputs before running /compact again.";
 
 /**
  * Whether switching from `previous` to `next` needs a compaction first: the context (`tokens`) does not fit the new

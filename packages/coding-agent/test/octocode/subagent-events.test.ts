@@ -27,6 +27,32 @@ const reply = (stopReason: string, text = "answer") => ({
 });
 
 describe("reduceEvent", () => {
+	it("counts usage receipts once without counting the compaction result a second time", () => {
+		const state = newChildState();
+		const usage = { ...reply("stop").message.usage, cacheWrite: 4, cacheWrite1h: 2, reasoning: 1 };
+		const receipt = { type: "entry_appended", entry: { id: "receipt-1", type: "usage", kind: "compaction", usage } };
+		expect(progress(reduce(state, receipt))).toHaveLength(1);
+		reduce(state, structuredClone(receipt));
+		reduce(state, { type: "compaction_end", result: { summary: "done", tokensBefore: 100 } });
+		reduce(state, { type: "entry_appended", entry: { id: "warm-1", type: "usage", kind: "cache_warm", usage } });
+		expect(state.usage).toMatchObject({ input: 6, output: 4, cacheWrite: 8, cacheWrite1h: 4, reasoning: 2 });
+		expect(state.compactions.done).toBe(1);
+	});
+
+	it("adds nested tool consumption once alongside the child's own assistant consumption", () => {
+		const state = newChildState();
+		const assistant = reply("toolUse");
+		reduce(state, assistant);
+		const nested = { type: "message_end", message: { role: "toolResult", toolCallId: "nested-agent", usage: {
+			...assistant.message.usage, cacheWrite: 4, cacheWrite12h: 3, reasoning: 1,
+		} } };
+		const effects = reduce(state, nested);
+		expect(effects).toContainEqual({ kind: "incoming", role: "toolResult" });
+		expect(progress(effects)).toHaveLength(1);
+		reduce(state, structuredClone(nested));
+		expect(state.usage).toMatchObject({ input: 6, output: 4, cacheWrite: 4, cacheWrite12h: 3, reasoning: 1 });
+	});
+
 	it("marks the child running at agent_start and settled at agent_settled, and reports the child's own abort flag", () => {
 		const state = newChildState();
 		expect(reduce(state, { type: "agent_start" })).toEqual([]);

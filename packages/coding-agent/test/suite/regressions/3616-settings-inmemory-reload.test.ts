@@ -25,18 +25,16 @@ describe("regression #3616: in-memory settings survive reload", () => {
 		const settingsManager = SettingsManager.inMemory({
 			defaultThinkingLevel: "high",
 			images: { autoResize: false },
-			compaction: { enabled: false },
 		});
 
 		await settingsManager.reload();
 
 		expect(settingsManager.getDefaultThinkingLevel()).toBe("high");
 		expect(settingsManager.getImageAutoResize()).toBe(false);
-		expect(settingsManager.getCompactionEnabled()).toBe(false);
+		expect(settingsManager.getCompactionEnabled()).toBe(true);
 		expect(settingsManager.getGlobalSettings()).toEqual({
 			defaultThinkingLevel: "high",
 			images: { autoResize: false },
-			compaction: { enabled: false },
 		});
 	});
 
@@ -44,7 +42,6 @@ describe("regression #3616: in-memory settings survive reload", () => {
 		const settingsManager = SettingsManager.inMemory({
 			defaultThinkingLevel: "high",
 			images: { autoResize: false },
-			compaction: { enabled: false },
 		});
 		const resourceLoader = new DefaultResourceLoader({
 			cwd: tempDir,
@@ -61,13 +58,12 @@ describe("regression #3616: in-memory settings survive reload", () => {
 
 		expect(settingsManager.getDefaultThinkingLevel()).toBe("high");
 		expect(settingsManager.getImageAutoResize()).toBe(false);
-		expect(settingsManager.getCompactionEnabled()).toBe(false);
+		expect(settingsManager.getCompactionEnabled()).toBe(true);
 	});
 
 	it("preserves initial settings after an unrelated setter, flush, and reload", async () => {
 		const settingsManager = SettingsManager.inMemory({
 			images: { autoResize: false },
-			compaction: { enabled: false },
 		});
 
 		settingsManager.setTheme("dark");
@@ -76,10 +72,9 @@ describe("regression #3616: in-memory settings survive reload", () => {
 
 		expect(settingsManager.getTheme()).toBe("dark");
 		expect(settingsManager.getImageAutoResize()).toBe(false);
-		expect(settingsManager.getCompactionEnabled()).toBe(false);
+		expect(settingsManager.getCompactionEnabled()).toBe(true);
 		expect(settingsManager.getGlobalSettings()).toEqual({
 			images: { autoResize: false },
-			compaction: { enabled: false },
 			theme: "dark",
 		});
 	});

@@ -44,8 +44,7 @@ export type RpcCommand =
 	| { id?: string; type: "set_follow_up_mode"; mode: "all" | "one-at-a-time" }
 
 	// Compaction
-	| { id?: string; type: "compact"; customInstructions?: string }
-	| { id?: string; type: "set_auto_compaction"; enabled: boolean }
+	| { id?: string; type: "compact" }
 
 	// Retry
 	| { id?: string; type: "set_auto_retry"; enabled: boolean }
@@ -79,6 +78,7 @@ export type RpcCommand =
 
 /** A command available for invocation via prompt */
 export interface RpcSlashCommand {
+	aliases?: readonly string[];
 	/** Command name (without leading slash) */
 	name: string;
 	/** Human-readable description */
@@ -183,7 +183,6 @@ export type RpcResponse =
 
 	// Compaction
 	| { id?: string; type: "response"; command: "compact"; success: true; data: CompactionResult }
-	| { id?: string; type: "response"; command: "set_auto_compaction"; success: true }
 
 	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }

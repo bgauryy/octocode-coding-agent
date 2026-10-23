@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { shellCompletion } from "../shared/shell-completion.ts";
+import { completeApi } from "./completion.ts";
 import { errorMessage } from "../shared/util.ts";
 import { parseArgs, pickInstance } from "./args.ts";
 import { ApiClient } from "./client.ts";
@@ -7,6 +9,7 @@ import { apiDir, listInstances } from "./registry.ts";
 
 const USAGE = `octocode-api — talk to running Octocode sessions (start them with OCTOCODE_API=1)
 
+  octocode-api completion <bash|zsh|fish>
   octocode-api list
   octocode-api status [--to <id>]
   octocode-api send [--to <id>] [--from <name>] [--wait] [--mode steer|followUp] <text…>
@@ -18,6 +21,19 @@ const USAGE = `octocode-api — talk to running Octocode sessions (start them wi
 --top-level drops tool events of calls other tools made (those with parentId).`;
 
 async function main(argv: string[]): Promise<void> {
+	if (argv[0] === "completion") {
+		if (argv[1] === "--values") {
+			const ids = argv.at(-2) === "--to" ? listInstances(apiDir(), false).map(instance => instance.id) : [];
+			const values = completeApi(argv.slice(2), ids);
+			if (values.length) process.stdout.write(values.join("\n") + "\n");
+		} else if (argv.length === 2 && ["bash", "zsh", "fish"].includes(argv[1])) {
+			process.stdout.write(shellCompletion(argv[1] as "bash" | "zsh" | "fish", "octocode-api"));
+		} else {
+			console.log("Usage: octocode-api completion <bash|zsh|fish>");
+			if (argv.length > 1 && !["--help", "-h"].includes(argv[1])) process.exitCode = 1;
+		}
+		return;
+	}
 	const [command, ...rest] = argv;
 	const { flags, words } = parseArgs(rest);
 	const instances = listInstances(apiDir());

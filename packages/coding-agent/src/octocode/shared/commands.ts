@@ -11,141 +11,90 @@ import { sanitizeTerminalText } from "./sanitize.ts";
 type NoticeLevel = "info" | "warning" | "error";
 
 /**
- * Shows a notification. Octocode draws notify text as is, and notices carry file names, error messages, hook commands and
- * server text, so every notice goes through `sanitizeTerminalText` here. The one exception is the machine-read audit
- * relay (`childAuditMessage`), which a parent parses and never draws.
- */
+	* Shows a notification. Octocode draws notify text as is, and notices carry file names, error messages, hook commands and
+	* server text, so every notice goes through `sanitizeTerminalText` here. The one exception is the machine-read audit
+	* relay (`childAuditMessage`), which a parent parses and never draws.
+	*/
 export function notify(ui: Pick<ExtensionUIContext, "notify">, text: string, level: NoticeLevel = "info"): void {
 	ui.notify(sanitizeTerminalText(text), level);
 }
 
 /**
- * Shows a command's output. With a UI (TUI, and RPC, which forwards notifications) it is a notification. Print and
- * JSON modes have no UI (`notify` does nothing there) and Octocode reserves stdout for the final answer or the JSONL event
- * stream, so the text goes to stderr: visible in a terminal, and never mixed into `-p` output or `--mode json` records.
- */
+	* Shows a command's output. With a UI (TUI, and RPC, which forwards notifications) it is a notification. Print and
+	* JSON modes have no UI (`notify` does nothing there) and Octocode reserves stdout for the final answer or the JSONL event
+	* stream, so the text goes to stderr: visible in a terminal, and never mixed into `-p` output or `--mode json` records.
+	*/
 export function say(ctx: Pick<ExtensionContext, "hasUI" | "ui">, text: string, level: NoticeLevel = "info"): void {
 	notify(ctx.ui, text, level);
 	if (!ctx.hasUI) process.stderr.write(`${sanitizeTerminalText(text)}\n`);
 }
 
-/**
- * The subcommands of the single `/octocode` command. Features add theirs (`api`, `permission`, `rewind`);
- * `src/index.ts` registers the one Octocode command that routes `/octocode <name> <args>` to them and completes names and
- * their arguments.
- */
-
+/** A native command registered once under its canonical name. */
 export interface Subcommand {
-	/** One line for `/octocode help` and completions, including usage, e.g. `api [on [http]|off] — the external API`. */
 	description: string;
-	/** Long operations acquire the dialog lock only around their actual UI interactions. */
+	aliases?: readonly string[];
 	dialog?: "handler" | "interaction";
 	handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
-	/** Completions for the text after `<name> `. */
 	complete?(prefix: string): AutocompleteItem[] | null;
+}
+
+const LEGACY_NAMES: Record<string, string> = { permission: "permissions", sessions: "resume", info: "status" };
+
+export function legacyNativeCommandGuidance(args: string): string {
+	const line = args.trim();
+	const name = line.split(/\s+/, 1)[0] ?? "";
+	const rest = line.slice(name.length).trimStart();
+	if (!name || name === "help") return "Commands now have direct names: /status, /permissions, /resume, /agents, /hooks, /memory, /backlog, /rewind, /jobs, /archive, /api, /models, /trust and /mcp.";
+	if (name === "mcp" && /^restart(?:\s|$)/.test(rest)) return "/octocode mcp restart moved to /mcp reconnect octocode. Run the new command to continue.";
+	const target = name === "external" ? "agents external" : LEGACY_NAMES[name] ?? name;
+	return `/octocode ${name} moved to /${target}${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
 }
 
 export class Subcommands {
 	private readonly entries = new Map<string, Subcommand>();
-	private readonly aliased = new Set<string>();
-
 	add(name: string, command: Subcommand): void {
 		this.entries.set(name, command);
 	}
-
 	get(name: string): Subcommand | undefined {
-		return this.entries.get(name);
+		return this.entries.get(name) ?? [...this.entries.values()].find(command => command.aliases?.includes(name));
 	}
-
-	has(name: string): boolean {
-		return this.entries.has(name);
+	has(name: string): boolean { return this.get(name) !== undefined; }
+	list(): Array<[string, Subcommand]> { return [...this.entries].sort(([a], [b]) => a.localeCompare(b)); }
+	help(): string { return this.list().map(([name, command]) => `/${name} — ${command.description}`).join("\n"); }
+	complete(prefix: string): AutocompleteItem[] | null {
+		const match = /^(\S+)\s+(.*)$/s.exec(prefix.trimStart());
+		if (!match) return wordCompletions(this.list().map(([name]) => name), prefix);
+		return this.get(match[1]!)?.complete?.(match[2]!.trimStart())?.map(item => ({...item, value: `${match[1]} ${item.value}`})) ?? null;
 	}
-
-	/** Subcommands by name, so help and completions read the same whatever order features registered them in. */
-	list(): Array<[string, Subcommand]> {
-		return [...this.entries].sort(([a], [b]) => a.localeCompare(b));
-	}
-
-	/** One line per subcommand, for `/octocode help` and a mistyped name. */
-	help(): string {
-		const shortcuts = [...this.aliased].sort().map((name) => `/${name}`);
-		return [
-			"Usage: /octocode [subcommand]",
-			"  (none) or status — status",
-			"  help — this list",
-			...this.list().map(([, command]) => `  ${command.description}`),
-			...(shortcuts.length ? [`Shortcuts: ${shortcuts.join(", ")}`] : []),
-		].join("\n");
-	}
-
-	/**
-	 * Registers the one Octocode command: `/octocode` (or `/octocode status`) notifies `status()`, `/octocode help` lists the
-	 * subcommands, and `/octocode <name> <args>` runs that subcommand with the rest of the line.
-	 */
-	register(pi: ExtensionAPI, status: () => string): void {
-		pi.registerCommand("octocode", {
-			description: `Octocode status, or: ${this.list()
-				.map(([name]) => name)
-				.join(", ")}, help`,
-			getArgumentCompletions: (prefix) => this.complete(prefix),
-			handler: async (args, ctx) => {
-				const line = args.trim();
-				const space = line.search(/\s/);
-				const name = space === -1 ? line : line.slice(0, space);
-				const rest = space === -1 ? "" : line.slice(space + 1).trim();
-				if (name === "" || name === "status") return say(ctx, status());
-				if (name === "help") return say(ctx, this.help());
-				const command = this.entries.get(name);
-				if (!command) return say(ctx, `Unknown subcommand "${name}".\n${this.help()}`, "warning");
-				// Subcommands open dialogs (menus, confirms) while a run's tools may open theirs: one shows at a time.
-				await (command.dialog === "interaction"
-					? command.handler(rest, ctx)
-					: withDialog(() => command.handler(rest, ctx)));
-			},
-		});
-	}
-
-	/**
-	 * Registers `/<name>` as a top-level shortcut for `/octocode <name>`, with the same handler and completions. Every
-	 * subcommand stays reachable under `/octocode`; `src/index.ts` decides which get a shortcut. Aliasing twice is a no-op.
-	 */
-	alias(pi: ExtensionAPI, name: string): void {
-		const command = this.entries.get(name);
-		if (!command) throw new Error(`Unknown subcommand: ${name}`);
-		if (this.aliased.has(name)) return;
-		this.aliased.add(name);
-		pi.registerCommand(name, {
-			description: command.description,
-			getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
-			handler: (args, ctx) =>
-				command.dialog === "interaction"
+	register(pi: ExtensionAPI, status?: () => string): void {
+		if (status) {
+			const details = this.get("status");
+			this.add("status", {
+				description: "Session status, skills and MCP connections",
+				aliases: details?.aliases ?? ["info", "session"],
+				dialog: "interaction",
+				handler: async (args, ctx) => {
+					say(ctx, status());
+					await details?.handler(args, ctx);
+				},
+			});
+		}
+		for (const [name, command] of this.list()) {
+			pi.registerCommand(name, {
+				description: command.description,
+				aliases: command.aliases,
+				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
+				handler: (args, ctx) => command.dialog === "interaction"
 					? command.handler(args.trim(), ctx)
 					: withDialog(() => command.handler(args.trim(), ctx)),
-		});
-	}
-
-	/** Completions for everything typed after `/octocode `: subcommand names first, then that subcommand's arguments. */
-	complete(prefix: string): AutocompleteItem[] | null {
-		const line = prefix.trimStart();
-		const space = line.search(/\s/);
-		if (space === -1) {
-			const items = [
-				...this.list(),
-				["help", { description: "help — list subcommands" }] as const,
-				["status", { description: "status — Octocode status" }] as const,
-			]
-				.filter(([name]) => name.startsWith(line))
-				.map(([name, command]) => ({
-					value: name === "help" || name === "status" ? name : `${name} `,
-					label: name,
-					description: command.description,
-				}));
-			return items.length > 0 ? items : null;
+			});
 		}
-		const name = line.slice(0, space);
-		const rest = line.slice(space + 1);
-		const items = this.entries.get(name)?.complete?.(rest.trimStart());
-		return items?.length ? items.map((item) => ({ ...item, value: `${name} ${item.value}` })) : null;
+		pi.on("input", async (event, ctx) => {
+			const match = /^\/octocode(?:\s+(.*))?$/s.exec(event.text.trim());
+			if (!match) return { action: "continue" };
+			say(ctx, legacyNativeCommandGuidance(match[1] ?? ""), "warning");
+			return { action: "handled" };
+		});
 	}
 }
 

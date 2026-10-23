@@ -20,7 +20,7 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
-/** Output limit of `structuredContent.output`, which programmatic callers such as codemode scripts receive. */
+/** Output limit of `structuredContent.output`, which programmatic callers such as programmatic tool callers receive. */
 const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_SECONDS = MAX_TIMEOUT_MS / 1000;
 
@@ -50,7 +50,7 @@ export const bashToolSystemPromptContribution = {
 export type BashToolInput = Static<typeof bashSchema>;
 
 /**
- * Result for programmatic callers such as codemode scripts. A non-zero exit code is an error result for the model, but scripts still resolve to this value.
+ * Result for programmatic callers such as programmatic tool callers. A non-zero exit code is an error result for the model, but scripts still resolve to this value.
  * `output` is not limited like the model-facing output: callers decide how much of it reaches the model.
  */
 const bashOutputSchema = Type.Object({
@@ -252,7 +252,7 @@ export function createShellToolDefinition(
 	return {
 		name: config.name,
 		label: config.label,
-		description: `Execute a ${config.shellName} command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+		description: `Execute a ${config.shellName} command in the current working directory. Returns stdout and stderr. Output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first), keeping the first and last lines. A line redrawn with carriage returns (a progress bar) shows only its final state. If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
 		promptSnippet: config.promptSnippet,
 		promptGuidelines: exposeSessionEnvironment && config.promptGuidelines ? [...config.promptGuidelines] : undefined,
 		parameters: bashSchema,
@@ -341,15 +341,20 @@ export function createShellToolDefinition(
 				let details: BashToolDetails | undefined;
 				if (truncation.truncated) {
 					details = { truncation, fullOutputPath: snapshot.fullOutputPath };
-					const startLine = truncation.totalLines - truncation.outputLines + 1;
+					const headLines = truncation.headLines ?? 0;
+					const tailLines = truncation.outputLines - headLines;
 					const endLine = truncation.totalLines;
+					const limit = truncation.truncatedBy === "bytes" ? ` (${formatSize(DEFAULT_MAX_BYTES)} limit)` : "";
+					const shown =
+						headLines > 0
+							? `first ${headLines} and last ${tailLines} lines`
+							: `lines ${truncation.totalLines - truncation.outputLines + 1}-${endLine}`;
 					if (truncation.lastLinePartial) {
 						const lastLineSize = formatSize(output.getLastLineBytes());
-						text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${snapshot.fullOutputPath}]`;
-					} else if (truncation.truncatedBy === "lines") {
-						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${snapshot.fullOutputPath}]`;
+						const partSize = formatSize(truncation.outputBytes - (truncation.headBytes ?? 0));
+						text += `\n\n[Showing ${headLines > 0 ? `first ${headLines} lines and ` : ""}last ${partSize} of line ${endLine} (line is ${lastLineSize}). Full output: ${snapshot.fullOutputPath}]`;
 					} else {
-						text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
+						text += `\n\n[Showing ${shown} of ${truncation.totalLines}${limit}. Full output: ${snapshot.fullOutputPath}]`;
 					}
 				}
 				return { text, details };

@@ -218,7 +218,7 @@ describe("Coding Agent Tools", () => {
 			expect(imageBlock?.mimeType).toBe("image/png");
 			expect(typeof imageBlock?.data).toBe("string");
 			expect((imageBlock?.data ?? "").length).toBeGreaterThan(0);
-			// Programmatic callers get the same image as a block. https://github.com/earendil-works/pi/issues/10251
+			// Programmatic callers get the same image as a block.
 			expect(result.structuredContent).toEqual({
 				type: "image",
 				data: imageBlock?.data,
@@ -543,7 +543,6 @@ describe("Coding Agent Tools", () => {
 			expect(readFileSync(largeOutput.full_output_path!, "utf-8").endsWith("300000\n")).toBe(true);
 		});
 
-		// Regression tests for https://github.com/earendil-works/pi/issues/9577
 		it.skipIf(process.platform === "win32")(
 			"should map signal-killed commands to 128 plus the signal number",
 			async () => {
@@ -620,7 +619,7 @@ describe("Coding Agent Tools", () => {
 				expect(error).toBeInstanceOf(Error);
 				const message = (error as Error).message;
 				expect(message).toContain(testCase.expected);
-				expect(message).toMatch(/\[Showing lines \d+-\d+ of \d+\. Full output: /);
+				expect(message).toMatch(/\[Showing first \d+ and last \d+ lines of \d+\. Full output: /);
 				expect(message).not.toContain("Full output: undefined");
 				const fullOutputPath = message.match(/Full output: ([^\]\n]+)/)?.[1];
 				expect(fullOutputPath).toBeDefined();
@@ -785,9 +784,16 @@ describe("Coding Agent Tools", () => {
 
 			expect(result.details?.truncation?.totalLines).toBe(4000);
 			expect(result.details?.truncation?.outputLines).toBe(2000);
-			expect(output).toContain("line-2001");
+			// The first 400 lines (20% of the budget) and the last 1600 are shown; the 2000 between are elided.
+			expect(result.details?.truncation).toMatchObject({ headLines: 400, elidedLines: 2000 });
+			expect(output).toContain("line-0001");
+			expect(output).toContain("line-0400");
+			expect(output).not.toContain("line-0401");
+			expect(output).not.toContain("line-2400");
+			expect(output).toContain("line-2401");
 			expect(output).toContain("line-4000");
-			expect(output).toMatch(/\[Showing lines 2001-4000 of 4000\. Full output: /);
+			expect(output).toMatch(/\[\.\.\. 2000 lines elided; full output: \S+\]/);
+			expect(output).toMatch(/\[Showing first 400 and last 1600 lines of 4000\. Full output: /);
 			expect(output).not.toContain("4001");
 		});
 
@@ -831,6 +837,38 @@ describe("Coding Agent Tools", () => {
 			expect(result.output).toBe("red\n");
 		});
 
+		it("should leave terminal escape sequences out of the model's output, also when split across chunks", async () => {
+			const bash = createBashTool(testDir);
+			const result = await bash.execute("test-call-ansi", {
+				command: "printf '\\033[94mblue\\033[0m \\033[?1049hscreen\\033]0;title\\007'; sleep 0.2; printf '\\033[3'; sleep 0.2; printf '1mred\\033[0m\\n'",
+			});
+			const output = getTextOutput(result);
+			expect(output).toBe("blue screenred\n");
+			expect(result.structuredContent).toMatchObject({ output: expect.stringContaining("\u001b[94m") });
+		});
+
+		it("should show only the final state of a progress line redrawn with carriage returns", async () => {
+			const bash = createBashTool(testDir);
+			const result = await bash.execute("test-call-cr", {
+				command: "printf '10%%\\r50%%\\r'; sleep 0.2; printf '100%%\\r\\ndone\\r\\n'",
+			});
+			expect(getTextOutput(result)).toBe("100%\ndone\n");
+			expect(result.structuredContent).toMatchObject({ output: "10%\r50%\r100%\r\ndone\r\n" });
+		});
+
+		it("should keep the first error and the final lines of long output", async () => {
+			const bash = createBashTool(testDir);
+			const result = await bash.execute("test-call-head-tail", {
+				command: "echo 'error TS1005: first problem'; seq 1 5000; echo 'Found 1 error.'",
+			});
+			const output = getTextOutput(result);
+			expect(output.startsWith("error TS1005: first problem\n1\n")).toBe(true);
+			expect(output).toMatch(/\n\[\.\.\. \d+ lines elided; full output: \S+\]\n/);
+			expect(output).toContain("\n5000\nFound 1 error.");
+			expect(output).toMatch(/\[Showing first 400 and last 1600 lines of 5002\. Full output: /);
+			expect(result.details?.truncation).toMatchObject({ headLines: 400, totalLines: 5002 });
+		});
+
 		it("should persist full output when truncation happens by line count only", async () => {
 			const bash = createBashTool(testDir);
 			const result = await bash.execute("test-call-line-truncation", { command: "seq 3000" });
@@ -840,7 +878,7 @@ describe("Coding Agent Tools", () => {
 			expect(result.details?.truncation?.truncated).toBe(true);
 			expect(result.details?.truncation?.truncatedBy).toBe("lines");
 			expect(fullOutputPath).toBeDefined();
-			expect(output).toMatch(/\[Showing lines \d+-\d+ of \d+\. Full output: /);
+			expect(output).toMatch(/\[Showing first \d+ and last \d+ lines of \d+\. Full output: /);
 			expect(output).not.toContain("Full output: undefined");
 
 			for (let i = 0; i < 20 && (!fullOutputPath || !existsSync(fullOutputPath)); i++) {

@@ -1,43 +1,11 @@
+import fs from "node:fs";
+import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
+import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OctocodeOwner } from "../../src/octocode/mcp/octocode.ts";
-import { profileHasBrowser, registerTurnSetup, sessionTools } from "../../src/octocode/turn.ts";
+import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeOctocode, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
-
-describe("sessionTools", () => {
-	const base = ["read", "bash", "edit", "write", "file"];
-
-	it("does not prune custom tools by legacy names", () => {
-		expect(sessionTools(base, new Set(), false)).toBeUndefined();
-		expect(sessionTools(["read", "edit", "write"], new Set(), false)).toBeUndefined();
-		expect(sessionTools(base, new Set(["edit"]), false)).toBeUndefined();
-		expect(sessionTools(base, new Set(["edit", "write"]), false)).toBeUndefined();
-		expect(sessionTools(["read", "file"], new Set(), false)).toBeUndefined();
-	});
-
-	it("leaves browser to the profiles that carry it unless the user named it", () => {
-		expect(sessionTools(["read", "file", "browser"], new Set(), true)).toEqual(["read", "file"]);
-		expect(sessionTools(["read", "file", "browser"], new Set(), false)).toBeUndefined();
-		expect(sessionTools(["read", "file", "browser"], new Set(["browser"]), true)).toBeUndefined();
-		// Without file, edit/write stay; browser still moves.
-		expect(sessionTools(["read", "edit", "browser"], new Set(), true)).toEqual(["read", "edit"]);
-	});
-
-	it("knows which profiles carry browser", () => {
-		const profile = (extra: object) => ({ name: "p", description: "", prompt: "", ...extra });
-		expect(profileHasBrowser(profile({}))).toBe(true);
-		expect(profileHasBrowser(profile({ excludeTools: "file, browser" }))).toBe(false);
-		expect(profileHasBrowser(profile({ tools: "read,web" }))).toBe(false);
-		expect(profileHasBrowser(profile({ tools: "web,browser" }))).toBe(true);
-		expect(profileHasBrowser(profile({ tools: "*" }))).toBe(true);
-		expect(profileHasBrowser(profile({ tools: "bro*" }))).toBe(true);
-		expect(profileHasBrowser(profile({ tools: "+browser" }))).toBe(true);
-		expect(profileHasBrowser(profile({ tools: "-browser" }))).toBe(false);
-		expect(profileHasBrowser(profile({ tools: "-browser,+browser" }))).toBe(true);
-		expect(profileHasBrowser(profile({ excludeTools: "bro*" }))).toBe(false);
-		expect(profileHasBrowser(profile({ tools: "+browser", excludeTools: "bro*" }))).toBe(false);
-	});
-});
 
 describe("registerTurnSetup", () => {
 	const setup = (owner?: OctocodeOwner) => {
@@ -75,10 +43,19 @@ describe("registerTurnSetup", () => {
 		vi.unstubAllEnvs();
 	});
 
+	it("routes deferred Octocode research through native discovery without suggesting scripts", async () => {
+		const { fake } = setup({ by: "off" });
+		fake.tools.set("tool_search", { name: "tool_search" });
+		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "deferred" });
+		fake.pi.setActiveTools(["tool_search"]);
+		const prompt = await run(fake);
+		expect(prompt).toContain("Use Octocode MCP");
+		expect(prompt).not.toContain("are called from `codemode`");
+	});
+
 	it("uses the core tool set at session start and leaves the active set alone per turn", async () => {
-		const { fake, turn } = setup();
+		const { fake } = setup();
 		process.argv = ["node", "pi"];
-		turn.settleTools({});
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
 		const event = {
 			systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["read", "edit"] },
@@ -95,58 +72,86 @@ describe("registerTurnSetup", () => {
 	});
 
 	it("keeps custom tools across reload and resume without name-based pruning", async () => {
-		const { fake, turn } = setup();
+		const { fake } = setup();
 		process.argv = ["node", "pi"];
 		await fake.emit("session_start", { type: "session_start", reason: "startup" }, {});
-		turn.settleTools({});
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
 		fake.pi.setActiveTools(["read", "bash", "edit", "write", "file"]);
 		await fake.emit("session_start", { type: "session_start", reason: "reload" }, {});
-		turn.settleTools({});
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 		// Custom tools remain registered even if they use former built-in names.
 		await fake.emit("session_start", { type: "session_start", reason: "resume" }, {});
-		turn.settleTools({});
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
 	it("keeps edit/write explicitly selected by the session", async () => {
-		const { fake, turn } = setup();
+		const { fake } = setup({ by: "off" });
 		fake.pi.setActiveTools(["read", "bash", "edit", "write", "file"]);
 		process.argv = ["node", "pi", "--tools", "read,edit,write,file"];
-		turn.settleTools({ explicitToolNames: ["read", "edit", "write", "file"] });
+		await run(fake);
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
-	it.each(["edit", "+edit"])("does not synthesize a removed tool from the %s setting", (entry) => {
-		const { fake, turn } = setup();
+	it.each(["edit", "+edit"])("does not synthesize a removed tool from the %s setting", async (entry) => {
+		const { fake } = setup({ by: "off" });
 		vi.spyOn(fake.pi, "getSettings").mockReturnValue({ defaultTools: [entry, "-write"] });
-		turn.settleTools({});
+		await run(fake);
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
 	});
 
-	it("does not inherit another session's tool choices from the host command line", () => {
-		const { fake, turn } = setup();
+	it("does not inherit another session's tool choices from the host command line", async () => {
+		const { fake } = setup({ by: "off" });
 		process.argv = ["node", "host", "--tools", "read,edit,write,file"];
-		turn.settleTools({ explicitToolNames: [] });
+		await run(fake);
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
 	});
 
-	it("keeps browser available when the agent tool is disabled", () => {
+	it.each([false, true])("preserves browser and web selections for isSubagent=%s", async (isSubagent) => {
 		const fake = fakePi();
-		for (const name of ["read", "file", "browser"]) fake.tools.set(name, { name });
-		const turn = registerTurnSetup(fake.pi, {
-			isSubagent: false,
-			profiles: () =>
-				new Map([["browser", { name: "browser", description: "", prompt: "", tools: "read,browser" }]]),
-			octocode: fakeOctocode().mcp,
+		const selected = ["read", "file", "browser", "web", "agent"];
+		for (const name of selected) fake.tools.set(name, { name });
+		registerTurnSetup(fake.pi, {
+			isSubagent,
+			profiles: () => new Map([["browser", { name: "browser", description: "", prompt: "", tools: "read,browser" }]]),
+			octocode: fakeOctocode({ by: "off" }).mcp,
 		});
-		process.argv = ["node", "pi"];
-		turn.settleTools({});
-		expect(fake.pi.getActiveTools()).toContain("browser");
-		fake.tools.set("agent", { name: "agent" });
-		turn.settleTools({});
-		expect(fake.pi.getActiveTools()).not.toContain("browser");
+		for (const reason of ["startup", "reload", "resume"]) {
+			await fake.emit("session_start", { type: "session_start", reason }, {});
+			await run(fake);
+			expect(fake.pi.getActiveTools()).toEqual(selected);
+		}
+		fake.pi.setActiveTools(["read"]);
+		await run(fake);
+		expect(fake.pi.getActiveTools()).toEqual(["read"]);
+	});
+
+	it("routes browser work to the specialist only when the main agent can delegate and has no browser", async () => {
+		const fake = fakePi();
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => profiles, octocode: fakeOctocode({ by: "off" }).mcp });
+		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction to `browser`");
+		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
+		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
+	});
+
+	it("keeps browser role instructions stable across modes and reads them once per child", async () => {
+		const profile = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
+		const sections = [];
+		for (const headless of [true, false]) {
+			const file = writeRolePrompt(profile.prompt, tmp());
+			vi.stubEnv(ROLE_PROMPT_FILE_ENV, file);
+			vi.stubEnv("OCTOCODE_BROWSER_VISIBLE", headless ? "" : "1");
+			const fake = fakePi();
+			registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: fakeOctocode({ by: "off" }).mcp });
+			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["file", "agent", "archive", "browser", "web"] } };
+			await fake.emit("before_agent_start", event, {});
+			expect(event.systemPromptOptions.sections.role).toBe(profile.prompt);
+			sections.push({ ...event.systemPromptOptions.sections });
+			fs.writeFileSync(file, "changed after this child started");
+			await fake.emit("before_agent_start", event, {});
+			expect(event.systemPromptOptions.sections).toEqual(sections.at(-1));
+		}
+		expect(sections[0]).toEqual(sections[1]);
 	});
 
 	it("prefers Octocode MCP from the first turn once its server is connected, though its tools register after the snapshot", async () => {
@@ -168,9 +173,9 @@ describe("registerTurnSetup", () => {
 		state.instructions =
 			"Loop: SCOPE → ORIENT → SEARCH.\nReuse returned data.next.* exactly.\nEmpty does not prove absence.";
 		const first = await run(fake, ["read"]);
-		expect(first).toContain(`# Octocode MCP server instructions\n${state.instructions}\n`);
-		expect(first.indexOf("# Research")).toBeLessThan(first.indexOf("# Octocode MCP server instructions"));
-		expect(first.indexOf("# Octocode MCP server instructions")).toBeLessThan(first.indexOf("# Safety"));
+		expect(first).toContain(`# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\n${state.instructions}\n`);
+		expect(first.indexOf("# Research")).toBeLessThan(first.indexOf("# Using Octocode MCP tools"));
+		expect(first.indexOf("# Using Octocode MCP tools")).toBeLessThan(first.indexOf("# Safety"));
 		expect(await run(fake, ["read", "mcp__octocode__localSearch"])).toBe(first);
 	});
 
@@ -182,7 +187,7 @@ describe("registerTurnSetup", () => {
 		expect(failed).not.toContain("Octocode MCP");
 		expect(failed).not.toContain("server instructions");
 		state.connected = true;
-		expect(await run(fake, ["read"])).toContain("# Octocode MCP server instructions\nReuse next.*");
+		expect(await run(fake, ["read"])).toContain("# Using Octocode MCP tools\nThese instructions govern code research, not writing from supplied facts.\nReuse next.*");
 		expect(state.readyCalls).toBe(2);
 		// A session reset forgets what was seen: the next session decides for itself.
 		state.connected = false;

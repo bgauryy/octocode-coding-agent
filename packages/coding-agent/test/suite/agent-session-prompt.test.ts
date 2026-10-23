@@ -165,7 +165,6 @@ describe("AgentSession prompt characterization", () => {
 		expect(sawImage).toBe(true);
 	});
 
-	// Regression test for https://github.com/earendil-works/pi/issues/9631
 	it("uses the model selected by before_agent_start for image normalization", async () => {
 		let strictModel: Model<string> | undefined;
 		const harness = await createHarness({
@@ -203,7 +202,7 @@ describe("AgentSession prompt characterization", () => {
 		});
 	});
 
-	it("expands skill commands before sending the prompt", async () => {
+	it.each(["/skill:test", "/test"])("expands %s before sending the prompt", async (command) => {
 		const tempDir = join(tmpdir(), `pi-skill-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 		tempDirs.push(tempDir);
@@ -243,7 +242,7 @@ describe("AgentSession prompt characterization", () => {
 			},
 		]);
 
-		await harness.session.prompt("/skill:test explain this");
+		await harness.session.prompt(`${command} explain this`);
 
 		expect(expandedPrompt).toContain('<skill name="test" location="');
 		expect(expandedPrompt).toContain("Use the skill body.");
@@ -510,8 +509,8 @@ describe("AgentSession prompt characterization", () => {
 			releaseCompaction = resolve;
 		});
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => {
 						markCompactionStarted();

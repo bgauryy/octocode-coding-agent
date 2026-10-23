@@ -66,6 +66,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		thinkingTranscript(tui).refresh();
 		const setHidden = vi.spyOn(component, "setHideThinkingBlock");
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
+		expect(editor.embedWorkingStatus).toBe(false);
 		tui.setFocus(editor);
 		input("draft");
 		input("\x14");

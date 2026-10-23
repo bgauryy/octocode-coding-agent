@@ -2,6 +2,7 @@
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
+		"jsx": "react-jsx",
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"paths": {
@@ -13,24 +14,6 @@
 			],
 			"@octocodeai/octocode-telemetry/render": [
 				"./packages/telemetry/src/render.ts"
-			],
-			"@octocodeai/octocode-codemode": [
-				"./packages/codemode/src/index.ts"
-			],
-			"@octocodeai/octocode-codemode/cloudflare": [
-				"./packages/codemode/src/cloudflare.ts"
-			],
-			"@octocodeai/octocode-codemode/declarations": [
-				"./packages/codemode/src/declarations.ts"
-			],
-			"@octocodeai/octocode-codemode/portable": [
-				"./packages/codemode/src/portable.ts"
-			],
-			"@octocodeai/octocode-codemode/source": [
-				"./packages/codemode/src/source.ts"
-			],
-			"@octocodeai/octocode-codemode/worker": [
-				"./packages/codemode/src/runtime/worker.ts"
 			],
 			"@octocodeai/octocode-mcp": [
 				"./packages/mcp/src/index.ts"
@@ -74,12 +57,22 @@
 			],
 			"@octocodeai/octocode-tui/*": [
 				"./packages/tui/src/*"
+			],
+			"@octocodeai/octocode-contacts": [
+				"./packages/contacts/src/index.ts"
+			],
+			"@octocodeai/octocode-contacts/*": [
+				"./packages/contacts/src/*.ts"
+			],
+			"@octocodeai/octocode-webview": [
+				"./packages/webview/src/index.ts"
+			],
+			"@octocodeai/octocode-webview/*": [
+				"./packages/webview/src/*.ts"
 			]
 		}
 	},
 	"include": [
-		"scripts/model-catalog-protocol.ts",
-		"scripts/model-catalog-protocol.test.ts",
 		"packages/*/src/**/*",
 		"packages/*/test/**/*",
 		"packages/coding-agent/examples/**/*"

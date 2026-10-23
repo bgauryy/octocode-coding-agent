@@ -11,12 +11,20 @@ const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
 
+/** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
+const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
+
 /**
  * The outcome word a report starts with, or undefined when it does not start with one (an unknown outcome, never a
- * failure). Case and light markup around the word (`**Blocked**:`, `done.`) do not matter.
+ * failure). Case and light markup around the word (`**Blocked**:`, `done.`) do not matter, and one `Report:`,
+ * `Status:` or `Outcome:` label may come first (`**Report: partial.**`).
  */
 export function reportStatus(text: string | undefined): ReportStatus | undefined {
-	const first = (text ?? "").trimStart().split(/\s/, 1)[0] ?? "";
+	const first =
+		(text ?? "")
+			.trimStart()
+			.replace(OUTCOME_LABEL, "")
+			.split(/\s/, 1)[0] ?? "";
 	const word = first.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();
 	return REPORT_STATUSES.find((status) => status === word);
 }
@@ -72,6 +80,7 @@ export class ReportTracker {
 	private sectionStart = 0;
 	private fresh = true;
 	private failure: string | undefined;
+	private outcome: ReportStatus | undefined;
 	private file: string | undefined;
 	private partialFile: string | undefined;
 	private spillFailed = false;
@@ -111,6 +120,7 @@ export class ReportTracker {
 			}
 			return;
 		}
+		this.outcome = reportStatus(text);
 		const signature = createHash("sha512").update(text).digest("hex");
 		const append = this.fresh || this.sections === 0;
 		if (append && signature === this.signature) {
@@ -153,7 +163,7 @@ export class ReportTracker {
 	 * The report as returned to the caller: `text` is `body` plus, when the whole text is saved in a file, the `pointer`
 	 * line naming it. A caller that shortens `body` keeps the pointer.
 	 */
-	result(): { text: string; body: string; pointer?: string; error?: string; answered: boolean } {
+	result(): { text: string; body: string; pointer?: string; error?: string; outcome?: ReportStatus; answered: boolean } {
 		if (this.sections === 0) {
 			const pointer = this.partialFile
 				? `Full partial report: ${shortPath(this.partialFile)} (read only the parts you need).`
@@ -170,6 +180,13 @@ export class ReportTracker {
 			? `${this.text}${SEPARATOR}(A later follow-up turn failed: ${this.failure})`
 			: this.text;
 		const pointer = this.file ? `Full report: ${shortPath(this.file)} (read only the parts you need).` : undefined;
-		return { text: `${body}${pointer ? `\n${pointer}` : ""}`, body, ...(pointer ? { pointer } : {}), answered: true };
+		return {
+			text: `${body}${pointer ? `\n${pointer}` : ""}`,
+			body,
+			...(pointer ? { pointer } : {}),
+			...(this.outcome ? { outcome: this.outcome } : {}),
+			...(this.failure ? { error: this.failure } : {}),
+			answered: true,
+		};
 	}
 }

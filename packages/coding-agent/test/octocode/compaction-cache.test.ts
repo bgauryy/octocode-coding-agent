@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import {
 	INFERRED_CACHE_TTL_SECONDS,
+	cacheClock,
 	inferredPromptCache,
 	PromptCacheLifetimes,
 	promptCacheTtlMs,
@@ -211,6 +212,13 @@ describe("prompt-cache lifetimes for models that declare none", () => {
 });
 
 describe("granted tier and warming", () => {
+	it.each([true, false])("keeps active refresh decisions when hasUI=%s, including subagents", (hasUI) => {
+		const ctx = { hasUI, sessionManager: { getBranch: () => [] } } as never;
+		for (const action of ["warm", "stop"] as const) {
+			expect(warmingDecision({ action, warmCost: 0.01, missCost: 1, continuationProbability: 1 }, ctx, 300_000, 0, true)).toBeUndefined();
+		}
+	});
+
 	it("learns from cacheWrite1h that the provider granted only 5 minutes, and supplies a 300 s long tier", () => {
 		const model = opus();
 		const pi = fakePi([model]);
@@ -278,5 +286,19 @@ describe("cache retention", () => {
 		);
 		expect(env[CACHE_RETENTION_ENV]).toBe("short");
 		expect(env[INSTRUCTION_CACHE_RETENTION_ENV]).toBe("long");
+	});
+});
+
+
+describe("cache clock evidence", () => {
+	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid lifetime %s", (short) => {
+		expect(promptCacheTtlMs({ short }, {})).toBeUndefined();
+	});
+	it("does not renew cache lifetime for a refresh reporting neither a read nor a write", () => {
+		const branch = [
+			{ type: "message", message: { role: "assistant", stopReason: "stop", timestamp: 1000 } },
+			{ type: "usage", kind: "cache_warm", timestamp: new Date(2000).toISOString(), usage: { cacheRead: 0, cacheWrite: 0 } },
+		];
+		expect(cacheClock({ getBranch: () => branch } as never).useAt).toBe(1000);
 	});
 });

@@ -17,7 +17,7 @@ function writePackage(directory, manifest, files) {
 }
 
 function createFixture(t, { importUndeclared = false } = {}) {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "pi-coding-agent-smoke-test-"));
+	const temporaryRoot = mkdtempSync(join(tmpdir(), "octocodecode-smoke-test-"));
 	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
 	const root = join(temporaryRoot, "fixture with spaces");
 	const repoRoot = join(root, "repo");
@@ -56,7 +56,7 @@ function createFixture(t, { importUndeclared = false } = {}) {
 			dependencies: { "octocode-mcp": "1.0.0", "chrome-launcher": "1.0.0", "@agentclientprotocol/sdk": "1.0.0" },
 		},
 		{
-			"dist/index.js": `${importUndeclared ? 'import "@earendil-works/undeclared";' : ""}
+			"dist/index.js": `${importUndeclared ? 'import "@octocodeai/undeclared";' : ""}
 export function createAgentSession() {}
 export class SessionManager { static inMemory() {} }
 export class ModelRuntime { static create() {} }
@@ -93,7 +93,7 @@ test("accepts a valid coding-agent package", (t) => {
 // #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
 test("fails when the SDK imports an undeclared package despite a working CLI", (t) => {
 	const directory = createFixture(t, { importUndeclared: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@earendil-works\/undeclared'/);
+	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@octocodeai\/undeclared'/);
 });
 
 test("rejects a package missing its bundled subagent profiles", (t) => {

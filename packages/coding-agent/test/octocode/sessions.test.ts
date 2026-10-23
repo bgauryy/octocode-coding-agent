@@ -70,6 +70,7 @@ function setup(options: { id?: string; entries?: Entry[]; hasUI?: boolean; name?
 	});
 	const commands = new Subcommands();
 	registerSessions(fake.pi, { commands, isSubagent: options.subagent ?? false, filesChanged: () => 3 });
+	if (!options.subagent) commands.register(fake.pi);
 	const id = options.id ?? "sess-1";
 	const file = path.join(tmp(), `${id}.jsonl`);
 	fs.writeFileSync(file, "{}\n");
@@ -797,8 +798,9 @@ describe("/octocode sessions", () => {
 		expect(written.at(-1)).toMatch(/^Sessions \(all directories\), newest first:\n[\s\S]*elsewhere\n$/);
 	});
 
-	it("registers /sessions as a shortcut", () => {
+	it("registers /resume with sessions as alias", () => {
 		const { piCommands } = setup();
-		expect(piCommands.has("sessions")).toBe(true);
+		expect(piCommands.get("resume")?.aliases).toEqual(["sessions"]);
+		expect(piCommands.has("sessions")).toBe(false);
 	});
 });

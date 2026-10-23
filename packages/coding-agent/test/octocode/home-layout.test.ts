@@ -129,7 +129,7 @@ describe("profiles, hooks and skills in .octocode", () => {
 		const { root, sub } = repo({ ".octocode/hooks.json": hook("project") });
 		expect(hookFiles(sub, true, home)).toContain(path.join(root, ".octocode", "hooks.json"));
 		const commands = (trusted: boolean) =>
-			loadHooks(sub, trusted, home).config.PreToolUse.flatMap((group) => group.hooks.map((item) => item.command));
+			loadHooks(sub, trusted, home).config.PreToolUse.flatMap((group) => group.hooks.map((item) => "command" in item ? item.command : undefined));
 		expect(commands(true)).toEqual(["user", "project"]);
 		expect(commands(false)).toEqual(["user"]);
 	});

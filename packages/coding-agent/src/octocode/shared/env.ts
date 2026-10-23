@@ -3,19 +3,23 @@ import fs from "node:fs";
 
 /** Environment switches: one spelling rule for every `OCTOCODE_*` flag and number. */
 
-/** Set in a `visibleBrowser` profile's child (webLive): `browser` opens a visible Chrome on a persistent profile. */
+/** Set for a browser child with headless=false: Chrome uses a visible window and persistent profile. */
 export const BROWSER_VISIBLE_ENV = "OCTOCODE_BROWSER_VISIBLE";
 
 /** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
 export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
+export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
 
 /** `1` runs Claude Code / Codex command hooks (off by default; subagents run them only when their profile opts in). */
 export const HOOKS_ENV = "OCTOCODE_HOOKS";
 
-/** `0` keeps the Octocode MCP server unregistered (set for a profile with `mcp: false`, e.g. the browser subagents). */
+/** Preview source-specific hook behavior; it does not imply complete upstream compatibility. */
+export const HOOKS_COMPAT_ENV = "OCTOCODE_HOOKS_COMPAT";
+
+/** `0` keeps the Octocode MCP server unregistered for this session and its children. */
 export const MCP_ENV = "OCTOCODE_MCP";
 
-/** `0` turns automatic memory injection off for this process (`/octocode memory auto off` turns it off everywhere). */
+/** `0` turns automatic memory injection off for this process (`/memory auto off` turns it off everywhere). */
 export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
 
 /** Days kept output and bash logs survive in a kept session folder (default 30); `0` turns the session sweep off. */
@@ -23,6 +27,8 @@ export const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
 
 /** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
 export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
+/** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
+export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
 /** Set for an isolated subagent: the parent's repository root, whose stored trust decision the worktree follows. */
 export const TRUST_ROOT_ENV = "OCTOCODE_TRUST_ROOT";
@@ -110,7 +116,7 @@ export function sameSecret(expected: string, given: unknown): boolean {
 }
 
 /**
- * Conversation retention, read by pi-ai and the cache warmer. Instruction retention is independent.
+ * Conversation retention, read by octocode-ai and the cache warmer. Instruction retention is independent.
  * A value the user exported always wins.
  */
 export const CACHE_RETENTION_ENV = "OCTOCODE_CACHE_RETENTION";
@@ -153,3 +159,5 @@ export function envInt(
 	const parsed = Number.parseInt(value, 10);
 	return Math.min(bounds.max ?? Number.POSITIVE_INFINITY, Math.max(bounds.min ?? Number.NEGATIVE_INFINITY, parsed));
 }
+
+export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";

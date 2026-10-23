@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	collectCacheMisses,
 	computeCacheWaste,
+	computeCacheMetrics,
 	detectCacheMiss,
 	type ModelPriceSource,
 } from "../src/core/cache-stats.ts";
@@ -173,5 +174,30 @@ describe("detectCacheMiss", () => {
 
 	it("returns undefined for the first turn of a session", () => {
 		expect(detectCacheMiss([], turn1, models)).toBeUndefined();
+	});
+});
+
+
+describe("measured cache usage by purpose", () => {
+	it("does not inflate conversation hits with warming, summaries or tool usage", () => {
+		const usage = assistant({ cacheRead: 900, input: 100, cost: { total: 0.2 } }).usage;
+		const base = { id: "x", parentId: null, timestamp: "" };
+		const entries = [
+			entry(assistant({ input: 100 })), entry(assistant({ cacheRead: 50, input: 50 })),
+			{ ...base, type: "usage", kind: "cache_warm", provider: "p", model: "m", usage },
+			{ ...base, type: "compaction", usage },
+			{ ...base, type: "branch_summary", usage },
+			{ ...base, type: "message", message: { role: "toolResult", usage } },
+			{ ...base, type: "usage", kind: "other", usage },
+		] as SessionEntry[];
+		const stats = computeCacheMetrics(entries);
+		expect(stats.conversation).toMatchObject({ requests: 2, promptTokens: 200, cacheRead: 50, hitRate: 0.25 });
+		for (const purpose of ["warming", "compaction", "branchSummary", "tools", "other"] as const) {
+			expect(stats[purpose]).toMatchObject({ requests: 1, promptTokens: 1000, hitRate: 0.9, cost: 0.2 });
+		}
+	});
+	it("reports unknown for no input, and zero for a measured cold request", () => {
+		expect(computeCacheMetrics([]).conversation.hitRate).toBeNull();
+		expect(computeCacheMetrics([entry(assistant({ input: 100 }))]).conversation.hitRate).toBe(0);
 	});
 });

@@ -153,7 +153,7 @@ describe("permission gate", () => {
 					return verdicts[text] === true;
 				},
 			});
-			await strict.gate(call("powershell", { command }), strict.ctx);
+			await strict.gate(call("bash", { type: "powershell", command }), strict.ctx);
 			expect(strict.asked[0], command).toMatch(
 				destructive ? /^Run this destructive command\?/ : /^Run this command\?/,
 			);

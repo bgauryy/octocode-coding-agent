@@ -2,6 +2,8 @@
 
 Stateful agent with tool execution and event streaming. Built on `@octocodeai/octocode-ai`.
 
+This package receives models, tools and policy from its host. For the coding-agent application's files and settings, use [CONFIGURATIONS.md](../../CONFIGURATIONS.md); for session/resource lifecycle use the [SDK guide](../coding-agent/docs/sdk.md).
+
 ## Installation
 
 ```bash
@@ -296,7 +298,7 @@ Access state via `agent.state`.
 
 Assigning `agent.state.tools = [...]` or `agent.state.messages = [...]` copies the top-level array before storing it. Mutating the returned array mutates the current agent state.
 
-The transcript owns the system prompt and tool declarations: the leading system message is the prompt, later system messages patch it (see `SystemMessage` in `@octocodeai/octocode-ai`). `agent.state.systemPrompt` is read-only and replays the transcript. `agent.state.tools` is the executable loadout; before every request the loop diffs it against the tools the transcript declares and, if they differ, announces the change in a system message (merged into a pending system message when one exists). pi-ai's `getCurrentSystemMessage(messages)` returns the replayed head, including declared tools, for any message array, including agent transcripts with custom message roles.
+The transcript owns the system prompt and tool declarations: the leading system message is the prompt, later system messages patch it (see `SystemMessage` in `@octocodeai/octocode-ai`). `agent.state.systemPrompt` is read-only and replays the transcript. `agent.state.tools` is the executable loadout; before every request the loop diffs it against the tools the transcript declares and, if they differ, announces the change in a system message (merged into a pending system message when one exists). octocode-ai's `getCurrentSystemMessage(messages)` returns the replayed head, including declared tools, for any message array, including agent transcripts with custom message roles.
 
 To change the prompt mid-conversation, append a system message with `content` (added instructions) or `sections` (named replacements):
 
@@ -503,9 +505,9 @@ Thrown errors are caught by the agent and reported to the LLM as tool errors wit
 
 Return `terminate: true` from `execute()`, a blocked `beforeToolCall`, or `afterToolCall` to hint that the agent should stop after the current tool batch. This only takes effect when every finalized tool result in the batch is terminating. The hint is runtime-only; emitted `toolResult` transcript messages remain standard LLM tool results.
 
-### MCP and Codemode
+### MCP tools
 
-`@octocodeai/octocode-mcp` connects to MCP servers and `@octocodeai/octocode-codemode` runs model-written JavaScript that calls tools. [upstream mcp-codemode example](https://github.com/earendil-works/pi/tree/main/packages/agent/examples/mcp-codemode) wraps both as `AgentTool`s: one tool per MCP tool, and a `codemode` tool whose scripts call the agent's tools through `runToolCall()`, so `beforeToolCall` and `afterToolCall` apply to those calls too.
+`@octocodeai/octocode-mcp` connects to MCP servers. Hosts adapt each server tool to an `AgentTool` and execute it through `runToolCall()`, preserving `beforeToolCall` and `afterToolCall` hooks.
 
 ## Proxy Usage
 

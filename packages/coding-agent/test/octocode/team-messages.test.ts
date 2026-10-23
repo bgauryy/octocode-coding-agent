@@ -20,6 +20,25 @@ const message = (over: Partial<Message> = {}): Message => ({
 });
 
 describe("team message delivery", () => {
+	it("only completes and measures replies delivered to the original asker", () => {
+		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
+		try {
+			for (const id of ["asker", "worker", "other"])
+				store.save({ id, role: id, pid: process.pid, status: "idle", joinedAt: Date.now(), updatedAt: Date.now(), toolCalls: 0, input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false });
+			const ask = store.send("asker", ["worker"], "Question", { replyRequired: true }).id!;
+			store.ack("worker", [ask]);
+			store.send("worker", ["other"], "Wrong recipient", { replyRequired: false, replyTo: ask });
+			expect(store.recent().find((message) => message.id === ask)?.state).toBe("awaiting reply");
+			expect(store.asks("asker", "worker", 0)[0]?.answer).toBeUndefined();
+			expect(store.pending("asker")).toEqual([]);
+			const reply = store.send("worker", ["asker", "other"], "Correct reply", { replyRequired: false, replyTo: ask }).id;
+			expect(store.recent().find((message) => message.id === ask)?.state).toBe("answered");
+			expect(store.asks("asker", "worker", 0)[0]?.answer?.id).toBe(reply);
+			expect(store.pending("asker")[0]?.wake).toBe(true);
+		} finally {
+			store.close();
+		}
+	});
 	it("checks recipient liveness inside the transaction that stores the message", () => {
 		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
 		try {
@@ -163,7 +182,7 @@ describe("team message delivery", () => {
 	it("labels the sender, never passing an API client off as the user, and says how to reply", () => {
 		const peer = messageText(message({ replyRequired: true }), { parentId: "main-aaaaaa" });
 		expect(peer).toMatch(
-			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: sendMessage to researcher-1234, replyTo 7\)$/,
+			/^Message #7 from agent researcher-1234 at .*:\n<<<untrusted-[0-9a-f]{16} \(.*\)\nhi\nuntrusted-[0-9a-f]{16}>>>\n\(reply: agent type message, input\.to researcher-1234, input\.replyTo 7\)$/,
 		);
 		expect(messageText(message({ from: "main-aaaaaa" }), { parentId: "main-aaaaaa" })).toMatch(
 			/from your parent agent main-aaaaaa .*\(FYI: no reply needed\.\)$/s,

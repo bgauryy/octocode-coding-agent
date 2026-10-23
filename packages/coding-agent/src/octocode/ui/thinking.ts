@@ -3,7 +3,7 @@ import { AssistantMessageComponent } from "../../modes/interactive/components/as
 
 type TranscriptRoot = Pick<TUI, "children" | "requestRender">;
 
-export class ThinkingTranscript {
+class ThinkingTranscript {
 	private hidden = false;
 	private readonly seen = new WeakSet<AssistantMessageComponent>();
 

@@ -142,7 +142,7 @@ describe("browser dialogs", () => {
 			expect(await text({ action, expression: "1" }), action).toContain("dialog is open");
 		expect(await text({ action: "info" })).toContain("dialog is open");
 
-		expect(await text({ action: "dialog", accept: false })).toBe("Dismissed the confirm dialog.");
+		expect(await text({ action: "dialog", accept: false })).toContain("Dismissed the confirm dialog.\n\n# Stub");
 		expect(cdp.commands.find((command) => command.method === "Page.handleJavaScriptDialog")?.params).toEqual({
 			accept: false,
 		});
@@ -157,7 +157,7 @@ describe("browser dialogs", () => {
 			}),
 		);
 		await text({ action: "click", ref: 2 });
-		expect(await text({ action: "dialog", text: "Ada" })).toBe("Accepted the prompt dialog.");
+		expect(await text({ action: "dialog", text: "Ada" })).toContain("Accepted the prompt dialog.\n\n# Stub");
 		expect(cdp.commands.find((command) => command.method === "Page.handleJavaScriptDialog")?.params).toEqual({
 			accept: true,
 			promptText: "Ada",
@@ -348,7 +348,7 @@ describe("browser download", () => {
 	}, 20_000);
 });
 
-describe("visible mode (webLive)", () => {
+describe("visible mode (headless=false)", () => {
 	async function deadPort(): Promise<number> {
 		const cdp = await startCdpStub();
 		const port = cdp.port;

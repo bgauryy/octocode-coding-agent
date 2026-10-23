@@ -1,0 +1,2787 @@
+{
+  "identity": {
+    "executable": "$CLAUDE_EXECUTABLE",
+    "realpath": "$CLAUDE_REALPATH",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Isolated local provider, dummy credentials, executable hash guard. Shell effects are confined to owned temporary directories.",
+  "cases": [
+    {
+      "case": "time",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\nreal\\t0m0.036s\\nuser\\t0m0.027s\\nsys\\t0m0.007s\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "time node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "nice",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "nice-options",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice -n 3 node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "nohup",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nohup node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "command",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "command-v",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "command -v node"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"$NODE_EXECUTABLE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command -v node",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "xargs node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "xargs node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "no-input xargs control; inner execution not demonstrated"
+    },
+    {
+      "case": "xargs-flags",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "xargs -n1 node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "xargs -n1 node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "no-input xargs control; inner execution not demonstrated"
+    },
+    {
+      "case": "xargs-double-dash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "xargs -- node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "xargs -- node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "no-input xargs control; inner execution not demonstrated"
+    },
+    {
+      "case": "stdbuf",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "stdbuf -o L node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "stdbuf -o L node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "nested",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice nohup node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "safe-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "NODE_ENV=test node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "unknown-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "FOO=bar node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "FOO=bar node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "env-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "env NODE_ENV=test node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "env NODE_ENV=test node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-safe-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command NODE_ENV=test node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "NODE_ENV=test node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-unknown-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command FOO=bar node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "FOO=bar node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-builtin",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command builtin printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "builtin printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-safe-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "NODE_ENV=test node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "NODE_ENV=test node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-unknown-env",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "FOO=bar node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "FOO=bar node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-builtin",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf BLOCK)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "builtin printf BLOCK"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"BLOCK\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "builtin printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "find-prefix",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(find *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "find-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(find . -prune -exec node -p 42 \\;)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "nice-joined",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "nice -n3 node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice -n3 node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "time-p",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "time -p node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\nreal 0.03\\nuser 0.02\\nsys 0.00\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "time -p node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "time-f",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "time -f %s node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: -f: command not found\\n\\nreal\\t0m0.001s\\nuser\\t0m0.000s\\nsys\\t0m0.001s\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "time -f %s node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "stdbuf-joined",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "stdbuf -oL node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "stdbuf-long",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "stdbuf --output=L node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 1\\nstdbuf: illegal option -- -\\nusage: stdbuf [-e 0|L|B|<sz>] [-i 0|L|B|<sz>] [-o 0|L|B|<sz>] <cmd> [args ...]\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "stdbuf --output=L node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "timeout",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: timeout: command not found\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "timeout 1s node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "timeout-short",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: timeout: command not found\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "timeout -s TERM 1s node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "timeout-long",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: timeout: command not found\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "timeout --signal=TERM 1s node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "timeout-kill",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: timeout: command not found\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "timeout --kill-after=1s 1s node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "quoted-target",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice \"node\" -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "escaped-target",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice n\\ode -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "noglob",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 127\\n/bin/bash: noglob: command not found\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "noglob node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "command-p-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command -p printf BLOCK has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command -p printf BLOCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "command-V",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "command -V node"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"node is $NODE_EXECUTABLE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command -V node",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-input",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)",
+          "Bash(node -p*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-flag-input",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)",
+          "Bash(node -p*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf '42\\n' | xargs -n1 node -p"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs -n1 node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-dash-input",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)",
+          "Bash(node -p*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf '42\\n' | xargs -- node -p"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs -- node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-input-prefix",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)",
+          "Bash(xargs *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-input-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf '42\\n' | xargs node -p)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf '42\\n' | xargs node -p"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "find-prefix-FOO=bar",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(FOO=*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "FOO=bar find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "FOO=bar find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "find-prefix-NODE_ENV=test",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(NODE_ENV=*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "NODE_ENV=test find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "NODE_ENV=test find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "bare-quoted",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "'node' -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "bare-escaped",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "n\\ode -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "wrapped-quoted-arg",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "nice node -p \"42\""
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice node -p \"42\"",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "bare-quoted-arg",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p \"42\""
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p \"42\"",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "wrapped-escaped-arg",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "nice node -p 4\\2"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice node -p 4\\2",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "bare-escaped-arg",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 4\\2"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 4\\2",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "xargs-pipeline-noallow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf '42\\n' | xargs node -p"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf '42\\n' | xargs node -p",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "wrapped-quoted-printf-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"BLOCK\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice printf 'BLOCK'",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "wrapped-escaped-printf-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf BLOCK)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"BLOCK\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice printf BL\\OCK",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "quoted-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "'nice' node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "plain-pipeline-none",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41 | cat"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41 | cat",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "plain-pipeline-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41 | cat)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 41 | cat"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41 | cat",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "plain-pipeline-leaves",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41)",
+          "Bash(cat)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41 | cat",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "and-chain-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node -p 41 && node -p 42)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"41\\n42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 41 && node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "subshell-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash((node -p 42))"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "(node -p 42)"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "(node -p 42)",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-nice-joined",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice -n3 node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-time-p",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command time -p node -p 42 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "time -p node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "deny-stdbuf-spaced",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "stdbuf -o L node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-nice-joined",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice -n3 node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-time-p",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "time -p node -p 42"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\nreal 0.05\\nuser 0.03\\nsys 0.01\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "time -p node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "ask-stdbuf-spaced",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(node -p 42)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "stdbuf -o L node -p 42",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "leading-find-prefix",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash( find *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": " find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": " find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "leading-find-exact",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash( find . -prune -exec node -p 42 \\;)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": " find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": " find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "tab-find-prefix",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(\tfind *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "\tfind . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "\tfind . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "quoted-nice-option-find",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(nice *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "nice \"-n\" 4 find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice \"-n\" 4 find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "unquoted-nice-option-find",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(nice *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "nice -n 4 find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"42\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "nice -n 4 find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    },
+    {
+      "case": "quoted-command-option-find",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(command *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "command \"-p\" find . -prune -exec node -p 42 \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"find: node: No such file or directory\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command \"-p\" find . -prune -exec node -p 42 \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "permission selection only; executable unavailable or option unsupported"
+    },
+    {
+      "case": "quoted-command-option-find-printf",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(command *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "command \"-p\" find . -prune -exec /usr/bin/printf BLOCK \\;"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"BLOCK\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command \"-p\" find . -prune -exec /usr/bin/printf BLOCK \\;",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true,
+      "evidence_kind": "actual command execution or source denial"
+    }
+  ],
+  "verified_date": "2026-10-23"
+}

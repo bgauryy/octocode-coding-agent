@@ -11,15 +11,18 @@ import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME } from "../../config.ts";
 import { projectMcpConfigPaths } from "../../core/mcp-config-paths.ts";
-import { validateMcpServerConfig } from "../../core/mcp-servers.ts";
+import { DEFAULT_MCP_EXPOSURE, validateMcpServerConfig } from "../../core/mcp-servers.ts";
 import { ProjectTrustStore } from "../../core/trust-manager.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
+import { formatMcpConfigLocations, formatMcpTool, getMcpConfigLocations, type McpToolListing } from "./inspection.ts";
 import {
 	addMcpServerConfig,
 	getMcpToolExposure,
 	type LoadedMcpConfig,
 	loadMcpConfig,
 	type McpServerEntry,
+	type McpExposure,
+	updateMcpServerConfig,
 	removeMcpServerConfig,
 } from "./config.ts";
 import {
@@ -35,7 +38,11 @@ const HELP = `${chalk.bold("Usage:")}
   ${APP_NAME} mcp add <server> [options] -- <command> [args...]
   ${APP_NAME} mcp add <server> [options] --url <url>
   ${APP_NAME} mcp remove <server> [-l]
+  ${APP_NAME} mcp enable|disable <server> [-l]
+  ${APP_NAME} mcp exposure <server> <auto|deferred|direct|hidden> [-l]
   ${APP_NAME} mcp list [--json]
+  ${APP_NAME} mcp tools [server] [tool] [--json]
+  ${APP_NAME} mcp config [--json]
   ${APP_NAME} mcp login <server> [--timeout <seconds>]
   ${APP_NAME} mcp logout <server>
 
@@ -46,12 +53,17 @@ Reads the agent directory's mcp.json and trusted project files:
 Commands:
   add <server>            Add or replace a server in mcp.json
   remove <server>         Remove a server from mcp.json
+  enable <server>        Enable a configured server
+  disable <server>       Disable a configured server
+  exposure <server> <mode> Change how its tools are reached
   list                    Show state, tools, and errors (exits 1 on failure)
+  tools [server] [tool]    List tools, or inspect a tool's description and input schema
+  config                  Show global/workspace paths and their read order
   login <server>          Sign in through the browser
   logout <server>         Delete the stored OAuth credentials
 
-Options for add and remove:
-  -l, --local             Use ${CONFIG_DIR_NAME}/mcp.json in the current project instead of the global file
+Options for configuration commands:
+  -l, --local             Write project configuration (enable/disable/exposure require project trust)
 
 Options for add:
   --url <url>             Streamable HTTP server URL (instead of a command)
@@ -67,7 +79,7 @@ Options for add:
                           Fixed OAuth callback port
   --oauth-client-name <name>
                           Client name sent when registering with the OAuth server
-  --exposure <mode>       codemode (default), deferred, direct, or hidden
+  --exposure <mode>       auto (default), deferred, direct, or hidden
   --description <text>    What the server offers, shown in the system prompt
 
 Other options:
@@ -78,7 +90,7 @@ const HELP_HINT = chalk.dim(`Use "${APP_NAME} mcp --help" for usage.`);
 
 const DEFAULT_LOGIN_TIMEOUT_SECONDS = 300;
 
-export interface McpCommandOptions {
+interface McpCommandOptions {
 	cwd: string;
 	agentDir: string;
 	/** Defaults to `mcp-auth.json` in the agent directory. */
@@ -96,11 +108,13 @@ interface ServerReport {
 	source: string;
 	/** Project `mcp.json` that overrides `enabled`, `exposure`, or `toolExposure` of this global server. */
 	override?: string;
+	overrideScope?: "global" | "project";
 	enabled: boolean;
 	exposure: string;
 	transport: string;
 	state: string;
 	tools: string[];
+	toolDetails?: McpToolListing[];
 	/** Tools whose exposure differs from the server's, from `toolExposure`. */
 	toolExposure?: Record<string, string>;
 	/** Whether the server offers resources. They are not listed: listing every one can take long. */
@@ -114,7 +128,13 @@ function errorMessage(error: unknown): string {
 
 function describeTransport(entry: McpServerEntry): string {
 	const { config } = entry;
-	return "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" ");
+	if (!("url" in config)) return config.command;
+	const url = new URL(config.url);
+	url.username = "";
+	url.password = "";
+	url.search = "";
+	url.hash = "";
+	return url.href;
 }
 
 function createConnection(entry: McpServerEntry, options: McpCommandOptions, credentials: McpOAuthCredentialStore) {
@@ -200,6 +220,14 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			: remove(rest, projectConfig, options, log, error);
 	}
 	const projectTrusted = new ProjectTrustStore(options.agentDir).get(options.cwd) === true;
+	if (command === "config") {
+		const parsed = parseOptions(rest, { json: "flag" }, error);
+		if (!parsed) return 1;
+		if (parsed.positional.length) { error(`Usage: ${APP_NAME} mcp config [--json]`); return 1; }
+		const locations = getMcpConfigLocations(options.agentDir, options.cwd, projectTrusted);
+		log(parsed.values.has("json") ? JSON.stringify(locations, null, 2) : formatMcpConfigLocations(locations));
+		return 0;
+	}
 	const loaded = loadMcpConfig({ agentDir: options.agentDir, cwd: options.cwd, projectTrusted });
 	const untrustedNote =
 		!projectTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
@@ -208,6 +236,45 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
 
 	switch (command) {
+		case "tools": {
+			const parsed = parseOptions(rest, { json: "flag" }, error);
+			if (!parsed) return 1;
+			const [server, tool, ...extra] = parsed.positional;
+			if (extra.length) { error(`Usage: ${APP_NAME} mcp tools [server] [tool] [--json]`); return 1; }
+			if (server && !loaded.servers.some((entry) => entry.name === server)) {
+				error(`No MCP server named "${server}".${untrustedNote ? ` ${untrustedNote}` : ""}`);
+				return 1;
+			}
+			return list(loaded, parsed.values.has("json"), untrustedNote, options, credentials, log, { server, tool });
+		}
+		case "enable":
+		case "disable":
+		case "exposure": {
+			const parsed = parseOptions(rest, { local: "flag" }, error);
+			if (!parsed) return 1;
+			const [name, mode, ...extra] = parsed.positional;
+			if (!name || extra.length || (command !== "exposure" && mode !== undefined) ||
+				(command === "exposure" && !["auto", "deferred", "direct", "hidden"].includes(mode ?? ""))) {
+				error(`Usage: ${APP_NAME} mcp ${command} <server>${command === "exposure" ? " <auto|deferred|direct|hidden>" : ""} [-l]`);
+				return 1;
+			}
+			const entry = loaded.servers.find((server) => server.name === name);
+			if (!entry) { error(`No MCP server named "${name}".${untrustedNote ? ` ${untrustedNote}` : ""}`); return 1; }
+			const local = parsed.values.has("local");
+			if (local && !projectTrusted) { error("Project configuration requires a trusted project."); return 1; }
+			const projectOverride = entry.override && entry.overrideScope !== "global";
+			const target = local
+				? (entry.scope === "project" ? entry.source : loaded.projectConfig ?? projectConfig)
+				: projectOverride ? entry.override! : entry.scope === "project" ? entry.source : loaded.globalConfig ?? join(options.agentDir, "mcp.json");
+			try {
+				updateMcpServerConfig(target, name,
+					command === "exposure" ? { exposure: mode as McpExposure } : { enabled: command === "enable" },
+					{ override: target !== entry.source });
+			} catch (failure) { error(`Could not update ${target}: ${errorMessage(failure)}`); return 1; }
+			log(`MCP server "${name}": ${command === "exposure" ? `exposure ${mode}` : command === "enable" ? "enabled" : "disabled"}. Saved to ${target}.`);
+			log(`Running sessions keep their current configuration; use /mcp ${command} ${name}${mode ? ` ${mode}` : ""}${local ? " --local" : ""} there, or restart.`);
+			return 0;
+		}
 		case "list": {
 			const parsed = parseOptions(rest, { json: "flag" }, error);
 			if (!parsed) return 1;
@@ -440,16 +507,17 @@ async function list(
 	options: McpCommandOptions,
 	credentials: McpOAuthCredentialStore,
 	log: (line: string) => void,
+	inspect?: { server?: string; tool?: string },
 ): Promise<number> {
 	const reports = await Promise.all(
-		loaded.servers.map(async (entry): Promise<ServerReport> => {
+		loaded.servers.filter((entry) => !inspect?.server || entry.name === inspect.server).map(async (entry): Promise<ServerReport> => {
 			const report: ServerReport = {
 				name: entry.name,
 				scope: entry.scope ?? "global",
 				source: entry.source,
-				...(entry.override ? { override: entry.override } : {}),
+				...(entry.override ? { override: entry.override, overrideScope: entry.overrideScope ?? "project" } : {}),
 				enabled: entry.config.enabled !== false,
-				exposure: entry.config.exposure ?? "codemode",
+				exposure: entry.config.exposure ?? DEFAULT_MCP_EXPOSURE,
 				transport: describeTransport(entry),
 				state: "disabled",
 				tools: [],
@@ -463,8 +531,11 @@ async function list(
 			}
 			report.state = connection.state;
 			report.tools = connection.tools.map((tool) => tool.name);
+			if (inspect) report.toolDetails = connection.tools
+				.filter((tool) => !inspect.tool || tool.name === inspect.tool)
+				.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema, exposure: getMcpToolExposure(entry.config, tool.name, entry.name) }));
 			const overrides = connection.tools.flatMap((tool) => {
-				const exposure = getMcpToolExposure(entry.config, tool.name);
+				const exposure = getMcpToolExposure(entry.config, tool.name, entry.name);
 				return exposure === report.exposure ? [] : [[tool.name, exposure] as const];
 			});
 			if (overrides.length > 0) report.toolExposure = Object.fromEntries(overrides);
@@ -474,12 +545,15 @@ async function list(
 			return report;
 		}),
 	);
-	const failed = loaded.errors.length > 0 || reports.some((report) => report.enabled && report.state !== "connected");
+	const missingTool = inspect?.tool && !reports.some((report) => report.toolDetails?.length)
+		? `No available tool named "${inspect.tool}" on MCP server "${inspect.server}".` : undefined;
+	const errors = [...loaded.errors, ...(missingTool ? [missingTool] : [])];
+	const failed = errors.length > 0 || reports.some((report) => report.enabled && report.state !== "connected");
 
 	if (json) {
 		log(
 			JSON.stringify(
-				{ servers: reports, errors: loaded.errors, ...(untrustedNote ? { note: untrustedNote } : {}) },
+				{ servers: reports, errors, ...(untrustedNote ? { note: untrustedNote } : {}) },
 				null,
 				2,
 			),
@@ -496,11 +570,14 @@ async function list(
 				: report.state === "needs-auth"
 					? "needs sign-in"
 					: report.state;
-		log(`${report.name}: ${state} (${report.exposure}, ${report.scope})`);
+		log(`${report.name}: ${state} (${report.exposure}, ${report.scope}) · ${report.enabled ? "enabled" : "disabled"}`);
 		log(`  ${report.transport}`);
-		if (report.override) log(`  project override: ${report.override}`);
+		log(`  source: ${report.source}`);
+		if (report.override) log(`  ${report.overrideScope ?? "project"} override: ${report.override}`);
 		if (report.state === "needs-auth") log(`  sign in with: ${APP_NAME} mcp login ${report.name}`);
-		if (report.tools.length > 0) {
+		if (inspect && report.toolDetails?.length) {
+			for (const tool of report.toolDetails) log(`  ${formatMcpTool(tool, !!inspect.tool).split("\n").join("\n  ")}`);
+		} else if (report.tools.length > 0) {
 			const tools = report.tools.map((tool) => {
 				const exposure = report.toolExposure?.[tool];
 				return exposure ? `${tool} [${exposure}]` : tool;
@@ -511,6 +588,7 @@ async function list(
 		if (report.error) log(`  ${report.error.split("\n").join("\n  ")}`);
 	}
 	for (const configError of loaded.errors) log(`config error: ${configError}`);
+	if (missingTool) log(missingTool);
 	if (untrustedNote) log(untrustedNote);
 	return failed ? 1 : 0;
 }

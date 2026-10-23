@@ -1,5 +1,5 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { chipText } from "../../src/octocode/permission/mode.ts";
 import { statusColor } from "../../src/octocode/shared/render.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
@@ -42,7 +42,7 @@ describe("footer", () => {
 		expect(top).toMatch(
 			/^claude-opus-5-5 · ⏸ permission: manual · Shift\+Tab · high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
 		);
-		expect(bottom).toBe("~/code/app ⎇ main · fix login · ↑12.4k ↓3.1k · mcp 3/3 · lint ok");
+		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
 		expect(visibleWidth(top!)).toBe(170);
 	});
 
@@ -124,7 +124,7 @@ describe("footer", () => {
 			120,
 		);
 		expect(top).toBe("claude-opus-5-5 · ctx ? of 200k");
-		expect(bottom).toBe("~/code/app");
+		expect(bottom).toBe("~/code/app · 0 tokens");
 	});
 
 	it("drops the least important parts first on narrow terminals, never the model, context, permission mode or running work", () => {
@@ -248,9 +248,9 @@ describe("footer wiring", () => {
 			data,
 		);
 		let [top, bottom] = component.render(120) as string[];
-		expect(top).toMatch(/^model-x · medium · ctx ▱{8} 10% of 100k +≈\$0\.15$/);
+		expect(top).toMatch(/^model-x · medium · ctx ▱{8} 11% of 87\.5k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
-		expect(bottom).toBe("/work/app ⎇ main · ↑4.5k (67% cached) ↓250 · mcp 1/1");
+		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · 0 compactions · mcp 1/1");
 		percent = 64;
 		await fake.emit(
 			"message_end",
@@ -259,7 +259,7 @@ describe("footer wiring", () => {
 		);
 		expect(renders).toBe(1);
 		[top] = component.render(120) as string[];
-		expect(top).toContain("64%");
+		expect(top).toContain("73%");
 		expect(top).toContain("≈$0.16");
 		// A rename (/name, or the automatic title) shows at once.
 		let name: string | undefined;
@@ -333,7 +333,7 @@ describe("footer wiring", () => {
 		percent = 42;
 		await fake.emit("session_tree", {}, ctx);
 		expect(samples).toBe(counted + 1);
-		expect((component.render(120) as string[])[0]).toContain("42%");
+		expect((component.render(120) as string[])[0]).toContain("48%");
 		component.invalidate();
 		expect(component.render(120)).not.toBe(first);
 	});
@@ -343,7 +343,7 @@ describe("footer wiring", () => {
 		const { registerFooter } = await Promise.resolve(importedModule2);
 		const fake = fakePi();
 		(fake.pi as unknown as { getThinkingLevel: () => string }).getThinkingLevel = () => "off";
-		// A 1M window that compacts at 200k: the per-model reserve wins over the global one.
+		// A 1M window uses the built-in reserve even if legacy overrides remain on disk.
 		(fake.pi as unknown as { getSettings: () => unknown }).getSettings = () => ({
 			compaction: { reserveTokens: 40_000, modelOverrides: { "gw/big": { reserveTokens: 800_000 } } },
 		});
@@ -367,9 +367,9 @@ describe("footer wiring", () => {
 		};
 		const component = ctx.ui.footer({ requestRender: () => undefined }, theme, data);
 		let [top, bottom] = component.render(120) as string[];
-		expect(top).toContain("75% of 200k");
+		expect(top).toContain("15% of 984k");
 		expect(top).toContain("≈$1.50");
-		expect(bottom).toContain("↑10k (90% cached)");
+		expect(bottom).toContain("↑1k +9k cached");
 		await fake.emit(
 			"message_end",
 			{ message: { role: "custom", customType: "octocode-agent-result", details: report(0.5) } },
@@ -383,7 +383,7 @@ describe("footer wiring", () => {
 		);
 		[top, bottom] = component.render(120) as string[];
 		expect(top).toContain("≈$2.00");
-		expect(bottom).toContain("↑20k");
+		expect(bottom).toContain("↑2k +18k cached");
 	});
 
 	it("marks usage from a model without pricing instead of counting it as free, and says so once", async () => {
@@ -471,5 +471,63 @@ describe("footer wiring", () => {
 		const [narrow] = footerLines({ ...state, context: undefined }, "main", counted, theme, 44);
 		expect(narrow).toContain("⏵⏵ full · 12 actions · 2 ⚠");
 		expect(narrow).not.toContain("permission:");
+	});
+});
+
+
+describe("run metrics", () => {
+	it("records wall time through tool waits and compaction without duplicating the live activity clock", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		try {
+			const fake = importedModule1.fakePi();
+			const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as any;
+			let entries: any[] = [{ type: "compaction" }];
+			ctx.sessionManager.getEntries = () => entries;
+			importedModule2.registerFooter(fake.pi);
+			await fake.emit("session_start", {}, ctx);
+			const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+				getGitBranch: () => null,
+				getExtensionStatuses: () => new Map(),
+				onBranchChange: () => () => {},
+			});
+			const rendered = () => component.render(160).join("\n");
+			expect(rendered()).toContain("1 compaction");
+			await fake.emit("agent_start", {}, ctx);
+			vi.advanceTimersByTime(18_000);
+			expect(rendered()).not.toContain("running");
+			await fake.emit("agent_end", {}, ctx);
+			entries.push({ type: "compaction" });
+			await fake.emit("session_compact", {}, ctx);
+			await fake.emit("agent_start", {}, ctx);
+			vi.advanceTimersByTime(2_000);
+			expect(rendered()).not.toContain("last run");
+			expect(rendered()).toContain("2 compactions");
+			await fake.emit("agent_settled", {}, ctx);
+			vi.advanceTimersByTime(5_000);
+			expect(rendered()).toContain("last run 20s");
+			expect(vi.getTimerCount()).toBe(0);
+			await fake.emit("agent_start", {}, ctx);
+			expect(rendered()).not.toContain("last run");
+			component.dispose();
+			expect(vi.getTimerCount()).toBe(0);
+			entries = [];
+			await fake.emit("session_start", {}, ctx);
+			expect(rendered()).toContain("0 compactions");
+			expect(rendered()).not.toContain("last run");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps compact totals readable without overflowing narrow terminals", () => {
+		for (const width of [0, 1, 20, 40, 80, 120, 200]) {
+			const lines = footerLines({ ...state, runMs: 125_000, running: true, compactions: 3 }, null, statuses, theme, width);
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+			if (width >= 80) {
+				expect(lines.join("\n")).toContain("15.5k tokens");
+				expect(lines.join("\n")).toContain("3 compactions");
+			}
+		}
 	});
 });

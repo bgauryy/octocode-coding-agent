@@ -4,6 +4,8 @@ A small, standalone Model Context Protocol client. It does not depend on the off
 
 The package provides a transport-neutral client core, stdio and Streamable HTTP transports, and an in-memory testing transport.
 
+This client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
+
 ## Usage
 
 ```typescript
@@ -53,7 +55,7 @@ const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
 }));
 ```
 
-The [mcp-codemode example](https://github.com/earendil-works/pi/tree/main/packages/agent/examples/mcp-codemode) also forwards progress, passes `structuredContent` through, and lets `@octocodeai/octocode-codemode` scripts call the tools.
+Hosts can also forward progress and retain `structuredContent` for programmatic consumers.
 
 ### OAuth
 

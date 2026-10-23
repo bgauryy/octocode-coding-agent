@@ -405,7 +405,7 @@ describe("external manager policy and lifecycle", () => {
 		);
 		expect(connected.details).toMatchObject({ id: "permission-agent", sessionId: "fixture-session" });
 		await fake.commands
-			.get("octocode")!
+			.get("agents")!
 			.handler(
 				`external ${JSON.stringify({ action: "prompt", id: "permission-agent", text: "edit", timeoutMs: 5000 })}`,
 				state.ctx,

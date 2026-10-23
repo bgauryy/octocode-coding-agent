@@ -433,6 +433,7 @@ describe("AgentSession concurrent prompt guard", () => {
 		const snapshots: string[][] = [];
 		const sessionWithRunner = session as unknown as {
 			_extensionRunner?: {
+				getRegisteredCommands: () => [];
 				hasHandlers: (eventType: string) => boolean;
 				emit: (event: { type: string; message?: { role?: string } }) => Promise<void>;
 				emitMessageEnd: (event: { type: string; message?: { role?: string } }) => Promise<undefined>;
@@ -451,6 +452,7 @@ describe("AgentSession concurrent prompt guard", () => {
 			};
 		};
 		sessionWithRunner._extensionRunner = {
+			getRegisteredCommands: () => [],
 			hasHandlers: (eventType) => eventType === "tool_call",
 			emit: async () => {},
 			emitMessageEnd: async () => undefined,
@@ -580,6 +582,7 @@ describe("AgentSession concurrent prompt guard", () => {
 
 		const sessionWithRunner = session as unknown as {
 			_extensionRunner?: {
+				getRegisteredCommands: () => [];
 				hasHandlers: (eventType: string) => boolean;
 				emit: (event: { type: string; message?: { role?: string } }) => Promise<void>;
 				emitMessageEnd: (event: { type: string; message?: { role?: string } }) => Promise<undefined>;
@@ -597,6 +600,7 @@ describe("AgentSession concurrent prompt guard", () => {
 			};
 		};
 		sessionWithRunner._extensionRunner = {
+			getRegisteredCommands: () => [],
 			hasHandlers: () => false,
 			emit: async () => {},
 			emitMessageEnd: async (event) => {

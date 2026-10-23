@@ -1,9 +1,8 @@
 /**
- * Tool discovery: a BM25 ranker over tool metadata, shared by `searchTools()` in codemode scripts and
- * the optional `tool_search` tool.
+ * Tool discovery: a BM25 ranker over registered tool metadata.
  *
  * `tool_search` searches tools that are not declared to
- * the model (`codemode` and `deferred` exposure) and loads the matches, so they are declared for the
+ * the model (`deferred` exposure) and loads the matches, so they are declared for the
  * next model call. Loading goes through the active tool set, so it is recorded in the transcript
  * like any other tool change and survives `/tree`, resume, and fork on that branch.
  */
@@ -18,21 +17,21 @@ import type {
 } from "../../core/extensions/types.ts";
 
 export const TOOL_SEARCH_TOOL_NAME = "tool_search";
-export const DEFAULT_TOOL_SEARCH_LIMIT = 8;
+const DEFAULT_TOOL_SEARCH_LIMIT = 8;
 
 /** A tool as the ranker sees it: its name and the text built by {@link createToolSearchDocument}. */
-export interface ToolSearchDocument {
+interface ToolSearchDocument {
 	name: string;
 	text: string;
 }
 
-export interface ToolSearchMatch {
+interface ToolSearchMatch {
 	name: string;
 	score: number;
 }
 
 /** Ranks tools for a query. BM25 today; a hybrid ranker with embeddings can replace it. */
-export interface ToolRanker {
+interface ToolRanker {
 	rank(query: string, documents: readonly ToolSearchDocument[], limit: number): ToolSearchMatch[];
 }
 
@@ -62,6 +61,7 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
 
 /** Naive singular form, so `issues` matches `issue` and `searches` matches `search`. */
 function stem(term: string): string {
+	if (!/^[a-z]+$/.test(term)) return term;
 	if (term.length > 4 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
 	if (term.length > 4 && /(ches|shes|sses|xes|zes)$/.test(term)) return term.slice(0, -2);
 	if (term.length > 3 && term.endsWith("s") && !term.endsWith("ss")) return term.slice(0, -1);
@@ -71,10 +71,11 @@ function stem(term: string): string {
 /** Lowercase terms, split at camelCase boundaries and non-alphanumerics, without stop words. */
 export function tokenize(text: string): string[] {
 	return text
+		.normalize("NFC")
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
 		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
 		.toLowerCase()
-		.split(/[^a-z0-9]+/)
+		.split(/[^\p{L}\p{M}\p{N}]+/u)
 		.filter((term) => term.length > 0 && !STOP_WORDS.has(term))
 		.map(stem);
 }
@@ -156,26 +157,25 @@ export class Bm25Ranker implements ToolRanker {
 	}
 }
 
-export const toolSearchSchema = Type.Object({
+const toolSearchSchema = Type.Object({
 	query: Type.String({ description: "Search query for deferred tools." }),
+	namespace: Type.Optional(Type.String({ description: "Limit discovery to a namespace or MCP server name from the available server list." })),
 	limit: Type.Optional(
 		Type.Number({ description: `Maximum number of tools to return. Defaults to ${DEFAULT_TOOL_SEARCH_LIMIT}.` }),
 	),
 });
 
-export type ToolSearchInput = Static<typeof toolSearchSchema>;
-
-export interface ToolSearchResultTool {
+interface ToolSearchResultTool {
 	name: string;
 	description: string;
 }
 
-export interface ToolSearchToolDetails {
+interface ToolSearchToolDetails {
 	/** Tools loaded by this call. */
 	loaded: string[];
 }
 
-export interface ToolSearchToolOptions {
+interface ToolSearchToolOptions {
 	/**
 	 * The session's tools. `tool_search` searches the tools that are not declared to the model and
 	 * activates the matches. Without it, the tool finds nothing. An `ExtensionAPI` fits.
@@ -183,9 +183,13 @@ export interface ToolSearchToolOptions {
 	tools?: Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">;
 }
 
+function normalizeNamespace(name: string): string {
+	return name.trim().replace(/^mcp__/, "").replace(/[^A-Za-z0-9_]/g, "_");
+}
+
 /** Whether `tool_search` can load a tool with this exposure. */
 function isSearchable(exposure: ToolExposure): boolean {
-	return exposure === "codemode" || exposure === "deferred";
+	return exposure === "deferred";
 }
 
 /**
@@ -196,9 +200,13 @@ function searchAndLoad(
 	tools: NonNullable<ToolSearchToolOptions["tools"]>,
 	query: string,
 	limit: number,
+	namespace?: string,
 ): ToolSearchResultTool[] {
 	const active = tools.getActiveTools();
-	const candidates = tools.getAllTools().filter((tool) => isSearchable(tool.exposure) && !active.includes(tool.name));
+	const candidates = tools.getAllTools().filter((tool) => isSearchable(tool.exposure) && !active.includes(tool.name) &&
+		(namespace === undefined || [tool.namespace?.name, ...(tool.namespace?.aliases ?? [])].some(
+			(name) => name !== undefined && normalizeNamespace(name) === normalizeNamespace(namespace),
+		)));
 	const documents = candidates.map((tool) => createToolSearchDocument(tool, tool.namespace));
 	const matches = new Bm25Ranker().rank(query, documents, limit);
 	if (matches.length > 0) tools.setActiveTools([...active, ...matches.map((match) => match.name)]);
@@ -212,7 +220,7 @@ function searchAndLoad(
  * The `tool_search` description. It does not list the searchable tools or their namespaces, so it
  * stays the same while tools are registered, for example when MCP servers connect.
  */
-export const TOOL_SEARCH_DESCRIPTION = `# Tool discovery\n\nSearches over deferred tool metadata with BM25 and exposes matching tools for the next model call.\n\nSome of the tools, such as tools of MCP servers, may not have been provided to you upfront, and you should use this tool (\`${TOOL_SEARCH_TOOL_NAME}\`) to search for the required tools. For MCP tool discovery, always use \`${TOOL_SEARCH_TOOL_NAME}\`.`;
+export const TOOL_SEARCH_DESCRIPTION = "Find and load tools for the next call. Search by the capability you need; use namespace to target one MCP server without waiting for unrelated servers. After discovery, call the loaded tool directly with its declared arguments.";
 
 export function createToolSearchToolDefinition(
 	options: ToolSearchToolOptions = {},
@@ -225,13 +233,13 @@ export function createToolSearchToolDefinition(
 		parameters: toolSearchSchema,
 		// Searching is not something scripts need; it changes what the model sees.
 		exposure: "model-only",
-		// A query can match any tool that is not declared yet.
-		reachesTools: () => "all",
-		async execute(_toolCallId, { query, limit }) {
+		reachesTools: (input) => typeof input.namespace === "string" && input.namespace.trim() ? [`mcp__${normalizeNamespace(input.namespace)}`] : "all",
+		async execute(_toolCallId, { query, limit, namespace }) {
 			if (query.trim() === "") throw new Error("query must not be empty");
+			if (namespace !== undefined && !namespace.trim()) throw new Error("namespace must not be empty");
 			const max = limit ?? DEFAULT_TOOL_SEARCH_LIMIT;
 			if (!Number.isInteger(max) || max <= 0) throw new Error("limit must be a positive integer");
-			const tools = options.tools ? searchAndLoad(options.tools, query, max) : [];
+			const tools = options.tools ? searchAndLoad(options.tools, query, max, namespace) : [];
 			const text =
 				tools.length === 0
 					? "No matching tools found."

@@ -60,12 +60,14 @@ export function fakePi() {
 		sendMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
 		sendUserMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
 		appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
-		getActiveTools: () => activeTools ?? [...tools.keys()],
+		getActiveTools: () => activeTools ?? [...tools.values()].filter((tool) => tool.defaultActive !== false).map((tool) => tool.name),
 		getAllTools: () => [...tools.values()],
 		setActiveTools: (names: string[]) => {
 			activeTools = [...names];
 		},
 		getCommands: () => [],
+		getSkillDirectories: () => [],
+		getSkillResourceSnapshot: (_names?: readonly string[]) => ({ version: 1 as const, resources: [], explicitSkills: [] }),
 		events: { on: () => () => undefined, emit: () => undefined },
 	};
 	const emit = async (event: string, payload: unknown, ctx: unknown) => {

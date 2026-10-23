@@ -3,7 +3,7 @@ import type { ProviderClassifier, ProviderEnv, ProviderStreams } from "../types.
 const CLOUDFLARE_ACCOUNT_ID = "CLOUDFLARE_ACCOUNT_ID";
 const CLOUDFLARE_GATEWAY_ID = "CLOUDFLARE_GATEWAY_ID";
 
-export function resolveCloudflareModel<TModel extends { baseUrl: string }>(
+function resolveCloudflareModel<TModel extends { baseUrl: string }>(
 	model: TModel,
 	env: ProviderEnv | undefined,
 ): TModel {

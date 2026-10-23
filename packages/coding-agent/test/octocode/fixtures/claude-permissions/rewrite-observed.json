@@ -1,0 +1,799 @@
+{
+  "identity": {
+    "executable": "/Users/bgaryy/.local/bin/claude",
+    "realpath": "/Users/bgaryy/.local/share/claude/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Local provider and actual command hooks; optional actual MCP permission host. Delayed second-handler observations are bounded races, not universal scheduling guarantees. Interactive replacement re-prompt remains unverified.",
+  "cases": [
+    {
+      "case": "host-original-control",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "host-rewrite-control",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "host-rewrite-new-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "host-rewrite-original-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Output redirection to '$CASE_ROOT/project/original.txt' needs approval. The path is inside the working directories for this session ('/private$CASE_ROOT/project'), and Claude Code asks before a shell command creates, changes or removes files there.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "host-rewrite-new-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Bash(printf REWRITTEN *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf REWRITTEN > $CASE_ROOT/project/replacement.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "host-only",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "host_inputs": [
+        {
+          "tool_name": "Bash",
+          "input": {
+            "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt",
+            "description": "Safe fixture marker"
+          },
+          "tool_use_id": "toolu_fixture"
+        }
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "empty",
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": "ORIGINAL",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "null",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Output redirection to '$CASE_ROOT/project/original.txt' needs approval. The path is inside the working directories for this session ('/private$CASE_ROOT/project'), and Claude Code asks before a shell command creates, changes or removes files there.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "string",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Output redirection to '$CASE_ROOT/project/original.txt' needs approval. The path is inside the working directories for this session ('/private$CASE_ROOT/project'), and Claude Code asks before a shell command creates, changes or removes files there.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-invalid",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"DENY_WINS\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "empty-permissions",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "unknown-field",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "bad-command",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Bash returned updatedInput that failed schema validation: Bash failed due to the following issue:\\nThe parameter `command` type is expected as `string` but provided as `number`\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "conflicting",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "second_events": "started\n",
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "fast-allow-late-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "second_events": "started\n",
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2,
+        "second_events": "started\n"
+      },
+      "passed": true
+    },
+    {
+      "case": "fast-deny-late-allow",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "second_events": "started\n",
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"FAST_DENY\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2,
+        "second_events": "started\n"
+      },
+      "passed": true
+    },
+    {
+      "case": "same-reply",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "second_events": "started\n",
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2,
+        "second_events": "started\n"
+      },
+      "passed": true
+    },
+    {
+      "case": "different-reply",
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "second_events": "started\n",
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": "REWRITTEN",
+        "hook_count": 1,
+        "request_count": 2,
+        "second_events": "started\n"
+      },
+      "passed": true
+    },
+    {
+      "case": "empty-original-ask",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "ask": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf ORIGINAL > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Claude requested permissions to use Bash, but you haven't granted it yet.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2
+      },
+      "passed": true
+    }
+  ]
+}

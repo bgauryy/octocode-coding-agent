@@ -28,6 +28,8 @@ setInterval(() => {
 	const mail = fake.sent.filter((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE);
 	for (const entry of mail.slice(reported))
 		process.stdout.write(`${JSON.stringify({ content: entry.message.content })}\n`);
+	// Simulate the model receiving the printed messages so the next batch can be delivered.
+	team.onContext(mail.map((entry) => ({ ...entry.message, role: "custom" })));
 	reported = mail.length;
 }, 25);
 let input = "";

@@ -49,7 +49,7 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		const message = await tool
 			.execute(
 				"t1",
-				{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
+				{ command: "sleep 0; trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
 				undefined,
 				undefined,
 				ctx,
@@ -79,6 +79,123 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		// A command that leaves nothing behind gets no note.
 		const clean = await tool.execute("t2", { command: "echo only" }, undefined, undefined, ctx);
 		expect(clean.content[0].text).toBe("only\n");
+	});
+});
+
+describe.runIf(posix)("foreground command that reaches its deadline", () => {
+	it("keeps running as a background job and later reports its exit with the output from before and after the move", async () => {
+		const { tool, jobs, sent, ctx } = setup();
+		const result = await tool.execute(
+			"t1",
+			{ command: "echo before; sleep 2; echo after; exit 3", timeout: 1 },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(result.content[0].text).toMatch(/moved to the background as bash-1/);
+		expect(sent).toHaveLength(0);
+		await until(() => sent.length === 1, 8_000);
+		const report = sent[0]!.message.content as string;
+		expect(report).toMatch(/^Background bash bash-1 failed with exit code 3 after [23]s: echo before; sleep 2/);
+		expect(report).toMatch(/before\nafter$/);
+		// Like any background job: reported as a follow-up that wakes an idle session, and gone from the job list.
+		expect(sent[0]!.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+		expect(sent[0]!.message.details.id).toBe("bash-1");
+		expect(fs.readFileSync(sent[0]!.message.details.log, "utf8")).toBe("before\nafter\n");
+		expect(jobs.jobs.size).toBe(0);
+	});
+
+	it("moves a command with a stderr stream and a later exit 0 as finished", async () => {
+		const { tool, sent, ctx } = setup();
+		await tool.execute("t1", { command: "echo out; sleep 1.5; echo err >&2", timeout: 1 }, undefined, undefined, ctx);
+		await until(() => sent.length === 1, 8_000);
+		expect(sent[0]!.message.content).toMatch(/bash-1 finished after [12]s[\s\S]*out\nerr$/);
+	});
+
+	it("stops a moved command at session end, with its whole process group", async () => {
+		const { tool, jobs, sent, fire, ctx } = setup();
+		await tool.execute("t1", { command: "{ sleep 30 & }; echo started; wait", timeout: 1 }, undefined, undefined, ctx);
+		const job = jobs.jobs.get("bash-1")!;
+		expect(groupAlive(job.pid)).toBe(true);
+		await fire("session_shutdown", {}, ctx);
+		expect(groupAlive(job.pid)).toBe(false);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(session end\)[\s\S]*started/);
+		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+	});
+
+	it("is stopped by /octocode jobs kill, with SIGTERM first so it can clean up", async () => {
+		const { pi, tools, sent } = fakePi();
+		const commands = new Subcommands();
+		const jobs = new BashJobs(tmp());
+		registerBashTool(pi, commands, jobs, () => ({}));
+		const ctx = fakeCtx({ cwd: tmp() });
+		await tools.get("bash").execute(
+			"t1",
+			{ command: "trap 'echo cleaned-up; exit 1' TERM; echo ready; sleep 30 & wait", timeout: 1 },
+			undefined,
+			undefined,
+			ctx,
+		);
+		const job = jobs.jobs.get("bash-1")!;
+		await commands.get("jobs")!.handler("", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^bash-1 · \d+s · pid \d+ · trap /);
+		await commands.get("jobs")!.handler("kill bash-1", ctx);
+		await until(() => sent.length === 1);
+		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(user\)[\s\S]*ready\ncleaned-up/);
+		expect(groupAlive(job.pid)).toBe(false);
+		expect(sent[0]!.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+	});
+
+	it("is stopped at the end of a headless run, since it has no timeout of its own", async () => {
+		const { tool, jobs, sent, ctx } = setup();
+		await tool.execute("t1", { command: "echo up; sleep 30", timeout: 1 }, undefined, undefined, ctx);
+		const job = jobs.jobs.get("bash-1")!;
+		expect(job.timeout).toBeUndefined();
+		const started = Date.now();
+		await jobs.settle();
+		expect(Date.now() - started).toBeLessThan(5_000);
+		expect(job.stopped).toBe("run end");
+		expect(groupAlive(job.pid)).toBe(false);
+		await until(() => sent.length === 1);
+		expect(sent[0]!.message.content).toMatch(/bash-1 stopped \(run end\)[\s\S]*up/);
+	});
+
+	it("does not move a command that starts with sleep: it is stopped at the deadline", async () => {
+		const { tool, jobs, ctx } = setup();
+		for (const command of ["sleep 30", "  sleep 30 && echo done"]) {
+			await expect(tool.execute("t1", { command, timeout: 1 }, undefined, undefined, ctx)).rejects.toThrow(
+				/Command timed out after 1 seconds/,
+			);
+		}
+		// `sleep` only as a first word: a command that merely mentions it moves.
+		await tool.execute("t2", { command: "echo sleep; sleep 30", timeout: 1 }, undefined, undefined, ctx);
+		expect(jobs.jobs.size).toBe(1);
+		await jobs.stopAll("session end");
+	});
+
+	it("keeps killing a command the user aborts, before or after the deadline would have come", async () => {
+		const { tool, jobs, ctx } = setup();
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 300);
+		await expect(
+			tool.execute("t1", { command: "echo started; sleep 30", timeout: 30 }, controller.signal, undefined, ctx),
+		).rejects.toThrow(/Command aborted/);
+		expect(jobs.jobs.size).toBe(0);
+	});
+
+	it("falls back to stopping the command when it cannot become a job", async () => {
+		const dir = path.join(tmp(), "gone");
+		fs.writeFileSync(dir, "a file where the log folder should be");
+		const { pi, tools } = fakePi();
+		const jobs = new BashJobs(dir);
+		registerBashTool(pi, new Subcommands(), jobs, () => ({}));
+		const message = await tools
+			.get("bash")
+			.execute("t1", { command: "echo x; sleep 30", timeout: 1 }, undefined, undefined, fakeCtx({ cwd: tmp() }))
+			.catch((error: Error) => error.message);
+		expect(message).toMatch(/Command timed out after 1 seconds/);
+		expect(jobs.jobs.size).toBe(0);
 	});
 });
 

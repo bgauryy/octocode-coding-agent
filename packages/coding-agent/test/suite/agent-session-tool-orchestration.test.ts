@@ -3,7 +3,6 @@ import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
-import { createCodemodeExtension } from "../../src/extensions/codemode/index.ts";
 import { createToolSearchExtension } from "../../src/extensions/tool-search/index.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
@@ -24,7 +23,7 @@ function orchestratorExtension(pi: ExtensionAPI): void {
 		label: "helper",
 		description: "Only reachable from other tools.",
 		parameters: Type.Object({}),
-		exposure: "codemode",
+		exposure: "deferred",
 		execute: async () => ({ content: [{ type: "text", text: "helped" }], details: {} }),
 	});
 	pi.registerTool({
@@ -112,19 +111,19 @@ describe("AgentSession tool orchestration", () => {
 		expect(persisted?.type === "message" && persisted.message).toMatchObject({ nestedCalls: result.nestedCalls });
 	});
 
-	it("registers codemode and tool_search inactive until they are named", async () => {
-		const extensionFactories = [createCodemodeExtension(), createToolSearchExtension()];
+	it("registers tool_search inactive until they are named", async () => {
+		const extensionFactories = [createToolSearchExtension()];
 		const plain = await createHarness({ extensionFactories });
 		harnesses.push(plain);
 		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(
-			expect.arrayContaining(["codemode", "tool_search"]),
+			expect.arrayContaining(["tool_search"]),
 		);
 		expect(plain.session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);
 
 		// --tools and the defaultTools setting name them explicitly.
-		const allowed = await createHarness({ allowedToolNames: ["read", "codemode"], extensionFactories });
+		const allowed = await createHarness({ allowedToolNames: ["read", "tool_search"], extensionFactories });
 		harnesses.push(allowed);
-		expect(allowed.session.getActiveToolNames()).toEqual(["read", "codemode"]);
+		expect(allowed.session.getActiveToolNames()).toEqual(["read", "tool_search"]);
 		const initial = await createHarness({ initialActiveToolNames: ["tool_search"], extensionFactories });
 		harnesses.push(initial);
 		expect(initial.session.getActiveToolNames()).toEqual(["tool_search"]);

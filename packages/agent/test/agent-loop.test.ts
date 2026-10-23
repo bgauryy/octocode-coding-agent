@@ -525,7 +525,7 @@ describe("agentLoop with AgentMessage", () => {
 		expect(messages[messages.length - 1].role).toBe("assistant");
 	});
 
-	it("should execute mutated beforeToolCall args without revalidation", async () => {
+	it("should normalize mutated beforeToolCall args against the tool schema", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		const executed: Array<string | number> = [];
 		const tool: AgentTool<typeof toolSchema, { value: string | number }> = {
@@ -583,7 +583,7 @@ describe("agentLoop with AgentMessage", () => {
 			// consume
 		}
 
-		expect(executed).toEqual([123]);
+		expect(executed).toEqual(["123"]);
 	});
 
 	it("should prepare tool arguments for validation", async () => {
@@ -1268,6 +1268,25 @@ describe("agentLoop with AgentMessage", () => {
 		expect(steeringPolls).toBe(1);
 		expect(followUpPolls).toBe(0);
 		expect(prepareNextTurnCalls).toBe(0);
+	});
+
+	it("honors cancellation from finishTurn before scheduling another provider request", async () => {
+		const controller = new AbortController();
+		let calls = 0;
+		const stream = agentLoop([createUserMessage("run")], { messages: [], tools: [] }, {
+			model: createModel(), convertToLlm: identityConverter,
+			finishTurn: () => {
+				controller.abort();
+				return calls === 1 ? { action: "continue" } : undefined;
+			},
+		}, controller.signal, () => {
+			calls++;
+			const response = createAssistantMessageEventStream();
+			queueMicrotask(() => response.push({ type: "done", reason: "stop", message: createAssistantMessage([{ type: "text", text: "done" }]) }));
+			return response;
+		});
+		await stream.result();
+		expect(calls).toBe(1);
 	});
 
 	it("makes exactly one context-only request when no natural request satisfies continuation", async () => {
@@ -2164,6 +2183,15 @@ describe("runToolCall", () => {
 		arguments: args,
 	});
 
+	it("revalidates arguments changed by a before-tool handler", async () => {
+		const result = await runToolCall(call("mutated", "echo", { value: "valid" }), {
+			tools: [echo], assistantMessage, context: { messages: [] },
+			beforeToolCall: async ({ args }) => { delete (args as { value?: unknown }).value; return undefined; },
+		});
+		expect(result.isError).toBe(true);
+		expect(result.result.structuredContent).toBeUndefined();
+	});
+
 	it("validates, runs the hooks, and reports failures as error outcomes", async () => {
 		const hookCalls: string[] = [];
 		const updates: unknown[] = [];
@@ -2231,4 +2259,102 @@ describe("runToolCall", () => {
 		}
 		expect(seen).toEqual([undefined, { value: "replaced" }, { value: "both" }, { value: "original" }]);
 	});
+});
+
+describe("consumed input preparation", () => {
+	it("persists retained context without sampling when all user input is blocked", async () => {
+		const events: AgentEvent[] = [];
+		const context = createUserMessage("hook context");
+		let calls = 0;
+		const result = await runAgentLoop([createUserMessage("blocked")], { messages: [], tools: [] }, {
+			model: createModel(), convertToLlm: identityConverter,
+			prepareInput: async (batch) => {
+				expect(batch.kind).toBe("initial");
+				return { messages: [context], stop: true };
+			},
+		}, (event) => { events.push(event); }, undefined, () => { calls++; throw new Error("must not sample"); });
+		expect(calls).toBe(0);
+		expect(result).toEqual([context]);
+		expect(events.filter(e => e.type === "message_end").map(e => e.message)).toEqual([context]);
+		expect(events.at(-1)?.type).toBe("agent_end");
+	});
+	it("does not emit prepared input after cancellation during the awaited callback", async () => {
+		const controller = new AbortController();
+		const events: AgentEvent[] = [];
+		await runAgentLoop([createUserMessage("cancelled")], { messages: [], tools: [] }, {
+			model: createModel(), convertToLlm: identityConverter,
+			prepareInput: async (batch, signal) => {
+				expect(signal).toBe(controller.signal);
+				controller.abort();
+				return { messages: [], stop: true };
+			},
+		}, (event) => { events.push(event); }, controller.signal, () => { throw new Error("must not sample"); });
+		expect(events.some(e => e.type === "message_start")).toBe(false);
+		expect(events.at(-1)?.type).toBe("agent_end");
+	});
+});
+
+it("prepares follow-up batches separately and retains preparation context when they stop", async () => {
+	const kinds: string[] = [];
+	const phases: string[] = [];
+	const events: AgentEvent[] = [];
+	let calls = 0;
+	let queued = true;
+	const blocked = createUserMessage("blocked follow-up");
+	const prepared = createUserMessage("prepared context");
+	const result = await runAgentLoop([createUserMessage("initial")], { messages: [], tools: [] }, {
+		model: createModel(), convertToLlm: identityConverter,
+		prepareInput: async (batch) => {
+			kinds.push(batch.kind);
+			phases.push(`consume:${batch.kind}`);
+			return batch.kind === "followUp" ? { messages: [], stop: true } : { messages: batch.messages };
+		},
+		onInputSelected: (batch) => { phases.push(`select:${batch.kind}`); },
+		prepareNextTurn: () => { phases.push("prepare"); return { messages: [prepared] }; },
+		getFollowUpMessages: async () => { if (!queued) return []; queued = false; return [blocked]; },
+	}, (event) => { events.push(event); }, undefined, () => {
+		calls++;
+		const stream = createAssistantMessageEventStream();
+		queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: createAssistantMessage([{ type: "text", text: "done" }]) }));
+		return stream;
+	});
+	expect(kinds).toEqual(["initial", "followUp"]);
+	expect(phases).toEqual(["select:initial", "consume:initial", "select:followUp", "prepare", "consume:followUp"]);
+	expect(calls).toBe(1);
+	expect(result).toContain(prepared);
+	expect(result).not.toContain(blocked);
+	expect(events.at(-1)?.type).toBe("agent_end");
+});
+
+it("commits a finalized prefix before later input preparation and retains it on interruption", async () => {
+	const first = createUserMessage("accepted");
+	const second = createUserMessage("undecided");
+	const events: AgentEvent[] = [];
+	const controller = new AbortController();
+	const result = await runAgentLoop([first, second], { messages: [], tools: [] }, {
+		model: createModel(), convertToLlm: identityConverter,
+		prepareInput: async (_batch, signal, commit) => {
+			await commit([first], signal);
+			expect(events.filter(event => event.type === "message_end").map(event => event.message)).toEqual([first]);
+			controller.abort();
+			await commit([second], signal);
+			return { messages: [], stop: true };
+		},
+	}, event => { events.push(event); }, controller.signal, () => { throw new Error("must not sample"); });
+	expect(result).toEqual([first]);
+	expect(events[0]?.type).toBe("agent_start");
+	expect(events[1]?.type).toBe("turn_start");
+	expect(events.at(-1)?.type).toBe("agent_end");
+});
+
+it("does not record a committed input reference again if it is returned", async () => {
+	const first = createUserMessage("accepted once");
+	const result = await runAgentLoop([first], { messages: [], tools: [] }, {
+		model: createModel(), convertToLlm: identityConverter,
+		prepareInput: async (_batch, signal, commit) => {
+			await commit([first], signal);
+			return { messages: [first], stop: true };
+		},
+	}, () => {}, undefined, () => { throw new Error("must not sample"); });
+	expect(result).toEqual([first]);
 });

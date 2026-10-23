@@ -1,11 +1,12 @@
+import { fileChanges } from "../shared/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { formatDuration } from "../shared/format.ts";
+import { formatDuration, formatTokens } from "../shared/format.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { clipColumns, queryTarget } from "../shared/render.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { Thought } from "../shared/thought.ts";
-import { firstLine, isRecord, toolHint } from "../shared/util.ts";
+import { addReply, emptyTotals, firstLine, isRecord, spendOf, toolHint } from "../shared/util.ts";
 
 /** What the model is doing between tool runs. */
 type Phase = "idle" | "model" | "thinking" | "writing" | "calling";
@@ -27,6 +28,8 @@ const ACTION_LINE_MS = 1_000;
 const SHOW_ELAPSED_MS = 2_000;
 /** Octocode's working line wraps, and a wrap moves the editor: every line stays within this many columns. */
 const LINE_MAX = 70;
+/** The working line's budget: wide enough for any terminal row, which the renderer clips. */
+const WORKING_LINE_MAX = 240;
 /** Room kept for a ` · 12m34s` tail, so the clipped detail does not shift as the time grows. */
 const TAIL_ROOM = 9;
 /** A parallel batch names this many tools, then counts the rest. */
@@ -47,18 +50,19 @@ function safeText(text: string): string {
  * Octocode tools take `{queries: [...]}`) with the count of the others, else the top-level argument `toolHint` picks.
  */
 export function callTarget(name: string, args: unknown): { hint: string; more: number } {
-	const input = isRecord(args) ? args : {};
+	const envelope = isRecord(args) ? args : {};
+	const input = name === "agent" && isRecord(envelope.input) ? envelope.input : envelope;
 	if (shortToolName(name) === "agent" && typeof input.goal === "string")
 		return { hint: safeText(input.goal), more: 0 };
-	const queries = Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
+	const queries = name === "file" ? fileChanges(input) : Array.isArray(input.queries) ? input.queries.filter(isRecord) : [];
 	if (queries.length > 0) return { hint: safeText(queryTarget(queries[0]!)), more: queries.length - 1 };
 	return { hint: toolHint(args), more: 0 };
 }
 
 /** `head` then `detail` clipped to the columns LINE_MAX leaves, then `tail`; `sep` joins head and a non-empty detail. */
-function fitLine(head: string, sep: string, detail: string, tail: string): string {
+function fitWithin(head: string, sep: string, detail: string, tail: string, lineMax = LINE_MAX): string {
 	if (!detail) return `${head}${tail}`;
-	const room = LINE_MAX - visibleWidth(head) - visibleWidth(sep) - Math.max(visibleWidth(tail), TAIL_ROOM);
+	const room = lineMax - visibleWidth(head) - visibleWidth(sep) - Math.max(visibleWidth(tail), TAIL_ROOM);
 	return `${head}${sep}${clipColumns(detail, Math.max(room, 12))}${tail}`;
 }
 
@@ -167,7 +171,13 @@ export class Activity {
 	 * One line for the state, or undefined when there is nothing beyond Octocode's own "Working". `now` adds the elapsed time
 	 * of a long step; without it the line only changes when the state does (the team panel stores it).
 	 */
-	describe(now?: number, queuedDialogs = 0): string | undefined {
+	/**
+	 * `lineMax` budgets the line: the stored activity other sessions list keeps `LINE_MAX`; the working line passes
+	 * the room it has, and its renderer clips to the terminal.
+	 */
+	describe(now?: number, queuedDialogs = 0, lineMax = LINE_MAX): string | undefined {
+		const fitLine = (head: string, sep: string, detail: string, tail: string) =>
+			fitWithin(head, sep, detail, tail, lineMax);
 		if (this.phase === "idle") return undefined;
 		const since = (at: number) =>
 			now !== undefined && now - at >= SHOW_ELAPSED_MS ? ` · ${formatDuration(now - at)}` : "";
@@ -180,7 +190,7 @@ export class Activity {
 				`${this.action.warn ? "⚠ " : ""}${this.action.head}`,
 				": ",
 				this.action.text,
-				this.action.more > 0 ? ` +${this.action.more}` : "",
+				`${this.action.more > 0 ? ` +${this.action.more}` : ""}${since(this.action.at)}`,
 			);
 		const running = [...this.tools.values()];
 		const call = (verb: string, tool: RunningTool, at: number) =>
@@ -221,8 +231,8 @@ export class Activity {
 
 /**
  * Feed `Activity` from Octocode's events. `onChange` hears the line without elapsed time whenever it changes (the team panel
- * shows it to the parent and teammates). With a UI, Octocode's working line shows the line with elapsed time, repainted each
- * second while a step runs; Octocode's default comes back when the run ends.
+ * shows it to the parent and teammates). In the TUI, a run summary sits above the activity detail and updates once a
+ * second. Reported streaming usage joins completed message usage until that message ends; settlement clears the display.
  */
 interface ActivityControl {
 	activity: Activity;
@@ -241,6 +251,10 @@ export function registerActivity(
 	let shown: string | undefined;
 	let reported: string | undefined;
 	let timer: NodeJS.Timeout | undefined;
+	let runStartedAt: number | undefined;
+	let usage = emptyTotals();
+	let streamingTokens = 0;
+	let compactions = 0;
 	/** Repaints when interactions queue behind an open dialog; held per session. */
 	let unsubscribe: (() => void) | undefined;
 
@@ -252,7 +266,13 @@ export function registerActivity(
 		}
 		// Only the TUI draws a working line: RPC's setWorkingMessage is a no-op, so nothing there needs a repaint timer.
 		if (!options.workingLine || !ctx?.hasUI || ctx.mode !== "tui") return;
-		const working = activity.describe(Date.now(), dialogsWaiting());
+		const now = Date.now();
+		// The working line has the terminal's width; its renderer clips, so the detail is not cut to the stored line's budget.
+		const detail = activity.describe(now, dialogsWaiting(), WORKING_LINE_MAX) ?? "Waiting for model";
+		const compacted = compactions > 0 ? ` · ${compactions} compaction${compactions === 1 ? "" : "s"}` : "";
+		const working = activity.ticking() && runStartedAt !== undefined
+			? `Main · ${formatDuration(now - runStartedAt)} · ${formatTokens(usage.input + usage.output + streamingTokens)} tokens${compacted}\n${detail}`
+			: undefined;
 		if (working !== shown) {
 			shown = working;
 			try {
@@ -271,11 +291,13 @@ export function registerActivity(
 	};
 	const stop = () => {
 		activity.end();
+		runStartedAt = undefined;
 		paint();
 	};
 
 	pi.on("session_start", async (_event, next) => {
 		ctx = next;
+		compactions = next.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
 		shown = undefined;
 		unsubscribe?.();
 		unsubscribe = onDialogsChange(paint);
@@ -289,18 +311,37 @@ export function registerActivity(
 	});
 	pi.on("agent_start", async (_event, next) => {
 		ctx = next;
+		if (runStartedAt === undefined) {
+			runStartedAt = Date.now();
+			usage = emptyTotals();
+			streamingTokens = 0;
+		}
 		activity.start(Date.now());
 		paint();
 	});
 	pi.on("message_update", async (event) => {
-		if (event.message.role !== "assistant") return;
+		if (event.message.role !== "assistant" || runStartedAt === undefined) return;
 		const update = event.assistantMessageEvent;
-		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined))
+		const partial = emptyTotals();
+		addReply(partial, event.message.usage, false);
+		const tokens = partial.input + partial.output;
+		const changed = tokens !== streamingTokens;
+		streamingTokens = tokens;
+		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined) || changed)
 			paint();
 	});
 	pi.on("message_end", async (event) => {
-		if (event.message.role !== "assistant") return;
-		activity.messageDone(Date.now());
+		if (runStartedAt === undefined) return;
+		const spend = spendOf(event.message);
+		if (spend) addReply(usage, spend.usage, false);
+		if (event.message.role === "assistant") {
+			streamingTokens = 0;
+			activity.messageDone(Date.now());
+		}
+		paint();
+	});
+	pi.on("session_compact", async (_event, next) => {
+		compactions = next.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
 		paint();
 	});
 	pi.on("tool_execution_start", async (event) => {

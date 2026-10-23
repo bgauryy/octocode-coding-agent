@@ -1,6 +1,6 @@
 /**
- * The `tool_search` tool as an extension. The CLI loads it as a built-in extension; SDK users add
- * `createToolSearchExtension()` to their extension factories.
+ * The `tool_search` tool as an extension. The default CLI and SDK resource loader includes it.
+ * Hosts that opt out of native features can add `createToolSearchExtension()` explicitly.
  *
  * `tool_search` is registered inactive. Activate it with `--tools`, the `defaultTools` setting, or
  * `setActiveTools()`.

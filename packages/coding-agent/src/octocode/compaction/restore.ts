@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { estimateProjectedContextTokens } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool.ts";
 import { sha256 } from "../shared/atomic.ts";
 import { canonicalPath } from "../shared/home.ts";
+import { CHARS_PER_TOKEN, reserveTokensFor } from "../shared/tokens.ts";
 import { cutText, isRecord, isStaleSessionError } from "../shared/util.ts";
 
 /**
@@ -260,11 +262,20 @@ export interface PendingRestore {
 export function deliverRestoredFiles(
 	pi: Pick<ExtensionAPI, "sendMessage">,
 	pending: readonly WorkedFile[],
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
 	total: number,
 ): PendingRestore | undefined {
+	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
+		try {
+			const tokens = estimateProjectedContextTokens(ctx.sessionManager.buildSessionProjection(), ctx.sessionManager.getBranch()).tokens;
+			const remaining = ctx.model.contextWindow - reserveTokensFor(ctx.model) - tokens;
+			total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
+		} catch {
+			return undefined;
+		}
+	}
 	const restored = restoreFiles(pending, heldFiles(contextReads(ctx)), ctx.cwd, total);
-	if (!restored) return undefined;
+	if (!restored || restored.content.length > total) return undefined;
 	const id = randomUUID();
 	try {
 		const partial = restored.files.filter((entry) => !entry.whole).map((entry) => entry.file);

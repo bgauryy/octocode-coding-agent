@@ -490,7 +490,7 @@ function addCustomHeadersMiddleware(client: BedrockRuntimeClient, headers: Recor
 		}
 		return next(args);
 	};
-	client.middlewareStack.add(middleware, { step: "build", name: "pi-ai-custom-headers", priority: "low" });
+	client.middlewareStack.add(middleware, { step: "build", name: "octocode-ai-custom-headers", priority: "low" });
 }
 
 function isSmithyHttpResponse(response: unknown): response is HttpResponse {
@@ -525,7 +525,7 @@ function addResponseHeadersMiddleware(
 		}
 		return result;
 	};
-	client.middlewareStack.add(middleware, { step: "deserialize", name: "pi-ai-response-headers" });
+	client.middlewareStack.add(middleware, { step: "deserialize", name: "octocode-ai-response-headers" });
 }
 
 export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStreamOptions> = (
@@ -899,6 +899,13 @@ function supportsPromptCaching(model: Model<"bedrock-converse-stream">, env?: Pr
 	return false;
 }
 
+/** One-hour cache points for long retention, unless the model's compat settings rule them out. */
+function longCacheTtl(model: Model<"bedrock-converse-stream">, cacheRetention: CacheRetention): { ttl?: CacheTTL } {
+	return cacheRetention === "long" && model.compat?.supportsLongCacheRetention !== false
+		? { ttl: CacheTTL.ONE_HOUR }
+		: {};
+}
+
 /**
  * Check if the model supports thinking signatures in reasoningContent.
  * Only Anthropic Claude models support the signature field.
@@ -924,7 +931,7 @@ function buildSystemPrompt(
 	// Add cache point for supported Claude models when caching is enabled
 	if (cacheRetention !== "none" && supportsPromptCaching(model, env)) {
 		blocks.push({
-			cachePoint: { type: CachePointType.DEFAULT, ...(cacheRetention === "long" ? { ttl: CacheTTL.ONE_HOUR } : {}) },
+			cachePoint: { type: CachePointType.DEFAULT, ...longCacheTtl(model, cacheRetention) },
 		});
 	}
 
@@ -1135,7 +1142,7 @@ function convertMessages(
 			(lastMessage.content as ContentBlock[]).push({
 				cachePoint: {
 					type: CachePointType.DEFAULT,
-					...(cacheRetention === "long" ? { ttl: CacheTTL.ONE_HOUR } : {}),
+					...longCacheTtl(model, cacheRetention),
 				},
 			});
 		}

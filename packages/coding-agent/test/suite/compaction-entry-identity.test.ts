@@ -7,8 +7,8 @@ it.each(["manual", "threshold", "overflow"] as const)(
 	async (reason) => {
 		const emitted: string[] = [];
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {

@@ -1,10 +1,8 @@
-import type { Usage } from "@octocodeai/octocode-ai";
-import { Box, type Component } from "@octocodeai/octocode-tui";
+import { Box, type Component, Container } from "@octocodeai/octocode-tui";
 import type { AgentToolResult, MessageRenderer, ToolRenderResultOptions } from "../../core/extensions/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import type { ReportStatus } from "../instructions/report.ts";
 import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
-import { fencedParts } from "../shared/fence.ts";
+import { presentAgentReport } from "./presentation.ts";
 import {
 	formatCost,
 	formatDuration,
@@ -13,10 +11,18 @@ import {
 	shortPath,
 	toolCallCount,
 } from "../shared/format.ts";
-import { bodyLines, clip, plural, type RenderContext, resultBlock, timingOf, toolHeader } from "../shared/render.ts";
+import {
+	bodyLines,
+	clip,
+	plural,
+	type RenderContext,
+	ReportView,
+	resultBlock,
+	timingOf,
+	toolHeader,
+} from "../shared/render.ts";
 import { contentText, isRecord } from "../shared/util.ts";
-import type { Ask } from "../team/asks.ts";
-import { type ChildNotices, type Compactions, noticeText } from "./events.ts";
+import { noticeText } from "./events.ts";
 
 /**
  * How the `agent` tool and a background subagent's report message are drawn: `● Agent(goal · model) · 38s`, then live
@@ -24,91 +30,8 @@ import { type ChildNotices, type Compactions, noticeText } from "./events.ts";
  * stays one short line; the full prompt the agent was given shows in the expanded view, above its progress or report.
  */
 
-/**
- * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/pi/sessions/<id>`),
- * its transcript file once written, and the folder of its archive of compacted history (`shared/archive.ts`) once it
- * compacted: Markdown the parent can search with the Octocode tools.
- */
-interface ChildSessionDetails {
-	id: string;
-	file?: string;
-	archive?: string;
-}
-
-/** The `agent` tool's result details, updated as the child streams. */
-export interface RunDetails {
-	/** The agent's name. */
-	id: string;
-	/** Its role. */
-	profile: string;
-	goal: string;
-	toolCalls: number;
-	/** Tool calls the child could not run without the user's approval. */
-	denied?: number | undefined;
-	/** Its latest steps: tool calls (`→ bash ls`), thoughts (`✻ …`) and narration (`› …`). */
-	activity: string[];
-	/** The gist of the thinking it streams now. */
-	thinking?: string;
-	/** Every prompt token (uncached, cache reads and writes); `cacheRead` is the part read from cache. */
-	input: number;
-	cacheRead: number;
-	output: number;
-	/** Octocode's estimate; `unpriced`: part of the usage came from a model without pricing and is not in it. */
-	cost: number;
-	unpriced: boolean;
-	startedAt: number;
-	/** waiting: for a free slot; running: foreground, still working; background: returned at once, the report arrives as a message. */
-	status: "waiting" | "running" | "background" | "done" | "failed";
-	/** The child waits for the user's answer to one of its dialogs (shown in this session). */
-	waiting?: boolean;
-	/** The child compacts its context now. */
-	compacting?: boolean;
-	/** Its compactions so far; absent when none started. */
-	compactions?: Compactions;
-	/** Warnings and errors its extensions showed (a child has no screen): an inline page, then a count and the file with every one. */
-	notices?: ChildNotices;
-	/** Its saved conversation. */
-	session?: ChildSessionDetails;
-	/** Its questions to the parent (`sendMessage` with `replyRequired`), each with its answer and wait; set when the run ends, absent when it asked none. */
-	asks?: Ask[];
-	/** Someone stopped the run; it is closing (the child, an isolated run's worktree). */
-	stopping?: boolean;
-	/** The `provider/id` it runs on (with any `:thinking` suffix); absent when it runs on the parent's model. */
-	model?: string;
-	/** The profile's preferred model, unavailable here: the run fell back to the parent's model. */
-	fallback?: string;
-	/** The outcome word its report starts with; absent while it runs and when the report names none. */
-	outcome?: ReportStatus;
-	/** The subagent's latest screenshot, saved to this path. */
-	shot?: string;
-}
-
-/** What the background-result message carries for its renderer: the outcome, not parsed back out of the text. */
-export interface ResultDetails {
-	id: string;
-	/** Its role and its goal. */
-	profile?: string;
-	goal?: string;
-	status: "done" | "failed" | "stopped";
-	/** The outcome word the report starts with (`failed` for a crashed run); absent when it names none. */
-	outcome?: ReportStatus;
-	/** The `⎿` line, e.g. `Done (name · 4 tool calls · ↑12k ↓2k · ≈$0.12 · 38s)`. */
-	summary: string;
-	durationMs?: number;
-	/** A stop someone asked for (`/agents kill`, `coordinate stop`): drawn as an outcome, not as a failure. */
-	requested?: boolean;
-	/** The full prompt the subagent was given, shown when the report is expanded. */
-	task?: string;
-	/** The run's total model usage (Octocode's `Usage`): the parent's footer and session index count it (`spendOf`). */
-	usage?: Usage;
-	/** Whether any of the run's replies came from a model without pricing (then `usage.cost` leaves them out). */
-	unpriced?: boolean;
-	/** Its compactions, warnings and errors, and saved conversation, as in `RunDetails`. */
-	compactions?: Compactions;
-	notices?: ChildNotices;
-	session?: ChildSessionDetails;
-	asks?: Ask[];
-}
+export type { RunDetails, ResultDetails } from "./run-types.ts";
+import type { RunDetails, ResultDetails } from "./run-types.ts";
 
 /** The model a run is on: its `provider/id`, marked as the parent's when the profile's preference was unavailable. */
 function modelLabel(details: Pick<RunDetails, "model" | "fallback">): string {
@@ -325,21 +248,41 @@ export function renderAgentResult(
 			...timingOf(result.details),
 		});
 	}
-	const timing = timingOf(result.details);
-	return resultBlock(theme, context, {
+	return reportBlock(theme, context, {
 		summary: doneSummary(details, context.durationMs),
-		body,
-		prefaceLabel: "prompt",
+		report: body,
 		preface: promptPreface(theme, task, body.trim() ? "Report" : undefined),
-		...timing,
+		...timingOf(result.details),
 	});
 }
 
-/** A report's text for the screen: the child's words without their fence lines, then the parent's own footer. */
-function reportBody(text: string): string {
-	const fenced = fencedParts(text);
-	if (!fenced) return text;
-	return fenced.footer ? `${fenced.body}\n\n${fenced.footer}` : fenced.body;
+/**
+ * A finished subagent: its result row (the prompt one expand away), then the report rendered as Markdown and shown
+ * whole unless it is long. Foreground results and background report messages share it.
+ */
+function reportBlock(
+	theme: Theme,
+	context: RenderContext,
+	options: { summary: string; report: string; preface: string[]; stopped?: boolean },
+): Component {
+	const expanded = context.expanded === true;
+	const hasReport = options.report.trim() !== "";
+	const container = new Container();
+	// The summary row stays as it is: the prompt hint goes after the report, so a long summary is never clipped for it.
+	container.addChild(
+		resultBlock(theme, context, {
+			summary: options.summary,
+			lines: [],
+			// With a report, the prompt hint follows the report; without one it is the row's own hint line.
+			...(hasReport && !expanded ? { max: 0 } : { prefaceLabel: "prompt", preface: options.preface }),
+			...(options.stopped !== undefined ? { stopped: options.stopped } : {}),
+		}),
+	);
+	if (hasReport)
+		container.addChild(
+			new ReportView(theme, options.report, expanded, options.preface.length > 0 ? "prompt" : undefined),
+		);
+	return container;
 }
 
 /**
@@ -348,8 +291,8 @@ function reportBody(text: string): string {
  */
 export const renderAgentMessage: MessageRenderer = (message, { expanded, outputPad }, theme) => {
 	const details = (message.details ?? {}) as Partial<ResultDetails>;
-	const [head = "", ...rest] = contentText(message.content).split("\n");
-	const report = reportBody(rest.join("\n"));
+	const presentation = presentAgentReport(message.content, details);
+	const report = presentation.body;
 	const stopped = details.status === "stopped";
 	// A stop (asked for or not) is an interruption, not a failure: drawn `◼` in the warning colour.
 	const context = {
@@ -372,11 +315,10 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 		),
 	);
 	box.addChild(
-		resultBlock(theme, context, {
-			summary: details.summary ?? head,
-			body: report,
+		reportBlock(theme, context, {
+			summary: presentation.summary,
+			report,
 			stopped,
-			prefaceLabel: "prompt",
 			preface: promptPreface(theme, details.task, report.trim() ? "Report" : undefined),
 		}),
 	);

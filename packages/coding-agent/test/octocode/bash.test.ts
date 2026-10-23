@@ -64,11 +64,12 @@ describe("bash tool", () => {
 	it("replaces Octocode bash with a schema that has background and a documented deadline", () => {
 		const { tool } = setup();
 		expect(tool.name).toBe("bash");
-		expect(Object.keys(tool.parameters.properties)).toEqual(["command", "timeout", "background"]);
+		expect(Object.keys(tool.parameters.properties)).toEqual(["type", "command", "timeout", "background"]);
 		expect(tool.promptGuidelines).toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
 		expect(tool.parameters.properties.timeout.description).toContain("foreground default 900s");
+		expect(tool.parameters.properties.timeout.description).toContain("moves to the background");
 		expect(tool.parameters.properties.background.description).toContain("long builds");
 		// Octocode's bash output, or a background start: codemode scripts get structuredContent only when this is declared.
 		const variants = tool.outputSchema.anyOf.map((variant: { properties: object }) =>
@@ -105,13 +106,40 @@ describe("bash tool", () => {
 		}
 	});
 
-	it("stops a foreground command at its deadline and says how to run it longer", async () => {
-		const { tool, ctx } = setup();
+	it("stops a foreground sleep at its deadline and says how to run it longer", async () => {
+		const { tool, ctx, jobs } = setup();
 		const started = Date.now();
 		await expect(
-			tool.execute("t1", { command: "echo before; sleep 30", timeout: 1 }, undefined, undefined, ctx),
-		).rejects.toThrow(/before[\s\S]*Command timed out after 1 seconds[\s\S]*background: true/);
+			tool.execute("t1", { command: "sleep 30", timeout: 1 }, undefined, undefined, ctx),
+		).rejects.toThrow(/Command timed out after 1 seconds[\s\S]*background: true/);
 		expect(Date.now() - started).toBeLessThan(10_000);
+		expect(jobs.jobs.size).toBe(0);
+	});
+
+	it("moves any other foreground command that reaches its deadline to the background and says so", async () => {
+		const { tool, ctx, jobs } = setup();
+		try {
+			const result = await tool.execute(
+				"t1",
+				{ command: "echo before; sleep 30", timeout: 1 },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const job = jobs.jobs.get("bash-1")!;
+			expect(processAlive(job.pid)).toBe(true);
+			expect(result.isError).toBeUndefined();
+			expect(result.content[0].text).toMatch(
+				new RegExp(
+					`^before\\n\\nDid not finish within 1s; moved to the background as bash-1 \\(pid ${job.pid}\\)[^\\n]*\\nLog: .*bash-1-\\d+\\.log\\nCheck: tail -n 40 .*\\nStop: kill -- -${job.pid}$`,
+				),
+			);
+			expect(result.details).toMatchObject({ job: "bash-1", pid: job.pid, log: job.log, moved: true });
+			expect(result.structuredContent).toEqual({ job: "bash-1", pid: job.pid, log: job.log });
+			expect(path.dirname(job.log)).toBe(jobs.logDir());
+		} finally {
+			await jobs.stopAll("session end");
+		}
 	});
 
 	it("carries the clamp note on a command that failed for another reason: a non-zero exit, and an abort", async () => {
@@ -176,11 +204,32 @@ describe("bash tool", () => {
 	it("moves the spill file of a command that timed out, though only its updates named it", async () => {
 		const { tool, ctx, jobs } = setup();
 		const message = await tool
-			.execute("t1", { command: "seq 1 5000; sleep 30", timeout: 1 }, undefined, undefined, ctx)
+			.execute("t1", { command: "sleep 0; seq 1 5000; sleep 30", timeout: 1 }, undefined, undefined, ctx)
 			.catch((error: Error) => error.message);
 		const moved = /Full output: (.+?)\]/.exec(message)![1]!;
 		expect(path.dirname(moved)).toBe(jobs.logDir());
 		expect(fs.readFileSync(moved, "utf8")).toContain("5000");
+	});
+
+	it("names the moved spill file when a command that moved to the background had printed a lot", async () => {
+		const { tool, ctx, jobs } = setup();
+		try {
+			const result = await tool.execute(
+				"t1",
+				{ command: "seq 1 5000; sleep 30", timeout: 1 },
+				undefined,
+				undefined,
+				ctx,
+			);
+			const spill = result.details.fullOutputPath as string;
+			expect(path.dirname(spill)).toBe(jobs.logDir());
+			expect(result.content[0].text).toContain(`Full output: ${spill}]`);
+			expect(fs.readFileSync(spill, "utf8")).toContain("5000");
+			// The job log starts with everything printed before the move.
+			expect(fs.readFileSync(jobs.jobs.get("bash-1")!.log, "utf8")).toContain("5000");
+		} finally {
+			await jobs.stopAll("session end");
+		}
 	});
 
 	it("runs foreground and background commands with the shellCommandPrefix and shellPath from Octocode settings", async () => {
@@ -282,6 +331,31 @@ describe("bash tool", () => {
 		expect(result.structuredContent.exit_code).toBe(3);
 	});
 
+	it("fails a git editor at once with guidance instead of waiting for input, in the foreground and the background", async () => {
+		const { tool, ctx, cwd, sent } = setup();
+		const git = "git -c user.name=t -c user.email=t@t -c commit.gpgsign=false";
+		const repo = `git init -q && ${git} commit -q --allow-empty -m init && echo x > f && git add f`;
+		await tool.execute("t0", { command: repo }, undefined, undefined, ctx);
+		const started = Date.now();
+		const result = await tool.execute("t1", { command: `${git} commit`, timeout: 20 }, undefined, undefined, ctx);
+		expect(Date.now() - started).toBeLessThan(10_000);
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("No interactive editor in this shell");
+		await tool.execute("t2", { command: `${git} commit`, background: true }, undefined, undefined, ctx);
+		await until(() => sent.length === 1, 10_000);
+		expect(sent[0]!.message.content).toMatch(/failed with exit code [1-9][\s\S]*No interactive editor/);
+		// An editor named on the command line still wins, and pagers default to cat.
+		const inline = await tool.execute(
+			"t3",
+			{ command: `GIT_EDITOR=true ${git} commit -q --allow-empty-message && git log --oneline | wc -l; echo "$PAGER $GIT_PAGER"` },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(inline.content[0].text.trim().split(/\s+/)).toEqual(["2", "cat", "cat"]);
+		expect(fs.existsSync(path.join(cwd, ".git"))).toBe(true);
+	});
+
 	it("starts a background job at once and reports its exit and output tail as a follow-up message", async () => {
 		const { tool, ctx, jobs, sent } = setup();
 		const result = await tool.execute(
@@ -358,7 +432,7 @@ describe("bash tool", () => {
 		expect(sent[0]!.message.content).toMatch(/stopped after its 1s timeout/);
 	});
 
-	it("lists and kills jobs with /octocode jobs, and reports the ones session end stops without waking anyone", async () => {
+	it("lists and kills jobs with /jobs, and reports the ones session end stops without waking anyone", async () => {
 		const { tool, ctx, commands, jobs, sent, fire } = setup();
 		await tool.execute("t1", { command: "sleep 30", background: true }, undefined, undefined, ctx);
 		await tool.execute("t2", { command: "sleep 30", background: true }, undefined, undefined, ctx);
@@ -555,7 +629,14 @@ describe("bash rendering", () => {
 
 	it("summarizes exit, line count and the last lines of output", () => {
 		const { tool } = setup();
-		const text = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+		const short = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+		const whole = rendered(
+			tool.renderResult({ content: [{ type: "text", text: short }] }, { expanded: false, isPartial: false }, theme, done()),
+		).split("\n");
+		// A short output shows whole: folding it would hide a few lines behind a one-line hint.
+		expect(whole).toHaveLength(13);
+		expect(whole.join("\n")).not.toContain("to expand");
+		const text = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
 		const lines = rendered(
 			tool.renderResult(
 				{ content: [{ type: "text", text }] },
@@ -565,16 +646,18 @@ describe("bash rendering", () => {
 			),
 		).split("\n");
 		expect(lines).toEqual([
-			"  ⎿  exit 0 · 12 lines",
-			"     … +9 lines (ctrl+o to expand)",
-			"     line 10",
-			"     line 11",
-			"     line 12",
+			"  ⎿  exit 0 · 20 lines",
+			"     … +15 lines (ctrl+o to expand)",
+			"     line 16",
+			"     line 17",
+			"     line 18",
+			"     line 19",
+			"     line 20",
 		]);
 		const expanded = rendered(
 			tool.renderResult({ content: [{ type: "text", text }] }, { expanded: true, isPartial: false }, theme, done()),
 		);
-		expect(expanded.split("\n")).toHaveLength(13);
+		expect(expanded.split("\n")).toHaveLength(21);
 		expect(
 			rendered(
 				tool.renderResult(
@@ -606,8 +689,13 @@ describe("bash rendering", () => {
 				const collapsed = view(false);
 				const expanded = view(true);
 				expect(collapsed[0]!.replace(" (ctrl+o to expand)", "")).toBe(expanded[0]);
-				const hidden = Number(/\+(\d+) lines?/.exec(collapsed[1]!)?.[1] ?? 0);
 				const body = expanded.slice(1).filter((line) => !line.trimStart().startsWith("saved:"));
+				if (!/to expand/.test(collapsed[1] ?? "")) {
+					// A short output is shown whole, without its blank lines.
+					expect(collapsed.slice(1)).toEqual(body.filter((line) => line.trim() !== ""));
+					continue;
+				}
+				const hidden = Number(/\+(\d+) lines?/.exec(collapsed[1]!)?.[1] ?? 0);
 				expect(hidden + collapsed.slice(2).length).toBe(body.length);
 				expect(collapsed.slice(-3)).toEqual(body.filter((line) => line.trim() !== "").slice(-3));
 			}
@@ -675,6 +763,19 @@ describe("bash rendering", () => {
 
 	it("shows a started job and a running tail", () => {
 		const { tool, renderers } = setup();
+		expect(
+			rendered(
+				tool.renderResult(
+					{
+						content: [{ type: "text", text: "Moved" }],
+						details: { job: "bash-1", pid: 42, log: "/tmp/j.log", moved: true },
+					},
+					{ expanded: false, isPartial: false },
+					theme,
+					done(),
+				),
+			),
+		).toBe("  ⎿  job bash-1 moved to the background (pid 42) (ctrl+o to expand)");
 		expect(
 			rendered(
 				tool.renderResult(

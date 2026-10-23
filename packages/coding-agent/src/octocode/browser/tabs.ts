@@ -23,8 +23,8 @@ async function orderedTabs(session: BrowserSession): Promise<PageTarget[]> {
 export async function describeTabs(session: BrowserSession): Promise<string> {
 	const tabs = await orderedTabs(session);
 	const lines = tabs.map(
-		(tab, index) =>
-			`${tab.id === session.targetId ? "*" : " "} [${index + 1}] ${tab.title || "(untitled)"} — ${tab.url ?? ""}`,
+		(tab) =>
+			`${tab.id === session.targetId ? "*" : " "} [${seenOrder.get(session)!.indexOf(tab.id) + 1}] ${tab.title || "(untitled)"} — ${tab.url ?? ""}`,
 	);
 	return `Tabs (${tabs.length}; * = driven):\n${lines.join("\n")}\ntab with index switches to one; tab with url opens a new one.`;
 }
@@ -54,7 +54,8 @@ export async function selectTab(
 	signal?: AbortSignal,
 ): Promise<void> {
 	const tabs = await orderedTabs(session);
-	const tab = index === undefined ? undefined : tabs[index - 1];
+	const id = index === undefined ? undefined : seenOrder.get(session)?.[index - 1];
+	const tab = tabs.find((target) => target.id === id);
 	if (!tab) throw new Error(`No tab ${index ?? ""}. ${await describeTabs(session)}`);
 	if (tab.id !== session.targetId) {
 		if (httpOrigin(tab.url)) (await open(tab.url!))(tab.id);

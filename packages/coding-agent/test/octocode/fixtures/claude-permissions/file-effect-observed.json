@@ -1,0 +1,2155 @@
+{
+  "identity": {
+    "executable": "/Users/bgaryy/.local/bin/claude",
+    "realpath": "/Users/bgaryy/.local/share/claude/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Isolated local provider, dummy credentials, executable hash guard. Shell effects are confined to owned temporary directories.",
+  "cases": [
+    {
+      "case": "write-control",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": []
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "write-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "write-read-deny",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "write-edit-bare",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "read-control",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": []
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "read-read-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat < input.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "read-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "read-read-bare",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-read-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat input.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "tee-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tee original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE | tee original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "append-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf APPEND >> original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf APPEND >> original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "devnull-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(//dev/null)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > /dev/null",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "fddup-edit-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"DUP\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf DUP 1>&2",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "both-file-rules",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)",
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat < input.txt > original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2
+      },
+      "passed": true
+    },
+    {
+      "case": "edit-star",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": "WRITE",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "read-star",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "only-edit-rule",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "only-read-rule",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "deny": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat < input.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-edit-manual",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "ask": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": "WRITE",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-edit-bypass",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "ask": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": "WRITE",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "WRITE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": "WRITE",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-read-bypass",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "ask": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < input.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "ask-multiple",
+      "exit": 0,
+      "original": "SECOND",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "ask": [
+          "Edit(./original.txt)",
+          "Edit(./first.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": "FIRST",
+        "original.txt": "SECOND",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf FIRST > first.txt; printf SECOND > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "SECOND",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": "FIRST",
+          "original.txt": "SECOND",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "allow-edit-only",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": "42\n",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": "42\n",
+        "replacement": null,
+        "hook_count": 1,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": "42\n",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-later-command",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf FIRST > first.txt; printf SECOND > original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf FIRST > first.txt; printf SECOND > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-later-redirect",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > first.txt > original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > first.txt > original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-tee-multiple",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tee first.txt original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE | tee first.txt original.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-quoted-target",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > 'original.txt' has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > 'original.txt'",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-output-symlink",
+      "exit": 0,
+      "original": "BEFORE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": "BEFORE",
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > alias.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > alias.txt",
+      "expected": {
+        "exit": 0,
+        "original": "BEFORE",
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": "BEFORE",
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-dangling-symlink",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command printf WRITE > alias.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > alias.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "deny-input-symlink",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "first.txt": null,
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat < alias.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat < alias.txt",
+      "expected": {
+        "exit": 0,
+        "original": null,
+        "replacement": null,
+        "hook_count": 0,
+        "request_count": 2,
+        "files": {
+          "first.txt": null,
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "inside-broad",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "42\n",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "inside-node-prefix",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": "42\n",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "inside-printf-prefix",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "printf WRITE > original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "WRITE",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE > original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": "WRITE",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "inside-node-prefix-edit",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)",
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "42\n",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "outside-node-prefix",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > ../outside.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > ../outside.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "outside-broad",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > ../outside.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "outside-prefix-edit-relative",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)",
+          "Edit(../outside.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > ../outside.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > ../outside.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "outside-prefix-edit-absolute",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)",
+          "Edit(/$CASE_ROOT/outside.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > ../outside.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "protected-broad",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > .claude/generated.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > .claude/generated.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": null,
+          ".claude/generated.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "protected-broad-edit",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash",
+          "Edit(./.claude/generated.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > .claude/generated.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > .claude/generated.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": null,
+          ".claude/generated.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "protected-scoped-edit",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)",
+          "Edit(./.claude/generated.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > .claude/generated.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        ".claude/generated.txt": "42\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > .claude/generated.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": null,
+          ".claude/generated.txt": "42\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "dynamic-broad",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(*)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "WRITE",
+        ".claude/generated.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "OUT=original.txt; printf WRITE > \"$OUT\"",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "WRITE",
+          ".claude/generated.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "dynamic-scoped",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(printf *)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "OUT=original.txt; printf WRITE > \"$OUT\""
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "WRITE",
+        ".claude/generated.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "OUT=original.txt; printf WRITE > \"$OUT\"",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": "WRITE",
+          ".claude/generated.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "tee-redirected-pipeline",
+      "exit": 0,
+      "original": "WRITE",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "WRITE",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE | tee > /dev/null original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "WRITE",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "tee-command-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command tee original.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf WRITE | command tee original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "dynamic-scoped-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(*)"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command OUT=original.txt; printf WRITE > \\\"$OUT\\\" has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "OUT=original.txt; printf WRITE > \"$OUT\"",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null,
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "readwrite-edit-deny",
+      "exit": 0,
+      "original": "",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "",
+        "input.txt": "INPUT_SECRET"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat <> original.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "",
+          "input.txt": "INPUT_SECRET"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "readwrite-read-deny",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./input.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null,
+        "input.txt": "INPUT_SECRET"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"INPUT_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat <> input.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null,
+          "input.txt": "INPUT_SECRET"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "absolute-alias-target-grant",
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(node *)",
+          "Edit(./original.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Bash",
+          "command": "node -p 42 > $CASE_ROOT/project/original.txt"
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "42\n",
+        "../outside.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "node -p 42 > $MARKER",
+      "expected": {
+        "exit": 0,
+        "hook_count": 1,
+        "files": {
+          "original.txt": "42\n",
+          "../outside.txt": null
+        }
+      },
+      "passed": true
+    }
+  ]
+}

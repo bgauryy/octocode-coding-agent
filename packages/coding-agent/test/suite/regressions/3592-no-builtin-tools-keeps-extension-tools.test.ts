@@ -78,9 +78,9 @@ describe("regression #3592: no-builtin-tools keeps extension tools enabled", () 
 				.getAllTools()
 				.map((tool) => tool.name)
 				.sort(),
-		).toEqual(expect.arrayContaining(["bash", "dynamic_tool", "file", "powershell", "read"]));
+		).toEqual(expect.arrayContaining(["bash", "dynamic_tool", "file"]));
 		// #3592: disabling defaults preserves native definitions without restoring replaced generic tools.
-		for (const name of ["edit", "write", "grep", "find", "ls"]) {
+		for (const name of ["read", "powershell", "edit", "write", "grep", "find", "ls"]) {
 			expect(session.getAllTools().some((tool) => tool.name === name)).toBe(false);
 		}
 		expect(session.getActiveToolNames()).toEqual(["dynamic_tool"]);

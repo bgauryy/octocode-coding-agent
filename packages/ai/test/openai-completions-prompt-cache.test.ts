@@ -112,6 +112,17 @@ describe("openai-completions prompt caching", () => {
 		};
 	}
 
+	it("uses Grok chat affinity without sending OpenAI cache fields", async () => {
+		const model = createModel({ provider: "xai", baseUrl: "https://api.x.ai/v1" });
+		const { headers, payload } = await captureRequest({ sessionId: "grok-session" }, model);
+		expect(headers["x-grok-conv-id"]).toBe("grok-session");
+		expect(payload?.prompt_cache_key).toBeUndefined();
+		const disabled = await captureRequest({ sessionId: "grok-session", cacheRetention: "none" }, model);
+		expect(disabled.headers["x-grok-conv-id"]).toBeUndefined();
+		const override = await captureRequest({ sessionId: "grok-session", headers: { "x-grok-conv-id": "override" } }, model);
+		expect(override.headers["x-grok-conv-id"]).toBe("override");
+	});
+
 	it("sets prompt_cache_key for direct OpenAI requests when caching is enabled", async () => {
 		const { payload } = await captureRequest({ sessionId: "session-123" });
 
@@ -149,6 +160,12 @@ describe("openai-completions prompt caching", () => {
 
 		expect(payload?.prompt_cache_key).toBeUndefined();
 		expect(payload?.prompt_cache_retention).toBeUndefined();
+	});
+
+	it("honors environment cache-off for body fields and Grok affinity", async () => {
+		process.env.OCTOCODE_CACHE_RETENTION = "none";
+		expect((await captureRequest({ sessionId: "s" })).payload?.prompt_cache_key).toBeUndefined();
+		expect((await captureRequest({ sessionId: "s" }, createModel({ provider: "xai", baseUrl: "https://api.x.ai/v1" }))).headers["x-grok-conv-id"]).toBeUndefined();
 	});
 
 	it("uses OCTOCODE_CACHE_RETENTION for direct OpenAI requests", async () => {

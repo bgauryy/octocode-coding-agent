@@ -1,3 +1,8 @@
+import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../shared/permission-updates.ts";
+import type { FileInputReplacement } from "../shared/claude-file.ts";
+import type { JsonObject } from "@octocodeai/octocode-ai";
+import { shellTargetAccess } from "./file-access.ts";
+import type { ExtensionToolContext, ToolInvocation } from "../../core/extensions/types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
 import { envFlag, PERMISSION_ENV, PERMISSION_RELAY_ENV, takeNonce } from "../shared/env.ts";
@@ -5,7 +10,7 @@ import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
 import { statusColor } from "../shared/render.ts";
 import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
-import { clipText } from "../shared/util.ts";
+import { isRecord, clipText } from "../shared/util.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "./audit.ts";
 import { auditLine, auditLines, cardLines, computeCard, foldLines, NO_REASON, transcriptPurpose } from "./effect.ts";
 import { permissionHeader } from "./header.ts";
@@ -30,6 +35,8 @@ import {
 	startMode,
 	UNGRANTABLE,
 } from "./mode.ts";
+import { errorMessage } from "../shared/util.ts";
+import type { SourceDecision } from "./source-policy.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type Snapshot, takeSnapshot } from "./snapshot.ts";
 
@@ -39,8 +46,8 @@ import { type Snapshot, takeSnapshot } from "./snapshot.ts";
  * spawn grant, or the user's answer that made one just now).
  */
 type Verdict =
-	| { allowed: true; via: "mode" | "grant" | "user"; lasts: "call" | "session" }
-	| { allowed: false; via: "user" | "headless" | "cancelled"; message: string };
+	| { allowed: true; via: "mode" | "grant" | "user" | "hook" | "policy"; lasts: "call" | "session" }
+	| { allowed: false; via: "user" | "headless" | "cancelled" | "hook" | "policy"; message: string };
 
 /** A call a check let through: what the activity line says about it. */
 interface ActionEvent {
@@ -56,7 +63,40 @@ interface ActionEvent {
 export type Answer = "once" | "session" | "kind" | "deny" | { deny: string } | undefined;
 
 /** Where an ask is shown: the parts of a context a dialog needs. */
-type Asker = Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "sessionManager">>;
+type Asker = Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "sessionManager" | "abort" | "cwd">> & Partial<Pick<ExtensionToolContext, "invocation">>;
+
+type PermissionResolver = (
+	ctx: Asker,
+	invocation: ToolInvocation,
+	signal: AbortSignal,
+) => Promise<
+	| {
+			decision: "allow" | "deny";
+			message?: string;
+			interrupt?: boolean;
+			updatedInput?: JsonObject;
+            updatedFileInputs?: FileInputReplacement[];
+ updatedPermissions?: SourcePermissionUpdate[];
+	  }
+	| undefined
+>;
+
+type ReplacementCommit = (
+	signal: AbortSignal,
+	source: SourceDecision | undefined,
+) => Promise<void>;
+type PrepareReplacement = (
+	input: JsonObject,
+) => Promise<{ request: PermissionRequest; commit: ReplacementCommit; fileIndices?: number[] }>;
+interface ReplacementCheck {
+ updatedPermissions?: SourcePermissionUpdate[];
+	prepare?: PrepareReplacement;
+ prepareFile?: (inputs: FileInputReplacement[]) => ReturnType<PrepareReplacement>;
+	inheritedHookApproval?: boolean;
+	commit?: ReplacementCommit;
+	auditNote?: string;
+ fileIndices?: number[];
+}
 
 /** A dialog in place of the default select (the file review). It runs inside `withDialog`. */
 type Dialog = (ctx: Asker, request: PermissionRequest) => Promise<Answer>;
@@ -84,10 +124,10 @@ const shownReasons = (why: string): string =>
 		.map((reason) => shown(reason, 400))
 		.join("\n");
 
-/** What a mode means, in one sentence: the model note and `/octocode permission` say it. */
+/** What a mode means, in one sentence: the model note and `/permissions` say it. */
 export function modeSummary(mode: PermissionMode): string {
 	if (mode === "full")
-		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/octocode permission log); a run with no UI has only the log. Invariants and hook denies still refuse.";
+		return "nothing asks: destructive commands (rm -rf ~), private web fetches, browser control and a hook's ask all run without a prompt. Safeguards: the ⚠ counter, warning-colored activity lines and the audit log (/permissions log); a run with no UI has only the log. Invariants and hook denies still refuse.";
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits and profile permissions also ask.`;
 }
 
@@ -122,6 +162,64 @@ export class Permission {
 	/** The no-secret note was written. */
 	#unforwarded = false;
 	#paintCtx: Pick<ExtensionContext, "hasUI" | "ui" | "mode"> | undefined;
+	#answeredSourceAsks = new WeakSet<ToolInvocation>();
+	#unprojectedSourcePolicy?: (toolName: string) => SourceDecision;
+	unprojectedSourceDecision(toolName: string): SourceDecision | undefined {
+		return this.#unprojectedSourcePolicy?.(toolName);
+	}
+	#sourcePolicy?: (invocation: ToolInvocation, cwd: string) => SourceDecision;
+	setSourcePolicy(
+		evaluate: (invocation: ToolInvocation, cwd: string) => SourceDecision,
+		unprojected?: (toolName: string) => SourceDecision,
+	): void {
+		this.#sourcePolicy = evaluate;
+		this.#unprojectedSourcePolicy = unprojected;
+		this.#answeredSourceAsks = new WeakSet();
+		this.#invalidate();
+	}
+	sourceDecision(
+		invocation: ToolInvocation,
+		cwd: string,
+	): SourceDecision | undefined {
+		return this.#sourcePolicy?.(invocation, cwd);
+	}
+	replacementSourceDecision(
+		invocation: ToolInvocation,
+		cwd: string,
+		indices?: number[],
+	): SourceDecision | undefined {
+		const source = this.sourceDecision(invocation, cwd);
+		const input = invocation.input;
+		if (
+			source?.decision !== "ask" ||
+			!indices ||
+			invocation.toolName !== "file" ||
+			!isRecord(input) ||
+			!Array.isArray(input.queries)
+		)
+			return source;
+		return this.sourceDecision(
+			{
+				...invocation,
+				input: {
+					...input,
+					queries: input.queries.filter((_query, index) =>
+						indices.includes(index),
+					),
+				},
+			},
+			cwd,
+		);
+	}
+	get hasSourcePolicy(): boolean {
+		return this.#sourcePolicy !== undefined;
+	}
+	#resolver?: PermissionResolver;
+	setResolver(resolver: PermissionResolver): void {
+		this.#resolver = resolver;
+	}
+ #prepareUpdates?: (ctx: Asker, updates: readonly SourcePermissionUpdate[], signal: AbortSignal) => Promise<PermissionUpdateCommit>;
+ setUpdateHandler(prepare: (ctx: Asker, updates: readonly SourcePermissionUpdate[], signal: AbortSignal) => Promise<PermissionUpdateCommit>): void { this.#prepareUpdates = prepare; }
 	#policy = new AbortController();
 	readonly #revoked = new Set<() => void>();
 
@@ -205,7 +303,7 @@ export class Permission {
 		if (warning) this.#warned = true;
 		if (mode === "full" && !ctx.hasUI && !this.#isSubagent) {
 			this.#stderr(
-				`octocode: permission mode full: every action runs without asking and is recorded in ${ctx.sessionManager.getSessionFile() ?? "this session (not saved to a file)"}; /octocode permission log lists them.\n`,
+				`octocode: permission mode full: every action runs without asking and is recorded in ${ctx.sessionManager.getSessionFile() ?? "this session (not saved to a file)"}; /permissions log lists them.\n`,
 			);
 		}
 		this.paint(ctx);
@@ -333,13 +431,134 @@ export class Permission {
 	}
 
 	/** The only way anything asks. `dialog` (the file review) replaces the default select; every rule stays here. */
-	async check(ctx: Asker, call: PermissionRequest, dialog?: Dialog): Promise<Verdict> {
-		const request = this.#withPurpose(ctx, call);
-		const signal = request.signal ? AbortSignal.any([request.signal, this.#policy.signal]) : this.#policy.signal;
+	async check(
+		ctx: Asker,
+		call: PermissionRequest,
+		dialog?: Dialog,
+	): Promise<Verdict> {
+		return this.#check(ctx, call, dialog);
+	}
+
+	/** Native outer gates can stage a replacement before any tool effects; inner checks have no commit capability. */
+	async checkWithReplacement(
+		ctx: Asker,
+		call: PermissionRequest,
+		prepare: PrepareReplacement,
+	): Promise<Verdict> {
+		return this.#check(ctx, call, undefined, { prepare });
+	}
+
+	async checkWithFileReplacement(
+		ctx: Asker,
+		call: PermissionRequest,
+		prepareFile: (
+			inputs: FileInputReplacement[],
+		) => ReturnType<PrepareReplacement>,
+		dialog?: Dialog,
+	): Promise<Verdict> {
+		return this.#check(ctx, call, dialog, { prepareFile });
+	}
+
+	async #check(
+		ctx: Asker,
+		call: PermissionRequest,
+		dialog?: Dialog,
+		transaction?: ReplacementCheck,
+	): Promise<Verdict> {
+		let request = this.#withPurpose(ctx, call);
+		if (request.signal?.aborted)
+			return this.#decided(request, {
+				allowed: false,
+				via: "cancelled",
+				message: DISMISSED,
+			});
+		const invocation =
+			request.invocation ??
+			(request.toolCallId && ctx.invocation?.toolCallId === request.toolCallId
+				? ctx.invocation
+				: undefined);
+		const source = invocation?.active
+			? this.replacementSourceDecision(
+					invocation,
+					request.cwd ?? ctx.cwd ?? process.cwd(),
+ transaction?.fileIndices,
+				)
+			: undefined;
+		if (source?.decision === "deny" || source?.decision === "unsupported")
+			return this.#decided(request, {
+				allowed: false,
+				via: "policy",
+				message: source.message ?? "Source permission policy refused this call",
+			});
+		if (
+			source?.decision === "ask" &&
+			invocation &&
+			!this.#answeredSourceAsks.has(invocation)
+		)
+			request = {
+				...request,
+				reasons: [...(request.reasons ?? []), "source.ask"],
+				reason: [request.reason, source.message].filter(Boolean).join("\n"),
+			};
+		const targetClasses = new Set<ActionClass>();
+		for (const target of source?.shellTargets ?? []) {
+			const access = shellTargetAccess(
+				target,
+				request.cwd ?? ctx.cwd ?? process.cwd(),
+			);
+			if (access.refusal)
+				return this.#decided(request, {
+					allowed: false,
+					via: "policy",
+					message: access.refusal,
+				});
+			if (
+				access.uncertain &&
+				!(
+					source?.shellBroadAllowance &&
+					target.uncertain === "dynamic file target"
+				)
+			)
+				request = {
+					...request,
+					reasons: [
+						...new Set([...(request.reasons ?? []), "shell.target" as const]),
+					],
+					reason: [
+						request.reason,
+						"Bash file target cannot be resolved before execution",
+					]
+						.filter(Boolean)
+						.join("\n"),
+				};
+			if (
+				(!target.allowed || access.protected) &&
+				!(source?.shellBroadAllowance && !access.protected) &&
+				access.action
+			)
+				targetClasses.add(access.action);
+		}
+		if (targetClasses.size)
+			request = {
+				...request,
+				also: [...new Set([...(request.also ?? []), ...targetClasses])],
+				what: [
+					...request.what,
+					...(source?.shellTargets ?? []).map(
+						(target) => `${target.kind} ${target.raw}`,
+					),
+				],
+			};
+		const signal = request.signal
+			? AbortSignal.any([request.signal, this.#policy.signal])
+			: this.#policy.signal;
 		const action = request.action;
 		const forced = (): boolean => this.#forcing(request).length > 0;
-		const classes = action ? [action, ...(request.also ?? [])] : [];
-		const grant = action && !forced() && !UNGRANTABLE.has(action) && classes.length === 1 ? request.grant : undefined;
+		const classes = [...(action ? [action] : []), ...(request.also ?? [])];
+		const grant =
+			action && !forced() && !UNGRANTABLE.has(action) && classes.length === 1
+				? request.grant
+				: undefined;
 		const grantKey = grant ? `${action}\0${grant.key}` : undefined;
 		let snapshot: Snapshot | undefined;
 		const snap = async (): Promise<void> => {
@@ -349,27 +568,167 @@ export class Permission {
 					this.#snapshotMs === undefined ? {} : { timeoutMs: this.#snapshotMs },
 				);
 		};
-		const decided = (verdict: Verdict, note?: string): Verdict => this.#decided(request, verdict, note, snapshot);
+		const decided = (verdict: Verdict, note?: string): Verdict => {
+			if (verdict.allowed && source?.decision === "ask" && invocation?.active)
+				this.#answeredSourceAsks.add(invocation);
+			return this.#decided(
+				request,
+				verdict,
+				note ?? transaction?.auditNote,
+				snapshot,
+			);
+		};
+		const completeAllowed = async (
+			verdict: Extract<Verdict, { allowed: true }>,
+   updates = transaction?.updatedPermissions,
+		): Promise<Verdict> => {
+   let publishUpdates: PermissionUpdateCommit | undefined;
+   try {
+    if (updates?.length) {
+     if (!this.#prepareUpdates) throw new Error("Permission updates are unavailable; call not executed");
+     publishUpdates = await this.#prepareUpdates(ctx, updates, signal);
+    }
+   } catch (error) { return decided({allowed:false,via:"policy",message:errorMessage(error)}); }
+			await snap();
+			if (signal.aborted || (invocation && !invocation.active))
+				return decided({
+					allowed: false,
+					via: "cancelled",
+					message: DISMISSED,
+				});
+			try {
+				await transaction?.commit?.(signal, source);
+			} catch (error) {
+				return decided({
+					allowed: false,
+					via: "policy",
+					message: errorMessage(error),
+				});
+			}
+			if (signal.aborted || (invocation && !invocation.active))
+				return decided({
+					allowed: false,
+					via: "cancelled",
+					message: DISMISSED,
+				});
+   let committedPolicy = this.#policy;
+   try {
+    await publishUpdates?.(signal, change => {
+     signal.throwIfAborted();
+     if (invocation && !invocation.active) throw new Error(DISMISSED);
+     change();
+     committedPolicy = this.#policy;
+    });
+   } catch (error) { return decided({allowed:false,via:signal.aborted ? "cancelled" : "policy",message:errorMessage(error)}); }
+   if (request.signal?.aborted || (invocation && !invocation.active) || this.#policy !== committedPolicy)
+    return decided({allowed:false,via:"cancelled",message:DISMISSED});
+			return decided(verdict, updates?.length ? [transaction?.auditNote, `PermissionRequest applied updates: ${JSON.stringify(updates)}`].filter(Boolean).join("\n") : undefined);
+		};
 		const automatic = (): Verdict | undefined => {
-			if (signal.aborted) return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+			if (signal.aborted)
+				return decided({
+					allowed: false,
+					via: "cancelled",
+					message: DISMISSED,
+				});
+			if (transaction?.inheritedHookApproval && source?.decision !== "ask")
+				return { allowed: true, via: "hook", lasts: "call" };
 			if (forced()) return undefined;
+			const sourceAllows =
+				source?.decision === "allow" &&
+				!classes.some((each) =>
+					["net.private", "upload.outside", "agent.spawn"].includes(each),
+				);
+			if (
+				sourceAllows &&
+				[...targetClasses].every((each) => decide(this.#mode, each) === "allow")
+			)
+				return { allowed: true, via: "policy", lasts: "call" };
 			if (classes.every((each) => decide(this.#mode, each) === "allow"))
 				return { allowed: true, via: "mode", lasts: "call" };
 			const covered = (each: ActionClass): boolean =>
+				(sourceAllows && !targetClasses.has(each)) ||
 				decide(this.#mode, each) === "allow" ||
 				this.#spawnGrants.has(each) ||
 				this.#kinds.has(each) ||
-				(each === action && grantKey !== undefined && this.#grants.has(grantKey));
-			return classes.every(covered) ? { allowed: true, via: "grant", lasts: "session" } : undefined;
+				(each === action &&
+					grantKey !== undefined &&
+					this.#grants.has(grantKey));
+			return classes.every(covered)
+				? { allowed: true, via: "grant", lasts: "session" }
+				: undefined;
 		};
 		const ready = automatic();
-		if (ready) {
-			if (ready.allowed) await snap();
-			return ready.allowed ? decided(ready) : ready;
+		if (ready) return ready.allowed ? completeAllowed(ready) : ready;
+        if(source?.dontAsk)return decided({allowed:false,via:"policy",message:"Claude dontAsk mode refuses this unapproved call"});
+		if (
+			invocation?.active &&
+			this.#resolver &&
+			!transaction?.inheritedHookApproval
+		) {
+			const answer = await this.#resolver(ctx, invocation, signal);
+			if (signal.aborted || !invocation.active)
+				return decided({
+					allowed: false,
+					via: "cancelled",
+					message: DISMISSED,
+				});
+			if (answer) {
+				if (answer.decision === "allow") {
+					if (answer.updatedInput !== undefined || answer.updatedFileInputs !== undefined) {
+						if (!(answer.updatedFileInputs !== undefined ? transaction?.prepareFile : transaction?.prepare))
+							return decided({
+								allowed: false,
+								via: "policy",
+								message:
+									"PermissionRequest input replacement requires a supported Bash or file-query transaction; call not executed",
+							});
+						try {
+							const prepared = answer.updatedFileInputs !== undefined
+ ? await transaction!.prepareFile!(answer.updatedFileInputs)
+ : await transaction!.prepare!(answer.updatedInput!);
+							if (signal.aborted || !invocation.active)
+								return decided({
+									allowed: false,
+									via: "cancelled",
+									message: DISMISSED,
+								});
+							return this.#check(ctx, prepared.request, dialog, {
+								inheritedHookApproval: true,
+ updatedPermissions: answer.updatedPermissions,
+								commit: prepared.commit,
+ fileIndices: prepared.fileIndices,
+								auditNote: `PermissionRequest replaced original input: ${JSON.stringify(invocation.input)}`,
+							});
+						} catch (error) {
+							return decided({
+								allowed: false,
+								via: "policy",
+								message: errorMessage(error),
+							});
+						}
+					}
+					return completeAllowed({ allowed: true, via: "hook", lasts: "call" }, answer.updatedPermissions);
+				}
+				const result = decided(
+					{
+						allowed: false,
+						via: "hook",
+						message: this.#denied(request, answer.message),
+					},
+					answer.message,
+				);
+				if (answer.interrupt) ctx.abort?.("internal");
+				return result;
+			}
 		}
 		// A relayed child asks its parent through its own dialogs; any other subagent has no one to ask.
 		if (!(this.#relay ? ctx.hasUI : interactive(ctx, this.#isSubagent)))
-			return decided({ allowed: false, via: "headless", message: this.#headless(request) });
+			return decided({
+				allowed: false,
+				via: "headless",
+				message: this.#headless(request),
+			});
 		await snap();
 		const asked: PermissionRequest = {
 			...request,
@@ -381,23 +740,48 @@ export class Permission {
 		return withDialog(async () => {
 			// A preceding dialog may have granted this scope while this call waited. A forcing reason is never granted.
 			const now = automatic();
-			if (now) return now.allowed ? decided(now) : now;
+			if (now) return now.allowed ? completeAllowed(now) : now;
 			const answer = await (dialog ?? this.#select)(ctx, asked);
 			if (answer === undefined || signal.aborted)
-				return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+				return decided({
+					allowed: false,
+					via: "cancelled",
+					message: DISMISSED,
+				});
 			if (answer === "session") {
-				if (!grant || !grantKey) return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+				if (!grant || !grantKey)
+					return decided({
+						allowed: false,
+						via: "cancelled",
+						message: DISMISSED,
+					});
 				this.#grants.set(grantKey, grant.label);
 			}
 			if (answer === "kind") {
-				if (!action || forced() || classes.length > 1 || kindOf(action) === undefined)
-					return decided({ allowed: false, via: "cancelled", message: DISMISSED });
+				if (
+					!action ||
+					forced() ||
+					classes.length > 1 ||
+					kindOf(action) === undefined
+				)
+					return decided({
+						allowed: false,
+						via: "cancelled",
+						message: DISMISSED,
+					});
 				this.#kinds.add(action);
 			}
 			if (answer === "once" || answer === "session" || answer === "kind")
-				return decided({ allowed: true, via: "user", lasts: answer === "once" ? "call" : "session" });
+				return completeAllowed({
+					allowed: true,
+					via: "user",
+					lasts: answer === "once" ? "call" : "session",
+				});
 			const note = typeof answer === "object" ? answer.deny : undefined;
-			return decided({ allowed: false, via: "user", message: this.#denied(request, note) }, note);
+			return decided(
+				{ allowed: false, via: "user", message: this.#denied(request, note) },
+				note,
+			);
 		}, signal);
 	}
 
@@ -423,7 +807,7 @@ export class Permission {
 	noted(
 		what: readonly string[],
 		note: string,
-		options: { allowed: boolean; via: "hook" | "reported"; action?: "call" | "invariant"; tool?: string },
+		options: { allowed: boolean; via: "hook" | "reported" | "policy"; action?: "call" | "invariant"; tool?: string },
 	): void {
 		this.#record({
 			action: options.action ?? "call",

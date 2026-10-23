@@ -38,6 +38,19 @@ const result = (id: string, toolName: string, timestamp: number, extra: Record<s
 const plain = (...files: string[]) => files.map((file) => ({ file }));
 
 describe("file restore after compaction", () => {
+	it("does not refill a nearly full compacted context and keeps the original file available", () => {
+		const directory=tmp();
+		const file=path.join(directory,"work.ts");
+		const original="const value = 123;\n".repeat(200);
+		fs.writeFileSync(file,original);
+		const sendMessage=vi.fn();
+		const message={role:"user",content:"x".repeat(27_600),timestamp:0};
+		const entry={type:"message",id:"tail",parentId:null,timestamp:new Date(0).toISOString(),message};
+		const ctx={cwd:directory,model:{provider:"test",id:"small",contextWindow:8000},sessionManager:{getBranch:()=>[entry],buildSessionProjection:()=>({entries:[{sourceEntry:entry,messages:[message]}],messages:[message]})}};
+		expect(deliverRestoredFiles({sendMessage},plain(file),ctx as never,RESTORE_TOTAL_CHARS)).toBeUndefined();
+		expect(sendMessage).not.toHaveBeenCalled();
+		expect(fs.readFileSync(file,"utf8")).toBe(original);
+	});
 	it("lists the files read or changed in the summarized part, most recent first", () => {
 		const messages = [
 			call("1", "read", { path: "a.ts" }),

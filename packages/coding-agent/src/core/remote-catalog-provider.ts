@@ -14,7 +14,7 @@ import { fetchWithRetry } from "../utils/management-http.ts";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
 
 const REMOTE_CATALOG_ATTEMPT_TIMEOUT_MS = 4_000;
-export const REMOTE_CATALOG_REFRESH_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const REMOTE_CATALOG_REFRESH_INTERVAL_MS = 4 * 60 * 60 * 1000;
 /**
  * Model types this client can consume. Sent as `?types=` so the catalog server
  * returns the full-type shard instead of the chat-only one served to clients

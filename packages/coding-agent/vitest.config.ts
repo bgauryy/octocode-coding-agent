@@ -8,6 +8,7 @@ export default mergeConfig(
 			globals: true,
             exclude: ["test/octocode/**", "**/node_modules/**"],
 			environment: "node",
+			setupFiles: ["test/setup-env.ts"],
 			testTimeout: 30000,
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
 			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0", OCTOCODE_API: "0" },

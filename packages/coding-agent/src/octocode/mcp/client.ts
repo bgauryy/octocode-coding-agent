@@ -5,6 +5,7 @@ import {
 	StdioTransport,
 	type Tool,
 } from "@octocodeai/octocode-mcp";
+import { McpCatalogCache } from "../../extensions/mcp/catalog.ts";
 import { tailNote } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { saveFullOutput } from "../shared/spill.ts";
@@ -24,6 +25,8 @@ export interface ServerStatus {
 	state: ServerState;
 	/** Why the last connection failed or ended. */
 	error?: string;
+	/** The latest error on a live connection (malformed frame, dead stream): reported, not a connection failure. */
+	clientError?: string;
 	serverName?: string;
 	serverVersion?: string;
 	tools: number;
@@ -37,6 +40,7 @@ interface ServerOptions {
 	clientInfo: { name: string; version: string };
 	/** Every (re)listing of the server's tools, with its instructions. */
 	onTools: (tools: Tool[], instructions: string | undefined) => void;
+	onStatus?: (status: ServerStatus) => void;
 	/** The first failure to connect since the last success or restart. */
 	onFailure: (message: string) => void;
 	/** A re-list after `tools/list_changed` failed: the tools the model has may be out of date. Once per run of failures. */
@@ -56,6 +60,7 @@ const STDERR_TAIL_CHARS = 2_000;
  * `restart()`. `close()` ends the process tree.
  */
 export class OctocodeServer {
+	private readonly catalog = new McpCatalogCache();
 	private state: ServerState = "idle";
 	private cwd: string | undefined;
 	private client: McpClient | undefined;
@@ -64,6 +69,7 @@ export class OctocodeServer {
 	/** The client of a connect in progress, so a stop can end its process before it finishes starting. */
 	private starting: McpClient | undefined;
 	private error: string | undefined;
+	private clientError: string | undefined;
 	private tools: Tool[] = [];
 	private instructionsText: string | undefined;
 	/** Automatic reconnects left; one per failure episode, restored by a success or `restart()`. */
@@ -94,6 +100,7 @@ export class OctocodeServer {
 		return {
 			state: this.state,
 			...(this.error ? { error: this.error } : {}),
+			...(this.clientError ? { clientError: this.clientError } : {}),
 			...(info ? { serverName: info.name, serverVersion: info.version } : {}),
 			tools: this.tools.length,
 			...(this.transport?.pid !== undefined && this.state === "connected" ? { pid: this.transport.pid } : {}),
@@ -104,6 +111,7 @@ export class OctocodeServer {
 	/** Connect for the session folder `cwd`; a new folder replaces the running server. */
 	start(cwd: string): void {
 		if (this.cwd !== cwd) {
+			this.catalog.clear();
 			this.cwd = cwd;
 			void this.stop();
 			this.reset();
@@ -113,6 +121,7 @@ export class OctocodeServer {
 
 	/** Stop the server and connect again for `cwd`, with the retry restored. */
 	async restart(cwd: string): Promise<boolean> {
+		if (this.cwd !== cwd) this.catalog.clear();
 		await this.stop();
 		this.cwd = cwd;
 		this.reset();
@@ -121,6 +130,7 @@ export class OctocodeServer {
 
 	async close(): Promise<void> {
 		await this.stop();
+		this.catalog.clear();
 		this.cwd = undefined;
 	}
 
@@ -155,7 +165,7 @@ export class OctocodeServer {
 		if (!(await this.ready(Number.POSITIVE_INFINITY, signal)) || !this.client) {
 			signal?.throwIfAborted();
 			throw new Error(
-				`Octocode MCP server is not available${this.error ? `: ${this.error}` : ""}. Restart it with /octocode mcp restart.`,
+				`Octocode MCP server is not available${this.error ? `: ${this.error}` : ""}. Restart it with /mcp reconnect octocode.`,
 			);
 		}
 		try {
@@ -198,10 +208,16 @@ export class OctocodeServer {
 	private async open(cwd: string): Promise<boolean> {
 		const generation = ++this.generation;
 		this.state = "connecting";
+		this.options.onStatus?.(this.status());
 		const timeoutMs = this.requestTimeoutMs;
 		const transport = new StdioTransport({ ...this.options.launch(cwd), stderr: "pipe" });
 		const client = new McpClient({ ...this.options.clientInfo, requestTimeoutMs: timeoutMs });
 		this.starting = client;
+		this.clientError = undefined;
+		client.onError((error) => {
+			this.clientError = error.message;
+			this.options.onStatus?.(this.status());
+		});
 		client.onClose(() => this.lost(client, transport));
 		let listChangedDuringConnect = false;
 		client.onNotification("notifications/tools/list_changed", () => {
@@ -209,8 +225,8 @@ export class OctocodeServer {
 			else if (this.client === client) void this.relist(client);
 		});
 		try {
-			const init = await client.connect(transport);
-			const tools = await client.listTools({ timeoutMs });
+			await client.connect(transport);
+			const tools = client.serverCapabilities?.tools ? await client.listTools({ timeoutMs }) : [];
 			if (generation !== this.generation) {
 				await client.close();
 				return false;
@@ -218,14 +234,14 @@ export class OctocodeServer {
 			this.starting = undefined;
 			this.client = client;
 			this.transport = transport;
-			this.tools = tools;
-			this.instructionsText = init.instructions;
+
 			this.state = "connected";
 			this.error = undefined;
 			this.retries = 1;
 			this.reported = false;
-			this.options.onTools(tools, init.instructions);
+			this.publishCatalog(client, tools);
 			if (listChangedDuringConnect) await this.relist(client);
+			this.options.onStatus?.(this.status());
 			return true;
 		} catch (error) {
 			await Promise.allSettled([client.close()]);
@@ -233,7 +249,9 @@ export class OctocodeServer {
 			this.starting = undefined;
 			this.client = undefined;
 			this.state = "failed";
+			this.withdrawCatalog();
 			this.error = this.describe(errorMessage(error), transport);
+			this.options.onStatus?.(this.status());
 			if (!this.reported) {
 				this.reported = true;
 				this.options.onFailure(this.error);
@@ -242,18 +260,37 @@ export class OctocodeServer {
 		}
 	}
 
-	/** The server's tool list changed: list again and hand the new set on. */
+	private publishCatalog(client: McpClient, tools: Tool[]): void {
+		const catalog = this.catalog.update(client.serverInfo, tools, client.instructions);
+		if (this.tools === catalog.tools && this.instructionsText === catalog.instructions) return;
+		this.tools = catalog.tools;
+		this.instructionsText = catalog.instructions;
+		this.options.onTools(this.tools, this.instructionsText);
+		this.options.onStatus?.(this.status());
+	}
+
+	private withdrawCatalog(): void {
+		this.listRevision++;
+		if (this.tools.length === 0 && this.instructionsText === undefined) return;
+		this.tools = [];
+		this.instructionsText = undefined;
+		this.options.onTools([], undefined);
+		this.options.onStatus?.(this.status());
+	}
+
+	/** Refresh only from the newest list response; a failed refresh withdraws unverified metadata. */
 	private async relist(client: McpClient): Promise<void> {
 		const revision = ++this.listRevision;
 		try {
-			const tools = await client.listTools({ timeoutMs: this.requestTimeoutMs });
+			const tools = client.serverCapabilities?.tools
+				? await client.listTools({ timeoutMs: this.requestTimeoutMs }) : [];
 			if (client !== this.client || revision !== this.listRevision) return;
-			this.tools = tools;
 			this.refreshReported = false;
-			this.options.onTools(tools, client.instructions);
+			this.publishCatalog(client, tools);
 		} catch (error) {
-			// The previous list stays (a call to a withdrawn tool gets the server's own error), but tools the server added are missing.
-			if (client !== this.client || this.refreshReported) return;
+			if (client !== this.client || revision !== this.listRevision) return;
+			this.withdrawCatalog();
+			if (this.refreshReported) return;
 			this.refreshReported = true;
 			this.options.onRefreshFailure?.(errorMessage(error));
 		}
@@ -264,7 +301,9 @@ export class OctocodeServer {
 		if (this.client !== client) return;
 		this.client = undefined;
 		this.state = "disconnected";
+		this.withdrawCatalog();
 		this.error = this.describe("the server process exited", transport);
+		this.options.onStatus?.(this.status());
 	}
 
 	private async stop(): Promise<void> {
@@ -275,6 +314,8 @@ export class OctocodeServer {
 		this.transport = undefined;
 		this.connecting = undefined;
 		this.state = "closed";
+		this.withdrawCatalog();
+		this.options.onStatus?.(this.status());
 		await Promise.allSettled(clients.map((client) => client?.close()));
 	}
 

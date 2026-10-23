@@ -783,6 +783,7 @@ export class Editor implements Component, Focusable {
 					this.setCursorCol(result.cursorCol);
 					this.cancelAutocomplete();
 					if (this.onChange) this.onChange(this.getText());
+					this.continueCommandCompletion();
 				}
 				return;
 			}
@@ -2255,8 +2256,14 @@ export class Editor implements Component, Focusable {
 			this.setCursorCol(result.cursorCol);
 			this.cancelAutocomplete();
 			this.onChange?.(this.getText());
+			this.continueCommandCompletion();
 		};
 		return list;
+	}
+
+	private continueCommandCompletion(): void {
+		const beforeCursor = (this.state.lines[this.state.cursorLine] || "").slice(0, this.state.cursorCol);
+		if (this.isInSlashCommandContext(beforeCursor) && /\s$/.test(beforeCursor)) this.tryTriggerAutocomplete();
 	}
 
 	private tryTriggerAutocomplete(explicitTab: boolean = false): void {
@@ -2269,7 +2276,7 @@ export class Editor implements Component, Focusable {
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
 		const beforeCursor = currentLine.slice(0, this.state.cursorCol);
 
-		if (this.isInSlashCommandContext(beforeCursor) && !beforeCursor.trimStart().includes(" ")) {
+		if (this.isInSlashCommandContext(beforeCursor)) {
 			this.handleSlashCommandCompletion();
 		} else {
 			this.forceFileAutocomplete(true);

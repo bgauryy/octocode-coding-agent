@@ -1,7 +1,8 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";
+import { mkdir as fsMkdir } from "fs/promises";
 import { dirname } from "path";
 import { type Static, Type } from "typebox";
+import { atomicWriteFile } from "../../utils/atomic-file.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
@@ -32,7 +33,7 @@ export interface WriteOperations {
 }
 
 const defaultWriteOperations: WriteOperations = {
-	writeFile: (path, content) => fsWriteFile(path, content, "utf-8"),
+	writeFile: (path, content) => atomicWriteFile(path, content),
 	mkdir: (dir) => fsMkdir(dir, { recursive: true }).then(() => {}),
 };
 
@@ -79,7 +80,8 @@ export function createWriteToolDefinition(
 				throwIfAborted();
 
 				// Write the file contents.
-				await ops.writeFile(absolutePath, content);
+				if (ops === defaultWriteOperations) await atomicWriteFile(absolutePath, content, undefined, { signal });
+				else await ops.writeFile(absolutePath, content);
 				throwIfAborted();
 
 				return {

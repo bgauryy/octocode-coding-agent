@@ -88,7 +88,7 @@ export class Delivery {
 		// A settlement send can fail while Octocode changes state. An interactive session stays alive to retry held mail.
 		if (!this.host.headless() && ctx?.isIdle()) this.mail.settled();
 		// An idle subagent without a UI has had its last turn: mail waits, and becomes a dead letter when it leaves.
-		if (!headlessIdle) this.inbox.deliver(db, id, (batch) => this.handOver(batch));
+		if (!headlessIdle) this.inbox.deliver(db, id, (batch) => this.handOver(batch), ctx?.isIdle() ?? false);
 		this.checkWake();
 		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
 	}

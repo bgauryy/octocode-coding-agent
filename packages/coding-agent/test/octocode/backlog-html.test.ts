@@ -1,3 +1,5 @@
+import { webCommand } from "../../src/octocode/workspace/command.ts";
+import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
@@ -59,13 +61,48 @@ function populate(store: BacklogStore): void {
 		plan: "steps",
 		body: "body text",
 	});
-	store.add({ title: "child", goal: "g", state: "todo", createdBy: "agent", from: "B1" });
-	store.add({ title: "grandchild", goal: "g", state: "todo", createdBy: "agent", from: "B2", priority: 0 });
-	store.add({ title: "working", goal: "g", state: "todo", createdBy: "agent", from: "B1" });
+	store.add({
+		title: "child",
+		goal: "g",
+		why: "Required work",
+		state: "todo",
+		createdBy: "agent",
+		from: "B1",
+	});
+	store.add({
+		title: "grandchild",
+		goal: "g",
+		why: "Required work",
+		state: "todo",
+		createdBy: "agent",
+		from: "B2",
+		priority: 0,
+	});
+	store.add({
+		title: "working",
+		goal: "g",
+		why: "Required work",
+		state: "todo",
+		createdBy: "agent",
+		from: "B1",
+	});
 	store.update("B4", { state: "ongoing", note: "started it" }, { id: "session-live" });
-	store.add({ title: "finished", goal: "g", state: "todo", createdBy: "user" });
+	store.add({ title: "finished", goal: "g", why: "Required work", state: "todo", createdBy: "user" });
 	store.update("B5", { state: "ongoing" }, { id: "session-live" });
-	store.update("B5", { state: "done", note: "did it; checked by running x" }, { id: "session-live" });
+	store.update(
+		"B5",
+		{
+			state: "done",
+			completion: {
+				summary: "did it",
+				files: [],
+				verification: { status: "passed", summary: "checked by running x" },
+				operationKey: "done",
+			},
+			note: "did it; checked by running x",
+		},
+		{ id: "session-live" },
+	);
 }
 
 describe("backlog snapshot", () => {
@@ -74,7 +111,8 @@ describe("backlog snapshot", () => {
 		populate(store);
 		// Notes far past the tool's default page of 10, with long text.
 		const long = "x".repeat(5000);
-		for (let index = 0; index < 25; index++) store.update("B1", { note: `note ${index} ${long}` }, { id: "agent-1" });
+		for (let index = 0; index < 25; index++)
+			store.update("B1", { note: `note ${index} ${long}` }, { id: "agent-1" });
 		const snapshot = backlogSnapshot(store, "snap-repo", NOW, "session-live");
 		expect(snapshot).toMatchObject({ repo: "snap-repo", generatedAt: NOW, states: STATES });
 		expect(snapshot.items.map((item) => item.ref).sort()).toEqual(["B1", "B2", "B3", "B4", "B5"]);
@@ -110,11 +148,14 @@ describe("backlog snapshot", () => {
 		db.db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run("session-gone", null);
 		const store = storeFor("live");
 		for (const holder of ["session-running", "session-gone", "session-self"]) {
-			store.add({ title: holder, goal: "g", state: "todo", createdBy: "agent" });
+			store.add({ title: holder, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
 			store.update(`B${store.list().total}`, { state: "ongoing" }, { id: holder });
 		}
 		const live = Object.fromEntries(
-			backlogSnapshot(store, "r", NOW, "session-self").items.map((item) => [item.assignee, item.assigneeLive]),
+			backlogSnapshot(store, "r", NOW, "session-self").items.map((item) => [
+				item.assignee,
+				item.assigneeLive,
+			]),
 		);
 		expect(live).toEqual({ "session-running": true, "session-gone": false, "session-self": true });
 	});
@@ -124,16 +165,17 @@ describe("backlog snapshot", () => {
 		populate(store);
 		const raw = sharedAgentDb().db;
 		// Text stored before the write-time check, or by another build, bypasses `refuseSecrets`: plant it directly.
-		raw.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND repo_key = 'secret'").run(`token at ${SECRET}`);
+		raw
+			.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND repo_key = 'secret'")
+			.run(`token at ${SECRET}`);
 		expect(() => backlogSnapshot(store, "r", NOW)).toThrow(
 			/Not written: the body of B3 looks like it contains a GitHub token/,
 		);
 		raw.prepare("UPDATE backlog SET body = '' WHERE seq = 3 AND repo_key = 'secret'").run();
 		const item = store.get("B2")!;
-		raw.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent', 'note', ?)").run(
-			item.rowId,
-			`see ${SECRET}`,
-		);
+		raw
+			.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent', 'note', ?)")
+			.run(item.rowId, `see ${SECRET}`);
 		expect(() => backlogSnapshot(store, "r", NOW)).toThrow(
 			/Not written: the note \d+ of B2 looks like it contains a GitHub token/,
 		);
@@ -145,16 +187,21 @@ describe("backlog html page", () => {
 	/** The store sanitizes text it writes (U+2028 becomes a visible escape), so rows another build wrote are planted directly. */
 	const snapshotWith = (title: string, note: string): Snapshot => {
 		const store = storeFor("xss");
-		store.add({ title: "placeholder", goal: "g", state: "todo", createdBy: "agent", tags: ["t"] });
+		store.add({
+			title: "placeholder",
+			goal: "g",
+			why: "Required work",
+			state: "todo",
+			createdBy: "agent",
+			tags: ["t"],
+		});
 		const raw = sharedAgentDb().db;
-		raw.prepare("UPDATE backlog SET title = ?, body = ? WHERE seq = 1 AND repo_key = 'xss'").run(
-			title,
-			`${title}\n${note}`,
-		);
-		raw.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent-1', 'note', ?)").run(
-			store.get("B1")!.rowId,
-			note,
-		);
+		raw
+			.prepare("UPDATE backlog SET title = ?, body = ? WHERE seq = 1 AND repo_key = 'xss'")
+			.run(title, `${title}\n${note}`);
+		raw
+			.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent-1', 'note', ?)")
+			.run(store.get("B1")!.rowId, note);
 		return backlogSnapshot(store, "repo", NOW);
 	};
 
@@ -182,39 +229,29 @@ describe("backlog html page", () => {
 		expect(csp).toContain("style-src 'unsafe-inline'");
 		expect(csp).not.toMatch(/https?:|\*/);
 		expect(html).toContain("prefers-color-scheme: dark");
-		expect(html).not.toMatch(/https?:\/\//);
-		expect(html).not.toMatch(
-			/<(?:link|iframe|form|object|embed)\b|\bsrc=|\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|import\(/,
-		);
+		// The inline script carries React DOM's namespace URIs and error links as plain strings; the markup has no URL.
+		const markup = html.replace(/<script>[\s\S]*?<\/script>/, "<script></script>");
+		expect(markup).not.toMatch(/https?:\/\//);
+		expect(markup).not.toMatch(/<(?:link|iframe|form|object|embed)\b|\bsrc=/);
+		expect(html).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|import\(/);
 	});
 
 	it("has a script that parses and renders data only through createElement and text nodes", () => {
 		const { script } = parts(renderBacklogHtml(snapshotWith("t", "n")));
 		// Parse only (the function is never called): a syntax error in the template fails here, not in a user's browser.
 		expect(() => new Function(script)).not.toThrow();
-		for (const sink of [
-			"innerHTML",
-			"outerHTML",
-			"insertAdjacentHTML",
-			"document.write",
-			"eval(",
-			"new Function",
-			"srcdoc",
-			"DOMParser",
-			"createContextualFragment",
-			"javascript:",
-		])
-			expect(script, sink).not.toContain(sink);
+		// React DOM contains HTML-sink code paths this page never uses. webview/test/security.test.ts keeps every sink out
+		// of the renderer's source and runs this page on hostile data with each sink and network API trapped.
 		expect(script).toContain("createElement");
 		expect(script).toContain("createTextNode");
-		expect(script).toContain("JSON.parse(document.getElementById('data').textContent)");
+		expect(script).toContain("JSON.parse");
+		expect(script).toContain("getElementById");
 		// Every view and the deep link are present.
 		for (const view of [
-			"viewBoard",
-			"viewTable",
-			"viewTree",
-			"viewAttention",
-			"detail",
+			"Board",
+			"Table",
+			"Tree",
+			"Attention",
 			"hashchange",
 			"idleMs",
 			"assigneeLive",
@@ -272,30 +309,76 @@ describe("/backlog html", () => {
 	function setup(open: (file: string) => Promise<void>) {
 		const fake = fakePi();
 		const commands = new Subcommands();
-		registerBacklog(fake.pi, { commands, isSubagent: false, open });
+		const openWorkspace = registerBacklog(fake.pi, { commands, isSubagent: false, open, openWeb: (_ctx, backlog, changed) => startWorkspaceWeb(backlog, changed) });
+		commands.add("web", webCommand(openWorkspace));
 		const cwd = path.join(tmp, "repo");
 		fs.mkdirSync(cwd, { recursive: true });
-		return { ...fake, commands, cwd, command: commands.get("backlog")!, store: storeFor(fs.realpathSync(cwd)) };
+		return {
+			...fake,
+			commands,
+			cwd,
+			command: commands.get("backlog")!,
+			store: storeFor(fs.realpathSync(cwd)),
+		};
 	}
 
-	it("writes <repo>/.octocode/backlog.html atomically with every item, opens it with a UI and says where it is", async () => {
-		const open = vi.fn(async () => undefined);
+	it("opens the live board by default and closes its server with the session", async () => {
+		const open = vi.fn(async (_url: string) => undefined);
 		const t = setup(open);
-		populate(t.store);
 		const ctx = fakeCtx({ cwd: t.cwd });
-		await t.command.handler("html", ctx);
-		const file = path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html");
-		expect(open).toHaveBeenCalledExactlyOnceWith(file);
-		expect(ctx.ui.notes.at(-1)!.message).toContain(file);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/snapshot, not live/);
-		const { data } = parts(fs.readFileSync(file, "utf8"));
-		expect(data.items).toHaveLength(t.store.list().total);
-		expect(data.items.flatMap((item) => item.notes)).toHaveLength(
-			t.store.list().items.reduce((sum, item) => sum + t.store.noteCount(item), 0),
-		);
-		// No temp file is left beside it.
-		expect(fs.readdirSync(path.dirname(file)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+		await t.command.handler("", ctx);
+		const url = new URL(open.mock.calls[0]![0]);
+		expect(url.hostname).toBe("127.0.0.1");
+		expect(url.hash).toMatch(/^#access=/);
+		expect((await fetch(url.origin)).status).toBe(200);
+		expect(ctx.ui.notes.at(-1)?.message).toContain("live backlog");
+		await t.fire("session_shutdown", {}, ctx);
+		await expect(fetch(url.origin)).rejects.toThrow();
 	});
+
+	it("opens Activity and Backlogs in the same SPA server, including concurrent requests", async () => {
+		const open = vi.fn(async (_url: string) => undefined);
+		const t = setup(open);
+		const ctx = fakeCtx({ cwd: t.cwd });
+		try {
+			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("", ctx)]);
+			const urls = open.mock.calls.map(([url]) => new URL(url));
+			expect(urls[0]!.origin).toBe(urls[1]!.origin);
+			expect(urls.map(url => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
+			expect(urls.every(url => !url.search)).toBe(true);
+			await t.commands.get("web")!.handler("backlogs", ctx);
+			expect(open.mock.calls[2]![0]).toBe(urls[1]!.href);
+			await t.commands.get("web")!.handler("unknown", ctx);
+			expect(open).toHaveBeenCalledTimes(3);
+			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /web [backlogs]");
+			await t.fire("session_start", {}, ctx);
+			await expect(fetch(urls[0]!.origin)).rejects.toThrow();
+			await t.commands.get("web")!.handler("", ctx);
+			expect(new URL(open.mock.calls[3]![0]).hash).not.toBe(urls[0]!.hash);
+		} finally { await t.fire("session_shutdown", {}, ctx); }
+	});
+
+	it.each(["html"])(
+		"command %s writes <repo>/.octocode/backlog.html atomically with every item, opens it with a UI and says where it is",
+		async (command) => {
+			const open = vi.fn(async () => undefined);
+			const t = setup(open);
+			populate(t.store);
+			const ctx = fakeCtx({ cwd: t.cwd });
+			await t.command.handler(command, ctx);
+			const file = path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html");
+			expect(open).toHaveBeenCalledExactlyOnceWith(file);
+			expect(ctx.ui.notes.at(-1)!.message).toContain(file);
+			expect(ctx.ui.notes.at(-1)!.message).toMatch(/snapshot, not live/);
+			const { data } = parts(fs.readFileSync(file, "utf8"));
+			expect(data.items).toHaveLength(t.store.list().total);
+			expect(data.items.flatMap((item) => item.notes)).toHaveLength(
+				t.store.list().items.reduce((sum, item) => sum + t.store.noteCount(item), 0),
+			);
+			// No temp file is left beside it.
+			expect(fs.readdirSync(path.dirname(file)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+		},
+	);
 
 	it("only writes without a UI, and names the file when the opener fails", async () => {
 		const open = vi.fn(async () => undefined);
@@ -355,8 +438,10 @@ describe("/backlog html", () => {
 		const t = setup(open);
 		t.store.add({ title: "one", state: "todo", createdBy: "user" });
 		const ctx = fakeCtx({ cwd: t.cwd, mode: "rpc", ui: { selects: ["Open as HTML", undefined] } });
-		await t.command.handler("", ctx);
-		expect(open).toHaveBeenCalledExactlyOnceWith(path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"));
+		await t.command.handler("tui", ctx);
+		expect(open).toHaveBeenCalledExactlyOnceWith(
+			path.join(fs.realpathSync(t.cwd), ".octocode", "backlog.html"),
+		);
 	});
 
 	it("opens from the board with a configured HTML action key", async () => {
@@ -376,7 +461,7 @@ describe("/backlog html", () => {
 					}),
 			},
 		});
-		await t.command.handler("", ctx);
+		await t.command.handler("tui", ctx);
 		expect(boards).toBe(2);
 		expect(open).toHaveBeenCalledTimes(1);
 	});
@@ -385,7 +470,10 @@ describe("/backlog html", () => {
 describe("backlog store fixes found by the HTML review", () => {
 	it("keeps a title on one line, however the title arrives", () => {
 		const store = storeFor("title");
-		expect(store.add({ title: "  two\nlines\t here  ", goal: "g", createdBy: "agent" }).title).toBe("two lines here");
+		expect(
+			store.add({ title: "  two\nlines\t here  ", goal: "g", why: "Required work", createdBy: "agent" })
+				.title,
+		).toBe("two lines here");
 		expect(store.update("B1", { title: "a\n\nb" }, { id: "agent" }).title).toBe("a b");
 		expect(() => store.update("B1", { title: " \n " }, { id: "agent" })).toThrow(/needs a title/);
 	});
@@ -397,8 +485,8 @@ describe("backlog store fixes found by the HTML review", () => {
 			"removed",
 			() => at,
 		);
-		store.add({ title: "origin", goal: "g", createdBy: "agent" });
-		store.add({ title: "child", goal: "g", createdBy: "agent", from: "B1" });
+		store.add({ title: "origin", goal: "g", why: "Required work", createdBy: "agent" });
+		store.add({ title: "child", goal: "g", why: "Required work", createdBy: "agent", from: "B1" });
 		at = 9_000;
 		store.remove("B1");
 		const child = store.get("B2")!;

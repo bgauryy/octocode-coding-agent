@@ -1,4 +1,5 @@
-import type { Api, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
+import { UsagePersistenceError } from "../../core/usage-totals.ts";
+import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import { convertToLlm } from "../../core/messages.ts";
@@ -11,8 +12,8 @@ import { requestMessages } from "./thinking.ts";
  * The summary request that reads the conversation from the prompt cache. Octocode's `compact()` serializes the conversation
  * into a new prompt under its own system prompt, so the provider sees a prefix it never cached and bills the whole
  * context as fresh input. Here the request is the session's own (the same system and tool declarations, messages, model,
- * thinking level and routing id) with one user message added at the end: the provider finds the cached prefix of the
- * session's last request and bills only that message. Tools stay declared and the thinking settings stay as they are,
+ * thinking level and routing id) with one user message added at the end. The provider can reuse the cached prefix;
+ * uncached suffixes, output and any cache writes remain billable. Tools stay declared and the thinking settings stay as they are,
  * because changing either invalidates the cached messages; the reply is told to be text only, and a reply that calls a
  * tool counts as a failure. Any failure returns nothing and the caller writes the summary the standalone way.
  */
@@ -120,7 +121,7 @@ function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: n
 /**
  * Octocode's compaction result from the cache-sharing request, or undefined when it cannot be used: images are blocked
  * (the request would carry them), the call or the projection failed, or the reply stopped early, is empty, calls a tool
- * or is longer than the cap. `instructions` are the user's `/compact` focus and Octocode's own. `unusable` gets the reason
+ * or is longer than the cap. `instructions` are Octocode's built-in summary focus. `unusable` gets the reason
  * for every failure, so the caller can say why it falls back to a request that bills the whole input; `userChoice` marks
  * blocked images, the user's own setting, which needs no warning. A cancel (abort) reports nothing.
  */
@@ -131,6 +132,7 @@ export async function sharedSummary(
 	model: Model<Api>,
 	instructions: string,
 	unusable: (reason: string, userChoice?: boolean) => void = () => undefined,
+	recordUsage?: (message: AssistantMessage) => void,
 ): Promise<CompactionResult | undefined> {
 	try {
 		const settings = pi.getSettings();
@@ -151,6 +153,7 @@ export async function sharedSummary(
 		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
 		const level = pi.getThinkingLevel();
 		const options: SimpleStreamOptions = {
+			...ctx.modelRegistry.getCachePolicy(model, [{ source: "session settings", values: settings }]).options,
 			// The session's own thinking level, budgets, transport and routing id: each one changes what the provider caches.
 			...(level === "off" ? {} : { reasoning: level }),
 			...(settings.thinkingBudgets ? { thinkingBudgets: settings.thinkingBudgets } : {}),
@@ -171,6 +174,7 @@ export async function sharedSummary(
 				options,
 			)
 			.result();
+		recordUsage?.(response);
 		if (response.stopReason !== "stop") return void unusable(`the reply stopped with ${response.stopReason}`);
 		if (response.content.some((block) => block.type === "toolCall")) return void unusable("the reply called a tool");
 		const text = contentText(response.content).trim();
@@ -185,6 +189,7 @@ export async function sharedSummary(
 			details: lists,
 		};
 	} catch (error) {
+		if (error instanceof UsagePersistenceError) throw error;
 		// An abort is the user's own cancel: the standalone request is cancelled too, so there is nothing to explain.
 		if (!event.signal.aborted) unusable(errorMessage(error));
 		return undefined;

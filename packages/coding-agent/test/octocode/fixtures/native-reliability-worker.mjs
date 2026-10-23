@@ -62,8 +62,8 @@ async function boot() {
   });
   await session.bindExtensions({ mode: 'rpc', onError: (error) => { errors.push({ event: error.event, error: error.error }); send({ kind: 'extension-error', name, event: error.event, error: error.error }); } });
   await session.setModel(faux.getModel());
-  await execute('coordinate', { action: 'join', goal: `Isolated messaging fixture ${name}` });
-  await execute('coordinate', { action: 'lock', paths: [`${name}.txt`], reason: 'Crash-cleanup fixture' });
+  await execute('agent', { type: 'coordinate', input: { action: 'join', goal: `Isolated messaging fixture ${name}` } });
+  await execute('agent', { type: 'coordinate', input: { action: 'lock', paths: [`${name}.txt`], reason: 'Crash-cleanup fixture' } });
   const instance = listInstances(apiDir(process.env)).find((record) => record.pid === process.pid);
   if (!instance) throw new Error('Missing own API instance');
   return { name, pid: process.pid, generation, instanceId: instance.id, sessionId: session.sessionManager.getSessionId(), cwd,

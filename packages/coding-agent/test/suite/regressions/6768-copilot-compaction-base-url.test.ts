@@ -12,7 +12,8 @@ const INDIVIDUAL_BASE_URL = "https://api.individual.githubcopilot.com";
 const ENTERPRISE_BASE_URL = "https://api.enterprise.githubcopilot.com";
 
 function seedCompactableSession(harness: Harness): void {
-	harness.settingsManager.applyOverrides({ compaction: { keepRecentTokens: 1 } });
+	const policy = harness.settingsManager.getCompactionSettings();
+	harness.settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 	const now = Date.now();
 	harness.sessionManager.appendMessage({
 		role: "user",

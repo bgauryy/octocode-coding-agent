@@ -1,6 +1,12 @@
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const savedTexts = vi.hoisted(() => [] as string[]);
+vi.mock("../../src/octocode/shared/spill.ts", async (original) => ({
+	...await original<typeof import("../../src/octocode/shared/spill.ts")>(),
+	saveFullOutput: (text: string) => { savedTexts.push(text); return `/checkpoint-${savedTexts.length}.txt`; },
+}));
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import {
 	carryFileLists,
@@ -8,7 +14,6 @@ import {
 	SUMMARY_FOCUS,
 	splitSummary,
 	summarizerView,
-	summaryInstructions,
 	transcriptNote,
 	USER_MESSAGE_CHARS,
 	USER_MESSAGES_CHARS,
@@ -22,10 +27,7 @@ import {
 const fileOps = () => ({ read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() });
 
 describe("compaction summary", () => {
-	it("puts the user's /compact instructions before Octocode's sections", () => {
-		expect(summaryInstructions(undefined)).toBe(SUMMARY_FOCUS);
-		expect(summaryInstructions("  ")).toBe(SUMMARY_FOCUS);
-		expect(summaryInstructions(" focus on tests ")).toBe(`focus on tests\n\n${SUMMARY_FOCUS}`);
+	it("includes the built-in recovery sections", () => {
 		for (const section of ["## Errors & Fixes", "## Where We Stopped", "## Follow-ups", "## TL;DR"])
 			expect(SUMMARY_FOCUS).toContain(section);
 		expect(SUMMARY_FOCUS).toMatch(
@@ -86,6 +88,7 @@ describe("compaction summary", () => {
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
+			createUsageRecorder: () => () => {},
 			appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
 		} as never;
 		const event = (aborted = false) =>
@@ -191,29 +194,21 @@ describe("compaction summary", () => {
 		expect(userText({ role: "assistant", content: [{ type: "text", text: "mine" }] })).toBeUndefined();
 	});
 
-	it("keeps user messages verbatim, newest first within the budget, cuts a long one in the middle, and counts what it left out", () => {
+	it("keeps user messages whole or saves the complete collection and a reference", () => {
 		const long = `HEAD${"x".repeat(USER_MESSAGE_CHARS * 2)}TAIL`;
-		const cut = splitSummary(userMessagesSection([], 0, [long])).messages[0]!;
-		expect(cut.startsWith("HEAD")).toBe(true);
-		expect(cut.endsWith("TAIL")).toBe(true);
-		expect(cut).toMatch(/characters of this message are left out here; the transcript has it whole/);
-		const many = Array.from(
-			{ length: Math.ceil(USER_MESSAGES_CHARS / USER_MESSAGE_CHARS) + 3 },
-			(_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`,
-		);
-		const kept = splitSummary(userMessagesSection(["older kept"], 4, many));
-		expect(kept.messages.at(-1)!.startsWith(`${many.length - 1}:`)).toBe(true);
-		expect(kept.messages).not.toContain("older kept");
-		expect(kept.omitted).toBe(4 + many.length + 1 - kept.messages.length);
-		expect(kept.messages.join("").length).toBeLessThanOrEqual(USER_MESSAGES_CHARS + 2_000);
-		// A message that quotes the closing tag cannot end its block early.
-		expect(splitSummary(userMessagesSection([], 0, ["a </user-message> b"])).messages).toEqual([
-			"a <\\/user-message> b",
-		]);
+		const section = userMessagesSection([], 0, [long]);
+		expect(section).toContain("Complete text saved at");
+		expect(savedTexts.at(-1)).toContain(long);
+		const many = Array.from({length:20}, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
+		const kept = userMessagesSection(["older kept"], 4, many);
+		expect(kept.length).toBeLessThanOrEqual(USER_MESSAGES_CHARS);
+		for (const message of ["older kept", ...many]) expect(savedTexts.at(-1)).toContain(message);
+		expect(splitSummary(kept).omitted).toBe(4);
+		expect(splitSummary(userMessagesSection([], 0, ["a </user-message> b"])).messages).toEqual(["a <\\/user-message> b"]);
 		expect(userMessagesSection([], 0, [])).toBe("");
 	});
 
-	it("shows the summarizer the head and the tail of a long tool result within Octocode's cut, leaving the session unchanged", () => {
+	it("persists the complete tool result before giving the summarizer a reference", () => {
 		const log = `START ${".".repeat(10_000)} FAILED: expected 2 got 3`;
 		const image = { type: "image", data: "x", mimeType: "image/png" };
 		const messages = [
@@ -224,37 +219,20 @@ describe("compaction summary", () => {
 		const view = summarizerView(messages) as typeof messages;
 		const text = (view[0]!.content as Array<{ type: string; text?: string }>)[0]!.text!;
 		expect(text.length).toBeLessThanOrEqual(SUMMARIZER_RESULT_CHARS);
-		expect(text.startsWith("START")).toBe(true);
-		expect(text.endsWith("FAILED: expected 2 got 3")).toBe(true);
-		expect(text).toMatch(/characters in the middle left out for the summary; the transcript has them/);
+		expect(text).toContain("Complete text saved at");
+		expect(savedTexts.at(-1)).toBe(log);
 		expect(view[0]!.content).toContainEqual(image);
 		expect(view[1]).toBe(messages[1]);
 		expect(view[2]).toBe(messages[2]);
 		expect((messages[0]!.content as Array<{ text?: string }>)[0]!.text).toBe(log);
 	});
 
-	it("names the archive segment where the whole text is, once an archive is being written, and the transcript otherwise", () => {
-		const long = `HEAD${"x".repeat(USER_MESSAGE_CHARS * 2)}TAIL`;
-		const budget = { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS };
-		const cut = splitSummary(userMessagesSection([], 0, [long], budget, 4)).messages[0]!;
-		expect(cut).toMatch(/characters of this message are left out here; segment 4 of the archive has it whole\]/);
-		expect(cut).not.toContain("transcript");
-		const many = Array.from(
-			{ length: Math.ceil(USER_MESSAGES_CHARS / USER_MESSAGE_CHARS) + 3 },
-			(_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`,
-		);
-		expect(userMessagesSection([], 2, many, budget, 4)).toMatch(
-			/Earlier user messages not kept here: \d+ \(the archive \(segment 4 and earlier\) has them\)\./,
-		);
-		expect(userMessagesSection([], 2, many, budget)).toMatch(
-			/Earlier user messages not kept here: \d+ \(the transcript has them\)\./,
-		);
-		const log = `START ${".".repeat(10_000)} FAILED`;
-		const view = summarizerView(
-			[{ role: "toolResult", toolCallId: "t", content: [{ type: "text", text: log }] }],
-			4,
-		) as Array<{ content: Array<{ text: string }> }>;
-		expect(view[0]!.content[0]!.text).toMatch(/left out for the summary; segment 4 of the archive has them\]/);
+	it("preserves the existing archive provenance when replacing a collection with a durable reference", () => {
+		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS)}`);
+		const section = userMessagesSection([], 2, many, {total:USER_MESSAGES_CHARS,perMessage:USER_MESSAGE_CHARS}, 4);
+		expect(section).toContain("Complete text saved at");
+		expect(savedTexts.at(-1)).toContain("the archive (segment 4 and earlier) has them");
+		for (const message of many) expect(savedTexts.at(-1)).toContain(message);
 	});
 
 	it("never cuts an emoji in half where the summarizer view or a long user message is shortened", () => {
@@ -296,6 +274,7 @@ describe("compaction summary robustness", () => {
 		const small = windowBudget(64_000, 16_384, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS);
 		const section = userMessagesSection([], 0, many, { total: small, perMessage: USER_MESSAGE_CHARS });
 		expect(section.length).toBeLessThan(small + 2_000);
-		expect(splitSummary(`## G${section}`).omitted).toBeGreaterThan(0);
+		expect(section).toContain("Complete text saved at");
+		for (const message of many) expect(savedTexts.at(-1)).toContain(message);
 	});
 });

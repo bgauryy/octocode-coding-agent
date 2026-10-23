@@ -12,6 +12,7 @@ import {
 	sessionLineage,
 } from "./archive.ts";
 import { PARENT_SESSION_ENV } from "./env.ts";
+import { matchHistory } from "./history-search.ts";
 import { canonicalPath, isWithin, repoKey, sessionsRoot } from "./home.ts";
 
 /**
@@ -246,15 +247,22 @@ export function listHistory(sessions: readonly HistorySession[], page = 1): Hist
 }
 
 /** Every line of `files` that `pattern` matches, with `HIT_CONTEXT` lines around it, paged; `page` is 1-based. */
-export function searchHistory(files: readonly HistoryFile[], pattern: RegExp, page = 1): SearchResult {
-	const test = new RegExp(pattern.source, pattern.flags.replace("g", ""));
+export async function searchHistory(
+	files: readonly HistoryFile[],
+	pattern: RegExp,
+	page = 1,
+	signal?: AbortSignal,
+): Promise<SearchResult> {
+	const matches = await matchHistory(
+		files.map(({ file }) => file),
+		pattern,
+		signal,
+	);
+	signal?.throwIfAborted();
 	const blocks: Array<{ heading: string; lines: string[] }> = [];
 	let hits = 0;
-	for (const { file, session, label } of files) {
-		const lines = readLines(file);
-		if (!lines) continue;
-		const matched = lines.flatMap((line, index) => (test.test(line) ? [index] : []));
-		if (matched.length === 0) continue;
+	for (const { index: fileIndex, lines, matched } of matches) {
+		const { file, session, label } = files[fileIndex]!;
 		hits += matched.length;
 		const hit = new Set(matched);
 		const shown: string[] = [];

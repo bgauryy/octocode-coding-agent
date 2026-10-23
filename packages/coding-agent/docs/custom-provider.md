@@ -40,7 +40,7 @@ export default function (octocode: ExtensionAPI) {
   octocode.registerProvider("anthropic", {
     baseUrl: "https://gateway.example.com/anthropic",
     headers: {
-      "X-Gateway-Key": "$GATEWAY_AOCTOCODE_KEY",
+      "X-Gateway-Key": "$GATEWAY_API_KEY",
     },
   });
 }
@@ -59,7 +59,7 @@ export default function (octocode: ExtensionAPI) {
   octocode.registerProvider("acme", {
     name: "Acme AI",
     baseUrl: "https://api.acme.example/v1",
-    apiKey: "$ACME_AOCTOCODE_KEY",
+    apiKey: "$ACME_API_KEY",
     api: "openai-completions",
     models: [
       {
@@ -85,7 +85,7 @@ A mixed-operation provider can register non-chat models and their implementation
 
 ```typescript
 octocode.registerProvider("media-tools", {
-  apiKey: "$MEDIA_TOOLS_AOCTOCODE_KEY",
+  apiKey: "$MEDIA_TOOLS_API_KEY",
   models: [
     {
       type: "image",
@@ -134,7 +134,7 @@ Static providers can resolve an API key from a literal, environment interpolatio
 
 Use native provider authentication when the integration needs stored credentials, custom resolution, provider-scoped environment, or multiple login methods.
 
-An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/login`, and Octocode stores returned credentials in `~/.octocode/agent/auth.json`.
+An OAuth provider supplies a display name, login flow, token refresh, and access-token resolution. After registration it appears in `/login`, and Octocode stores returned credentials in `~/.octocode/octocodecode/auth.json`.
 
 OAuth callbacks are UI-neutral. They can open an authorization URL, show a device code, report progress, request input, or ask the user to choose a login method. Honor cancellation and the supplied abort signal during network requests.
 
@@ -171,7 +171,7 @@ This is safer than copying a stream implementation because it preserves Octocode
 
 ## Implement custom streaming
 
-Implement `streamSimple` only when no existing API implementation can represent the service. Study the implementations under [`packages/ai/src/api`](https://github.com/earendil-works/pi/tree/main/packages/ai/src/api) first.
+Implement `streamSimple` only when no existing API implementation can represent the service. Study the implementations under [`packages/ai/src/api`](https://github.com/bgauryy/octocodecode/tree/main/packages/ai/src/api) first.
 
 The stream receives a normalized `TranscriptContext`. System prompts and tool declarations live in transcript system messages, so read them with `getCurrentSystemPrompt(context.messages)` and `getCurrentTools(context.messages)` rather than expecting `context.systemPrompt` or `context.tools`. A model that supports mid-conversation system messages can receive them in place; otherwise call `collapseSystemMessages(context)` to fold later system messages into the leading one.
 
@@ -220,6 +220,6 @@ Test at least:
 - cross-provider session handoff
 - authentication refresh and cancellation
 
-The provider tests under [`packages/ai/test`](https://github.com/earendil-works/pi/tree/main/packages/ai/test) define the behavior expected from built-in providers. Adapt the relevant suites rather than relying only on manual prompts.
+The provider tests under [`packages/ai/test`](https://github.com/bgauryy/octocodecode/tree/main/packages/ai/test) define the behavior expected from built-in providers. Adapt the relevant suites rather than relying only on manual prompts.
 
 Run the extension directly while developing, then move it to a discovered extension location or distribute it through a [Octocode package](packages.md). Use `/reload` after changing a discovered provider extension in an active session.

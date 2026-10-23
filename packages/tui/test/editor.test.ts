@@ -2515,7 +2515,7 @@ describe("Editor component", () => {
 		});
 
 		it("re-queries the autocomplete picker when the cursor moves back into the command name", async () => {
-			// Regression for earendil-works/pi#5496: arrowing left out of a slash
+			// Regression: arrowing left out of a slash
 			// command's argument region must re-query the picker, not leave the
 			// stale argument list showing. Before the fix, moveCursor() never
 			// called updateAutocomplete(), so `/cmd ` (argument menu) + Left kept
@@ -4377,4 +4377,18 @@ describe("Editor component", () => {
 			assert.strictEqual(submitted, pastedText);
 		});
 	});
+});
+
+describe("command value hints", () => {
+  it("shows the next values immediately after Tab accepts a command", async () => {
+    const editor = new Editor(createTestTUI(), defaultEditorTheme);
+    editor.setAutocompleteProvider(new CombinedAutocompleteProvider([{ name: "web", getArgumentCompletions: () => [{ value: "backlogs", label: "backlogs" }] }], process.cwd()));
+    editor.handleInput("/web"); await flushAutocomplete();
+    editor.handleInput("\t"); await flushAutocomplete();
+    assert.strictEqual(editor.getText(), "/web ");
+    assert.ok(editor.render(80).join("\n").includes("backlogs"));
+    editor.handleInput("\x1b");
+    editor.handleInput("\t"); await flushAutocomplete();
+    assert.ok(editor.render(80).join("\n").includes("backlogs"));
+  });
 });

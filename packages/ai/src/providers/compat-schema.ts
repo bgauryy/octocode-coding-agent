@@ -211,7 +211,7 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 		supportsFinishReason: Type.Optional(
 			Type.Boolean({
 				description:
-					"Whether streamed responses include finish_reason. When false, pi infers stop or toolUse when the stream ends.",
+					"Whether streamed responses include finish_reason. When false, Octocode infers stop or toolUse when the stream ends.",
 				default: true,
 			}),
 		),
@@ -265,13 +265,13 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 		chatTemplateKwargs: Type.Optional(
 			Type.Record(Type.String(), ChatTemplateKwargValueSchema, {
 				description:
-					'Kwargs sent as chat_template_kwargs when thinkingFormat is "chat-template". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for pi-controlled values.',
+					'Kwargs sent as chat_template_kwargs when thinkingFormat is "chat-template". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values.',
 			}),
 		),
 		chatTemplateArgs: Type.Optional(
 			Type.Record(Type.String(), ChatTemplateKwargValueSchema, {
 				description:
-					'Arguments sent as chat_template_args when thinkingFormat is "baseten". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for pi-controlled values.',
+					'Arguments sent as chat_template_args when thinkingFormat is "baseten". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values.',
 			}),
 		),
 		openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
@@ -505,6 +505,10 @@ export const BedrockCompatSchema = Type.Object(
 		supportsStrictMode: optionalCompatBoolean({
 			description: "Whether the model supports Bedrock strict tool schemas.",
 			default: false,
+		}),
+		supportsLongCacheRetention: optionalCompatBoolean({
+			description: 'Whether cacheRetention "long" sends one-hour cache points. Set false for models or regions that reject the ttl field.',
+			default: true,
 		}),
 	},
 	{ description: "Compatibility settings for Amazon Bedrock models.", additionalProperties: true },

@@ -80,7 +80,8 @@ function useSummaryStreamFn(
 }
 
 function seedCompactableSession(harness: Harness): void {
-	harness.settingsManager.applyOverrides({ compaction: { keepRecentTokens: 1 } });
+	const policy = harness.settingsManager.getCompactionSettings();
+		harness.settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 	const now = Date.now();
 	harness.sessionManager.appendMessage({
 		role: "user",
@@ -106,8 +107,8 @@ async function createAbortableCompactionHarness(): Promise<{
 		markCompactionStarted = resolve;
 	});
 	const harness = await createHarness({
-		settings: { compaction: { keepRecentTokens: 1 } },
-		extensionFactories: [
+		compactionPolicy: { keepRecentTokens: 1 },
+		builtinCompactionFactories: [
 			(pi) => {
 				pi.on("session_before_compact", async (event) => {
 					return await new Promise<{ cancel: true }>((resolve) => {
@@ -123,6 +124,20 @@ async function createAbortableCompactionHarness(): Promise<{
 }
 
 describe("AgentSession compaction characterization", () => {
+ it("stops automatic compaction after three failures and permits manual recovery", async () => {
+  const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
+  harnesses.push(harness);
+  seedCompactableSession(harness);
+  const internals = harness.session as unknown as SessionWithCompactionInternals & { _runDefaultCompaction: () => Promise<unknown> };
+  const summarize = vi.spyOn(internals, "_runDefaultCompaction").mockRejectedValue(new Error("provider unavailable"));
+  for (let i = 0; i < 5; i++) await internals._runAutoCompaction("threshold", false);
+  expect(summarize).toHaveBeenCalledTimes(3);
+  expect(harness.eventsOfType("compaction_end").at(-1)?.errorMessage).toContain("three consecutive failures");
+  summarize.mockResolvedValue({ summary: "recovered", firstKeptEntryId: harness.sessionManager.getBranch().at(-1)!.id, tokensBefore: 100 });
+  await harness.session.compact();
+  expect(summarize).toHaveBeenCalledTimes(4);
+ });
+
 	const harnesses: Harness[] = [];
 
 	afterEach(() => {
@@ -133,7 +148,22 @@ describe("AgentSession compaction characterization", () => {
 		}
 	});
 
-	it("manually compacts using an extension-provided summary", async () => {
+
+ it("does not count user cancellation toward the automatic failure limit", async () => {
+  const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
+  harnesses.push(harness);
+  seedCompactableSession(harness);
+  const internals = harness.session as unknown as SessionWithCompactionInternals & { _runDefaultCompaction: () => Promise<unknown> };
+  const summarize = vi.spyOn(internals, "_runDefaultCompaction").mockImplementation(async () => {
+   harness.session.abortCompaction();
+   throw new Error("cancelled");
+  });
+  for (let i = 0; i < 5; i++) await internals._runAutoCompaction("threshold", false);
+  expect(summarize).toHaveBeenCalledTimes(5);
+  expect(harness.eventsOfType("compaction_end").every((event) => event.aborted)).toBe(true);
+ });
+
+	it("manually compacts using the built-in summary result", async () => {
 		const summaryUsage = {
 			input: 10,
 			output: 20,
@@ -143,8 +173,8 @@ describe("AgentSession compaction characterization", () => {
 			cost: { input: 0.1, output: 0.2, cacheRead: 0.3, cacheWrite: 0.4, total: 1 },
 		};
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -237,8 +267,8 @@ describe("AgentSession compaction characterization", () => {
 
 	it("allows a queued prompt to start when manual compaction ends", async () => {
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -335,7 +365,7 @@ describe("AgentSession compaction characterization", () => {
 	});
 
 	it("uses the standalone compaction request context", async () => {
-		const harness = await createHarness({ settings: { compaction: { keepRecentTokens: 1 } } });
+		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 
@@ -369,14 +399,17 @@ describe("AgentSession compaction characterization", () => {
 		seedCompactableSession(harness);
 		useSummaryStreamFn(harness, "summary from custom stream");
 
+		const beforeCost = harness.session.getSessionStats().cost;
 		const result = await harness.session.compact();
 
 		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
-		expect(result.usage).toEqual(createUsage(10));
+		expect(result.usage).toBeUndefined();
 		expect(compactionEntries).toHaveLength(1);
-		expect(compactionEntries[0]?.type === "compaction" ? compactionEntries[0].usage : undefined).toEqual(
-			createUsage(10),
-		);
+		expect(compactionEntries[0]?.usage).toBeUndefined();
+		const receipts = harness.sessionManager.getEntries().filter((entry) => entry.type === "usage" && entry.kind === "compaction_attempt");
+		expect(receipts).toHaveLength(1);
+		expect(receipts[0]).toMatchObject({ usage: createUsage(10) });
+		expect(harness.session.getSessionStats().cost).toBeCloseTo(beforeCost + createUsage(10).cost.total);
 	});
 
 	it("auto-compacts with a custom streamFn when registry auth is absent", async () => {
@@ -404,7 +437,7 @@ describe("AgentSession compaction characterization", () => {
 			fromExtension: boolean;
 		}> = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_compact_failed", async (event) => {
 						failedEvents.push(event);
@@ -441,9 +474,10 @@ describe("AgentSession compaction characterization", () => {
 
 	it("compacts and resumes after a length stop below the desired output limit", async () => {
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			models: [{ id: "faux-1", contextWindow: 8000, maxTokens: 100 }],
+			tools: [],
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -473,11 +507,10 @@ describe("AgentSession compaction characterization", () => {
 		expect(harness.session.getLastAssistantText()).toBe("completed response");
 	});
 
-	// Regression coverage for #8133: model overrides must also apply between assistant turns.
 	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
-	it.each([false, true])(
-		"compacts after an oversized tool result in the same run (model override: %s)",
-		async (modelOverride) => {
+	it(
+		"compacts after an oversized tool result in the same run",
+		async () => {
 			const toolResult = `large-tool-result:${"x".repeat(8000)}`;
 			const largeTool: AgentTool = {
 				name: "large_result",
@@ -489,19 +522,10 @@ describe("AgentSession compaction characterization", () => {
 			const order: string[] = [];
 			const observedSettings: unknown[] = [];
 			const harness = await createHarness({
-				models: [{ id: "faux-1", contextWindow: 2600, maxTokens: 100 }],
-				settings: {
-					compaction: modelOverride
-						? {
-								enabled: true,
-								reserveTokens: 0,
-								keepRecentTokens: 20000,
-								modelOverrides: { "faux/faux-1": { reserveTokens: 400, keepRecentTokens: 1750 } },
-							}
-						: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
-				},
+				models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
+				compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 				tools: [largeTool],
-				extensionFactories: [
+				builtinCompactionFactories: [
 					(pi) => {
 						pi.on("session_before_compact", (event) => {
 							order.push("compaction");
@@ -570,9 +594,9 @@ describe("AgentSession compaction characterization", () => {
 		});
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 2600, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 } },
+			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [largeTool],
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => {
 						markCompactionStarted();
@@ -628,9 +652,9 @@ describe("AgentSession compaction characterization", () => {
 		};
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 2600, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 } },
+			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1750 },
 			tools: [terminatingTool],
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", (event) => ({
 						compaction: {
@@ -675,8 +699,8 @@ describe("AgentSession compaction characterization", () => {
 	it("stops after one compact-and-retry when a second response is also truncated", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1_000_000, maxTokens: 100 }],
-			settings: { compaction: { keepRecentTokens: 1, reserveTokens: 0 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -770,8 +794,8 @@ describe("AgentSession compaction characterization", () => {
 	it("resumes after threshold compaction when only agent-level queued messages exist", async () => {
 		vi.useFakeTimers();
 		const harness = await createHarness({
-			settings: { compaction: { keepRecentTokens: 1 } },
-			extensionFactories: [
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -830,9 +854,9 @@ describe("AgentSession compaction characterization", () => {
 
 	it("compacts successful overflow responses without retrying", async () => {
 		const harness = await createHarness({
-			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 } },
+			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			models: [{ id: "faux-1", contextWindow: 1, maxTokens: 100 }],
-			extensionFactories: [
+			builtinCompactionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
 						compaction: {
@@ -922,7 +946,7 @@ describe("AgentSession compaction characterization", () => {
 
 		await sessionInternals._checkCompaction(errorAssistant);
 
-		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
+		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false, harness.session.model);
 	});
 
 	it("does not trigger threshold compaction for error messages when no prior usage exists", async () => {
@@ -993,11 +1017,11 @@ describe("AgentSession compaction characterization", () => {
 
 	it("does not trigger threshold compaction below the threshold or when disabled", async () => {
 		const belowThresholdHarness = await createHarness({
-			settings: { compaction: { enabled: true, reserveTokens: 1000 } },
+			compactionPolicy: { enabled: true, reserveTokens: 1000 },
 			models: [{ id: "faux-1", contextWindow: 200_000 }],
 		});
 		harnesses.push(belowThresholdHarness);
-		const disabledHarness = await createHarness({ settings: { compaction: { enabled: false } } });
+		const disabledHarness = await createHarness({ compactionPolicy: { enabled: false } });
 		harnesses.push(disabledHarness);
 
 		const belowThresholdInternals = belowThresholdHarness.session as unknown as SessionWithCompactionInternals;

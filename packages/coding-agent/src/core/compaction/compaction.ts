@@ -5,6 +5,7 @@
  * and after compaction the session is reloaded.
  */
 
+import { builtInCompactionSettings } from "./settings.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import {
 	contentText,
@@ -24,6 +25,7 @@ import type {
 	Usage,
 } from "@octocodeai/octocode-ai/compat";
 import { completeSimple } from "@octocodeai/octocode-ai/compat";
+import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionProjection,
@@ -123,23 +125,11 @@ export interface CompactionSettings {
 	keepRecentTokens: number;
 }
 
-export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
-	enabled: true,
-	reserveTokens: 16384,
-	keepRecentTokens: 20000,
-};
+export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = builtInCompactionSettings();
 
 // ============================================================================
 // Token calculation
 // ============================================================================
-
-/**
- * Calculate total context tokens from usage.
- * Uses the native totalTokens field when available, falls back to computing from components.
- */
-export function calculateContextTokens(usage: Usage): number {
-	return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-}
 
 /**
  * Get usage from an assistant message if available.
@@ -1097,3 +1087,6 @@ async function generateTurnPrefixSummary(
 		usage: response.usage,
 	};
 }
+
+// The usage math is ai's; SDK users keep importing it from here.
+export { calculateContextTokens };

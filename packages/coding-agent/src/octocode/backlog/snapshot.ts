@@ -1,53 +1,30 @@
 import { storedSecret } from "../shared/sanitize.ts";
 import { DAY_MS } from "../shared/util.ts";
 import { refText } from "./row.ts";
-import { BacklogError, type BacklogStore, type Item, type Note, priorityName, STATES, type State } from "./store.ts";
+import {
+	BacklogError,
+	type BacklogStore,
+	type Item,
+	priorityName,
+	STATES,
+} from "./store.ts";
 
 /** An item idle for longer than this (and not done) is listed under Attention in the page. */
 const IDLE_MS = 7 * DAY_MS;
 
-interface SnapshotItem {
-	ref: string;
-	title: string;
-	goal: string;
-	body: string;
-	paths: string[];
-	why: string;
-	evidence: string[];
-	plan: string;
-	state: State;
-	priority: string;
-	tags: string[];
-	assignee?: string;
-	/** Whether the assignee is a running session at snapshot time (the writer's own session counts). */
-	assigneeLive?: boolean;
-	createdBy: string;
-	sourceSession?: string;
-	createdAt: number;
-	updatedAt: number;
-	startedAt?: number;
-	doneAt?: number;
-	version: number;
-	/** The ref of the item this one came from. */
-	from?: string;
-	/** The refs of the items that came from this one. */
-	derived: string[];
-	/** Every note and change, oldest first. */
-	notes: Note[];
-}
-
-/** The whole backlog of one repository as the HTML page embeds it: every item in every state, with every note. */
-export interface Snapshot {
-	repo: string;
-	generatedAt: number;
-	states: readonly State[];
-	idleMs: number;
-	items: SnapshotItem[];
-}
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+export type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
 
 function snapshotItem(store: BacklogStore, item: Item, self: string | undefined): SnapshotItem {
 	return {
 		ref: item.ref,
+		comments: store.comments(item.ref),
+		audits: store.audit(item.ref, 50),
+		type: item.type,
+		parentId: item.parentId,
+		dependsOn: item.dependsOn,
+		links: item.links,
+		completions: item.completions,
 		title: item.title,
 		goal: item.goal,
 		body: item.body,
@@ -87,7 +64,11 @@ function refuseSecrets(snapshot: Snapshot): void {
 	const found = storedSecret({ repository: snapshot.repo });
 	if (found) throw new BacklogError(`Not written: the repository name ${found.problem.replace(/^it /, "")}.`);
 	for (const item of snapshot.items) {
-		const { title, goal, body, paths, why, evidence, plan, tags, assignee, createdBy, sourceSession, notes } = item;
+		const extra = storedSecret({
+			entities: JSON.stringify({ links: item.links, completions: item.completions, comments: item.comments, audits: item.audits }),
+		});
+		const { title, goal, body, paths, why, evidence, plan, tags, assignee, createdBy, sourceSession, notes } =
+			item;
 		const noteFields = notes.flatMap(
 			(note, index) =>
 				[
@@ -113,6 +94,7 @@ function refuseSecrets(snapshot: Snapshot): void {
 			throw new BacklogError(
 				`Not written: the ${hit.name} of ${item.ref} ${hit.problem.replace(/^it /, "")}. Remove it from the item, or delete the item, and run /backlog html again.`,
 			);
+		if (extra) throw new BacklogError(`Not written: ${item.ref} contains unsafe entity text.`);
 	}
 }
 
@@ -125,6 +107,21 @@ export function backlogSnapshot(store: BacklogStore, repo: string, now: number, 
 		idleMs: IDLE_MS,
 		items: store.list().items.map((item) => snapshotItem(store, item, self)),
 	};
+	const byRef = new Map(snapshot.items.map((item) => [item.ref, item]));
+	for (const item of snapshot.items) {
+		item.children = snapshot.items.filter((child) => child.parentId === item.ref).map((child) => child.ref);
+		item.blockedBy = (item.dependsOn ?? [])
+			.filter((ref) => byRef.get(ref.id)?.state !== "done")
+			.map((ref) => ref.id);
+		const openDescendant = (parent: string, seen = new Set<string>()): boolean => {
+			if (seen.has(parent)) return false;
+			seen.add(parent);
+			return snapshot.items.some(
+				(child) => child.parentId === parent && (child.state !== "done" || openDescendant(child.ref, seen)),
+			);
+		};
+		item.needsReview = item.state === "done" && (item.blockedBy.length > 0 || openDescendant(item.ref));
+	}
 	refuseSecrets(snapshot);
 	return snapshot;
 }

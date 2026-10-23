@@ -8,9 +8,9 @@ import { spawn, spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import assert from 'node:assert/strict';
 
-const USAGE = `Optional ACP reliability check for the built Pi extension.
-  node packages/octocode-pi-extension/scripts/live-acp-reliability.mjs --fixture [--out DIR]
-  node packages/octocode-pi-extension/scripts/live-acp-reliability.mjs --live [--out DIR] [--max-prompts 20]
+const USAGE = `Optional ACP reliability check for the built coding agent.
+  node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --fixture [--out DIR]
+  node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --live [--out DIR] [--max-prompts 20]
 
 No arguments or --help prints this help and makes no model calls.
 --fixture runs the same lifecycle through local official-SDK agents, without cloud models.
@@ -56,8 +56,8 @@ fs.writeFileSync(path.join(octocodeHome, 'hooks.json'), JSON.stringify({ hooks: 
   PreMessageSend: [{ matcher: 'external', hooks: [{ type: 'command', command, failClosed: true, timeout: 10 }] }],
   PostMessageReceive: [{ matcher: 'external', hooks: [{ type: 'command', command, timeout: 10 }] }],
 } }));
-const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import('@earendil-works/pi-ai');
-const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } = await import('@earendil-works/pi-coding-agent');
+const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import('@octocodeai/octocode-ai');
+const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } = await import('@octocodeai/octocodecode');
 const { default: octocode } = await import(path.join(packageRoot, 'dist/index.js'));
 const { ApiClient } = await import(path.join(packageRoot, 'dist/api/client.js'));
 const { apiDir, listInstances } = await import(path.join(packageRoot, 'dist/api/registry.js'));

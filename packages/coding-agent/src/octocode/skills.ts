@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
+import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
 import { EXTRA_SKILLS_ENV, envFlag, SUBAGENT_ENV } from "./shared/env.ts";
 import { globalPaths, projectSkillDirs } from "./shared/home.ts";
 import { projectTrust } from "./shared/trust.ts";
@@ -19,15 +20,19 @@ export function extraSkillDirs(
 	projectTrusted = true,
 	env: NodeJS.ProcessEnv = process.env,
 ): string[] {
+	const claudeSkills = path.join(claudeConfigDir(home, env), "skills");
+	let codexSkills: string[] = [];
+	try { codexSkills = [path.join(codexConfigDir(home, env), "skills")]; }
+	catch { /* An invalid selected home must not discover a different user's profile. */ }
 	return [
-		path.join(home, ".claude", "skills"),
-		path.join(home, ".codex", "skills"),
+		claudeSkills,
+		...codexSkills,
 		globalPaths(env, home).skills,
 		// Like Octocode's own project skills, project directories (`.claude/skills` up to the root, `<root>/.octocode/skills`) load only for trusted projects.
 		...(projectTrusted ? projectSkillDirs(cwd) : []),
 	]
 		.filter(isDirectory)
-		.flatMap((dir) => (path.basename(path.dirname(dir)) === ".claude" ? withoutSynced(dir) : [dir]));
+		.flatMap((dir) => (dir === claudeSkills || path.basename(path.dirname(dir)) === ".claude" ? withoutSynced(dir) : [dir]));
 }
 
 function isDirectory(file: string): boolean {
@@ -50,7 +55,7 @@ const SYNCED_SKILLS_DIR = "synced";
 function withoutSynced(dir: string): string[] {
 	if (!isDirectory(path.join(dir, SYNCED_SKILLS_DIR)) || fs.existsSync(path.join(dir, "SKILL.md"))) return [dir];
 	const synced = path.join(dir, SYNCED_SKILLS_DIR) + path.sep;
-	return loadSkillsFromDir({ dir, source: "path" })
+	return loadSkillsFromDir({ dir, source: "path", protocol: "claude" })
 		.skills.map((skill) => skill.filePath)
 		.filter((file) => !file.startsWith(synced));
 }

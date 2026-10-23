@@ -18,13 +18,13 @@ type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorCom
 type Paint = Pick<Theme, "fg">;
 
 /** What the editor needs from the permission state: the live mode and the Shift+Tab step. */
-export interface EditorPermission {
+interface EditorPermission {
 	readonly mode: PermissionMode;
 	cycle(ctx: ExtensionContext): void;
 }
 
 /** Columns the closed box takes: `│ ` on the left and ` │` on the right. */
-export const BOX_INSET = 2;
+const BOX_INSET = 2;
 /** Below this width the box, labels and hint step aside and Octocode's plain rules remain. */
 export const BOX_MIN_WIDTH = 24;
 const LABEL = "octocode";
@@ -75,7 +75,7 @@ export function labelledRule(width: number, left: string, right: string, rule: (
 	return `${rule("─")}${l}${rule("─".repeat(gap))}${r}${rule("─")}`;
 }
 
-export function borderTint(text: string, pi: (text: string) => string, theme: Paint): (text: string) => string {
+function borderTint(text: string, pi: (text: string) => string, theme: Paint): (text: string) => string {
 	if (text.trimStart().startsWith("!")) return pi;
 	return (part) => theme.fg("accent", part);
 }
@@ -185,7 +185,7 @@ export function registerEditor(pi: ExtensionAPI, permission: EditorPermission): 
 		installed = (tui, theme, keybindings) => {
 			const editor =
 				previous?.(tui, theme, keybindings) ??
-				new CustomEditor(tui, theme, keybindings, { embedWorkingStatus: true });
+				new CustomEditor(tui, theme, keybindings);
 			const transcript = thinkingTranscript(tui);
 			const handleInput = editor.handleInput?.bind(editor);
 			// Preserve the editor object: Octocode copies its native action handlers and appearance onto this instance.

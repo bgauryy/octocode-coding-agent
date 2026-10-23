@@ -8,7 +8,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
-describe("/octocode rewind arguments", () => {
+describe("/rewind arguments", () => {
 	it("rejects malformed counts before changing files or consuming checkpoints, including headless runs", async () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
@@ -29,7 +29,7 @@ describe("/octocode rewind arguments", () => {
 		try {
 			for (const args of ["-1", "0", "NaN", "2oops", "1.5", "1 2", "Infinity", "9007199254740992"]) {
 				await commands.get("rewind")!.handler(args, ctx);
-				expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /octocode rewind [turns] (positive integer)");
+				expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /rewind [turns] (positive integer)");
 			}
 			expect(rewind).not.toHaveBeenCalled();
 			expect(fs.readFileSync(file, "utf8")).toBe("two");
@@ -49,7 +49,7 @@ describe("/octocode rewind arguments", () => {
 	});
 });
 
-describe("/octocode rewind when an older change cannot be undone", () => {
+describe("/rewind when an older change cannot be undone", () => {
 	it("names the partly restored file as a warning, forgets it, and tells the model its content moved", async () => {
 		const cwd = tmp();
 		const file = path.join(cwd, "a.txt");
@@ -87,4 +87,17 @@ describe("/octocode rewind when an older change cannot be undone", () => {
 		// The failed entry stays so a later rewind can retry once the copy is repaired.
 		expect(checkpoints.turns()).toEqual([1]);
 	});
+});
+
+it("offers rewind counts from the current branch instead of a fixed list", async () => {
+	const fake = fakePi();
+	const commands = new Subcommands();
+	const checkpoints = new Checkpoints();
+	vi.spyOn(checkpoints, "open").mockImplementation(() => undefined);
+	const turns = vi.spyOn(checkpoints, "turnsOn").mockReturnValue([4, 3, 2, 1]);
+	registerCheckpoints(fake.pi, checkpoints, () => undefined, commands);
+	await fake.fire("session_start", {}, fakeCtx({ cwd: tmp() }));
+	expect(commands.complete("rewind ")?.map(item => item.value)).toEqual(["rewind 1", "rewind 2", "rewind 3", "rewind 4"]);
+	turns.mockReturnValue([]);
+	expect(commands.complete("rewind ")).toBeNull();
 });

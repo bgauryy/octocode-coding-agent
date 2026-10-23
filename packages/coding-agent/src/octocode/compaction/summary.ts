@@ -1,18 +1,20 @@
+import { UsagePersistenceError } from "../../core/usage-totals.ts";
+import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
-import { compact } from "../../core/compaction/index.ts";
+import { CheckpointPersistenceError, compact, persistCheckpointText } from "../../core/compaction/index.ts";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 	SessionBeforeCompactEvent,
-	SessionBeforeCompactResult,
 } from "../../core/extensions/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
+import { saveFullOutput } from "../shared/spill.ts";
 import { CHARS_PER_TOKEN } from "../shared/tokens.ts";
-import { contentText, cutText, errorMessage, escapeRegExp, isRecord } from "../shared/util.ts";
+import { contentText, errorMessage, escapeRegExp, isRecord } from "../shared/util.ts";
 import { archivePointer, fullTextIn, TLDR_HEADING, TOPICS_LABEL } from "./archive.ts";
 import { recordCompactionNote } from "./record.ts";
 import {
@@ -31,7 +33,7 @@ import { sharedSummary } from "./shared-summary.ts";
  * the work stopped. Octocode gives a hook no way to add to its prompt, so Octocode writes the summary itself: on the
  * session's own model as a request the prompt cache already holds (`shared-summary.ts`), else (a downshift, blocked
  * images, any failure) through Octocode's exported `compact()` (same cut point, split-turn handling, iterative update of the
- * previous summary and file lists), with this add-on joined to the user's `/compact` instructions in both. Code, not the model, then appends the files Octocode saved from the summarized results
+ * previous summary and file lists), with the same built-in focus in both. Code, not the model, then appends the files Octocode saved from the summarized results
  * (`saved-results.ts`, carried like the file lists), the user's messages word for word (newest first within a budget, carried across
  * compactions), and the transcript that still holds every detail. Any failure returns nothing, and Octocode writes its default summary.
  * (Octocode's default summary has none of these additions.)
@@ -39,7 +41,7 @@ import { sharedSummary } from "./shared-summary.ts";
 
 /** The user's own messages kept after the summary, newest first, up to about 15k tokens in all (their words are the one record the summary cannot rebuild)... */
 export const USER_MESSAGES_CHARS = 60_000;
-/** ...each cut in the middle beyond this (a pasted log must not take the whole budget), with a note where the whole message is (its archive segment, else the transcript). */
+/** A larger message moves whole to a persisted checkpoint reference instead of being cut. */
 export const USER_MESSAGE_CHARS = 6_000;
 
 /**
@@ -81,11 +83,6 @@ ${TLDR_HEADING}
 One or two lines on what the messages above did (only those, not the earlier summary), then a line "${TOPICS_LABEL} " with 3 to 8 comma-separated keywords. An index of the conversation's history uses it as this stretch's label.
 
 Everywhere, keep file paths, symbols, commands, error strings, URLs and identifiers exact. When updating a previous summary, keep the entries of these sections and add the new ones (except ${TLDR_HEADING}: write it afresh for the messages above); newer messages win where they contradict, resolve or supersede it. Write only what the messages show; never guess.`;
-
-/** The instructions passed to `compact()`: the user's own first, then the add-on. */
-export function summaryInstructions(custom: string | undefined): string {
-	return custom?.trim() ? `${custom.trim()}\n\n${SUMMARY_FOCUS}` : SUMMARY_FOCUS;
-}
 
 /**
  * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
@@ -164,40 +161,35 @@ export function userText(message: unknown): string | undefined {
 		: text.replace(SKILL_BLOCK, (_, name: string, location: string) => `[skill ${name} loaded from ${location}]`);
 }
 
-/** One message cut in the middle to `max` characters, with a note where it is whole (`segment`: its archive segment, if one is written). */
-function cutMessage(text: string, max: number, segment: number | undefined): string {
-	if (text.length <= max) return text;
-	const half = Math.floor(max / 2);
-	const head = cutText(text, half, { chars: true });
-	const tail = cutText(text, half, { chars: true, tail: true });
-	return `${head}\n[… ${text.length - head.length - tail.length} characters of this message are left out here; ${fullTextIn(segment)} has it whole]\n${tail}`;
+type SaveText = (text: string) => string | undefined;
+
+function savedReference(text: string, save: SaveText): string {
+	const file = save(text);
+	if (!file) throw new CheckpointPersistenceError("Cannot persist complete compaction content.");
+	return `[Complete text saved at ${file}; search it and read only relevant bounded line ranges for the original content.]`;
 }
 
-/**
- * The user-messages section: earlier kept messages then the new ones, the newest kept first while they fit
- * `USER_MESSAGES_CHARS`, each cut to `USER_MESSAGE_CHARS`. Empty when there are none.
- */
+/** Keep whole messages or a reference to their complete persisted text, including inherited messages. */
 export function userMessagesSection(
 	earlier: readonly string[],
 	omittedBefore: number,
 	added: readonly string[],
 	budget = { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS },
 	segment?: number,
+	save: SaveText = (text) => saveFullOutput(text, "checkpoint-user-messages"),
 ): string {
-	const all = [...earlier, ...added.map((text) => cutMessage(inertUserText(text), budget.perMessage, segment))];
-	const kept: string[] = [];
-	let used = 0;
-	for (let index = all.length - 1; index >= 0; index--) {
-		const text = all[index]!;
-		if (used + text.length > budget.total && kept.length > 0) break;
-		kept.unshift(text);
-		used += text.length;
-	}
-	const omitted = omittedBefore + all.length - kept.length;
-	if (kept.length === 0) return "";
-	const note =
-		omitted > 0 ? `\nEarlier user messages not kept here: ${omitted} (${fullTextIn(segment, true)} has them).` : "";
-	return `\n\n${USER_HEADING}${note}\n${kept.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`;
+	const all = [...earlier, ...added.map(inertUserText)];
+	if (all.length === 0) return "";
+	const render = (messages: readonly string[], omitted: number) => {
+		const note = omitted > 0 ? `\nEarlier user messages not kept here: ${omitted} (${fullTextIn(segment, true)} has them).` : "";
+		return `\n\n${USER_HEADING}${note}\n${messages.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n")}`;
+	};
+	const whole = render(all, omittedBefore);
+	if (whole.length <= budget.total && all.every((message) => message.length <= budget.perMessage)) return whole;
+	const reference = savedReference(whole, save);
+	const section = render([reference], omittedBefore);
+	if (section.length > budget.total) throw new CheckpointPersistenceError("The user-message budget cannot hold a complete-text reference.");
+	return section;
 }
 
 /**
@@ -216,30 +208,23 @@ export function carryFileLists(
 	for (const file of strings(previous.details.modifiedFiles)) preparation.fileOps.edited.add(file);
 }
 
-/** Octocode shows the summarizer only the first 2,000 characters of each tool result (`TOOL_RESULT_MAX_CHARS`). */
+/** Longer tool results are saved whole and represented by a bounded reference for the standalone summarizer. */
 export const SUMMARIZER_RESULT_CHARS = 2_000;
-/** Of those, a long result keeps this much of its head; the rest of the room goes to its tail. */
-const SUMMARIZER_HEAD_CHARS = 1_000;
-
-/**
- * The messages as the summarizer should read them: a tool result longer than Octocode's cut keeps its head and its tail
- * (where a test run, build or stack trace puts its errors and verdict) within that cut, instead of the head alone.
- * Copies; the session's messages are never changed.
- */
-export function summarizerView<T>(messages: readonly T[], segment?: number): T[] {
+/** Save complete long tool results before replacing them with a summarizer reference. */
+export function summarizerView<T>(
+	messages: readonly T[],
+	_segment?: number,
+	save: SaveText = (text) => saveFullOutput(text, "checkpoint-tool-result"),
+): T[] {
 	return messages.map((message) => {
 		if (!isRecord(message) || message.role !== "toolResult" || !Array.isArray(message.content)) return message;
 		const content = message.content as unknown[];
 		const text = contentText(content);
 		if (text.length <= SUMMARIZER_RESULT_CHARS) return message;
-		const gap = (left: number) =>
-			`\n[… ${left} characters in the middle left out for the summary; ${fullTextIn(segment)} has them]\n`;
-		const room = SUMMARIZER_RESULT_CHARS - SUMMARIZER_HEAD_CHARS - gap(text.length).length;
-		const head = cutText(text, SUMMARIZER_HEAD_CHARS, { chars: true });
-		const tail = cutText(text, room, { chars: true, tail: true });
-		const kept = `${head}${gap(text.length - head.length - tail.length)}${tail}`;
+		const reference = savedReference(text, save);
+		if (reference.length > SUMMARIZER_RESULT_CHARS) throw new CheckpointPersistenceError("The summarizer budget cannot hold a complete-text reference.");
 		const others = content.filter((part) => !(isRecord(part) && part.type === "text"));
-		return { ...message, content: [{ type: "text", text: kept }, ...others] } as T;
+		return { ...message, content: [{ type: "text", text: reference }, ...others] } as T;
 	});
 }
 
@@ -271,11 +256,11 @@ export function summaryMethodOf(details: unknown): string | undefined {
 
 /** Octocode's compaction result, or undefined to let Octocode write its default summary (the reason is recorded in the session). */
 export async function writeSummary(
-	pi: Pick<ExtensionAPI, "getThinkingLevel" | "getActiveTools" | "getSettings" | "appendEntry">,
+	pi: Pick<ExtensionAPI, "getThinkingLevel" | "getActiveTools" | "getSettings" | "appendEntry" | "createUsageRecorder">,
 	event: SessionBeforeCompactEvent,
 	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
-): Promise<SessionBeforeCompactResult | undefined> {
+): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
 	if (event.signal.aborted) return undefined;
@@ -285,18 +270,27 @@ export async function writeSummary(
 	}
 	try {
 		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
-		const stream = (request: typeof model, context: Context, options?: SimpleStreamOptions) =>
-			ctx.modelRegistry.streamSimple(request, context, options);
-		const instructions = summaryInstructions(event.customInstructions);
+		const recordUsage = pi.createUsageRecorder("compaction_attempt");
+		const stream = (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
+			const response = ctx.modelRegistry.streamSimple(request, context, options);
+			const result = response.result().then((message) => {
+				recordUsage(message);
+				return message;
+			});
+			response.result = () => result;
+			return response;
+		};
+		const instructions = SUMMARY_FOCUS;
 		// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
 		const segment = nextSegment();
+		const saveText = (text: string) => persistCheckpointText(text, ctx.sessionManager.getSessionFile());
 		// The model updates only its own part of the previous summary; code carries the user messages and the note.
 		const previous =
 			event.preparation.previousSummary === undefined ? undefined : splitSummary(event.preparation.previousSummary);
 		const preparation = {
 			...event.preparation,
-			messagesToSummarize: summarizerView(event.preparation.messagesToSummarize, segment),
-			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment),
+			messagesToSummarize: summarizerView(event.preparation.messagesToSummarize, segment, saveText),
+			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment, saveText),
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
 		};
 		// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
@@ -310,7 +304,7 @@ export async function writeSummary(
 				? await sharedSummary(pi, event, ctx, model, instructions, (reason, userChoice) => {
 						fallback = reason;
 						if (!userChoice) notifyStandalone(ctx, reason);
-					})
+					}, recordUsage)
 				: undefined;
 		const result =
 			shared ??
@@ -341,6 +335,7 @@ export async function writeSummary(
 			added,
 			{ total, perMessage: Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4))) },
 			segment,
+			saveText,
 		);
 		const note = transcriptNote(
 			ctx.sessionManager.getSessionFile(),
@@ -361,11 +356,17 @@ export async function writeSummary(
 		return {
 			compaction: {
 				...result,
+				usage: undefined,
 				summary: `${withoutModelSavedResults(result.summary)}${savedResultsBlock(saved)}${messages}${note}`,
 				details,
 			},
 		};
 	} catch (error) {
+		if (error instanceof CheckpointPersistenceError || error instanceof UsagePersistenceError) {
+			recordCompactionNote(pi, "checkpoint-not-saved", error.message);
+			if (ctx.hasUI) notify(ctx.ui, error.message, "error");
+			return { cancel: true };
+		}
 		if (event.signal.aborted) return undefined;
 		recordCompactionNote(pi, "default-summary", `Octocode's compaction summary failed (${errorMessage(error)})`);
 		if (ctx.hasUI)

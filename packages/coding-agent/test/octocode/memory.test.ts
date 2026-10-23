@@ -665,7 +665,7 @@ describe("memory auto-injection", () => {
 	});
 });
 
-describe("/octocode memory", () => {
+describe("/memory", () => {
 	const setup = () => {
 		const fake = fakePi();
 		const commands = new Subcommands();
@@ -845,7 +845,7 @@ describe("memory BM25 relevance eval", () => {
 			{
 				title: "Project config loads only when trusted",
 				keywords: "security mcp hooks untrusted",
-				body: "Project MCP files, hooks and skills need /octocode trust first.",
+				body: "Project MCP files, hooks and skills need /trust first.",
 				kind: "decision",
 			},
 		],
@@ -880,7 +880,7 @@ describe("memory BM25 relevance eval", () => {
 			{
 				title: "Browser tool needs Chrome with DevTools",
 				keywords: "cdp chromium headless screenshot",
-				body: "The browser tool drives Chrome over the DevTools protocol; headless unless webLive.",
+				body: "The browser tool drives Chrome over the DevTools protocol; headless unless headless=false.",
 			},
 		],
 		[

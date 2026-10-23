@@ -1,6 +1,8 @@
 # @octocodeai/octocode-telemetry
 
-Vendor-neutral telemetry contracts and typed schema utilities for pi packages.
+Vendor-neutral telemetry contracts and typed schema utilities for Octocode packages.
+
+This library supplies contracts and implementations; the host chooses what to collect and export. Coding-agent preferences and environment overrides are documented in [CONFIGURATIONS.md](../../CONFIGURATIONS.md) and [environment variables](../coding-agent/docs/environment-variables.md).
 
 This package provides:
 
@@ -12,7 +14,7 @@ This package provides:
 - serializable schema definitions with inferred TypeScript types;
 - no exporter, global current-span state, or dependency on a telemetry backend.
 
-Applications can use the in-memory reference or provide an adapter for OpenTelemetry, Sentry, logs, or another backend. Pi packages pass telemetry contexts explicitly and define their domain schemas separately.
+Applications can use the in-memory reference or provide an adapter for OpenTelemetry, Sentry, logs, or another backend. Octocode packages pass telemetry contexts explicitly and define their domain schemas separately.
 
 ## Table of Contents
 
@@ -29,7 +31,7 @@ Applications can use the in-memory reference or provide an adapter for OpenTelem
 - [Typed Schemas](#typed-schemas)
   - [Start and Completion Attributes](#start-and-completion-attributes)
 - [Schema Metadata](#schema-metadata)
-- [Pi Package Integration](#pi-package-integration)
+- [Package integration](#package-integration)
 - [Security and Portability](#security-and-portability)
 - [API Reference](#api-reference)
 - [Development](#development)
@@ -68,7 +70,7 @@ A span is diagnostic data, not business state. An adapter translates these gener
 
 ## Core Context API
 
-A `TelemetryContext` starts a span around a callback. The callback receives a `TelemetrySpan`, which is also the explicit parent context for child spans. Contexts optionally expose their adapter's `metrics?: TelemetryMetrics` and `propagation?: TelemetryPropagation` capabilities; child spans and extracted parents carry the same capabilities. A `TelemetryContext` adapter starts root spans; hosts retain this adapter. Invocation contexts and pi-ai request options carry a `TelemetrySpan`, never the adapter. A tracing adapter that only implements `startSpan()` is still valid.
+A `TelemetryContext` starts a span around a callback. The callback receives a `TelemetrySpan`, which is also the explicit parent context for child spans. Contexts optionally expose their adapter's `metrics?: TelemetryMetrics` and `propagation?: TelemetryPropagation` capabilities; child spans and extracted parents carry the same capabilities. A `TelemetryContext` adapter starts root spans; hosts retain this adapter. Invocation contexts and octocode-ai request options carry a `TelemetrySpan`, never the adapter. A tracing adapter that only implements `startSpan()` is still valid.
 
 ```typescript
 import {
@@ -136,7 +138,7 @@ The callback and recording contract is:
 - make recording methods synchronous;
 - ignore calls made after settlement.
 
-Adapters may activate backend-native ambient context internally for automatic instrumentation, but pi code always propagates the parent through `TelemetryContext` arguments. Exporter buffering, flushing, sampling, backend IDs, and backend-specific context objects belong to the adapter. Use the [adapter conformance suite](#adapter-conformance) to check these observable semantics.
+Adapters may activate backend-native ambient context internally for automatic instrumentation, but Octocode code always propagates the parent through `TelemetryContext` arguments. Exporter buffering, flushing, sampling, backend IDs, and backend-specific context objects belong to the adapter. Use the [adapter conformance suite](#adapter-conformance) to check these observable semantics.
 
 ## Propagation and Span Links
 
@@ -286,7 +288,7 @@ The adapter is safe to use as an ordinary `TelemetryContext`, but storage is unb
 
 ## Stored Telemetry
 
-`TelemetryStore` separates querying from recording. Both `InMemoryTelemetryContext` and `@earendil-works/chord/telemetry-sqlite` implement it:
+`TelemetryStore` separates querying from recording. `InMemoryTelemetryContext` implements it:
 
 - `findTraces(query?)` returns complete locally stored traces, newest trace start first. Filters include the earliest stored span's `name`, inclusive `startMin`/`startMax`, `errors: true`, and scalar `attributes`. All requested attributes must match one span, anywhere in the trace. Pages default to 20 traces; pass the returned opaque `cursor` with the same filters to continue. Equal start times are ordered by trace ID.
 - `getTrace(traceId)` returns a trace or `undefined`.
@@ -494,21 +496,19 @@ Parent metadata is descriptive schema data:
 
 Adapters do not need to understand schema objects. Instrumentation helpers and tests use them to keep emitted names and attributes consistent.
 
-## Pi Package Integration
+## Package integration
 
 Package ownership is intentionally split:
 
 - `@octocodeai/octocode-telemetry` owns the vendor-neutral contract, no-op and in-memory reference contexts, schema utilities, and adapter conformance suite;
 - `@octocodeai/octocode-ai` accepts a parent `TelemetrySpan` through `telemetry` in provider request options and exports `AI_TELEMETRY_SCHEMA` from its root and `./models` entry points;
-- `@earendil-works/pi-durable` exports `DURABLE_TELEMETRY_SCHEMA` for short task-handler and submission spans, events, and metrics;
 - `@octocodeai/octocode-agent-core` retains its existing agent-loop and session instrumentation and schemas.
 
 ```typescript
 import { AI_TELEMETRY_SCHEMA } from '@octocodeai/octocode-ai/models';
-import { DURABLE_TELEMETRY_SCHEMA } from '@earendil-works/pi-durable';
 ```
 
-The AI and Durable schemas use pi-owned `pi.ai.*` and `pi.durable.*` names. Adapters may translate them to backend conventions without changing the emitted pi vocabulary.
+The AI schema uses `pi.ai.*` names, kept from the upstream project. Adapters may translate them to backend conventions without changing the emitted vocabulary.
 
 ## Security and Portability
 

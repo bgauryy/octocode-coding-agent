@@ -18,7 +18,7 @@ const EXTENSIONS_DOC_URL = "https://github.com/bgauryy/octocodecode/blob/main/pa
  *
  * @returns Array of provider names that were migrated
  */
-export function migrateAuthToAuthJson(): string[] {
+function migrateAuthToAuthJson(): string[] {
 	const agentDir = getAgentDir();
 	const authPath = join(agentDir, "auth.json");
 	const oauthPath = join(agentDir, "oauth.json");
@@ -88,10 +88,8 @@ export function migrateAuthToAuthJson(): string[] {
  * Bug in v0.30.0: Sessions were saved to ~/.octocode/agent/ instead of
  * ~/.octocode/agent/sessions/<encoded-cwd>/. This migration moves them
  * to the correct location based on the cwd in their session header.
- *
- * See: https://github.com/earendil-works/pi-mono/issues/320
  */
-export function migrateSessionsFromAgentRoot(): void {
+function migrateSessionsFromAgentRoot(): void {
 	const agentDir = getAgentDir();
 
 	// Find all .jsonl files directly in agentDir (not in subdirectories)

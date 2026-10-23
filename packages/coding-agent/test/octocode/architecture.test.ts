@@ -56,6 +56,7 @@ const ALLOWED: Record<string, string[]> = {
 	agentdb: ["shared"],
 	sessions: ["shared", "agentdb", "files", "subagents"],
 	backlog: ["shared", "agentdb"],
+	workspace: ["shared", "agentdb", "backlog", "team", "subagents"],
 	memory: ["shared", "agentdb", "permission"],
 	permission: ["shared"],
 };
@@ -182,7 +183,7 @@ describe("source layout", () => {
 			const src = path.join(packagesDir, entry.name, "src");
 			if (!fs.existsSync(src)) return [];
 			return walk(src)
-				.filter((file) => /['"]@earendil-works\/pi-/.test(fs.readFileSync(file, "utf8")))
+				.filter((file) => /['"](?:octocode|octocode-mcp|@octocodeai\/octocode-native)['"/]/.test(fs.readFileSync(file, "utf8")))
 				.map((file) => path.relative(packagesDir, file));
 		});
 		expect(offenders).toEqual([]);

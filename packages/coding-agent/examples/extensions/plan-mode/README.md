@@ -1,11 +1,11 @@
 # Plan Mode Extension
 
-Read-only exploration mode for safe code analysis.
+This regression fixture demonstrates plan extraction, tool selection and progress widgets through the extension API. It disables the older core `edit` and `write` tools and filters calls to `bash`. Other tools stay active, including native `file` and MCP tools, so this fixture does not enforce a session-wide read-only boundary.
 
 ## Features
 
 - **Built-in write tools disabled**: Disables edit/write while preserving other active tools
-- **Bash allowlist**: Only read-only bash commands are allowed
+- **Bash allowlist**: Filters shell commands using the fixture's command matcher
 - **Plan extraction**: Extracts numbered steps from `Plan:` sections
 - **Progress tracking**: Widget shows completion status during execution
 - **[DONE:n] markers**: Explicit step completion tracking
@@ -36,11 +36,11 @@ Plan:
 
 ## How It Works
 
-### Plan Mode (Read-Only)
+### Plan Mode
 - Built-in edit/write tools disabled
 - Other active tools remain available
 - Bash commands filtered through allowlist
-- Agent creates a plan without making changes
+- Agent is instructed to produce a plan; the tool filter only covers the tools listed above
 
 ### Execution Mode
 - Full tool access restored
@@ -50,7 +50,7 @@ Plan:
 
 ### Command Allowlist
 
-Safe commands (allowed):
+Commands recognized by the allowlist:
 - File inspection: `cat`, `head`, `tail`, `less`, `more`
 - Search: `grep`, `find`, `rg`, `fd`
 - Directory: `ls`, `pwd`, `tree`

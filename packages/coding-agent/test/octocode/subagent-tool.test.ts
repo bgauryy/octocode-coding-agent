@@ -1,3 +1,5 @@
+import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
+import { loadSkills } from "../../src/core/skills.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -70,11 +72,11 @@ const profiles = new Map<string, AgentProfile>([
 			description: "reads",
 			prompt: "Research only.",
 			tools: "read,bash",
-			excludeTools: "file",
+			excludeTools: "browser",
 			model: "faux/model",
 		},
 	],
-	["webLive", { name: "webLive", description: "browser", prompt: "Drive the browser.", visibleBrowser: true }],
+	["browser", { name: "browser", description: "browser", prompt: "Drive the browser.", tools: "browser,web", headless: true }],
 ]);
 
 /** Why profile files were refused when the profiles loaded, by file name (as `index.ts` collects them from `onSkip`). */
@@ -93,7 +95,7 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	// As index.ts wires it: `/octocode agents`, with the `/agents` shortcut.
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
-	commands.alias(f.pi, "agents");
+	commands.register(f.pi);
 	const ctx = fakeCtx({ cwd, hasUI });
 	// The parent's models: `faux/model` is the session's, `faux/other` and `alt/shared` are also available.
 	const models = [
@@ -165,6 +167,25 @@ describe("agent tool with a scripted pi child", () => {
 	beforeEach(() => {
 		s = setup();
 	});
+	it("inherits the parent's skill files without rediscovery and rejects unknown selections before spawning", async () => {
+		const file = path.join(tmp(), "SKILL.md");
+		fs.writeFileSync(file, "---\nname: release\ndescription: Release notes\n---\nUse the house format.");
+		s.pi.getCommands = () => [{ name: "release", source: "skill", sourceInfo: {
+			path: file, source: "test", scope: "temporary", origin: "top-level",
+		} }];
+		s.pi.getSkillResourceSnapshot = (names) => captureSkillResourceSnapshot(loadSkills({cwd:s.ctx.cwd,agentDir:tmp(),skillPaths:[file],includeDefaults:false}), names, s.pi.getCommands());
+		const inherited = reportOf((await s.run({ task: "report back" })).content[0].text);
+		expect(inherited.args).toContain("--no-skills");
+		expect(inherited.args).not.toContain("--skill");
+		expect(inherited.skillResources.resources).toEqual([expect.objectContaining({visible:true,canonicalPath:fs.realpathSync(file),skill:expect.objectContaining({name:"release"})})]);
+		expect(fs.existsSync(inherited.skillSnapshotFile)).toBe(false);
+		const empty = reportOf((await s.run({ task: "report back", skills: [] })).content[0].text);
+		expect(empty.args).toContain("--no-skills");
+		expect(empty.args).not.toContain("--skill");
+		expect(empty.skillResources.resources).toEqual([]);
+		expect(fs.existsSync(empty.skillSnapshotFile)).toBe(false);
+		await expect(s.run({ task: "report back", skills: ["missing"] })).rejects.toThrow(/Unknown or ambiguous/);
+	});
 
 	it("runs a foreground subagent, streams progress and returns its final answer", async () => {
 		const updates: Array<{
@@ -198,9 +219,9 @@ describe("agent tool with a scripted pi child", () => {
 				"--model",
 				"faux/model",
 				"--tools",
-				"read,bash",
+				"read,bash,file,agent,archive,tool_search,mcp__*",
 				"--exclude-tools",
-				"file,edit,write",
+				"browser",
 			]),
 		);
 		expect(text).toContain("(Last screenshot: ");
@@ -213,6 +234,7 @@ describe("agent tool with a scripted pi child", () => {
 			cost: 0.01,
 			unpriced: false,
 			model: "faux/model",
+			firstTurnTokens: 100,
 		});
 		// The child's own facts ride in its task (after the task text), not in its system prompt.
 		expect(facts.task).toBe(
@@ -302,7 +324,9 @@ describe("agent tool with a scripted pi child", () => {
 	});
 
 	it("reports a failed child, a provider error with its partial answer, and an empty answer", async () => {
-		await expect(s.run({ task: "fail now" })).rejects.toThrow(/Subagent exited with code 3: boom/);
+		await expect(s.run({ task: "fail now" })).rejects.toThrow(
+			/Subagent failed \(startup\): exited with code 3 before its first model turn: boom\nFull stderr: .*stderr\.txt/,
+		);
 		await expect(s.run({ task: "narrate then crash" })).rejects.toThrow(
 			/Subagent exited with code 3: segfault\nLast progress: Let me look at src\/a\.ts/,
 		);
@@ -321,6 +345,26 @@ describe("agent tool with a scripted pi child", () => {
 		expect(limited.content[0].text).toContain("Partial answer:\nunfinished findings");
 		const silent = await s.run({ task: "silent run" });
 		expect(silent.content[0].text).toBe("(subagent returned no text)");
+	});
+
+	it("passes the browser mode to each child without changing the shared profile or role instructions", async () => {
+		const facts = [];
+		for (const headless of [undefined, false, true]) {
+			facts.push(reportOf((await s.run({ task: "report back", profile: "browser", ...(headless === undefined ? {} : { headless }) })).content[0].text as string));
+		}
+		for (const [index, child] of facts.entries()) {
+			expect(child.browserVisible).toBe(index === 1 ? "1" : undefined);
+			expect(child.task).toContain(`Browser mode: headless=${index !== 1}.`);
+			expect(child.rolePrompt).toBe("Drive the browser.");
+			expect(child.rolePromptFile).toBe(facts[0].rolePromptFile);
+			expect(child.args[child.args.indexOf("--tools") + 1]).toBe(facts[0].args[facts[0].args.indexOf("--tools") + 1]);
+		}
+		expect(profiles.get("browser")!.headless).toBe(true);
+	});
+
+	it("rejects a browser mode on a non-browser profile before starting a child", async () => {
+		for (const profile of [undefined, "researcher"])
+			await expect(s.run({ task: "report back", profile, headless: false })).rejects.toThrow(/headless requires a browser-enabled profile/);
 	});
 
 	it("names the parent's archive library in the child's task, once the parent has one, and not before", async () => {
@@ -354,12 +398,12 @@ describe("agent tool with a scripted pi child", () => {
 			expect(withLibrary.task.startsWith("report back\n\n## You\nYour name is")).toBe(true);
 			expect(withLibrary.task.endsWith(earlier)).toBe(true);
 			expect(withLibrary.args.join(" ")).not.toContain(library);
-			// Every child keeps the archive tool (a core tool), so a profile without MCP servers gets the same line.
-			profiles.set("offline", { name: "offline", description: "no MCP", prompt: "No servers.", mcp: false });
-			const offline = reportOf((await s.run({ task: "report back", profile: "offline" })).content[0].text as string);
+			// Every child keeps archive, even when its explicit allowlist only names web.
+			profiles.set("restricted", { name: "restricted", description: "web", prompt: "Fetch pages.", tools: "web" });
+			const offline = reportOf((await s.run({ task: "report back", profile: "restricted" })).content[0].text as string);
 			expect(line(offline.task)).toEqual([earlier]);
 		} finally {
-			profiles.delete("offline");
+			profiles.delete("restricted");
 			if (savedHome === undefined) delete process.env.OCTOCODE_HOME;
 			else process.env.OCTOCODE_HOME = savedHome;
 		}
@@ -380,7 +424,7 @@ describe("agent tool with a scripted pi child", () => {
 
 	it("shows terminal escapes and bidi controls in the child's report, error and stderr as visible escapes", async () => {
 		await expect(s.run({ task: "hostile fail" })).rejects.toThrow(
-			"Subagent exited with code 3: \\u{1b}]0;pwned\\u{7}boom\\u{1b}[31m red\\u{202e}",
+			"before its first model turn: \\u{1b}]0;pwned\\u{7}boom\\u{1b}[31m red\\u{202e}",
 		);
 		const error = (await s.run({ task: "hostile report" })).content[0].text as string;
 		expect(error).toContain(
@@ -415,11 +459,11 @@ describe("agent tool with a scripted pi child", () => {
 	it("names why a profile was refused at load when the unknown profile is that one", async () => {
 		refused.set(
 			"blind",
-			'Profile "blind" removes sendMessage with excludeTools. Remove it from the profile\'s excludeTools.',
+			'Profile "blind" removes agent with excludeTools. Remove it from the profile\'s excludeTools.',
 		);
 		try {
 			await expect(s.run({ task: "x", profile: "blind" })).rejects.toThrow(
-				/Unknown profile "blind"\. Available: researcher, webLive\n"blind" was refused when profiles loaded: Profile "blind" removes sendMessage/,
+				/Unknown profile "blind"\. Available: researcher, browser\n"blind" was refused when profiles loaded: Profile "blind" removes agent/,
 			);
 			// A name that was never a profile file gets no reason.
 			await expect(s.run({ task: "x", profile: "nope" })).rejects.not.toThrow(/refused/);
@@ -430,7 +474,7 @@ describe("agent tool with a scripted pi child", () => {
 
 	it("refuses unknown profiles and makes runs over the limit wait for a slot", async () => {
 		await expect(s.run({ task: "x", profile: "nope" })).rejects.toThrow(
-			/Unknown profile "nope". Available: researcher, webLive/,
+			/Unknown profile "nope". Available: researcher, browser/,
 		);
 		process.env[MAX_SUBAGENTS_ENV] = "1";
 		try {
@@ -464,6 +508,19 @@ describe("agent tool with a scripted pi child", () => {
 			delete process.env[MAX_SUBAGENTS_ENV];
 		}
 		await expect(s.run({ task: "report" })).resolves.toMatchObject({ details: { status: "done" } });
+	});
+
+	it("reports a background child that crashed while starting as failed (startup), with its cause in the details", async () => {
+		await s.run({ task: "startup plain", background: true });
+		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
+		const report = s.sent.at(-1)!.message;
+		expect(report.content).toContain("Subagent failed (startup): exited with code 2 before its first model turn");
+		expect(report.details).toMatchObject({
+			outcome: "failed",
+			startup: { failed: true, cause: "No API key for provider" },
+		});
+		expect(report.details).not.toHaveProperty("firstTurnTokens");
+		s.sent.length = 0;
 	});
 
 	it("runs in the background, delivers the answer as a message, and /agents kill stops one", async () => {
@@ -740,7 +797,7 @@ describe("isolated subagents and /agents merge", () => {
 		await vi.waitFor(() => expect(s.sent.at(-1)?.message.content).toMatch(/finished[\s\S]*changed no files/), {
 			timeout: 15_000,
 		});
-		await expect(s.run({ task: "fail isolated", isolate: true })).rejects.toThrow(/Subagent exited with code 3/);
+		await expect(s.run({ task: "fail isolated", isolate: true })).rejects.toThrow(/Subagent failed \(startup\): exited with code 3/);
 		await s.emit("session_start", {}, s.ctx);
 	}, 60_000);
 });
@@ -1017,6 +1074,17 @@ describe("runSubagent", () => {
 		expect(outcome.usage.input).toBe(100);
 	});
 
+	it("propagates the latest outcome to foreground and background results", async () => {
+		const s = setup();
+		const foreground = await s.run({ task: "changed outcome" });
+		expect(foreground.details.outcome).toBe("blocked");
+		expect(foreground.content[0].text).toMatch(/^Subagent \S+ reported blocked:/);
+		await s.run({ task: "changed outcome", background: true });
+		await vi.waitFor(() => expect(s.sent).toHaveLength(1), { timeout: 10_000 });
+		expect(s.sent[0]!.message.details.outcome).toBe("blocked");
+		expect(s.sent[0]!.message.content).toContain("reported blocked");
+	});
+
 	it("keeps the report when a late notice wakes the child after it answered", async () => {
 		const outcome = await runSubagent(
 			"late notice",
@@ -1031,7 +1099,7 @@ describe("runSubagent", () => {
 		expect(outcome.error).toBeUndefined();
 	});
 
-	it("reports a run done when only a follow-up turn after its answer failed", async () => {
+	it("propagates a failed follow-up while preserving the prior report", async () => {
 		const outcome = await runSubagent(
 			"late failure",
 			[],
@@ -1042,7 +1110,7 @@ describe("runSubagent", () => {
 			() => undefined,
 		);
 		expect(outcome.text).toBe("FULL REPORT\n\n---\n\n(A later follow-up turn failed: overloaded)");
-		expect(outcome.error).toBeUndefined();
+		expect(outcome.error).toBe("overloaded");
 	});
 
 	it("never keeps a failed draft as a report section", async () => {

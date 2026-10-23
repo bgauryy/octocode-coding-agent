@@ -1,7 +1,9 @@
+import type { ResultDetails, RunDetails } from "./run-types.ts";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
+import type { ReportStatus } from "../instructions/report.ts";
 import { withIdentity } from "../instructions/task.ts";
 import type { Permission } from "../permission/ask.ts";
 import { existingLibrary } from "../shared/archive.ts";
@@ -16,7 +18,9 @@ import {
 	addReply,
 	emptyTotals,
 	errorMessage,
+	finiteNumber,
 	firstLine,
+	isRecord,
 	type ModelLookup,
 	modelLookup,
 	settleWithin,
@@ -27,7 +31,7 @@ import { checkGoal, GOAL_DESCRIPTION } from "../team/identity.ts";
 import { AgentsView } from "../team/panel.ts";
 import type { Team } from "../team/session.ts";
 import { teamWorkspace } from "../team/store.ts";
-import { type AgentRuns, claimRun, joinTeam, lingerSeconds, maxSubagents, planRun, type Run, Slots } from "./claim.ts";
+import { type AgentRuns, claimRun, joinTeam, maxSubagents, planRun, type Run, Slots } from "./claim.ts";
 import { agentsCommand, type BackgroundRun, stopBackground } from "./command.ts";
 import type { ChildProgress } from "./events.ts";
 import {
@@ -49,6 +53,7 @@ import {
 	childSessionFile,
 	type Identity,
 	runSubagent,
+	StartupError,
 	SUBAGENT_STOP_GRACE_MS,
 	USER_STOP,
 } from "./process.ts";
@@ -62,14 +67,11 @@ import {
 	deniedLabel,
 	doneSummary,
 	noticeLines,
-	type ResultDetails,
-	type RunDetails,
 	renderAgentCall,
 	renderAgentMessage,
 	renderAgentResult,
 	sessionNote,
 } from "./render.ts";
-import { reportStatus } from "./report.ts";
 import { type Shot, saveShot, shotsDir } from "./screenshots.ts";
 import {
 	createWorktree,
@@ -95,7 +97,7 @@ export interface AgentControl {
 	 * `reason`: the shutdown's (`reload`, `quit`…), named in the reports of the runs it stopped.
 	 */
 	stopAll(reason?: string): Promise<void>;
-	/** `/octocode agents`: list agents, tell, kill, merge; `index.ts` registers it and its `/agents` shortcut. */
+	/** `/agents`: list agents, tell, kill, merge; `index.ts` registers it and its `/agents` shortcut. */
 	command: Subcommand;
 }
 
@@ -154,7 +156,10 @@ const spent = new WeakMap<RunDetails, Usage>();
 /** What a background report carries of the run besides its text: its spend (the parent's footer and session index count it), its compactions and notices, its saved conversation, its questions to the parent. */
 const reportFacts = (
 	details: RunDetails,
-): Pick<ResultDetails, "usage" | "unpriced" | "compactions" | "notices" | "session" | "asks"> => {
+): Pick<
+	ResultDetails,
+	"usage" | "unpriced" | "compactions" | "notices" | "session" | "asks" | "firstTurnTokens" | "startup"
+> => {
 	const usage = spent.get(details);
 	return {
 		...(usage ? { usage, unpriced: details.unpriced } : {}),
@@ -162,6 +167,8 @@ const reportFacts = (
 		...(details.notices ? { notices: details.notices } : {}),
 		...(details.session ? { session: details.session } : {}),
 		...(details.asks ? { asks: details.asks } : {}),
+		...(details.firstTurnTokens !== undefined ? { firstTurnTokens: details.firstTurnTokens } : {}),
+		...(details.startup ? { startup: details.startup } : {}),
 	};
 };
 
@@ -172,6 +179,14 @@ const runFooter = (details: RunDetails, failed: boolean): string[] => [
 	asksNote(details.asks),
 	failed ? sessionNote(details) : "",
 ];
+
+/** The prompt tokens (uncached, cache reads and writes) of an assistant reply, when it reports its usage. */
+function replyPromptTokens(reply: Record<string, unknown> | undefined): number | undefined {
+	const usage = reply?.usage;
+	if (!isRecord(usage)) return undefined;
+	const sum = ["input", "cacheRead", "cacheWrite"].reduce((total, key) => total + (finiteNumber(usage[key]) ?? 0), 0);
+	return sum > 0 ? sum : undefined;
+}
 
 /**
  * Progress of a run into `details` (tool lines, usage, the latest screenshot), mirrored to `onUpdate`. A reply from a model
@@ -218,6 +233,8 @@ function tracker(identity: Identity, details: RunDetails, find: ModelLookup) {
 				latest = saveShot(dir, identity.id, shots, image);
 				details.shot = latest.path;
 			}
+			const first = replyPromptTokens(reply);
+			if (first !== undefined && details.firstTurnTokens === undefined) details.firstTurnTokens = first;
 			// `usage` is the run's total so far: the details restart from it. Cached prompt tokens count in ↑.
 			const unpriced = details.unpriced || unpricedModel(reply, find) !== undefined;
 			spent.set(details, usage);
@@ -245,18 +262,24 @@ function tracker(identity: Identity, details: RunDetails, find: ModelLookup) {
  * its questions to the parent with their answers (`asks`: read from the team's messages, so no one has to report them).
  */
 function recordRun<T>(details: RunDetails, session: ChildSession, asks: () => Ask[], run: Promise<T>): Promise<T> {
-	return run.finally(() => {
-		const file = childSessionFile(session);
-		const archive = existingLibrary(session.id);
-		if (file || archive)
-			details.session = {
-				id: session.id,
-				...(file ? { file } : {}),
-				...(archive ? { archive: path.dirname(archive) } : {}),
-			};
-		const questions = asks();
-		if (questions.length > 0) details.asks = questions;
-	});
+	return run
+		.catch((error: unknown) => {
+			if (error instanceof StartupError)
+				details.startup = { failed: true, ...(error.reason ? { cause: error.reason } : {}) };
+			throw error;
+		})
+		.finally(() => {
+			const file = childSessionFile(session);
+			const archive = existingLibrary(session.id);
+			if (file || archive)
+				details.session = {
+					id: session.id,
+					...(file ? { file } : {}),
+					...(archive ? { archive: path.dirname(archive) } : {}),
+				};
+			const questions = asks();
+			if (questions.length > 0) details.asks = questions;
+		});
 }
 
 /** The row of a call waiting for a slot: who it will be, and how many run before it. */
@@ -301,7 +324,7 @@ function startBackground(
 	launch: (signal: AbortSignal) => Promise<Outcome>,
 	finish: () => Promise<string>,
 	piSession: string,
-	linger?: () => string,
+	linger?: (outcome?: ReportStatus) => string,
 ): void {
 	const { background, read } = runs;
 	const { identity } = run;
@@ -326,8 +349,8 @@ function startBackground(
 		try {
 			const outcome = await launch(controller.signal);
 			const note = await finish();
-			// The outcome word the report starts with; a crashed run is failed whatever it said, and a report without the word is unknown.
-			const reported = outcome.error ? "failed" : reportStatus(outcome.text);
+			// The latest report determines the outcome; a failed follow-up overrides earlier success.
+			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
 			const stats = [
 				formatDuration(Date.now() - details.startedAt),
@@ -347,7 +370,7 @@ function startBackground(
 			const next = outcome.error ? `${FAILED_NEXT}${outcome.text ? PARTIAL_UNVERIFIED : ""}` : "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it.
-			const reachable = outcome.error ? "" : (linger?.() ?? "");
+			const reachable = outcome.error ? "" : (linger?.(reported) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
@@ -479,11 +502,15 @@ async function runForeground(
 		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
 	}
 	details.status = "done";
-	const reported = reportStatus(outcome.text);
+	const reported = outcome.outcome;
 	if (reported) details.outcome = reported;
+	const heading = reported ? `Subagent ${identity.id} reported ${reported}:\n` : "";
 	return {
 		content: [
-			{ type: "text" as const, text: `${withShot(details, outcome.text || "(subagent returned no text)")}${note}` },
+			{
+				type: "text" as const,
+				text: `${heading}${withShot(details, outcome.text || "(subagent returned no text)")}${note}`,
+			},
 		],
 		details,
 		usage: outcome.usage,
@@ -496,6 +523,7 @@ export function registerAgentTool(
 	team: Team,
 	permission: Permission,
 	getRefused?: () => ReadonlyMap<string, string>,
+	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
 ): AgentControl {
 	pi.registerMessageRenderer(RESULT_TYPE, renderAgentMessage);
 	// Per registration, not per module: a replaced session starts clean.
@@ -514,7 +542,7 @@ export function registerAgentTool(
 	};
 	const { background } = runs;
 	pi.on("tool_result", async (event, ctx) => {
-		!event.isError && background.size > 0 && runs.read.observe(event.toolName, event.input, ctx.cwd);
+		!event.isError && background.size > 0 && runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
 		return undefined;
 	});
 	// When this session asked the user: an answer the parent gives right after one may be the user's.
@@ -551,7 +579,7 @@ export function registerAgentTool(
 		const details = runDetails(run);
 		const track = tracker(run.identity, details, modelLookup(ctx));
 		const session = childSession(run.identity);
-		const args = buildAgentArgs(run.profile, run.route.model, session);
+		const args = buildAgentArgs(run.profile, run.route.model, session, []);
 		const host = relayHost(ctx);
 		const launch = (signal: AbortSignal) =>
 			record(
@@ -613,6 +641,7 @@ export function registerAgentTool(
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
 		runs.reports.persist();
 		await stopAll(event.reason);
+		runs.reports.persist();
 		// A child still closing keeps its entry (and its slot) until it exits; its report waits for this session's next start.
 		runs.session += 1;
 		lingering.forgetAll();
@@ -621,6 +650,7 @@ export function registerAgentTool(
 	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
 	pi.on("session_start", async (_event, ctx) => {
 		panel.start(ctx);
+		runs.reports.start(ctx.sessionManager);
 		await late.start(ctx.sessionManager.getSessionId());
 		// Off the start path: it lists and deletes directories.
 		const root = scratchRoot(ctx.cwd);
@@ -639,17 +669,19 @@ export function registerAgentTool(
 			// The session may have been replaced meanwhile (/new, /resume): its ctx then throws, and nobody is left to tell.
 			.catch(() => undefined);
 	});
-	pi.registerTool(
+	registerTool(
 		timedTool({
 			name: "agent",
 			label: "Agent",
 			description:
 				"Delegate a self-contained task to a fresh Octocode session that does not inherit this conversation. " +
 				`Foreground calls return the report; background calls return the agent's name and its report arrives later. At most ${maxSubagents()} run at once; a call past that waits for one to finish. ` +
-				"A long report names its full file. Never poll or sleep for a background report. " +
+				"Long reports name their file. Never poll or sleep for reports. " +
 				"A subagent updates only backlog items you claimed: claim one first and name its id in the task.",
 			promptSnippet: "Delegate bounded work to a subagent",
 			parameters: Type.Object({
+				skills: Type.Optional(Type.Array(Type.String(), {
+					description: "Skill command names: omit to inherit the loaded catalog; [] disables skills. Name required workflows in task. Instructions load on demand." })),
 				goal: Type.String({ description: GOAL_DESCRIPTION }),
 				task: Type.String({
 					description:
@@ -660,6 +692,9 @@ export function registerAgentTool(
 						description: "Profile name from the active Profiles list; omit for a general-purpose subagent",
 					}),
 				),
+				headless: Type.Optional(
+					Type.Boolean({ description: "Browser profile: true=headless (default), false=visible Chrome with persistent logins" }),
+				),
 				model: Type.Optional(
 					Type.String({
 						description:
@@ -669,7 +704,7 @@ export function registerAgentTool(
 				background: Type.Optional(
 					Type.Boolean({
 						description:
-							"Return at once for long or parallel work. `sendMessage` redirects it; `coordinate stop` ends it",
+							"Return at once for long or parallel work. `agent` with type `message` redirects it; `agent` with type `coordinate` and action `stop` ends it",
 					}),
 				),
 				collaborate: Type.Optional(
@@ -689,6 +724,7 @@ export function registerAgentTool(
 				const launchSignal = withLaunch(signal);
 				launchSignal.throwIfAborted();
 				const goal = checkGoal(params.goal);
+				const skillResources = pi.getSkillResourceSnapshot(params.skills);
 				// Refusals first (unknown profile, unavailable model), then a slot, then the spawn ask: the user is never asked
 				// for a run that cannot start, and a denied spawn claims and starts nothing.
 				const plan = planRun(getProfiles(), params, ctx, getRefused?.());
@@ -714,6 +750,7 @@ export function registerAgentTool(
 					if (!claimed) runs.slots.give();
 				}
 				const run = claimed;
+				run.identity.skillResources = skillResources;
 				// A child cannot ask anyone: it also gets every kind the user allowed for this session.
 				run.identity.permission = {
 					mode: permission.mode,
@@ -736,14 +773,17 @@ export function registerAgentTool(
 					const warning = `${worktree?.warning ? `\n\n${worktree.warning}` : ""}${run.teamNote}`;
 					const onSpawn = worktree ? (pid: number) => recordWorktreePid(worktree, pid) : undefined;
 					const library = existingLibrary();
-					const own = withIdentity(params.task, run.identity, library ? { library } : undefined);
+					const browserMode = run.profile?.headless;
+					const taskInput =
+						browserMode === undefined ? params.task : `${params.task}\n\nBrowser mode: headless=${browserMode}.`;
+					const own = withIdentity(taskInput, run.identity, library ? { library } : undefined);
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
 					const details = runDetails(run);
 					const track = tracker(run.identity, details, modelLookup(ctx));
 					const session = childSession(run.identity);
-					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up.
-					const lingers = params.background === true && !params.isolate && lingerSeconds() > 0;
-					const args = buildAgentArgs(run.profile, run.route.model, session);
+					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
+					const lingers = params.background === true && !params.isolate;
+					const args = buildAgentArgs(run.profile, run.route.model, session, []);
 					const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined) =>
 						record(
 							run,

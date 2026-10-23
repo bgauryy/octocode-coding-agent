@@ -90,7 +90,7 @@ function textList(memories: readonly Memory[], title: string): string {
 }
 
 /**
- * `/octocode memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto on|off`, `last`. The TUI picks
+ * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto on|off`, `last`. The TUI picks
  * with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
  */
 export function registerMemoryCommand(

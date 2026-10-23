@@ -101,7 +101,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 		if (event.reason !== "manual" && thrash.tripped()) {
 			recordCompactionNote(pi, "thrash-stop", THRASH_MESSAGE);
 			if (ctx.hasUI) notify(ctx.ui, THRASH_MESSAGE, "error");
-			ctx.abort();
+			ctx.abort("internal");
 			return { cancel: true };
 		}
 		archive.capture(event);
@@ -151,7 +151,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	// Switching to a model whose window the context does not fit compacts first, on the previous model: the next
 	// request on the new one would fail, and only the previous model can still read the whole history.
 	pi.on("model_select", async (event, ctx) => {
-		const reserve = reserveTokensFor(pi.getSettings(), event.model);
+		const reserve = reserveTokensFor(event.model);
 		if (
 			!needsDownshiftCompaction(
 				event.previousModel,

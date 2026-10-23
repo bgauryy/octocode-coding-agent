@@ -194,7 +194,7 @@ describe("what the team shows about an agent", () => {
 			"salty-squid",
 			NOW,
 		);
-		expect(cached).toContain("3 tool calls · ↑1.2M (94% cached) ↓35k · cost n/a");
+		expect(cached).toContain("3 tool calls · ↑72k +1.1M cached ↓35k · cost n/a");
 	});
 
 	it("names the sender's role and goal in the header of a message", () => {

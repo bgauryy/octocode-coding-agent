@@ -12,11 +12,11 @@ import { registerActivity } from "../../src/octocode/ui/activity.ts";
 import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
-/** `/agents` as index.ts wires it: an `/octocode` subcommand with a top-level shortcut. */
-function agentsCommand(pi: Parameters<Subcommands["alias"]>[0], control: AgentControl): void {
+/** `/agents` as index.ts wires it: a direct native command. */
+function agentsCommand(pi: Parameters<Subcommands["register"]>[0], control: AgentControl): void {
 	const commands = new Subcommands();
 	commands.add("agents", control.command);
-	commands.alias(pi, "agents");
+	commands.register(pi);
 }
 
 function member(dbFile: string, cwd: string) {
@@ -234,7 +234,7 @@ describe("team tools on a fake Octocode", () => {
 		expect(send.parameters.required).toEqual(["message"]);
 		expect(properties.replyRequired.description).toContain("false (the default)");
 		expect(properties.replyRequired.description).toContain("a request (a question or task you need answered)");
-		expect(send.description).toMatch(/lingers .*resumes with your message/);
+		expect(send.description).toMatch(/lingering child resumes on a message/);
 		expect(send.description).not.toContain("cannot receive");
 	});
 

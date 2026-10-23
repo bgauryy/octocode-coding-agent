@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
@@ -7,6 +8,7 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Permission, sessionOption } from "../../src/octocode/permission/ask.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
 import {
 	type AgentProfile,
@@ -28,29 +30,30 @@ describe("profile selectors against native Octocode tool exposure", () => {
 		{ name: "removed write tool wildcard", fields: { tools: "w*" } },
 		{ name: "removed mutation tools", fields: { tools: "edit,write" } },
 		{ name: "read only allowlist", fields: { tools: "read,grep" } },
+		{ name: "restricted MCP allowlist", fields: { tools: "web,mcp__example__lookup" } },
 		{ name: "empty allowlist", fields: { tools: ", " } },
 		{ name: "empty relative removal", fields: { tools: "-" } },
-		{ name: "wildcard exclusions", fields: { excludeTools: "f*,*sh" } },
-		{ name: "extension tools with relative selectors", fields: { tools: "-file,-bash" } },
+		{ name: "wildcard exclusions", fields: { excludeTools: "web*,*sh" } },
+		{ name: "extension tools with relative selectors", fields: { tools: "-web,-bash" } },
 		{
 			name: "relative child selector with read-only parent defaults",
 			fields: { tools: "-bash" },
 			defaults: ["read"],
 		},
-		{ name: "added native shell", fields: { tools: "+powershell", excludeTools: "file,bash" } },
+		{ name: "added native shell", fields: { tools: "+powershell", excludeTools: "browser,bash" } },
 		{
 			name: "removed configured native shell",
-			fields: { tools: "-powershell", excludeTools: "file,bash" },
+			fields: { tools: "-powershell", excludeTools: "browser,bash" },
 			defaults: ["read", "powershell"],
 		},
-		{ name: "configured native shell", fields: { excludeTools: "file,bash" }, defaults: ["powershell"] },
+		{ name: "configured native shell", fields: { excludeTools: "browser,bash" }, defaults: ["powershell"] },
 		{
 			name: "ordered modifiers",
-			fields: { tools: "+powershell,-powershell,+powershell", excludeTools: "file,bash" },
+			fields: { tools: "+powershell,-powershell,+powershell", excludeTools: "browser,bash" },
 		},
-		{ name: "all excluded", fields: { tools: "*", excludeTools: "*" } },
+		{ name: "optional tools excluded", fields: { tools: "*", excludeTools: "web,browser" } },
 	];
-	for (const name of ["webHeadless", "webLive"]) {
+	for (const name of ["browser", "implementer", "researcher", "reviewer"]) {
 		cases.push({
 			name: `${name} with PowerShell defaults`,
 			fields: loadProfiles(tmp(), tmp(), false, {}).get(name)!,
@@ -72,7 +75,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			}),
 		);
 		const settingsManager = SettingsManager.inMemory({
-			compaction: { enabled: false },
+
 			retry: { enabled: false },
 			...(defaults ? { defaultTools: defaults } : {}),
 		});
@@ -95,21 +98,31 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				resourceLoader,
 				settingsManager,
 				sessionManager: SessionManager.inMemory(cwd),
+				customTools: [...LOCAL_RESEARCH_TOOLS, "mcp__example__lookup", "mcp__other__lookup"].map((name) => ({
+					name, label: name, description: name, defaultActive: false, parameters: Type.Object({}),
+					execute: async () => ({ content: [], details: {} }),
+				})),
 				...(args.tools ? { tools: args.tools } : {}),
 				...(args.excludeTools ? { excludeTools: args.excludeTools } : {}),
 			}));
 			const active = new Set(session.getActiveToolNames());
-			if (fields.name === "webHeadless" || fields.name === "webLive") {
+			expect([...active]).toEqual(expect.arrayContaining(["file", "agent", "archive", ...LOCAL_RESEARCH_TOOLS]));
+			if (fields.tools === "web,mcp__example__lookup") {
+				expect(active.has("mcp__example__lookup")).toBe(true);
+				expect(active.has("mcp__other__lookup")).toBe(false);
+			}
+			if (fields.name === "browser") {
 				expect(active.has("powershell")).toBe(false);
 				expect(active.has("bash")).toBe(false);
-				expect(active.has("file")).toBe(false);
+				expect(active.has("file")).toBe(true);
+				expect(active.has("browser")).toBe(true);
 			}
 			if (
 				(fields.tools === "-bash" || fields.tools === undefined) &&
 				defaults?.length === 1 &&
 				defaults[0] === "read"
 			) {
-				expect([...active]).toEqual(expect.arrayContaining(["read", "sendMessage", "coordinate", "archive"]));
+				expect([...active]).toEqual(expect.arrayContaining(["agent", "archive"]));
 				expect(active.has("bash")).toBe(false);
 			}
 			const nativeReach = [

@@ -140,7 +140,7 @@ describe("AgentSession dynamic tool registration", () => {
 
 		const allTools = session.getAllTools();
 		const dynamicTool = allTools.find((tool) => tool.name === "dynamic_tool");
-		const readTool = allTools.find((tool) => tool.name === "read");
+		const bashTool = allTools.find((tool) => tool.name === "bash");
 
 		expect(allTools.map((tool) => tool.name)).toContain("dynamic_tool");
 		expect(dynamicTool?.promptGuidelines).toEqual([
@@ -152,8 +152,8 @@ describe("AgentSession dynamic tool registration", () => {
 			scope: "temporary",
 			origin: "top-level",
 		});
-		expect(readTool?.sourceInfo).toMatchObject({
-			path: "builtin:read",
+		expect(bashTool?.sourceInfo).toMatchObject({
+			path: "builtin:bash",
 			source: "builtin",
 			scope: "temporary",
 			origin: "top-level",

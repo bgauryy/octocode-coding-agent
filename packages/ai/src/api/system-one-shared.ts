@@ -10,7 +10,7 @@ import { formatProviderError, normalizeProviderError } from "../utils/error-body
 import { isRecord, parseClassifierUsage, postClassifierRequest, requiredNumber } from "./classifier-shared.ts";
 
 /** TypeSafe System One request body without the transport-specific envelope. */
-export interface SystemOneWireRequest {
+interface SystemOneWireRequest {
 	state: ClassifierContext["state"];
 	questions: Record<string, unknown>;
 }

@@ -4,7 +4,9 @@ import { CONFIG_DIR_NAME } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
 import { resolvePath } from "../utils/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
+import { BUILTIN_SLASH_COMMANDS } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
+import { expandClaudeArguments, expandClaudeVariables, type ClaudeVariables } from "./claude-arguments.ts";
 
 /**
  * Represents a prompt template loaded from a markdown file
@@ -13,9 +15,47 @@ export interface PromptTemplate {
 	name: string;
 	description: string;
 	argumentHint?: string;
+	argumentStyle?: "claude";
+	claudePluginRoot?: string;
+	claudePluginData?: string;
+	argumentNames?: string[];
 	content: string;
 	sourceInfo: SourceInfo;
 	filePath: string; // Absolute path to the template file
+}
+
+export interface PromptCommandReservation {
+	name: string;
+	invocationName?: string;
+	aliases?: readonly string[];
+}
+
+export function getPromptCommands(
+	templates: readonly PromptTemplate[],
+	reservedCommands: readonly PromptCommandReservation[] = [],
+) {
+	const reserved = new Set<string>();
+	for (const command of [...BUILTIN_SLASH_COMMANDS, ...reservedCommands] as PromptCommandReservation[]) {
+		reserved.add(command.name);
+		if (command.invocationName) reserved.add(command.invocationName);
+		for (const alias of command.aliases ?? []) {
+			reserved.add(alias);
+			reserved.add(alias.replace(/:\d+$/, ""));
+		}
+	}
+	const counts = new Map<string, number>();
+	for (const template of templates) counts.set(template.name, (counts.get(template.name) ?? 0) + 1);
+	const occupied = new Set([...reserved, ...templates.map((template) => template.name)]);
+	return templates.map((template) => {
+		const base = `prompt:${template.name}`;
+		let qualifiedName = base;
+		let suffix = 1;
+		if (counts.get(template.name)! > 1) qualifiedName = `${base}:${suffix++}`;
+		while (occupied.has(qualifiedName)) qualifiedName = `${base}:${suffix++}`;
+		occupied.add(qualifiedName);
+		const name = reserved.has(template.name) || counts.get(template.name)! > 1 ? qualifiedName : template.name;
+		return { template, name, sourceName: template.name, qualifiedName, aliases: name === qualifiedName ? [] : [qualifiedName] };
+	});
 }
 
 /**
@@ -121,6 +161,17 @@ function loadTemplateFromFile(
 		return { template: null, diagnostics };
 	}
 
+	return parsePromptTemplate(rawContent, filePath, sourceInfo);
+}
+
+/** Parse a prompt resource without executing embedded commands. */
+export function parsePromptTemplate(rawContent: string, filePath: string, sourceInfo: SourceInfo): {
+	template: PromptTemplate | null;
+	diagnostics: ResourceDiagnostic[];
+	frontmatter?: Record<string, unknown>;
+} {
+	const diagnostics: ResourceDiagnostic[] = [];
+
 	let frontmatter: Record<string, unknown>;
 	let body: string;
 	try {
@@ -146,6 +197,7 @@ function loadTemplateFromFile(
 
 	const argumentHint = typeof frontmatter["argument-hint"] === "string" ? frontmatter["argument-hint"] : undefined;
 	return {
+		frontmatter,
 		template: {
 			name,
 			description,
@@ -306,7 +358,12 @@ export function loadPromptTemplates(options: LoadPromptTemplatesOptions): LoadPr
  * Expand a prompt template if it matches a template name.
  * Returns the expanded content or the original text if not a template.
  */
-export function expandPromptTemplate(text: string, templates: PromptTemplate[]): string {
+export function expandPromptTemplate(
+	text: string,
+	templates: PromptTemplate[],
+	reservedCommands: readonly PromptCommandReservation[] = [],
+	variables: ClaudeVariables = {},
+): string {
 	if (!text.startsWith("/")) return text;
 
 	const match = text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
@@ -315,9 +372,11 @@ export function expandPromptTemplate(text: string, templates: PromptTemplate[]):
 	const templateName = match[1];
 	const argsString = match[2] ?? "";
 
-	const template = templates.find((t) => t.name === templateName);
+	const template = getPromptCommands(templates, reservedCommands)
+		.find((command) => command.name === templateName || command.qualifiedName === templateName)?.template;
 	if (template) {
 		const args = parseCommandArgs(argsString);
+		if (template.argumentStyle === "claude") return expandClaudeVariables(expandClaudeArguments(template.content, argsString, args, template.argumentNames), { ...variables, pluginRoot: template.claudePluginRoot, pluginData: template.claudePluginData });
 		return substituteArgs(template.content, args);
 	}
 

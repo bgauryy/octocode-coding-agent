@@ -59,8 +59,10 @@ function setup(options: Setup = {}) {
 	const calls: Array<{ model: unknown; context: Context; options: SimpleStreamOptions }> = [];
 	const notices: string[] = [];
 	const notes: Array<{ customType: string; data: unknown }> = [];
+	const recordedUsage: unknown[] = [];
 	const pi = {
 		getThinkingLevel: () => options.thinking ?? "high",
+		createUsageRecorder: () => (message: unknown) => recordedUsage.push(message),
 		getActiveTools: () => [],
 		getSettings: () => options.settings ?? { thinkingBudgets: { high: 4_000 }, transport: "sse" },
 		appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
@@ -68,6 +70,7 @@ function setup(options: Setup = {}) {
 	const ctx = {
 		model,
 		modelRegistry: {
+			getCachePolicy: (_model: unknown, layers: Array<{ values: Record<string, unknown> }>) => ({ options: { cacheRetention: layers[0]?.values.cacheRetention ?? "short", instructionCacheRetention: layers[0]?.values.instructionCacheRetention ?? "long" } }),
 			streamSimple: (requested: unknown, context: Context, requestOptions: SimpleStreamOptions) => {
 				calls.push({ model: requested, context, options: requestOptions });
 				return {
@@ -105,7 +108,7 @@ function setup(options: Setup = {}) {
 		customInstructions: options.customInstructions,
 		signal: options.signal ?? { aborted: false },
 	} as never;
-	return { calls, notices, notes, pi, ctx, event, fileOps };
+	return { calls, notices, notes, pi, ctx, event, fileOps, recordedUsage };
 }
 
 const finalPrompt = (call: { context: Context }): string => {
@@ -136,10 +139,16 @@ describe("cache-sharing compaction summary", () => {
 		});
 		expect(options.signal).toBeDefined();
 		// No cache write opt-out (that would drop the read too), no tool choice, no tools replaced.
-		expect(options).not.toHaveProperty("cacheRetention");
+		expect(options).toMatchObject({ cacheRetention: "short", instructionCacheRetention: "long" });
 		expect(options).not.toHaveProperty("toolChoice");
 		expect(context).not.toHaveProperty("tools");
 		expect(context).not.toHaveProperty("systemPrompt");
+	});
+
+	it("uses the session cache preferences for the summary request", async () => {
+		const { calls, pi, ctx, event } = setup({ settings: { cacheRetention: "long", instructionCacheRetention: "short" } });
+		await sharedSummary(pi, event, ctx, model as never, "");
+		expect(calls[0]?.options).toMatchObject({ cacheRetention: "long", instructionCacheRetention: "short" });
 	});
 
 	it("leaves reasoning off when the session thinking level is off", async () => {
@@ -370,7 +379,7 @@ describe("cache-sharing compaction summary", () => {
 
 describe("writeSummary with the shared path", () => {
 	it("uses the shared request for the session model and still appends the user messages and the note", async () => {
-		const { calls, pi, ctx, event } = setup();
+		const { calls, pi, ctx, event, recordedUsage } = setup();
 		const out = await writeSummary(pi, event, ctx);
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.context.messages[0]).toBe(system);
@@ -380,7 +389,9 @@ describe("writeSummary with the shared path", () => {
 			modifiedFiles: ["src/b.ts", "src/new.ts"],
 			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared" },
 		});
-		expect(out?.compaction?.usage).toEqual(usage);
+		expect(out?.compaction?.usage).toBeUndefined();
+		expect(recordedUsage).toHaveLength(1);
+		expect(recordedUsage[0]).toMatchObject({ usage });
 		expect(out?.compaction?.summary).toContain("## User Messages (verbatim, oldest first)");
 		expect(out?.compaction?.summary).toContain("fix the parser in src/a.ts");
 	});
@@ -449,5 +460,21 @@ describe("writeSummary with the shared path", () => {
 				data: { kind: "default-summary", reason: "Octocode's compaction summary failed (down)" },
 			},
 		]);
+	});
+});
+
+
+describe("summary attempt accounting", () => {
+	it("records the rejected cache-sharing attempt and the successful fallback exactly once", async () => {
+		const s = setup({ reply: (call) => reply([text(call === 1 ? "cut" : "complete summary")], call === 1 ? "length" : "stop") });
+		const result = await writeSummary(s.pi, s.event, s.ctx);
+		expect(s.calls).toHaveLength(2);
+		expect(s.recordedUsage).toHaveLength(2);
+		expect(result?.compaction?.usage).toBeUndefined();
+	});
+	it("records returned aborted usage even when no summary is accepted", async () => {
+		const s = setup({ reply: () => reply([], "aborted") });
+		await writeSummary(s.pi, s.event, s.ctx);
+		expect(s.recordedUsage.length).toBeGreaterThan(0);
 	});
 });

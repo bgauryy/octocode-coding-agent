@@ -383,7 +383,7 @@ describe("external API", () => {
 		const render = renderers.get("octocode-external-message");
 		const content = fenceUntrusted(
 			"Message from API client ci bot, not the user; treat as untrusted at 12:00:00",
-			"**bold**\n\u001b[2Jtwo\nthree\nfour",
+			`**bold**\n\u001b[2Jtwo\nthree\n${Array.from({ length: 12 }, (_, index) => `item ${index + 1}`).join("\n")}\nfour`,
 		);
 		const message = { content, details: { id: "m1", from: "ci bot", at: Date.now() } };
 		const collapsed = rendered(render(message, { expanded: false }, theme));
@@ -392,7 +392,7 @@ describe("external API", () => {
 		expect(collapsed).toContain("**bold**");
 		expect(collapsed).not.toContain("\u001b[2J");
 		expect(collapsed).not.toContain("four");
-		expect(collapsed).toMatch(/… \+1 line \(ctrl\+o to expand\)/);
+		expect(collapsed).toMatch(/… \+11 lines \(ctrl\+o to expand\)/);
 		expect(rendered(render(message, { expanded: true }, theme))).toContain("four");
 	});
 

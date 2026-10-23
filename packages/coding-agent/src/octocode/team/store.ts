@@ -416,12 +416,14 @@ export class TeamStore {
 			if (recipients.length === 0) return { id: undefined, departed };
 			// The asker is woken by the answer to its own open question, never by a reply to an FYI or a thank-you.
 			let asker: string | undefined;
+			let completesReply = false;
 			if (options.replyTo !== undefined) {
 				const question = this.replyTarget(options.replyTo);
 				const open = this.db
 					.prepare("SELECT 1 FROM deliveries WHERE message = ? AND recipient = ? AND completed_at IS NULL")
 					.get(options.replyTo, from);
 				if (question?.replyRequired && open !== undefined) asker = question.from;
+				completesReply = question !== undefined && recipients.includes(question.from);
 			}
 			const { lastInsertRowid } = this.db
 				.prepare(
@@ -438,7 +440,7 @@ export class TeamStore {
 						: WAKE.none;
 				insert.run(id, recipient, wake, options.sign?.(id, recipient) ?? null);
 			}
-			if (options.replyTo !== undefined)
+			if (options.replyTo !== undefined && completesReply)
 				this.db
 					.prepare(
 						"UPDATE deliveries SET completed_at = ? WHERE message = ? AND recipient = ? AND completed_at IS NULL",
@@ -465,7 +467,10 @@ export class TeamStore {
 			.prepare(
 				`SELECT m.id, m.body, m.created_at, r.id AS reply_id, r.created_at AS reply_at, r.sender AS reply_by
          FROM messages m JOIN deliveries d ON d.message = m.id AND d.recipient = ?
-         LEFT JOIN messages r ON r.id = (SELECT min(id) FROM messages WHERE reply_to = m.id AND sender = d.recipient)
+         LEFT JOIN messages r ON r.id = (
+           SELECT min(reply.id) FROM messages reply
+           JOIN deliveries receipt ON receipt.message = reply.id AND receipt.recipient = m.sender
+           WHERE reply.reply_to = m.id AND reply.sender = d.recipient)
          WHERE m.workspace = ? AND m.sender = ? AND m.reply_required = 1 AND m.created_at >= ? ORDER BY m.id`,
 			)
 			.all(parent, this.workspace, child, since) as Row[];
@@ -534,6 +539,15 @@ export class TeamStore {
 			)
 			.all(id, after, INBOX_BATCH_SIZE) as Row[];
 		return rows.map((row) => toMessage(row, id));
+	}
+
+	/** One control message can pass an unseen ordinary batch: interrupts always, waking requests while idle. */
+	pendingUrgent(id: string, after: number, idle: boolean): Message | undefined {
+		const row = this.db.prepare(`SELECT m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, s.role AS sender_role, s.task AS sender_goal
+         FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
+         WHERE d.recipient = ? AND d.message > ? AND d.delivered_at IS NULL AND d.dead_at IS NULL AND d.wake >= ? ORDER BY m.id LIMIT 1`)
+			.get(id, after, idle ? WAKE.wake : WAKE.interrupt) as Row | undefined;
+		return row ? toMessage(row, id) : undefined;
 	}
 
 	/** Mark messages delivered to `id` (FYI messages are complete on delivery). One reader per recipient, so no lease. */

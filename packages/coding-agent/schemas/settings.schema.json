@@ -84,24 +84,6 @@
       ],
       "default": "auto"
     },
-    "sessionShareDestination": {
-      "anyOf": [
-        {
-          "type": "string",
-          "const": "auto"
-        },
-        {
-          "type": "string",
-          "const": "gist"
-        },
-        {
-          "type": "string",
-          "const": "radius"
-        }
-      ],
-      "description": "Destination used by /share. \"auto\" uses Radius when authenticated and otherwise creates a GitHub gist.",
-      "default": "auto"
-    },
     "steeringMode": {
       "anyOf": [
         {
@@ -130,48 +112,6 @@
     },
     "theme": {
       "type": "string"
-    },
-    "compaction": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true
-        },
-        "reserveTokens": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991,
-          "default": 16384
-        },
-        "keepRecentTokens": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991,
-          "default": 20000
-        },
-        "modelOverrides": {
-          "type": "object",
-          "patternProperties": {
-            "^.*$": {
-              "type": "object",
-              "properties": {
-                "reserveTokens": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "keepRecentTokens": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                }
-              }
-            }
-          },
-          "description": "Per-model overrides keyed by exact \"provider/modelId\" strings."
-        }
-      }
     },
     "branchSummary": {
       "type": "object",
@@ -310,6 +250,50 @@
     "trackingId": {
       "type": "string",
       "description": "Analytics tracking identifier, generated when analytics is enabled."
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "protocol"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute local plugin directory."
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "claude"
+              },
+              {
+                "type": "string",
+                "const": "codex"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "hooksFingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 of reviewed plugin hook declarations. Changed definitions require review again."
+          },
+          "mcpFingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 of reviewed plugin MCP declarations. Changed definitions require review again."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Local compatibility plugins. Activates namespaced skills, supported prompt commands, reviewed hooks and reviewed MCP servers; other components require their own adapters."
     },
     "packages": {
       "type": "array",
@@ -637,31 +621,6 @@
         "anthropicExtraUsage": {
           "type": "boolean",
           "default": true
-        }
-      }
-    },
-    "codemode": {
-      "type": "object",
-      "properties": {
-        "mode": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "on"
-            },
-            {
-              "type": "string",
-              "const": "only"
-            }
-          ],
-          "description": "How codemode presents tools. \"on\" keeps direct tools declared and annotates tools callable from scripts; codemode lists only tools without direct exposure. \"only\" lists every script-callable tool in codemode and does not declare active direct tools.",
-          "default": "on"
-        },
-        "inlineBudget": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Estimated tokens available for inline codemode tool declarations.",
-          "default": 3000
         }
       }
     },

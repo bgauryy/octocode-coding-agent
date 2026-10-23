@@ -26,7 +26,7 @@ import { createTestResourceLoader } from "./utilities.ts";
 
 const API_KEY = process.env.ANTHROPIC_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
 
-describe.skipIf(!API_KEY)("Compaction extensions", () => {
+describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 	let session: AgentSession;
 	let tempDir: string;
 	let capturedEvents: SessionEvent[];
@@ -75,7 +75,7 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 		return {
 			path: "test-extension",
 			resolvedPath: "/test/test-extension.ts",
-			sourceInfo: createSyntheticSourceInfo("<test:test-extension>", { source: "test" }),
+			sourceInfo: createSyntheticSourceInfo("<inline:octocode>", { source: "test" }),
 			handlers,
 			tools: new Map(),
 			messageRenderers: new Map(),
@@ -99,7 +99,8 @@ describe.skipIf(!API_KEY)("Compaction extensions", () => {
 
 		const sessionManager = SessionManager.create(tempDir);
 		const settingsManager = SettingsManager.create(tempDir, tempDir);
-		settingsManager.applyOverrides({ compaction: { keepRecentTokens: 1 } });
+		const policy = settingsManager.getCompactionSettings();
+		settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 		const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 		const modelRegistry = await createModelRegistry(authStorage);
 

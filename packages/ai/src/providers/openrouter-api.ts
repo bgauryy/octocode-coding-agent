@@ -1,7 +1,7 @@
 import type { ModelCost, ModelCostTier } from "../types.ts";
 
 /** OpenRouter's per-token prices, as decimal strings. */
-export interface OpenRouterPricing {
+interface OpenRouterPricing {
 	prompt?: string;
 	completion?: string;
 	input_cache_read?: string;
@@ -13,7 +13,7 @@ export interface OpenRouterPricing {
  * A conditional price. `min_prompt_tokens` selects prompt-length pricing; `utc_*` fields select
  * time-of-day or weekday pricing. Missing rates keep the base price.
  */
-export interface OpenRouterPricingOverride {
+interface OpenRouterPricingOverride {
 	min_prompt_tokens?: number;
 	utc_start?: number;
 	utc_end?: number;

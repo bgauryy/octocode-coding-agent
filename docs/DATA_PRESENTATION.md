@@ -4,6 +4,8 @@ The agent exposes reusable message, tool-result, session, and RPC types. The ter
 
 This review covers the working checkout on 2026-10-22, based on commit `5eb566c` plus its imported/untracked source. It verifies the data/presentation boundary, not every provider or deployment. Repository-wide checks still have failures described below; this is not an all-green certification.
 
+The later [interface architecture](INTERFACE_ARCHITECTURE.md) describes the implemented application port shared by terminal and browser. This earlier review and its verification results are retained as a snapshot of the migration.
+
 ## Ownership and flow
 
 ```mermaid

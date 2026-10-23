@@ -1,0 +1,888 @@
+[
+  {
+    "name": "quoted-semicolon",
+    "command": "printf '%s' 'SAFE; printf BLOCK' > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "SAFE; printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "quoted-and",
+    "command": "printf '%s' 'SAFE && printf BLOCK' > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "SAFE && printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "quoted-pipe",
+    "command": "printf '%s' 'SAFE | printf BLOCK' > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "SAFE | printf BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "chain-semicolon",
+    "command": "printf ORIGINAL > $MARKER; printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "chain-and",
+    "command": "printf ORIGINAL > $MARKER && printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "pipe",
+    "command": "printf ORIGINAL | printf BLOCK > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "subshell",
+    "command": "(printf BLOCK) > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "command-substitution",
+    "command": "printf \"%s\" \"$(printf BLOCK)\" > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "redirection",
+    "command": "printf BLOCK > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "escaped-raw-word",
+    "command": "printf BL\\OCK > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "allow-both-no-redirect",
+    "command": "printf ORIGINAL; printf SAFE",
+    "rules": {
+      "allow": [
+        "Bash(printf ORIGINAL*)",
+        "Bash(printf SAFE*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "allow-first-no-redirect",
+    "command": "printf ORIGINAL; printf SAFE",
+    "rules": {
+      "allow": [
+        "Bash(printf ORIGINAL*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "allow-whole-command",
+    "command": "printf ORIGINAL; printf SAFE",
+    "rules": {
+      "allow": [
+        "Bash(printf ORIGINAL; printf SAFE)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "or",
+    "command": "printf ORIGINAL > $MARKER || printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "newline",
+    "command": "printf ORIGINAL > $MARKER\nprintf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "background",
+    "command": "printf BLOCK & printf ORIGINAL > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "pipe-stderr",
+    "command": "printf ORIGINAL |& printf BLOCK > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "backticks",
+    "command": "printf \"%s\" \"`printf BLOCK`\" > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "process-substitution",
+    "command": "cat <(printf BLOCK) > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "malformed-quote",
+    "command": "printf 'BLOCK > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "syntax error"
+  },
+  {
+    "name": "malformed-chain",
+    "command": "printf ORIGINAL > $MARKER &&",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "syntax error"
+  },
+  {
+    "name": "allow-both",
+    "command": "printf ORIGINAL > $MARKER; printf SAFE",
+    "rules": {
+      "allow": [
+        "Bash(printf ORIGINAL*)",
+        "Bash(printf SAFE*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "allow-first-only",
+    "command": "printf ORIGINAL > $MARKER; printf SAFE",
+    "rules": {
+      "allow": [
+        "Bash(printf ORIGINAL*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "ask-second",
+    "command": "printf ORIGINAL > $MARKER; printf BLOCK",
+    "rules": {
+      "ask": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "ask-second-unreachable",
+    "command": "printf ORIGINAL > $MARKER || printf BLOCK",
+    "rules": {
+      "ask": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "node-none",
+    "command": "node -p 41; node -p 42",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "node-first",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "node-both",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41)",
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "node-whole",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41; node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "redirect-middle",
+    "command": "printf > $MARKER BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "redirect-leading",
+    "command": "> $MARKER printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "BLOCK",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "redirect-split-args",
+    "command": "printf A > $MARKER BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf A BLOCK*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "A",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "whole-deny",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 41; node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "whole-ask",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 41; node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "whole-allow-leaf-deny",
+    "command": "node -p 41; node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41; node -p 42)"
+      ],
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "redirect-node-no-allow",
+    "command": "node -p >/dev/null 42",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "redirect-node-short-allow",
+    "command": "node -p >/dev/null 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "redirect-node-whole-allow",
+    "command": "node -p >/dev/null 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p >/dev/null 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "file-redirect-none",
+    "command": "node -p 42 > $MARKER",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "file-redirect-bare",
+    "command": "node -p 42 > $MARKER",
+    "rules": {
+      "allow": [
+        "Bash"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "file-redirect-wildcard",
+    "command": "node -p 42 > $MARKER",
+    "rules": {
+      "allow": [
+        "Bash(*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "42\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "conditional-none",
+    "command": "if true; then node -p 42; fi",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "conditional-bare",
+    "command": "if true; then node -p 42; fi",
+    "rules": {
+      "allow": [
+        "Bash"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "conditional-wildcard",
+    "command": "if true; then node -p 42; fi",
+    "rules": {
+      "allow": [
+        "Bash(*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "conditional-broad-leaf-deny",
+    "command": "if true; then node -p 42 > $MARKER; fi",
+    "rules": {
+      "allow": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Bash(node -p 42*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "url-colon-deny",
+    "command": "printf http://blocked > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf http://blocked*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "url-colon-control",
+    "command": "printf http://blocked > $MARKER",
+    "rules": {
+      "deny": [
+        "Bash(printf http://other*)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": "http://blocked",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  }
+]

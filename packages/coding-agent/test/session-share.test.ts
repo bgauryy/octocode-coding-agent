@@ -54,8 +54,6 @@ describe("shareSession", () => {
 					getBranch: () => [],
 				},
 				state: { systemPrompt: name, tools: [] },
-				settingsManager: { getSessionShareDestination: () => "auto" },
-				modelRuntime: { getProvider: () => undefined },
 				exportToHtml: async (filePath: string) => {
 					writeFileSync(filePath, name);
 					if (name === "A") {
@@ -88,9 +86,7 @@ describe("shareSession", () => {
 		expect(errors).toEqual([]);
 	});
 
-	// #10870: users need persistent gist shares even when Radius authentication is configured.
-	it("forces gist sharing without checking Radius authentication", async () => {
-		const getProvider = vi.fn(() => ({ id: "radius" }));
+	it("shares the HTML export as a private gist", async () => {
 		childProcessMocks.spawn.mockImplementation((_command, args: string[]) => {
 			const child = Object.assign(new EventEmitter(), {
 				stdout: new PassThrough(),
@@ -111,8 +107,6 @@ describe("shareSession", () => {
 			session: {
 				sessionManager: { getSessionId: () => "gist", getCwd: () => "/tmp", getBranch: () => [] },
 				state: { systemPrompt: "", tools: [] },
-				settingsManager: { getSessionShareDestination: () => "gist" },
-				modelRuntime: { getProvider },
 				exportToHtml: async (filePath: string) => writeFileSync(filePath, "html"),
 			},
 			ui: { setFocus() {}, requestRender() {} },
@@ -122,7 +116,6 @@ describe("shareSession", () => {
 			showError: vi.fn(),
 		} as never);
 
-		expect(getProvider).not.toHaveBeenCalled();
 		expect(childProcessMocks.spawn).toHaveBeenCalledWith("gh", [
 			"gist",
 			"create",
@@ -130,27 +123,5 @@ describe("shareSession", () => {
 			expect.any(String),
 		]);
 		expect(statuses[0]).toContain("https://gist.github.com/forced-gist");
-	});
-
-	it("reports missing Radius authentication when Radius is forced", async () => {
-		const errors: string[] = [];
-
-		await shareSession({
-			session: {
-				sessionManager: { getSessionId: () => "radius", getCwd: () => "/tmp", getBranch: () => [] },
-				state: { systemPrompt: "", tools: [] },
-				settingsManager: { getSessionShareDestination: () => "radius" },
-				modelRuntime: { getProvider: () => undefined },
-			},
-			ui: { setFocus() {}, requestRender() {} },
-			editorContainer: { clear() {}, addChild() {} },
-			editor: {},
-			showStatus: vi.fn(),
-			showError: (message: string) => errors.push(message),
-		} as never);
-
-		expect(errors).toEqual(["Radius authentication is not configured. Run '/login radius' first."]);
-		expect(childProcessMocks.spawnSync).not.toHaveBeenCalled();
-		expect(childProcessMocks.spawn).not.toHaveBeenCalled();
 	});
 });

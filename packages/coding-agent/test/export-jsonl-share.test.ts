@@ -9,7 +9,8 @@ import { defineTool } from "../src/core/extensions/types.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { exportSessionForShare } from "../src/modes/interactive/session-share.ts";
+import { exportSessionToJsonl } from "../src/core/session-export.ts";
+import { createShareTrailingEntries } from "../src/modes/interactive/session-share.ts";
 import { assistantMsg, userMsg } from "./utilities.ts";
 
 describe("JSONL share export", () => {
@@ -74,7 +75,9 @@ describe("JSONL share export", () => {
 			).toBe(false);
 
 			const sharePath = join(tempDir, "share.jsonl");
-			exportSessionForShare(sharePath, session);
+			exportSessionToJsonl(session.sessionManager, sharePath, (parentId, timestamp) =>
+				createShareTrailingEntries(session, parentId, timestamp),
+			);
 			const records = readFileSync(sharePath, "utf8")
 				.trim()
 				.split("\n")

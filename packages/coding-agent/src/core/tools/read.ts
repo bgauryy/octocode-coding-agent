@@ -8,13 +8,14 @@ import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import { readRenderers } from "./renderers/read.ts";
+import { readTextWindow } from "./read-text.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
 const readSchema = Type.Object({
 	path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
-	offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
-	limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
+	offset: Type.Optional(Type.Integer({ minimum: 1, description: "Line number to start reading from (1-indexed)" })),
+	limit: Type.Optional(Type.Integer({ minimum: 1, description: "Maximum number of lines to read" })),
 });
 
 export const readToolSystemPromptContribution = {
@@ -25,8 +26,8 @@ export const readToolSystemPromptContribution = {
 export type ReadToolInput = Static<typeof readSchema>;
 
 /**
- * Result for programmatic callers such as codemode scripts: the text for text files, and an image
- * block for images that codemode's `image()` accepts. `note` is the text that goes with the image,
+ * Result for programmatic callers such as programmatic tool callers: the text for text files, and an image
+ * block for images. `note` is the text that goes with the image,
  * such as resize hints. Property descriptions are left out so the type stays on one line in tool
  * descriptions.
  */
@@ -106,6 +107,9 @@ export function createReadToolDefinition(
 			_onUpdate?,
 			ctx?: ExtensionContext,
 		) {
+			for (const [name, value] of [["offset", offset], ["limit", limit]] as const)
+				if (value !== undefined && (!Number.isSafeInteger(value) || value < 1))
+					throw new Error(`${name} must be a positive integer`);
 			return new Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }>(
 				(resolve, reject) => {
 					if (signal?.aborted) {
@@ -151,34 +155,21 @@ export function createReadToolDefinition(
 									];
 								}
 							} else {
-								// Read text content.
-								const buffer = await ops.readFile(absolutePath);
-								const textContent = buffer.toString("utf-8");
-								const allLines = textContent.split("\n");
-								const totalFileLines = allLines.length;
-								// Apply offset if specified. Convert from 1-indexed input to 0-indexed array access.
-								const startLine = offset ? Math.max(0, offset - 1) : 0;
+								const startLine = (offset ?? 1) - 1;
 								const startLineDisplay = startLine + 1;
-								// Check if offset is out of bounds.
-								if (startLine >= allLines.length) {
-									throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
-								}
-								let selectedContent: string;
-								let userLimitedLines: number | undefined;
-								// If limit is specified by the user, honor it first. Otherwise truncateHead decides.
-								if (limit !== undefined) {
-									const endLine = Math.min(startLine + limit, allLines.length);
-									selectedContent = allLines.slice(startLine, endLine).join("\n");
-									userLimitedLines = endLine - startLine;
-								} else {
-									selectedContent = allLines.slice(startLine).join("\n");
-								}
-								// Apply truncation, respecting both line and byte limits.
-								const truncation = truncateHead(selectedContent);
+								const window = ops === defaultReadOperations
+									? await readTextWindow(absolutePath, startLineDisplay, limit, signal)
+									: undefined;
+								const allLines = window ? undefined : (await ops.readFile(absolutePath)).toString("utf8").split("\n");
+								const totalFileLines = window?.totalFileLines ?? allLines!.length;
+								if (startLine >= totalFileLines)
+									throw new Error(`Offset ${offset} is beyond end of file (${totalFileLines} lines total)`);
+								const userLimitedLines = limit === undefined ? undefined : Math.min(limit, totalFileLines - startLine);
+								const truncation = window?.truncation ?? truncateHead(allLines!.slice(startLine, limit === undefined ? undefined : startLine + limit).join("\n"));
 								let outputText: string;
 								if (truncation.firstLineExceedsLimit) {
 									// First line alone exceeds the byte limit. Point the model at a bash fallback.
-									const firstLineSize = formatSize(Buffer.byteLength(allLines[startLine], "utf-8"));
+									const firstLineSize = formatSize(window?.firstLineBytes ?? Buffer.byteLength(allLines![startLine]!, "utf-8"));
 									outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
 									details = { truncation };
 								} else if (truncation.truncated) {
@@ -192,9 +183,9 @@ export function createReadToolDefinition(
 										outputText += `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Use offset=${nextOffset} to continue.]`;
 									}
 									details = { truncation };
-								} else if (userLimitedLines !== undefined && startLine + userLimitedLines < allLines.length) {
+								} else if (userLimitedLines !== undefined && startLine + userLimitedLines < totalFileLines) {
 									// User-specified limit stopped early, but the file still has more content.
-									const remaining = allLines.length - (startLine + userLimitedLines);
+									const remaining = totalFileLines - (startLine + userLimitedLines);
 									const nextOffset = startLine + userLimitedLines + 1;
 									outputText = `${truncation.content}\n\n[${remaining} more lines in file. Use offset=${nextOffset} to continue.]`;
 								} else {

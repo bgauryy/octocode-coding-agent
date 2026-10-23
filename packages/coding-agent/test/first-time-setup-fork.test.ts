@@ -7,7 +7,7 @@ vi.mock("../src/config.ts", async (importOriginal) => {
 	const actual = await importOriginal();
 	return {
 		...(actual as Record<string, unknown>),
-		PACKAGE_NAME: "@example/pi-coding-agent",
+		PACKAGE_NAME: "@example/octocodecode",
 	};
 });
 

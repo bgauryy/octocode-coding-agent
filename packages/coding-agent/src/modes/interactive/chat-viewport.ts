@@ -1,6 +1,6 @@
 import { type Component, ScrollView, type ScrollViewScrollbar, VStack } from "@octocodeai/octocode-tui";
 
-export interface ChatViewportOptions {
+interface ChatViewportOptions {
 	readonly document: Component;
 	readonly pendingMessages: Component;
 	readonly status: Component;
@@ -13,7 +13,7 @@ export interface ChatViewportOptions {
 	readonly scrollbarThumbStyle?: (text: string) => string;
 }
 
-export interface ChatViewport {
+interface ChatViewport {
 	readonly root: Component;
 	readonly transcript: ScrollView;
 }

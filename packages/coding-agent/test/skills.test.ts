@@ -1,6 +1,7 @@
-import { homedir } from "os";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.ts";
 import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
@@ -28,6 +29,25 @@ function createTestSkill(options: {
 
 describe("skills", () => {
 	describe("loadSkillsFromDir", () => {
+		it.skipIf(process.getuid?.() === 0)("warns about a skill directory it cannot read instead of dropping it silently", () => {
+			const root = mkdtempSync(join(tmpdir(), "octocode-skills-unreadable-"));
+			const locked = join(root, "locked");
+			mkdirSync(join(root, "open"), { recursive: true });
+			mkdirSync(locked);
+			writeFileSync(join(root, "open", "SKILL.md"), "---\nname: open\ndescription: Readable skill.\n---\nBody");
+			chmodSync(locked, 0o000);
+			try {
+				const { skills, diagnostics } = loadSkillsFromDir({ dir: root, source: "test" });
+				expect(skills.map((skill) => skill.name)).toEqual(["open"]);
+				expect(diagnostics).toEqual([
+					expect.objectContaining({ type: "warning", path: locked, message: expect.stringContaining("EACCES") }),
+				]);
+			} finally {
+				chmodSync(locked, 0o755);
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+
 		it("should load a valid skill", () => {
 			const { skills, diagnostics } = loadSkillsFromDir({
 				dir: join(fixturesDir, "valid-skill"),
@@ -348,6 +368,12 @@ describe("skills", () => {
 	describe("loadSkills with options", () => {
 		const emptyAgentDir = resolve(__dirname, "fixtures/empty-agent");
 		const emptyCwd = resolve(__dirname, "fixtures/empty-cwd");
+		const tempHomes: string[] = [];
+
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			for (const home of tempHomes.splice(0)) rmSync(home, { recursive: true, force: true });
+		});
 
 		it("should load from explicit skillPaths", () => {
 			const { skills, diagnostics } = loadSkills({
@@ -373,7 +399,16 @@ describe("skills", () => {
 		});
 
 		it("should expand ~ in skillPaths", () => {
-			const homeSkillsDir = join(homedir(), ".pi/agent/skills");
+			const home = mkdtempSync(join(tmpdir(), "octocode-skills-home-"));
+			tempHomes.push(home);
+			vi.stubEnv("HOME", home);
+			vi.stubEnv("USERPROFILE", home);
+			const homeSkillsDir = join(home, ".octocode/agent/skills");
+			mkdirSync(join(homeSkillsDir, "home-skill"), { recursive: true });
+			writeFileSync(
+				join(homeSkillsDir, "home-skill", "SKILL.md"),
+				"---\nname: home-skill\ndescription: A skill in the home directory.\n---\n\n# Home Skill\n",
+			);
 			const { skills: withTilde } = loadSkills({
 				agentDir: emptyAgentDir,
 				cwd: emptyCwd,
@@ -386,6 +421,7 @@ describe("skills", () => {
 				skillPaths: [homeSkillsDir],
 				includeDefaults: true,
 			});
+			expect(withTilde.map((skill) => skill.name)).toEqual(["home-skill"]);
 			expect(withTilde.length).toBe(withoutTilde.length);
 		});
 	});

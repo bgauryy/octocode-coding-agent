@@ -2,24 +2,18 @@ import type { Message } from "./model.ts";
 import type { TeamStore } from "./store.ts";
 
 /**
- * Paced, ordered delivery in two phases. Each tick hands every message that arrived since the last hand-off to Octocode as
- * one batch: Octocode's default steering mode injects one queued message per turn, so separate messages would cost a turn
- * each. A message is recorded delivered only when the model is called with it in the conversation (`seen`, from Octocode's
- * `context` event); one still queued when the agent is killed or leaves stays undelivered, so it becomes a dead letter
- * its sender hears about. Each tick first counts this recipient's undelivered messages past the hand-off point (an
- * index read): the inbox is read only when something new waits. A message that waits at or before the hand-off point
- * without this inbox having handed it over means the database was emptied or replaced under a live session (its message
- * numbers start again): the point is reset, so the new messages are not skipped.
- *
- * A read that finds nothing waiting remembers the database's change marker (`TeamStore.stamp`): while it stays the
- * same, no process has written the database, so the next ticks run no query. The agent's own heartbeat rewrites its
- * row every few seconds, which bounds the delay should a write ever leave the marker unchanged.
+ * Whole-message delivery with backpressure. A normal batch stays in flight until context acknowledges it;
+ * remaining mail stays in SQLite. One control message may pass it: an interrupt, or an idle recipient's
+ * waking request. The byte budget never splits a message; a single oversized message travels alone.
  */
+const INBOX_BATCH_BYTES = 32 * 1024;
+
 export class Inbox {
 	/** The newest message handed to Octocode: later ticks hand over only newer ones, so none is injected twice. */
 	private handed = 0;
 	/** Handed to Octocode, not yet seen by the model. */
 	private readonly unseen = new Set<number>();
+	private urgent: number | undefined;
 	/** Seen by the model, not yet recorded (the database was busy): recorded on the next tick. */
 	private readonly seenIds = new Set<number>();
 	/** The recipient, hand-off point and database stamp at which a read found nothing waiting. */
@@ -39,12 +33,13 @@ export class Inbox {
 		}
 		this.handed = 0;
 		this.unseen.clear();
+		this.urgent = undefined;
 		this.seenIds.clear();
 		this.idleAt = undefined;
 	}
 
 	/** Records what the model saw, then hands the next batch to `send`; a refused batch is offered again next tick. */
-	deliver(db: TeamStore, id: string, send: (batch: Message[]) => boolean): void {
+	deliver(db: TeamStore, id: string, send: (batch: Message[]) => boolean, idle = false): void {
 		this.record(db, id);
 		// Taken before the reads: a write that lands after it moves the stamp, so the next tick reads.
 		const stamp = db.stamp();
@@ -53,12 +48,32 @@ export class Inbox {
 		if (this.handed > 0 && db.waitingThrough(id, this.handed).some((message) => !this.unseen.has(message))) {
 			this.handed = 0;
 			this.unseen.clear();
+			this.urgent = undefined;
 		}
 		if (db.waiting(id, this.handed) === 0) {
 			this.idleAt = state();
 			return;
 		}
-		const batch = db.pending(id, this.handed);
+		if (this.unseen.size > 0) {
+			if (this.urgent !== undefined) return;
+			const urgent = db.pendingUrgent(id, this.handed, idle);
+			if (!urgent || this.unseen.has(urgent.id)) return;
+			this.urgent = urgent.id;
+			this.unseen.add(urgent.id);
+			if (!send([urgent])) {
+				this.unseen.delete(urgent.id);
+				this.urgent = undefined;
+			}
+			return;
+		}
+		const batch: Message[] = [];
+		let bytes = 2;
+		for (const message of db.pending(id, this.handed)) {
+			const size = Buffer.byteLength(JSON.stringify(message)) + (batch.length > 0 ? 1 : 0);
+			if (batch.length > 0 && bytes + size > INBOX_BATCH_BYTES) break;
+			batch.push(message);
+			bytes += size;
+		}
 		if (batch.length === 0) return; // Another process can remove the recipient between the two reads.
 		const before = this.handed;
 		// Marked first: Octocode may call the model with the batch, and report it seen, before `send` returns.
@@ -75,7 +90,10 @@ export class Inbox {
 	 * database is busy.
 	 */
 	seen(db: TeamStore, id: string, messages: number[]): void {
-		for (const message of messages) if (this.unseen.delete(message)) this.seenIds.add(message);
+		for (const message of messages) {
+			if (this.unseen.delete(message)) this.seenIds.add(message);
+			if (this.urgent === message) this.urgent = undefined;
+		}
 		this.record(db, id);
 	}
 

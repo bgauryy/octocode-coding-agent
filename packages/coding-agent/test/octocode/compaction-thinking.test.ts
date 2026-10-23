@@ -64,7 +64,7 @@ describe("stale thinking after a compaction", () => {
 		expect(stripStaleThinking(branched)).toBe(branched);
 	});
 
-	it("matters only for a model that binds thinking to its prefix (pi-ai sends drop_block for it)", () => {
+	it("matters only for a model that binds thinking to its prefix (octocode-ai sends drop_block for it)", () => {
 		expect(bindsThinkingToPrefix({ compat: { supportsMidConvoEffort: true } })).toBe(true);
 		expect(bindsThinkingToPrefix({ compat: {} })).toBe(false);
 		expect(bindsThinkingToPrefix(undefined)).toBe(false);

@@ -107,20 +107,19 @@ export async function runAgentLoop(
 	signal: AbortSignal | undefined,
 	streamFn: StreamFn,
 ): Promise<AgentMessage[]> {
-	const initialMessages = declareToolChanges(context, prompts);
-	const newMessages: AgentMessage[] = [...initialMessages];
-	const currentContext: AgentContext = {
-		...context,
-		messages: [...context.messages, ...initialMessages],
-	};
-
+	const newMessages: AgentMessage[] = [];
+	const currentContext: AgentContext = { ...context, messages: [...context.messages] };
 	await emit({ type: "agent_start" });
+	if (prompts.length) config.onInputSelected?.({ kind: "initial", messages: prompts });
 	await emit({ type: "turn_start" });
-	for (const message of initialMessages) {
-		await emit({ type: "message_start", message });
-		await emit({ type: "message_end", message });
-	}
+	const commit = inputCommitter(currentContext, newMessages, emit);
+	const input = await config.prepareInput?.({ kind: "initial", messages: prompts }, signal, commit);
+	await commit(input?.messages ?? prompts, input?.stop ? signal : undefined);
 
+	if (input?.stop) {
+		await emit({ type: "agent_end", messages: newMessages });
+		return newMessages;
+	}
 	await runLoop(currentContext, newMessages, config, signal, emit, streamFn ?? getDefaultStreamFn());
 	return newMessages;
 }
@@ -174,6 +173,7 @@ async function runLoop(
 	let explicitContinuation = false;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
+	let pendingKind: "steer" | "followUp" = "steer";
 
 	// Outer loop: continues when queued follow-up messages arrive after agent would stop
 	while (true) {
@@ -182,6 +182,8 @@ async function runLoop(
 		// Inner loop: process tool calls and steering messages
 		while (hasMoreToolCalls || pendingMessages.length > 0) {
 			let preparedMessages: AgentMessage[] = [];
+			const selected = pendingMessages.length > 0;
+			if (selected) config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
 			if (lastCompletedTurn) {
 				const nextTurnSnapshot = await config.prepareNextTurn?.(lastCompletedTurn);
 				if (nextTurnSnapshot) {
@@ -207,14 +209,22 @@ async function runLoop(
 				await emit({ type: "turn_start" });
 			}
 
-			// Process prepared and queued messages before the next assistant response.
-			for (const message of declareToolChanges(currentContext, [...preparedMessages, ...pendingMessages])) {
-				await emit({ type: "message_start", message });
-				await emit({ type: "message_end", message });
-				currentContext.messages.push(message);
-				newMessages.push(message);
+			if (!selected && pendingMessages.length) config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
+			const commit = inputCommitter(currentContext, newMessages, emit);
+			if (config.prepareInput && pendingMessages.length > 0) {
+				await commit(preparedMessages);
+				preparedMessages = [];
 			}
+			const input = pendingMessages.length > 0
+				? await config.prepareInput?.({ kind: pendingKind, messages: pendingMessages }, signal, commit)
+				: undefined;
+			await commit([...preparedMessages, ...(input?.messages ?? pendingMessages)], input?.stop ? signal : undefined);
 			pendingMessages = [];
+			pendingKind = "steer";
+			if (input?.stop) {
+				await emit({ type: "agent_end", messages: newMessages });
+				return;
+			}
 
 			const requestUpdate = await config.prepareRequest?.(
 				{
@@ -283,10 +293,13 @@ async function runLoop(
 				context: currentContext,
 				newMessages,
 			};
+			const abortedBeforeBoundary = signal?.aborted;
 			const decision = await config.finishTurn?.(lastCompletedTurn, signal);
 			await emit({ type: "turn_end", message, toolResults });
 
-			if (decision?.action === "end") {
+			// A boundary can veto continuation after a completed tool batch. Preserve
+			// the existing queue handling for runs already aborted before this boundary.
+			if ((!abortedBeforeBoundary && signal?.aborted) || decision?.action === "end") {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
@@ -304,6 +317,7 @@ async function runLoop(
 			// Set as pending so inner loop processes them
 			explicitContinuation = false;
 			pendingMessages = followUpMessages;
+			pendingKind = "followUp";
 			continue;
 		}
 
@@ -318,6 +332,22 @@ async function runLoop(
 	}
 
 	await emit({ type: "agent_end", messages: newMessages });
+}
+
+function inputCommitter(context: AgentContext, recorded: AgentMessage[], emit: AgentEventSink) {
+	const committed = new Set<AgentMessage>();
+	return async (messages: AgentMessage[], signal?: AbortSignal): Promise<void> => {
+		const pending = messages.filter(message => !committed.has(message));
+		if (signal?.aborted) return;
+		for (const message of declareToolChanges(context, pending)) {
+			if (signal?.aborted) break;
+			committed.add(message);
+			await emit({ type: "message_start", message });
+			await emit({ type: "message_end", message });
+			context.messages.push(message);
+			recorded.push(message);
+		}
+	};
 }
 
 /**
@@ -724,7 +754,7 @@ async function prepareToolCall(
 
 	try {
 		const preparedToolCall = prepareToolCallArguments(tool, toolCall);
-		const validatedArgs = validateToolArguments(tool, preparedToolCall);
+		let validatedArgs = validateToolArguments(tool, preparedToolCall);
 		if (config.beforeToolCall) {
 			const beforeResult = await config.beforeToolCall(
 				{
@@ -753,6 +783,7 @@ async function prepareToolCall(
 					isError: true,
 				};
 			}
+			validatedArgs = validateToolArguments(tool, { ...preparedToolCall, arguments: validatedArgs });
 		}
 		if (signal?.aborted) {
 			return {

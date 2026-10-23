@@ -14,6 +14,7 @@ import type {
 	TranscriptContext,
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
+import { safeJsonStringify } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
@@ -284,15 +285,6 @@ function formatMistralError(error: unknown): string {
 function truncateErrorText(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
 	return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
-}
-
-function safeJsonStringify(value: unknown): string {
-	try {
-		const serialized = JSON.stringify(value);
-		return serialized === undefined ? String(value) : serialized;
-	} catch {
-		return String(value);
-	}
 }
 
 async function requestMistralStream(

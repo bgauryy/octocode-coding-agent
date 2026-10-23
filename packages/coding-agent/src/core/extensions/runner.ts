@@ -1,3 +1,5 @@
+import { createSessionUsageRecorder } from "../usage-totals.ts";
+import type { NativeCompactionResult } from "../compaction/native-result.ts";
 /**
  * Extension runner - executes extensions and manages their lifecycle.
  */
@@ -13,6 +15,7 @@ import {
 import type { KeyId } from "@octocodeai/octocode-tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
 import type { CacheWarmingAction } from "../cache-warmer.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../slash-commands.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { KeybindingsConfig } from "../keybindings.ts";
 import type { ModelRegistry } from "../model-registry.ts";
@@ -61,6 +64,8 @@ import type {
 	ExtensionUIContext,
 	InputEvent,
 	InputEventResult,
+	UserInputEvent,
+	UserInputEventResult,
 	InputSource,
 	LoadExtensionsResult,
 	MarkdownTransformer,
@@ -77,7 +82,6 @@ import type {
 	ResolvedCommand,
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
-	SessionBeforeCompactResult,
 	SessionBeforeForkResult,
 	SessionBeforeSwitchResult,
 	SessionBeforeTreeResult,
@@ -196,6 +200,7 @@ type RunnerEmitEvent = Exclude<
 	| MessageEndEvent
 	| ResourcesDiscoverEvent
 	| InputEvent
+	| UserInputEvent
 	| TurnEndEvent
 	| AgentBeforeSettleEvent
 >;
@@ -208,7 +213,7 @@ type SessionBeforeEvent = Extract<
 type SessionBeforeEventResult =
 	| SessionBeforeSwitchResult
 	| SessionBeforeForkResult
-	| SessionBeforeCompactResult
+	| NativeCompactionResult
 	| SessionBeforeTreeResult;
 
 type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "session_before_switch" }
@@ -216,7 +221,7 @@ type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends { type: "
 	: TEvent extends { type: "session_before_fork" }
 		? SessionBeforeForkResult | undefined
 		: TEvent extends { type: "session_before_compact" }
-			? SessionBeforeCompactResult | undefined
+			? NativeCompactionResult | undefined
 			: TEvent extends { type: "session_before_tree" }
 				? SessionBeforeTreeResult | undefined
 				: undefined;
@@ -376,9 +381,10 @@ export class ExtensionRunner {
 	private getExplicitToolNames: () => readonly string[] = () => [];
 	private isIdleFn: () => boolean = () => true;
 	private isProjectTrustedFn: () => boolean = () => true;
+	private getTurnIdFn: () => string | undefined = () => undefined;
 	private getSignalFn: () => AbortSignal | undefined = () => undefined;
 	private waitForIdleFn: () => Promise<void> = async () => {};
-	private abortFn: () => void = () => {};
+	private abortFn: (reason?: "interrupted" | "internal") => void = () => {};
 	private hasPendingMessagesFn: () => boolean = () => false;
 	private getContextUsageFn: () => ContextUsage | undefined = () => undefined;
 	private compactFn: (options?: CompactOptions) => void = () => {};
@@ -431,6 +437,8 @@ export class ExtensionRunner {
 		this.runtime.sendMessage = actions.sendMessage;
 		this.runtime.sendUserMessage = actions.sendUserMessage;
 		this.runtime.appendEntry = actions.appendEntry;
+		this.runtime.createUsageRecorder = (kind) =>
+			createSessionUsageRecorder(this.sessionManager, kind, contextActions.onUsageRecorded);
 		this.runtime.setSessionName = actions.setSessionName;
 		this.runtime.getSessionName = actions.getSessionName;
 		this.runtime.setLabel = actions.setLabel;
@@ -438,8 +446,11 @@ export class ExtensionRunner {
 		this.runtime.getAllTools = actions.getAllTools;
 		this.runtime.getSettings = actions.getSettings;
 		this.runtime.setActiveTools = actions.setActiveTools;
+		this.runtime.setToolPolicy = actions.setToolPolicy;
 		this.runtime.refreshTools = actions.refreshTools;
 		this.runtime.getCommands = actions.getCommands;
+		this.runtime.getSkillDirectories = actions.getSkillDirectories;
+		this.runtime.getSkillResourceSnapshot = actions.getSkillResourceSnapshot;
 		this.runtime.setModel = actions.setModel;
 		this.runtime.getThinkingLevel = actions.getThinkingLevel;
 		this.runtime.setThinkingLevel = actions.setThinkingLevel;
@@ -452,6 +463,7 @@ export class ExtensionRunner {
 		this.isIdleFn = contextActions.isIdle;
 		this.isProjectTrustedFn = contextActions.isProjectTrusted;
 		this.getSignalFn = contextActions.getSignal;
+		this.getTurnIdFn = contextActions.getTurnId ?? (() => undefined);
 		this.abortFn = contextActions.abort;
 		this.hasPendingMessagesFn = contextActions.hasPendingMessages;
 		this.shutdownHandler = contextActions.shutdown;
@@ -821,15 +833,18 @@ export class ExtensionRunner {
 		}
 
 		const seen = new Map<string, number>();
-		const takenInvocationNames = new Set<string>();
+		const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]));
+		const takenInvocationNames = new Set<string>(builtinNames);
 
-		return commands.map((command) => {
+		const resolved = commands.map((command) => {
 			const occurrence = (seen.get(command.name) ?? 0) + 1;
 			seen.set(command.name, occurrence);
 
-			let invocationName = (counts.get(command.name) ?? 0) > 1 ? `${command.name}:${occurrence}` : command.name;
+			const nativeBuiltin = command.sourceInfo.path === NATIVE_FEATURE_PATH && builtinNames.has(command.name);
+			let invocationName = !nativeBuiltin && ((counts.get(command.name) ?? 0) > 1 || builtinNames.has(command.name))
+				? `${command.name}:${occurrence}` : command.name;
 
-			if (takenInvocationNames.has(invocationName)) {
+			if (!nativeBuiltin && takenInvocationNames.has(invocationName)) {
 				let suffix = occurrence;
 				do {
 					suffix++;
@@ -843,6 +858,26 @@ export class ExtensionRunner {
 				invocationName,
 			};
 		});
+		const aliases = new Map<string, number>();
+		for (const command of resolved) {
+			for (const alias of command.aliases ?? []) aliases.set(alias, (aliases.get(alias) ?? 0) + 1);
+		}
+		const reserved = new Set([...takenInvocationNames, ...commands.map((command) => command.name)]);
+		const occupied = new Set([...reserved, ...aliases.keys()]);
+		return resolved.map((command) => ({
+			...command,
+			...(command.aliases ? { aliases: command.aliases.map((alias) => {
+				const nativeAlias = command.sourceInfo.path === NATIVE_FEATURE_PATH &&
+					BUILTIN_SLASH_COMMANDS.some((builtin) => builtin.name === command.name && builtin.aliases?.includes(alias));
+				if (nativeAlias) return alias;
+				if (!reserved.has(alias) && aliases.get(alias) === 1) return alias;
+				let suffix = 1;
+				while (occupied.has(`${alias}:${suffix}`)) suffix++;
+				const qualified = `${alias}:${suffix}`;
+				occupied.add(qualified);
+				return qualified;
+			}) } : {}),
+		}));
 	}
 
 	getModelRegistry(): ModelRegistry {
@@ -859,7 +894,9 @@ export class ExtensionRunner {
 	}
 
 	getCommand(name: string): ResolvedCommand | undefined {
-		return this.resolveRegisteredCommands().find((command) => command.invocationName === name);
+		const commands = this.resolveRegisteredCommands();
+		return commands.find((command) => command.invocationName === name) ??
+			commands.find((command) => command.aliases?.includes(name));
 	}
 
 	/**
@@ -936,9 +973,9 @@ export class ExtensionRunner {
 				runner.assertActive();
 				return runner.getSignalFn();
 			},
-			abort: () => {
+			abort: (reason) => {
 				runner.assertActive();
-				runner.abortFn();
+				runner.abortFn(reason);
 			},
 			hasPendingMessages: () => {
 				runner.assertActive();
@@ -947,6 +984,10 @@ export class ExtensionRunner {
 			shutdown: () => {
 				runner.assertActive();
 				runner.shutdownHandler();
+			},
+			getTurnId: () => {
+				runner.assertActive();
+				return runner.getTurnIdFn();
 			},
 			getContextUsage: () => {
 				runner.assertActive();
@@ -1102,7 +1143,13 @@ export class ExtensionRunner {
 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, event.type)) {
 			for (const handler of handlers) {
 				try {
-					const handlerResult = await handler(event, ctx);
+					const nativeCompaction =
+						event.type === "session_before_compact" && ext.sourceInfo.path === NATIVE_FEATURE_PATH;
+					const observedEvent = event.type === "session_before_compact" && !nativeCompaction
+						? { ...event, preparation: structuredClone(event.preparation), branchEntries: structuredClone(event.branchEntries) }
+						: event;
+					const handlerResult = await handler(observedEvent, ctx);
+					if (event.type === "session_before_compact" && !nativeCompaction) continue;
 
 					if (this.isSessionBeforeEvent(event) && handlerResult) {
 						result = handlerResult as SessionBeforeEventResult;
@@ -1521,6 +1568,24 @@ export class ExtensionRunner {
 		}
 
 		return { skillPaths, promptPaths, themePaths };
+	}
+
+	async emitUserInput(event: UserInputEvent): Promise<UserInputEventResult> {
+		const ctx = this.createContext();
+		const combined: UserInputEventResult = { additionalContext: [] };
+		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "user_input")) {
+			for (const handler of handlers) {
+				if (ctx.signal?.aborted) return combined;
+				try {
+					const result = await handler(event, ctx) as UserInputEventResult | undefined;
+					combined.block ||= result?.block;
+					combined.additionalContext!.push(...(result?.additionalContext ?? []));
+				} catch (error) {
+					this.emitError({ extensionPath: ext.path, event: "user_input", error: error instanceof Error ? error.message : String(error) });
+				}
+			}
+		}
+		return combined;
 	}
 
 	/** Emit input event. Transforms chain, "handled" short-circuits. */

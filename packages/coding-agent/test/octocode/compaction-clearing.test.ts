@@ -295,7 +295,7 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 			kind: "cache_warm",
 			provider: "p",
 			model: "m",
-			usage: {},
+			usage: { cacheRead: 1000, cacheWrite: 0 },
 		};
 		const s = setup(idleMessages(reads(12)), { priorEntries: [warm] });
 		await s.start(T0 + 100 + HOUR + 1_000);

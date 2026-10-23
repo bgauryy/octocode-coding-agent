@@ -2,8 +2,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSessionRuntime } from "../../../src/core/agent-session-runtime.ts";
 import { runRpcMode } from "../../../src/modes/rpc/rpc-mode.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { createTestResourceLoader } from "../../utilities.ts";
+import { createSyntheticSourceInfo } from "../../../src/core/source-info.ts";
 
-// Regression for https://github.com/earendil-works/pi/issues/5868
 
 const rpcIo = vi.hoisted(() => ({
 	outputLines: [] as string[],
@@ -110,4 +111,33 @@ describe("RPC unknown command responses (#5868)", () => {
 			restoreListeners(listenerSnapshot);
 		}
 	});
+	test("lists direct skills and collision-safe qualified names through RPC", async () => {
+		const listenerSnapshot = takeListenerSnapshot();
+		const loader = createTestResourceLoader();
+		const skills = ["research", "model"].map((name) => ({
+			name, description: name, filePath: `/skills/${name}.md`, baseDir: "/skills", disableModelInvocation: false,
+			sourceInfo: createSyntheticSourceInfo(`/skills/${name}.md`, { source: "local", scope: "project", origin: "top-level", baseDir: "/skills" }),
+		}));
+		loader.getSkills = () => ({ skills, diagnostics: [] });
+		const harness = await createHarness({ resourceLoader: loader });
+		try {
+			void runRpcMode(createRuntimeHost(harness));
+			await vi.waitFor(() => expect(rpcIo.lineHandler).toBeDefined());
+			rpcIo.lineHandler?.(JSON.stringify({ id: "skills", type: "get_commands" }));
+			await vi.waitFor(() => {
+				expect(parseOutputLines()).toContainEqual({
+					id: "skills", type: "response", command: "get_commands", success: true,
+					data: { commands: skills.map((skill, index) => ({
+						name: index === 0 ? "research" : "skill:model",
+						aliases: index === 0 ? ["skill:research"] : [],
+						description: skill.description, source: "skill", sourceInfo: skill.sourceInfo,
+					})) },
+				});
+			});
+		} finally {
+			harness.cleanup();
+			restoreListeners(listenerSnapshot);
+		}
+	});
+
 });

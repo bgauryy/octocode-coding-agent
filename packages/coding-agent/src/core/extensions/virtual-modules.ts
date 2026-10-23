@@ -9,10 +9,9 @@ import * as bundledTypeboxValue from "typebox/value";
 // This import is safe because loader.ts exports are not re-exported from index.ts.
 // Extensions can therefore import from @octocodeai/octocodecode.
 import * as bundledPiCodingAgent from "../../index.ts";
-import { withLegacyPackageAliases } from "./package-aliases.ts";
 
 /** Modules available to extensions in source and compiled binary runtimes. */
-export const VIRTUAL_MODULES: Record<string, unknown> = withLegacyPackageAliases<unknown>({
+export const VIRTUAL_MODULES: Record<string, unknown> = {
 	typebox: bundledTypebox,
 	"typebox/compile": bundledTypeboxCompile,
 	"typebox/value": bundledTypeboxValue,
@@ -21,7 +20,7 @@ export const VIRTUAL_MODULES: Record<string, unknown> = withLegacyPackageAliases
 	"@sinclair/typebox/value": bundledTypeboxValue,
 	"@octocodeai/octocode-agent-core": bundledPiAgentCore,
 	"@octocodeai/octocode-tui": bundledPiTui,
-	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
+	// Extensions resolve the octocode-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
 	"@octocodeai/octocode-ai": bundledPiAiCompat,
@@ -29,4 +28,4 @@ export const VIRTUAL_MODULES: Record<string, unknown> = withLegacyPackageAliases
 	"@octocodeai/octocode-ai/oauth": bundledPiAiOauth,
 	"@octocodeai/octocode-ai/providers/all": bundledPiAiProviders,
 	"@octocodeai/octocodecode": bundledPiCodingAgent,
-});
+};

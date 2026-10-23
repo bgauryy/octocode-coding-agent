@@ -1,4 +1,4 @@
-export interface CombinedAbortSignal {
+interface CombinedAbortSignal {
 	signal?: AbortSignal;
 	cleanup: () => void;
 }

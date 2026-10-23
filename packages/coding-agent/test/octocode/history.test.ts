@@ -138,7 +138,7 @@ describe("what reads without asking", () => {
 });
 
 describe("search and read", () => {
-	it("shows every hit with context, marks it, names the file and the session, shows a long hit line whole and points to a long context line", () => {
+	it("shows every hit with context, marks it, names the file and the session, shows a long hit line whole and points to a long context line", async () => {
 		const cwd = repo();
 		session("me", {
 			body: [
@@ -158,7 +158,7 @@ describe("search and read", () => {
 			cwd,
 		});
 		const files = historyFiles(historyScope(cwd));
-		const found = searchHistory(files, /needle/i);
+		const found = await searchHistory(files, /needle/i);
 		expect(found).toMatchObject({ hits: 3, files: 1, page: 1, pages: 1 });
 		expect(found.text).toMatch(/^## .*1-e-me\.md · me \(this session\) · segment 1 · work of me$/m);
 		expect(found.text).toMatch(/^> +\d+│ needle here$/m);
@@ -171,16 +171,16 @@ describe("search and read", () => {
 		expect(found.text).not.toContain("cut");
 	});
 
-	it("pages a large result so every hit is reached exactly once", () => {
+	it("pages a large result so every hit is reached exactly once", async () => {
 		const cwd = repo();
 		const body = Array.from({ length: 2_000 }, (_, index) => `line ${index} hit ${"y".repeat(40)}`).join("\n");
 		session("me", { body, cwd });
 		const files = historyFiles(historyScope(cwd));
-		const first = searchHistory(files, /hit/);
+		const first = await searchHistory(files, /hit/);
 		expect(first.pages).toBeGreaterThan(1);
 		const seen: string[] = [];
 		for (let page = 1; page <= first.pages; page++) {
-			const text = searchHistory(files, /hit/, page).text;
+			const text = (await searchHistory(files, /hit/, page)).text;
 			expect(text.length).toBeLessThanOrEqual(PAGE_CHARS + 200);
 			seen.push(
 				...text

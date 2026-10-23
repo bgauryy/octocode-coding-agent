@@ -1,3 +1,4 @@
+import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
 /**
  * Extension loader - loads TypeScript extension modules using jiti.
  *
@@ -15,12 +16,12 @@ import { resolvePath } from "../../utils/paths.ts";
 import { createEventBus, type EventBus } from "../event-bus.ts";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
-import { readExtensionManifest } from "../extension-manifest.ts";
+import { hasPluginOrSkillMarker, readExtensionManifest } from "../extension-manifest.ts";
 import { type McpServerConfig, McpServerRegistry, mcpNamespace, validateMcpServerConfig } from "../mcp-servers.ts";
 import { createSyntheticSourceInfo, getSyntheticPathSource, isSyntheticPath } from "../source-info.ts";
 import { time } from "../timings.ts";
+import { ProjectTrustStore } from "../trust-manager.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../virtual-models.ts";
-import { withLegacyPackageAliases } from "./package-aliases.ts";
 import type {
 	EntryRenderer,
 	Extension,
@@ -89,7 +90,7 @@ function getAliases(): Record<string, string> {
 	const piCodingAgentEntry = packageIndex;
 	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@octocodeai/octocode-agent-core");
 	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@octocodeai/octocode-tui");
-	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
+	// Extensions resolve the octocode-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
 	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@octocodeai/octocode-ai/compat");
@@ -99,7 +100,7 @@ function getAliases(): Record<string, string> {
 		"@octocodeai/octocode-ai/providers/all",
 	);
 
-	_aliases = withLegacyPackageAliases({
+	_aliases = {
 		"@octocodeai/octocodecode": piCodingAgentEntry,
 		"@octocodeai/octocode-agent-core": piAgentCoreEntry,
 		"@octocodeai/octocode-tui": piTuiEntry,
@@ -113,7 +114,7 @@ function getAliases(): Record<string, string> {
 		"@sinclair/typebox": typeboxEntry,
 		"@sinclair/typebox/compile": typeboxCompileEntry,
 		"@sinclair/typebox/value": typeboxValueEntry,
-	});
+	};
 
 	return _aliases;
 }
@@ -164,6 +165,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		sendMessage: notInitialized,
 		sendUserMessage: notInitialized,
 		appendEntry: notInitialized,
+		createUsageRecorder: notInitialized,
 		setSessionName: notInitialized,
 		getSessionName: notInitialized,
 		setLabel: notInitialized,
@@ -171,9 +173,12 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		getAllTools: notInitialized,
 		getSettings: notInitialized,
 		setActiveTools: notInitialized,
+		setToolPolicy: notInitialized,
 		// registerTool() is valid during extension load; refresh is only needed post-bind.
 		refreshTools: () => {},
 		getCommands: notInitialized,
+		getSkillDirectories: notInitialized,
+		getSkillResourceSnapshot: notInitialized,
 		setModel: () => Promise.reject(new Error("Extension runtime not initialized")),
 		getThinkingLevel: notInitialized,
 		setThinkingLevel: notInitialized,
@@ -304,10 +309,15 @@ function createExtensionAPI(
 			if (typeof options?.handler !== "function") {
 				throw new Error(`Command "/${name}" registered by extension "${extension.path}" must define handler().`);
 			}
+			if (options.aliases !== undefined && (!Array.isArray(options.aliases) ||
+				options.aliases.some((alias) => typeof alias !== "string" || alias.length === 0 || /[\s/]/u.test(alias)))) {
+				throw new Error(`Command "/${name}" aliases must be non-empty single tokens without slashes.`);
+			}
 			extension.commands.set(name, {
 				name,
 				sourceInfo: extension.sourceInfo,
 				...options,
+				...(options.aliases ? { aliases: [...new Set(options.aliases)].filter((alias) => alias !== name) } : {}),
 			});
 		},
 
@@ -372,14 +382,19 @@ function createExtensionAPI(
 		},
 
 		// Action methods - delegate to shared runtime
-		sendMessage(message, options): void {
+		sendMessage(message, options): void | Promise<void> {
 			assertActive();
-			runtime.sendMessage(message, options);
+			return runtime.sendMessage(message, options);
 		},
 
 		sendUserMessage(content, options): void {
 			assertActive();
 			runtime.sendUserMessage(content, options);
+		},
+
+		createUsageRecorder(kind) {
+			assertActive();
+			return runtime.createUsageRecorder(kind);
 		},
 
 		appendEntry(customType: string, data?: unknown): void {
@@ -427,9 +442,25 @@ function createExtensionAPI(
 			runtime.setActiveTools(toolNames);
 		},
 
+		setToolPolicy(allows) {
+			assertActive();
+			if (extension.sourceInfo.path !== NATIVE_FEATURE_PATH) throw new Error("Tool permission policy is owned by native features");
+			runtime.setToolPolicy?.(allows);
+		},
+
 		getCommands() {
 			assertActive();
 			return runtime.getCommands();
+		},
+
+		getSkillResourceSnapshot(names) {
+			assertActive();
+			return runtime.getSkillResourceSnapshot(names);
+		},
+
+		getSkillDirectories() {
+			assertActive();
+			return runtime.getSkillDirectories();
 		},
 
 		setModel(model) {
@@ -760,6 +791,8 @@ function resolveExtensionEntries(dir: string): string[] | null {
 	}
 
 	// Check for index.ts or index.js
+	if (hasPluginOrSkillMarker(dir)) return [];
+
 	const indexTs = path.join(dir, "index.ts");
 	const indexJs = path.join(dir, "index.js");
 	if (fs.existsSync(indexTs)) {
@@ -817,13 +850,16 @@ function discoverExtensionsInDir(dir: string): string[] {
 }
 
 /**
- * Discover and load extensions from standard locations.
+ * Discover and load extensions from standard locations. Project extensions (`cwd/.octocode/extensions/`) run
+ * repository code, so they load only when `projectTrusted` is true or, when it is omitted, the user trusted the
+ * project. Global and explicitly configured paths always load.
  */
 export async function discoverAndLoadExtensions(
 	configuredPaths: string[],
 	cwd: string,
 	agentDir: string = getAgentDir(),
 	eventBus?: EventBus,
+	options: { projectTrusted?: boolean } = {},
 ): Promise<LoadExtensionsResult> {
 	const resolvedCwd = resolvePath(cwd);
 	const resolvedAgentDir = resolvePath(agentDir);
@@ -841,8 +877,9 @@ export async function discoverAndLoadExtensions(
 	};
 
 	// 1. Project-local extensions: cwd/${CONFIG_DIR_NAME}/extensions/
-	const localExtDir = path.join(resolvedCwd, CONFIG_DIR_NAME, "extensions");
-	addPaths(discoverExtensionsInDir(localExtDir));
+	if (options.projectTrusted ?? new ProjectTrustStore(resolvedAgentDir).get(resolvedCwd) === true) {
+		addPaths(discoverExtensionsInDir(path.join(resolvedCwd, CONFIG_DIR_NAME, "extensions")));
+	}
 
 	// 2. Global extensions: agentDir/extensions/
 	const globalExtDir = path.join(resolvedAgentDir, "extensions");

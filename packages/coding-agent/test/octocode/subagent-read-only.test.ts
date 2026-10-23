@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
+import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
+import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
+import { registerTurnSetup } from "../../src/octocode/turn.ts";
+import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { tmp } from "./helpers.ts";
+
+/**
+ * A reviewer or researcher keeps `file` for its own reports, so tool availability cannot tell it is read-only: the
+ * profile says so, the parent passes it to the child, and the child's policy investigates and reports instead of
+ * telling it to change code.
+ */
+describe("read-only subagent roles", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("marks the bundled reviewer and researcher read-only, and not the implementer", () => {
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		expect(profiles.get("reviewer")?.readOnly).toBe(true);
+		expect(profiles.get("researcher")?.readOnly).toBe(true);
+		expect(profiles.get("implementer")?.readOnly).toBeUndefined();
+	});
+
+	it("passes read-only to the child and never inherits it from the parent", () => {
+		const reviewer = loadProfiles(tmp(), tmp(), false, {}).get("reviewer");
+		expect(subagentProcessEnv(reviewer, {}, { id: "a" })[READ_ONLY_ENV]).toBe("1");
+		const implementer = loadProfiles(tmp(), tmp(), false, {}).get("implementer");
+		expect(subagentProcessEnv(implementer, { [READ_ONLY_ENV]: "1" }, { id: "b" })[READ_ONLY_ENV]).toBeUndefined();
+	});
+
+	it("gives a read-only child the investigate-and-report rule though it has the file tool", async () => {
+		const policy = async (readOnly: boolean) => {
+			vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
+			vi.stubEnv(READ_ONLY_ENV, readOnly ? "1" : "");
+			const fake = fakePi();
+			registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: fakeOctocode({ by: "off" }).mcp });
+			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["file", "agent", "archive", "bash"] } };
+			await fake.emit("before_agent_start", event, {});
+			return Object.values(event.systemPromptOptions.sections).join("\n");
+		};
+		const reviewer = await policy(true);
+		expect(reviewer).toContain("Investigate and report; do not modify the repository.");
+		expect(reviewer).not.toContain("Make the smallest complete change");
+		expect(await policy(false)).toContain("Make the smallest complete change");
+	});
+});

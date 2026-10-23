@@ -649,7 +649,6 @@ export function getTerminalTheme(): TerminalTheme {
 
 // Use globalThis to share theme across module loaders (node + jiti in dev mode)
 const THEME_KEY = Symbol.for("@octocodeai/octocodecode:theme");
-const THEME_KEY_OLD = Symbol.for("@mariozechner/pi-coding-agent:theme");
 
 // Export theme as a getter that reads from globalThis
 // This ensures all module instances (node, jiti) see the same theme
@@ -663,7 +662,6 @@ export const theme: Theme = new Proxy({} as Theme, {
 
 function setGlobalTheme(t: Theme): void {
 	(globalThis as Record<symbol, Theme>)[THEME_KEY] = t;
-	(globalThis as Record<symbol, Theme>)[THEME_KEY_OLD] = t;
 }
 
 let currentThemeName: string | undefined;
@@ -1021,7 +1019,9 @@ export function getLanguageFromPath(filePath: string): string | undefined {
 	return extToLang[ext];
 }
 
-export function getMarkdownTheme(): MarkdownTheme {
+/** Markdown styles from `source`: the active theme by default, or a theme instance a renderer was given. */
+export function getMarkdownTheme(source: Theme = theme): MarkdownTheme {
+	const theme = source;
 	return {
 		heading: (text: string) => theme.fg("mdHeading", text),
 		link: (text: string) => theme.fg("mdLink", text),

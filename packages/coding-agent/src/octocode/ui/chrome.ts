@@ -100,7 +100,7 @@ export function bannerHeader(
 	const info = {
 		version: packageVersion(),
 		hints: [
-			"/octocode help",
+			"/status",
 			`${expandKey()} expand`,
 			`${appKey("app.interrupt").replace(/^escape$/, "esc")} interrupt`,
 			"/agents team",
@@ -161,7 +161,7 @@ export function registerUi(pi: ExtensionAPI, isSubagent: boolean): void {
 		ctx.ui.setStatus(STATUS.speed, undefined);
 		// Shine once, on a fresh start with nothing below the banner. Module state cannot remember it: Octocode re-imports
 		// extensions for every runtime (/new, /resume, /fork, /reload). And a resumed transcript pushes the banner above
-		// the viewport, where every changed frame makes pi-tui clear and redraw the whole scrollback.
+		// the viewport, where every changed frame makes octocode-tui clear and redraw the whole scrollback.
 		const fresh =
 			event.reason === "startup" && !ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 		if (ctx.mode === "tui") decorate(ctx, fresh ? Date.now() : undefined);

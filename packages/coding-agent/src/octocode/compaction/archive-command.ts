@@ -1,18 +1,19 @@
 import { archiveFolder, LIBRARY_FILE, readSegments, segmentLine, segmentPath } from "../shared/archive.ts";
-import { type Subcommands, say } from "../shared/commands.ts";
+import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 
 /**
- * `/octocode archive [<n>]`: the segments of this session's archive of compacted history, one line each (number, time
+ * `/archive [<n>]`: the segments of this session's archive of compacted history, one line each (number, time
  * range, tokens before, TL;DR), with the folder to search; with a number, the path of that segment's file.
  */
 export function registerArchiveCommand(commands: Subcommands): void {
 	commands.add("archive", {
 		description:
 			"archive [<n>] — compacted history of this session: segments with their TL;DR, or the file of segment <n>",
+		complete: prefix => wordCompletions(readSegments().map(segment => [String(segment.n), segmentLine(segment)]), prefix),
 		handler: async (args, ctx) => {
 			const word = args.trim();
 			if (word !== "" && !/^\d+$/.test(word))
-				return say(ctx, "Usage: /octocode archive [<segment number>]", "warning");
+				return say(ctx, "Usage: /archive [<segment number>]", "warning");
 			const folder = archiveFolder();
 			const segments = readSegments();
 			if (word !== "") {

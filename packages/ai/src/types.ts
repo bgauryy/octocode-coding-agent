@@ -8,7 +8,6 @@ import type { MistralOptions } from "./api/mistral-conversations.ts";
 import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
 import type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
-import type { PiMessagesOptions } from "./api/pi-messages.ts";
 import type {
 	AnthropicMessagesCompat,
 	BedrockCompat,
@@ -67,8 +66,7 @@ export type KnownApi =
 	| "anthropic-messages"
 	| "bedrock-converse-stream"
 	| "google-generative-ai"
-	| "google-vertex"
-	| "pi-messages";
+	| "google-vertex";
 
 export type Api = KnownApi | (string & {});
 
@@ -93,7 +91,6 @@ export type KnownProvider =
 	| "openai"
 	| "azure"
 	| "openai-codex"
-	| "radius"
 	| "typesafe"
 	| "nvidia"
 	| "deepseek"
@@ -291,7 +288,6 @@ export interface ApiOptionsMap {
 	"google-vertex": GoogleVertexOptions;
 	"mistral-conversations": MistralOptions;
 	"bedrock-converse-stream": BedrockOptions;
-	"pi-messages": PiMessagesOptions;
 }
 
 /**
@@ -604,7 +600,7 @@ export interface AssistantMessage {
 	durationMs?: number;
 }
 
-/** A tool call that another tool made while it ran, for example from a codemode script. */
+/** A tool call that another tool made while it ran, for example from another tool. */
 export interface NestedToolCallRecord {
 	id: string;
 	name: string;

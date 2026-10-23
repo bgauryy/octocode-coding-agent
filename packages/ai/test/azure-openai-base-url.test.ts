@@ -174,6 +174,16 @@ describe("azure base URL normalization", () => {
 		expect(result.errorMessage).toContain("Invalid Azure OpenAI base URL");
 	});
 
+	it.each(["option", "environment"])("omits affinity when caching is disabled through %s", async (source) => {
+		const model = { ...getModel("openai", "gpt-4o-mini"), api: "azure-openai-responses" as const, provider: "azure", baseUrl: "https://example.openai.azure.com/openai/v1" };
+		await streamAzureOpenAIResponses(model, normalizeContext(context), {
+			apiKey: "test-key", sessionId: "session", maxRetries: 0,
+			...(source === "option" ? { cacheRetention: "none" as const } : { env: { OCTOCODE_CACHE_RETENTION: "none" } }),
+		}).result();
+		expect(azureMock.lastParams).toBeDefined();
+		expect(azureMock.lastParams?.prompt_cache_key).toBeUndefined();
+	});
+
 	it("clamps prompt_cache_key to OpenAI's 64-character limit", async () => {
 		const model = getModel("azure", "gpt-4o-mini");
 		await streamAzureOpenAIResponses(model, normalizeContext(context), {

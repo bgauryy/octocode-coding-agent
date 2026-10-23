@@ -269,8 +269,107 @@ describe("InteractiveMode compaction events", () => {
 
 		await flushCompactionQueue.call(fakeThis, { willRetry: false });
 
-		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", { streamingBehavior: "steer" });
+		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", { streamingBehavior: "steer", preflightResult: expect.any(Function) });
 		expect(fakeThis.compactionQueuedMessages).toEqual([]);
 		expect(fakeThis.showError).not.toHaveBeenCalled();
 	});
+});
+
+
+describe("queued message recovery", () => {
+	const flush = (ui: any, willRetry = false) => Reflect.get(InteractiveMode.prototype, "flushCompactionQueue").call(ui, { willRetry });
+	const fixture = () => ({
+		compactionQueuedMessages: [{ text: "first", mode: "steer" }, { text: "second", mode: "followUp" }],
+		session: { clearQueue: vi.fn(), prompt: vi.fn().mockResolvedValue(undefined), steer: vi.fn(), followUp: vi.fn() },
+		isExtensionCommand: () => false,
+		updatePendingMessagesDisplay: vi.fn(), showError: vi.fn(),
+	});
+
+	test("restores only unaccepted messages and preserves newer input on a partial failure", async () => {
+		const ui = fixture();
+		ui.session.followUp.mockImplementation(async () => {
+			ui.compactionQueuedMessages.push({ text: "newer", mode: "steer" });
+			throw new Error("input failed");
+		});
+		await flush(ui, true);
+		expect(ui.session.steer).toHaveBeenCalledWith("first");
+		expect(ui.session.clearQueue).not.toHaveBeenCalled();
+		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["second", "newer"]);
+	});
+
+	test("does not enqueue later messages before the first prompt passes preflight", async () => {
+		const ui = fixture();
+		ui.session.prompt.mockRejectedValue(new Error("no model"));
+		await flush(ui);
+		expect(ui.session.followUp).not.toHaveBeenCalled();
+		expect(ui.session.clearQueue).not.toHaveBeenCalled();
+		expect(ui.compactionQueuedMessages.map((entry) => entry.text)).toEqual(["first", "second"]);
+	});
+
+	test("does not replay accepted input when the running prompt fails later", async () => {
+		const ui = fixture();
+		let fail!: (error: Error) => void;
+		ui.session.prompt.mockImplementation((_text, options) => {
+			options.preflightResult("started");
+			return new Promise((_, reject) => { fail = reject; });
+		});
+		await flush(ui);
+		fail(new Error("provider failed"));
+		await Promise.resolve();
+		expect(ui.compactionQueuedMessages).toEqual([]);
+		expect(ui.session.clearQueue).not.toHaveBeenCalled();
+		expect(ui.showError).toHaveBeenCalledWith("provider failed");
+	});
+
+	test("starts the next prompt when an input handler consumes the first", async () => {
+		const ui = fixture();
+		ui.session.prompt.mockImplementation(async (_text, options) => options.preflightResult("handled"));
+		await flush(ui);
+		expect(ui.session.prompt).toHaveBeenCalledTimes(2);
+		expect(ui.session.followUp).not.toHaveBeenCalled();
+		expect(ui.compactionQueuedMessages).toEqual([]);
+	});
+
+	test("bounds previews and distinguishes next-turn messages from follow-ups", () => {
+		initTheme("dark");
+		const ui = {
+			pendingMessagesContainer: new Container(),
+			getAllQueuedMessages: () => ({ steering: ["first\nsecond line", "two"], followUp: ["three", "four", "five"] }),
+			getAppKeyDisplay: () => "alt+up", session: { isCompacting: true },
+		};
+		Reflect.get(InteractiveMode.prototype, "updatePendingMessagesDisplay").call(ui);
+		const lines = ui.pendingMessagesContainer.render(100);
+		const output = stripAnsi(lines.join("\n"));
+		expect(output).toContain("5 queued · 2 next turn · 3 after run");
+		expect(output).toContain("first second line");
+		expect(output).toContain("2 more queued");
+		expect(output).toContain("waiting for compaction");
+		expect(lines.length).toBe(7);
+	});
+});
+
+
+test("restores rejected queued input alongside a newer draft", async () => {
+	let draft = "original";
+	const ui = {
+		editor: { addToHistory: vi.fn(), setText: (text: string) => { draft = text; }, getText: () => draft },
+		session: { prompt: async () => { draft = "newer draft"; throw new Error("input rejected"); } },
+		showError: vi.fn(), updatePendingMessagesDisplay: vi.fn(), ui: { requestRender: vi.fn() },
+	};
+	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "steer");
+	expect(draft).toBe("original\n\nnewer draft");
+	expect(ui.showError).toHaveBeenCalledWith(expect.stringContaining("restored to editor"));
+});
+
+test("does not restore a queued prompt after acceptance if the run later fails", async () => {
+	let draft = "original";
+	const ui = {
+		editor: { addToHistory: vi.fn(), setText: (text: string) => { draft = text; }, getText: () => draft },
+		session: { prompt: async (_text: string, options: { preflightResult: () => void }) => {
+			options.preflightResult(); draft = "newer draft"; throw new Error("provider failed");
+		} },
+		showError: vi.fn(), updatePendingMessagesDisplay: vi.fn(), ui: { requestRender: vi.fn() },
+	};
+	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "followUp");
+	expect(draft).toBe("newer draft");
 });

@@ -53,7 +53,7 @@ function summarize(
 	messages: unknown[],
 	options: { branch?: unknown[]; previousSummary?: string; standalone?: boolean; answer?: string } = {},
 ) {
-	const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}) } as never;
+	const pi = { getThinkingLevel: () => "off", getActiveTools: () => [], getSettings: () => ({}), createUsageRecorder: () => () => {}, appendEntry: () => {} } as never;
 	const ctx = {
 		model,
 		modelRegistry: {
@@ -69,7 +69,7 @@ function summarize(
 		},
 		sessionManager: {
 			getSessionId: () => "s",
-			getSessionFile: () => undefined,
+			getSessionFile: () => path.join(home, "summary-session.jsonl"),
 			getBranch: () => [],
 			buildSessionProjection: () => ({ entries: [], messages: [] }),
 		},

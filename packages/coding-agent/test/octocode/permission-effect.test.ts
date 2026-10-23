@@ -324,7 +324,7 @@ describe("a run with no UI in full", () => {
 	it("prints the banner at start and the summary at exit to stderr", async () => {
 		const { permission, ctx, cwd, err } = headless();
 		expect(err.join("")).toMatch(
-			/octocode: permission mode full: every action runs without asking and is recorded in .*\/octocode permission log/,
+			/octocode: permission mode full: every action runs without asking and is recorded in .*\/permissions log/,
 		);
 		await permission.check(ctx, { action: "shell", title: "Run?", what: ["ls"], cwd });
 		await permission.check(ctx, { action: "shell.destructive", title: "Run?", what: ["rm -rf build"], cwd });

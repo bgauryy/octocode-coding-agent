@@ -143,7 +143,7 @@ export function getJsonSchemaToolParameters(tool: Tool, strict: boolean | undefi
 	return (strict === true ? makeStrictJsonSchema(tool.parameters) : tool.parameters) as Tool["parameters"];
 }
 
-export interface GrammarConstrainedSampling {
+interface GrammarConstrainedSampling {
 	format: "lark" | "regex";
 	definition: string;
 	inputProperty: string;

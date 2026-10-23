@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- `discoverAndLoadExtensions()` loads a project's `.octocode/extensions/` only when the project is trusted. Pass `{ projectTrusted: true }` as its fifth argument to load them after your application establishes trust.
 - Native Octocode sessions no longer register `edit`, `write`, `grep`, `find` or `ls`. Use `file` for mutations, `read` for files/images, and Octocode MCP or shell commands for search. Low-level SDK tool factories remain available for custom runtimes.
 
 ### Added
@@ -21,6 +22,10 @@
 
 ### Fixed
 
+- Updated `ws` to 8.22.0 for GHSA-96hv-2xvq-fx4p (memory exhaustion from tiny fragments) and GHSA-58qx-3vcg-4xpx (uninitialized memory disclosure).
+- Project `AGENTS.md` and `CLAUDE.md` files over 64 KiB are truncated, with a note naming the file, instead of entering every request whole.
+- `mcp.json` changes save a commented file as `<file>.bak` before rewriting it, because the rewrite drops comments.
+- The system prompt leaves out the generic shell-search rule when `tool_search` can load Octocode search tools, so loading one no longer changes the rules.
 - Browser subagent profiles exclude PowerShell as well as bash, and PowerShell-only sessions receive shell guidance. Browser capability detection honors tool selectors and rejects malformed selection fields.
 - Compact agent rows now retain model identity and explicitly labeled age instead of dropping them on narrow terminals.
 - Thinking blocks now distinguish active, completed and interrupted reasoning, with warning colors for cancellation. Narrow agent and message rows preserve state visibility, and the startup animation stops even when its header is no longer rendered.

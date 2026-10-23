@@ -10,8 +10,9 @@ import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../extensions/types.ts";
 import { ansiLinesToHtml } from "./ansi-to-html.ts";
+import type { ToolHtmlRenderer } from "./index.ts";
 
-export interface ToolHtmlRendererDeps {
+interface ToolHtmlRendererDeps {
 	/** Renderers of calls to a tool, as resolved by extensions and the registered tool */
 	getToolRenderers: (name: string) => ToolRenderers | undefined;
 	/** Theme for styling */
@@ -20,19 +21,6 @@ export interface ToolHtmlRendererDeps {
 	cwd: string;
 	/** Terminal width for rendering (default: 100) */
 	width?: number;
-}
-
-export interface ToolHtmlRenderer {
-	/** Render a tool call to HTML. Returns undefined if tool has no custom renderer. */
-	renderCall(toolCallId: string, toolName: string, args: unknown): string | undefined;
-	/** Render a tool result to collapsed/expanded HTML. Returns undefined if tool has no custom renderer. */
-	renderResult(
-		toolCallId: string,
-		toolName: string,
-		result: Array<{ type: string; text?: string; data?: string; mimeType?: string }>,
-		details: unknown,
-		isError: boolean,
-	): { collapsed?: string; expanded?: string } | undefined;
 }
 
 /**

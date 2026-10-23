@@ -45,11 +45,11 @@ interface CoordinateParams {
 export function registerCollab(
 	pi: ExtensionAPI,
 	team: Team,
-	options: { stopAgent?: StopAgent; beforeLeave?: (reason: string) => Promise<unknown> } = {},
+	options: { stopAgent?: StopAgent; beforeLeave?: (reason: string) => Promise<unknown>; registerTool?: ExtensionAPI["registerTool"] } = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(pi);
-	registerCoordinateTool(pi, team, options.stopAgent);
-	registerSendMessageTool(pi, team);
+	registerCoordinateTool(pi, team, options.stopAgent, options.registerTool);
+	registerSendMessageTool(pi, team, options.registerTool);
 	registerTeamEvents(pi, team, options.beforeLeave);
 	// Reservations are enforced where the edit happens, so a model that forgot to check still cannot overwrite a peer.
 	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers Octocode's own edit and write.
@@ -96,22 +96,22 @@ function registerMessageRenderer(pi: ExtensionAPI): void {
 	});
 }
 
-function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAgent | undefined): void {
+function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAgent | undefined, registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool)): void {
 	// `stop` exists only for an agent that can start subagents, which is also the one that joins and leaves by hand: a
 	// subagent joins when it starts and leaves when its run ends (`Team.start`, `onAgentSettled`), and would only be refused `stop`.
 	const canStop = stopAgent !== undefined;
 	const actions = canStop
 		? (["list", "join", "leave", "lock", "unlock", "stop", "changes"] as const)
 		: (["list", "lock", "unlock", "changes"] as const);
-	pi.registerTool(
+	registerTool(
 		timedTool({
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"See which agents work in this repository and reserve the files you will change, so concurrent edits do not collide. Reservations are cooperative: they cover guarded file tools, not shell commands, last while you work, and make a conflicting edit fail.",
+				"List teammates and reserve files. Reservations reject conflicting guarded file edits; shell commands and unrelated editors do not honor them.",
 			promptSnippet: "List agents, reserve files, see recent changes",
 			promptGuidelines: [
-				"Run `list` before work that may overlap another agent, `lock` the paths you will edit and `unlock` them when done. On a conflict, message the owner or do independent work.",
+				"Before overlapping work: list agents, lock your edit paths, then unlock when done. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
@@ -241,23 +241,22 @@ function registerCoordinateTool(pi: ExtensionAPI, team: Team, stopAgent: StopAge
 	);
 }
 
-function registerSendMessageTool(pi: ExtensionAPI, team: Team): void {
-	pi.registerTool(
+function registerSendMessageTool(pi: ExtensionAPI, team: Team, registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool)): void {
+	registerTool(
 		timedTool({
 			name: "sendMessage",
 			label: "Send message",
 			description:
-				"Send steering, a question or evidence to a live agent in this repository, or to every agent in your session tree. Delivery is queued: a busy recipient reads it at its next step, and you are told if it left unread. " +
-				"A finished subagent that lingers (its report says so, and for how long) resumes with your message; one that does not takes no more messages, so give it a new `agent` task. A long message arrives as its start plus the path of a file with the full text.",
+				"Send steering, questions or evidence to a teammate or your session tree. Delivery is queued; unread departures are reported. A lingering child resumes on a message; otherwise start a new task. Long messages include a file path to the full text.",
 			promptSnippet: "Message a subagent or teammate",
 			promptGuidelines: [
-				"Message only when it changes the recipient's next step: a blocker (SBAR), a decision request, or evidence as a delta update. Make it self-contained and skip acknowledgements and completion pings (final reports arrive automatically).",
+				"Send self-contained blockers, decisions or evidence that change the next step. Skip acknowledgements and completion pings; reports arrive automatically.",
 			],
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
 						description:
-							'Agent id, role, "parent" or "all" (your session tree). Omit it when replyTo is set: the message goes to the sender of that message',
+							'Agent id, role, "parent" or "all" (session tree). replyTo alone targets the original sender.',
 					}),
 				),
 				message: Type.String({ description: "The message text" }),
@@ -270,13 +269,13 @@ function registerSendMessageTool(pi: ExtensionAPI, team: Team): void {
 				replyTo: Type.Optional(
 					Type.Integer({
 						description:
-							"Number of the message you answer, to reply in its thread (no `to` needed); answering a question wakes the asker",
+							"Message number to answer; no to needed. Wakes the asker.",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop the current step of one subagent you started (its running tool is cancelled) and continue it with this message, for a changed plan or wrong direction. Default false: read at its next step",
+							"true: cancel your child's current step and continue with this message. Default false: deliver at its next step.",
 					}),
 				),
 			}),

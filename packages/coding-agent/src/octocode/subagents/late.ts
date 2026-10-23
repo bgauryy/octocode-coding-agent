@@ -1,6 +1,6 @@
 import { onSecond } from "../shared/clock.ts";
 import type { AgentRuns } from "./claim.ts";
-import { pendingReportsDir, takePendingReports } from "./handoff.ts";
+import { pendingReportsDir, releasePendingReports, takePendingReports } from "./handoff.ts";
 import { SUBAGENT_STOP_GRACE_MS } from "./process.ts";
 
 /**
@@ -18,6 +18,7 @@ export class LateReports {
 	private stopClock: (() => void) | undefined;
 	/** The take in progress, or the last one: the next starts after it, so two takes never claim the same file. */
 	private taking: Promise<void> = Promise.resolve();
+	private generation = 0;
 
 	private readonly runs: AgentRuns;
 	constructor(runs: AgentRuns) {
@@ -26,6 +27,7 @@ export class LateReports {
 
 	/** Takes the reports waiting for this Octocode session now (resolves when done), and again every second for a while. */
 	start(sessionId: string): Promise<void> {
+		this.generation++;
 		this.dir = pendingReportsDir(sessionId);
 		this.runs.reports.pendingDir = this.dir;
 		const first = this.take();
@@ -39,14 +41,23 @@ export class LateReports {
 	}
 
 	take(): Promise<void> {
+		const dir = this.dir;
+		const generation = this.generation;
 		const next = this.taking.then(async () => {
-			if (this.dir) for (const report of await takePendingReports(this.dir)) this.runs.reports.add(report);
+			if (!dir || generation !== this.generation) return;
+			const reports = await takePendingReports(dir);
+			if (generation !== this.generation) {
+				await releasePendingReports(reports);
+				return;
+			}
+			for (const report of reports) this.runs.reports.add(report);
 		});
 		this.taking = next.catch(() => undefined);
 		return next;
 	}
 
 	stop(): void {
+		this.generation++;
 		this.stopPolling();
 		this.dir = undefined;
 	}

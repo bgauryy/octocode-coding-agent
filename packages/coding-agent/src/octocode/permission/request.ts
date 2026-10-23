@@ -1,7 +1,10 @@
+import type { ToolInvocation } from "../../core/extensions/types.ts";
 import type { ActionClass, AskReason } from "./mode.ts";
 
 /** What an ask shows: the effect card, any reasons that tighten it, and exactly what it would do. */
 export interface PermissionRequest {
+	/** Explicit invocation for checks before execution (including user-authored shell commands). */
+	invocation?: ToolInvocation;
 	/** The effect. Absent when a reason forces a call that has no action class. */
 	action?: ActionClass;
 	/** Other classes the same call is, each of which must also be allowed (an upload from outside the workspace is browser control and an outside upload): one prompt names them all, and no session grant answers it. */
@@ -30,7 +33,7 @@ export interface PermissionRequest {
 	risk?: string;
 	/** Offered as "Allow <label> for this session"; `key` is what the grant matches next time. */
 	grant?: { key: string; label: string };
-	/** Issued by a codemode script (`parentToolCallId` set). */
+	/** Issued by another tool (`parentToolCallId` set). */
 	nested?: boolean;
 	signal?: AbortSignal;
 }

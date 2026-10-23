@@ -72,19 +72,19 @@ it("runs native tools and releases team resources across a real session reload",
 			expect(native).toHaveLength(1);
 			const names = harness.session.getAllTools().map((tool) => tool.name);
 			expect(new Set(names).size).toBe(names.length);
-			expect(names).toEqual(expect.arrayContaining(["file", "coordinate", "agent", "bash"]));
+			expect(names).toEqual(expect.arrayContaining(["file", "agent", "bash"]));
 			for (const name of ["edit", "write", "grep", "find", "ls"]) expect(names).not.toContain(name);
 			for (const tool of harness.session
 				.getAllTools()
 				.filter((tool) => ["file", "bash", "agent"].includes(tool.name))) {
 				expect(tool.sourceInfo.source).toBe("builtin");
 			}
-			harness.session.setActiveToolsByName(["read", "bash", "file", "agent", "coordinate"]);
+			harness.session.setActiveToolsByName(["bash", "file", "agent"]);
 			harness.setResponses([
-				fauxAssistantMessage(fauxToolCall("coordinate", { action: "join", goal: "Verify native lifecycle" }), {
+				fauxAssistantMessage(fauxToolCall("agent", { type: "coordinate", input: { action: "join", goal: "Verify native lifecycle" } }), {
 					stopReason: "toolUse",
 				}),
-				fauxAssistantMessage(fauxToolCall("coordinate", { action: "lock", paths: [`run-${run}.txt`] }), {
+				fauxAssistantMessage(fauxToolCall("agent", { type: "coordinate", input: { action: "lock", paths: [`run-${run}.txt`] } }), {
 					stopReason: "toolUse",
 				}),
 				fauxAssistantMessage(
@@ -100,7 +100,7 @@ it("runs native tools and releases team resources across a real session reload",
 					}),
 					{ stopReason: "toolUse" },
 				),
-				fauxAssistantMessage(fauxToolCall("read", { path: `run-${run}.txt` }), { stopReason: "toolUse" }),
+				fauxAssistantMessage(fauxToolCall("bash", { command: `cat run-${run}.txt` }), { stopReason: "toolUse" }),
 				fauxAssistantMessage(
 					fauxToolCall("file", {
 						queries: [

@@ -10,16 +10,15 @@ import { CONFIG_DIR_NAME, getAgentDir, getLegacyConfigDirs } from "../config.ts"
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
+import { builtInCompactionSettings } from "./compaction/settings.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import type {
 	CacheWarmingMode,
-	CompactionModelOverride,
 	DefaultProjectTrust,
 	FullscreenExitOutput,
 	MermaidRenderingMode,
 	PackageSource,
 	QuietStartup,
-	SessionShareDestination,
 	Settings,
 	ThinkingBudgetsSettings,
 	TransportSetting,
@@ -30,10 +29,6 @@ import type {
 export type {
 	BranchSummarySettings,
 	CacheWarmingMode,
-	CodemodeMode,
-	CodemodeSettings,
-	CompactionModelOverride,
-	CompactionSettings,
 	DefaultProjectTrust,
 	FullscreenExitOutput,
 	ImageSettings,
@@ -43,7 +38,6 @@ export type {
 	ProviderRetrySettings,
 	QuietStartup,
 	RetrySettings,
-	SessionShareDestination,
 	Settings,
 	TerminalSettings,
 	ThinkingBudgetsSettings,
@@ -53,11 +47,6 @@ export type {
 } from "./settings-schema.ts";
 /** Cache-warming profile. "idle" also warms between agent runs. */
 export const CACHE_WARMING_MODES = ["off", "streaming", "idle"] as const satisfies readonly CacheWarmingMode[];
-
-const DEFAULT_COMPACTION_TOKEN_SETTINGS: Required<CompactionModelOverride> = {
-	reserveTokens: SETTINGS_DEFAULTS.compaction.reserveTokens,
-	keepRecentTokens: SETTINGS_DEFAULTS.compaction.keepRecentTokens,
-};
 
 function isMergeableObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -303,6 +292,9 @@ export class InMemorySettingsStorage implements SettingsStorage {
 		}
 	}
 }
+
+/** Octocode's palettes, chosen by the terminal's appearance (`light/dark` setting form). `system` stays selectable. */
+export const DEFAULT_THEME_SETTING = "octocode-light/octocode-dark";
 
 export class SettingsManager {
 	private storage: SettingsStorage;
@@ -780,10 +772,11 @@ export class SettingsManager {
 		this.save();
 	}
 
-	getThemeSetting(): string | undefined {
+	/** The theme setting; without one, the Octocode pair that follows the terminal's light or dark appearance. */
+	getThemeSetting(): string {
 		const value = this.settings.theme;
 		if (typeof value === "string") return value;
-		return undefined;
+		return DEFAULT_THEME_SETTING;
 	}
 
 	getTheme(): string | undefined {
@@ -844,79 +837,20 @@ export class SettingsManager {
 		this.save();
 	}
 
-	getSessionShareDestination(): SessionShareDestination {
-		const destination = this.settings.sessionShareDestination;
-		return destination === "gist" || destination === "radius"
-			? destination
-			: SETTINGS_DEFAULTS.sessionShareDestination;
-	}
-
-	setSessionShareDestination(destination: SessionShareDestination): void {
-		this.globalSettings.sessionShareDestination = destination;
-		this.markModified("sessionShareDestination");
-		this.save();
-	}
-
 	getCompactionEnabled(): boolean {
-		return this.settings.compaction?.enabled ?? SETTINGS_DEFAULTS.compaction.enabled;
+		return true;
 	}
 
-	setCompactionEnabled(enabled: boolean): void {
-		if (!this.globalSettings.compaction) {
-			this.globalSettings.compaction = {};
-		}
-		this.globalSettings.compaction.enabled = enabled;
-		this.markModified("compaction", "enabled");
-		this.save();
+	getCompactionReserveTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number {
+		return builtInCompactionSettings(model).reserveTokens;
 	}
 
-	private getCompactionTokenSetting(
-		field: keyof CompactionModelOverride,
-		model?: Pick<Model<string>, "provider" | "id">,
-	): number {
-		const compaction = this.settings.compaction;
-		const ordinary = compaction?.[field];
-		if (ordinary !== undefined && (typeof ordinary !== "number" || !Number.isSafeInteger(ordinary) || ordinary < 0)) {
-			throw new Error(
-				`Invalid compaction.${field} setting: ${String(ordinary)}. Expected a non-negative safe integer.`,
-			);
-		}
-
-		const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-		const entry = modelKey !== undefined ? compaction?.modelOverrides?.[modelKey] : undefined;
-		if (entry !== undefined && !isMergeableObject(entry)) {
-			throw new Error(
-				`Invalid compaction.modelOverrides["${modelKey}"] setting: ${String(entry)}. Expected an object.`,
-			);
-		}
-		const override = entry?.[field];
-		if (override !== undefined && (typeof override !== "number" || !Number.isSafeInteger(override) || override < 0)) {
-			throw new Error(
-				`Invalid compaction.modelOverrides["${modelKey}"].${field} setting: ${String(override)}. Expected a non-negative safe integer.`,
-			);
-		}
-		return override ?? ordinary ?? DEFAULT_COMPACTION_TOKEN_SETTINGS[field];
+	getCompactionKeepRecentTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number {
+		return builtInCompactionSettings(model).keepRecentTokens;
 	}
 
-	getCompactionReserveTokens(model?: Pick<Model<string>, "provider" | "id">): number {
-		return this.getCompactionTokenSetting("reserveTokens", model);
-	}
-
-	getCompactionKeepRecentTokens(model?: Pick<Model<string>, "provider" | "id">): number {
-		return this.getCompactionTokenSetting("keepRecentTokens", model);
-	}
-
-	/** Resolve each token setting through model override, ordinary setting, then built-in default. */
-	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id">): {
-		enabled: boolean;
-		reserveTokens: number;
-		keepRecentTokens: number;
-	} {
-		return {
-			enabled: this.getCompactionEnabled(),
-			reserveTokens: this.getCompactionReserveTokens(model),
-			keepRecentTokens: this.getCompactionKeepRecentTokens(model),
-		};
+	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }) {
+		return builtInCompactionSettings(model);
 	}
 
 	getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean } {

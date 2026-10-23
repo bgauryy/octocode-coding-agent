@@ -6,6 +6,8 @@ import { type Component, Container, type Focusable, type TUI } from "../../tui/s
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AutocompleteProviderFactory } from "../src/core/extensions/types.ts";
+import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
+import { setMcpSessionStatus } from "../src/extensions/mcp/status.ts";
 import type { QuietStartup } from "../src/core/settings-manager.ts";
 import type { SourceInfo } from "../src/core/source-info.ts";
 import type { AuthSelectorProvider } from "../src/modes/interactive/components/oauth-selector.ts";
@@ -519,6 +521,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			fdPath: null,
 		};
 
+		Object.setPrototypeOf(fakeThis, InteractiveMode.prototype);
 		const provider = createBaseAutocompleteProvider.call(fakeThis);
 		const line = "/model codexgpt";
 		const suggestions = await provider.getSuggestions([line], 0, line.length, {
@@ -568,10 +571,11 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				{ id: "anthropic", name: "Anthropic", authType: "oauth", subscription: true },
 				{ id: "anthropic", name: "Anthropic", authType: "api_key", subscription: true },
 				{ id: "openai", name: "OpenAI", authType: "api_key" },
-				{ id: "radius", name: "Radius", authType: "oauth", subscription: false },
+				{ id: "openrouter", name: "OpenRouter", authType: "oauth", subscription: false },
 			],
 		};
 
+		Object.setPrototypeOf(fakeThis, InteractiveMode.prototype);
 		const provider = createBaseAutocompleteProvider.call(fakeThis);
 		const line = "/login subscription anthrop";
 		const suggestions = await provider.getSuggestions([line], 0, line.length, {
@@ -586,12 +590,14 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			},
 		]);
 
-		// OAuth sign-in without a subscription, such as Radius, is an account.
-		const radiusLine = "/login radius";
-		const radiusSuggestions = await provider.getSuggestions([radiusLine], 0, radiusLine.length, {
+		// OAuth sign-in without a subscription, such as OpenRouter, is an account.
+		const accountLine = "/login openrouter";
+		const accountSuggestions = await provider.getSuggestions([accountLine], 0, accountLine.length, {
 			signal: new AbortController().signal,
 		});
-		expect(radiusSuggestions?.items).toEqual([{ value: "radius", label: "radius", description: "Radius · account" }]);
+		expect(accountSuggestions?.items).toEqual([
+			{ value: "openrouter", label: "openrouter", description: "OpenRouter · account" },
+		]);
 	});
 });
 describe("InteractiveMode.showLoadedResources", () => {
@@ -611,6 +617,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		skills?: Array<{ filePath: string; name: string }>;
 		skillDiagnostics?: Array<{ type: "warning" | "error" | "collision"; message: string }>;
 		useRealScopeGroups?: boolean;
+		events?: EventBus;
 	}) {
 		const fakeThis: any = {
 			options: { verbose: options.verbose ?? false },
@@ -630,6 +637,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 					getShortcutDiagnostics: () => [],
 				},
 				resourceLoader: {
+					getEventBus: () => options.events,
 					getPathMetadata: () => new Map(),
 					getAgentsFiles: () => ({ agentsFiles: options.contextFiles ?? [] }),
 					getSystemPromptSource: () => options.systemPromptSource,
@@ -842,6 +850,29 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(output).toContain("[Skills]");
 		expect(output).toContain("resource-list");
 		expect(output).not.toContain("commit");
+	});
+
+	test("shows current MCP states after skills and refreshes without duplicate sections", () => {
+		const events = createEventBus();
+		const server = { name: "octocode", enabled: true, state: "connecting", exposure: "direct" as const,
+			toolCount: 0, source: "built-in Octocode" };
+		setMcpSessionStatus(events, "native", [server]);
+		setMcpSessionStatus(events, "configured", [{ ...server, name: "docs", enabled: false }]);
+		const fakeThis = createShowLoadedResourcesThis({ quietStartup: false, events,
+			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "research" }] });
+		const render = () => {
+			(InteractiveMode as any).prototype.showLoadedResources.call(fakeThis);
+			return renderAll(fakeThis.loadedResourcesContainer);
+		};
+		const initial = render();
+		expect(initial.indexOf("[Skills]")).toBeLessThan(initial.indexOf("[MCPs]"));
+		expect(initial).toContain("octocode: connecting");
+		expect(initial).toContain("docs: disabled");
+		setMcpSessionStatus(events, "native", [{ ...server, state: "connected", toolCount: 9 }]);
+		const connected = render();
+		expect(connected).toContain("octocode: connected");
+		expect(connected).not.toContain("connecting");
+		expect(connected.match(/\[MCPs\]/g)).toHaveLength(1);
 	});
 
 	test("abbreviates extensions in compact listing", () => {

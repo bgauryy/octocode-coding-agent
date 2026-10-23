@@ -224,6 +224,35 @@ describe("FooterDataProvider reftable branch detection", () => {
 		}
 	});
 
+	it("skips duplicate watcher events when the git state is unchanged and refreshes again once it changes", async () => {
+		vi.useFakeTimers();
+		const { worktreeDir, reftableDir } = createReftableWorktree(tempDir);
+		process.chdir(worktreeDir);
+
+		const provider = new FooterDataProvider(worktreeDir);
+		try {
+			expect(provider.getGitBranch()).toBe("main");
+			vi.mocked(execFile).mockClear();
+
+			emitReftableChange(provider);
+			await vi.advanceTimersByTimeAsync(501);
+			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+
+			// A late duplicate event for the same on-disk state does not spawn git again.
+			emitReftableChange(provider);
+			await vi.advanceTimersByTimeAsync(501);
+			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+
+			writeFileSync(join(reftableDir, "tables.list"), "1\n");
+			emitReftableChange(provider);
+			await vi.advanceTimersByTimeAsync(501);
+			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
+		} finally {
+			provider.dispose();
+			vi.useRealTimers();
+		}
+	});
+
 	it("updates the cached branch when the reftable directory changes", async () => {
 		const { worktreeDir, reftableDir } = createReftableWorktree(tempDir);
 		process.chdir(worktreeDir);
@@ -231,14 +260,38 @@ describe("FooterDataProvider reftable branch detection", () => {
 		const provider = new FooterDataProvider(worktreeDir);
 		try {
 			expect(provider.getGitBranch()).toBe("main");
+			const internals = provider as unknown as {
+				reftableWatcher: FSWatcher | null;
+				refreshTimer: unknown;
+				refreshInFlight: boolean;
+			};
+
+			// Native watchers arm asynchronously and can miss changes made right after creation, so
+			// prove the reftable watcher is live by rewriting one throwaway file before making the real change.
+			let watcherEvents = 0;
+			internals.reftableWatcher?.on("change", () => {
+				watcherEvents++;
+			});
+			for (let probe = 0; watcherEvents === 0; probe++) {
+				writeFileSync(join(reftableDir, "probe.ref"), `probe ${probe}\n`);
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				if (probe > 200) throw new Error("reftable watcher never reported a change");
+			}
+			// Let the probe-triggered refresh finish; the branch is still main, so nothing is notified.
+			await waitFor(() => vi.mocked(execFile).mock.calls.length >= 1, 10_000);
+			await waitFor(() => !internals.refreshTimer && !internals.refreshInFlight, 10_000);
+			expect(provider.getGitBranch()).toBe("main");
+
+			vi.mocked(execFile).mockClear();
 			resolvedBranch = "foo";
 			const onBranchChange = vi.fn();
 			provider.onBranchChange(onBranchChange);
 
 			writeFileSync(join(reftableDir, "tables.list"), "1\n");
 			// Real fs watcher events can arrive late under full-suite load.
-			await waitFor(() => vi.mocked(execFile).mock.calls.length === 1, 10_000);
 			await waitFor(() => provider.getGitBranch() === "foo", 10_000);
+			// Stay past the debounce window so a duplicate refresh would be counted.
+			await new Promise((resolve) => setTimeout(resolve, 700));
 
 			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
 			expect(provider.getGitBranch()).toBe("foo");

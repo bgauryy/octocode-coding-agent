@@ -1,11 +1,19 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
 import ignore from "ignore";
 import { basename, dirname, join, relative, resolve, sep } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
+import {
+	addIgnoreRules,
+	type IgnoreMatcher,
+	toPosixPath,
+} from "../utils/ignore.ts";
 import { canonicalizePath, resolvePath } from "../utils/paths.ts";
+import { claudeConfigDir } from "../utils/host-config.ts";
+import { parseCodexSkillMetadata } from "./codex-skill-metadata.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
-import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
+import { claudeArgumentNames } from "./claude-arguments.ts";
+import { createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -13,61 +21,11 @@ const MAX_NAME_LENGTH = 64;
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
 
-const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
-
-type IgnoreMatcher = ReturnType<typeof ignore>;
-
-function toPosixPath(p: string): string {
-	return p.split(sep).join("/");
-}
-
-function prefixIgnorePattern(line: string, prefix: string): string | null {
-	const trimmed = line.trim();
-	if (!trimmed) return null;
-	if (trimmed.startsWith("#") && !trimmed.startsWith("\\#")) return null;
-
-	let pattern = line;
-	let negated = false;
-
-	if (pattern.startsWith("!")) {
-		negated = true;
-		pattern = pattern.slice(1);
-	} else if (pattern.startsWith("\\!")) {
-		pattern = pattern.slice(1);
-	}
-
-	if (pattern.startsWith("/")) {
-		pattern = pattern.slice(1);
-	}
-
-	const prefixed = prefix ? `${prefix}${pattern}` : pattern;
-	return negated ? `!${prefixed}` : prefixed;
-}
-
-function addIgnoreRules(ig: IgnoreMatcher, dir: string, rootDir: string): void {
-	const relativeDir = relative(rootDir, dir);
-	const prefix = relativeDir ? `${toPosixPath(relativeDir)}/` : "";
-
-	for (const filename of IGNORE_FILE_NAMES) {
-		const ignorePath = join(dir, filename);
-		if (!existsSync(ignorePath)) continue;
-		try {
-			const content = readFileSync(ignorePath, "utf-8");
-			const patterns = content
-				.split(/\r?\n/)
-				.map((line) => prefixIgnorePattern(line, prefix))
-				.filter((line): line is string => Boolean(line));
-			if (patterns.length > 0) {
-				ig.add(patterns);
-			}
-		} catch {}
-	}
-}
-
 export interface SkillFrontmatter {
 	name?: string;
 	description?: string;
 	"disable-model-invocation"?: boolean;
+	"user-invocable"?: boolean;
 	[key: string]: unknown;
 }
 
@@ -75,14 +33,70 @@ export interface Skill {
 	name: string;
 	description: string;
 	filePath: string;
+	/** Canonical instruction file captured when this resource was loaded. */
+	canonicalPath?: string;
 	baseDir: string;
 	sourceInfo: SourceInfo;
 	disableModelInvocation: boolean;
+	userInvocable?: boolean;
+	argumentStyle?: "claude";
+	claudePluginRoot?: string;
+	claudePluginData?: string;
+	argumentNames?: string[];
+}
+
+export interface ExplicitSkill {
+	skill: Skill;
+	name: string;
+	canonicalPath: string;
+	discoveryPath: string;
+	promptByteLimit?: number;
+}
+
+export function explicitSkillIdentity(
+	skill: Skill,
+	name = skill.name,
+): ExplicitSkill | undefined {
+	if (
+		basename(skill.filePath) !== "SKILL.md" ||
+		skill.argumentStyle === "claude" ||
+		skill.userInvocable === false
+	)
+		return undefined;
+	return {
+		skill,
+		name,
+		canonicalPath: skill.canonicalPath ?? canonicalizePath(skill.filePath),
+		discoveryPath: resolve(skill.filePath),
+	};
 }
 
 export interface LoadSkillsResult {
+	explicitSkills?: ExplicitSkill[];
 	skills: Skill[];
 	diagnostics: ResourceDiagnostic[];
+}
+
+/** Canonical reference roots of loaded resources, independent of command visibility. */
+export function loadedSkillDirectories(loaded: LoadSkillsResult): string[] {
+	const captured = new Map<string, string>();
+	const directories = new Set<string>();
+	for (const identity of loaded.explicitSkills ?? []) {
+		if (
+			identity.skill.userInvocable === false ||
+			identity.skill.argumentStyle === "claude" ||
+			isSyntheticPath(identity.canonicalPath) ||
+			isSyntheticPath(identity.skill.sourceInfo.path)
+		) continue;
+		captured.set(resolve(identity.discoveryPath), identity.canonicalPath);
+		directories.add(dirname(identity.canonicalPath));
+	}
+	for (const skill of loaded.skills) {
+		if (isSyntheticPath(skill.filePath) || isSyntheticPath(skill.sourceInfo.path)) continue;
+		const path = captured.get(resolve(skill.filePath)) ?? skill.canonicalPath ?? canonicalizePath(skill.filePath);
+		directories.add(dirname(path));
+	}
+	return [...directories].sort();
 }
 
 /**
@@ -97,7 +111,9 @@ function validateName(name: string): string[] {
 	}
 
 	if (!/^[a-z0-9-]+$/.test(name)) {
-		errors.push(`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`);
+		errors.push(
+			`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`,
+		);
 	}
 
 	if (name.startsWith("-") || name.endsWith("-")) {
@@ -120,7 +136,9 @@ function validateDescription(description: unknown): string[] {
 	if (typeof description !== "string" || description.trim() === "") {
 		errors.push("description is required");
 	} else if (description.length > MAX_DESCRIPTION_LENGTH) {
-		errors.push(`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`);
+		errors.push(
+			`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`,
+		);
 	}
 
 	return errors;
@@ -131,9 +149,14 @@ export interface LoadSkillsFromDirOptions {
 	dir: string;
 	/** Source identifier for these skills */
 	source: string;
+	protocol?: "claude" | "codex";
 }
 
-function createSkillSourceInfo(filePath: string, baseDir: string, source: string): SourceInfo {
+function createSkillSourceInfo(
+	filePath: string,
+	baseDir: string,
+	source: string,
+): SourceInfo {
 	switch (source) {
 		case "user":
 			return createSyntheticSourceInfo(filePath, {
@@ -165,9 +188,25 @@ function createSkillSourceInfo(filePath: string, baseDir: string, source: string
  * - otherwise, load direct .md children in the root
  * - recurse into subdirectories to find SKILL.md
  */
-export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkillsResult {
+export function loadSkillsFromDir(
+	options: LoadSkillsFromDirOptions,
+): LoadSkillsResult {
 	const { dir, source } = options;
-	return loadSkillsFromDirInternal(dir, source, true);
+	const result = loadSkillsFromDirInternal(
+		dir,
+		source,
+		true,
+		undefined,
+		undefined,
+		options.protocol,
+	);
+	return {
+		...result,
+		explicitSkills: result.skills.flatMap((skill) => {
+			const identity = explicitSkillIdentity(skill);
+			return identity ? [identity] : [];
+		}),
+	};
 }
 
 function loadSkillsFromDirInternal(
@@ -176,6 +215,7 @@ function loadSkillsFromDirInternal(
 	includeRootFiles: boolean,
 	ignoreMatcher?: IgnoreMatcher,
 	rootDir?: string,
+	protocol?: LoadSkillsFromDirOptions["protocol"],
 ): LoadSkillsResult {
 	const skills: Skill[] = [];
 	const diagnostics: ResourceDiagnostic[] = [];
@@ -212,7 +252,7 @@ function loadSkillsFromDirInternal(
 				continue;
 			}
 
-			const result = loadSkillFromFile(fullPath, source);
+			const result = loadSkillFromFile(fullPath, source, protocol);
 			if (result.skill) {
 				skills.push(result.skill);
 			}
@@ -253,7 +293,14 @@ function loadSkillsFromDirInternal(
 			}
 
 			if (isDirectory) {
-				const subResult = loadSkillsFromDirInternal(fullPath, source, false, ig, root);
+				const subResult = loadSkillsFromDirInternal(
+					fullPath,
+					source,
+					false,
+					ig,
+					root,
+					protocol,
+				);
 				skills.push(...subResult.skills);
 				diagnostics.push(...subResult.diagnostics);
 				continue;
@@ -263,13 +310,20 @@ function loadSkillsFromDirInternal(
 				continue;
 			}
 
-			const result = loadSkillFromFile(fullPath, source);
+			const result = loadSkillFromFile(fullPath, source, protocol);
 			if (result.skill) {
 				skills.push(result.skill);
 			}
 			diagnostics.push(...result.diagnostics);
 		}
-	} catch {}
+	} catch (error) {
+		// The skills found before the failure stay loaded; the warning says which directory was cut short.
+		diagnostics.push({
+			type: "warning",
+			message: `Could not read skill directory: ${error instanceof Error ? error.message : String(error)}`,
+			path: dir,
+		});
+	}
 
 	return { skills, diagnostics };
 }
@@ -277,32 +331,66 @@ function loadSkillsFromDirInternal(
 function loadSkillFromFile(
 	filePath: string,
 	source: string,
+	protocol?: LoadSkillsFromDirOptions["protocol"],
 ): { skill: Skill | null; diagnostics: ResourceDiagnostic[] } {
 	const diagnostics: ResourceDiagnostic[] = [];
 	const isDeclaredSkill = basename(filePath) === "SKILL.md";
+	// Preserve the source dialect when discovery passes individual files (including symlinks).
+	const segments = resolve(filePath).split(sep);
+	const userClaudeSkillRoot = join(claudeConfigDir(), "skills") + sep;
+	if (
+		protocol === undefined &&
+		(resolve(filePath).startsWith(userClaudeSkillRoot) ||
+			segments.some(
+				(part, index) => part === ".claude" && segments[index + 1] === "skills",
+			))
+	)
+		protocol = "claude";
 
 	let rawContent: string;
+	let canonicalPath: string;
 	try {
-		rawContent = readFileSync(filePath, "utf-8");
+		canonicalPath = realpathSync(filePath);
+		rawContent = readFileSync(canonicalPath, "utf-8");
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "failed to read skill file";
+		const message =
+			error instanceof Error ? error.message : "failed to read skill file";
 		diagnostics.push({ type: "warning", message, path: filePath });
 		return { skill: null, diagnostics };
 	}
 
 	let frontmatter: SkillFrontmatter;
+	let body: string;
 	try {
-		({ frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent));
+		({ frontmatter, body } = parseFrontmatter<SkillFrontmatter>(rawContent));
 	} catch (error) {
 		if (isDeclaredSkill) {
-			const message = error instanceof Error ? error.message : "failed to parse skill file";
+			const message =
+				error instanceof Error ? error.message : "failed to parse skill file";
 			diagnostics.push({ type: "warning", message, path: filePath });
 		}
 		return { skill: null, diagnostics };
 	}
 
-	const description = frontmatter.description;
-	const hasDescription = typeof description === "string" && description.trim() !== "";
+	const description =
+		protocol === "claude" && frontmatter.description === undefined
+			? body
+					.split(/\r?\n/)
+					.find((line) => line.trim())
+					?.trim()
+			: frontmatter.description;
+	const boolean = (value: unknown): boolean | undefined => {
+		if (typeof value === "boolean") return value;
+		if (protocol !== "claude") return undefined;
+		const text = String(value).toLowerCase();
+		return ["yes", "on", "1", "true"].includes(text)
+			? true
+			: ["no", "off", "0", "false"].includes(text)
+				? false
+				: undefined;
+	};
+	const hasDescription =
+		typeof description === "string" && description.trim() !== "";
 	if (!isDeclaredSkill && !hasDescription) {
 		return { skill: null, diagnostics };
 	}
@@ -317,7 +405,8 @@ function loadSkillFromFile(
 	}
 
 	// Use name from frontmatter, or fall back to parent directory name
-	const frontmatterName = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
+	const frontmatterName =
+		typeof frontmatter.name === "string" ? frontmatter.name : undefined;
 	const name = frontmatterName || parentDirName;
 
 	// Validate name
@@ -331,14 +420,80 @@ function loadSkillFromFile(
 		return { skill: null, diagnostics };
 	}
 
+	let argumentNames: string[] | undefined;
+	if (protocol === "claude") {
+		try {
+			argumentNames = claudeArgumentNames(frontmatter.arguments);
+		} catch (error) {
+			diagnostics.push({
+				type: "warning",
+				message: String(error),
+				path: filePath,
+			});
+			return { skill: null, diagnostics };
+		}
+	}
+	let codexImplicitDisabled = false;
+	if (isDeclaredSkill && protocol !== "claude") {
+		const metadataPath = join(dirname(canonicalPath), "agents", "openai.yaml");
+		try {
+			if (statSync(metadataPath).isFile()) {
+				const metadata = parseCodexSkillMetadata(
+					readFileSync(metadataPath, "utf8"),
+				);
+				if (metadata.policy?.products.length) {
+					diagnostics.push({
+						type: "warning",
+						path: metadataPath,
+						message:
+							"Skill excluded by product restrictions: this host has no Codex, ChatGPT or Atlas product identity.",
+					});
+					return { skill: null, diagnostics };
+				}
+				codexImplicitDisabled =
+					metadata.policy?.allowImplicitInvocation === false;
+				if (metadata.interfaceDeclared || metadata.dependenciesDeclared)
+					diagnostics.push({
+						type: "warning",
+						path: metadataPath,
+						message:
+							"Codex skill interface and dependency metadata are validated but not activated by this host.",
+					});
+			}
+		} catch (error) {
+			if (
+				!(
+					error &&
+					typeof error === "object" &&
+					"code" in error &&
+					error.code === "ENOENT"
+				)
+			)
+				diagnostics.push({
+					type: "warning",
+					path: metadataPath,
+					message:
+						"Optional Codex skill metadata could not be loaded; using SKILL.md defaults.",
+				});
+		}
+	}
 	return {
 		skill: {
 			name,
 			description,
 			filePath,
+			canonicalPath,
 			baseDir: skillDir,
 			sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
-			disableModelInvocation: frontmatter["disable-model-invocation"] === true,
+			disableModelInvocation:
+				boolean(frontmatter["disable-model-invocation"]) === true ||
+				codexImplicitDisabled,
+			...(boolean(frontmatter["user-invocable"]) === false
+				? { userInvocable: false }
+				: {}),
+			...(protocol === "claude"
+				? ({ argumentStyle: "claude", argumentNames } as const)
+				: {}),
 		},
 		diagnostics,
 	};
@@ -355,20 +510,29 @@ function loadSkillFromFile(
  * `fileReadTool` names the tool that loads skill files; `indirect` names none, for a reader that
  * is reachable only through another tool.
  */
-export function formatSkillsForPrompt(skills: Skill[], fileReadTool: "read" | "bash" | "indirect" = "read"): string {
+export function formatSkillsForPrompt(
+	skills: Skill[],
+	fileReadTool: "read" | "bash" | "indirect" | "octocode" = "read",
+): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
 
 	if (visibleSkills.length === 0) {
 		return "";
 	}
 
+	// A compact list (a subagent's) carries no descriptions: its task names the skills it needs.
+	const when = visibleSkills.every((s) => !s.description)
+		? "when your task names the skill"
+		: "when the task matches its description";
 	const lines = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
-		fileReadTool === "read"
-			? "Use the read tool to load a skill's file when the task matches its description."
-			: fileReadTool === "bash"
-				? "Use bash to load a skill's file when the task matches its description."
-				: "Load a skill's file when the task matches its description.",
+		fileReadTool === "octocode"
+			? `Use Octocode localFetch (or localGetFileContent) to load a skill file ${when}.`
+			: fileReadTool === "read"
+				? `Use the read tool to load a skill's file ${when}.`
+				: fileReadTool === "bash"
+					? `Use bash to load a skill's file ${when}.`
+					: `Load a skill's file ${when}.`,
 		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 		"",
 		"<available_skills>",
@@ -377,7 +541,10 @@ export function formatSkillsForPrompt(skills: Skill[], fileReadTool: "read" | "b
 	for (const skill of visibleSkills) {
 		lines.push("  <skill>");
 		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+		if (skill.description)
+			lines.push(
+				`    <description>${escapeXml(skill.description)}</description>`,
+			);
 		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
 		lines.push("  </skill>");
 	}
@@ -419,6 +586,7 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 	const resolvedAgentDir = resolvePath(agentDir ?? getAgentDir());
 
 	const skillMap = new Map<string, Skill>();
+	const explicitSkills: ExplicitSkill[] = [];
 	const realPathSet = new Set<string>();
 	const allDiagnostics: ResourceDiagnostic[] = [];
 	const collisionDiagnostics: ResourceDiagnostic[] = [];
@@ -427,13 +595,18 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 		allDiagnostics.push(...result.diagnostics);
 		for (const skill of result.skills) {
 			// Resolve symlinks to detect duplicate files
-			const realPath = canonicalizePath(skill.filePath);
+			const realPath = skill.canonicalPath ?? canonicalizePath(skill.filePath);
 
 			// Skip silently if we've already loaded this exact file (via symlink)
 			if (realPathSet.has(realPath)) {
 				continue;
 			}
 
+			realPathSet.add(realPath);
+			const explicit =
+				result.explicitSkills?.find((candidate) => candidate.skill === skill) ??
+				explicitSkillIdentity(skill);
+			if (explicit) explicitSkills.push(explicit);
 			const existing = skillMap.get(skill.name);
 			if (existing) {
 				collisionDiagnostics.push({
@@ -449,14 +622,23 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 				});
 			} else {
 				skillMap.set(skill.name, skill);
-				realPathSet.add(realPath);
 			}
 		}
 	}
 
 	if (includeDefaults) {
-		addSkills(loadSkillsFromDirInternal(join(resolvedAgentDir, "skills"), "user", true));
-		addSkills(loadSkillsFromDirInternal(resolve(resolvedCwd, CONFIG_DIR_NAME, "skills"), "project", true));
+		addSkills(
+			loadSkillsFromDir({
+				dir: join(resolvedAgentDir, "skills"),
+				source: "user",
+			}),
+		);
+		addSkills(
+			loadSkillsFromDir({
+				dir: resolve(resolvedCwd, CONFIG_DIR_NAME, "skills"),
+				source: "project",
+			}),
+		);
 	}
 
 	const userSkillsDir = join(resolvedAgentDir, "skills");
@@ -467,7 +649,9 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 		if (target === normalizedRoot) {
 			return true;
 		}
-		const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
+		const prefix = normalizedRoot.endsWith(sep)
+			? normalizedRoot
+			: `${normalizedRoot}${sep}`;
 		return target.startsWith(prefix);
 	};
 
@@ -482,7 +666,11 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 	for (const rawPath of skillPaths) {
 		const resolvedPath = resolvePath(rawPath, resolvedCwd, { trim: true });
 		if (!existsSync(resolvedPath)) {
-			allDiagnostics.push({ type: "warning", message: "skill path does not exist", path: resolvedPath });
+			allDiagnostics.push({
+				type: "warning",
+				message: "skill path does not exist",
+				path: resolvedPath,
+			});
 			continue;
 		}
 
@@ -490,25 +678,34 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 			const stats = statSync(resolvedPath);
 			const source = getSource(resolvedPath);
 			if (stats.isDirectory()) {
-				addSkills(loadSkillsFromDirInternal(resolvedPath, source, true));
+				addSkills(loadSkillsFromDir({ dir: resolvedPath, source }));
 			} else if (stats.isFile() && resolvedPath.endsWith(".md")) {
 				const result = loadSkillFromFile(resolvedPath, source);
 				if (result.skill) {
-					addSkills({ skills: [result.skill], diagnostics: result.diagnostics });
+					addSkills({
+						skills: [result.skill],
+						diagnostics: result.diagnostics,
+					});
 				} else {
 					allDiagnostics.push(...result.diagnostics);
 				}
 			} else {
-				allDiagnostics.push({ type: "warning", message: "skill path is not a markdown file", path: resolvedPath });
+				allDiagnostics.push({
+					type: "warning",
+					message: "skill path is not a markdown file",
+					path: resolvedPath,
+				});
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "failed to read skill path";
+			const message =
+				error instanceof Error ? error.message : "failed to read skill path";
 			allDiagnostics.push({ type: "warning", message, path: resolvedPath });
 		}
 	}
 
 	return {
 		skills: Array.from(skillMap.values()),
+		explicitSkills,
 		diagnostics: [...allDiagnostics, ...collisionDiagnostics],
 	};
 }

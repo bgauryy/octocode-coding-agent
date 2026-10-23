@@ -36,6 +36,9 @@ type ToolExecutionResult = Pick<AgentToolResult, "structuredContent" | "usage" |
 	durationMs?: number;
 };
 
+/** The SGR a theme token resolves to when it sets no background. */
+const DEFAULT_BG = "\x1b[49m";
+
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
 	private contentText: Text;
@@ -275,6 +278,8 @@ export class ToolExecutionComponent extends Container {
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
 				renderContainer.setPaddingX(this.outputPad);
+				// Vertical padding frames a background band; a theme without tool backgrounds would only get blank rows.
+				renderContainer.setPaddingY(theme.getBgAnsi("toolPendingBg") === DEFAULT_BG ? 0 : 1);
 			}
 			renderContainer.clear();
 

@@ -60,8 +60,40 @@ describe("AgentSession auto-compaction queue resume", () => {
 		}
 	});
 
-	it("should resume after threshold compaction when only agent-level queued messages exist", async () => {
-		settingsManager.applyOverrides({ compaction: { keepRecentTokens: 1 } });
+	it("clears the actual queue when a queue update listener dequeues immediately", async () => {
+		const unsubscribe = session.subscribe((event) => {
+			if (event.type === "queue_update" && event.steering.length > 0) session.clearQueue();
+		});
+		await session.steer("cancel immediately");
+		expect(session.pendingMessageCount).toBe(0);
+		expect(session.agent.hasQueuedMessages()).toBe(false);
+		unsubscribe();
+	});
+
+	it("removes queued input by message identity rather than matching text", async () => {
+		await session.steer("same");
+		await session.followUp("same");
+		const handle = Reflect.get(session, "_handleAgentEvent");
+		await handle({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "same" }], timestamp: 0 } });
+		expect(session.getSteeringMessages()).toEqual(["same"]);
+		expect(session.getFollowUpMessages()).toEqual(["same"]);
+		const queued = session.agent.peekQueuedMessages()[0];
+		await handle({ type: "message_start", message: queued });
+		expect(session.getSteeringMessages()).toEqual([]);
+		expect(session.getFollowUpMessages()).toEqual(["same"]);
+	});
+
+	it.each([[false, false], [true, false], [false, true], [true, true]])("resumes queued work after compaction unless a completion handler stops it (stop=%s, retry=%s)", async (stop, retry) => {
+		const ends: unknown[] = [];
+		session.subscribe((event) => { if (event.type === "compaction_end") ends.push(event); });
+		const emit = session.extensionRunner.emit.bind(session.extensionRunner);
+		vi.spyOn(session.extensionRunner, "emit").mockImplementation(async (event) => {
+			const result = await emit(event);
+			if (stop && event.type === "session_compact") void session.abort();
+			return result;
+		});
+		const policy = settingsManager.getCompactionSettings();
+		settingsManager.getCompactionSettings = () => ({ ...policy, keepRecentTokens: 1 });
 		const model = session.model!;
 		const now = Date.now();
 		sessionManager.appendMessage({
@@ -131,7 +163,8 @@ describe("AgentSession auto-compaction queue resume", () => {
 			}
 		)._runAutoCompaction.bind(session);
 
-		await expect(runAutoCompaction("threshold", false)).resolves.toBe(true);
+		await expect(runAutoCompaction(retry ? "overflow" : "threshold", retry)).resolves.toBe(!stop);
+		expect(ends).toContainEqual(expect.objectContaining({ aborted: false, willRetry: retry && !stop, result: expect.objectContaining({ summary: "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\ncompacted" }) }));
 
 		expect(continueSpy).not.toHaveBeenCalled();
 	});
@@ -318,7 +351,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 
 		await checkCompaction(errorAssistant);
 
-		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false);
+		expect(runAutoCompactionSpy).toHaveBeenCalledWith("threshold", false, session.model);
 	});
 
 	it("should not trigger threshold compaction for error messages when no prior usage exists", async () => {

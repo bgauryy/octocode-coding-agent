@@ -30,7 +30,7 @@ function model(id: string): Model<"openai-completions"> {
 }
 
 describe("extension provider model lifecycle", () => {
-	it("registers native pi-ai providers with their auth implementation", async () => {
+	it("registers native octocode-ai providers with their auth implementation", async () => {
 		const runtime = await ModelRuntime.create({
 			credentials: AuthStorage.inMemory(),
 			modelsStore: new InMemoryModelsStore(),

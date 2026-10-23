@@ -9,7 +9,7 @@ export interface CachePreferenceLayer {
 	values: CachePreferences;
 }
 
-export function parseCacheRetention(value: unknown, field: string): CacheRetention | undefined {
+function parseCacheRetention(value: unknown, field: string): CacheRetention | undefined {
 	if (value === undefined) return undefined;
 	if (value === "none" || value === "short" || value === "long") return value;
 	throw new Error(`Invalid ${field}: expected none, short, or long`);
@@ -36,6 +36,12 @@ export function mergeCachePreferences(layers: readonly CachePreferenceLayer[]) {
 	if (options.cacheRetention === "none") {
 		options.instructionCacheRetention = "none";
 		sources.instructionCacheRetention = sources.cacheRetention;
+	}
+	// Instructions come before history, and a cache breakpoint with a longer lifetime cannot follow a shorter one: short
+	// instructions with long history would fail every request, so history is capped here, where the choice is made.
+	if (options.instructionCacheRetention === "short" && options.cacheRetention === "long") {
+		options.cacheRetention = "short";
+		sources.cacheRetention = `${sources.cacheRetention} (capped by instruction retention)`;
 	}
 	return { options, sources };
 }

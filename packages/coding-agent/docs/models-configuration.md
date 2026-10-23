@@ -18,7 +18,6 @@ Each key under `providers` is a provider ID. A built-in provider ID changes that
 | `baseUrl` | string |  | API base URL. Also applies to the provider's built-in models. |
 | `apiKey` | string |  | Literal key, "$NAME" environment interpolation, or "!command" output. |
 | `api` | string |  | API for the provider's models, such as "openai-completions", "openai-responses", "anthropic-messages", or "google-generative-ai". |
-| `oauth` | `"radius"` |  | OAuth login flow. Requires baseUrl. |
 | `headers` | object |  | Request headers. Values resolve like apiKey. |
 | `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
 | `authHeader` | boolean | `false` | Whether to send the resolved API key as Authorization: Bearer. |
@@ -120,15 +119,15 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `supportsDeveloperRole` | boolean |  | Whether the provider supports the developer role instead of system. Default: auto-detected from URL. |
 | `supportsReasoningEffort` | boolean |  | Whether the provider supports reasoning_effort. Default: auto-detected from URL. |
 | `supportsUsageInStreaming` | boolean | `true` | Whether the provider supports stream_options.include_usage for token usage in streaming responses. |
-| `supportsFinishReason` | boolean | `true` | Whether streamed responses include finish_reason. When false, pi infers stop or toolUse when the stream ends. |
+| `supportsFinishReason` | boolean | `true` | Whether streamed responses include finish_reason. When false, Octocode infers stop or toolUse when the stream ends. |
 | `maxTokensField` | `"max_completion_tokens" \| "max_tokens"` |  | Which field to use for max tokens. Default: auto-detected from URL. |
 | `requiresToolResultName` | boolean |  | Whether tool results require the name field. Default: auto-detected from URL. |
 | `requiresAssistantAfterToolResult` | boolean |  | Whether a user message after tool results requires an assistant message in between. Default: auto-detected from URL. |
 | `requiresThinkingAsText` | boolean |  | Whether thinking blocks must be converted to text blocks with &lt;thinking> delimiters. Default: auto-detected from URL. |
 | `requiresReasoningContentOnAssistantMessages` | boolean |  | Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: auto-detected from URL. |
 | `thinkingFormat` | `"openai" \| "openrouter" \| "deepseek" \| "together" \| "baseten" \| "zai" \| "qwen" \| "chat-template" \| "qwen-chat-template" \| "string-thinking" \| "ant-ling"` |  | Format for reasoning or thinking parameters. When omitted, Octocode auto-detects the format from the provider URL. "openai" uses reasoning_effort, "openrouter" uses reasoning.effort, "deepseek" uses thinking.type plus reasoning_effort when supported, "together" uses reasoning.enabled plus reasoning_effort when supported, "baseten" uses configurable chat_template_args plus reasoning_effort when supported, "zai" uses thinking.type, "qwen" uses top-level enable_thinking, "qwen-chat-template" uses chat_template_kwargs.enable_thinking and preserve_thinking, "chat-template" uses configurable chat_template_kwargs, "string-thinking" uses top-level thinking, and "ant-ling" uses reasoning.effort only when the mapped effort is non-null. |
-| `chatTemplateKwargs` | object |  | Kwargs sent as chat_template_kwargs when thinkingFormat is "chat-template". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for pi-controlled values. |
-| `chatTemplateArgs` | object |  | Arguments sent as chat_template_args when thinkingFormat is "baseten". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for pi-controlled values. |
+| `chatTemplateKwargs` | object |  | Kwargs sent as chat_template_kwargs when thinkingFormat is "chat-template". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values. |
+| `chatTemplateArgs` | object |  | Arguments sent as chat_template_args when thinkingFormat is "baseten". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values. |
 | `openRouterRouting` | object |  | OpenRouter provider routing preferences. Controls which upstream providers OpenRouter routes requests to. Sent as the provider field in the OpenRouter API request body. See https://openrouter.ai/docs/guides/routing/provider-selection. |
 | `vercelGatewayRouting` | object |  | Vercel AI Gateway routing preferences. Controls which upstream providers the gateway routes requests to. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options. |
 | `zaiToolStream` | boolean | `false` | Whether z.ai supports top-level tool_stream for streaming tool call deltas. |
@@ -185,6 +184,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `supportsStrictMode` | boolean | `false` | Whether the model supports Bedrock strict tool schemas. |
+| `supportsLongCacheRetention` | boolean | `true` | Whether cacheRetention "long" sends one-hour cache points. Set false for models or regions that reject the ttl field. |
 
 ### `mistral-conversations`
 

@@ -6,7 +6,7 @@ Run `/hotkeys` to see the active shortcuts for the main editor and application.
 
 ## Assign keybindings
 
-Create `<agent-dir>/keybindings.json`. The agent directory defaults to `~/.octocode/agent` and is described in Agent directory.
+Create `<agent-dir>/keybindings.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration locations](../../../CONFIGURATIONS.md).
 
 Map each action identifier to one key or a list of keys:
 
@@ -162,8 +162,10 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 |--------|---------|-------------|
 | `app.tools.expand` | `ctrl+o` | Collapse or expand tool output |
 | `app.message.copy` | `ctrl+x` | Copy the selected message in `/tree`; in fullscreen mode, copy the active selection when `fullscreenCopyOnSelect` is `false`; otherwise copy the last assistant message. On OAuth sign-in screens, copy the sign-in URL |
-| `app.message.followUp` | `alt+enter` (`ctrl+q` on Windows and WSL) | Queue follow-up message |
-| `app.message.dequeue` | `alt+up` (`alt+q` on Windows and WSL) | Restore queued messages to editor |
+| `app.message.followUp` | `alt+enter` (`ctrl+q` on Windows and WSL) | Queue a message for after the current run finishes |
+| `app.message.dequeue` | `alt+up` (`alt+q` on Windows and WSL) | Remove queued messages from delivery and restore their text to the editor |
+
+While the agent runs, Enter queues input for the next assistant turn, after the current tool calls finish. The follow-up shortcut waits until the run would otherwise stop. The queue preview labels these as **Next turn** and **After run**, shows up to three messages, and counts the rest. During compaction, messages wait until compaction finishes. Restoring the queue preserves your current draft; submitting it again sends the restored text as one message. A submission rejected before acceptance is restored automatically.
 
 ### Tree Navigation
 
@@ -183,7 +185,7 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Scoped Models Selector
 
-Used inside the scoped models selector (opened via `/scoped-models`).
+Used inside the scoped models selector (open `/models`, then choose **Model cycling**).
 
 | Keybinding id | Default | Description |
 |--------|---------|-------------|

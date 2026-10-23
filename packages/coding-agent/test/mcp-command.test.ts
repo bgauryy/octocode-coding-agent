@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 import { runMcpCommand } from "../src/extensions/mcp/cli.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "../../mcp/test/fixtures/stdio-server.mjs");
@@ -37,14 +38,14 @@ describe("pi mcp", () => {
 	};
 
 	it("lists servers with their state, tools, and errors, and fails while anything is wrong", async () => {
-		const { exitCode, output } = await run(["list"], servers);
+		const { exitCode, output, agentDir } = await run(["list"], servers);
 		expect(exitCode).toBe(1);
-		expect(output).toContain("fixture: connected, 1 tool (codemode, global)\n");
+		expect(output).toContain("fixture: connected, 1 tool (auto, global) · enabled\n");
 		expect(output).toContain("  tools: echo");
 		expect(output).toContain(
-			"broken: failed (codemode, global)\n  pi-test-missing-mcp-server\n  spawn pi-test-missing-mcp-server ENOENT",
+			`broken: failed (auto, global) · enabled\n  pi-test-missing-mcp-server\n  source: ${join(agentDir, "mcp.json")}\n  spawn pi-test-missing-mcp-server ENOENT`,
 		);
-		expect(output).toContain("parked: disabled (codemode, global)");
+		expect(output).toContain("parked: disabled (auto, global)");
 		expect(output).toContain("config error: ");
 		expect(output).toContain('server "bad" needs either "command"');
 
@@ -62,6 +63,34 @@ describe("pi mcp", () => {
 		]);
 	});
 
+	it("inspects one server's tool metadata without connecting unrelated servers", async () => {
+		const result = await run(["tools", "fixture", "echo", "--json"], { fixture: servers.fixture, broken: servers.broken });
+		expect(result.exitCode).toBe(0);
+		const report = JSON.parse(result.output);
+		expect(report.servers).toHaveLength(1);
+		expect(report.servers[0]).toMatchObject({ name: "fixture", toolDetails: [{ name: "echo", exposure: "auto", inputSchema: { type: "object" } }] });
+		expect((await run(["tools", "fixture", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
+		expect((await run(["tools", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
+		const disabled = await run(["tools", "parked", "--json"], { parked: servers.parked });
+		expect(disabled.exitCode).toBe(0);
+		expect(JSON.parse(disabled.output).servers[0]).toMatchObject({ state: "disabled", tools: [] });
+	});
+
+	it("shows global and workspace configuration paths without connecting or exposing credentials", async () => {
+		const result = await run(["config", "--json"], { private: { command: "never-connect-for-config", env: { TOKEN: "private-token" } } });
+		expect(result.exitCode).toBe(0);
+		const locations = JSON.parse(result.output);
+		expect(locations.globalWrite).toBe(join(result.agentDir, "mcp.json"));
+		expect(locations.projectWrite).toBe(join(result.agentDir, ".octocode", "mcp.json"));
+		expect(locations.projectTrusted).toBe(false);
+		expect(locations.files.filter((file: { scope: string }) => file.scope === "project").every((file: { ignored: boolean }) => file.ignored)).toBe(true);
+		expect(result.output).not.toContain("private-token");
+		new ProjectTrustStore(result.agentDir).set(result.agentDir, true);
+		const trusted = await run(["config"], undefined, result.agentDir);
+		expect(trusted.output).not.toContain("ignored until trusted");
+		expect(trusted.output).toContain("later entries override earlier ones");
+	});
+
 	it("rejects unknown servers and servers without OAuth for login and logout", async () => {
 		expect(await run(["login", "nope"], servers)).toMatchObject({
 			exitCode: 1,
@@ -72,6 +101,41 @@ describe("pi mcp", () => {
 			output: 'MCP server "fixture" does not use OAuth. Only HTTP servers without an Authorization header do.',
 		});
 		expect((await run(["frobnicate"], servers)).exitCode).toBe(1);
+	});
+
+	it("enables, disables, and changes exposure without connecting or replacing transport settings", async () => {
+		const initial = await run(["disable", "broken"], { broken: { command: "never-launch-this", env: { TOKEN: "secret" } } });
+		expect(initial.exitCode).toBe(0);
+		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({ mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, enabled: false } } });
+		expect((await run(["exposure", "broken", "direct"], undefined, initial.agentDir)).exitCode).toBe(0);
+		expect((await run(["enable", "broken"], undefined, initial.agentDir)).exitCode).toBe(0);
+		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({ mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, exposure: "direct" } } });
+		const before = readFileSync(join(initial.agentDir, "mcp.json"), "utf8");
+		expect((await run(["exposure", "broken", "invalid"], undefined, initial.agentDir)).exitCode).toBe(1);
+		expect((await run(["disable", "missing"], undefined, initial.agentDir)).exitCode).toBe(1);
+		expect(readFileSync(join(initial.agentDir, "mcp.json"), "utf8")).toBe(before);
+	});
+
+	it("requires trust for project controls and saves an override without copying secrets", async () => {
+		const initial = await run(["disable", "remote", "--local"], { remote: { url: "https://example.test/mcp", headers: { Authorization: "secret" } } });
+		expect(initial.exitCode).toBe(1);
+		expect(initial.output).toContain("trusted project");
+		new ProjectTrustStore(initial.agentDir).set(initial.agentDir, true);
+		expect((await run(["disable", "remote", "--local"], undefined, initial.agentDir)).exitCode).toBe(0);
+		const project = join(initial.agentDir, ".octocode", "mcp.json");
+		expect(readConfig(project)).toEqual({ mcpServers: { remote: { enabled: false } } });
+		expect((await run(["exposure", "remote", "hidden"], undefined, initial.agentDir)).exitCode).toBe(0);
+		expect(readConfig(project)).toEqual({ mcpServers: { remote: { enabled: false, exposure: "hidden" } } });
+		expect(JSON.stringify(readConfig(project))).not.toContain("secret");
+	});
+
+	it("does not reveal inline arguments or URL credentials in listing", async () => {
+		const result = await run(["list", "--json"], {
+			stdio: { command: "node", args: ["--token", "secret-argument"], enabled: false },
+			http: { url: "https://user:password@example.test/mcp?token=secret-query", enabled: false },
+		});
+		expect(result.output).not.toMatch(/secret-argument|secret-query|password/);
+		expect(result.exitCode).toBe(0);
 	});
 
 	it("adds stdio servers and passes options after the command through", async () => {

@@ -31,6 +31,7 @@ import {
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@octocodeai/octocode-mcp/oauth";
 import { VERSION } from "../../config.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
+import { McpCatalogCache } from "./catalog.ts";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
 import {
@@ -117,6 +118,7 @@ export function createDefaultTransport(
 		args: config.args?.map(expandHome),
 		cwd: resolve(cwd, expandHome(config.cwd ?? ".")),
 		env,
+		inheritEnv: config.inheritEnv,
 		stderr: "pipe",
 	});
 }
@@ -150,6 +152,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	instructions: string | undefined;
 	/** Last OAuth challenge from the server; sign-in uses its resource metadata URL and scope. */
 	challenge: OAuthChallenge | undefined;
+	private readonly catalog = new McpCatalogCache();
+	private listRevision = 0;
 	private client: McpClient | undefined;
 	private opening: Promise<McpClient> | undefined;
 	/** Aborted by `close()`; cancels a connect in progress, including the wait between retries. */
@@ -235,6 +239,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	getClient(): Promise<McpClient> {
+		if (this.entry.config.enabled === false)
+			return Promise.reject(new Error(`MCP server "${this.entry.name}" is disabled`));
 		if (this.closed) return Promise.reject(new Error(`MCP server "${this.entry.name}" is shut down`));
 		if (this.client?.connectionState === "connected") return Promise.resolve(this.client);
 		this.opening ??= this.open().finally(() => {
@@ -289,7 +295,10 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 					// The server no longer knows the session (restart, deploy), so it did not run the request.
 					// Retry once on a new session. The old client is detached but not closed: closing would
 					// fail its other in-flight calls, which instead get the same 404 and retry the same way.
-					if (this.client === client) this.client = undefined;
+					if (this.client === client) {
+						this.client = undefined;
+						this.withdrawCatalog();
+					}
 					continue;
 				}
 				if (!this.needsSignIn(error)) throw error;
@@ -323,6 +332,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	private markNeedsAuth(): void {
+		this.withdrawCatalog();
 		this.state = "needs-auth";
 		this.error = undefined;
 		this.changed();
@@ -333,7 +343,10 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	}
 
 	private async dropClient(client: McpClient): Promise<void> {
-		if (this.client === client) this.client = undefined;
+		if (this.client === client) {
+			this.client = undefined;
+			this.withdrawCatalog();
+		}
 		await client.close().catch(() => undefined);
 	}
 
@@ -364,7 +377,11 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			roots: [{ uri: pathToFileURL(this.cwd).href, name: basename(this.cwd) }],
 		});
 		const log = this.log;
-		if (log) client.onNotification("notifications/message", (params) => log.write(this.entry.name, params));
+		if (log) {
+			client.onNotification("notifications/message", (params) => log.write(this.entry.name, params));
+			// Transport and protocol errors (an oversized frame, a dead stream, malformed JSON) are otherwise dropped.
+			client.onError((error) => log.write(this.entry.name, { level: "error", logger: "client", data: error.message }));
+		}
 		// Closing the client fails its pending initialize or discovery requests and closes the transport.
 		// Memoized: a second `client.close()` returns before the first finished closing the transport.
 		let closing: Promise<void> | undefined;
@@ -374,12 +391,14 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 		};
 		this.shutdown.signal.addEventListener("abort", closeClient, { once: true });
 		let transport: McpTransport | undefined;
+		let listChangedDuringConnect = false;
+		client.onNotification("notifications/tools/list_changed", () => {
+			if (this.client === client) void this.refreshTools(client);
+			else listChangedDuringConnect = true;
+		});
 		try {
 			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
 			await client.connect(transport);
-			client.onNotification("notifications/tools/list_changed", () => {
-				void this.refreshTools(client);
-			});
 			const stdio = transport instanceof StdioTransport ? transport : undefined;
 			client.onClose(() => this.handleClientClose(client, stdio));
 			// Servers without the tools capability (prompts or resources only) do not answer tools/list.
@@ -387,12 +406,11 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			if (this.closed) throw new Error("shut down while connecting");
 			if (client.connectionState !== "connected") throw new Error("connection closed during setup");
 			this.client = client;
-			this.tools = tools;
 			this.hasResources = client.serverCapabilities?.resources !== undefined;
-			this.instructions = client.instructions?.trim() || undefined;
 			this.state = "connected";
 			this.error = undefined;
-			this.onTools(this);
+			this.publishCatalog(client, tools);
+			if (listChangedDuringConnect) await this.refreshTools(client);
 			this.changed();
 			return client;
 		} catch (error) {
@@ -411,6 +429,7 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 			this.markNeedsAuth();
 			return new Error(signInRequiredMessage(this.entry));
 		}
+		this.withdrawCatalog();
 		this.state = this.closed ? "closed" : "failed";
 		this.error = this.stderrTail ? `${errorMessage(error)}\n${this.stderrTail}` : errorMessage(error);
 		this.changed();
@@ -421,19 +440,41 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	private handleClientClose(client: McpClient, stdio: StdioTransport | undefined): void {
 		if (this.client !== client || this.closed) return;
 		this.client = undefined;
+		this.withdrawCatalog();
 		this.state = "disconnected";
 		const stderr = stdio?.stderr.trim().slice(-STDERR_TAIL_CHARS);
 		this.error = stderr ? `Connection closed\n${stderr}` : "Connection closed";
 		this.changed();
 	}
 
+	private publishCatalog(client: McpClient, tools: McpTool[]): void {
+		this.hasResources = client.serverCapabilities?.resources !== undefined;
+		const catalog = this.catalog.update(client.serverInfo, tools, client.instructions?.trim() || undefined);
+		if (this.tools === catalog.tools && this.instructions === catalog.instructions) return;
+		this.tools = catalog.tools;
+		this.instructions = catalog.instructions;
+		this.onTools(this);
+	}
+
+	private withdrawCatalog(): void {
+		this.listRevision++;
+		this.hasResources = false;
+		if (this.tools.length === 0 && this.instructions === undefined) return;
+		this.tools = [];
+		this.instructions = undefined;
+		this.onTools(this);
+	}
+
 	private async refreshTools(client: McpClient): Promise<void> {
+		const revision = ++this.listRevision;
 		try {
-			const tools = await client.listTools();
-			if (this.client !== client || this.closed) return;
-			this.tools = tools;
-			this.onTools(this);
+			const tools = client.serverCapabilities?.tools ? await client.listTools() : [];
+			if (this.client !== client || this.closed || revision !== this.listRevision) return;
+			this.publishCatalog(client, tools);
+			this.error = undefined;
 		} catch (error) {
+			if (this.client !== client || this.closed || revision !== this.listRevision) return;
+			this.withdrawCatalog();
 			this.error = `Failed to refresh tools: ${errorMessage(error)}`;
 		}
 		this.changed();
@@ -442,6 +483,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
 	/** Resolves once no transport of this server is open, including one that was still connecting. */
 	async close(): Promise<void> {
 		this.shutdown.abort();
+		this.withdrawCatalog();
+		this.catalog.clear();
 		this.state = "closed";
 		this.changed();
 		const client = this.client;

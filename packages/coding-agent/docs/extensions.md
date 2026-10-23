@@ -1,8 +1,12 @@
 # Extensions
 
+An extension is executable code, separate from an instruction-based [skill](skills.md), a [plugin container](plugins.md), or an external [command hook](hooks.md).
+
 Extensions are TypeScript modules that add executable behavior to Octocode. Use one when a workflow needs tools, commands, event handlers, model providers, session state, or terminal UI rather than instructions alone.
 
 An extension runs inside the Octocode process with the same operating-system permissions. It can inspect prompts, tool calls, files, credentials, and session history, so load extensions only from sources you trust.
+
+Extension event handlers run inside Octocode and are separate from [command hooks](hooks.md). They do not require `OCTOCODE_HOOKS=1`. Claude Mods modules use a different API and cannot be loaded unchanged through this interface.
 
 Typical extensions add an agent tool, protect paths, confirm dangerous commands, react to session events, modify context, expose a command, or display persistent status.
 
@@ -14,7 +18,7 @@ Typical extensions add an agent tool, protect paths, confirm dangerous commands,
 
 An extension exports a default factory that receives `ExtensionAPI`. The factory registers capabilities for the current extension runtime.
 
-Create `~/.octocode/agent/extensions/hello.ts`:
+Create `~/.octocode/octocodecode/extensions/hello.ts`:
 
 ```typescript
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
@@ -22,6 +26,7 @@ import type { ExtensionAPI } from "@octocodeai/octocodecode";
 export default function (octocode: ExtensionAPI) {
   octocode.registerCommand("hello", {
     description: "Show a greeting",
+    aliases: ["hi"],
     handler: async (name, ctx) => {
       ctx.ui.notify(`Hello, ${name || "world"}!`, "info");
     },
@@ -36,6 +41,30 @@ octocode --extension ./hello.ts
 ```
 
 Octocode uses `jiti`, so local TypeScript extensions do not need a separate compilation step. Use [Octocode packages](packages.md) for distributed extensions and dependencies.
+
+Plugin or skill markers (`plugin.json`, `.claude-plugin`, `.codex-plugin`, `SKILL.md`) prevent implicit directory entry-point discovery. A hybrid package can explicitly declare native extensions in its `package.json`; a directly supplied module is still a native extension. This keeps plugin/skill discovery separate from executable extension loading.
+
+## Command names and aliases
+
+Register one canonical command with an optional `aliases` array, as in the example above: `/hello` and `/hi` run the same handler. Arguments follow the command name and are passed to the handler. Command discovery and the terminal picker show the canonical name with its aliases.
+
+Command resolution keeps collisions distinct instead of silently assigning an alias to a different owner. Use the invocation names returned by `octocode.getCommands()` when constructing a command; duplicate or conflicting extension names and aliases can receive numeric suffixes. Built-in terminal commands reserve their names and aliases.
+
+`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, optional `aliases`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
+
+## Active tool invocation
+
+A session tool's `execute()` context can expose `ctx.invocation`: the tool name, call ID and an immutable snapshot of its execution arguments. Nested and parallel calls receive their own snapshot. `ctx.invocation` becomes unavailable when execution settles; a retained descriptor reports `active: false`, including when the context was copied during execution. Check that flag when retaining the descriptor across an asynchronous boundary.
+
+The snapshot accepts bounded JSON data. Custom SDK arguments that contain cycles, accessors, non-JSON objects or excessive size/depth leave it unavailable without changing the tool's original arguments or execution. Direct tools without a session context also lack this metadata. It identifies a call for integrations such as permission hooks; it does not grant permissions or isolate trusted extensions. The exported `ToolInvocation` type describes it.
+
+## Loaded skill resources
+
+After the extension runtime binds to a session, `octocode.getSkillDirectories()` returns sorted, deduplicated canonical directories for loaded skill resources. Use it when an integration needs to read skill references or assets. It includes model-only skills and eligible Codex path-selection candidates that are absent from the command list. It does not register commands or execute bundled scripts.
+
+`octocode.getSkillResourceSnapshot(names?)` returns a detached, versioned snapshot of the accepted file-backed skill inventory after the runtime binds to a session. Omit `names` for the full inventory, pass skill command names for a subset, or `[]` for no skills. Selection happens before resource validation, so an unrelated unavailable resource cannot break a selected valid subset. Unlike `getCommands()`, it includes model-only and eligible hidden explicit-selection resources, with their captured identities and invocation policy. The native child launcher uses this snapshot; it is not a list of executable plugins or a permission grant. Synthetic resources and invalid canonical identities produce an error. The public `SkillResourceSnapshot` type describes the transport; see [child skill inheritance](skills.md#child-skill-inheritance).
+
+The list follows effective resource loading and overrides. Captured explicit-selection identities retain their canonical directory if a discovery alias later changes. This API supplies resource paths; the receiving integration still owns its access policy. The built-in and configured local Octocode MCP owners use these paths only as launch defaults, so explicit `ALLOWED_PATHS` continues to win.
 
 <a id="extension-locations"></a>
 <a id="available-imports"></a>
@@ -66,7 +95,8 @@ flowchart TD
     Input["input"] --> Before["before_agent_start"]
     Before --> AgentStart["agent_start"]
     AgentStart --> TurnStart["turn_start"]
-    TurnStart --> Context["context"]
+    TurnStart --> UserInput["user_input for selected user input"]
+    UserInput --> Context["context"]
     Context --> ContextSystem["context_with_system"]
     ContextSystem --> Headers["before_provider_headers"]
     Headers --> Request["before_provider_request"]
@@ -95,17 +125,17 @@ The lifecycle involves these event groups:
 
 | Area | Events |
 |---|---|
-| Input preparation | `input`, `before_agent_start` |
+| Input preparation | `input`, `before_agent_start`, `user_input` |
 | Agent run | `agent_start`, `agent_end` |
 | Model turn | `turn_start`, `context`, `context_with_system`, `turn_end` |
 | Provider call | `before_provider_headers`, `before_provider_request`, `after_provider_response`, `provider_stream_event` |
 | Message lifecycle | `message_start`, `message_update`, `message_end` |
 | Tool execution | `tool_execution_start`, `tool_call`, `tool_execution_update`, `tool_result`, `tool_execution_end` |
-| Settlement | `agent_before_settle`, `agent_settled` |
+| Settlement | `agent_before_settle`, `agent_interrupted`, `agent_settled` |
 
 Octocode counts as busy while a run starts, including the compaction check and `before_agent_start`, so messages sent meanwhile go into the starting run. Message lifecycle events also cover user and tool-result messages; the diagram places only the assistant stream where it occurs in each model turn.
 
-Tool hooks run for each tool call, and one assistant response can start another turn by returning tool calls. Provider hooks run only when that transport exposes the corresponding stage. See the exported declarations in [`extensions/types.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event payloads and result types.
+Tool hooks run for each tool call, and one assistant response can start another turn by returning tool calls. Provider hooks run only when that transport exposes the corresponding stage. See the exported declarations in [`extensions/types.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event payloads and result types.
 
 Session startup and replacement follow a separate lifecycle:
 
@@ -131,7 +161,8 @@ flowchart TD
 
 | Goal | Event |
 |---|---|
-| Inspect, transform, or consume raw user input | `input` |
+| Inspect or transform user input at admission | `input` |
+| Gate a user item when it is selected for processing | `user_input` |
 | Change prompt sections, active tools, or add context before a run | `before_agent_start` |
 | Observe one low-level agent run | `agent_start`, `agent_end` |
 | Act after one model response and its tool calls | `turn_end` |
@@ -146,6 +177,8 @@ flowchart TD
 | Initialize or release session-scoped resources | `session_start`, `session_shutdown` |
 
 <a id="agent_start--agent_end--agent_before_settle--agent_settled"></a>
+
+`agent_interrupted` observes explicit cancellation after pending records are saved and before settlement. It carries the captured session ID, turn ID, working directory, optional transcript path and model. It has no continuation result. It does not fire for idle abort, internal cancellation, replacement or shutdown. `ctx.abort()` remains a non-waiting cancellation request. An SDK interruption handler that awaits `session.abort()` does not wait on itself; independent SDK callers still wait for settlement.
 
 Use `agent_before_settle` when an extension must append entries or request one final continuation. Use `agent_settled` for notification-only work that should run after Octocode has no automatic continuation remaining.
 
@@ -168,7 +201,7 @@ Use `agent_before_settle` when an extension must append entries or request one f
 | Add terminal rendering | Renderer registration and `ctx.ui` |
 | Communicate with another extension | `octocode.events` |
 
-Use the exported declarations in [`extensions/types.ts`](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event, context, tool, and result types.
+Use the exported declarations in [`extensions/types.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event, context, tool, and result types.
 
 ## Follow the extension contracts
 
@@ -196,7 +229,11 @@ Events cover resource discovery, sessions, agent and message lifecycle, provider
 
 Notification handlers should not perform slow work on a streaming event. Transform handlers should preserve fields they do not intentionally own, and gate handlers should fail closed when their safety decision cannot be made.
 
-`before_agent_start` exposes both the current prompt and its structured `systemPromptOptions`. `event.messageType` says what started the run: `"user"` for a prompt or `octocode.sendUserMessage()`, with `prompt` and `images`; `"custom"` for `octocode.sendMessage(..., { triggerTurn: true })`, with the starting `message` and no `prompt`. A returned `message` is added to either kind of run; check `messageType` to skip runs started by custom messages. Prefer changing prompt sections, selected tools, or guidelines so Octocode can append a transcript delta. Returning `systemPrompt`, or setting `forceSystemPrompt`, replaces the whole prompt for that run while the transcript continues recording the structured sections. Providers receive the forced text as their leading system prompt.
+`before_agent_start` exposes both the current prompt and its structured `systemPromptOptions`. `event.messageType` says what started the run: `"user"` for a prompt or `octocode.sendUserMessage()`, with `prompt` and `images`; `"custom"` for `octocode.sendMessage(..., { triggerTurn: true })`, with the starting `message` and no `prompt`. A returned `message` is added to either kind of run; check `messageType` to skip runs started by custom messages. Prefer changing prompt sections, selected tools, or guidelines so Octocode can append a transcript delta. Setting `systemPromptOptions.sections.<name>` to an empty string removes that section, including a default one such as `docs`. Returning `systemPrompt`, or setting `forceSystemPrompt`, replaces the whole prompt for that run while the transcript continues recording the structured sections. Providers receive the forced text as their leading system prompt.
+
+`user_input` runs when a user item is consumed, before message persistence and Codex mention-skill reads. It receives the processed user text, images, source and queue behavior. Return `{ block: true }` to omit that item or `{ additionalContext: [text] }` to record hidden context after accepted input; blocked input can still retain context. Blocking decisions accumulate and context preserves handler order. Initial input runs after `agent_start` and `turn_start`; queued input runs after continuation preparation and its `turn_start`. Each finalized item is recorded before the next item is checked, so cancelling a later hook retains earlier accepted history. Custom context messages do not invoke this event. `AgentSession` owns the lower-level `Agent.prepareInput` callback and rejects an agent that already supplies one; session integrations should use `user_input`. Standalone `Agent` users can use the lower-level callback directly. Existing admission-time `input` transformations and slash/template expansion retain their behavior.
+
+`ctx.getTurnId()` returns the active logical turn identity. Tool iterations, steering, retries and Stop continuations share it. A selected follow-up batch gets a new identity before continuation preparation; merely queueing a message does not change it. The identity remains available during `agent_settled` and is cleared afterward. Outside a run it is undefined, including idle manual compaction.
 
 `message_end` can replace a finalized message while preserving its role. `tool_call` can mutate input or block execution. `tool_result` handlers compose, with each handler seeing prior changes.
 
@@ -210,7 +247,7 @@ Handlers are awaited in stream order, so slow handlers delay stream consumption.
 
 `context` transforms conversation messages without prompt and tool system messages; Octocode restores that state afterward. Use `context_with_system` only when a request-local transformation must own the complete transcript, and keep a system message at index zero.
 
-`turn_end` and `agent_before_settle` are actionable boundaries. Their handlers can chain proposed `custom`, `custom_message`, `context_edit`, or `compaction` entries and return `continue: true` for one next model request. Guard continuation conditions because an unconditional continuation can loop. Use the exported event declarations for the complete validation and ordering contract.
+`turn_end` and `agent_before_settle` are actionable boundaries. Their handlers can chain proposed `custom`, `custom_message`, or `context_edit` entries and return `continue: true` for one next model request. Guard continuation conditions because an unconditional continuation can loop. Use the exported event declarations for the complete validation and ordering contract.
 
 <a id="cache_warming_decision"></a>
 
@@ -239,7 +276,7 @@ Use sequential execution when tools share mutable in-memory state.
 File-mutating tools should wrap the complete read-modify-write operation with `withFileMutationQueue()`.
 Truncate large model-facing results and tell the model where to read the complete output.
 
-Declare `outputSchema` and return a matching `structuredContent` when the result is data. The model still receives `content`; programmatic callers such as codemode scripts receive `structuredContent` instead of the text. Tools without `outputSchema` are passed to scripts as their text content. To report a failure that still carries data, return the result with `isError: true` instead of throwing: the model sees an error, and scripts still receive `structuredContent`.
+Declare `outputSchema` and return matching `structuredContent` when the result is data. The model receives `content`; programmatic consumers can read `structuredContent` from the tool result. Return `isError: true` for failures that still carry data. Keep both content forms consistent when redacting a result.
 
 A tool can run other tools with `ctx.executeTool(name, args, { signal, onUpdate })`. Nested calls go through argument validation and the `tool_call` and `tool_result` handlers like model-issued calls, and emit `tool_execution_start`, `tool_execution_update`, and `tool_execution_end`; all of these events carry `parentToolCallId`, and their `toolCallId` is assigned by octocode as `<parent id>/<n>`. These ids do not appear as tool calls or tool results in the transcript. Nested calls do not add transcript entries: their results only reach the calling tool, which reports them itself, for example through `onUpdate` and `details`. The session keeps a bounded record of them (name, arguments, status, duration, error; never results) as `nestedCalls` on the calling tool's result message. It is used for compaction file lists and shown in HTML exports. Arguments over 8 KiB per call or 32 KiB per tool result are omitted, at most 256 calls are kept, and `complete: false` marks a record that lost anything. The `usage` of nested results, at every depth, is added to the calling tool's result `usage`, so a tool reports only its own usage, not that of the tools it called. `ctx.tools` lists the tools `ctx.executeTool()` can call. `tool_result` handlers that redact `content` should also replace `structuredContent`; replacing only `content` drops it.
 
@@ -247,15 +284,14 @@ See `hello.ts`, `todo.ts`, `dynamic-tools.ts`, and `truncated-tool.ts`.
 
 ### Tool exposure
 
-`exposure` controls how the model reaches a tool. "Callable" means callable from other tools through `ctx.executeTool()` (`ctx.tools`), as the `codemode` tool's scripts do:
+`exposure` controls how the model reaches a tool. "Callable" means callable from other tools through `ctx.executeTool()`:
 
 - `direct` (default): declared to the model while active, and callable while active.
 - `model-only`: declared to the model while active, never callable. Use it for tools that orchestrate other tools or ask the user.
-- `codemode`: callable whenever registered, and listed by the `codemode` tool. Not declared to the model unless activated explicitly.
-- `deferred`: like `codemode`, but codemode tools do not list it; `tool_search` can find and activate it.
+- `deferred`: callable when registered; `tool_search` can find and activate it for direct model calls.
 - `hidden`: registered but unreachable. Re-register a tool with `exposure: "hidden"` to withdraw it, since tools cannot be unregistered.
 
-`namespace: { name, aliases, description, instructions }` groups related tools, as MCP servers do. Codemode tools list a namespace under one heading with its `description`. `instructions` holds longer usage guidance; it is not listed, and codemode scripts read it with `describeNamespace(name)`. `aliases` are other names scripts may look the namespace up by, for example the server name `docs` for `mcp__docs`; a name and the same name as a script identifier (`my-docs`, `my_docs`) match alike.
+`namespace: { name, aliases, description, instructions }` groups related tools, as MCP servers do. Discovery uses the description and aliases to match capabilities. Instructions provide server-specific usage guidance.
 
 Registering a `direct` or `model-only` tool activates it; the other exposures are not activated on registration. The active set (`octocode.getActiveTools()`, `octocode.setActiveTools()`) is the set of tools declared to the model. `octocode.getAllTools()` reports each tool's `exposure`, `namespace`, `annotations`, and `reachesTools`.
 
@@ -273,9 +309,9 @@ octocode.on("tool_call", async (event, ctx) => {
 });
 ```
 
-A tool that orchestrates other tools can adjust what the model sees while it is active with `prepareLoadout(loadout)`. It runs whenever the active tools change and receives the declared tools, the callable tools, and every registered tool with its exposure, namespace, and prompt guidelines. It returns replacement `descriptions` for declared tools (including its own) and `hiddenDeclarations`: active tools whose declarations requests leave out while they stay active and callable. The default system prompt leaves hidden tools out of its tool list and rules, and names no tool in the skills hint when the file reader is hidden, so the orchestrating tool should present their guidelines itself. `codemode` uses only this hook, `exposure`, `reachesTools`, and `ctx.executeTool()`, so another tool can implement the same behavior under a different name.
+A tool that orchestrates other tools can adjust what the model sees while it is active with `prepareLoadout(loadout)`. It runs whenever the active tools change and receives the declared tools, the callable tools, and every registered tool with its exposure, namespace, and prompt guidelines. It returns replacement `descriptions` for declared tools (including its own) and `hiddenDeclarations`: active tools whose declarations requests leave out while they stay active and callable. The default system prompt leaves hidden tools out of its tool list and rules, and names no tool in the skills hint when the file reader is hidden, so the orchestrating tool should present their guidelines itself.
 
-A tool that reaches other tools declares which ones a call may reach with `reachesTools(input)`: `"all"`, or the words of the input that may name them, where a word refers to every tool or namespace whose name it contains. `codemode` returns `"all"` for scripts that search or list tools and the words of the script otherwise; `tool_search` always returns `"all"`. Extensions that register tools late use it from their `tool_call` handler to finish registering the tools a call needs before it runs, as the MCP extension does for servers that are still connecting. The MCP extension also activates `codemode` or `tool_search` for MCP tools only when the tool of that name declares `reachesTools`.
+A tool that reaches other tools declares which ones a call may reach with `reachesTools(input)`: `"all"`, or tool/namespace names. `tool_search` targets one namespace when supplied, otherwise all tools. The MCP host waits for the requested servers before execution and activates discovery only when it declares `reachesTools`.
 
 ### Activate tools dynamically
 
@@ -289,10 +325,10 @@ A tool's `renderCall` and `renderResult` draw its calls in the interactive trans
 
 ### MCP servers
 
-`octocode.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, and `timeout`.
+`octocode.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, `inheritEnv`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, and `timeout`.
 
 ```typescript
-octocode.registerMcpServer("jira", { url: "https://mcp.example.com/jira", exposure: "codemode" });
+octocode.registerMcpServer("jira", { url: "https://mcp.example.com/jira", exposure: "auto" });
 octocode.unregisterMcpServer("jira");
 ```
 
@@ -331,6 +367,10 @@ Choose storage based on how state participates in the conversation:
 Reconstruct branch-sensitive state from `ctx.sessionManager.getBranch()` during `session_start`.
 Do not rebuild it from every file entry because abandoned branches represent alternative histories.
 Register an entry or message renderer when custom stored content should appear in the transcript.
+
+`octocode.sendMessage()` returns the runtime's delivery promise. Await it when handling asynchronous preparation failures. Acceptance can mean the message is queued; it does not acknowledge that the model has seen it or that a transcript receipt is durable.
+
+For auxiliary model requests, capture `const recordUsage = octocode.createUsageRecorder("my-request")` before starting asynchronous work and pass each returned assistant message to it before deciding whether to accept the response. It records reported nonzero usage in the originating session, including unsuccessful responses, and ignores repeat calls with the same message object. Do not also attach that usage to another persisted entry. Storage failures throw so the caller can stop rather than silently omit accounting.
 
 <a id="custom-ui"></a>
 <a id="mode-behavior"></a>
@@ -381,3 +421,5 @@ The checked [extension examples](../examples/extensions/) are the implementation
 | Add OAuth and provider-specific streaming | `custom-provider-gitlab-duo/` | Shows a complete provider integration while delegating supported protocols. |
 
 Use [Custom Providers](custom-provider.md) for model-service integrations, [Terminal UI](tui.md) for custom components, and [Octocode Packages](packages.md) to install or distribute extensions with other resources. Use the exported declarations for exact signatures, payloads, and result schemas; this guide focuses on lifecycle choices, composition, and durable implementation patterns.
+
+`session_before_compact` is observational: returned values are ignored and the preparation is an isolated snapshot. Compaction summaries, budgets and cut points are managed by the built-in implementation. Use `ctx.compact()` to request that flow; custom compaction boundary entries are rejected.

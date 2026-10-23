@@ -4,10 +4,10 @@
  * Results map onto pi's model-facing content (text and images). Text over 20KB keeps its start and
  * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
  * can read. Binary resources other than images are saved to temp files too, and resource links name
- * the `read_mcp_resource` tool. Codemode scripts receive the whole `CallToolResult` without `_meta`
+ * the `read_mcp_resource` tool. Programmatic callers receive the whole `CallToolResult` without `_meta`
  * (`content` blocks as sent by the server, `structuredContent`, `isError`), never truncated: it is
  * the tool's `structuredContent`, and every MCP tool declares a `CallToolResult` output schema. MCP
- * errors (`isError`) are error results for the model, but scripts still resolve to the result.
+ * errors (`isError`) are error results for the model, but programmatic consumers retain the structured result.
  */
 
 import { createHash } from "node:crypto";
@@ -29,7 +29,7 @@ import type {
 	ToolNamespace,
 	ToolRenderers,
 } from "../../core/extensions/types.ts";
-import { READ_MCP_RESOURCE_TOOL } from "../../core/mcp-servers.ts";
+import { isPluginMcpServerName, READ_MCP_RESOURCE_TOOL } from "../../core/mcp-servers.ts";
 import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../core/tools/render-utils.ts";
 import { formatSize, truncateMiddle } from "../../core/tools/truncate.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
@@ -37,18 +37,15 @@ import { VisualLinePreview } from "../../modes/interactive/components/visual-tru
 import { writeOutputFile } from "../../utils/output-files.ts";
 import type { McpExposure } from "./config.ts";
 
-/**
- * Tool exposure of an MCP exposure. `codemode` and `deferred` both leave tools out of the codemode
- * description; they differ only in which tool the MCP extension activates to reach them.
- */
+/** Automatic exposure is resolved by the host; standalone definitions default to direct. */
 export function toToolExposure(exposure: McpExposure): ToolExposure {
-	return exposure === "codemode" ? "deferred" : exposure;
+	return exposure === "auto" ? "direct" : exposure;
 }
 
 /** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
 const MAX_TOOL_NAME_LENGTH = 64;
 /** Model-facing text of an MCP result beyond this is cut in the middle. */
-export const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
+const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
 /** Visual (wrapped) result lines shown before the output is expanded. */
 const OUTPUT_PREVIEW_LINES = 5;
 /** Tool that reads the resources named by resource links. */
@@ -65,9 +62,9 @@ export interface McpToolDetails {
  * Saves the full text of a truncated result, or a binary resource, and returns the file path.
  * `extension` includes the dot, for example `.txt`.
  */
-export type McpOutputSaver = (data: string | Uint8Array, extension: string) => Promise<string>;
+type McpOutputSaver = (data: string | Uint8Array, extension: string) => Promise<string>;
 
-export function saveToTempFile(data: string | Uint8Array, extension: string): Promise<string> {
+function saveToTempFile(data: string | Uint8Array, extension: string): Promise<string> {
 	return writeOutputFile("octocode-mcp", extension, data);
 }
 
@@ -77,7 +74,7 @@ export interface McpToolCaller {
 
 /**
  * `mcp__<server>__<tool>`, sanitized and shortened with a hash suffix when too long. Like Codex,
- * everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier codemode scripts
+ * everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier programmatic tool callers
  * call it by. `isTaken` reports names used by a different MCP tool: sanitizing can map two tools to
  * one name (`a-b` and `a_b`), which then get the hash suffix.
  */
@@ -86,7 +83,7 @@ export function createMcpToolName(
 	tool: string,
 	isTaken: (name: string) => boolean = () => false,
 ): string {
-	const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
+	const name = `mcp__${server}__${tool}`.replace(isPluginMcpServerName(server) ? /[^A-Za-z0-9_-]/g : /[^A-Za-z0-9_]/g, "_");
 	if (name.length <= MAX_TOOL_NAME_LENGTH && !isTaken(name)) return name;
 	const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
 	return `${name.slice(0, MAX_TOOL_NAME_LENGTH - hash.length - 1)}_${hash}`;
@@ -100,8 +97,7 @@ function textOf(content: readonly (TextContent | ImageContent)[]): string {
 }
 
 /**
- * MCP content blocks as one compact type with the fields of text and image blocks, which scripts
- * read most (`image(block)` takes an image block as is). Rendered into every MCP tool's declaration.
+ * MCP content blocks as one schema for programmatic result consumers.
  */
 const CONTENT_BLOCK_SCHEMA = {
 	type: "object",
@@ -153,7 +149,7 @@ function relocateSchema(schema: unknown, pointer: string): unknown {
 }
 
 /**
- * Output schema of every MCP tool: the `CallToolResult` scripts receive (without `_meta`, which
+ * Output schema of every MCP tool: the structured `CallToolResult` (without `_meta`, which
  * {@link convertMcpResult} drops), with the tool's own output schema as `structuredContent`.
  */
 export function createMcpResultSchema(structuredContentSchema: Record<string, unknown> | undefined): TSchema {
@@ -200,7 +196,7 @@ export async function limitMcpContent(
 	};
 }
 
-export interface ConvertMcpResultOptions {
+interface ConvertMcpResultOptions {
 	/** Saves truncated text and binary resources. Default: a temp file. */
 	saveOutput?: McpOutputSaver;
 	/** Whether the server's resources can be read with `read_mcp_resource`, which resource links then name. */
@@ -276,11 +272,11 @@ export async function convertMcpResult(
 		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
 	}
 	const { content, fullOutputPath } = await limitMcpContent(converted, options.saveOutput);
-	const { _meta: _ignored, ...scriptResult } = result;
+	const { _meta: _ignored, ...structuredResult } = result;
 	return {
 		content,
 		details: { server, tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
-		structuredContent: scriptResult as unknown as JsonValue,
+		structuredContent: structuredResult as unknown as JsonValue,
 		...(result.isError ? { isError: true } : {}),
 	};
 }

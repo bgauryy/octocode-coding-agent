@@ -3,7 +3,6 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderToolOutputType } from "@octocodeai/octocode-codemode/declarations";
 import {
 	type JsonRpcMessage,
 	LATEST_PROTOCOL_VERSION,
@@ -12,8 +11,9 @@ import {
 	McpSessionExpiredError,
 } from "@octocodeai/octocode-mcp";
 import { createInMemoryTransportPair, type InMemoryTransport } from "@octocodeai/octocode-mcp/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
+import { validateMcpServerConfig } from "../src/core/mcp-servers.ts";
 import { truncateMiddle } from "../src/core/tools/truncate.ts";
 import {
 	getMcpToolExposure,
@@ -34,6 +34,30 @@ import { convertMcpResult, createMcpResultSchema, createMcpToolName } from "../s
 // biome-ignore lint/suspicious/noTemplateCurlyInString: literal config value reference
 const TOKEN_HEADER = "Bearer ${TOKEN}";
 
+describe("stdio launch configuration", () => {
+	afterEach(() => vi.unstubAllEnvs());
+	it("validates environment inheritance and migrates both legacy exposure spellings", () => {
+		expect(validateMcpServerConfig("python", { command: "python3", args: ["server.py"], inheritEnv: "no" })).toContain("inheritEnv must be a boolean");
+		for (const exposure of ["codemode", "codemode-deferred"]) {
+			expect(validateMcpServerConfig("python", { command: "python3", args: ["server.py"], exposure, toolExposure: { read: exposure } })).toMatchObject({
+				command: "python3", args: ["server.py"], exposure: "deferred", toolExposure: { read: "deferred" },
+			});
+		}
+	});
+	it("launches a binary with only its configured environment when inheritance is disabled", async () => {
+		vi.stubEnv("OCTOCODE_TEST_PARENT_SECRET", "must-not-leak");
+		const script = `console.log(JSON.stringify({jsonrpc:"2.0",method:"test/environment",params:{inherited:process.env.OCTOCODE_TEST_PARENT_SECRET??null,explicit:process.env.EXPLICIT_VALUE}}));setInterval(()=>{},1000);`;
+		const transport = createDefaultTransport({ name: "binary", source: "test", config: {
+			command: process.execPath, args: ["-e", script], inheritEnv: false, env: { EXPLICIT_VALUE: "present" },
+		} }, process.cwd(), undefined);
+		const message = new Promise<JsonRpcMessage>((resolve) => transport.onMessage(resolve));
+		try {
+			await transport.start();
+			await expect(message).resolves.toMatchObject({ params: { inherited: null, explicit: "present" } });
+		} finally { await transport.close(); }
+	});
+});
+
 describe("MCP config", () => {
 	const dirs: string[] = [];
 	afterEach(() => {
@@ -51,6 +75,19 @@ describe("MCP config", () => {
 		writeFileSync(join(cwd, ".octocode", "mcp.json"), JSON.stringify(project));
 		return { agentDir, cwd };
 	}
+
+	it("persists explicit script exposure and Octocode's deferred override across reload", () => {
+		const paths = setup({ mcpServers: { docs: { command: "x" }, octocode: { command: "x" } } }, {});
+		const file = join(paths.agentDir, "mcp.json");
+		updateMcpServerConfig(file, "docs", { exposure: "deferred" });
+		updateMcpServerConfig(file, "octocode", { exposure: "deferred" });
+		let loaded = loadMcpConfig({ ...paths, projectTrusted: false });
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search", "docs")).toBe("deferred");
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "octocode")!.config, "localFetch", "octocode")).toBe("deferred");
+		updateMcpServerConfig(file, "docs", { exposure: "deferred" });
+		loaded = loadMcpConfig({ ...paths, projectTrusted: false });
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search", "docs")).toBe("deferred");
+	});
 
 	it("merges global and trusted project servers and validates entries", () => {
 		const paths = setup(
@@ -123,13 +160,13 @@ describe("MCP config", () => {
 		expect(errors).toEqual([expect.stringContaining('server "work_files" conflicts with "work-files"')]);
 	});
 
-	it("validates exposure and reads autoEnableCodemode with project precedence", () => {
+	it("migrates legacy exposure and ignores the removed activation setting", () => {
 		const paths = setup(
 			{
 				autoEnableCodemode: false,
 				mcpServers: {
 					later: { command: "x", exposure: "deferred" },
-					// `codemode-deferred` is an alias for `codemode`.
+					// Legacy script exposure is migrated to native discovery.
 					scripts: { command: "x", exposure: "codemode-deferred", toolExposure: { a: "codemode-deferred" } },
 					off: { command: "x", exposure: "hidden" },
 					wrong: { command: "x", exposure: "model-only" },
@@ -141,14 +178,13 @@ describe("MCP config", () => {
 		);
 
 		const untrusted = loadMcpConfig({ ...paths, projectTrusted: false });
-		expect(untrusted.autoEnableCodemode).toBe(false);
 		expect(untrusted.servers.map((server) => [server.name, server.config.exposure])).toEqual([
 			["later", "deferred"],
-			["scripts", "codemode"],
+			["scripts", "deferred"],
 			["off", "hidden"],
 			["described", undefined],
 		]);
-		expect(untrusted.servers[1].config.toolExposure).toEqual({ a: "codemode" });
+		expect(untrusted.servers[1].config.toolExposure).toEqual({ a: "deferred" });
 		expect(untrusted.servers[3].config.description).toBe("Docs search");
 		expect(untrusted.errors).toEqual([
 			expect.stringContaining('server "wrong": exposure must be one of'),
@@ -156,8 +192,6 @@ describe("MCP config", () => {
 		]);
 
 		const trusted = loadMcpConfig({ ...paths, projectTrusted: true });
-		expect(trusted.autoEnableCodemode).toBe(false);
-		expect(trusted.errors).toContainEqual(expect.stringContaining("autoEnableCodemode must be a boolean"));
 	});
 
 	it("validates the OAuth callback URL, scope, and client name", () => {
@@ -216,7 +250,7 @@ describe("MCP config", () => {
 					gh: {
 						command: "x",
 						exposure: "deferred",
-						toolExposure: { "get_*": "codemode", get_me: "direct", "*delete*": "hidden", "get_file.*": "direct" },
+						toolExposure: { "get_*": "deferred", get_me: "direct", "*delete*": "hidden", "get_file.*": "direct" },
 					},
 					bad: { command: "x", toolExposure: { a: "visible" } },
 				},
@@ -227,13 +261,13 @@ describe("MCP config", () => {
 		expect(errors).toEqual([expect.stringContaining('server "bad": toolExposure "a" must be one of')]);
 		const config = servers[0].config;
 		expect(getMcpToolExposure(config, "get_me")).toBe("direct");
-		expect(getMcpToolExposure(config, "get_issue")).toBe("codemode");
-		expect(getMcpToolExposure(config, "get_delete_hint")).toBe("codemode");
+		expect(getMcpToolExposure(config, "get_issue")).toBe("deferred");
+		expect(getMcpToolExposure(config, "get_delete_hint")).toBe("deferred");
 		expect(getMcpToolExposure(config, "delete_repo")).toBe("hidden");
 		expect(getMcpToolExposure(config, "list_issues")).toBe("deferred");
 		// Only `*` is special.
 		expect(getMcpToolExposure({ command: "x", toolExposure: { "get_file.*": "direct" } }, "get_file_x")).toBe(
-			"codemode",
+			"auto",
 		);
 	});
 
@@ -241,26 +275,26 @@ describe("MCP config", () => {
 		const paths = setup(
 			{
 				mcpServers: {
-					radius: { url: "https://radius.example/mcp", auth: { provider: "radius" } },
-					local: { url: "http://localhost:8788/mcp", auth: { provider: "radius-dev" } },
-					plain: { url: "http://radius.example/mcp", auth: { provider: "radius" } },
-					empty: { url: "https://radius.example/mcp", auth: { provider: "" } },
+					gateway: { url: "https://gateway.example/mcp", auth: { provider: "gateway" } },
+					local: { url: "http://localhost:8788/mcp", auth: { provider: "gateway-dev" } },
+					plain: { url: "http://gateway.example/mcp", auth: { provider: "gateway" } },
+					empty: { url: "https://gateway.example/mcp", auth: { provider: "" } },
 				},
 			},
-			{ mcpServers: { radius: { url: "https://evil.example/mcp", auth: { provider: "radius" } } } },
+			{ mcpServers: { gateway: { url: "https://evil.example/mcp", auth: { provider: "gateway" } } } },
 		);
 		const { servers, errors } = loadMcpConfig({ ...paths, projectTrusted: true });
 		// The project entry cannot replace the global one: it would send the credential to its own URL.
 		expect(servers.map((server) => [server.name, server.scope, "url" in server.config && server.config.url])).toEqual(
 			[
-				["radius", "global", "https://radius.example/mcp"],
+				["gateway", "global", "https://gateway.example/mcp"],
 				["local", "global", "http://localhost:8788/mcp"],
 			],
 		);
 		expect(errors).toEqual([
 			expect.stringContaining('server "plain": auth requires an https URL'),
 			expect.stringContaining('server "empty": auth.provider must be a provider name'),
-			expect.stringContaining('server "radius": auth is only allowed in the global mcp.json'),
+			expect.stringContaining('server "gateway": auth is only allowed in the global mcp.json'),
 		]);
 	});
 });
@@ -279,13 +313,8 @@ describe("MCP tools", () => {
 		expect(second).toMatch(/^mcp__s__a_b_[0-9a-f]{8}$/);
 	});
 
-	it("declares the CallToolResult scripts receive, keeping references in the server's output schema", () => {
-		const content =
-			'content: Array<{ data?: string; mimeType?: string; text?: string; type: "text" | "image" | "audio" | "resource_link" | "resource"; [key: string]: unknown; }>; isError?: boolean;';
-		// #10416: without an output schema, structured content may be any JSON value.
-		expect(renderToolOutputType(createMcpResultSchema(undefined) as never)).toBe(
-			`{ ${content} structuredContent?: unknown; [key: string]: unknown; }`,
-		);
+	it("declares the structured MCP result, keeping references in the server's output schema", () => {
+		expect(createMcpResultSchema(undefined)).toMatchObject({ type: "object", required: ["content"] });
 
 		const hit = { type: "object", properties: { id: { type: "string" } }, required: ["id"] };
 		const schema = createMcpResultSchema({
@@ -302,11 +331,15 @@ describe("MCP tools", () => {
 			$defs: { "Hit/v1": { ...hit, default: { $ref: "#/stays" } } },
 			definitions: { Hit: hit },
 		}) as unknown as { properties: { structuredContent: { $defs: Record<string, { default: unknown }> } } };
+		expect(schema).toMatchObject({ properties: { structuredContent: { properties: {
+			hits: { items: { $ref: "#/properties/structuredContent/$defs/Hit~1v1" } },
+			again: { $ref: "#/properties/structuredContent/properties/hits" },
+			children: { items: { $ref: "#/properties/structuredContent" } },
+			default: { $ref: "#/properties/structuredContent/definitions/Hit" },
+			remote: { $ref: "https://example.com/schema.json" },
+		} } } });
 		// Data that looks like a reference is kept as is.
 		expect(schema.properties.structuredContent.$defs["Hit/v1"].default).toEqual({ $ref: "#/stays" });
-		expect(renderToolOutputType(schema as never)).toBe(
-			`{ ${content} structuredContent?: { again?: Array<{ id: string; }>; children?: Array<{ again?: Array<{ id: string; }>; children?: Array<unknown>; default?: { id: string; }; hits: Array<{ id: string; }>; remote?: unknown; }>; default?: { id: string; }; hits: Array<{ id: string; }>; remote?: unknown; }; [key: string]: unknown; }`,
-		);
 	});
 
 	it("converts results, passing the CallToolResult to scripts and flagging errors", async () => {
@@ -720,26 +753,47 @@ for await (const line of createInterface({ input: process.stdin })) {
 		const { port } = server.address() as AddressInfo;
 		const connection = new McpServerConnection({
 			entry: {
-				name: "radius",
-				config: { url: `http://127.0.0.1:${port}/mcp`, auth: { provider: "radius" } },
+				name: "gateway",
+				config: { url: `http://127.0.0.1:${port}/mcp`, auth: { provider: "gateway" } },
 				source: "test",
 			},
 			cwd: process.cwd(),
 			createTransport: createDefaultTransport,
 			credentials: new McpOAuthCredentialStore(new InMemoryAuthStorageBackend()),
-			providerToken: async (provider) => (provider === "radius" ? "tok" : undefined),
+			providerToken: async (provider) => (provider === "gateway" ? "tok" : undefined),
 			onTools: () => {},
 		});
 		try {
 			expect(connection.oauthUrl).toBeUndefined();
 			await expect(connection.getClient()).rejects.toThrow(
-				'MCP server "radius" requires sign-in. Run /login radius to sign in.',
+				'MCP server "gateway" requires sign-in. Run /login gateway to sign in.',
 			);
 			expect(connection.state).toBe("needs-auth");
 			expect(authorizations).toEqual(["Bearer tok"]);
 		} finally {
 			await connection.close();
 			await new Promise((resolve) => server.close(resolve));
+		}
+	});
+
+	it("appends client and transport errors to the log file instead of dropping them", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pi-mcp-log-"));
+		try {
+			const path = join(dir, "mcp.log");
+			const { connection } = connect(
+				{ name: "fake", config: { command: "unused" }, source: "test" },
+				[() => createTransport()],
+				new McpServerLog(path),
+			);
+			await connection.getClient();
+			await servers.at(-1)?.send({ jsonrpc: "2.0", unexpected: true } as never);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(readFileSync(path, "utf8").replace(/^\S+ /gm, "")).toBe(
+				"[fake] error client: Received invalid JSON-RPC message\n",
+			);
+			await connection.close();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
@@ -802,7 +856,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 });
 
 describe("MCP servers section", () => {
-	const server = (name: string, description?: string, exposure?: "codemode" | "deferred" | "direct") => ({
+	const server = (name: string, description?: string, exposure?: "deferred" | "deferred" | "direct") => ({
 		entry: {
 			name,
 			config: { command: "x", ...(description ? { description } : {}), ...(exposure ? { exposure } : {}) },
@@ -812,33 +866,33 @@ describe("MCP servers section", () => {
 
 	it("lists servers with how their tools are reached and the first line of their description", () => {
 		const section = renderServersSection([
-			server("docs", "Docs search.\nMore."),
+			server("docs", "Docs search.\nMore.", "deferred"),
 			server("later", undefined, "deferred"),
 			server("direct", "Declared.", "direct"),
-			{ entry: server("plain").entry, connection: { instructions: "From instructions." } },
+			{ entry: server("plain", undefined, "deferred").entry, connection: { instructions: "From instructions." } },
 		]);
 		expect(section?.split("\n").slice(1)).toEqual([
-			"- mcp__docs (codemode): Docs search.",
+			"- mcp__docs (tool_search): Docs search.",
 			"- mcp__later (tool_search)",
-			"- mcp__plain (codemode): From instructions.",
+			"- mcp__plain (tool_search): From instructions.",
 		]);
 		expect(renderServersSection([server("direct", "Declared.", "direct")])).toBeUndefined();
 	});
 
 	it("shortens descriptions to fit the size limit", () => {
-		const servers = Array.from({ length: 40 }, (_, index) => server(`server${index}`, "x".repeat(400)));
+		const servers = Array.from({ length: 40 }, (_, index) => server(`server${index}`, "x".repeat(400), "deferred"));
 		const section = renderServersSection(servers) ?? "";
 		expect(section.length).toBeLessThanOrEqual(MAX_SERVERS_SECTION_CHARS);
 		expect(section.split("\n")).toHaveLength(41);
-		expect(section).toContain("- mcp__server39 (codemode): x");
+		expect(section).toContain("- mcp__server39 (tool_search): x");
 	});
 
 	it("leaves out the last servers when their names alone do not fit", () => {
-		const servers = Array.from({ length: 200 }, (_, index) => server(`server-with-a-long-name-${index}`, "desc"));
+		const servers = Array.from({ length: 200 }, (_, index) => server(`server-with-a-long-name-${index}`, "desc", "deferred"));
 		const section = renderServersSection(servers) ?? "";
 		expect(section.length).toBeLessThanOrEqual(MAX_SERVERS_SECTION_CHARS);
 		const lines = section.split("\n");
-		expect(lines.at(-1)).toMatch(/^- … \d+ more servers; find their tools with searchTools\(\)$/);
+		expect(lines.at(-1)).toMatch(/^- … \d+ more servers; find their tools with tool_search$/);
 		const omitted = Number(/(\d+) more/.exec(lines.at(-1) ?? "")?.[1]);
 		expect(lines.length - 2 + omitted).toBe(200);
 	});

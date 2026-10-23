@@ -1,0 +1,7 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "sources": {
+    "codex-rs/skills/src/mentions.rs": "c0b4a9cb20805d0e4bc9084418704c4fac77eca46fb815b67c73680569d749bd"
+  },
+  "adaptations": "mentions.rs unchanged. Local JSON harness sorts unordered sets for comparison."
+}

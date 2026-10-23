@@ -108,7 +108,7 @@ function convertToolResultOutput<TApi extends Api>(
 	return output;
 }
 
-export interface OpenAIResponsesStreamOptions {
+interface OpenAIResponsesStreamOptions {
 	onProviderStreamEvent?: StreamOptions["onProviderStreamEvent"];
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
@@ -122,7 +122,7 @@ export interface OpenAIResponsesStreamOptions {
 	) => void;
 }
 
-export interface ConvertResponsesMessagesOptions {
+interface ConvertResponsesMessagesOptions {
 	includeSystemPrompt?: boolean;
 	/** Explicit boundary on the leading instructions only; the calling adapter checks support. */
 	instructionCacheTtl?: "30m" | "12h";
@@ -144,7 +144,7 @@ export interface ConvertResponsesMessagesOptions {
 	configurationUpdateEffort?: string;
 }
 
-export interface ConvertResponsesToolsOptions {
+interface ConvertResponsesToolsOptions {
 	strict?: boolean | null;
 	supportsStrictMode?: boolean;
 	supportsOpenAIGrammarTools?: boolean;
@@ -622,7 +622,7 @@ export async function processResponsesStream<TApi extends Api>(
 	// Azure OpenAI can omit reasoning.encrypted_content from response.output_item.done
 	// and provide it only in response.completed.response.output. Backfill the
 	// persisted reasoning signature from the terminal response to keep store:false
-	// multi-turn replay stateless. See https://github.com/earendil-works/pi/issues/6409.
+	// multi-turn replay stateless..
 	const backfillReasoningSignatures = (responseOutput: ResponseOutputItem[]): void => {
 		for (const item of responseOutput) {
 			if (item.type !== "reasoning" || !item.encrypted_content) continue;

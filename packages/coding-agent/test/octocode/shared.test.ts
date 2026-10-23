@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { atomicWriteFile, atomicWriteFileSync } from "../../src/octocode/shared/atomic.ts";
-import { Subcommands, say, wordCompletions } from "../../src/octocode/shared/commands.ts";
+import { Subcommands, say, wordCompletions, legacyNativeCommandGuidance } from "../../src/octocode/shared/commands.ts";
 import {
 	envFlag,
 	envInt,
@@ -399,92 +399,42 @@ describe("process", () => {
 	});
 });
 
-describe("/octocode subcommands", () => {
-	const setup = () => {
+describe("native commands", () => {
+	it("registers canonical commands and alias metadata once, with direct completions", async () => {
 		const commands = new Subcommands();
-		const calls: string[] = [];
-		commands.add("review", {
-			description: "review on|off — ask first",
-			complete: (prefix) => wordCompletions([["on", "ask"], "off"], prefix),
-			handler: async (args) => {
-				calls.push(`review:${args}`);
-				return undefined;
-			},
-		});
-		commands.add("mcp", {
-			description: "mcp — servers",
-			handler: async (args) => {
-				calls.push(`mcp:${args}`);
-				return undefined;
-			},
-		});
+		const handler = vi.fn(async () => {});
+		commands.add("permissions", {aliases:["permission"], description: "Permissions", handler, complete: prefix => wordCompletions(["manual", "workspace"], prefix)});
 		const fake = fakePi();
-		commands.register(fake.pi, () => "STATUS");
-		return { commands, calls, command: fake.commands.get("octocode") };
-	};
-
-	it("routes status, help, subcommands and unknown names", async () => {
-		const { calls, command } = setup();
-		expect(command.description).toContain("mcp, review, help");
-		const ctx = fakeCtx({ cwd: "." });
-		await command.handler("", ctx);
-		await command.handler("status", ctx);
-		await command.handler("help", ctx);
-		await command.handler("  mcp   login  github ", ctx);
-		await command.handler("review", ctx);
-		await command.handler("nope", ctx);
-		expect(calls).toEqual(["mcp:login  github", "review:"]);
-		expect(ctx.ui.notes.map((note) => note.message.split("\n")[0])).toEqual([
-			"STATUS",
-			"STATUS",
-			"Usage: /octocode [subcommand]",
-			'Unknown subcommand "nope".',
-		]);
-		expect(ctx.ui.notes[2]!.message).toContain("review on|off — ask first");
-		expect(ctx.ui.notes[2]!.message).toContain("(none) or status");
+		commands.register(fake.pi);
+		expect([...fake.commands.keys()]).toEqual(["permissions"]);
+		const command = fake.commands.get("permissions")!;
+		expect(command.aliases).toEqual(["permission"]);
+		expect(command.getArgumentCompletions(" ma")).toEqual([{value:"manual",label:"manual"}]);
+		const ctx = fakeCtx({cwd:"."});
+		await command.handler(" manual ",ctx);
+		expect(handler).toHaveBeenCalledWith("manual",ctx);
+		expect(commands.get("permission")).toBe(commands.get("permissions"));
 	});
-
-	it("completes names, then arguments", () => {
-		const { command } = setup();
-		expect(command.getArgumentCompletions("re").map((item: { value: string }) => item.value)).toEqual(["review "]);
-		expect(command.getArgumentCompletions("").map((item: { value: string }) => item.value)).toEqual([
-			"mcp ",
-			"review ",
-			"help",
-			"status",
-		]);
-		expect(command.getArgumentCompletions("sta")).toEqual([
-			{ value: "status", label: "status", description: "status — Octocode status" },
-		]);
-		expect(command.getArgumentCompletions("review o")).toEqual([
-			{ value: "review on", label: "on", description: "ask" },
-			{ value: "review off", label: "off" },
-		]);
-		expect(command.getArgumentCompletions("mcp x")).toBeNull();
-		expect(command.getArgumentCompletions("zz")).toBeNull();
-	});
-
-	it("completes the same whitespace-separated commands that dispatch accepts", async () => {
-		const { command, calls } = setup();
-		expect(command.getArgumentCompletions(" \tre")).toEqual(command.getArgumentCompletions("re"));
-		expect(command.getArgumentCompletions(" \treview\t  o")).toEqual(command.getArgumentCompletions("review o"));
-		await command.handler(" \treview\t  on ", fakeCtx({ cwd: "." }));
-		expect(calls).toEqual(["review:on"]);
-	});
-
-	it("shows registered shortcuts in help and keeps their completion and dispatch aligned", async () => {
-		const { commands, calls } = setup();
+	it("keeps status aliases on one registry entry", () => {
 		const fake = fakePi();
-		commands.alias(fake.pi, "review");
-		commands.alias(fake.pi, "mcp");
-		expect(commands.help()).toContain("Shortcuts: /mcp, /review");
-		const shortcut = fake.commands.get("review");
-		expect(shortcut.getArgumentCompletions(" \to")).toEqual([
-			{ value: "on", label: "on", description: "ask" },
-			{ value: "off", label: "off" },
-		]);
-		await shortcut.handler(" \ton ", fakeCtx({ cwd: "." }));
-		expect(calls).toEqual(["review:on"]);
+		new Subcommands().register(fake.pi, () => "status");
+		expect([...fake.commands.keys()]).toEqual(["status"]);
+		expect(fake.commands.get("status")!.aliases).toEqual(["info", "session"]);
+	});
+	it("handles retired namespace input before model execution and leaves ordinary text alone", async () => {
+		const fake = fakePi();
+		new Subcommands().register(fake.pi);
+		const ctx = fakeCtx({cwd:".",hasUI:true});
+		expect(await fake.fire("input",{text:"/octocode permission manual"},ctx)).toEqual({action:"handled"});
+		expect(ctx.ui.notes.at(-1)?.message).toContain("/permissions manual");
+		expect(await fake.fire("input",{text:"/octocode-example"},ctx)).toEqual({action:"continue"});
+		expect(fake.commands.has("octocode")).toBe(false);
+	});
+	it("maps retired namespace inputs to precise migration guidance", () => {
+		expect(legacyNativeCommandGuidance("permission workspace")).toContain("/permissions workspace");
+		expect(legacyNativeCommandGuidance("sessions")).toContain("/resume");
+		expect(legacyNativeCommandGuidance("mcp restart")).toContain("/mcp reconnect octocode");
+		expect(legacyNativeCommandGuidance("external list")).toContain("/agents external list");
 	});
 });
 
@@ -520,10 +470,11 @@ describe("usage display", () => {
 		]);
 	});
 
-	it("counts every prompt token in ↑ and shows the share read from cache", () => {
+	it("shows new prompt tokens in ↑ and the cache reads beside them", () => {
 		expect(formatTokenUsage({ input: 1_200_000, cacheRead: 1_128_000, output: 35_000 })).toBe(
-			"↑1.2M (94% cached) ↓35k",
+			"↑72k +1.1M cached ↓35k",
 		);
+		expect(formatTokenUsage({ input: 900, cacheRead: 900, output: 10 })).toBe("↑0 +900 cached ↓10");
 		expect(formatTokenUsage({ input: 1_500, cacheRead: 0, output: 250 })).toBe("↑1.5k ↓250");
 	});
 

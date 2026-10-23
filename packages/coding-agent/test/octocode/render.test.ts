@@ -217,7 +217,7 @@ describe("toolHeader", () => {
 		);
 	});
 
-	it("caches its lines per width until the next set, so pi-tui sees the same strings each frame", () => {
+	it("caches its lines per width until the next set, so octocode-tui sees the same strings each frame", () => {
 		const header = toolHeader(theme, row(), "Bash", "ls");
 		const first = header.render(80);
 		expect(header.render(80)).toBe(first);
@@ -273,29 +273,48 @@ describe("resultBlock", () => {
 	it("skips blank lines in the collapsed preview but keeps them when expanded", () => {
 		const text = "# Title\n\nSource: x\n\n\npara\nmore";
 		expect(rendered(resultBlock(theme, {}, { summary: "page", body: text }))).toBe(
-			"  ⎿  page\n     # Title\n     Source: x\n     para\n     … +4 lines (ctrl+o to expand)",
+			"  ⎿  page\n     # Title\n     Source: x\n     para\n     more",
 		);
 		expect(
 			rendered(resultBlock(theme, { expanded: true }, { summary: "page", body: text })).split("\n"),
 		).toHaveLength(8);
 	});
 
-	it("collapses to the summary, three lines and an expand hint", () => {
-		expect(rendered(resultBlock(theme, row({ isPartial: false }), { summary: "10 lines", body }))).toBe(
+	it("shows a body of up to twelve lines whole, without an expand hint", () => {
+		const text = rendered(resultBlock(theme, row({ isPartial: false }), { summary: "10 lines", body }));
+		expect(text.split("\n")).toHaveLength(11);
+		expect(text).not.toContain("to expand");
+	});
+
+	it("collapses a longer body to the summary, five lines and an expand hint", () => {
+		const long = Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n");
+		expect(rendered(resultBlock(theme, row({ isPartial: false }), { summary: "20 lines", body: long }))).toBe(
 			[
-				"  ⎿  10 lines",
+				"  ⎿  20 lines",
 				"     line 0",
 				"     line 1",
 				"     line 2",
-				`     … +7 lines (${expandKey()} to expand)`,
+				"     line 3",
+				"     line 4",
+				`     … +15 lines (${expandKey()} to expand)`,
 			].join("\n"),
 		);
 	});
 
 	it("previews the tail with the hint first", () => {
+		const long = Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n");
 		expect(
-			rendered(resultBlock(theme, row({ isPartial: false }), { summary: "exit 0", body, tail: true, max: 2 })),
-		).toBe(["  ⎿  exit 0", `     … +8 lines (${expandKey()} to expand)`, "     line 8", "     line 9"].join("\n"));
+			rendered(resultBlock(theme, row({ isPartial: false }), { summary: "exit 0", body: long, tail: true, max: 2 })),
+		).toBe(["  ⎿  exit 0", `     … +18 lines (${expandKey()} to expand)`, "     line 18", "     line 19"].join("\n"));
+	});
+
+	it("wraps an error summary whole under the gutter instead of clipping it", () => {
+		const message = "edit src/index.ts: the file was not read in this session; read it first, then retry the edit";
+		const text = rendered(resultBlock(theme, row({ isPartial: false, isError: true }), { summary: message }), 40);
+		expect(text).not.toContain("…");
+		expect(text.split("\n")[0]).toMatch(/^ {2}⎿ {2}Error: /);
+		expect(text.split("\n").slice(1).every((line) => line.startsWith("     "))).toBe(true);
+		expect(text.replace(/\s+/g, " ")).toContain("then retry the edit");
 	});
 
 	it("shows everything when expanded, wrapped to the width", () => {
@@ -393,7 +412,7 @@ describe("resultBlock colouring", () => {
 		} as never;
 		const body = Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n");
 		const text = rendered(resultBlock(counting, row({ isPartial: false }), { summary: "exit 0", body, tail: true }));
-		expect(text).toContain("… +997 lines");
+		expect(text).toContain("… +995 lines");
 		expect(painted).toBeLessThan(10);
 		expect(
 			rendered(
@@ -558,7 +577,7 @@ describe("interrupted rows and expandable prefaces", () => {
 			resultBlock(
 				theme,
 				{ isPartial: false, isError: false },
-				{ summary: "Done", body: "1\n2\n3\n4\n5", preface, prefaceLabel: "prompt" },
+				{ summary: "Done", body: "1\n2\n3\n4\n5\n6\n7", preface, prefaceLabel: "prompt" },
 			) as never,
 		);
 		expect(more).toContain("… +2 lines · prompt (ctrl+o to expand)");

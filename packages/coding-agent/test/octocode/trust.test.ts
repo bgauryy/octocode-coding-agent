@@ -69,6 +69,30 @@ describe("project trust", () => {
 		expect(projectTrustNow(ctx(path.join(link, "sub")))).toBeUndefined();
 	});
 
+	it("keeps decisions saved by earlier builds in the old trust.json until this store is written", () => {
+		const cwd = fs.realpathSync(project({ ".codex/hooks.json": MCP }));
+		const other = fs.realpathSync(project({ ".codex/hooks.json": MCP }));
+		const home = process.env.OCTOCODE_HOME!;
+		fs.writeFileSync(
+			path.join(home, "trust.json"),
+			JSON.stringify({
+				[cwd]: { sha: fingerprint(projectConfigFiles(cwd)), trusted: true },
+				[other]: { sha: fingerprint(projectConfigFiles(other)), trusted: false },
+			}),
+		);
+		expect(projectTrustNow(ctx(cwd))).toBe(true);
+		expect(projectTrustNow(ctx(other))).toBe(false);
+		// The first save carries the earlier decisions into pi-trust.json; the old file is no longer read.
+		const third = fs.realpathSync(project({ ".codex/hooks.json": MCP }));
+		saveDecision(third, fingerprint(projectConfigFiles(third)), true);
+		fs.writeFileSync(path.join(home, "trust.json"), "{}");
+		expect(projectTrustNow(ctx(cwd))).toBe(true);
+		expect(projectTrustNow(ctx(other))).toBe(false);
+		expect(Object.keys(JSON.parse(fs.readFileSync(path.join(home, "pi-trust.json"), "utf8"))).sort()).toEqual(
+			[cwd, other, third].sort(),
+		);
+	});
+
 	it("lets an isolated subagent's worktree follow its parent repository's decision, only for the same files", () => {
 		const parent = tmp("octocode-trust-parent-");
 		const git = (...args: string[]) =>
@@ -127,10 +151,10 @@ describe("project trust", () => {
 		expect(await Promise.all([projectTrust(startup), projectTrust(startup)])).toEqual([false, false]);
 		expect(startup.ui.confirm).not.toHaveBeenCalled();
 		expect(startup.ui.notify).toHaveBeenCalledTimes(1);
-		expect(startup.ui.notify.mock.calls[0]?.[0]).toContain("/octocode trust");
+		expect(startup.ui.notify.mock.calls[0]?.[0]).toContain("/trust");
 	});
 
-	it("/octocode trust lists what would run, asks, remembers the answer and must be repeated when the files change", async () => {
+	it("/trust lists what would run, asks, remembers the answer and must be repeated when the files change", async () => {
 		const cwd = project({
 			".codex/hooks.json": MCP,
 			".claude/settings.json": JSON.stringify({
@@ -170,13 +194,35 @@ describe("project trust", () => {
 		expect(piTrusted.ui.confirm).not.toHaveBeenCalled();
 	});
 
-	it("does not extend Octocode's trust to hooks that start commands: they wait for /octocode trust, which shows them", async () => {
+	it("does not extend Octocode's trust to hooks that start commands: they wait for /trust, which shows them", async () => {
 		const cwd = project({ ".codex/hooks.json": MCP, ".octocode/settings.json": "{}" });
 		const piTrusted = ctx(cwd);
 		expect(projectTrustNow(piTrusted)).toBeUndefined();
 		expect(await projectTrust(piTrusted)).toBe(false);
-		expect(piTrusted.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/octocode trust/), "warning");
+		expect(piTrusted.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
 		expect(describeProjectConfig(cwd)).toMatch(/hooks\.json:/);
+	});
+
+	it("holds an MCP-tool hook for /trust too: it calls a tool with your credentials, like a command would run", async () => {
+		const hook = JSON.stringify({
+			hooks: {
+				PreToolUse: [
+					{
+						hooks: [
+							{ type: "mcp_tool", server: "github", tool: "create_issue", input: { title: "${tool_input.command}" } },
+						],
+					},
+				],
+			},
+		});
+		const cwd = project({ ".codex/hooks.json": hook, ".octocode/settings.json": "{}" });
+		const piTrusted = ctx(cwd);
+		expect(projectTrustNow(piTrusted)).toBeUndefined();
+		expect(await projectTrust(piTrusted)).toBe(false);
+		expect(piTrusted.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/\/trust/), "warning");
+		// /trust shows what it would call, with the input it sends.
+		expect(describeProjectConfig(cwd)).toContain("MCP github/create_issue");
+		expect(describeProjectConfig(cwd)).toContain("tool_input.command");
 	});
 
 	it("keeps both decisions when two sessions save to the store at once", async () => {
@@ -210,7 +256,7 @@ describe("project trust", () => {
 		expect(Object.keys(JSON.parse(fs.readFileSync(store, "utf8")))).toHaveLength(3);
 	});
 
-	it("gates agents and skills too, and /octocode trust [off] records the decision and reloads", async () => {
+	it("gates agents and skills too, and /trust [off] records the decision and reloads", async () => {
 		const cwd = project({ ".octocode/agents/a.md": "# agent", ".claude/skills/s/SKILL.md": "# skill" });
 		expect(projectConfigFiles(cwd).map((file) => path.relative(fs.realpathSync(cwd), file))).toEqual([
 			path.join(".claude", "skills", "s", "SKILL.md"),
@@ -331,7 +377,7 @@ describe("project trust: decisions", () => {
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		try {
 			for (const args of ["of", "off extra", "on"]) await commands.get("trust")!.handler(args, command as never);
-			expect(command.ui.notify).toHaveBeenCalledWith("Usage: /octocode trust [off]", "warning");
+			expect(command.ui.notify).toHaveBeenCalledWith("Usage: /trust [off]", "warning");
 			expect(command.ui.confirm).not.toHaveBeenCalled();
 			expect(command.reload).not.toHaveBeenCalled();
 			expect(projectTrustNow(ctx(cwd))).toBe(false);
@@ -380,10 +426,10 @@ describe("project trust: decisions", () => {
 		const later = ctx(cwd);
 		expect(projectTrustNow(later)).toBeUndefined();
 		expect(await projectTrust(later)).toBe(false);
-		expect(later.ui.notify).toHaveBeenCalledWith(expect.stringContaining("/octocode trust"), "warning");
+		expect(later.ui.notify).toHaveBeenCalledWith(expect.stringContaining("/trust"), "warning");
 	});
 
-	it("honors /octocode trust off in a Octocode-trusted project", async () => {
+	it("honors /trust off in a Octocode-trusted project", async () => {
 		const cwd = project({ ".codex/hooks.json": MCP, ".octocode/settings.json": "{}" });
 		const commands = new Subcommands();
 		registerTrustCommand(commands);

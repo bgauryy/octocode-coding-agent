@@ -22,7 +22,6 @@ import {
 	type FullscreenExitOutput,
 	type MermaidRenderingMode,
 	type QuietStartup,
-	type SessionShareDestination,
 	type TuiMode,
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
@@ -61,7 +60,6 @@ const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
 
 export interface SettingsConfig {
 	cachePreferences?: CachePreferences;
-	autoCompact: boolean;
 	defaultModel: string;
 	currentModel?: Model<any>;
 	availableDefaultModels: readonly Model<any>[];
@@ -73,7 +71,6 @@ export interface SettingsConfig {
 	steeringMode: "all" | "one-at-a-time";
 	followUpMode: "all" | "one-at-a-time";
 	transport: Transport;
-	sessionShareDestination: SessionShareDestination;
 	httpIdleTimeoutMs: number;
 	cacheWarmingMode: CacheWarmingMode;
 	thinkingLevel: ThinkingLevel;
@@ -110,7 +107,6 @@ export interface SettingsCallbacks {
 		field: keyof CachePreferences,
 		value: NonNullable<CachePreferences[keyof CachePreferences]>,
 	) => void;
-	onAutoCompactChange: (enabled: boolean) => void;
 	onShowImagesChange: (enabled: boolean) => void;
 	onImageWidthCellsChange: (width: number) => void;
 	onAutoResizeImagesChange: (enabled: boolean) => void;
@@ -119,7 +115,6 @@ export interface SettingsCallbacks {
 	onSteeringModeChange: (mode: "all" | "one-at-a-time") => void;
 	onFollowUpModeChange: (mode: "all" | "one-at-a-time") => void;
 	onTransportChange: (transport: Transport) => void;
-	onSessionShareDestinationChange: (destination: SessionShareDestination) => void;
 	onHttpIdleTimeoutMsChange: (timeoutMs: number) => void;
 	onCacheWarmingModeChange: (mode: CacheWarmingMode) => void;
 	onModelThinkingLevelChange: (provider: string, modelId: string, level: ThinkingLevel) => void;
@@ -490,13 +485,6 @@ export class SettingsSelectorComponent extends Container {
 
 		const items: SettingItem[] = [
 			{
-				id: "autocompact",
-				label: "Auto-compact",
-				description: "Automatically compact context when it gets too large",
-				currentValue: config.autoCompact ? "true" : "false",
-				values: ["true", "false"],
-			},
-			{
 				id: "steering-mode",
 				label: "Steering mode",
 				description:
@@ -517,14 +505,6 @@ export class SettingsSelectorComponent extends Container {
 				description: "Preferred transport for providers that support multiple transports",
 				currentValue: config.transport,
 				values: ["sse", "websocket", "websocket-cached", "auto"],
-			},
-			{
-				id: "share-destination",
-				label: "Session share destination",
-				description:
-					"Where to upload sessions with /share (auto prefers Radius when authenticated, otherwise GitHub Gist)",
-				currentValue: config.sessionShareDestination,
-				values: ["auto", "gist", "radius"],
 			},
 			{
 				id: "http-idle-timeout",
@@ -791,8 +771,7 @@ export class SettingsSelectorComponent extends Container {
 
 		// Only show image toggle if terminal supports it
 		if (supportsImages) {
-			// Insert after autocompact
-			items.splice(1, 0, {
+			items.splice(0, 0, {
 				id: "show-images",
 				label: "Show images",
 				description: "Render images inline in terminal",
@@ -910,9 +889,6 @@ export class SettingsSelectorComponent extends Container {
 					case "instructionCacheRetention":
 						callbacks.onCachePreferenceChange?.(id, newValue as NonNullable<CachePreferences[typeof id]>);
 						break;
-					case "autocompact":
-						callbacks.onAutoCompactChange(newValue === "true");
-						break;
 					case "show-images":
 						callbacks.onShowImagesChange(newValue === "true");
 						break;
@@ -936,9 +912,6 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "transport":
 						callbacks.onTransportChange(newValue as Transport);
-						break;
-					case "share-destination":
-						callbacks.onSessionShareDestinationChange(newValue as SessionShareDestination);
 						break;
 					case "http-idle-timeout": {
 						const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.label === newValue);

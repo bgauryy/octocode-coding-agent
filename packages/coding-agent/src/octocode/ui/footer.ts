@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
-import { formatCost, formatTokens, formatTokenUsage } from "../shared/format.ts";
+import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
 import { livePaint } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
@@ -24,9 +24,9 @@ import {
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing
- * (model, permission mode, thinking, context, running agents, bash jobs, queued messages and a running hook; speed and cost on the right), line 2 is where
- * it works (cwd, branch, session name, tokens, the backlog counts, other extensions' statuses such as Octocode's MCP). Pure in (state, statuses, width) and
- * never animated: Octocode repaints the footer on every streamed token.
+ * (model, permission mode, thinking, context, running agents, bash jobs, queued messages and a running hook; run time,
+ * speed and cost on the right). Line 2 shows cwd, branch, session name, total tokens, compactions and other statuses.
+ * Rendering is pure in (state, statuses, width); the activity indicator owns the live run clock.
  */
 
 export interface FooterState {
@@ -34,12 +34,17 @@ export interface FooterState {
 	/** Thinking level, only for models that reason. */
 	thinking?: string | undefined;
 	/**
-	 * `limit` is where Octocode compacts automatically (the window less `compaction.reserveTokens`), else the window; `percent`
+	 * `limit` is where Octocode compacts automatically (the window less the built-in reserve); `percent`
 	 * is of `limit`, and null right after compaction, until the next response.
 	 */
 	context?: { percent: number | null; limit: number } | undefined;
-	/** The session's replies and every subagent's spend (foreground results, background reports): ↑ counts the whole prompt; `cost` is Octocode's estimate. */
+	/** The session's replies and every subagent's spend (foreground results, background reports): `input` is the whole prompt, shown as new tokens plus cache reads (`formatTokenUsage`); `cost` is Octocode's estimate. */
 	usage: UsageTotals;
+	/** Wall time of the current or last run, including tool calls and automatic compaction. */
+	runMs?: number;
+	running?: boolean;
+	/** Completed compaction entries across the session, including resumed history. */
+	compactions?: number;
 	cwd: string;
 	home?: string | undefined;
 	sessionName?: string | undefined;
@@ -182,6 +187,12 @@ export function footerLines(
 			{ text: status(OWN.hooks), priority: 80, keep: true },
 		],
 		[
+			{
+				text: state.runMs !== undefined && !state.running
+					? theme.fg("muted", `last run ${formatDuration(state.runMs)}`)
+					: "",
+				priority: 85,
+			},
 			{ text: status(OWN.speed) ? theme.fg("dim", status(OWN.speed)) : "", priority: 10 },
 			{ text: cost ? theme.fg("muted", cost) : "", priority: 40 },
 		],
@@ -197,7 +208,9 @@ export function footerLines(
 	const where = (dir: string) =>
 		`${theme.fg("text", dir)}${shownBranch ? ` ${theme.fg("muted", `⎇ ${shownBranch}`)}` : ""}`;
 	const usage = formatTokenUsage(state.usage);
-	const tokens = usage ? theme.fg("dim", usage) : "";
+	// Cache reads are re-reads of the conversation on every request: listed in the breakdown, not in the total.
+	const total = `${formatTokens(newPromptTokens(state.usage) + state.usage.output)} tokens`;
+	const tokens = theme.fg("muted", total);
 	const others = [...statuses]
 		.filter(([key]) => !(Object.values(OWN) as string[]).includes(key))
 		.sort(([a], [b]) => a.localeCompare(b));
@@ -206,9 +219,15 @@ export function footerLines(
 			{ text: where(place), priority: 100, keep: true, short: where(plainRow(path.basename(state.cwd))) },
 			// Session names come from anywhere (RPC, other extensions); Octocode strips only newlines.
 			{ text: state.sessionName ? theme.fg("muted", plainRow(state.sessionName)) : "", priority: 50 },
-			{ text: tokens, priority: 60 },
+			{ text: usage ? `${tokens} ${theme.fg("dim", `(${usage})`)}` : tokens, short: tokens, priority: 80 },
+			{
+				text: state.compactions !== undefined
+					? theme.fg("muted", `${state.compactions} compaction${state.compactions === 1 ? "" : "s"}`)
+					: "",
+				priority: 75,
+			},
 			{ text: status(OWN.backlog), priority: 20 },
-			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks pi-tui's row tracking.
+			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks octocode-tui's row tracking.
 			...others.map(([, text]) => ({ text: singleLine(livePaint(text, theme)), priority: 20 })),
 		],
 		[],
@@ -231,6 +250,23 @@ export function registerFooter(pi: ExtensionAPI): void {
 	/** Moves whenever `state` changes, so the render cache knows its lines are stale. */
 	let version = 0;
 	let repaint: (() => void) | undefined;
+	let startedAt: number | undefined;
+	const sampleRun = () => {
+		if (startedAt === undefined) return;
+		state.runMs = Math.max(0, Date.now() - startedAt);
+		version += 1;
+		repaint?.();
+	};
+	const stop = () => {
+		sampleRun();
+		startedAt = undefined;
+		state.running = false;
+		version += 1;
+		repaint?.();
+	};
+	const countCompactions = (ctx: ExtensionContext) => {
+		state.compactions = ctx.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
+	};
 	const add = (spend: Spend | undefined, ctx: ExtensionContext) => {
 		if (!spend) return;
 		version += 1;
@@ -242,7 +278,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 		state.model = model?.id;
 		state.thinking = model?.reasoning ? pi.getThinkingLevel() : undefined;
 		const usage = ctx.getContextUsage();
-		const limit = model ? autoCompactAt(pi.getSettings(), model) : usage?.contextWindow;
+		const limit = model ? autoCompactAt(model) : usage?.contextWindow;
 		state.context = limit
 			? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }
 			: undefined;
@@ -257,6 +293,9 @@ export function registerFooter(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		stop();
+		state.runMs = undefined;
+		countCompactions(ctx);
 		state.usage = emptyTotals();
 		for (const entry of ctx.sessionManager.getEntries()) add(spendOf(entryMessage(entry)), ctx);
 		sample(ctx);
@@ -278,6 +317,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 				dispose: () => {
 					unsubscribe();
 					repaint = undefined;
+					stop();
 				},
 			};
 		});
@@ -293,7 +333,19 @@ export function registerFooter(pi: ExtensionAPI): void {
 	pi.on("session_tree", refresh);
 	pi.on("model_select", refresh);
 	pi.on("thinking_level_select", refresh);
-	pi.on("session_compact", refresh);
+	pi.on("session_compact", async (event, ctx) => {
+		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		countCompactions(ctx);
+		await refresh(event, ctx);
+	});
+	pi.on("agent_start", async (_event, ctx) => {
+		if (!ctx.hasUI || ctx.mode !== "tui" || startedAt !== undefined) return;
+		startedAt = Date.now();
+		state.running = true;
+		sampleRun();
+	});
+	pi.on("agent_settled", async () => stop());
+	pi.on("session_shutdown", async () => stop());
 	pi.on("agent_end", refresh);
 	pi.on("session_info_changed", refresh);
 }

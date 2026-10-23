@@ -4,7 +4,7 @@ import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { errorMessage } from "../shared/util.ts";
 import { type AgentDirectory, type ApiOperations, OctocodeApi, optionsFromEnv, transportsFor } from "./bridge.ts";
 
-/** Wire the external API into Octocode: event publishing, lifecycle and `/octocode api`. Subagents never expose one. */
+/** Wire the external API into Octocode: event publishing, lifecycle and `/api`. Subagents never expose one. */
 export function registerApi(
 	pi: ExtensionAPI,
 	commands: Subcommands,
@@ -21,7 +21,7 @@ export function registerApi(
 		handler: async (args, ctx) => {
 			const line = args.trim();
 			if (line !== "" && !/^(?:on(?:\s+http)?|off)$/.test(line))
-				return say(ctx, "Usage: /octocode api [on [http] | off]", "warning");
+				return say(ctx, "Usage: /api [on [http] | off]", "warning");
 			const [action, flag] = line.split(/\s+/);
 			try {
 				if (action === "on") {
@@ -47,7 +47,7 @@ export function registerApi(
 						]
 							.filter(Boolean)
 							.join("\n")
-					: "Octocode API is off. Start with /octocode api on, or set OCTOCODE_API=1 (OCTOCODE_API_HTTP=<port> adds loopback HTTP).",
+					: "Octocode API is off. Start with /api on, or set OCTOCODE_API=1 (OCTOCODE_API_HTTP=<port> adds loopback HTTP).",
 				"info",
 			);
 		},
@@ -56,7 +56,7 @@ export function registerApi(
 	return {
 		api,
 		start: async (ctx) => {
-			// A bad environment still binds the session (so `/octocode api on` works) and says why the API is off.
+			// A bad environment still binds the session (so `/api on` works) and says why the API is off.
 			let options: ReturnType<typeof optionsFromEnv>;
 			let failure: unknown;
 			try {

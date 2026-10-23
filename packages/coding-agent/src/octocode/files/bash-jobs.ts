@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import type { Socket } from "node:net";
 import os from "node:os";
@@ -6,7 +6,7 @@ import path from "node:path";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
-import { getShellConfig } from "../../utils/shell.ts";
+import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
 import { atomicWriteFileSync } from "../shared/atomic.ts";
 import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
 import { formatDuration, shortPath } from "../shared/format.ts";
@@ -52,6 +52,7 @@ const RECORD_SUFFIX = ".job.json";
 const CLAIM_MARKER = ".reaping-";
 /** The user's Octocode shell settings that every command runs with. */
 export interface ShellSettings {
+	type?: "bash" | "powershell";
 	shellPath?: string;
 	commandPrefix?: string;
 }
@@ -66,6 +67,13 @@ export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettin
 	} catch {
 		return {};
 	}
+}
+
+/** Prepare the chosen shell's script; a Bash prefix never runs as PowerShell. */
+export function shellScript(command: string, settings: ShellSettings): string {
+	return settings.type === "powershell"
+		? `try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n${command}`
+		: prefixed(command, settings.commandPrefix);
 }
 
 /** The command as Octocode's bash runs it: the settings prefix on its own line first. */
@@ -106,6 +114,27 @@ export function shellEnv(ctx?: ExtensionContext, base: NodeJS.ProcessEnv = proce
 	}
 	if (ctx.thinkingLevel) env.OCTOCODE_REASONING_LEVEL = ctx.thinkingLevel;
 	return env;
+}
+
+/** What git runs instead of an editor: says how to pass the text, then fails so the command stops at once. */
+const NO_EDITOR =
+	"echo 'No interactive editor in this shell: pass the text as arguments (git commit -m, git merge --no-edit), or set one for the command (GIT_EDITOR=true git rebase --continue, GIT_SEQUENCE_EDITOR=<script> git rebase -i).' >&2; false";
+
+/**
+ * `env` for a command with no terminal: stdin is closed and there is no controlling terminal, so an editor git opens
+ * (commit without -m, rebase -i, rebase --continue) would wait until the timeout. git's editors are replaced by one that
+ * fails at once and says what to do; a value set on the command line itself still wins. Pagers and git credential
+ * prompts get non-interactive defaults unless the environment already sets them.
+ */
+export function nonInteractiveEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	return {
+		PAGER: "cat",
+		GIT_PAGER: "cat",
+		GIT_TERMINAL_PROMPT: "0",
+		...env,
+		GIT_EDITOR: NO_EDITOR,
+		GIT_SEQUENCE_EDITOR: NO_EDITOR,
+	};
 }
 
 export interface BashJob {
@@ -359,30 +388,21 @@ export class BashJobs {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
 		const timeout = asked && asked > 0 ? Math.min(asked, MAX_TIMER_SECONDS) : undefined;
-		const dir = this.logDir();
-		privateDir(dir);
-		const id = `bash-${++this.next}`;
-		// Job ids restart with each extension instance (a /reload), so the start time keeps an earlier log.
-		const log = path.join(dir, `${id}-${Date.now()}.log`);
-		const output = new RotatingLog(log, maxLogBytes);
-		const shell = getShellConfig(settings.shellPath);
+		const shell = settings.type === "powershell" ? getPowerShellConfig() : getShellConfig(settings.shellPath);
 		const viaStdin = shell.commandTransport === "stdin";
-		const script = prefixed(command, settings.commandPrefix);
+		const script = shellScript(command, settings);
 		// On Windows the job that holds the tree exists before the shell does.
 		await prepareTree();
 		const child = spawn(shell.shell, viaStdin ? shell.args : [...shell.args, script], {
 			cwd,
-			env,
+			env: nonInteractiveEnv(env),
 			detached: process.platform !== "win32",
 			stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
 			windowsHide: true,
 		});
 		if (child.pid === undefined) {
-			// Spawning failed (no shell, EAGAIN, EMFILE): the 'error' event that follows names the cause. Nothing ran, so
-			// the empty log goes too.
+			// Spawning failed (no shell, EAGAIN, EMFILE): the 'error' event that follows names the cause. Nothing ran.
 			const cause = await new Promise<unknown>((resolve) => child.once("error", resolve));
-			output.close();
-			fs.rmSync(log, { force: true });
 			throw new Error(
 				`Could not start a background shell (${shell.shell}): ${errorMessage(cause)}. Nothing is running.`,
 			);
@@ -392,12 +412,57 @@ export class BashJobs {
 			child.stdin?.on("error", () => undefined);
 			child.stdin?.end(script);
 		}
+		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes });
+	}
+
+	/**
+	 * Takes over a foreground command that reached its deadline while still running: `output` (what it printed so far)
+	 * goes to the new log first, then whatever its pipes deliver. The caller has stopped reading the pipes. The job has
+	 * no timeout of its own (the foreground deadline is used up): it runs until it exits, is stopped, or the session
+	 * ends, and a headless run stops it (`settle`) like any untimed job. `startedAt` is when the command began.
+	 */
+	adopt(
+		child: ChildProcess,
+		command: string,
+		cwd: string,
+		onExit: (job: BashJob, exit: JobExit) => void,
+		{
+			output,
+			startedAt,
+			maxLogBytes = MAX_JOB_LOG_BYTES,
+		}: { output: Buffer; startedAt: number; maxLogBytes?: number },
+	): BashJob {
+		if (child.pid === undefined) throw new Error("The command has no process to move");
+		return this.register(child, child.pid, command, cwd, onExit, { maxLogBytes, output, startedAt });
+	}
+
+	/** Records and watches a running shell as a job: log, owner record, exit handling. */
+	private register(
+		child: ChildProcess,
+		pid: number,
+		command: string,
+		cwd: string,
+		onExit: (job: BashJob, exit: JobExit) => void,
+		{
+			timeout,
+			maxLogBytes,
+			output: earlier,
+			startedAt = Date.now(),
+		}: { timeout?: number; maxLogBytes: number; output?: Buffer; startedAt?: number },
+	): BashJob {
+		const dir = this.logDir();
+		privateDir(dir);
+		const id = `bash-${++this.next}`;
+		// Job ids restart with each extension instance (a /reload), so the start time keeps an earlier log.
+		const log = path.join(dir, `${id}-${Date.now()}.log`);
+		const output = new RotatingLog(log, maxLogBytes);
+		if (earlier && earlier.length > 0) output.write(earlier);
 		const record = recordFile(log);
 		try {
 			const owned: JobRecord = {
 				id,
-				pid: child.pid,
-				started: processStartTime(child.pid),
+				pid,
+				started: processStartTime(pid),
 				command,
 				log,
 				host: os.hostname(),
@@ -418,7 +483,6 @@ export class BashJobs {
 			pipe.on("error", () => undefined);
 			pipe.unref();
 		}
-		const startedAt = Date.now();
 		let timer: NodeJS.Timeout | undefined;
 		// The job, for `finish` to mark exited: it exists before any child event can fire.
 		const state: { job?: BashJob } = {};
@@ -451,13 +515,13 @@ export class BashJobs {
 			// job lasts until the group is gone, so they stay capped, stoppable and stopped at session end.
 			child.once("exit", (code, signal) => {
 				const wait = (): void => {
-					if (groupAlive(child.pid)) setTimeout(wait, GROUP_POLL_MS).unref();
+					if (groupAlive(pid)) setTimeout(wait, GROUP_POLL_MS).unref();
 					else finish(code, signal);
 				};
 				wait();
 			});
 		});
-		const job: BashJob = { id, command, cwd, pid: child.pid, log, startedAt, ...(timeout ? { timeout } : {}), done };
+		const job: BashJob = { id, command, cwd, pid, log, startedAt, ...(timeout ? { timeout } : {}), done };
 		state.job = job;
 		if (timeout) {
 			timer = setTimeout(() => this.stop(id, "timeout"), timeout * 1000);
@@ -543,7 +607,7 @@ export class BashJobs {
 		return path.join(this.logDir(), `reload-${process.pid}.json`);
 	}
 
-	/** One line per running job, for `/octocode jobs`. */
+	/** One line per running job, for `/jobs`. */
 	describe(now = Date.now()): string {
 		if (this.jobs.size === 0) return "No background bash jobs are running.";
 		return [...this.jobs.values()]

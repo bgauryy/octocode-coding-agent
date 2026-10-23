@@ -1,0 +1,28 @@
+{
+	"$schema": "../../node_modules/@biomejs/biome/configuration_schema.json",
+	"root": true,
+	"vcs": { "enabled": false },
+	"files": {
+		"includes": ["src/**", "test/**", "*.ts", "*.json", "!src/state.generated.ts", "!dist"]
+	},
+	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 120 },
+	"javascript": { "formatter": { "quoteStyle": "double" } },
+	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"linter": {
+		"enabled": true,
+		"domains": { "react": "recommended", "test": "recommended" },
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error",
+				"useExhaustiveDependencies": "error",
+				"useHookAtTopLevel": "error"
+			},
+			"security": { "noDangerouslySetInnerHtml": "error" },
+			"style": { "noNonNullAssertion": "off", "useImportType": "error", "useBlockStatements": "off" },
+			"suspicious": { "noConsole": "error", "noArrayIndexKey": "error" },
+			"a11y": { "recommended": true }
+		}
+	}
+}

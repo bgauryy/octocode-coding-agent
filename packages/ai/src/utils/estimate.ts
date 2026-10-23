@@ -1,7 +1,7 @@
 import type { AssistantMessage, ImageContent, Message, TextContent, TranscriptContext, Usage } from "../types.ts";
 import { getSystemMessageText } from "./text.ts";
 
-export interface ContextUsageEstimate {
+interface ContextUsageEstimate {
 	/** Estimated total context tokens. */
 	tokens: number;
 	/** Tokens reported by the most recent applicable assistant usage block. */
@@ -35,15 +35,15 @@ function estimateTextAndImageContentChars(content: string | Array<TextContent | 
 	return chars;
 }
 
-export function estimateTextTokens(text: string): number {
+function estimateTextTokens(text: string): number {
 	return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-export function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent>): number {
+function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent>): number {
 	return Math.ceil(estimateTextAndImageContentChars(content) / CHARS_PER_TOKEN);
 }
 
-export function estimateMessageTokens(message: Message): number {
+function estimateMessageTokens(message: Message): number {
 	let chars = 0;
 
 	if (message.role === "system") {

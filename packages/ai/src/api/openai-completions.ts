@@ -21,7 +21,6 @@ import type {
 	Message,
 	Model,
 	OpenAICompletionsCompat,
-	ProviderEnv,
 	ProviderHeaders,
 	SimpleStreamOptions,
 	StopReason,
@@ -41,7 +40,7 @@ import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
-import { getProviderEnvValue } from "../utils/provider-env.ts";
+import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
@@ -291,15 +290,6 @@ type ChatCompletionToolWithCacheControl = OpenAI.Chat.Completions.ChatCompletion
 	cache_control?: OpenAICompatCacheControl;
 };
 
-function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEnv): CacheRetention {
-	if (cacheRetention) {
-		return cacheRetention;
-	}
-	if (getProviderEnvValue("OCTOCODE_CACHE_RETENTION", env) === "long") {
-		return "long";
-	}
-	return "short";
-}
 
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
 	model: Model<"openai-completions">,
@@ -785,6 +775,10 @@ function createClient(
 			headers["x-client-request-id"] = sessionId;
 			headers["x-session-affinity"] = sessionId;
 		}
+	}
+
+	if (sessionId && model.provider === "xai") {
+		headers["x-grok-conv-id"] = sessionId;
 	}
 
 	// Merge options headers last so they can override defaults
