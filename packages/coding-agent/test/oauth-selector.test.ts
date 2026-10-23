@@ -2,9 +2,10 @@ import { setKeybindings } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { OAuthSelectorComponent } from "../src/modes/interactive/components/oauth-selector.ts";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import * as loginFlow from "../src/modes/interactive/interactive-mode/login-flow.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 describe("OAuthSelectorComponent", () => {
 	beforeAll(() => {
@@ -16,16 +17,8 @@ describe("OAuthSelectorComponent", () => {
 	});
 
 	it("projects provider-owned auth options without provider-specific filtering", () => {
-		const getLoginProviderOptions = (
-			InteractiveMode as unknown as {
-				prototype: {
-					getLoginProviderOptions(
-						this: object,
-						authType?: "oauth" | "api_key",
-					): Array<{ id: string; name: string; authType: string; method?: { name: string; login?: unknown } }>;
-				};
-			}
-		).prototype.getLoginProviderOptions;
+		const getLoginProviderOptions = (context: object, authType?: "oauth" | "api_key") =>
+			loginFlow.getLoginProviderOptions(createFakeHost(context), authType);
 		const providers = [
 			{
 				id: "anthropic",
@@ -51,7 +44,7 @@ describe("OAuthSelectorComponent", () => {
 			},
 		};
 
-		const apiKeyOptions = getLoginProviderOptions.call(fakeThis, "api_key");
+		const apiKeyOptions = getLoginProviderOptions(fakeThis, "api_key");
 		expect(apiKeyOptions).toMatchObject([
 			{
 				id: "anthropic",
@@ -66,7 +59,7 @@ describe("OAuthSelectorComponent", () => {
 				method: { name: "Google Cloud credentials" },
 			},
 		]);
-		expect(getLoginProviderOptions.call(fakeThis, "oauth")).toMatchObject([
+		expect(getLoginProviderOptions(fakeThis, "oauth")).toMatchObject([
 			{ id: "anthropic", name: "Anthropic", authType: "oauth" },
 		]);
 	});

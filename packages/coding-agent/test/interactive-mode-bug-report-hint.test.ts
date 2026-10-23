@@ -1,16 +1,17 @@
 import { type AssistantMessage, fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, test, vi } from "vitest";
-import { formatCrashExtensionHint, InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { formatCrashExtensionHint } from "../src/modes/interactive/interactive-mode.ts";
+import * as crashReporting from "../src/modes/interactive/interactive-mode/crash-reporting.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 type BugReportHintContext = {
 	suggestBugReport(): void;
 	maybeShowInstallChangeWarning(): boolean;
 };
 
-const maybeSuggestBugReport = Reflect.get(InteractiveMode.prototype, "maybeSuggestBugReport") as (
-	this: BugReportHintContext,
-	message: AssistantMessage,
-) => void;
+function maybeSuggestBugReport(context: BugReportHintContext, message: AssistantMessage): void {
+	crashReporting.maybeSuggestBugReport(createFakeHost(context), message);
+}
 
 function errorMessage(errorMessage: string): AssistantMessage {
 	return fauxAssistantMessage("", { stopReason: "error", errorMessage });
@@ -37,7 +38,7 @@ describe("InteractiveMode bug report hints", () => {
 			"Request timed out",
 		];
 
-		for (const failure of failures) maybeSuggestBugReport.call(context, errorMessage(failure));
+		for (const failure of failures) maybeSuggestBugReport(context, errorMessage(failure));
 
 		expect(context.suggestBugReport).not.toHaveBeenCalled();
 	});
@@ -45,9 +46,9 @@ describe("InteractiveMode bug report hints", () => {
 	test("does not suggest reports for cancellations", () => {
 		const context = { suggestBugReport: vi.fn(), maybeShowInstallChangeWarning: vi.fn(() => false) };
 
-		maybeSuggestBugReport.call(context, errorMessage("This operation was aborted"));
-		maybeSuggestBugReport.call(context, errorMessage("Request cancelled"));
-		maybeSuggestBugReport.call(context, fauxAssistantMessage("", { stopReason: "aborted" }));
+		maybeSuggestBugReport(context, errorMessage("This operation was aborted"));
+		maybeSuggestBugReport(context, errorMessage("Request cancelled"));
+		maybeSuggestBugReport(context, fauxAssistantMessage("", { stopReason: "aborted" }));
 
 		expect(context.suggestBugReport).not.toHaveBeenCalled();
 	});
@@ -55,7 +56,7 @@ describe("InteractiveMode bug report hints", () => {
 	test("suggests reports for unexpected errors", () => {
 		const context = { suggestBugReport: vi.fn(), maybeShowInstallChangeWarning: vi.fn(() => false) };
 
-		maybeSuggestBugReport.call(context, errorMessage("Unexpected internal state"));
+		maybeSuggestBugReport(context, errorMessage("Unexpected internal state"));
 
 		expect(context.suggestBugReport).toHaveBeenCalledOnce();
 	});
@@ -63,7 +64,7 @@ describe("InteractiveMode bug report hints", () => {
 	test("shows the install change warning instead of a bug report hint", () => {
 		const context = { suggestBugReport: vi.fn(), maybeShowInstallChangeWarning: vi.fn(() => true) };
 
-		maybeSuggestBugReport.call(context, errorMessage("Cannot find module './worker.js'"));
+		maybeSuggestBugReport(context, errorMessage("Cannot find module './worker.js'"));
 
 		expect(context.maybeShowInstallChangeWarning).toHaveBeenCalledOnce();
 		expect(context.suggestBugReport).not.toHaveBeenCalled();

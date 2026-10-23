@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import * as modelControls from "../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 function createSettingsManager(warnings: { anthropicExtraUsage?: boolean } = {}) {
 	return {
@@ -14,6 +15,10 @@ function createModelRuntime(credential: { type: "oauth" } | undefined, apiKey?: 
 	};
 }
 
+function maybeWarnAboutAnthropicSubscriptionAuth(host: object, model: { provider: string }): Promise<void> {
+	return modelControls.maybeWarnAboutAnthropicSubscriptionAuth(host as never, model as never);
+}
+
 describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 	test("warns once when Anthropic subscription auth is detected", async () => {
 		const modelRuntime = createModelRuntime(undefined, "sk-ant-oat01-test");
@@ -24,10 +29,10 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 			showWarning: vi.fn(),
 		};
 
-		await (InteractiveMode as any).prototype.maybeWarnAboutAnthropicSubscriptionAuth.call(fakeThis, {
+		await maybeWarnAboutAnthropicSubscriptionAuth(createFakeHost(fakeThis), {
 			provider: "anthropic",
 		});
-		await (InteractiveMode as any).prototype.maybeWarnAboutAnthropicSubscriptionAuth.call(fakeThis, {
+		await maybeWarnAboutAnthropicSubscriptionAuth(createFakeHost(fakeThis), {
 			provider: "anthropic",
 		});
 
@@ -44,7 +49,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 			showWarning: vi.fn(),
 		};
 
-		await (InteractiveMode as any).prototype.maybeWarnAboutAnthropicSubscriptionAuth.call(fakeThis, {
+		await maybeWarnAboutAnthropicSubscriptionAuth(createFakeHost(fakeThis), {
 			provider: "anthropic",
 		});
 
@@ -61,7 +66,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 			showWarning: vi.fn(),
 		};
 
-		await (InteractiveMode as any).prototype.maybeWarnAboutAnthropicSubscriptionAuth.call(fakeThis, {
+		await maybeWarnAboutAnthropicSubscriptionAuth(createFakeHost(fakeThis), {
 			provider: "openai",
 		});
 
@@ -78,7 +83,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 			showWarning: vi.fn(),
 		};
 
-		await (InteractiveMode as any).prototype.maybeWarnAboutAnthropicSubscriptionAuth.call(fakeThis, {
+		await maybeWarnAboutAnthropicSubscriptionAuth(createFakeHost(fakeThis), {
 			provider: "anthropic",
 		});
 

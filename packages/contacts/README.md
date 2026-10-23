@@ -12,4 +12,4 @@ The `contacts` package owns common contracts for packages and interfaces. Its pa
 
 Only TypeBox is a runtime dependency. Keep application behavior, database access, browser DOM, provider code, and permission decisions out of this package. Validate untrusted requests at the host boundary with these schemas; types alone do not validate JSON.
 
-Run `npm run build --workspace=@octocodeai/octocode-contacts` and `npm run test --workspace=@octocodeai/octocode-contacts` from the repository root. Add a contract here when it crosses a real package or interface boundary; private persistence models stay with their owner.
+Run `yarn workspace @octocodeai/octocode-contacts run build` and `yarn workspace @octocodeai/octocode-contacts run test` from the repository root. Add a contract here when it crosses a real package or interface boundary; private persistence models stay with their owner.

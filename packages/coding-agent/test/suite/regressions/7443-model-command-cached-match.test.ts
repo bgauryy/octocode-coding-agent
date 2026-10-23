@@ -1,12 +1,12 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import * as modelControls from "../../../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
-const findExactModelMatch = Reflect.get(InteractiveMode.prototype, "findExactModelMatch") as (
-	this: object,
-	searchTerm: string,
-) => Promise<Model<Api> | undefined>;
+function findExactModelMatch(context: object, searchTerm: string): Promise<Model<Api> | undefined> {
+	return modelControls.findExactModelMatch(createFakeHost(context), searchTerm);
+}
 
 describe("issue #7443 /model cached match", () => {
 	let harness: Harness | undefined;
@@ -22,7 +22,7 @@ describe("issue #7443 /model cached match", () => {
 		const refresh = vi.spyOn(harness.session.modelRuntime, "refresh").mockImplementation(() => new Promise(() => {}));
 		const context = { session: harness.session, showStatus: vi.fn(), showWarning: vi.fn() };
 
-		const model = await findExactModelMatch.call(context, harness.models[0].id);
+		const model = await findExactModelMatch(context, harness.models[0].id);
 
 		expect(model?.id).toBe("cached");
 		expect(refresh).not.toHaveBeenCalled();
@@ -37,7 +37,7 @@ describe("issue #7443 /model cached match", () => {
 		});
 		const context = { session: harness.session, showStatus: vi.fn(), showWarning: vi.fn() };
 
-		await expect(findExactModelMatch.call(context, "not-cached")).resolves.toBeUndefined();
+		await expect(findExactModelMatch(context, "not-cached")).resolves.toBeUndefined();
 
 		expect(refresh).toHaveBeenCalledOnce();
 		expect(refresh.mock.calls[0]?.[0]?.signal).toBeInstanceOf(AbortSignal);

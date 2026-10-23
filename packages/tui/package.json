@@ -11,7 +11,7 @@
 		"build:native:linux": "native/linux/build.sh",
 		"build:native:win32": "node native/win32/build.mjs",
 		"test": "node --test --test-reporter=dot --test-reporter-destination=stdout test/*.test.ts",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "yarn run clean && yarn run build"
 	},
 	"files": [
 		"dist/**/*",
@@ -56,7 +56,10 @@
 		"marked": "18.1.1"
 	},
 	"devDependencies": {
+		"@types/node": "22.19.19",
 		"@xterm/headless": "5.5.0",
-		"chalk": "6.0.0"
+		"chalk": "6.0.0",
+		"shx": "0.4.0",
+		"typescript": "7.0.2"
 	}
 }

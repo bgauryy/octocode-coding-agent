@@ -1,8 +1,17 @@
-import { constants, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
-import { basename, join, parse, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { resolvePath } from "../utils/paths.ts";
 import type { AgentSession } from "./agent-session.ts";
 import type { AgentSessionRuntimeDiagnostic, AgentSessionServices } from "./agent-session-services.ts";
+import {
+	openImportedSession,
+	prepareImportDestination,
+	SessionImportFileNotFoundError,
+} from "./agent-session-runtime/import.ts";
+import { extractUserMessageText } from "./agent-session-runtime/messages.ts";
+import type {
+	CreateAgentSessionRuntimeFactory,
+	CreateAgentSessionRuntimeResult,
+} from "./agent-session-runtime/types.ts";
 import type {
 	ProjectTrustContext,
 	ReplacedSessionContext,
@@ -10,70 +19,14 @@ import type {
 	SessionStartEvent,
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
-import type { CreateAgentSessionResult } from "./sdk.ts";
-import { assertSessionCwdExists, MissingSessionCwdError } from "./session-cwd.ts";
+import { assertSessionCwdExists } from "./session-cwd.ts";
 import { SessionManager } from "./session-manager.ts";
 
-/**
- * Result returned by runtime creation.
- *
- * The caller gets the created session, its cwd-bound services, and all
- * diagnostics collected during setup.
- */
-export interface CreateAgentSessionRuntimeResult extends CreateAgentSessionResult {
-	services: AgentSessionServices;
-	diagnostics: AgentSessionRuntimeDiagnostic[];
-}
-
-/**
- * Creates a full runtime for a target cwd and session manager.
- *
- * The factory closes over process-global fixed inputs, recreates cwd-bound
- * services for the effective cwd, resolves session options against those
- * services, and finally creates the AgentSession.
- */
-export type CreateAgentSessionRuntimeFactory = (options: {
-	cwd: string;
-	agentDir: string;
-	sessionManager: SessionManager;
-	sessionStartEvent?: SessionStartEvent;
-	projectTrustContext?: ProjectTrustContext;
-}) => Promise<CreateAgentSessionRuntimeResult>;
-
-/**
- * Thrown when /import references a JSONL file path that does not exist.
- */
-/** The file to import is not a usable session; nothing was copied and the current session is unchanged. */
-export class SessionImportInvalidError extends Error {
-	readonly filePath: string;
-
-	constructor(filePath: string, cause: unknown) {
-		super(`Not a session file: ${filePath} (${cause instanceof Error ? cause.message : String(cause)})`, { cause });
-		this.name = "SessionImportInvalidError";
-		this.filePath = filePath;
-	}
-}
-
-export class SessionImportFileNotFoundError extends Error {
-	readonly filePath: string;
-
-	constructor(filePath: string) {
-		super(`File not found: ${filePath}`);
-		this.name = "SessionImportFileNotFoundError";
-		this.filePath = filePath;
-	}
-}
-
-function extractUserMessageText(content: string | Array<{ type: string; text?: string }>): string {
-	if (typeof content === "string") {
-		return content;
-	}
-
-	return content
-		.filter((part): part is { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
-		.map((part) => part.text)
-		.join("");
-}
+export { SessionImportFileNotFoundError, SessionImportInvalidError } from "./agent-session-runtime/import.ts";
+export type {
+	CreateAgentSessionRuntimeFactory,
+	CreateAgentSessionRuntimeResult,
+} from "./agent-session-runtime/types.ts";
 
 /**
  * Owns the current AgentSession plus its cwd-bound services.
@@ -375,39 +328,18 @@ export class AgentSessionRuntime {
 		}
 
 		const sessionDir = this.session.sessionManager.getSessionDir();
-		if (!existsSync(sessionDir)) {
-			mkdirSync(sessionDir, { recursive: true });
-		}
-
-		let destinationPath = join(sessionDir, basename(resolvedPath));
-		const sourceAlreadyStored = resolve(destinationPath) === resolvedPath;
-		if (!sourceAlreadyStored) {
-			const { name, ext } = parse(destinationPath);
-			let suffix = 1;
-			while (existsSync(destinationPath)) {
-				destinationPath = join(sessionDir, `${name}-${suffix++}${ext}`);
-			}
-		}
-		const beforeResult = await this.emitBeforeSwitch("resume", destinationPath);
+		const destination = prepareImportDestination(resolvedPath, sessionDir);
+		const beforeResult = await this.emitBeforeSwitch("resume", destination.destinationPath);
 		if (beforeResult.cancelled) {
 			return beforeResult;
 		}
 
 		const previousSessionFile = this.session.sessionFile;
-		if (!sourceAlreadyStored) {
-			copyFileSync(resolvedPath, destinationPath, constants.COPYFILE_EXCL);
-		}
-
-		// Validate the copy before the current session is torn down; a rejected file leaves no copy behind.
-		let sessionManager: SessionManager;
-		try {
-			sessionManager = SessionManager.open(destinationPath, sessionDir, cwdOverride);
-			assertSessionCwdExists(sessionManager, this.cwd);
-		} catch (error) {
-			if (!sourceAlreadyStored) rmSync(destinationPath, { force: true });
-			if (error instanceof MissingSessionCwdError) throw error;
-			throw new SessionImportInvalidError(resolvedPath, error);
-		}
+		const sessionManager = openImportedSession(resolvedPath, destination, {
+			sessionDir,
+			cwdOverride,
+			cwd: this.cwd,
+		});
 		await this.teardownCurrent("resume", sessionManager.getSessionFile());
 		this.apply(
 			await this.createRuntime({

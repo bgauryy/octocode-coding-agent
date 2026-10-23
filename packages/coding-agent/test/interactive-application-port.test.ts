@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.ts";
 import { getApplicationPort } from "../src/core/application/index.ts";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 const sessions: AgentSession[] = [];
 afterEach(() => {
@@ -59,7 +60,7 @@ describe("terminal application port", () => {
 			},
 			unsubscribe: undefined as undefined | (() => void),
 		};
-		Reflect.get(InteractiveMode.prototype, "subscribeToAgent").call(terminal);
+		subscribeToAgent(createFakeHost(terminal));
 		const progress = {
 			type: "tool_execution_update",
 			toolCallId: "tool-one",
@@ -91,12 +92,12 @@ describe("terminal application port", () => {
 			},
 			unsubscribe: undefined as undefined | (() => void),
 		};
-		Reflect.get(InteractiveMode.prototype, "subscribeToAgent").call(terminal);
+		subscribeToAgent(createFakeHost(terminal));
 		terminal.session = next.session;
 		previous.emit({ type: "agent_end", messages: [], willRetry: false });
 		expect(events).toEqual([]);
 		terminal.unsubscribe!();
-		Reflect.get(InteractiveMode.prototype, "subscribeToAgent").call(terminal);
+		subscribeToAgent(createFakeHost(terminal));
 		next.emit({ type: "agent_start" });
 		expect(events).toEqual([{ type: "agent_start" }]);
 		terminal.unsubscribe!();

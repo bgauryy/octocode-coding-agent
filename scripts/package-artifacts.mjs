@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
 import { execNpmSync } from "./npm-command.mjs";
+import { execYarnSync } from "./yarn-command.mjs";
 
 const manifestSchemaVersion = 1;
 
@@ -124,8 +125,8 @@ export function produceArtifactSet({
 	const root = resolve(repoRoot);
 	const artifactDirectory = prepareOutputDirectory(outDir, { force, repoRoot: root });
 	if (build) {
-		execNpmSync(["run", "clean"], { cwd: root, stdio: "inherit" });
-		execNpmSync(["run", offlineModelData ? "build:offline" : "build"], { cwd: root, stdio: "inherit" });
+		execYarnSync(["run", "clean"], { cwd: root, stdio: "inherit" });
+		execYarnSync(["run", offlineModelData ? "build:offline" : "build"], { cwd: root, stdio: "inherit" });
 	}
 	const artifactSource = source === undefined ? getGitSource(root) : source;
 	const packages = getPublicWorkspacePackages(join(root, "packages"));

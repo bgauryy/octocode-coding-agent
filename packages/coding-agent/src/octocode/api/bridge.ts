@@ -1,28 +1,24 @@
-import { Box, Text } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { sha256 } from "../shared/atomic.ts";
-import { envFlag } from "../shared/env.ts";
-import { apiClientLabel, fencedBody, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
-import { formatClock } from "../shared/format.ts";
-import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../shared/messages.ts";
-import { clip, resultBlock } from "../shared/render.ts";
 import { redactData, redactSecrets, visibleControls } from "../shared/sanitize.ts";
-import { saveContentCopy, saveFullOutput } from "../shared/spill.ts";
-import { capChars, contentText, errorMessage, isRecord, isStaleSessionError, toolHint } from "../shared/util.ts";
+import { contentText, errorMessage, isRecord, isStaleSessionError, toolHint } from "../shared/util.ts";
+import { boundedExternal, boundedText } from "./bridge/bounded.ts";
+import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
+import { historyPage } from "./bridge/history.ts";
+import type { ApiOptions } from "./bridge/options.ts";
+import { registerExternalMessageRenderer } from "./bridge/renderer.ts";
+import { sendMessage } from "./bridge/send.ts";
 import { EventLog } from "./events.ts";
 import {
 	clampedParam,
 	DEFAULT_EVENT_TYPES,
 	ERR,
-	MAX_FRAME_BYTES,
 	MESSAGE_KEY_MAX,
 	numberParam,
 	PROTOCOL_VERSION,
 	RpcError,
 	stringParam,
-	WAIT_MS,
 } from "./protocol.ts";
-import { type RunResult, type SendReceipt, SendReceipts } from "./receipts.ts";
+import { type RunResult, SendReceipts } from "./receipts.ts";
 import {
 	apiDir,
 	ensurePrivateDir,
@@ -35,98 +31,14 @@ import {
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
 
-const API_ENV = "OCTOCODE_API";
-const API_HTTP_ENV = "OCTOCODE_API_HTTP";
+export { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
+export { optionsFromEnv, transportsFor } from "./bridge/options.ts";
+
 /** Session entry (`pi.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";
-/** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
-const RESERVED_SENDERS = new Set([USER_SENDER, EXTERNAL_SENDER]);
-
-const RESULT_MAX_CHARS = 64_000;
 /** `messages.list` page size: the default, and the most one page holds (a larger `limit` gets this many; `earlier` reaches the rest). */
 const HISTORY_PAGE = 20;
 const HISTORY_MAX_PAGE = 100;
-
-/**
- * Model text for an event or a history entry: credential-looking spans redacted first (so a secret that straddles the
- * limit is never left half-visible), then, over `RESULT_MAX_CHARS`, cut with the whole redacted text saved to a file
- * the note names (or the note says it could not be saved).
- */
-function boundedText(text: string): string {
-	const safe = redactSecrets(text);
-	if (safe.length <= RESULT_MAX_CHARS) return safe;
-	// The same answer reaches `message`, `agent.end` and the history: the file is named by its content, so that is one file, not one per channel.
-	const copy = saveContentCopy(safe, "api message");
-	return capChars(safe, RESULT_MAX_CHARS, copy ? `the whole text is in ${copy}` : "the whole text could not be saved");
-}
-function boundedExternal(value: unknown): unknown {
-	const safe = redactData(value);
-	const text = JSON.stringify(safe);
-	const bytes = Buffer.byteLength(text);
-	if (bytes <= MAX_FRAME_BYTES / 2) return safe;
-	const file = saveFullOutput(text, "external-api-result");
-	if (!file)
-		throw new RpcError(
-			ERR.unavailable,
-			"Complete external evidence could not be saved; execution may already have completed",
-			{ execution: "uncertain", bytes },
-		);
-	return {
-		fullOutput: { path: file, bytes, format: "json" },
-		notice: "Complete redacted result saved on the Octocode host; read this file before acting on the result.",
-	};
-}
-
-/** What the API needs from the team (kept as an interface so the API domain stays independent of it). */
-export interface AgentDirectory {
-	list(): unknown[];
-	/** Sends a team message (the team saves a long body to a file and delivers a pointer); a result with `error` (unknown recipient, nobody to reach) is a refusal. */
-	tell(to: string, text: string): unknown;
-	/** What a reader of a message from `from` gets for `text`: the text, or (when it is long) its head and the path of a file with all of it; an `error` when it cannot be saved. */
-	deliverable(text: string, from: string): string | { error: string };
-}
-
-interface ApiOptions {
-	/** Serve on a Unix socket (default when enabled; not available on Windows). */
-	socket: boolean;
-	/** Serve on loopback HTTP: a port, 0 for any free port, or undefined for no HTTP. */
-	http?: number | undefined;
-}
-
-/** The transports the environment asks for, or undefined when the API is off. A bad port throws its reason instead of silently serving nothing. */
-export function optionsFromEnv(
-	env: NodeJS.ProcessEnv = process.env,
-	platform = process.platform,
-): ApiOptions | undefined {
-	const httpText = env[API_HTTP_ENV]?.trim();
-	const port =
-		httpText === undefined || httpText === "" ? undefined : /^\d+$/.test(httpText) ? Number(httpText) : Number.NaN;
-	if (port !== undefined && !(port >= 0 && port <= 65_535))
-		throw new Error(`Octocode API is off: ${API_HTTP_ENV}=${httpText} is not a port (0-65535; 0 picks a free one).`);
-	const on = envFlag(env, API_ENV);
-	if (!on) return port === undefined ? undefined : { socket: false, http: port };
-	return transportsFor(port, platform);
-}
-
-/** The transports of an API that is switched on: a Unix socket where there are any, and loopback HTTP on `http` (0: a free port) or, where there is no socket, on a free port. */
-export function transportsFor(http: number | undefined, platform = process.platform): ApiOptions {
-	const socket = platform !== "win32";
-	return { socket, http: http ?? (socket ? undefined : 0) };
-}
-
-/**
- * Where a tool call sits in the call tree. Calls a tool makes itself (`ctx.executeTool`, e.g. programmatic tool callers) carry
- * `parentToolCallId`, and Octocode names them `<parent>/<n>`; provider ids contain no `/`, so the parent's segment count is
- * the depth: `toolu_1` → 0, `toolu_1/1` (parent `toolu_1`) → 1, `toolu_1/1/2` (parent `toolu_1/1`) → 2.
- */
-export function nesting(parentId: string | undefined): { depth: number; parentId?: string } {
-	return parentId ? { parentId, depth: parentId.split("/").length } : { depth: 0 };
-}
-
-export interface ApiOperations {
-	messageSend?(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
-	externalCall?(params: unknown, ctx: ExtensionContext): Promise<unknown>;
-}
 
 /**
  * An external API for one running Octocode session: other programs discover it, send it messages, follow what it does and
@@ -442,196 +354,26 @@ export class OctocodeApi {
 		}
 	}
 
-	/** The sender name a client gave, on one line; a name that would pass for the user, the team or a live agent is refused. */
-	private sender(params: Record<string, unknown>): string {
-		const given = stringParam(params, "from", { max: 64, optional: true });
-		const from = headerText((given ?? "external client").replaceAll('"', " "), 64) || "external client";
-		const taken = this.agents
-			.list()
-			.some((agent) => typeof agent === "object" && agent !== null && (agent as { id?: unknown }).id === from);
-		if (RESERVED_SENDERS.has(from.toLowerCase()) || taken)
-			throw new RpcError(
-				ERR.invalidParams,
-				`The sender name ${JSON.stringify(from)} is reserved for the user or a team agent; name your client instead (for example "ci bot"). Nothing was sent.`,
-			);
-		return from;
-	}
-
-	private async send(params: Record<string, unknown>): Promise<unknown> {
-		const ctx = this.session();
-		const originalSessionId = ctx.sessionManager.getSessionId();
-		this.guardSession(params, ctx);
-		const from = this.sender(params);
-		const raw = stringParam(params, "text")!;
-		const whole = visibleControls(raw);
-		const mode = params.mode ?? "auto";
-		if (mode !== "auto" && mode !== "steer" && mode !== "followUp")
-			throw new RpcError(ERR.invalidParams, "mode must be auto, steer or followUp");
-		if (params.requireIdle !== undefined && typeof params.requireIdle !== "boolean")
-			throw new RpcError(ERR.invalidParams, "requireIdle must be a boolean");
-		const requireIdle = params.requireIdle === true;
-		const wait = params.wait === true;
-		const timeout = numberParam(params, "timeoutMs", WAIT_MS) ?? WAIT_MS.default;
-		const key = stringParam(params, "key", { optional: true, max: MESSAGE_KEY_MAX });
-		const fingerprint = sha256(JSON.stringify({ raw, from, mode, requireIdle }));
-		const prior = key ? this.receipts.get(key) : undefined;
-		if (prior) {
-			if (prior.fingerprint !== fingerprint)
-				throw new RpcError(
-					ERR.invalidParams,
-					"The message key was already used for different input; nothing was sent",
-					{ execution: "not-sent" },
-				);
-			if (wait) return { ...prior.accepted, ...(await this.receipts.wait(prior, timeout)) };
-			await prior.ready;
-			return prior.accepted;
-		}
-		const busy = !ctx.isIdle() || ctx.hasPendingMessages() || this.receipts.busy;
-		if (requireIdle && busy)
-			throw new RpcError(ERR.unavailable, "The session is busy; nothing was sent", { execution: "not-sent" });
-		this.receipts.assertRoom(key);
-		let text: string;
-		const id = `x${++this.counter}`;
-		const deliverAs = mode === "followUp" ? "followUp" : "steer";
-		const at = Date.now();
-		const accepted = { id, queued: busy ? deliverAs : "turn" };
-		const { receipt, waiter } = this.receipts.open(fingerprint, accepted, key, busy);
-		const message: MessageEnvelope = {
-			channel: "external",
-			direction: "inbound",
-			from,
-			to: originalSessionId,
-			text: raw,
-			id,
-		};
-		const deadline = Date.now() + timeout;
-		const preparingTimer = setTimeout(
-			() => this.receipts.cancelPreparation(receipt, "Message preparation timed out; nothing was sent"),
-			timeout,
+	/** `message.send` (`bridge/send.ts`), with this API's session, receipts and audit. */
+	private send(params: Record<string, unknown>): Promise<unknown> {
+		return sendMessage(
+			{
+				pi: this.pi,
+				agents: this.agents,
+				operations: this.operations,
+				receipts: this.receipts,
+				log: this.log,
+				session: () => this.session(),
+				guardSession: (given, ctx) => this.guardSession(given, ctx),
+				nextId: () => `x${++this.counter}`,
+				audit: (data) => this.audit(data),
+			},
+			params,
 		);
-		preparingTimer.unref();
-		let dispatched = false;
-		try {
-			if (this.operations.messageSend)
-				await Promise.race([this.operations.messageSend(message, ctx, receipt.controller.signal), receipt.settlement]);
-			this.guardPreparedSend(params, ctx, originalSessionId, key, receipt);
-			const given = this.agents.deliverable(whole, from);
-			if (typeof given !== "string") throw new RpcError(ERR.unavailable, given.error);
-			text = given;
-			clearTimeout(preparingTimer);
-			this.receipts.accept(receipt, waiter, key !== undefined || wait);
-			dispatched = true;
-			void this.pi.sendMessage(
-				{
-					customType: EXTERNAL_MESSAGE_TYPE,
-					content: fenceUntrusted(messageHeader(apiClientLabel(from), at), text),
-					display: true,
-					details: { id, from, at, message },
-				},
-				{ triggerTurn: true, deliverAs },
-			);
-			receipt.resolveReady();
-		} catch (error) {
-			clearTimeout(preparingTimer);
-			const execution = dispatched ? "uncertain" : "not-sent";
-			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
-				execution,
-				...(dispatched ? accepted : {}),
-			});
-			this.receipts.fail(receipt, waiter, key, failure, dispatched);
-			throw failure;
-		}
-		this.audit({ method: "message.send", id, from, mode: deliverAs, queued: accepted.queued, chars: whole.length });
-		this.log.publish("external.message", {
-			id,
-			from,
-			text: redactSecrets(capChars(text, 2_000)),
-			queued: accepted.queued,
-		});
-		if (!wait) return accepted;
-		try {
-			return { ...accepted, ...(await this.receipts.wait(receipt, Math.max(1, deadline - Date.now()))) };
-		} finally {
-			if (!key) this.receipts.release(waiter);
-		}
 	}
 
-	private guardPreparedSend(
-		params: Record<string, unknown>,
-		original: ExtensionContext,
-		sessionId: string,
-		key: string | undefined,
-		receipt: SendReceipt,
-	): void {
-		const ctx = this.session();
-		this.guardSession(params, ctx);
-		if (ctx !== original || ctx.sessionManager.getSessionId() !== sessionId)
-			throw new RpcError(ERR.unavailable, "The session was replaced; nothing was sent");
-		if (receipt.phase !== "preparing")
-			throw new RpcError(ERR.unavailable, "Message preparation was cancelled; nothing was sent");
-		if (
-			params.requireIdle === true &&
-			(!ctx.isIdle() || ctx.hasPendingMessages() || this.receipts.activeKey !== key || this.receipts.preparingCount > 1)
-		) {
-			throw new RpcError(ERR.unavailable, "The session became busy; nothing was sent");
-		}
-	}
-
-	/**
-	 * One page of the transcript's user and assistant text, oldest first: the `limit` messages before index `before`
-	 * (default: the end); a `limit` outside 1..`HISTORY_MAX_PAGE` is clamped to it and a `before` past the end means the end,
-	 * and the page says the size it used. Every message carries its `index`; `earlier.before` is the next page's `before` and is absent
-	 * on the first page of the transcript. A text over `RESULT_MAX_CHARS` is cut with its whole text saved to a file.
-	 */
+	/** One page of the transcript's user and assistant text (`historyPage`). */
 	private history(limit: number, before?: number): unknown {
-		const ctx = this.session();
-		const all: Array<{ role: string; text: string }> = [];
-		for (const entry of ctx.sessionManager.getBranch()) {
-			const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
-			if ((entry as { type?: string }).type !== "message" || !message?.role) continue;
-			if (message.role !== "user" && message.role !== "assistant") continue;
-			const text = contentText(message.content, { separator: "" });
-			if (text) all.push({ role: message.role, text });
-		}
-		const end = Math.min(before ?? all.length, all.length);
-		let start = end;
-		let bytes = 0;
-		const messages: Array<{ index: number; role: string; text: string }> = [];
-		for (let index = end - 1; index >= Math.max(end - limit, 0); index--) {
-			const row = { index, role: all[index].role, text: boundedText(all[index].text) };
-			const size = Buffer.byteLength(JSON.stringify(row)) + 1;
-			if (messages.length > 0 && bytes + size > MAX_FRAME_BYTES / 2) break;
-			messages.unshift(row);
-			bytes += size;
-			start = index;
-		}
-		return {
-			messages,
-			total: all.length,
-			limit,
-			...(start > 0 ? { earlier: { before: start } } : {}),
-			last: this.lastAssistantText ? boundedText(this.lastAssistantText) : null,
-		};
+		return historyPage(this.session(), this.lastAssistantText, limit, before);
 	}
-}
-
-/** `✉ from <client>`, then the client's text: untrusted, so resultBlock sanitizes and previews it instead of Markdown. */
-function registerExternalMessageRenderer(pi: ExtensionAPI): void {
-	pi.registerMessageRenderer(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
-		const details = message.details as { from?: unknown; at?: unknown } | undefined;
-		const from = clip(typeof details?.from === "string" ? details.from : "API client", 60);
-		const text = contentText(message.content);
-		// The content is the fenced message the model reads; the header above says who sent it, so draw only the body.
-		const body = fencedBody(text);
-		const box = new Box(outputPad ?? 1, 0);
-		box.addChild(
-			new Text(
-				`${theme.fg("accent", "✉")} ${theme.fg("toolTitle", theme.bold(`from ${from}`))} ${theme.fg("dim", `· Octocode API · ${formatClock(typeof details?.at === "number" ? details.at : Date.now())}`)}`,
-				0,
-				0,
-			),
-		);
-		box.addChild(resultBlock(theme, { expanded }, { summary: "", body, error: false }));
-		return box;
-	});
 }

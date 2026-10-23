@@ -15,24 +15,15 @@ import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText, keyHint } from "./keybinding-hints.ts";
-
-interface ModelItem {
-	provider: string;
-	id: string;
-	model: Model<any>;
-}
-
-interface ScopedModelItem {
-	model: Model<any>;
-	thinkingLevel?: string;
-}
-
-interface DefaultModelReference {
-	provider: string;
-	id: string;
-}
-
-type ModelScope = "all" | "scoped";
+import {
+	type DefaultModelReference,
+	isDefaultModel,
+	isDefaultSearch,
+	type ModelItem,
+	type ModelScope,
+	type ScopedModelItem,
+	sortModelItems,
+} from "./model-selector/model-items.ts";
 
 /**
  * Component that renders a model selector with search
@@ -164,7 +155,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			id: model.id,
 			model,
 		}));
-		this.allModels = this.sortModels(models);
+		this.allModels = sortModelItems(models, this.currentModel, this.defaultModel);
 		this.scopedModels = this.scopedModels.map((scoped) => {
 			const refreshed = this.modelRuntime.getModel(scoped.model.provider, scoped.model.id);
 			return refreshed ? { ...scoped, model: refreshed } : scoped;
@@ -228,23 +219,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.refreshAbortController.abort();
 	}
 
-	private sortModels(models: ModelItem[]): ModelItem[] {
-		const sorted = [...models];
-		// Sort: current model first, default model second, then by provider.
-		sorted.sort((a, b) => {
-			const aIsCurrent = modelsAreEqual(this.currentModel, a.model);
-			const bIsCurrent = modelsAreEqual(this.currentModel, b.model);
-			if (aIsCurrent && !bIsCurrent) return -1;
-			if (!aIsCurrent && bIsCurrent) return 1;
-			const aIsDefault = this.isDefaultModel(a.model);
-			const bIsDefault = this.isDefaultModel(b.model);
-			if (aIsDefault && !bIsDefault) return -1;
-			if (!aIsDefault && bIsDefault) return 1;
-			return a.provider.localeCompare(b.provider);
-		});
-		return sorted;
-	}
-
 	private getScopeText(): string {
 		const allText = this.scope === "all" ? theme.fg("accent", "all") : theme.fg("muted", "all");
 		const scopedText = this.scope === "scoped" ? theme.fg("accent", "scoped") : theme.fg("muted", "scoped");
@@ -256,12 +230,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private isDefaultModel(model: Model<any>): boolean {
-		return this.defaultModel?.provider === model.provider && this.defaultModel.id === model.id;
-	}
-
-	private isDefaultSearch(query: string): boolean {
-		const normalized = query.trim().toLowerCase();
-		return normalized.length > 0 && "default".startsWith(normalized);
+		return isDefaultModel(this.defaultModel, model);
 	}
 
 	private setScope(scope: ModelScope): void {
@@ -282,7 +251,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
 				return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
 			});
-			if (this.isDefaultSearch(query)) {
+			if (isDefaultSearch(query)) {
 				const defaultItems = this.activeModels.filter((item) => this.isDefaultModel(item.model));
 				const defaultKeys = new Set(defaultItems.map((item) => `${item.provider}\0${item.id}`));
 				this.filteredModels = [

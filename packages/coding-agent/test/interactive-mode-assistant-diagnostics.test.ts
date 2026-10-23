@@ -1,9 +1,10 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { describe, expect, test } from "vitest";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import * as sessionRender from "../src/modes/interactive/interactive-mode/session-render.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 const message: AssistantMessage = {
 	role: "assistant",
@@ -54,10 +55,9 @@ type NoticeContext = {
 	sessionManager: { getBranch(): Array<{ type: "message"; message: AssistantMessage }> };
 };
 
-const maybeShowThinkingDropNotice = Reflect.get(InteractiveMode.prototype, "maybeShowThinkingDropNotice") as (
-	this: NoticeContext,
-	message: AssistantMessage,
-) => void;
+function maybeShowThinkingDropNotice(context: NoticeContext, message: AssistantMessage): void {
+	sessionRender.maybeShowThinkingDropNotice(createFakeHost(context), message);
+}
 
 describe("InteractiveMode assistant diagnostics", () => {
 	test("shows Anthropic thinking drops when cache miss notices are enabled", () => {
@@ -67,7 +67,7 @@ describe("InteractiveMode assistant diagnostics", () => {
 			settingsManager: { getShowCacheMissNotices: () => true },
 			sessionManager: { getBranch: () => [] },
 		};
-		maybeShowThinkingDropNotice.call(enabled, message);
+		maybeShowThinkingDropNotice(enabled, message);
 		const output = stripAnsi(enabled.chatContainer.render(120).join("\n"));
 		expect(output).toContain("Anthropic dropped 3 thinking blocks (details in session)");
 
@@ -76,7 +76,7 @@ describe("InteractiveMode assistant diagnostics", () => {
 			settingsManager: { getShowCacheMissNotices: () => false },
 			sessionManager: { getBranch: () => [] },
 		};
-		maybeShowThinkingDropNotice.call(disabled, message);
+		maybeShowThinkingDropNotice(disabled, message);
 		expect(disabled.chatContainer.children).toHaveLength(0);
 	});
 
@@ -88,7 +88,7 @@ describe("InteractiveMode assistant diagnostics", () => {
 			sessionManager: { getBranch: () => [{ type: "message" as const, message }] },
 		};
 
-		maybeShowThinkingDropNotice.call(context, { ...message, timestamp: 2 });
+		maybeShowThinkingDropNotice(context, { ...message, timestamp: 2 });
 
 		expect(context.chatContainer.children).toHaveLength(0);
 	});

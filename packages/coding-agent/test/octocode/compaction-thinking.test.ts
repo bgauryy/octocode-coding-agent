@@ -88,7 +88,8 @@ describe("every request after a compaction", () => {
 		const ctx = fakeCtx({ cwd: "/repo", model });
 		Object.assign(ctx, { sessionManager: { getSessionId: () => "s1", getBranch: () => [], getEntries: () => [] } });
 		const out = (await fake.fire("context", { type: "context", messages: structuredClone(compacted) }, ctx)) as
-			{ messages?: unknown[] } | undefined;
+			| { messages?: unknown[] }
+			| undefined;
 		return out?.messages;
 	}
 

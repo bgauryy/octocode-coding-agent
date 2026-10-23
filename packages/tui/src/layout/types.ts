@@ -1,0 +1,39 @@
+import type { ScrollView } from "../components/scroll-view.ts";
+import type { Component } from "../tui.ts";
+
+export interface LayoutRect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export interface LayoutBox {
+	component: Component;
+	rect: LayoutRect;
+	clip: LayoutRect;
+	children: LayoutBox[];
+	parent?: LayoutBox;
+	lines?: readonly string[];
+	lineOffset?: number;
+	scrollView?: ScrollView;
+	scrollContentLines?: readonly string[];
+	layer: number;
+}
+
+export interface LayoutFrame {
+	root: LayoutBox;
+	width: number;
+	height: number;
+	lines: string[];
+	primaryScrollView?: ScrollView;
+}
+
+export interface ScrollbarGeometry {
+	column: number;
+	trackTop: number;
+	trackHeight: number;
+	thumbTop: number;
+	thumbHeight: number;
+	maxScrollTop: number;
+}

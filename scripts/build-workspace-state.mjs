@@ -63,5 +63,5 @@ const source =
 	";\n";
 if (process.argv.includes("--check")) {
 	if ((await readFile(destination, "utf8")) !== source)
-		throw new Error("Workspace state bundle is stale. Run npm run generate:workspace.");
+		throw new Error("Workspace state bundle is stale. Run yarn run generate:workspace.");
 } else await writeFile(destination, source);

@@ -1,24 +1,19 @@
-import fs from "node:fs";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
-import type { CompactionEntry, SessionEntry } from "../../core/session-manager.ts";
+import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
+import type { CompactionEntry } from "../../core/session-manager.ts";
 import {
 	archiveFolder,
 	archiveSearch,
-	fence,
-	headingText,
-	inlineCode,
 	LIBRARY_FILE,
-	type RecordMessage,
 	readSegments,
-	type SessionRecord,
 	segmentFile,
 	segmentTldr,
 	sessionLineage,
 	writeSegment,
 } from "../shared/archive.ts";
-import { PARENT_SESSION_ENV } from "../shared/env.ts";
-import { repoKey } from "../shared/home.ts";
-import { contentText, isRecord, isStaleSessionError, stringList, stringOrEmpty } from "../shared/util.ts";
+import { isRecord, isStaleSessionError, stringList } from "../shared/util.ts";
+import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
+
+export { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
 
 /**
  * The archive of compacted history (`shared/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized
@@ -73,120 +68,6 @@ export function summaryLabel(body: string): SummaryLabel {
 		...(tldr ? { tldr } : {}),
 		...(goal ? { goal } : {}),
 	};
-}
-
-/** The first line of the first user message, the label of last resort. */
-function firstUserLine(messages: readonly unknown[]): string | undefined {
-	for (const message of messages) {
-		if (!isRecord(message) || message.role !== "user") continue;
-		const line = contentText(message.content)
-			.split("\n")
-			.map((text) => text.trim())
-			.find(Boolean);
-		if (line) return line;
-	}
-	return undefined;
-}
-
-/** A message's content parts as Markdown blocks: text verbatim, tool calls with their JSON arguments, images as a placeholder, no thinking. */
-function contentBlocks(content: unknown): string[] {
-	if (typeof content === "string") return content === "" ? [] : [fence(content)];
-	if (!Array.isArray(content)) return [];
-	return content.flatMap((part): string[] => {
-		if (!isRecord(part)) return [fence(JSON.stringify(part) ?? String(part), "json")];
-		switch (part.type) {
-			case "text":
-				return typeof part.text === "string" && part.text !== "" ? [fence(part.text)] : [];
-			case "image":
-				return ["[image omitted]"];
-			case "thinking":
-				return [];
-			case "toolCall":
-				return [
-					`Tool call ${inlineCode(String(part.name))} (id ${inlineCode(String(part.id))}):`,
-					fence(JSON.stringify(part.arguments ?? {}, null, 2), "json"),
-				];
-			default:
-				return [fence(JSON.stringify(part), "json")];
-		}
-	});
-}
-
-/** The body of one message under its heading, by role. */
-function messageBlocks(message: Record<string, unknown>): string[] {
-	switch (message.role) {
-		case "user":
-		case "assistant":
-		case "custom":
-			return [
-				...contentBlocks(message.content),
-				...(typeof message.errorMessage === "string" ? ["Error:", fence(message.errorMessage)] : []),
-			];
-		case "toolResult":
-			return [
-				`Tool ${inlineCode(stringOrEmpty(message.toolName))} · call ${inlineCode(stringOrEmpty(message.toolCallId))}${message.isError === true ? " · error" : ""}`,
-				...contentBlocks(message.content),
-			];
-		case "bashExecution": {
-			const exit = message.cancelled === true ? "cancelled" : `exit ${headingText(String(message.exitCode))}`;
-			return [
-				`Command (${exit}):`,
-				fence(stringOrEmpty(message.command), "sh"),
-				...(stringOrEmpty(message.output) ? [fence(stringOrEmpty(message.output))] : []),
-			];
-		}
-		case "branchSummary":
-		case "compactionSummary":
-			return [fence(stringOrEmpty(message.summary))];
-		default:
-			return [fence(JSON.stringify(message, null, 2), "json")];
-	}
-}
-
-const isoTime = (timestamp: unknown): string | undefined =>
-	typeof timestamp === "number" && Number.isFinite(timestamp)
-		? new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, "Z")
-		: undefined;
-
-/** The session entry a summarized message came from. Messages are the entries' own objects unless a context edit copied them, so a copy is found by role, time and call. */
-function entryIndex(entries: readonly SessionEntry[]): (message: unknown) => string | undefined {
-	const key = (message: Record<string, unknown>): string =>
-		`${stringOrEmpty(message.role)}|${String(message.timestamp)}|${stringOrEmpty(message.toolCallId)}${stringOrEmpty(message.customType)}`;
-	const byObject = new Map<unknown, string>();
-	const byKey = new Map<string, string>();
-	for (const entry of entries) {
-		const message: unknown =
-			entry.type === "message"
-				? entry.message
-				: entry.type === "custom_message"
-					? { role: "custom", customType: entry.customType, timestamp: Date.parse(entry.timestamp) }
-					: undefined;
-		if (!isRecord(message)) continue;
-		byObject.set(message, entry.id);
-		byKey.set(key(message), entry.id);
-	}
-	return (message) => byObject.get(message) ?? (isRecord(message) ? byKey.get(key(message)) : undefined);
-}
-
-/** The messages as the segment file shows them: one `### role · time · entry id` section each, in order. */
-function renderMessages(messages: readonly unknown[], entryOf: (message: unknown) => string | undefined): string {
-	return messages
-		.map((message) => {
-			const record = isRecord(message) ? message : { role: "unknown", value: message };
-			const role =
-				record.role === "custom"
-					? `custom (${headingText(stringOrEmpty(record.customType))})`
-					: headingText(stringOrEmpty(record.role)) || "unknown";
-			const entry = entryOf(message);
-			const heading = [
-				"###",
-				role,
-				...(isoTime(record.timestamp) ? [`· ${isoTime(record.timestamp)}`] : []),
-				...(entry ? [`· entry ${headingText(entry)}`] : []),
-			].join(" ");
-			return [heading, ...messageBlocks(record)].join("\n\n");
-		})
-		.join("\n\n");
 }
 
 interface Pending {
@@ -321,118 +202,6 @@ export function archivePointer(current: number): string[] {
 			: []),
 		...forks,
 	];
-}
-
-/** The most forks a lineage follows back: a chain of session files that points in a circle stops here too. */
-const LINEAGE_DEPTH = 32;
-
-/** The id and source of the session file `file` (its first line, Octocode's header); undefined when it cannot be read. */
-function sessionHeaderOf(file: string): { id: string; parentSession?: string } | undefined {
-	let fd: number | undefined;
-	try {
-		fd = fs.openSync(file, "r");
-		const buffer = Buffer.alloc(64 * 1024);
-		const read = fs.readSync(fd, buffer, 0, buffer.length, 0);
-		const header: unknown = JSON.parse(buffer.subarray(0, read).toString("utf8").split("\n")[0] ?? "");
-		if (!isRecord(header) || header.type !== "session" || typeof header.id !== "string") return undefined;
-		return {
-			id: header.id,
-			...(typeof header.parentSession === "string" ? { parentSession: header.parentSession } : {}),
-		};
-	} catch {
-		return undefined;
-	} finally {
-		if (fd !== undefined) fs.closeSync(fd);
-	}
-}
-
-/**
- * The sessions this one was forked from, nearest first: Octocode's header names the source session's file
- * (`parentSession`), whose own header may name an earlier one. A source that is gone ends the chain.
- */
-export function forkLineage(sessions: Pick<ExtensionContext["sessionManager"], "getHeader">): string[] {
-	const ids: string[] = [];
-	let source = sessions.getHeader()?.parentSession;
-	while (source && ids.length < LINEAGE_DEPTH) {
-		const header = sessionHeaderOf(source);
-		if (!header || ids.includes(header.id)) break;
-		ids.push(header.id);
-		source = header.parentSession;
-	}
-	return ids;
-}
-
-/** A message's text, without thinking, tool calls or images. */
-const messageText = (content: unknown): string =>
-	typeof content === "string"
-		? content
-		: Array.isArray(content)
-			? content
-					.flatMap((part) =>
-						isRecord(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [],
-					)
-					.join("\n\n")
-			: "";
-
-/**
- * The current session's record (`shared/archive.ts`) from its branch: its first user message is its goal, its last user
- * message and the replies after it its ending (their text; their tool calls are counted). Undefined when the session is
- * not saved (`--no-session`: nothing outlives it) or has no user message yet.
- */
-export function sessionRecordOf(
-	sessions: ExtensionContext["sessionManager"],
-	lineage: readonly string[],
-	env: NodeJS.ProcessEnv = process.env,
-): SessionRecord | undefined {
-	const transcript = sessions.getSessionFile();
-	if (!transcript) return undefined;
-	const messages = sessions.getBranch().flatMap((entry) => {
-		const message: unknown = entry.type === "message" ? entry.message : undefined;
-		return isRecord(message) ? [{ message, at: entry.timestamp }] : [];
-	});
-	const users = messages.flatMap((entry, index) =>
-		entry.message.role === "user" && messageText(entry.message.content).trim() ? [index] : [],
-	);
-	if (users.length === 0) return undefined;
-	const toRecord = ({ message, at }: (typeof messages)[number]): RecordMessage => ({
-		role: String(message.role),
-		at,
-		text: messageText(message.content),
-	});
-	const tail = messages.slice(users.at(-1));
-	const ending = tail
-		.filter(
-			(entry, index) =>
-				index === 0 || (entry.message.role === "assistant" && messageText(entry.message.content).trim()),
-		)
-		.map(toRecord);
-	const toolCalls = tail.reduce(
-		(sum, { message }) =>
-			sum +
-			(Array.isArray(message.content)
-				? message.content.filter((part) => isRecord(part) && part.type === "toolCall").length
-				: 0),
-		0,
-	);
-	const cwd = sessions.getCwd();
-	const parent = env[PARENT_SESSION_ENV]?.trim();
-	const name = sessions.getSessionName();
-	const started = sessions.getHeader()?.timestamp;
-	const lastActive = sessions.getBranch().at(-1)?.timestamp;
-	return {
-		session: sessions.getSessionId(),
-		repository: repoKey(cwd).key,
-		workspace: cwd,
-		...(lineage[0] ? { forkedFrom: lineage[0] } : {}),
-		...(parent ? { parent } : {}),
-		...(name ? { name } : {}),
-		...(started ? { started } : {}),
-		...(lastActive ? { lastActive } : {}),
-		transcript,
-		goal: toRecord(messages[users[0]]),
-		ending,
-		toolCalls,
-	};
 }
 
 /** The custom message type that carries the archive pointer after a summary Octocode did not write. */

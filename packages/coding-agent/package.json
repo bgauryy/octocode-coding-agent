@@ -31,15 +31,14 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "npm run build:unbundled && node ../../scripts/build-coding-agent-bundle.mjs",
-		"build:unbundled": "npm run clean && tsc -p tsconfig.build.json && shx chmod +x dist/cli.js dist/rpc-entry.js && npm run copy-assets",
-		"build:binary": "npm --prefix ../contacts run build && npm --prefix ../webview run build && npm --prefix ../tui run build && npm --prefix ../telemetry run build && npm --prefix ../ai run build && npm --prefix ../agent run build && npm run build && bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile dist/octocode && npm run copy-binary-assets",
+		"build": "yarn run build:unbundled && node ../../scripts/build-coding-agent-bundle.mjs",
+		"build:unbundled": "yarn run clean && tsc -p tsconfig.build.json && shx chmod +x dist/cli.js dist/rpc-entry.js && yarn run copy-assets",
+		"build:binary": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn run build && bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv ./dist/bun/cli.js ./src/utils/image-resize-worker.ts --outfile dist/binary/octocode && node ../../scripts/stage-binary.mjs dist/binary",
 		"copy-assets": "shx mkdir -p dist/modes/interactive/theme && shx cp src/modes/interactive/theme/*.json dist/modes/interactive/theme/ && shx mkdir -p dist/modes/interactive/assets && shx cp src/modes/interactive/assets/*.png dist/modes/interactive/assets/ && shx mkdir -p dist/core/export-html/vendor && shx cp src/core/export-html/template.html src/core/export-html/template.css src/core/export-html/template.js dist/core/export-html/ && shx cp src/core/export-html/vendor/*.js dist/core/export-html/vendor/ && shx mkdir -p dist/octocode/instructions && shx rm -rf dist/octocode/instructions/roles && shx cp -r src/octocode/instructions/roles dist/octocode/instructions/ && shx mkdir -p dist/licenses/codex-patch && shx cp src/octocode/shared/codex-patch/LICENSE src/octocode/shared/codex-patch/NOTICE dist/licenses/codex-patch/ && node ../../scripts/stage-bash-parser.mjs",
-		"copy-binary-assets": "shx cp package.json dist/ && shx cp README.md dist/ && shx cp CHANGELOG.md dist/ && shx mkdir -p dist/theme && shx cp src/modes/interactive/theme/*.json dist/theme/ && shx mkdir -p dist/assets && shx cp src/modes/interactive/assets/*.png dist/assets/ && shx mkdir -p dist/export-html/vendor && shx cp src/core/export-html/template.html dist/export-html/ && shx cp src/core/export-html/vendor/*.js dist/export-html/vendor/ && shx cp -r docs dist/ && shx cp -r examples dist/ && shx cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm dist/ && shx rm -rf dist/roles && shx cp -r src/octocode/instructions/roles dist/ && node ../../scripts/stage-coding-agent-skills.mjs",
 		"test": "vitest --run && vitest --run --config vitest.octocode.config.ts",
 		"generate:schemas": "node --import ./src/experimental/source-resolver.ts scripts/generate-schemas.ts",
 		"generate:references": "node --import ./src/experimental/source-resolver.ts scripts/generate-references.ts",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "yarn run clean && yarn run build"
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "1.8.0",
@@ -80,12 +79,13 @@
 	"devDependencies": {
 		"@types/cross-spawn": "6.0.6",
 		"@types/hosted-git-info": "3.0.5",
-		"@types/node": "22.19.19",
+		"@types/node": "24.19.2",
 		"@types/proper-lockfile": "4.1.4",
 		"@types/semver": "7.7.1",
 		"@types/ws": "8.18.1",
 		"marked": "18.1.1",
 		"shx": "0.4.0",
+		"typescript": "7.0.2",
 		"vitest": "4.1.12"
 	},
 	"keywords": [

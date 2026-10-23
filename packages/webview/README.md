@@ -8,12 +8,12 @@ The coding-agent host serves the generated page through its authenticated local 
 
 From the repository root:
 
-- `npm run generate:workspace` rebuilds the checked-in browser bundle after browser source changes.
-- `npm run build --workspace=@octocodeai/octocode-contacts` builds shared declarations first.
-- `npm run build --workspace=@octocodeai/octocode-webview` builds this package.
-- `npm run test --workspace=@octocodeai/octocode-webview` runs model, component, page-flow and security tests.
-- The repository's Oxlint configuration covers this package with React, React hooks and accessibility rules (`npm run lint` from the root, or `npm run lint --workspace=@octocodeai/octocode-webview`); Prettier formats it with the rest of the code. `typecheck` checks the package with DOM and JSX settings.
-- `npm run check` also verifies TypeScript, lint and formatting, browser imports, bundle freshness and package boundaries.
+- `yarn run generate:workspace` rebuilds the checked-in browser bundle after browser source changes.
+- `yarn workspace @octocodeai/octocode-contacts run build` builds shared declarations first.
+- `yarn workspace @octocodeai/octocode-webview run build` builds this package.
+- `yarn workspace @octocodeai/octocode-webview run test` runs model, component, page-flow and security tests.
+- The repository's Oxlint configuration covers this package with React, React hooks and accessibility rules (`yarn run lint` from the root); Oxfmt formats it with the rest of the code (`yarn run format`). `typecheck` checks the package with DOM and JSX settings.
+- `yarn run check` also verifies TypeScript, lint and formatting, browser imports, bundle freshness and package boundaries.
 
 ## Structure
 

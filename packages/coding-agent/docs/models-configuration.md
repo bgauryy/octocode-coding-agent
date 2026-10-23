@@ -1,6 +1,6 @@
 # Models Configuration
 
-<!-- This file is generated from TypeScript source. Do not edit it manually; run npm run generate:references. -->
+<!-- This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:references. -->
 
 This reference lists the fields of `models.json`. See [Configure a compatible endpoint](models.md#configure-a-compatible-endpoint) for examples and [Configuration](configuration.md#agent-directory) for the file location.
 

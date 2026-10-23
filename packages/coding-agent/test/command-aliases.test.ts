@@ -1,8 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { BUILTIN_SLASH_COMMANDS, getBuiltinCommand, parseSlashCommand } from "../src/core/slash-commands.ts";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { CommandSelectorComponent } from "../src/modes/interactive/components/command-selector.ts";
+import { getSlashCommands } from "../src/modes/interactive/interactive-mode/autocomplete.ts";
+import { setupEditorSubmitHandler } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 function mode() {
 	const instance: any = {};
@@ -13,8 +15,7 @@ function mode() {
 		showWarning: vi.fn(),
 		session: { extensionRunner: { getRegisteredCommands: () => [], createCommandContext: () => ({}) } },
 	});
-	Object.setPrototypeOf(instance, InteractiveMode.prototype);
-	instance.setupEditorSubmitHandler();
+	setupEditorSubmitHandler(createFakeHost(instance));
 	return instance;
 }
 
@@ -192,7 +193,7 @@ describe("command picker", () => {
 });
 
 it("keeps native resume hints and built-in trust options visible in the TUI", () => {
-	const instance: any = Object.create(InteractiveMode.prototype);
+	const instance: any = {};
 	instance.skillCommands = new Map();
 	const complete = vi.fn(() => [{ value: "all", label: "all" }]);
 	Object.defineProperty(instance, "session", {
@@ -203,7 +204,7 @@ it("keeps native resume hints and built-in trust options visible in the TUI", ()
 			},
 		},
 	});
-	const commands = instance.getSlashCommands(false);
+	const commands: any[] = getSlashCommands(createFakeHost(instance), false);
 	expect(
 		commands
 			.find((command: any) => command.name === "trust")

@@ -1,0 +1,164 @@
+import { CacheTTL } from "@aws-sdk/client-bedrock-runtime";
+import type { CacheRetention, Model, ProviderEnv, SimpleStreamOptions } from "../../types.ts";
+import { getProviderEnvValue } from "../../utils/provider-env.ts";
+
+/**
+ * Check if the model supports adaptive thinking (Opus 4.6+, Sonnet 4.6).
+ * Checks both model ID and model name to support application inference profiles
+ * whose ARNs don't contain the model name.
+ */
+export function getModelMatchCandidates(modelId: string, modelName?: string): string[] {
+	const values = modelName ? [modelId, modelName] : [modelId];
+	return values.flatMap((value) => {
+		const lower = value.toLowerCase();
+		return [lower, lower.replace(/[\s_.:]+/g, "-")];
+	});
+}
+
+export function supportsAdaptiveThinking(modelId: string, modelName?: string): boolean {
+	const candidates = getModelMatchCandidates(modelId, modelName);
+	return candidates.some(
+		(s) =>
+			s.includes("opus-4-6") ||
+			s.includes("opus-4-7") ||
+			s.includes("opus-4-8") ||
+			s.includes("opus-5") ||
+			s.includes("sonnet-4-6") ||
+			s.includes("sonnet-5") ||
+			s.includes("haiku-5") ||
+			s.includes("fable-5"),
+	);
+}
+
+function supportsNativeXhighEffort(model: Model<"bedrock-converse-stream">): boolean {
+	const candidates = getModelMatchCandidates(model.id, model.name);
+	return candidates.some(
+		(s) =>
+			s.includes("opus-4-7") ||
+			s.includes("opus-4-8") ||
+			s.includes("opus-5") ||
+			s.includes("sonnet-5") ||
+			s.includes("haiku-5") ||
+			s.includes("fable-5"),
+	);
+}
+
+/**
+ * Check if the model accepts `thinking.block_binding`. Opus 4.6 and Sonnet 4.6 reject it with
+ * "thinking.adaptive.block_binding: Extra inputs are not permitted".
+ */
+export function supportsThinkingBlockBinding(model: Model<"bedrock-converse-stream">): boolean {
+	const candidates = getModelMatchCandidates(model.id, model.name);
+	return candidates.some(
+		(s) =>
+			s.includes("opus-4-7") ||
+			s.includes("opus-4-8") ||
+			s.includes("opus-5") ||
+			s.includes("sonnet-5") ||
+			s.includes("haiku-5") ||
+			s.includes("fable-5"),
+	);
+}
+
+export function mapThinkingLevelToEffort(
+	model: Model<"bedrock-converse-stream">,
+	level: SimpleStreamOptions["reasoning"],
+): "low" | "medium" | "high" | "xhigh" | "max" {
+	if (level === "xhigh" && supportsNativeXhighEffort(model)) return "xhigh";
+
+	const mapped = level ? model.thinkingLevelMap?.[level] : undefined;
+	if (typeof mapped === "string") return mapped as "low" | "medium" | "high" | "xhigh" | "max";
+
+	switch (level) {
+		case "minimal":
+		case "low":
+			return "low";
+		case "medium":
+			return "medium";
+		case "high":
+			return "high";
+		default:
+			return "high";
+	}
+}
+
+/**
+ * Resolve cache retention preference.
+ * Defaults to "short" and uses OCTOCODE_CACHE_RETENTION for backward compatibility.
+ */
+/**
+ * Check if the model is an Anthropic Claude model on Bedrock.
+ * Checks both model ID and model name to support application inference profiles
+ * whose ARNs don't contain the model name.
+ */
+export function isAnthropicClaudeModel(model: Model<"bedrock-converse-stream">): boolean {
+	const id = model.id.toLowerCase();
+	const name = model.name?.toLowerCase() ?? "";
+	return (
+		id.includes("anthropic.claude") ||
+		id.includes("anthropic/claude") ||
+		name.includes("anthropic.claude") ||
+		name.includes("anthropic/claude") ||
+		name.includes("claude")
+	);
+}
+
+/**
+ * Check if the model supports prompt caching.
+ * Supported: Claude 3.5 Haiku, Claude 3.7 Sonnet, Claude 4.x models, Claude 5 models
+ *
+ * For base models and system-defined inference profiles the model ID / ARN
+ * contains the model name, so we can decide locally.
+ *
+ * For application inference profiles (whose ARNs don't contain the model name),
+ * also checks model.name which is user-controlled via models.json or registerProvider.
+ * As a last resort, set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points.
+ * Amazon Nova models have automatic caching and don't need explicit cache points.
+ */
+export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, env?: ProviderEnv): boolean {
+	const candidates = getModelMatchCandidates(model.id, model.name);
+
+	const hasClaudeRef = candidates.some((s) => s.includes("claude"));
+	if (!hasClaudeRef) {
+		// Application inference profiles don't contain the model name in the ARN.
+		// Allow users to force cache points via environment variable.
+		if (getProviderEnvValue("AWS_BEDROCK_FORCE_CACHE", env) === "1") return true;
+		return false;
+	}
+	// Claude 5 models (fable-5, opus-5, sonnet-5, haiku-5)
+	if (
+		candidates.some(
+			(s) => s.includes("fable-5") || s.includes("opus-5") || s.includes("sonnet-5") || s.includes("haiku-5"),
+		)
+	)
+		return true;
+	// Claude 4.x models (opus-4, sonnet-4, haiku-4)
+	if (candidates.some((s) => s.includes("-4-"))) return true;
+	// Claude 3.7 Sonnet
+	if (candidates.some((s) => s.includes("claude-3-7-sonnet"))) return true;
+	// Claude 3.5 Haiku
+	if (candidates.some((s) => s.includes("claude-3-5-haiku"))) return true;
+	return false;
+}
+
+/** One-hour cache points for long retention, unless the model's compat settings rule them out. */
+export function longCacheTtl(
+	model: Model<"bedrock-converse-stream">,
+	cacheRetention: CacheRetention,
+): { ttl?: CacheTTL } {
+	return cacheRetention === "long" && model.compat?.supportsLongCacheRetention !== false
+		? { ttl: CacheTTL.ONE_HOUR }
+		: {};
+}
+
+/**
+ * Check if the model supports thinking signatures in reasoningContent.
+ * Only Anthropic Claude models support the signature field.
+ * Other models (OpenAI, Qwen, Minimax, Moonshot, etc.) reject it with:
+ * "This model doesn't support the reasoningContent.reasoningText.signature field"
+ *
+ * Checks both model ID and model name to support application inference profiles.
+ */
+export function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boolean {
+	return isAnthropicClaudeModel(model);
+}

@@ -9,7 +9,7 @@
  * Steps:
  * 1. Check for uncommitted changes
  * 2. Verify every public workspace package is registered on npm
- * 3. Bump version via npm run version:xxx or set an explicit version
+ * 3. Bump version via yarn run version:xxx or set an explicit version
  * 4. Update CHANGELOG.md files: [Unreleased] -> [version] - date
  * 5. Regenerate release artifacts
  * 6. Run checks and tests
@@ -112,31 +112,6 @@ function shellQuote(value) {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function removeStaleWorkspaceLockEntries() {
-	const workspaceVersions = new Map(getPublicWorkspacePackages().map((pkg) => [pkg.name, pkg.version]));
-	const lockPath = "package-lock.json";
-	const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-	let removed = 0;
-
-	for (const [path, pkg] of Object.entries(lock.packages)) {
-		if (!path.startsWith("packages/") || pkg.link === true) {
-			continue;
-		}
-		for (const [name, version] of workspaceVersions) {
-			if (path.endsWith(`/node_modules/${name}`) && pkg.version !== version) {
-				delete lock.packages[path];
-				removed++;
-				break;
-			}
-		}
-	}
-
-	if (removed > 0) {
-		writeFileSync(lockPath, `${JSON.stringify(lock, null, "\t")}\n`);
-		console.log(`Removed ${removed} stale workspace package lock ${removed === 1 ? "entry" : "entries"}.`);
-	}
-}
-
 function stageChangedFiles() {
 	const output = run("git ls-files -m -o -d --exclude-standard", { silent: true });
 	const paths = [
@@ -159,7 +134,7 @@ function bumpOrSetVersion(target) {
 
 	if (BUMP_TYPES.has(target)) {
 		console.log(`Bumping version (${target})...`);
-		run(`npm run version:${target}`);
+		run(`yarn run version:${target}`);
 	} else {
 		if (compareVersions(target, currentVersion) <= 0) {
 			console.error(`Error: explicit version ${target} must be greater than current version ${currentVersion}.`);
@@ -167,17 +142,11 @@ function bumpOrSetVersion(target) {
 		}
 
 		console.log(`Setting explicit version (${target})...`);
-		run(
-			`npm version ${target} --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts`,
-		);
+		run(`yarn run version:set ${target} && node scripts/sync-versions.js && yarn install --mode=update-lockfile`);
 	}
 
-	// npm version can temporarily install the previous workspace versions before
-	// sync-versions updates inter-package ranges. Remove those stale lock entries,
-	// refresh the lockfile, then hydrate from the final dependency graph.
-	removeStaleWorkspaceLockEntries();
-	run("npm install --package-lock-only --ignore-scripts");
-	run("npm ci --ignore-scripts");
+	// Install from the final dependency graph; the lockfile must already hold it.
+	run("yarn install --immutable");
 	return getVersion();
 }
 
@@ -247,21 +216,21 @@ console.log();
 
 // 5. Regenerate release artifacts
 console.log("Regenerating release artifacts...");
-run("npm run generate:models");
-run("npm run check:model-data");
-run("npm run install-lock:coding-agent -- --require-registry");
+run("yarn run generate:models");
+run("yarn run check:model-data");
+run("yarn run install-lock:coding-agent --require-registry");
 console.log();
 
 // 6. Run checks and tests
 console.log("Running checks...");
-run("npm run check");
+run("yarn run check");
 console.log();
 
 console.log("Building packages for tests...");
-run("npm run build:offline");
+run("yarn run build:offline");
 console.log();
 
-// OCTOCODE_RELEASE_SKIP_TESTS=1 skips the test suite, e.g. when it already passed in `npm run release:local`
+// OCTOCODE_RELEASE_SKIP_TESTS=1 skips the test suite, e.g. when it already passed in `yarn run release:local`
 // and an overloaded machine makes timing-sensitive tests fail. Checks and the install check still run.
 if (process.env.OCTOCODE_RELEASE_SKIP_TESTS === "1") {
 	console.log("Skipping tests (OCTOCODE_RELEASE_SKIP_TESTS=1)\n");
@@ -272,7 +241,7 @@ if (process.env.OCTOCODE_RELEASE_SKIP_TESTS === "1") {
 }
 
 console.log("Checking the packed coding-agent consumer install...");
-run("npm run check:package-install");
+run("yarn run check:package-install");
 console.log();
 
 // 7. Commit and tag

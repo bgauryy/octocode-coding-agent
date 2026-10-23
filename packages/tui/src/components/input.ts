@@ -1,17 +1,12 @@
 import { getKeybindings } from "../keybindings.ts";
 import { decodeKittyPrintable } from "../keys.ts";
 import { KillRing } from "../kill-ring.ts";
-import {
-	type Component,
-	CURSOR_MARKER,
-	type Focusable,
-	renderFakeCursor,
-	type TuiMouseEvent,
-	type TuiMouseEventResult,
-} from "../tui.ts";
+import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { UndoStack } from "../undo-stack.ts";
-import { getGraphemeSegmenter, isWhitespaceChar, sliceByColumn, truncateToWidth, visibleWidth } from "../utils.ts";
+import { getGraphemeSegmenter, isWhitespaceChar } from "../utils.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
+import { BracketedPasteBuffer } from "./input/paste.ts";
+import { cursorAtColumn, renderInputLine } from "./input/render.ts";
 
 const segmenter = getGraphemeSegmenter();
 
@@ -43,8 +38,7 @@ export class Input implements Component, Focusable {
 	focused: boolean = false;
 
 	// Bracketed paste mode buffering
-	private pasteBuffer: string = "";
-	private isInPaste: boolean = false;
+	private paste = new BracketedPasteBuffer();
 
 	// Kill ring for Emacs-style kill/yank operations
 	private killRing = new KillRing();
@@ -69,38 +63,15 @@ export class Input implements Component, Focusable {
 	}
 
 	handleInput(data: string): void {
-		// Handle bracketed paste mode
-		// Start of paste: \x1b[200~
-		// End of paste: \x1b[201~
-
-		// Check if we're starting a bracketed paste
-		if (data.includes("\x1b[200~")) {
-			this.isInPaste = true;
-			this.pasteBuffer = "";
-			data = data.replace("\x1b[200~", "");
-		}
-
-		// If we're in a paste, buffer the data
-		if (this.isInPaste) {
-			// Check if this chunk contains the end marker
-			this.pasteBuffer += data;
-
-			const endIndex = this.pasteBuffer.indexOf("\x1b[201~");
-			if (endIndex !== -1) {
-				// Extract the pasted content
-				const pasteContent = this.pasteBuffer.substring(0, endIndex);
-
+		const paste = this.paste.take(data);
+		if (paste) {
+			if (paste.content !== undefined) {
 				// Process the complete paste
-				this.handlePaste(pasteContent);
-
-				// Reset paste state
-				this.isInPaste = false;
+				this.handlePaste(paste.content);
 
 				// Handle any remaining input after the paste marker
-				const remaining = this.pasteBuffer.substring(endIndex + 6); // 6 = length of \x1b[201~
-				this.pasteBuffer = "";
-				if (remaining) {
-					this.handleInput(remaining);
+				if (paste.remaining) {
+					this.handleInput(paste.remaining);
 				}
 			}
 			return;
@@ -238,16 +209,7 @@ export class Input implements Component, Focusable {
 		if (event.type !== "press" || event.button !== "left" || event.y !== 0) return undefined;
 		const visibleColumn = Math.max(0, event.x - 2);
 		const targetColumn = this.renderedStartColumn + visibleColumn;
-		let currentColumn = 0;
-		this.cursor = this.value.length;
-		for (const grapheme of segmenter.segment(this.value)) {
-			const nextColumn = currentColumn + visibleWidth(grapheme.segment);
-			if (targetColumn < nextColumn) {
-				this.cursor = grapheme.index;
-				break;
-			}
-			currentColumn = nextColumn;
-		}
+		this.cursor = cursorAtColumn(this.value, targetColumn);
 		this.lastAction = null;
 		return { handled: true, focus: true };
 	}
@@ -418,85 +380,18 @@ export class Input implements Component, Focusable {
 	}
 
 	render(width: number): string[] {
-		// Calculate visible window
-		const availableWidth = width - visibleWidth(this.prompt);
-
-		if (availableWidth <= 0) {
-			return [truncateToWidth(this.prompt, width, "")];
-		}
-
-		if (this.value.length === 0 && this.placeholder) {
-			const placeholder = truncateToWidth(this.placeholder, availableWidth, "");
-			const graphemes = [...segmenter.segment(placeholder)];
-			const atCursor = graphemes[0]?.segment ?? " ";
-			const afterCursor = placeholder.slice(atCursor.length);
-			const marker = this.focused ? CURSOR_MARKER : "";
-			const cursorChar = renderFakeCursor(this.placeholderStyle(atCursor));
-			const textWithCursor = marker + cursorChar + this.placeholderStyle(afterCursor);
-			const padding = " ".repeat(Math.max(0, availableWidth - visibleWidth(textWithCursor)));
-			return [this.prompt + textWithCursor + padding];
-		}
-
-		let visibleText = "";
-		let cursorDisplay = this.cursor;
-		this.renderedStartColumn = 0;
-		const totalWidth = visibleWidth(this.value);
-
-		if (totalWidth < availableWidth) {
-			// Everything fits (leave room for cursor at end)
-			visibleText = this.value;
-		} else {
-			// Need horizontal scrolling
-			// Reserve one column for cursor if it's at the end
-			const scrollWidth = this.cursor === this.value.length ? availableWidth - 1 : availableWidth;
-			const cursorCol = visibleWidth(this.value.slice(0, this.cursor));
-
-			if (scrollWidth > 0) {
-				const halfWidth = Math.floor(scrollWidth / 2);
-				let startCol = 0;
-
-				if (cursorCol < halfWidth) {
-					// Cursor near start
-					startCol = 0;
-				} else if (cursorCol > totalWidth - halfWidth) {
-					// Cursor near end
-					startCol = Math.max(0, totalWidth - scrollWidth);
-				} else {
-					// Cursor in middle
-					startCol = Math.max(0, cursorCol - halfWidth);
-				}
-
-				this.renderedStartColumn = startCol;
-				visibleText = sliceByColumn(this.value, startCol, scrollWidth, true);
-				const beforeCursor = sliceByColumn(this.value, startCol, Math.max(0, cursorCol - startCol), true);
-				cursorDisplay = beforeCursor.length;
-			} else {
-				visibleText = "";
-				cursorDisplay = 0;
-			}
-		}
-
-		// Build line with fake cursor
-		// Insert cursor character at cursor position
-		const graphemes = [...segmenter.segment(visibleText.slice(cursorDisplay))];
-		const cursorGrapheme = graphemes[0];
-
-		const beforeCursor = visibleText.slice(0, cursorDisplay);
-		const atCursor = cursorGrapheme?.segment ?? " "; // Character at cursor, or space if at end
-		const afterCursor = visibleText.slice(cursorDisplay + atCursor.length);
-
-		// Hardware cursor marker (zero-width, emitted before fake cursor for IME positioning)
-		const marker = this.focused ? CURSOR_MARKER : "";
-
-		// TUI draws the fake cursor in reverse video, or omits it when the hardware cursor is shown
-		const cursorChar = renderFakeCursor(atCursor);
-		const textWithCursor = beforeCursor + marker + cursorChar + afterCursor;
-
-		// Calculate visual width
-		const visualLength = visibleWidth(textWithCursor);
-		const padding = " ".repeat(Math.max(0, availableWidth - visualLength));
-		const line = this.prompt + textWithCursor + padding;
-
-		return [line];
+		const result = renderInputLine(
+			{
+				prompt: this.prompt,
+				placeholder: this.placeholder,
+				placeholderStyle: this.placeholderStyle,
+				value: this.value,
+				cursor: this.cursor,
+				focused: this.focused,
+			},
+			width,
+		);
+		if (result.renderedStartColumn !== undefined) this.renderedStartColumn = result.renderedStartColumn;
+		return result.lines;
 	}
 }

@@ -23,7 +23,10 @@ import type {
 } from "../../src/index.ts";
 
 type RecordedSessionEvent =
-	SessionBeforeSwitchEvent | SessionBeforeForkEvent | SessionShutdownEvent | SessionStartEvent;
+	| SessionBeforeSwitchEvent
+	| SessionBeforeForkEvent
+	| SessionShutdownEvent
+	| SessionStartEvent;
 
 describe("AgentSessionRuntime characterization", () => {
 	const cleanups: Array<() => Promise<void> | void> = [];

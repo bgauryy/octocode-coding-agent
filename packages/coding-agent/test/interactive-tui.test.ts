@@ -3,7 +3,7 @@ import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, T
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import type { FullscreenExitOutput, TuiMode } from "../src/core/settings-manager.ts";
+import type { TuiMode } from "../src/core/settings-manager.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -12,12 +12,17 @@ import {
 	type StatusIndicatorKind,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
+import { createInteractiveTui, createInteractiveTuiReference } from "../src/modes/interactive/interactive-mode.ts";
+import { handleRightClickPaste } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
+import { handleCopyCommand } from "../src/modes/interactive/interactive-mode/session-commands.ts";
+import { renderSessionEntries } from "../src/modes/interactive/interactive-mode/session-render.ts";
 import {
-	createInteractiveTui,
-	createInteractiveTuiReference,
-	InteractiveMode,
-} from "../src/modes/interactive/interactive-mode.ts";
+	clearStatusIndicator,
+	showStatusIndicator,
+} from "../src/modes/interactive/interactive-mode/status-indicators.ts";
+import { stopInteractiveTui, switchTuiMode } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 const clipboardMocks = vi.hoisted(() => ({
 	copyToClipboard: vi.fn<(text: string) => Promise<void>>(),
@@ -126,13 +131,9 @@ describe("createInteractiveTui", () => {
 		renderer.setFocus(component);
 
 		type SwitchContext = {
-			runtimeHost: {
-				session: {
-					settingsManager: {
-						getFullscreenCopyOnSelect: () => boolean;
-						getFullscreenWheelScrollLines: () => WheelScrollLines;
-					};
-				};
+			settingsManager: {
+				getFullscreenCopyOnSelect: () => boolean;
+				getFullscreenWheelScrollLines: () => WheelScrollLines;
 			};
 			renderer: ReturnType<typeof createInteractiveTui>;
 			ui: TUI;
@@ -141,29 +142,22 @@ describe("createInteractiveTui", () => {
 			themeController: { rebindTui: () => void };
 			extensionTerminalInputSubscriptions: Set<never>;
 		};
-		const context = Object.assign(Object.create(InteractiveMode.prototype), {
-			runtimeHost: {
-				session: {
-					settingsManager: { getFullscreenCopyOnSelect: () => true, getFullscreenWheelScrollLines: () => "auto" },
-				},
-			},
+		const context: SwitchContext = {
+			settingsManager: { getFullscreenCopyOnSelect: () => true, getFullscreenWheelScrollLines: () => "auto" },
 			renderer,
 			ui: undefined as unknown as TUI,
 			fullscreenLayoutRoot: component,
 			options: { tuiMode: "regular" },
 			themeController: { rebindTui: () => {} },
 			extensionTerminalInputSubscriptions: new Set<never>(),
-		}) as SwitchContext;
+		};
 		const stableUi: TUI = createInteractiveTuiReference(() => context.renderer);
 		context.ui = stableUi;
-		const { stopInteractiveTui, switchTuiMode } = InteractiveMode.prototype as unknown as {
-			stopInteractiveTui(this: SwitchContext, fullscreenExitOutput: FullscreenExitOutput): void;
-			switchTuiMode(this: SwitchContext, mode: TuiMode, restoreProgress?: boolean): boolean;
-		};
+		const host = createFakeHost(context);
 
 		renderer.start();
 		await terminal.waitForRender();
-		expect(switchTuiMode.call(context, "fullscreen", false)).toBe(true);
+		expect(switchTuiMode(host, "fullscreen", false)).toBe(true);
 		await terminal.waitForRender();
 
 		expect(stableUi.mode).toBe("fullscreen");
@@ -173,7 +167,7 @@ describe("createInteractiveTui", () => {
 		expect(invalidatedModes).toEqual(["fullscreen"]);
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 1]);
 
-		stopInteractiveTui.call(context, "resume-hint");
+		stopInteractiveTui(host, "resume-hint");
 
 		expect(stableUi.mode).toBe("fullscreen");
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 2]);
@@ -190,11 +184,7 @@ describe("InteractiveMode right-click paste", () => {
 			renderer: { getFocusedComponent: () => target },
 			ui: { requestRender },
 		};
-		const prototype = InteractiveMode.prototype as unknown as {
-			handleRightClickPaste(this: typeof context): Promise<void>;
-		};
-
-		await prototype.handleRightClickPaste.call(context);
+		await handleRightClickPaste(createFakeHost(context));
 
 		expect(handleInput).toHaveBeenCalledWith("\x1b[200~clipboard text\x1b[201~");
 		expect(requestRender).toHaveBeenCalledOnce();
@@ -210,11 +200,9 @@ type CopyCommandContext = {
 
 type CopyCommandOptions = { flashConfirmation?: boolean; preferSelection?: boolean };
 
-type CopyCommandPrototype = {
-	handleCopyCommand(this: CopyCommandContext, options?: CopyCommandOptions): Promise<void>;
-};
-
-const copyCommandPrototype = InteractiveMode.prototype as unknown as CopyCommandPrototype;
+function callHandleCopyCommand(context: CopyCommandContext, options?: CopyCommandOptions): Promise<void> {
+	return handleCopyCommand(createFakeHost(context), options);
+}
 
 describe("InteractiveMode copy confirmation", () => {
 	beforeEach(() => {
@@ -251,7 +239,7 @@ describe("InteractiveMode copy confirmation", () => {
 			await terminal.waitForRender();
 			clipboardMocks.copyToClipboard.mockClear();
 
-			await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
+			await callHandleCopyCommand(context, { flashConfirmation: true, preferSelection: true });
 			await terminal.waitForRender();
 
 			expect(clipboardMocks.copyToClipboard).toHaveBeenCalledOnce();
@@ -293,7 +281,7 @@ describe("InteractiveMode copy confirmation", () => {
 			await terminal.waitForRender();
 			clipboardMocks.copyToClipboard.mockClear();
 
-			await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
+			await callHandleCopyCommand(context, { flashConfirmation: true, preferSelection: true });
 			await terminal.waitForRender();
 
 			expect(clipboardMocks.copyToClipboard).toHaveBeenCalledOnce();
@@ -327,7 +315,7 @@ describe("InteractiveMode copy confirmation", () => {
 		ui.start();
 		try {
 			await terminal.waitForRender();
-			await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
+			await callHandleCopyCommand(context, { flashConfirmation: true, preferSelection: true });
 			await terminal.waitForRender();
 
 			expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("assistant response");
@@ -355,7 +343,7 @@ describe("InteractiveMode copy confirmation", () => {
 			showError,
 		};
 
-		await copyCommandPrototype.handleCopyCommand.call(context, { flashConfirmation: true, preferSelection: true });
+		await callHandleCopyCommand(context, { flashConfirmation: true, preferSelection: true });
 
 		expect(showStatus).toHaveBeenCalledWith("Copied last agent message to clipboard");
 		expect(showError).not.toHaveBeenCalled();
@@ -380,9 +368,6 @@ describe("InteractiveMode transcript rebuild", () => {
 		});
 		ui.addChild(new Text("alpha\nbeta\ngamma\ndelta", 0, 0));
 		const context: RenderSessionEntriesContext = { renderer: ui, renderSessionItems: vi.fn() };
-		const { renderSessionEntries } = InteractiveMode.prototype as unknown as {
-			renderSessionEntries(this: RenderSessionEntriesContext, entries: unknown[]): void;
-		};
 
 		ui.start();
 		try {
@@ -393,7 +378,7 @@ describe("InteractiveMode transcript rebuild", () => {
 			await terminal.waitForRender();
 			expect(ui.hasActiveSelection()).toBe(true);
 
-			renderSessionEntries.call(context, []);
+			renderSessionEntries(createFakeHost(context), []);
 
 			expect(ui.hasActiveSelection()).toBe(false);
 		} finally {
@@ -416,16 +401,7 @@ type ClearStatusContext = {
 	options: { tuiMode?: TuiMode };
 	ui: { getClearOnShrink: () => boolean };
 	idleStatus: Component;
-	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
 };
-
-type InteractiveModePrototype = {
-	showStatusIndicator(this: ClearStatusContext, indicator: StatusIndicator): void;
-	clearStatusIndicator(this: ClearStatusContext, kind?: StatusIndicatorKind): void;
-	setEditorWorkingStatusIndicator(this: ClearStatusContext, indicator: StatusIndicator | undefined): boolean;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
 
 describe("clear-on-shrink status spacing", () => {
 	it.each([true, false])("routes every status through the editor opt-in (%s)", (embedWorkingStatus) => {
@@ -441,7 +417,6 @@ describe("clear-on-shrink status spacing", () => {
 			options: { tuiMode: "regular" },
 			ui: { getClearOnShrink: () => true },
 			idleStatus: new Text("", 0, 0),
-			setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
 		};
 		const indicators = [
 			new WorkingStatusIndicator(tui, "Working"),
@@ -453,7 +428,7 @@ describe("clear-on-shrink status spacing", () => {
 		];
 		try {
 			for (const indicator of indicators) {
-				interactiveModePrototype.showStatusIndicator.call(context, indicator);
+				showStatusIndicator(createFakeHost(context), indicator);
 				expect(context.activeStatusIndicator).toBe(indicator);
 				expect(context.activeWorkingIndicatorEmbedded).toBe(embedWorkingStatus);
 				if (embedWorkingStatus) {
@@ -482,10 +457,9 @@ describe("clear-on-shrink status spacing", () => {
 				options: { tuiMode: "regular" },
 				ui: { getClearOnShrink: () => true },
 				idleStatus: new Text("", 0, 0),
-				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
 			};
 
-			interactiveModePrototype.clearStatusIndicator.call(context);
+			clearStatusIndicator(createFakeHost(context));
 
 			expect(dispose).toHaveBeenCalledOnce();
 			expect(editor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
@@ -509,10 +483,9 @@ describe("clear-on-shrink status spacing", () => {
 				options: { tuiMode },
 				ui: { getClearOnShrink: () => true },
 				idleStatus: new Text("", 0, 0),
-				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
 			};
 
-			interactiveModePrototype.clearStatusIndicator.call(context);
+			clearStatusIndicator(createFakeHost(context));
 
 			expect(defaultEditor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
 			expect(customEditor.setWorkingStatusIndicator).not.toHaveBeenCalled();

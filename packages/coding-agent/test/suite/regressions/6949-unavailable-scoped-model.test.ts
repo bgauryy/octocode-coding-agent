@@ -3,7 +3,8 @@ import { setKeybindings } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.ts";
 import { ScopedModelsSelectorComponent } from "../../../src/modes/interactive/components/scoped-models-selector.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import * as modelControls from "../../../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 import { initTheme, theme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness, type Harness } from "../harness.ts";
@@ -40,8 +41,7 @@ function createInteractiveContext(options: {
 }
 
 async function showModelsSelector(context: object): Promise<void> {
-	const show = Reflect.get(InteractiveMode.prototype, "showModelsSelector") as (this: object) => Promise<void>;
-	await show.call(context);
+	await modelControls.showModelsSelector(createFakeHost(context));
 }
 
 describe("issue #6949 unavailable scoped models", () => {

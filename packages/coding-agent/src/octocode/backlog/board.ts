@@ -8,7 +8,10 @@ import { type Item as BacklogItem, type State as BacklogState, priorityName } fr
 
 /** What the user picked on the board; the command runs it and reopens the board unless it handed work to the agent. */
 type BoardChoice =
-	{ action: "open" | "do"; ref: string } | { action: "add" } | { action: "export" } | { action: "html" };
+	| { action: "open" | "do"; ref: string }
+	| { action: "add" }
+	| { action: "export" }
+	| { action: "html" };
 
 interface BoardSource {
 	title: string;

@@ -3,12 +3,11 @@ import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.ts";
 import type { ScopedModelsSelectorComponent } from "../../../src/modes/interactive/components/scoped-models-selector.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import * as modelControls from "../../../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness, type Harness } from "../harness.ts";
-
-const showModelsSelector = Reflect.get(InteractiveMode.prototype, "showModelsSelector") as (this: object) => void;
 
 function openSelector(harness: Harness, initialModels: readonly Model<Api>[]) {
 	let snapshot = initialModels;
@@ -46,7 +45,7 @@ function openSelector(harness: Harness, initialModels: readonly Model<Api>[]) {
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 	};
 
-	showModelsSelector.call(context);
+	modelControls.showModelsSelector(createFakeHost(context));
 	if (!selector) throw new Error("Expected scoped-model selector to open");
 	return {
 		done,

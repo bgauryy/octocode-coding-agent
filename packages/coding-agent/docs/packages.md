@@ -2,7 +2,7 @@
 
 Octocode packages install and distribute extensions, skills, prompt templates, and themes as one unit. Use a package when a customization should be shared through npm or git, or when several resources belong together.
 
-These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [compatibility matrix](../../../PLUGINS_MODS_HOOKS.md) for supported contracts.
+These native packages are not Claude/OpenAI plugin manifests. Their `hooks/hooks.json` files and Claude Mods modules are not automatically loaded. See [plugins](plugins.md) for explicit local plugin configuration, [hooks](hooks.md) for event execution, and the [compatibility matrix](../../../docs/PLUGINS_MODS_HOOKS.md) for supported contracts.
 
 A package is an ordinary directory or npm package. It can expose conventional resource directories, declare explicit paths under the `octocode` key in `package.json`, and carry its own runtime dependencies.
 

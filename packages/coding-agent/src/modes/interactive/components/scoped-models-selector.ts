@@ -14,61 +14,15 @@ import { getModelSearchText } from "../model-search.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
-
-// EnabledIds: null = all enabled (no filter), string[] = explicit ordered list
-type EnabledIds = string[] | null;
-
-function isEnabled(enabledIds: EnabledIds, id: string): boolean {
-	return enabledIds === null || enabledIds.includes(id);
-}
-
-/** Collapse an explicit list back to null (= all enabled) when it covers every available model. */
-function normalizeEnabled(result: string[], allIds: string[]): EnabledIds {
-	return result.length === allIds.length && result.every((id) => allIds.includes(id)) ? null : result;
-}
-
-function toggle(enabledIds: EnabledIds, allIds: string[], id: string): EnabledIds {
-	if (enabledIds === null) return allIds.filter((modelId) => modelId !== id);
-	const index = enabledIds.indexOf(id);
-	if (index >= 0) return [...enabledIds.slice(0, index), ...enabledIds.slice(index + 1)];
-	return normalizeEnabled([...enabledIds, id], allIds);
-}
-
-function enableAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
-	if (enabledIds === null) return null; // Already all enabled
-	const targets = targetIds ?? allIds;
-	const result = [...enabledIds];
-	for (const id of targets) {
-		if (!result.includes(id)) result.push(id);
-	}
-	return normalizeEnabled(result, allIds);
-}
-
-function clearAll(enabledIds: EnabledIds, allIds: string[], targetIds?: string[]): EnabledIds {
-	if (enabledIds === null) {
-		return targetIds ? allIds.filter((id) => !targetIds.includes(id)) : [];
-	}
-	const targets = new Set(targetIds ?? enabledIds);
-	return enabledIds.filter((id) => !targets.has(id));
-}
-
-function move(enabledIds: EnabledIds, id: string, delta: number): EnabledIds {
-	if (enabledIds === null) return null;
-	const list = [...enabledIds];
-	const index = list.indexOf(id);
-	if (index < 0) return list;
-	const newIndex = index + delta;
-	if (newIndex < 0 || newIndex >= list.length) return list;
-	const result = [...list];
-	[result[index], result[newIndex]] = [result[newIndex], result[index]];
-	return result;
-}
-
-function getSortedIds(enabledIds: EnabledIds, allIds: string[]): string[] {
-	if (enabledIds === null) return allIds;
-	const enabledSet = new Set(enabledIds);
-	return [...enabledIds, ...allIds.filter((id) => !enabledSet.has(id))];
-}
+import {
+	clearAll,
+	enableAll,
+	type EnabledIds,
+	getSortedIds,
+	isEnabled,
+	move,
+	toggle,
+} from "./scoped-models-selector/enabled-ids.ts";
 
 interface ModelItem {
 	fullId: string;

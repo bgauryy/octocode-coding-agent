@@ -10,7 +10,7 @@ describe("generated reference pages", () => {
 		for (const [relativePath, expected] of rendered) {
 			expect(
 				readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf-8"),
-				`${relativePath} is stale; run npm run generate:references`,
+				`${relativePath} is stale; run yarn run generate:references`,
 			).toBe(expected);
 		}
 	});

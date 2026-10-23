@@ -5,7 +5,9 @@ import chalk from "chalk";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { APP_NAME } from "../../../src/config.ts";
 import type { SessionManager } from "../../../src/core/session-manager.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import * as crashReporting from "../../../src/modes/interactive/interactive-mode/crash-reporting.ts";
+import * as lifecycle from "../../../src/modes/interactive/interactive-mode/lifecycle.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 
 // On SIGTERM/SIGHUP the graceful shutdown must emit `session_shutdown`
 // (runtimeHost.dispose) BEFORE touching the terminal. Extension teardown such
@@ -24,11 +26,6 @@ type ShutdownThis = {
 	sessionManager: SessionManager;
 };
 
-type InteractiveModePrototypeWithShutdown = {
-	shutdown(this: ShutdownThis, options?: { fromSignal?: boolean }): Promise<void>;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown;
 const tempDirs: string[] = [];
 const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 
@@ -96,7 +93,7 @@ function createContext(order: string[], sessionManager = createSessionManager())
 
 async function callShutdown(context: ShutdownThis, options?: { fromSignal?: boolean }): Promise<void> {
 	try {
-		await (interactiveModePrototype as InteractiveModePrototypeWithShutdown).shutdown.call(context, options);
+		await lifecycle.shutdown(createFakeHost(context), options);
 	} catch (error) {
 		if (!(error instanceof ProcessExitError)) throw error;
 	}
@@ -205,23 +202,14 @@ type HandlerContext = {
 	ui: { stop: () => void };
 };
 
-type InteractiveModePrivates = {
-	registerSignalHandlers(this: HandlerContext): void;
-	unregisterSignalHandlers(this: HandlerContext): void;
-	emergencyTerminalExit(this: HandlerContext): never;
-	uncaughtCrash(this: HandlerContext, error: Error): never;
-};
-
-const proto = InteractiveMode.prototype as unknown as InteractiveModePrivates;
-
 function createHandlerContext(): HandlerContext {
 	const context: HandlerContext = {
 		isShuttingDown: false,
 		signalCleanupHandlers: [],
 		shutdown: vi.fn(async () => {}),
-		unregisterSignalHandlers: () => proto.unregisterSignalHandlers.call(context),
-		emergencyTerminalExit: () => proto.emergencyTerminalExit.call(context),
-		uncaughtCrash: (error: Error) => proto.uncaughtCrash.call(context, error),
+		unregisterSignalHandlers: () => lifecycle.unregisterSignalHandlers(createFakeHost(context)),
+		emergencyTerminalExit: () => crashReporting.emergencyTerminalExit(createFakeHost(context)),
+		uncaughtCrash: (error: Error) => crashReporting.uncaughtCrash(createFakeHost(context), error),
 		recordCrash: vi.fn(() => true),
 		getCrashExtensionHint: () => undefined,
 		crashReportInstructions: () => "",
@@ -259,7 +247,7 @@ describe("dead terminal errors on stdin", () => {
 		}) as typeof process.exit);
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		context = createHandlerContext();
-		proto.registerSignalHandlers.call(context);
+		lifecycle.registerSignalHandlers(createFakeHost(context));
 		return context;
 	}
 

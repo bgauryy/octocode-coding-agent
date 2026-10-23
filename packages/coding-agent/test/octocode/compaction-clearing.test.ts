@@ -134,7 +134,8 @@ function setup(
 		context: async (list: unknown[] = messages) =>
 			(
 				(await fake.fire("context", { type: "context", messages: structuredClone(list) }, ctx)) as
-					{ messages?: any[] } | undefined
+					| { messages?: any[] }
+					| undefined
 			)?.messages ?? list,
 	};
 }

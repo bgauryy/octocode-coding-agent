@@ -4,7 +4,6 @@ import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
-import { notify } from "../shared/commands.ts";
 import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
 import { livePaint } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
@@ -14,13 +13,15 @@ import {
 	addReply,
 	emptyTotals,
 	entryMessage,
-	isRecord,
 	modelLookup,
 	type Spend,
 	spendOf,
 	type UsageTotals,
 	unpricedModel,
 } from "../shared/util.ts";
+import { registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
+
+export { reasoningTwin } from "./footer/notices.ts";
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing
@@ -350,60 +351,4 @@ export function registerFooter(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async () => stop());
 	pi.on("agent_end", refresh);
 	pi.on("session_info_changed", refresh);
-}
-
-/**
- * Says once per session, as a warning, that a reply came from a model without pricing: the cost shown leaves its usage
- * out (the displays mark it `n/a`). Not only in the TUI: an RPC client shows notifications too.
- */
-function registerUnpricedNotice(pi: ExtensionAPI): void {
-	let warned = false;
-	pi.on("session_start", async () => {
-		warned = false;
-	});
-	pi.on("message_end", async (event, ctx) => {
-		if (warned || !ctx.hasUI || event.message.role !== "assistant") return;
-		const model = unpricedModel(event.message, modelLookup(ctx));
-		if (!model) return;
-		warned = true;
-		notify(ctx.ui, `${model} has no pricing in models.json; its usage is not in the cost`, "warning");
-	});
-}
-
-type ModelInfo = Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id" | "reasoning" | "compat">;
-
-/** A model of another provider with the same id that declares `reasoning` (a built-in one, for a `models.json` copy that left it out). */
-export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): ModelInfo | undefined {
-	if (model.reasoning) return undefined;
-	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning);
-}
-
-/**
- * Says once per model and session when the model declares no `reasoning` but a model with its id does: Octocode then never
- * asks it to think, so there are no thinking blocks, no thinking level, and no thought on the working line.
- */
-function registerReasoningNotice(pi: ExtensionAPI): void {
-	const warned = new Set<string>();
-	const check = async (_event: unknown, ctx: ExtensionContext) => {
-		const model = ctx.model;
-		if (!ctx.hasUI || !model) return;
-		const key = `${model.provider}/${model.id}`;
-		if (warned.has(key)) return;
-		const twin = reasoningTwin(model, ctx.modelRegistry?.getAll?.() ?? []);
-		if (!twin) return;
-		warned.add(key);
-		const compat: unknown = twin.compat;
-		const adaptive = isRecord(compat) && compat.forceAdaptiveThinking === true;
-		const fields = `"reasoning": true${adaptive ? ' and "compat": { "forceAdaptiveThinking": true }' : ""}`;
-		notify(
-			ctx.ui,
-			`${key} does not declare reasoning in models.json, so Octocode never asks it to think. ${twin.provider}/${twin.id} declares it: add ${fields} to its entry.`,
-			"warning",
-		);
-	};
-	pi.on("session_start", async (event, ctx) => {
-		warned.clear();
-		await check(event, ctx);
-	});
-	pi.on("model_select", check);
 }

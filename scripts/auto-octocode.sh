@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Developer wrapper that runs octocode from this checkout's latest `npm run build`.
+# Developer wrapper that runs octocode from this checkout's latest `yarn run build`.
 # Development invocations use OCTOCODE_EXPERIMENTAL=1 by default. Pass --stable to use
 # the next octocode executable on PATH; `octocode update` also uses stable so self-update
 # works.
@@ -67,7 +67,7 @@ fi
 
 dev_octocode="$repo_dir/packages/coding-agent/dist/bundle/cli.js"
 if [[ ! -x "$dev_octocode" ]]; then
-	echo "error: development octocode build not found; run \`npm run build\` in $repo_dir" >&2
+	echo "error: development octocode build not found; run \`yarn run build\` in $repo_dir" >&2
 	exit 1
 fi
 

@@ -445,7 +445,8 @@ describe("file tool", () => {
 		const guard = new FileGuard();
 		guard.record(file);
 		let tool:
-			{ execute: (...args: unknown[]) => Promise<{ details: { outcomes: Array<{ diff?: string }> } }> } | undefined;
+			| { execute: (...args: unknown[]) => Promise<{ details: { outcomes: Array<{ diff?: string }> } }> }
+			| undefined;
 		registerFileTool(
 			{
 				registerTool: (t: typeof tool) => {

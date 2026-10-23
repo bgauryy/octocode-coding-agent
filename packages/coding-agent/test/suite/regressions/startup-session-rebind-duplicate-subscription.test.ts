@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import { rebindCurrentSession } from "../../../src/modes/interactive/interactive-mode/session-binding.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 
 type RebindContext = {
 	session: object;
@@ -13,12 +14,6 @@ type RebindContext = {
 	updateEditorBorderColor: () => void;
 	updateTerminalTitle: () => void;
 };
-
-type InteractiveModePrototype = {
-	rebindCurrentSession(this: RebindContext, options?: { renderBeforeBind?: boolean }): Promise<void>;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
 
 describe("overlapping startup and replacement session rebinds", () => {
 	it("does not subscribe from the stale startup rebind", async () => {
@@ -53,11 +48,11 @@ describe("overlapping startup and replacement session rebinds", () => {
 			updateTerminalTitle,
 		};
 
-		const startupRebind = interactiveModePrototype.rebindCurrentSession.call(context);
+		const startupRebind = rebindCurrentSession(createFakeHost(context));
 		expect(bindCount).toBe(1);
 
 		context.session = replacementSession;
-		const replacementRebind = interactiveModePrototype.rebindCurrentSession.call(context, {
+		const replacementRebind = rebindCurrentSession(createFakeHost(context), {
 			renderBeforeBind: true,
 		});
 

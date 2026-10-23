@@ -10,7 +10,7 @@ import { ModelsJsonSchemas } from "../src/core/model-config.ts";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 const generatedComment =
-	"This file is generated from TypeScript source. Do not edit it manually; run npm run generate:references.";
+	"This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:references.";
 
 /** The subset of JSON Schema that reference pages render. */
 interface ReferenceSchema {

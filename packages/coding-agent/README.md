@@ -48,7 +48,7 @@ Shell hints cover built-in flags, enum values, bundled model/provider names, con
 Enable the local API from the repository root:
 
 ```sh
-OCTOCODE_API=1 npm start
+OCTOCODE_API=1 yarn start
 ```
 
 In another terminal:

@@ -112,7 +112,9 @@ export function isBlockedIp(ip: string): boolean {
 
 /** What a URL's host reaches: only public addresses (listed), any non-public one, or nothing that resolves here. */
 export type HostClass =
-	{ kind: "public"; addresses: string[] } | { kind: "private" } | { kind: "unresolved"; error: unknown };
+	| { kind: "public"; addresses: string[] }
+	| { kind: "private" }
+	| { kind: "unresolved"; error: unknown };
 
 /** Releases the connection of a response whose body is not read. */
 export const discardBody = (response: Response): Promise<void> =>

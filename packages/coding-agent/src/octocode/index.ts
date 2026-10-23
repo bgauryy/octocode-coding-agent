@@ -3,8 +3,8 @@ import { webCommand } from "./workspace/command.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
 import { WorkspaceRuntime } from "./workspace/runtime.ts";
-import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/extensions/index.ts";
-import { getMcpSessionStatus, registerMcpReconnect } from "../extensions/mcp/status.ts";
+import type { ExtensionAPI, ExtensionContext } from "../core/extensions/index.ts";
+import { registerMcpReconnect } from "../extensions/mcp/status.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
 import { closeSharedAgentDb } from "./agentdb/db.ts";
 import { registerApi } from "./api/register.ts";
@@ -21,7 +21,7 @@ import { registerBashTool } from "./files/bash.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadDedupe } from "./files/dedupe.ts";
-import { completedLocalReads, snapshotLocalReads } from "./shared/local-reads.ts";
+import { completedLocalReads, type snapshotLocalReads } from "./shared/local-reads.ts";
 import { contextReads } from "./files/reads.ts";
 import { CORE_READER, FileGuard, LOCAL_FETCH_READER, registerFileTool } from "./files/tool.ts";
 import { registerHooks, registerHooksCommand } from "./hooks/register.ts";
@@ -30,23 +30,22 @@ import { registerMemory } from "./memory/register.ts";
 import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { Permission } from "./permission/ask.ts";
 import { registerPermissionCommand } from "./permission/command.ts";
-import { type GateVerdict, permissionGate } from "./permission/gate.ts";
 import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
-import { userBashGate } from "./permission/user-bash.ts";
 import { registerSessions } from "./sessions/register.ts";
-import { notify, say, Subcommands } from "./shared/commands.ts";
+import { notify, Subcommands } from "./shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "./shared/env.ts";
 import { setCurrentSession } from "./shared/home.ts";
 import { interactive } from "./shared/interactive.ts";
-import { forgetCheck, recordCheck, withDialog } from "./shared/locks.ts";
+import { withDialog } from "./shared/locks.ts";
 import { EXTERNAL_SENDER, type MessageEnvelope } from "./shared/messages.ts";
 import { plural, stopRowTimers } from "./shared/render.ts";
 import { projectTrust, registerTrustCommand } from "./shared/trust.ts";
 import { errorMessage, firstLine, isRecord, MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { windowsTree } from "./shared/winhelper.ts";
 import { registerSkills } from "./skills.ts";
+import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModelsCommand } from "./subagents/models-command.ts";
@@ -54,6 +53,7 @@ import { type AgentProfile, loadProfiles, profileFileName } from "./subagents/pr
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
 import { spilledMessage, Team } from "./team/session.ts";
 import { registerCollab } from "./team/tools.ts";
+import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
 import { registerActivity } from "./ui/activity.ts";
 import { packageVersion, registerUi } from "./ui/chrome.ts";
@@ -180,33 +180,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	if (!isSubagent) commands.add("web", webCommand(openWorkspace));
 	registerMemory(pi, { commands, isSubagent, permission });
 	const skillCount = () => pi.getCommands().filter((command) => command.source === "skill").length;
-	commands.add("status", {
-		aliases: ["info", "session"],
-		description: "status — list loaded skills and MCP connection status",
-		dialog: "interaction",
-		handler: async (_args, ctx) => {
-			const skills = pi
-				.getCommands()
-				.filter((command) => command.source === "skill")
-				.sort((a, b) => a.name.localeCompare(b.name));
-			const servers = getMcpSessionStatus(pi.events);
-			say(
-				ctx,
-				[
-					`Skills (${skills.length})`,
-					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
-					`MCPs (${servers.length})`,
-					...(servers.length
-						? servers.map(
-								(server) =>
-									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.source}`,
-							)
-						: ["  none"]),
-					"Configure servers with /mcp.",
-				].join("\n"),
-			);
-		},
-	});
+	commands.add("status", statusCommand(pi));
 	registerWebTool(pi, permission);
 	registerBrowserTool(pi, new BrowserTool(permission));
 	const agentTool = agentModes();
@@ -361,70 +335,8 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		if (!isSubagent) currentCatalog();
 	});
 
-	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (reservations) and user
-	// hooks come first: user hooks spawn processes, so they run only for calls the reservation gate lets through; the
-	// permission gate checks last (a hook's `ask` is handed to it), so the user is never asked about a call a hook would
-	// deny. A refusal by an earlier gate is audited here; the permission gate audits its own. Octocode runs no call of a batch
-	// before every call's checks ended, so their time is shown: live on the working line, then in the row (`timed` reads
-	// `recordCheck`).
-	type Gate = (event: ToolCallEvent, ctx: ExtensionContext, prior?: GateVerdict) => Promise<GateVerdict | undefined>;
-	const audited =
-		(gate: Gate): Gate =>
-		async (event, ctx, prior) => {
-			const verdict = await gate(event, ctx, prior);
-			if (verdict?.block)
-				permission.refused(
-					[`${event.toolName} ${JSON.stringify(event.input)}`],
-					verdict.reason ?? "blocked",
-					event.toolName,
-				);
-			return verdict;
-		};
-	const gates: Gate[] = [
-		audited(collab.reservationGate),
-		audited(hooks.preToolUse),
-		(event, ctx, prior) =>
-			permissionGate({
-				permission,
-				provenance,
-				annotations,
-				replacement: {
-					definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
-					refresh: (ctx) => sourcePolicy.refresh(ctx),
-					reserved: collab.reservationGate,
-				},
-			})(agentOperation(event), ctx, prior, event),
-	];
-	pi.on("tool_call", async (event, ctx) => {
-		const started = Date.now();
-		await sourcePolicy.refresh(ctx);
-		activity.checking(event.toolCallId, true);
-		try {
-			let prior: GateVerdict | undefined;
-			for (const gate of gates) {
-				const verdict = await gate(event, ctx, prior);
-				if (verdict?.block) return verdict;
-				if (verdict?.rewritten) {
-					const reserved = await audited(collab.reservationGate)(event, ctx);
-					if (reserved?.block) return reserved;
-				}
-				if (verdict?.ask) prior = { ask: verdict.ask };
-			}
-			const snapshots = await snapshotLocalReads(event.toolName, event.input, ctx.cwd);
-			if (snapshots.size) localReads.set(event.toolCallId, snapshots);
-			return undefined;
-		} finally {
-			recordCheck(event.toolCallId, Date.now() - started);
-			activity.checking(event.toolCallId, false);
-		}
-	});
-	pi.on("tool_execution_end", async (event) => forgetCheck(event.toolCallId));
-
-	// The user's own `!cmd`: the hooks and the permission check decide, as for an agent's `bash` call (`permission/user-bash`).
-	pi.on("user_bash", async (event, ctx) => {
-		await sourcePolicy.refresh(ctx);
-		return userBashGate({ permission, preToolUse: hooks.preToolUse })(event, ctx);
-	});
+	// The tool-call pipeline, its cleanup and the user's own `!cmd` (`tool-gates.ts`).
+	registerToolGates(pi, { permission, provenance, annotations, collab, hooks, sourcePolicy, activity, localReads });
 
 	// Headless runs (print, JSON, subagents) end with the agent's run, which would lose background work before it reports:
 	// hold the run until bash jobs and background subagents finish (their reports arrive as one more turn). An interactive

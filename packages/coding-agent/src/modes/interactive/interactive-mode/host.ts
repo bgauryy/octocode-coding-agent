@@ -1,0 +1,284 @@
+/**
+ * The members of InteractiveMode that its collaborator modules use. InteractiveMode builds one host per instance
+ * (see create-host.ts): the host holds the mode's state and every method, so the collaborators share one state.
+ */
+
+import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
+import type {
+	AutocompleteProvider,
+	MarkdownTheme,
+	OverlayHandle,
+	OverlayOptions,
+	SlashCommand,
+	Component,
+	TUI,
+	TuiAltScreen,
+	TuiMainScreen,
+} from "@octocodeai/octocode-tui";
+import type { AgentSessionEvent } from "../../../core/agent-session.ts";
+import type {
+	EditorFactory,
+	ExtensionCommandContext,
+	ExtensionRunner,
+	ExtensionUIContext,
+	ExtensionUIDialogOptions,
+	ExtensionWidgetOptions,
+	MarkdownTransformer,
+	ProjectTrustContext,
+	WorkingIndicatorOptions,
+	ToolRenderers,
+} from "../../../core/extensions/index.ts";
+import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
+import type { MissingSessionCwdError } from "../../../core/session-cwd.ts";
+import type { SessionEntry, UsageEntry } from "../../../core/session-manager.ts";
+import type { FullscreenExitOutput, TuiMode } from "../../../core/settings-manager.ts";
+import type { SourceInfo } from "../../../core/source-info.ts";
+import type { ToolStatus } from "../../../utils/tools-manager.ts";
+import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
+import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
+import type { StatusIndicator } from "../components/status-indicator.ts";
+import type { BlockedStatus } from "../program-status-reporter.ts";
+import type { Theme } from "../theme/theme.ts";
+import type { CompactionCostNotice, RenderSessionItem } from "./types.ts";
+import type { InteractiveModeState } from "./host-state.ts";
+
+export type { InteractiveModeState } from "./host-state.ts";
+
+/** Mode methods the collaborators call. */
+export interface InteractiveModeMethods {
+	addCacheWarmingUsage(entry: UsageEntry): void;
+	addCompactionCostNotice(notice: CompactionCostNotice): void;
+	addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void;
+	addExtensionTerminalInputListener(
+		handler: (data: string) => { consume?: boolean; data?: string } | undefined,
+	): () => void;
+	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
+	applyFullscreenScrollbarSetting(): void;
+	applyRuntimeSettings(): void;
+	bindCurrentSessionExtensions(): Promise<void>;
+	buildScopeGroups(items: Array<{ path: string; sourceInfo?: SourceInfo }>): Array<{
+		scope: "user" | "project" | "path";
+		paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
+		packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
+	}>;
+	checkForPackageUpdates(): Promise<string[]>;
+	checkShutdownRequested(): Promise<void>;
+	checkTmuxKeyboardSetup(): Promise<string | undefined>;
+	clearAllQueues(): { steering: string[]; followUp: string[] };
+	clearEditor(): void;
+	clearExtensionTerminalInputListeners(): void;
+	clearStatusIndicator(kind?: StatusIndicator["kind"]): void;
+	completeProviderAuthentication(
+		providerId: string,
+		providerName: string,
+		authType: "oauth" | "api_key",
+		previousModel: Model<any> | undefined,
+	): Promise<void>;
+	crashReportInstructions(): string;
+	createBaseAutocompleteProvider(): AutocompleteProvider;
+	createExtensionUIContext(): ExtensionUIContext;
+	createProjectTrustContext(cwd: string): ProjectTrustContext;
+	cycleModel(direction: "forward" | "backward"): Promise<void>;
+	cycleThinkingLevel(): void;
+	disposeActiveSelector(): void;
+	emergencyTerminalExit(): never;
+	ensurePngTranscoder(): void;
+	findExactModelMatch(searchTerm: string): Promise<Model<any> | undefined>;
+	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void>;
+	flushPendingBashComponents(): void;
+	formatContextPath(p: string): string;
+	formatDiagnostics(diagnostics: readonly ResourceDiagnostic[], sourceInfos: Map<string, SourceInfo>): string;
+	formatDisplayPath(p: string): string;
+	formatExtensionDisplayPath(path: string): string;
+	formatScopeGroups(
+		groups: Array<{
+			scope: "user" | "project" | "path";
+			paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
+			packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
+		}>,
+		options: {
+			formatPath: (item: { path: string; sourceInfo?: SourceInfo }) => string;
+			formatPackagePath: (item: { path: string; sourceInfo?: SourceInfo }, source: string) => string;
+		},
+	): string;
+	getAllQueuedMessages(): { steering: string[]; followUp: string[] };
+	getAppKeyDisplay(action: AppKeybinding): string;
+	getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[];
+	getChangelogForDisplay(): string | undefined;
+	getCompactDisplayPathSegments(resourcePath: string): string[];
+	getCompactExtensionLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
+	getCompactExtensionLabels(extensions: Array<{ path: string; sourceInfo?: SourceInfo }>): string[];
+	getCompactNonPackageExtensionLabel(
+		resourcePath: string,
+		index: number,
+		allPaths: Array<{ path: string; segments: string[] }>,
+	): string;
+	getCompactPackageSourceLabel(sourceInfo?: SourceInfo): string;
+	getCompactPathLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
+	getCrashExtensionHint(error: unknown): string | undefined;
+	getLoginProviderOptions(authType?: "oauth" | "api_key"): AuthSelectorProvider[];
+	getMarkdownThemeWithSettings(): MarkdownTheme;
+	getMarkdownTransformers(): MarkdownTransformer[];
+	getPathCommandArgument(text: string, command: "/export" | "/import"): string | undefined;
+	getRegisteredToolDefinition(toolName: string): ToolRenderers | undefined;
+	getScopeGroup(sourceInfo?: SourceInfo): "user" | "project" | "path";
+	getShortPath(fullPath: string, sourceInfo?: SourceInfo): string;
+	getSlashCommands(includeSkills?: boolean): SlashCommand[];
+	getStartupExpansionState(): boolean;
+	getUserInput(): Promise<string>;
+	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
+	handleBugCommand(hint: string | undefined): Promise<void>;
+	handleChangelogCommand(): void;
+	handleClearCommand(): Promise<void>;
+	handleClipboardPaste(): Promise<void>;
+	handleCloneCommand(): Promise<void>;
+	handleCompactCommand(): Promise<void>;
+	handleCopyCommand(options?: { flashConfirmation?: boolean; preferSelection?: boolean }): Promise<void>;
+	handleCtrlC(): void;
+	handleCtrlD(): void;
+	handleCtrlZ(): void;
+	handleDebugCommand(): void;
+	handleDequeue(): void;
+	handleEvent(event: AgentSessionEvent): Promise<void>;
+	handleExportCommand(text: string): Promise<void>;
+	handleFatalRuntimeError(prefix: string, error: unknown): Promise<never>;
+	handleFollowUp(): Promise<void>;
+	handleHotkeysCommand(): void;
+	handleImportCommand(text: string): Promise<void>;
+	handleLoginCommand(providerRef?: string): Promise<void>;
+	handleModelCommand(searchTerm?: string): Promise<void>;
+	handleNameCommand(text: string): void;
+	handleReloadCommand(): Promise<void>;
+	handleResumeSession(
+		sessionPath: string,
+		options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
+	): Promise<{ cancelled: boolean }>;
+	handleSessionCommand(): void;
+	handleShareCommand(): Promise<void>;
+	handleStartupSubmit(text: string): void;
+	handleThinkingCommand(searchTerm?: string): void;
+	hideExtensionEditor(): void;
+	hideExtensionInput(): void;
+	hideExtensionSelector(): void;
+	init(): Promise<void>;
+	isExtensionCommand(text: string): boolean;
+	isPackageSource(sourceInfo?: SourceInfo): boolean;
+	maybeSaveImplicitProjectTrustAfterReload(): boolean;
+	maybeShowCacheMissNotice(message: AssistantMessage): void;
+	maybeShowInstallChangeWarning(): boolean;
+	maybeShowThinkingDropNotice(message: AssistantMessage): void;
+	maybeSuggestBugReport(message: AssistantMessage): void;
+	maybeWarnAboutAnthropicSubscriptionAuth(model?: Model<any>): Promise<void>;
+	mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void;
+	promptForMissingSessionCwd(error: MissingSessionCwdError): Promise<string | undefined>;
+	queueCompactionMessage(text: string, mode: "steer" | "followUp"): void;
+	queueInteractiveMessage(text: string, mode: "steer" | "followUp"): Promise<void>;
+	rebindCurrentSession(options?: { renderBeforeBind?: boolean }): Promise<void>;
+	rebindExtensionTerminalInputListeners(): void;
+	rebuildChatFromMessages(): void;
+	recordCrash(kind: "uncaught_exception" | "fatal_error", error: unknown): boolean;
+	registerSignalHandlers(): void;
+	renderCurrentSessionState(): void;
+	renderInitialMessages(): void;
+	renderSessionEntries(entries: SessionEntry[], options?: { updateFooter?: boolean; populateHistory?: boolean }): void;
+	renderSessionItems(
+		items: readonly RenderSessionItem[],
+		options?: { updateFooter?: boolean; populateHistory?: boolean },
+	): void;
+	renderWidgets(): void;
+	resetExtensionUI(): void;
+	restoreQueuedMessagesToEditor(options?: { abort?: boolean; currentText?: string }): number;
+	setCustomEditorComponent(factory: EditorFactory | undefined): void;
+	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
+	setExtensionFooter(
+		factory:
+			| ((tui: TUI, thm: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
+			| undefined,
+	): void;
+	setExtensionHeader(factory: ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined): void;
+	setExtensionStatus(key: string, text: string | undefined): void;
+	setExtensionWidget(
+		key: string,
+		content: string[] | ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined,
+		options?: ExtensionWidgetOptions,
+	): void;
+	setHiddenThinkingLabel(label?: string): void;
+	setToolsExpanded(expanded: boolean): void;
+	setupAutocompleteProvider(): void;
+	setupEditorSubmitHandler(): void;
+	setupExtensionShortcuts(extensionRunner: ExtensionRunner): void;
+	setupKeyHandlers(): void;
+	setWorkingIndicator(options?: WorkingIndicatorOptions): void;
+	setWorkingVisible(visible: boolean): void;
+	shouldShowStartupDetails(): boolean;
+	shouldShowStartupHeader(): boolean;
+	showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): void;
+	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
+	showError(errorMessage: string): void;
+	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
+	showExtensionCustom<T>(
+		factory: (
+			tui: TUI,
+			theme: Theme,
+			keybindings: KeybindingsManager,
+			done: (result: T) => void,
+		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
+		options?: {
+			overlay?: boolean;
+			overlayOptions?: OverlayOptions | (() => OverlayOptions);
+			onHandle?: (handle: OverlayHandle) => void;
+		},
+	): Promise<T>;
+	showExtensionEditor(title: string, prefill?: string): Promise<string | undefined>;
+	showExtensionError(extensionPath: string, error: string, stack?: string): void;
+	showExtensionInput(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+	showExtensionSelector(
+		title: string,
+		options: string[],
+		opts?: ExtensionUIDialogOptions,
+		blocked?: BlockedStatus,
+	): Promise<string | undefined>;
+	showLoadedResources(options?: {
+		extensions?: Array<{ path: string; sourceInfo?: SourceInfo }>;
+		force?: boolean;
+		showDiagnosticsWhenQuiet?: boolean;
+	}): void;
+	showLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
+	showManagedToolStatus(status: ToolStatus): void;
+	showModelSelector(initialSearchInput?: string): void;
+	showModelsSelector(): void;
+	showNewVersionNotification(release: LatestOctocodeRelease): void;
+	showOAuthSelector(mode: "login" | "logout"): Promise<void>;
+	showPackageUpdateNotification(packages: string[]): void;
+	showSelector(create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void }): void;
+	showSessionSelector(): void;
+	showSettingsSelector(): void;
+	showStartupNoticesIfNeeded(): void;
+	showStatus(message: string): void;
+	showStatusIndicator(indicator: StatusIndicator): void;
+	showTreeSelector(initialSelectedId?: string): void;
+	showTrustSelector(): void;
+	showUserMessageSelector(): void;
+	showWarning(warningMessage: string): void;
+	showWorkingStatusIndicator(): void;
+	shutdown(options?: { fromSignal?: boolean }): Promise<void>;
+	stop(fullscreenExitOutput?: FullscreenExitOutput): void;
+	stopInteractiveTui(fullscreenExitOutput: FullscreenExitOutput): void;
+	subscribeToAgent(): void;
+	suggestBugReport(): void;
+	switchTuiMode(mode: TuiMode, restoreProgress?: boolean, startRenderer?: boolean): boolean;
+	toggleThinkingBlockVisibility(): void;
+	toggleToolOutputExpansion(): void;
+	uncaughtCrash(error: Error): never;
+	unregisterSignalHandlers(): void;
+	updateAvailableProviderCount(): void;
+	updateEditorBorderColor(): void;
+	updatePendingMessagesDisplay(): void;
+	updateTerminalTitle(): void;
+	updateThinkingBlockVisibility(): void;
+}
+
+export type InteractiveModeHost = InteractiveModeState & InteractiveModeMethods;

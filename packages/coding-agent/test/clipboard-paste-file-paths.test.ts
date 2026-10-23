@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { handleClipboardPaste } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 const mocks = vi.hoisted(() => ({
 	readClipboardFilePaths: vi.fn<() => Promise<string[] | null>>(),
@@ -34,11 +35,7 @@ test("Finder file paths take precedence over their icon image", async () => {
 		showError: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 	expect(insertTextAtCursor).toHaveBeenCalledExactlyOnceWith(filePaths.join("\n"));
 	expect(mocks.readClipboardImage).not.toHaveBeenCalled();
 });
@@ -52,11 +49,7 @@ test("clipboard file paths containing terminal control characters are rejected",
 		showError,
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 
 	expect(insertTextAtCursor).not.toHaveBeenCalled();
 	expect(mocks.readClipboardImage).not.toHaveBeenCalled();
@@ -73,11 +66,7 @@ test("native file-path errors are shown without falling through to the icon imag
 		showError,
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 
 	expect(context.editor.insertTextAtCursor).not.toHaveBeenCalled();
 	expect(mocks.readClipboardImage).not.toHaveBeenCalled();
@@ -101,11 +90,7 @@ test.each([
 		showError: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 
 	expect(insertTextAtCursor).toHaveBeenCalledExactlyOnceWith(" /tmp/photo.png");
 	expect(mocks.readClipboardImage).not.toHaveBeenCalled();
@@ -128,11 +113,7 @@ test("bash mode shell-quotes file paths and inserts them as arguments", async ()
 		showError: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 
 	expect(insertTextAtCursor).toHaveBeenCalledExactlyOnceWith(
 		" '/tmp/My Photos/photo.png' '/tmp/$(touch hacked).png' /tmp/plain.png ",

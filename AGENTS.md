@@ -32,23 +32,23 @@ When changing native tools or commands, check registration and SDK consumers sep
 
 ## Verify
 
-Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Follow the root README for installation and model-data hydration.
+Use Node 24.15+ within the Node 24 line for the current sibling dependencies. Follow the root README for installation and model-data hydration. Yarn (the version `packageManager` pins) runs every repository command and owns the only lockfile, `yarn.lock`; npm appears only where the product packs, publishes or installs packages as a consumer would.
 
-- `npm run check` runs TypeScript, Oxlint, the Prettier check, browser imports, workspace bundle freshness and package-boundary checks without rewriting files.
-- `npm run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `npm run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `npm run format` formats code with Prettier (`.prettierrc.json`).
+- `yarn run check` runs TypeScript, Oxlint, the Oxfmt format check, browser imports, workspace bundle freshness and package-boundary checks without rewriting files.
+- `yarn run lint` runs Oxlint (`.oxlintrc.json`, type-aware through tsgolint on TypeScript 7) over all packages and scripts; `yarn run lint:fix` applies its safe fixes, which still need `tsc` afterwards. `yarn run format` formats code with Oxfmt (`.oxfmtrc.json`, Prettier-compatible).
 - Source files stay within 400 lines. The `max-lines` override in `.oxlintrc.json` lists the files that were longer when the rule was adopted; split one and remove it from the list (`scripts/check-max-lines-baseline.mjs` fails while a listed file fits). Never add files to it.
 - Silence a rule only for a deliberate pattern, on the line, with the reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 - `./test.sh` runs all tests with isolated user configuration and credentials. Install `fd` and `ripgrep` for filesystem-tool tests. Bun worker checks run when Bun is available; live provider tests require separate configured runs.
-- From `packages/coding-agent`, `npx vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes live e2e and Chrome tests.
-- `npm run test:scripts` checks build, packaging and repository scripts.
-- `npm run build:offline` builds using hydrated model data; `npm start -- --help` checks the source CLI.
+- From `packages/coding-agent`, `yarn vitest run --config vitest.octocode.config.ts` runs the native feature suite; append test paths for a focused run. This config excludes live e2e and Chrome tests.
+- `yarn run test:scripts` checks build, packaging and repository scripts.
+- `yarn run build:offline` builds using hydrated model data; `yarn start --help` checks the source CLI.
 
 Run checks relevant to the change and report failures, skipped live checks and missing dependencies accurately. Do not weaken assertions or coverage thresholds to hide failures. Update tests when an intentionally changed contract requires different expectations.
 
-For documentation changes, verify commands, paths and API claims against their owners, check local links and anchors, and retain dated verification results as historical evidence. Do not present old test counts as a new run. When browser source changes, run `npm run generate:workspace` and the affected webview/contracts tests before checking bundle freshness.
+For documentation changes, verify commands, paths and API claims against their owners, check local links and anchors, and retain dated verification results as historical evidence. Do not present old test counts as a new run. When browser source changes, run `yarn run generate:workspace` and the affected webview/contracts tests before checking bundle freshness.
 
 ## Generated files and releases
 
-Generate coding-agent schemas with `npm run generate:schemas --workspace=@octocodeai/octocodecode`, reference tables with `npm run generate:references --workspace=@octocodeai/octocodecode`, and its installer lock with `npm run install-lock:coding-agent`. Update generators rather than hand-editing their output. Hydrated model data is ignored by Git.
+Generate coding-agent schemas with `yarn workspace @octocodeai/octocodecode run generate:schemas`, reference tables with `yarn workspace @octocodeai/octocodecode run generate:references`, and its installer lock with `yarn run install-lock:coding-agent`. Update generators rather than hand-editing their output. Hydrated model data is ignored by Git.
 
 The three local dependencies on the sibling `octocode` repository are currently intentional. Registry publication and portable installer builds require a separate dependency-release change. Keep local validation distinct from registry release validation.

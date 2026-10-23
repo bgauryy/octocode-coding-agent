@@ -969,7 +969,7 @@ node test/chat-simple.ts
 npm install
 
 # Run type checking
-npm run check
+yarn run check
 
 # Run the demo
 node test/chat-simple.ts

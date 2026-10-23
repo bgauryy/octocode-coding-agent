@@ -18,8 +18,13 @@ Its sample agents use the older core tool names (`read`, `grep`, `find`, `ls`). 
 ```
 subagent/
 ├── README.md            # This file
-├── index.ts             # The extension (entry point)
+├── index.ts             # The extension (entry point): tool registration and modes
 ├── agents.ts            # Agent discovery logic
+├── schema.ts            # Tool parameters
+├── run.ts               # Runs one subagent process and collects its messages
+├── results.ts           # Result types and output helpers
+├── render.ts            # Call and result rendering
+├── format.ts            # Usage and tool-call text
 ├── agents/              # Sample agent definitions
 │   ├── scout.md         # Fast recon, returns compressed context
 │   ├── planner.md       # Creates implementation plans
@@ -38,8 +43,9 @@ For extension development, the following installs the fixture under the default 
 ```bash
 # Symlink the extension (must be in a subdirectory with index.ts)
 mkdir -p ~/.octocode/octocodecode/extensions/subagent
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.octocode/octocodecode/extensions/subagent/index.ts
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.octocode/octocodecode/extensions/subagent/agents.ts
+for f in packages/coding-agent/examples/extensions/subagent/*.ts; do
+  ln -sf "$(pwd)/$f" ~/.octocode/octocodecode/extensions/subagent/$(basename "$f")
+done
 
 # Symlink agents
 mkdir -p ~/.octocode/octocodecode/agents

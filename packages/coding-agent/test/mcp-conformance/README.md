@@ -3,7 +3,7 @@
 Runs the official [MCP conformance suite](https://github.com/modelcontextprotocol/conformance) against Octocode's MCP client and compares the result with a committed baseline.
 
 ```bash
-npm run test:mcp-conformance
+yarn run test:mcp-conformance
 ```
 
 This checkout has no CI workflow for it; run it manually. Requires network access the first time, to fetch the pinned suite (`@modelcontextprotocol/conformance@0.2.0-alpha.11`) with `npx`. Install scripts are disabled. Needs a POSIX shell.

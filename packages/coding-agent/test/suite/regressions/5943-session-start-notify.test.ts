@@ -2,7 +2,10 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Container, Text } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import { showLoadedResources } from "../../../src/modes/interactive/interactive-mode/loaded-resources.ts";
+import { rebindCurrentSession } from "../../../src/modes/interactive/interactive-mode/session-binding.ts";
+import { handleReloadCommand } from "../../../src/modes/interactive/interactive-mode/session-commands.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
 
@@ -92,17 +95,6 @@ type ReloadCommandContext = {
 	showWarning: (message: string) => void;
 	showError: (message: string) => void;
 };
-
-type InteractiveModePrototype = {
-	showLoadedResources(
-		this: LoadedResourcesContext,
-		options?: { extensions?: Array<{ path: string }>; force?: boolean; showDiagnosticsWhenQuiet?: boolean },
-	): void;
-	rebindCurrentSession(this: RebindContext, options?: { renderBeforeBind?: boolean }): Promise<void>;
-	handleReloadCommand(this: ReloadCommandContext): Promise<void>;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
 
 type ReloadCommandContextOverrides = Omit<
 	Partial<ReloadCommandContext>,
@@ -227,7 +219,7 @@ describe("regression #5943: session_start transient UI", () => {
 		context.loadedResourcesContainer.addChild(new Text("stale resources", 0, 0));
 		context.chatContainer.addChild(new Text("restored message", 0, 0));
 
-		interactiveModePrototype.showLoadedResources.call(context);
+		showLoadedResources(createFakeHost(context));
 
 		const chatRendered = context.chatContainer.render(80).join("\n");
 		expect(chatRendered).toContain("restored message");
@@ -268,7 +260,7 @@ describe("regression #5943: session_start transient UI", () => {
 				updateTerminalTitle: () => {},
 			};
 
-			await interactiveModePrototype.rebindCurrentSession.call(context, { renderBeforeBind: true });
+			await rebindCurrentSession(createFakeHost(context), { renderBeforeBind: true });
 
 			expect(events).toEqual(["apply", "render", "subscribe", "bind", "notify:Hello Error"]);
 		} finally {
@@ -318,7 +310,7 @@ describe("regression #5943: session_start transient UI", () => {
 				updateTerminalTitle: () => {},
 			};
 
-			await interactiveModePrototype.rebindCurrentSession.call(context, { renderBeforeBind: true });
+			await rebindCurrentSession(createFakeHost(context), { renderBeforeBind: true });
 
 			expect(events).toEqual([
 				"render",
@@ -371,7 +363,7 @@ describe("regression #5943: session_start transient UI", () => {
 				updateTerminalTitle: () => {},
 			};
 
-			await interactiveModePrototype.rebindCurrentSession.call(context, { renderBeforeBind: true });
+			await rebindCurrentSession(createFakeHost(context), { renderBeforeBind: true });
 			await harness.session.agent.waitForIdle();
 
 			expect(events.slice(0, 3)).toEqual(["render", "subscribe", "bind"]);
@@ -433,7 +425,7 @@ describe("regression #5943: session_start transient UI", () => {
 			},
 		});
 
-		await interactiveModePrototype.handleReloadCommand.call(context);
+		await handleReloadCommand(createFakeHost(context));
 
 		expect(context.hideThinkingBlock).toBe(true);
 		expect(events).toEqual(["reload", "rebuild:true", "start:true"]);
@@ -472,7 +464,7 @@ describe("regression #5943: session_start transient UI", () => {
 			},
 		});
 
-		const reloadPromise = interactiveModePrototype.handleReloadCommand.call(context);
+		const reloadPromise = handleReloadCommand(createFakeHost(context));
 		await reloadWaiting;
 
 		expect(chatRestored).toBe(true);

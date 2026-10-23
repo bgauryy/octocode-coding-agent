@@ -1,0 +1,94 @@
+/**
+ * Small display helpers: clearing the editor, error and warning lines, the markdown theme and transformers, tool
+ * renderer lookup, the fullscreen scrollbar and PNG transcoder, and the startup display flags.
+ */
+
+import { type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
+import type { MarkdownTransformer, ToolRenderers } from "../../../core/extensions/index.ts";
+import { withBuiltInRenderers } from "../../../core/tools/renderers/index.ts";
+import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
+import { ThemedText } from "../components/themed-text.ts";
+import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import type { InteractiveModeHost } from "./host.ts";
+
+/** Interactive-mode members used by the display helpers. */
+export type DisplayHost = Pick<
+	InteractiveModeHost,
+	| "chatContainer"
+	| "editor"
+	| "mermaidMarkdownTransformer"
+	| "options"
+	| "outputPad"
+	| "session"
+	| "settingsManager"
+	| "toolOutputExpanded"
+	| "transcriptScrollView"
+	| "ui"
+>;
+
+export function getMarkdownThemeWithSettings(host: DisplayHost): MarkdownTheme {
+	return {
+		...getMarkdownTheme(),
+		codeBlockIndent: host.settingsManager.getCodeBlockIndent(),
+	};
+}
+
+export function getStartupExpansionState(host: DisplayHost): boolean {
+	return host.options.verbose || host.toolOutputExpanded;
+}
+
+/** Startup header (title, version, key hints). Hidden only by quietStartup: true. */
+export function shouldShowStartupHeader(host: DisplayHost): boolean {
+	return host.options.verbose === true || host.settingsManager.getQuietStartup() !== true;
+}
+
+/** Startup details (model scope, loaded resources). Hidden by quietStartup: true or "header". */
+export function shouldShowStartupDetails(host: DisplayHost): boolean {
+	return host.options.verbose === true || host.settingsManager.getQuietStartup() === false;
+}
+
+export function applyFullscreenScrollbarSetting(host: DisplayHost): void {
+	host.transcriptScrollView?.setScrollbar(host.settingsManager.getFullscreenScrollbar());
+}
+
+/** Lets extension images use the PNG transcoder; tool results register it themselves. */
+export function ensurePngTranscoder(host: DisplayHost): void {
+	ensureSharedPngTranscoder(() => {
+		host.ui.invalidate();
+		host.ui.requestRender();
+	});
+}
+
+/**
+ * Get a registered tool definition by name (for custom rendering).
+ */
+/**
+ * Extension-registered definition, falling back to the built-in one. The renderer components take
+ * whatever this returns, so they never reach into the tool registry themselves.
+ */
+export function getRegisteredToolDefinition(host: DisplayHost, toolName: string): ToolRenderers | undefined {
+	return host.session.extensionRunner.resolveToolRenderers(toolName, () =>
+		withBuiltInRenderers(toolName, host.session.getToolDefinition(toolName)),
+	);
+}
+
+export function getMarkdownTransformers(host: DisplayHost): MarkdownTransformer[] {
+	return [host.mermaidMarkdownTransformer, ...host.session.extensionRunner.getMarkdownTransformers()];
+}
+
+export function clearEditor(host: DisplayHost): void {
+	host.editor.setText("");
+	host.ui.requestRender();
+}
+
+export function showError(host: DisplayHost, errorMessage: string): void {
+	host.chatContainer.addChild(new Spacer(1));
+	host.chatContainer.addChild(new ThemedText(() => theme.fg("error", `Error: ${errorMessage}`), host.outputPad, 0));
+	host.ui.requestRender();
+}
+
+export function showWarning(host: DisplayHost, warningMessage: string): void {
+	host.chatContainer.addChild(new Spacer(1));
+	host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
+	host.ui.requestRender();
+}

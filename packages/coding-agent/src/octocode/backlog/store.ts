@@ -252,7 +252,8 @@ export class BacklogStore {
 		const seq = typeof ref === "number" ? ref : parseRef(ref);
 		if (seq === undefined) return undefined;
 		const row = this.db.prepare(`${SELECT} WHERE b.repo_key = ? AND b.seq = ?`).get(this.repo, seq) as
-			Row<State> | undefined;
+			| Row<State>
+			| undefined;
 		return row ? this.enrich(toItem(row)) : undefined;
 	}
 
@@ -728,7 +729,8 @@ export class BacklogStore {
 			row.parent_id === null
 				? undefined
 				: (this.db.prepare("SELECT seq FROM backlog WHERE id = ? AND repo_key = ?").get(row.parent_id, this.repo) as
-						{ seq: number } | undefined);
+						| { seq: number }
+						| undefined);
 		const rows = this.db
 			.prepare("SELECT relation, target FROM backlog_links WHERE item = ? ORDER BY rowid")
 			.all(base.rowId) as { relation: string; target: string }[];

@@ -1,28 +1,28 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import fsp from "node:fs/promises";
-import path from "node:path";
-import { uuidv7 } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { loadEntriesFromFile, type ReadonlySessionManager } from "../../core/session-manager.ts";
-import { atomicWriteFile, atomicWriteFileSync } from "../shared/atomic.ts";
-import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
+import { atomicWriteFileSync } from "../shared/atomic.ts";
+import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
-import { recordedLocalReads } from "../shared/local-reads.ts";
-import {
-	canonicalPath,
-	privateDir,
-	readPaths,
-	sessionDir,
-	workspacePaths,
-	workspaceScratchDir,
-} from "../shared/home.ts";
-import { processStartTime, sameProcess } from "../shared/process.ts";
-import { sweepStaleOutputs } from "../shared/sweep.ts";
-import { DAY_MS, isRecord } from "../shared/util.ts";
-import { teamWorkspace } from "../team/store.ts";
-import type { ResultDetails } from "./render.ts";
-import { validateStoredStructuredResult } from "./result-schema.ts";
+import { isRecord } from "../shared/util.ts";
+import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
+
+export {
+	pendingReportsDir,
+	releasePendingReports,
+	type Report,
+	savePendingReport,
+	takePendingReports,
+} from "./handoff/pending.ts";
+export {
+	agentScratch,
+	dropEmptyScratch,
+	ReadReports,
+	scratchNames,
+	scratchRoot,
+	sweepScratch,
+} from "./handoff/scratch.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -32,191 +32,8 @@ import { validateStoredStructuredResult } from "./result-schema.ts";
 /** Custom message type of a background subagent's report. */
 export const RESULT_TYPE = "octocode-agent-result";
 
-/** Subagent scratch folders untouched this long are removed when a session starts. */
-const SCRATCH_MAX_AGE_MS = 7 * DAY_MS;
-
-/** `<workspace>/.octocode/tmp/agents`: one folder per subagent for the files it hands back. */
-export const scratchRoot = (cwd: string) => path.join(workspacePaths(cwd).tmp, "agents");
-
-/**
- * Names whose scratch folder exists. A name is a subagent's identity: its scratch folder holds its saved conversation
- * (`session/`), which Octocode reopens for the same session id. A new subagent must not take one of these names, or it would
- * continue another agent's conversation; the folder is kept (it is that agent's evidence) until the sweep removes it.
- */
-export function scratchNames(cwd: string): string[] {
-	try {
-		return fs.readdirSync(scratchRoot(cwd));
-	} catch {
-		return [];
-	}
-}
-
-/** File in a scratch folder naming the Octocode process that started the subagent: its pid, then its start time (so a reused pid is not mistaken for it). */
-const OWNER_FILE = ".owner";
-
-/**
- * The subagent's handoff folder, or undefined when the workspace is not writable (it then reports inline only). It
- * names this process as its owner, so another session's sweep leaves it alone while this process runs.
- */
-export function agentScratch(cwd: string, id: string): string | undefined {
-	try {
-		const dir = workspaceScratchDir(teamWorkspace(cwd), path.join("agents", id));
-		fs.writeFileSync(
-			path.join(dir, OWNER_FILE),
-			[process.pid, processStartTime(process.pid)].filter(Boolean).join(" "),
-		);
-		return dir;
-	} catch {
-		return undefined;
-	}
-}
-
-/** Whether the process that owns a scratch folder still runs. An owner file with only a pid (start time unknown) is judged by the pid. */
-function ownerRunning(dir: string): boolean {
-	try {
-		const [pid, ...started] = fs.readFileSync(path.join(dir, OWNER_FILE), "utf8").trim().split(" ");
-		return sameProcess(Number(pid), started.join(" "));
-	} catch {
-		return false;
-	}
-}
-
-/** Removes scratch folders untouched for a week, except those whose owning Octocode process (this or another session) is alive. */
-export async function sweepScratch(root: string): Promise<void> {
-	let names: string[];
-	try {
-		names = await fs.promises.readdir(root);
-	} catch {
-		return;
-	}
-	const owned = new Set(names.filter((name) => ownerRunning(path.join(root, name))));
-	await sweepStaleOutputs(root, SCRATCH_MAX_AGE_MS, owned);
-}
-
 /** Background reports finishing within this window reach the parent together, as one wake. */
 const REPORT_BATCH_MS = 1_500;
-
-export interface Report {
-	content: string;
-	details: ResultDetails;
-	/** Start a parent turn for it (not for a stop someone asked for, nor a report the parent already read). */
-	wake: boolean;
-	/** Names this one report wherever it is saved, claimed or queued, so a copy is never delivered twice; stamped when it is first queued or saved. */
-	reportId?: string;
-}
-
-/**
- * `<session folder>/reports/pending`: background reports that finished after the session that started them ended (a
- * reload, /resume of another session), kept owner-only for the next start of the same Octocode session.
- */
-export const pendingReportsDir = (sessionId: string, env: NodeJS.ProcessEnv = process.env): string =>
-	path.join(sessionDir(sessionId, env), "reports", "pending");
-
-/**
- * A pending report being delivered is renamed `<report>.json.claim-<pid>-<start time>` by the process that took it
- * (`shared/claims.ts`): it is deleted once Octocode accepted the message and renamed back when it did not, and a claim whose
- * process died is given back by the next take, so a crash between claim and send loses nothing.
- */
-const CLAIM_MARKER = ".claim-";
-
-/** The pending files behind the reports `takePendingReports` returned: where each is claimed, and the name it goes back to. */
-const claims = new WeakMap<Report, { claim: string; file: string }>();
-
-/** Saves a report nobody could receive; never throws (a report that cannot be saved is lost). */
-export function savePendingReport(dir: string, id: string, report: Report): string | undefined {
-	try {
-		privateDir(dir);
-		const saved: Report = { ...report, reportId: report.reportId ?? crypto.randomUUID() };
-		const file = path.join(dir, `${Date.now()}-${uuidv7()}-${id.replace(/[^\w.-]/g, "_")}.json`);
-		atomicWriteFileSync(file, JSON.stringify(saved), {
-			mode: 0o600,
-		});
-		return file;
-	} catch {
-		// No disk: nothing more to do.
-	}
-}
-
-/**
- * The saved reports, oldest first, each claimed by a rename so two processes never take one. The claim stays until
- * `ReportQueue` delivers the report (deleted) or fails to (renamed back); a report saved twice is delivered once.
- * Async: the poll for late reports runs every second, and the disk must not block the event loop.
- */
-export async function takePendingReports(dir: string): Promise<Report[]> {
-	let names: string[];
-	try {
-		await releaseDeadClaims(dir, await fsp.readdir(dir), CLAIM_MARKER, (original) => original.endsWith(".json"));
-		names = (await fsp.readdir(dir)).filter((name) => name.endsWith(".json")).sort();
-	} catch {
-		return [];
-	}
-	const seen = new Set<string>();
-	const taken: Report[] = [];
-	for (const name of names) {
-		const file = path.join(dir, name);
-		const claim = `${file}${claimSuffix(CLAIM_MARKER)}`;
-		try {
-			await fsp.rename(file, claim);
-		} catch {
-			continue;
-		}
-		try {
-			const value: unknown = JSON.parse(await fsp.readFile(claim, "utf8"));
-			if (
-				!isRecord(value) ||
-				typeof value.content !== "string" ||
-				typeof value.wake !== "boolean" ||
-				!isRecord(value.details) ||
-				typeof value.details.id !== "string" ||
-				typeof value.details.summary !== "string" ||
-				!["done", "failed", "stopped"].includes(String(value.details.status)) ||
-				(value.reportId !== undefined && (typeof value.reportId !== "string" || !value.reportId))
-			)
-				throw new Error("Invalid pending subagent report");
-			if (value.details.structured !== undefined) {
-				try {
-					validateStoredStructuredResult(value.details.structured);
-				} catch {
-					// Preserve corrupt contract metadata for diagnosis without delivering a false typed result.
-					await fsp.rename(claim, `${file}.invalid`);
-					process.stderr.write("Quarantined a saved subagent report with invalid result schema metadata\n");
-					continue;
-				}
-			}
-			const report = value as unknown as Report;
-			if (report.reportId === undefined) {
-				report.reportId = crypto.randomUUID();
-				await atomicWriteFile(claim, JSON.stringify(report), undefined, { mode: 0o600 });
-			}
-			if (report.reportId !== undefined && seen.has(report.reportId)) {
-				await fsp.rm(claim, { force: true });
-				continue;
-			}
-			if (report.reportId !== undefined) seen.add(report.reportId);
-			const late = { ...report, content: `(Arrived after the session restarted) ${report.content}` };
-			claims.set(late, { claim, file });
-			taken.push(late);
-		} catch {
-			// Unreadable: it stays where it was.
-			try {
-				await fsp.rename(claim, file);
-			} catch {
-				// Gone meanwhile.
-			}
-		}
-	}
-	return taken;
-}
-
-/** Return a scan's claims to their original session when that session ends during the read. */
-export async function releasePendingReports(reports: readonly Report[]): Promise<void> {
-	for (const report of reports) {
-		const claim = claims.get(report);
-		if (!claim) continue;
-		await fsp.rename(claim.claim, claim.file);
-		claims.delete(report);
-	}
-}
 
 /**
  * Delivers background reports. Reports that finish close together are batched: all are sent at once and only the last
@@ -448,51 +265,5 @@ export class ReportQueue {
 				// The claim is gone; nothing to give back.
 			}
 		} else if (this.pendingDir) savePendingReport(this.pendingDir, report.details.id, report);
-	}
-}
-
-/**
- * Report files the parent has read through local fetch or a legacy reader, by agent id, with the time.
- * A report whose file was read after its last change reaches the parent without starting a turn.
- */
-export class ReadReports {
-	private readonly scratch = new Map<string, string>();
-	private readonly readAt = new Map<string, number>();
-
-	track(id: string, scratch: string | undefined): void {
-		if (scratch) this.scratch.set(canonicalPath(path.join(path.resolve(scratch), "report.md")), id);
-	}
-
-	observe(toolName: string, input: Record<string, unknown>, cwd: string, details?: unknown): void {
-		for (const file of [...readPaths(toolName, input, cwd), ...recordedLocalReads(details).map((read) => read.file)]) {
-			const id = this.scratch.get(canonicalPath(file));
-			if (id) this.readAt.set(id, Date.now());
-		}
-	}
-
-	/** Whether the parent read this agent's report file since it was last written; forgets the agent. */
-	consume(id: string): boolean {
-		const at = this.readAt.get(id);
-		const file = [...this.scratch].find(([, owner]) => owner === id)?.[0];
-		this.readAt.delete(id);
-		if (file) this.scratch.delete(file);
-		if (at === undefined || !file) return false;
-		try {
-			return fs.statSync(file).mtimeMs <= at;
-		} catch {
-			return false;
-		}
-	}
-}
-
-/** Removes a scratch folder the subagent left empty (only the owner marker), so finished runs leave no clutter. */
-export function dropEmptyScratch(dir: string | undefined): boolean {
-	if (!dir) return false;
-	try {
-		if (fs.readdirSync(dir).some((name) => name !== OWNER_FILE)) return false;
-		fs.rmSync(dir, { recursive: true, force: true });
-		return true;
-	} catch {
-		return false;
 	}
 }

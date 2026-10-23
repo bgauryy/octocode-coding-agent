@@ -191,133 +191,80 @@ function overlayRanges(styled: string, ranges: Range[], on: string, off: string)
  */
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const tints = diffTints();
-	if (!tints) return renderPlainDiff(diffText);
+	if (!tints) return renderBlocks(diffText, plainChange);
 	const language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
-	const paint = (content: string): string => {
-		if (!language) return content;
-		return highlightCode(content, language)[0] ?? content;
-	};
-	const changedLine = (sign: "+" | "-", lineNum: string, content: string, ranges: Range[] = []): string => {
+	const changedLine = (sign: "+" | "-", row: DiffRow, ranges: Range[] = []): string => {
 		const color = sign === "+" ? "toolDiffAdded" : "toolDiffRemoved";
-		const body = language ? paint(content) : theme.fg(color, content);
+		const body = language ? (highlightCode(row.content, language)[0] ?? row.content) : theme.fg(color, row.content);
 		const marked = overlayRanges(body, ranges, tints.word[sign], tints.line[sign]);
 		// The sign and number carry the colour; the tint marks the whole changed line, so a line of only whitespace
 		// still shows as changed.
-		const text = visibleWidth(content) === 0 ? " " : marked;
-		return `${theme.fg(color, `${sign}${lineNum} `)}${tints.line[sign]}${text}${DEFAULT_BG}`;
+		const text = visibleWidth(row.content) === 0 ? " " : marked;
+		return `${theme.fg(color, `${sign}${row.lineNum} `)}${tints.line[sign]}${text}${DEFAULT_BG}`;
 	};
+	return renderBlocks(diffText, (removed, added) => {
+		// Lines replaced one for one are paired, so each pair can show which words changed.
+		const paired = removed.length === added.length && removed.length <= MAX_PAIRED_LINES;
+		const ranges = paired ? removed.map((row, index) => changedRanges(row.content, added[index].content)) : [];
+		return [
+			...removed.map((row, index) => changedLine("-", row, ranges[index]?.removed)),
+			...added.map((row, index) => changedLine("+", row, ranges[index]?.added)),
+		];
+	});
+}
 
+/** The foreground-only rendering of a change block, for themes that draw tool output on their own background. */
+function plainChange(removed: DiffRow[], added: DiffRow[]): string[] {
+	// Only do intra-line diffing for a single line modification. Otherwise, show lines as-is.
+	if (removed.length === 1 && added.length === 1) {
+		const { removedLine, addedLine } = renderIntraLineDiff(removed[0].content, added[0].content);
+		return [
+			theme.fg("toolDiffRemoved", `-${removed[0].lineNum} ${removedLine}`),
+			theme.fg("toolDiffAdded", `+${added[0].lineNum} ${addedLine}`),
+		];
+	}
+	return [
+		...removed.map((row) => theme.fg("toolDiffRemoved", `-${row.lineNum} ${row.content}`)),
+		...added.map((row) => theme.fg("toolDiffAdded", `+${row.lineNum} ${row.content}`)),
+	];
+}
+
+interface DiffRow {
+	lineNum: string;
+	/** Content with tabs widened. */
+	content: string;
+}
+
+/**
+ * Walks a diff: context lines (and lines that are not diff rows) are drawn dim; each change block, the removed lines
+ * and the added lines that follow them, goes to `change`.
+ */
+function renderBlocks(diffText: string, change: (removed: DiffRow[], added: DiffRow[]) => string[]): string {
 	const lines = diffText.split("\n");
 	const result: string[] = [];
 	let i = 0;
+	const collect = (prefix: "-" | "+"): DiffRow[] => {
+		const rows: DiffRow[] = [];
+		while (i < lines.length) {
+			const parsed = parseDiffLine(lines[i]);
+			if (!parsed || parsed.prefix !== prefix) break;
+			rows.push({ lineNum: parsed.lineNum, content: replaceTabs(parsed.content) });
+			i++;
+		}
+		return rows;
+	};
 	while (i < lines.length) {
 		const parsed = parseDiffLine(lines[i]);
 		if (!parsed) {
 			result.push(theme.fg("toolDiffContext", lines[i]));
 			i++;
-			continue;
-		}
-		if (parsed.prefix === " ") {
+		} else if (parsed.prefix !== "-" && parsed.prefix !== "+") {
 			result.push(theme.fg("toolDiffContext", ` ${parsed.lineNum} ${replaceTabs(parsed.content)}`));
-			i++;
-			continue;
-		}
-
-		const removed: { lineNum: string; content: string }[] = [];
-		while (i < lines.length) {
-			const p = parseDiffLine(lines[i]);
-			if (!p || p.prefix !== "-") break;
-			removed.push({ lineNum: p.lineNum, content: replaceTabs(p.content) });
-			i++;
-		}
-		const added: { lineNum: string; content: string }[] = [];
-		while (i < lines.length) {
-			const p = parseDiffLine(lines[i]);
-			if (!p || p.prefix !== "+") break;
-			added.push({ lineNum: p.lineNum, content: replaceTabs(p.content) });
-			i++;
-		}
-
-		// Lines replaced one for one are paired, so each pair can show which words changed.
-		const paired = removed.length === added.length && removed.length <= MAX_PAIRED_LINES;
-		const ranges = paired ? removed.map((line, index) => changedRanges(line.content, added[index].content)) : [];
-		removed.forEach((line, index) => {
-			result.push(changedLine("-", line.lineNum, line.content, ranges[index]?.removed));
-		});
-		added.forEach((line, index) => {
-			result.push(changedLine("+", line.lineNum, line.content, ranges[index]?.added));
-		});
-	}
-	return result.join("\n");
-}
-
-/** The foreground-only rendering, for themes that draw tool output on their own background. */
-function renderPlainDiff(diffText: string): string {
-	const lines = diffText.split("\n");
-	const result: string[] = [];
-
-	let i = 0;
-	while (i < lines.length) {
-		const line = lines[i];
-		const parsed = parseDiffLine(line);
-
-		if (!parsed) {
-			result.push(theme.fg("toolDiffContext", line));
-			i++;
-			continue;
-		}
-
-		if (parsed.prefix === "-") {
-			// Collect consecutive removed lines
-			const removedLines: { lineNum: string; content: string }[] = [];
-			while (i < lines.length) {
-				const p = parseDiffLine(lines[i]);
-				if (!p || p.prefix !== "-") break;
-				removedLines.push({ lineNum: p.lineNum, content: p.content });
-				i++;
-			}
-
-			// Collect consecutive added lines
-			const addedLines: { lineNum: string; content: string }[] = [];
-			while (i < lines.length) {
-				const p = parseDiffLine(lines[i]);
-				if (!p || p.prefix !== "+") break;
-				addedLines.push({ lineNum: p.lineNum, content: p.content });
-				i++;
-			}
-
-			// Only do intra-line diffing when there's exactly one removed and one added line
-			// (indicating a single line modification). Otherwise, show lines as-is.
-			if (removedLines.length === 1 && addedLines.length === 1) {
-				const removed = removedLines[0];
-				const added = addedLines[0];
-
-				const { removedLine, addedLine } = renderIntraLineDiff(
-					replaceTabs(removed.content),
-					replaceTabs(added.content),
-				);
-
-				result.push(theme.fg("toolDiffRemoved", `-${removed.lineNum} ${removedLine}`));
-				result.push(theme.fg("toolDiffAdded", `+${added.lineNum} ${addedLine}`));
-			} else {
-				// Show all removed lines first, then all added lines
-				for (const removed of removedLines) {
-					result.push(theme.fg("toolDiffRemoved", `-${removed.lineNum} ${replaceTabs(removed.content)}`));
-				}
-				for (const added of addedLines) {
-					result.push(theme.fg("toolDiffAdded", `+${added.lineNum} ${replaceTabs(added.content)}`));
-				}
-			}
-		} else if (parsed.prefix === "+") {
-			// Standalone added line
-			result.push(theme.fg("toolDiffAdded", `+${parsed.lineNum} ${replaceTabs(parsed.content)}`));
 			i++;
 		} else {
-			// Context line
-			result.push(theme.fg("toolDiffContext", ` ${parsed.lineNum} ${replaceTabs(parsed.content)}`));
-			i++;
+			const removed = collect("-");
+			result.push(...change(removed, collect("+")));
 		}
 	}
-
 	return result.join("\n");
 }

@@ -21,7 +21,7 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 const schemaBaseUrl = "urn:octocode:schemas";
 const schemaDraft = "https://json-schema.org/draft/2020-12/schema";
 const generatedComment =
-	"This file is generated from TypeScript source. Do not edit it manually; run npm run generate:schemas.";
+	"This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:schemas.";
 
 interface SchemaArtifact {
 	filename: `${string}.schema.json`;

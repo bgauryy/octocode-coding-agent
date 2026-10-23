@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import {
+	handleStartupSubmit,
+	setupEditorSubmitHandler,
+} from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
+import { getUserInput } from "../src/modes/interactive/interactive-mode/startup.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 type SubmitContext = {
 	defaultEditor: { onSubmit?: (text: string) => void };
@@ -28,14 +33,6 @@ type StartupSubmitContext = {
 	showStatus: (message: string) => void;
 };
 
-type InteractiveModePrivate = {
-	handleStartupSubmit(this: StartupSubmitContext, text: string): void;
-	setupEditorSubmitHandler(this: SubmitContext): void;
-	getUserInput(this: InputContext): Promise<string>;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrivate;
-
 function createSubmitContext(): SubmitContext {
 	return {
 		defaultEditor: {},
@@ -61,7 +58,7 @@ describe("InteractiveMode startup input", () => {
 			showStatus: vi.fn(),
 		};
 
-		interactiveModePrototype.handleStartupSubmit.call(context, "early prompt");
+		handleStartupSubmit(createFakeHost(context), "early prompt");
 
 		expect(context.editor.setText).toHaveBeenCalledWith("early prompt");
 		expect(context.showStatus).toHaveBeenCalledWith("Startup is still in progress");
@@ -69,7 +66,7 @@ describe("InteractiveMode startup input", () => {
 
 	it("queues a normal prompt submitted before the input callback is installed", async () => {
 		const context = createSubmitContext();
-		interactiveModePrototype.setupEditorSubmitHandler.call(context);
+		setupEditorSubmitHandler(createFakeHost(context));
 
 		await context.defaultEditor.onSubmit?.(" early prompt ");
 
@@ -83,7 +80,7 @@ describe("InteractiveMode startup input", () => {
 			pendingUserInputs: ["queued prompt"],
 		};
 
-		await expect(interactiveModePrototype.getUserInput.call(context)).resolves.toBe("queued prompt");
+		await expect(getUserInput(createFakeHost(context))).resolves.toBe("queued prompt");
 		expect(context.onInputCallback).toBeUndefined();
 		expect(context.pendingUserInputs).toEqual([]);
 	});

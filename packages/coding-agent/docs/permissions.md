@@ -35,7 +35,7 @@ Deny takes precedence over ask, then allow. Source asks still require resolution
 
 Tool-wide denies also affect model-visible and deferred callable tools. Native tools can combine several source operations: a partial restriction on `file`, `bash`, `web` or `agent` must still be enforced on the specific operation without hiding unrelated operations. Removing a rule should restore the user's prior tool selection.
 
-The preview is not full Claude policy compatibility. The active implementation and tests are tracked in the [compatibility matrix](../../../PLUGINS_MODS_HOOKS.md#source-permission-policy-implementation-in-progress).
+The preview is not full Claude policy compatibility. The active implementation and tests are tracked in the [compatibility matrix](../../../docs/PLUGINS_MODS_HOOKS.md#source-permission-policy-implementation-in-progress).
 
 ## Bash matching
 

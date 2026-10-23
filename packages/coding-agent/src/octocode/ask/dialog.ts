@@ -1,6 +1,5 @@
 import {
 	Editor,
-	type EditorTheme,
 	type KeybindingsManager,
 	truncateToWidth,
 	visibleWidth,
@@ -10,49 +9,10 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { type AskAnswer, type AskQuestion, type AskResult, answerOf, rows, SUBMIT_PICKS } from "./dialog/answers.ts";
+import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
 
-interface AskOption {
-	label: string;
-	description?: string;
-}
-
-export interface AskQuestion {
-	question: string;
-	header?: string;
-	options: AskOption[];
-	multiSelect?: boolean;
-}
-
-interface AskAnswer {
-	question: string;
-	answer: string;
-	custom: boolean;
-	/** Multi-select with a write-in: the toggled option labels, kept apart from the typed text so the model can tell them apart. */
-	picks?: string[];
-	typed?: string;
-}
-
-export interface AskResult {
-	answers: AskAnswer[];
-	cancelled: boolean;
-	reason?: "unavailable" | "aborted";
-}
-
-/** The answer to `question` from the options picked (`picks`, in order) and the text typed in; a write-in makes it custom. */
-export function answerOf(question: string, picks: string[], typed?: string): AskAnswer {
-	return {
-		question,
-		answer: [...picks, ...(typed ? [typed] : [])].join(", "),
-		custom: typed !== undefined,
-		...(typed !== undefined && picks.length ? { picks, typed } : {}),
-	};
-}
-
-/** The write-in row and the multi-select submit row, in this dialog and in the RPC fallback (`tool.ts`). */
-export const TYPE_OWN = "Write an answer";
-export const SUBMIT_PICKS = "Submit selection";
-
-type DialogTheme = Parameters<Parameters<ExtensionContext["ui"]["custom"]>[0]>[1];
+export { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
 
 /**
  * Inline question dialog (adapted from Octocode's questionnaire example): a tab per
@@ -83,26 +43,6 @@ export function showAskDialog(
 		),
 	);
 }
-
-function editorTheme(theme: DialogTheme): EditorTheme {
-	return {
-		borderColor: (text) => theme.fg("accent", text),
-		selectList: {
-			selectedPrefix: (text) => theme.fg("accent", text),
-			selectedText: (text) => theme.fg("accent", text),
-			description: (text) => theme.fg("muted", text),
-			scrollInfo: (text) => theme.fg("dim", text),
-			noMatch: (text) => theme.fg("warning", text),
-		},
-	};
-}
-
-/** Option rows, then the free-text row, then (multi-select only) the row that confirms the toggled set. */
-const rows = (q: AskQuestion) => [
-	...q.options.map((option) => option.label),
-	TYPE_OWN,
-	...(q.multiSelect ? [SUBMIT_PICKS] : []),
-];
 
 /** The dialog's state and keys; `tab === questions.length` is the Submit tab. */
 class AskDialog {

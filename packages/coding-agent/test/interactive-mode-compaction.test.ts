@@ -2,9 +2,23 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { describe, expect, test, vi } from "vitest";
 import type { SessionEntry } from "../src/core/session-manager.ts";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import * as agentEvents from "../src/modes/interactive/interactive-mode/agent-events.ts";
+import {
+	flushCompactionQueue,
+	queueInteractiveMessage,
+	restoreQueuedMessagesToEditor,
+	updatePendingMessagesDisplay,
+} from "../src/modes/interactive/interactive-mode/message-queue.ts";
+import {
+	addCompactionCostNotice,
+	renderSessionEntries,
+} from "../src/modes/interactive/interactive-mode/session-render.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
+
+/** Accepts the partial events these tests send. */
+const handleEvent = agentEvents.handleEvent as (host: object, event: object) => Promise<void>;
 
 describe("InteractiveMode compaction events", () => {
 	test("uses the cache miss notice setting for compaction and branch summary costs", () => {
@@ -16,22 +30,13 @@ describe("InteractiveMode compaction events", () => {
 			totalTokens: 100,
 			cost: { input: 0.01, output: 0.02, cacheRead: 0.03, cacheWrite: 0.065, total: 0.125 },
 		};
-		const addCompactionCostNotice = Reflect.get(InteractiveMode.prototype, "addCompactionCostNotice") as (
-			this: { chatContainer: Container; settingsManager: { getShowCacheMissNotices(): boolean } },
-			notice: {
-				type: "compaction_cost";
-				kind: "compaction" | "branch_summary";
-				usage: Usage;
-			},
-		) => void;
-
 		initTheme("dark");
 		const enabled = {
 			chatContainer: new Container(),
 			settingsManager: { getShowCacheMissNotices: () => true },
 		};
-		addCompactionCostNotice.call(enabled, { type: "compaction_cost", kind: "compaction", usage });
-		addCompactionCostNotice.call(enabled, {
+		addCompactionCostNotice(createFakeHost(enabled), { type: "compaction_cost", kind: "compaction", usage });
+		addCompactionCostNotice(createFakeHost(enabled), {
 			type: "compaction_cost",
 			kind: "branch_summary",
 			usage,
@@ -44,7 +49,7 @@ describe("InteractiveMode compaction events", () => {
 			chatContainer: new Container(),
 			settingsManager: { getShowCacheMissNotices: () => false },
 		};
-		addCompactionCostNotice.call(disabled, { type: "compaction_cost", kind: "compaction", usage });
+		addCompactionCostNotice(createFakeHost(disabled), { type: "compaction_cost", kind: "compaction", usage });
 		expect(disabled.chatContainer.children).toHaveLength(0);
 	});
 
@@ -88,12 +93,7 @@ describe("InteractiveMode compaction events", () => {
 			},
 		];
 		const fakeThis = { renderSessionItems: vi.fn() };
-		const renderSessionEntries = Reflect.get(InteractiveMode.prototype, "renderSessionEntries") as (
-			this: typeof fakeThis,
-			entries: SessionEntry[],
-		) => void;
-
-		renderSessionEntries.call(fakeThis, entries);
+		renderSessionEntries(createFakeHost(fakeThis), entries);
 
 		expect(fakeThis.renderSessionItems).toHaveBeenCalledWith(
 			[
@@ -156,19 +156,7 @@ describe("InteractiveMode compaction events", () => {
 			ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
 		};
 
-		const handleEvent = Reflect.get(InteractiveMode.prototype, "handleEvent") as (
-			this: typeof fakeThis,
-			event: {
-				type: "compaction_end";
-				reason: "manual" | "threshold" | "overflow";
-				result: { tokensBefore: number; summary: string; usage?: Usage } | undefined;
-				aborted: boolean;
-				willRetry: boolean;
-				errorMessage?: string;
-			},
-		) => Promise<void>;
-
-		await handleEvent.call(fakeThis, {
+		await handleEvent(createFakeHost(fakeThis), {
 			type: "compaction_end",
 			reason: "manual",
 			result: {
@@ -210,12 +198,7 @@ describe("InteractiveMode compaction events", () => {
 			settingsManager: { getShowTerminalProgress: () => true },
 			ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
 		};
-		const handleEvent = Reflect.get(InteractiveMode.prototype, "handleEvent") as (
-			this: typeof fakeThis,
-			event: { type: "turn_start" },
-		) => Promise<void>;
-
-		await handleEvent.call(fakeThis, { type: "turn_start" });
+		await handleEvent(createFakeHost(fakeThis), { type: "turn_start" });
 
 		expect(fakeThis.ui.terminal.setProgress).toHaveBeenCalledWith(true);
 		expect(fakeThis.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
@@ -223,7 +206,7 @@ describe("InteractiveMode compaction events", () => {
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
 
 		fakeThis.workingVisible = false;
-		await handleEvent.call(fakeThis, { type: "turn_start" });
+		await handleEvent(createFakeHost(fakeThis), { type: "turn_start" });
 
 		expect(fakeThis.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
 		expect(fakeThis.clearStatusIndicator).toHaveBeenCalledTimes(1);
@@ -238,12 +221,7 @@ describe("InteractiveMode compaction events", () => {
 			updatePendingMessagesDisplay: vi.fn(),
 			session: { abort },
 		};
-		const restoreQueuedMessagesToEditor = Reflect.get(InteractiveMode.prototype, "restoreQueuedMessagesToEditor") as (
-			this: typeof ui,
-			options?: { abort?: boolean },
-		) => number;
-
-		restoreQueuedMessagesToEditor.call(ui, { abort: true });
+		restoreQueuedMessagesToEditor(createFakeHost(ui), { abort: true });
 
 		expect(abort).toHaveBeenCalledOnce();
 	});
@@ -262,12 +240,7 @@ describe("InteractiveMode compaction events", () => {
 			showError: vi.fn(),
 		};
 
-		const flushCompactionQueue = Reflect.get(InteractiveMode.prototype, "flushCompactionQueue") as (
-			this: typeof fakeThis,
-			options?: { willRetry?: boolean },
-		) => Promise<void>;
-
-		await flushCompactionQueue.call(fakeThis, { willRetry: false });
+		await flushCompactionQueue(createFakeHost(fakeThis), { willRetry: false });
 
 		expect(fakeThis.session.prompt).toHaveBeenCalledWith("change direction", {
 			streamingBehavior: "steer",
@@ -279,8 +252,7 @@ describe("InteractiveMode compaction events", () => {
 });
 
 describe("queued message recovery", () => {
-	const flush = (ui: any, willRetry = false) =>
-		Reflect.get(InteractiveMode.prototype, "flushCompactionQueue").call(ui, { willRetry });
+	const flush = (ui: any, willRetry = false) => flushCompactionQueue(createFakeHost(ui), { willRetry });
 	const fixture = () => ({
 		compactionQueuedMessages: [
 			{ text: "first", mode: "steer" },
@@ -347,7 +319,7 @@ describe("queued message recovery", () => {
 			getAppKeyDisplay: () => "alt+up",
 			session: { isCompacting: true },
 		};
-		Reflect.get(InteractiveMode.prototype, "updatePendingMessagesDisplay").call(ui);
+		updatePendingMessagesDisplay(createFakeHost(ui));
 		const lines = ui.pendingMessagesContainer.render(100);
 		const output = stripAnsi(lines.join("\n"));
 		expect(output).toContain("5 queued · 2 next turn · 3 after run");
@@ -378,7 +350,7 @@ test("restores rejected queued input alongside a newer draft", async () => {
 		updatePendingMessagesDisplay: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "steer");
+	await queueInteractiveMessage(createFakeHost(ui), "original", "steer");
 	expect(draft).toBe("original\n\nnewer draft");
 	expect(ui.showError).toHaveBeenCalledWith(expect.stringContaining("restored to editor"));
 });
@@ -404,6 +376,6 @@ test("does not restore a queued prompt after acceptance if the run later fails",
 		updatePendingMessagesDisplay: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	await Reflect.get(InteractiveMode.prototype, "queueInteractiveMessage").call(ui, "original", "followUp");
+	await queueInteractiveMessage(createFakeHost(ui), "original", "followUp");
 	expect(draft).toBe("newer draft");
 });

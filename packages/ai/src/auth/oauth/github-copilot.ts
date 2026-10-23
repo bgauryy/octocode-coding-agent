@@ -2,21 +2,17 @@
  * GitHub Copilot OAuth flow
  */
 
-import { GITHUB_COPILOT_MODELS } from "../../providers/github-copilot.models.ts";
-import { sleep } from "../../utils/sleep.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
-
-const decode = (s: string) => atob(s);
-const CLIENT_ID = decode("SXYxLmI1MDdhMDhjODdlY2ZlOTg=");
-
-const COPILOT_HEADERS = {
-	"User-Agent": "GitHubCopilotChat/0.35.0",
-	"Editor-Version": "vscode/1.107.0",
-	"Editor-Plugin-Version": "copilot-chat/0.35.0",
-	"Copilot-Integration-Id": "vscode-chat",
-} as const;
-const COPILOT_API_VERSION = "2026-06-01";
+import {
+	CLIENT_ID,
+	COPILOT_HEADERS,
+	fetchJson,
+	getGitHubCopilotBaseUrl,
+	getUrls,
+	normalizeDomain,
+} from "./github-copilot/endpoints.ts";
+import { enableGitHubCopilotModels, fetchGitHubCopilotModels } from "./github-copilot/models.ts";
 
 type DeviceCodeResponse = {
 	device_code: string;
@@ -37,171 +33,6 @@ type DeviceTokenErrorResponse = {
 	error_description?: string;
 	interval?: number;
 };
-
-function normalizeDomain(input: string): string | null {
-	const trimmed = input.trim();
-	if (!trimmed) return null;
-	try {
-		const url = trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`);
-		return url.hostname;
-	} catch {
-		return null;
-	}
-}
-
-function getUrls(domain: string): {
-	deviceCodeUrl: string;
-	accessTokenUrl: string;
-	copilotTokenUrl: string;
-} {
-	return {
-		deviceCodeUrl: `https://${domain}/login/device/code`,
-		accessTokenUrl: `https://${domain}/login/oauth/access_token`,
-		copilotTokenUrl: `https://api.${domain}/copilot_internal/v2/token`,
-	};
-}
-
-/**
- * Parse the proxy-ep from a Copilot token and convert to API base URL.
- * Token format: tid=...;exp=...;proxy-ep=proxy.individual.githubcopilot.com;...
- * Returns API URL like https://api.individual.githubcopilot.com
- */
-function getBaseUrlFromToken(token: string): string | null {
-	const match = token.match(/proxy-ep=([^;]+)/);
-	if (!match) return null;
-	const proxyHost = match[1];
-	// Convert proxy.xxx to api.xxx
-	const apiHost = proxyHost.replace(/^proxy\./, "api.");
-	return `https://${apiHost}`;
-}
-
-function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: string): string {
-	// If we have a token, extract the base URL from proxy-ep
-	if (token) {
-		const urlFromToken = getBaseUrlFromToken(token);
-		if (urlFromToken) return urlFromToken;
-	}
-	// Fallback for enterprise or if token parsing fails
-	if (enterpriseDomain) return `https://copilot-api.${enterpriseDomain}`;
-	return "https://api.individual.githubcopilot.com";
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-}
-
-function parseGitHubCopilotModelCatalog(raw: unknown, allowPolicyFallback: boolean) {
-	const data = asRecord(raw)?.data;
-	if (!Array.isArray(data)) {
-		throw new Error("Invalid Copilot models response");
-	}
-
-	const accountModels = data.flatMap((rawItem) => {
-		const item = asRecord(rawItem);
-		const id = item?.id;
-		if (!item || typeof id !== "string") return [];
-
-		const capabilities = asRecord(item.capabilities);
-		const supports = asRecord(capabilities?.supports);
-		if (supports?.tool_calls === false) return [];
-
-		return [
-			{
-				id,
-				pickerEnabled: item.model_picker_enabled === true,
-				policyState: asRecord(item.policy)?.state,
-			},
-		];
-	});
-	const pickerModelIds = accountModels
-		.filter((model) => model.pickerEnabled && model.policyState !== "disabled")
-		.map((model) => model.id);
-	const usePolicyFallback = allowPolicyFallback && pickerModelIds.length === 0;
-	const availableModelIds =
-		pickerModelIds.length > 0 || !allowPolicyFallback
-			? pickerModelIds
-			: accountModels.filter((model) => model.policyState === "enabled").map((model) => model.id);
-	const policyModelIds = accountModels
-		.filter(
-			(model) =>
-				model.policyState === "unconfigured" &&
-				Object.hasOwn(GITHUB_COPILOT_MODELS, model.id) &&
-				(model.pickerEnabled || usePolicyFallback),
-		)
-		.map((model) => model.id);
-	return { availableModelIds, policyModelIds };
-}
-
-async function fetchWithRateLimitRetry(
-	url: string,
-	init: RequestInit,
-	signal: AbortSignal,
-	retryPolicy: { maxRetries: number; maxElapsedMs: number },
-): Promise<Response> {
-	const retryBudgetSignal =
-		retryPolicy.maxRetries > 0 && retryPolicy.maxElapsedMs > 0
-			? AbortSignal.timeout(retryPolicy.maxElapsedMs)
-			: undefined;
-	const requestSignal = retryBudgetSignal ? AbortSignal.any([signal, retryBudgetSignal]) : signal;
-	const retryDeadline = retryBudgetSignal ? Date.now() + retryPolicy.maxElapsedMs : undefined;
-	for (let retry = 0; ; retry++) {
-		const response = await fetch(url, {
-			...init,
-			signal: AbortSignal.any([requestSignal, AbortSignal.timeout(5000)]),
-		});
-		if (response.status !== 429 || retry === retryPolicy.maxRetries) return response;
-
-		const retryAfter = response.headers.get("retry-after");
-		let delayMs = 500 * 2 ** retry;
-		if (retryAfter) {
-			const seconds = Number.parseFloat(retryAfter);
-			delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
-			if (!Number.isFinite(delayMs)) return response;
-		}
-		delayMs = Math.max(0, delayMs);
-		if (retryDeadline !== undefined && delayMs >= retryDeadline - Date.now()) return response;
-		await response.body?.cancel();
-		await sleep(delayMs, requestSignal);
-	}
-}
-
-async function fetchGitHubCopilotModels(
-	copilotToken: string,
-	enterpriseDomain: string | undefined,
-	signal: AbortSignal,
-	retryPolicy: { maxRetries: number; maxElapsedMs: number },
-) {
-	const baseUrl = getGitHubCopilotBaseUrl(copilotToken, enterpriseDomain);
-	// Some Individual accounts return false for every picker flag despite explicit enabled policies.
-	// Limit the fallback to that endpoint so other account types keep strict picker semantics.
-	const allowPolicyFallback = baseUrl === "https://api.individual.githubcopilot.com";
-	const response = await fetchWithRateLimitRetry(
-		`${baseUrl}/models`,
-		{
-			headers: {
-				Accept: "application/json",
-				Authorization: `Bearer ${copilotToken}`,
-				...COPILOT_HEADERS,
-				"X-GitHub-Api-Version": COPILOT_API_VERSION,
-			},
-		},
-		signal,
-		retryPolicy,
-	);
-	if (!response.ok) {
-		throw new Error(`${response.status} ${response.statusText}: ${await response.text()}`);
-	}
-	return parseGitHubCopilotModelCatalog(await response.json(), allowPolicyFallback);
-}
-
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-	const response = await fetch(url, init);
-	if (!response.ok) {
-		const text = await response.text();
-		throw new Error(`${response.status} ${response.statusText}: ${text}`);
-	}
-	return response.json();
-}
 
 async function startDeviceFlow(domain: string, signal: AbortSignal): Promise<DeviceCodeResponse> {
 	const urls = getUrls(domain);
@@ -364,71 +195,6 @@ async function refreshGitHubCopilotToken(
 		...credentials,
 		availableModelIds,
 	};
-}
-
-/**
- * Enable a model for the user's GitHub Copilot account.
- * This is required for some models (like Claude, Grok) before they can be used.
- */
-async function enableGitHubCopilotModel(
-	token: string,
-	modelId: string,
-	enterpriseDomain: string | undefined,
-	signal: AbortSignal,
-): Promise<boolean> {
-	const baseUrl = getGitHubCopilotBaseUrl(token, enterpriseDomain);
-	const url = `${baseUrl}/models/${modelId}/policy`;
-
-	let response: Response;
-	try {
-		response = await fetchWithRateLimitRetry(
-			url,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${token}`,
-					...COPILOT_HEADERS,
-					"openai-intent": "chat-policy",
-					"x-interaction-type": "chat-policy",
-				},
-				body: JSON.stringify({ state: "enabled" }),
-			},
-			signal,
-			{ maxRetries: 2, maxElapsedMs: 5000 },
-		);
-	} catch (error) {
-		if (signal.aborted) throw error;
-		return false;
-	}
-	if (response.status === 429) {
-		throw new Error(`${response.status} ${response.statusText}: ${await response.text()}`);
-	}
-	return response.ok;
-}
-
-/**
- * Enable the requested GitHub Copilot models and return the successful IDs.
- * Policy updates are best effort; exhausted rate limiting stops the batch.
- */
-async function enableGitHubCopilotModels(
-	token: string,
-	modelIds: readonly string[],
-	enterpriseDomain: string | undefined,
-	signal: AbortSignal,
-): Promise<string[]> {
-	const enabledModelIds: string[] = [];
-	for (const modelId of modelIds) {
-		try {
-			if (await enableGitHubCopilotModel(token, modelId, enterpriseDomain, signal)) {
-				enabledModelIds.push(modelId);
-			}
-		} catch (error) {
-			if (signal.aborted) throw error;
-			break;
-		}
-	}
-	return enabledModelIds;
 }
 
 async function loginGitHubCopilot(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {

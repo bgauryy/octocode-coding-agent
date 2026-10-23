@@ -270,7 +270,8 @@ async function setup(
 	});
 	tools.push(browser);
 	let tool:
-		{ execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }> }> } | undefined;
+		| { execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }> }> }
+		| undefined;
 	registerBrowserTool(
 		{
 			registerTool: (definition: typeof tool) => {

@@ -4,8 +4,9 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import type { TreeSelectorComponent } from "../src/modes/interactive/components/tree-selector.ts";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { showTreeSelector } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 import { assistantMsg, userMsg } from "./utilities.ts";
 
 const busyMessage = "Wait for the current compaction or tree navigation to finish before navigating the session tree.";
@@ -52,8 +53,7 @@ function createTreeUI() {
 		showError: vi.fn(),
 		flushCompactionQueue: vi.fn(async () => {}),
 	};
-	const showTreeSelector = Reflect.get(InteractiveMode.prototype, "showTreeSelector") as (this: typeof ui) => void;
-	showTreeSelector.call(ui);
+	showTreeSelector(createFakeHost(ui));
 
 	return {
 		ui,

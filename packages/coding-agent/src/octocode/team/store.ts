@@ -1,31 +1,70 @@
-import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { type AgentDb, dbStamp, openAgentDb, sharedAgentDb } from "../agentdb/db.ts";
 import { num, type Row } from "../agentdb/rows.ts";
-import { agentDbPath, canonicalPath, repoKey } from "../shared/home.ts";
+import { agentDbPath } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
-import { HOUR_MS, optionalString } from "../shared/util.ts";
+import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
-import { ancestorKeys, leaseKey, overlappingRequests } from "./lease-key.ts";
+import type { DeadLetter, Lease, LeaseRequest, Member, Message, SendOptions, Traffic } from "./model.ts";
 import {
-	type DeadLetter,
-	type Lease,
-	type LeaseRequest,
-	type Member,
-	type Message,
-	type SendOptions,
-	type Traffic,
-	toAsk,
-	toLease,
-	toMember,
-	toMessage,
-	toTraffic,
-	WAKE,
-} from "./model.ts";
+	BUSY_MS,
+	INBOX_BATCH_SIZE,
+	isBusy,
+	LEASE_MS,
+	MESSAGE_RETENTION_MS,
+	PRUNE_INTERVAL_MS,
+	QUICK_BUSY_MS,
+} from "./store/limits.ts";
+import {
+	claimMember,
+	insertMember,
+	listMembers,
+	type ProcessIdentity,
+	processOf,
+	reachableMembers,
+	reapMember,
+	refreshMember,
+	resumeMembers,
+	retireOwned,
+} from "./store/member-rows.ts";
+import {
+	asks,
+	deadLetters,
+	insertMessage,
+	markDelivered,
+	markNotified,
+	pending,
+	pendingUrgent,
+	pruneMessages,
+	recent,
+	replyTarget,
+	type SignProof,
+	waiting,
+	waitingThrough,
+} from "./store/message-rows.ts";
+import {
+	conflictingLease,
+	liveLeases,
+	refuseOverlap,
+	releaseLeases,
+	resumeLeases,
+	writeLeases,
+} from "./store/lease-rows.ts";
+import { pathKey, teamWorkspace } from "./store/workspace.ts";
 
-/** Makes the `proof` of message `id` for `recipient` (see `userProof`); undefined for a recipient the caller cannot sign for. */
-type SignProof = (id: number, recipient: string) => string | undefined;
+export {
+	AGENT_COLLABORATE_ENV,
+	AGENT_GOAL_ENV,
+	AGENT_ID_ENV,
+	AGENT_ROLE_ENV,
+	AGENT_SCRATCH_ENV,
+	PARENT_ID_ENV,
+	PARENT_PID_ENV,
+	TEAM_WORKSPACE_ENV,
+} from "./store/env.ts";
+export { INBOX_BATCH_SIZE, LEASE_MS } from "./store/limits.ts";
+export { pathKey, teamWorkspace } from "./store/workspace.ts";
 
 /**
  * The team tables of the agent database: who works in this repository, what they say to each other, and which files
@@ -38,68 +77,6 @@ type SignProof = (id: number, recipient: string) => string | undefined;
  *               (1), or also stop a busy one's current step (2, an interrupt)
  *   leases      cooperative file/tree reservations that expire unless the owner keeps renewing them
  */
-
-export const AGENT_ID_ENV = "OCTOCODE_AGENT_ID";
-export const PARENT_ID_ENV = "OCTOCODE_PARENT_ID";
-/** Set in a subagent: its parent Octocode's pid. The child leaves and shuts down when that process is gone (a crashed parent). */
-export const PARENT_PID_ENV = "OCTOCODE_PARENT_PID";
-/** Set in a subagent: the role it was started with (its profile), shown next to its name. */
-export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
-/** Set in a subagent: its goal, at most five words (`identity.ts`). Stored in the `task` column. */
-export const AGENT_GOAL_ENV = "OCTOCODE_AGENT_GOAL";
-/** Set in a subagent started with `collaborate`: it works with its sibling subagents, not only for its parent. */
-export const AGENT_COLLABORATE_ENV = "OCTOCODE_AGENT_COLLABORATE";
-/** A subagent's own handoff folder (`<workspace>/.octocode/tmp/agents/<id>`): long results go there as files, not into its report. */
-export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
-/** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
-export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
-
-/** An agent that has not refreshed its row for this long is hidden from `list` (a stalled process: suspended, or on a machine that slept). Only its process ending, or it leaving, drops the row and its mail. */
-const STALE_MS = 60_000;
-/** Leases live this long past the owner's last heartbeat, so a crashed owner frees its files quickly. */
-export const LEASE_MS = 90_000;
-const MESSAGE_RETENTION_MS = 24 * HOUR_MS;
-export const INBOX_BATCH_SIZE = 32;
-const PRUNE_INTERVAL_MS = 60_000;
-
-/** A member has not heartbeat for `STALE_MS`: its process may only be stalled, so it is hidden but keeps its mail and row. */
-const stale = (seenAt: number, now: number): boolean => now - seenAt > STALE_MS;
-
-/** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
-interface ProcessIdentity {
-	pid: number;
-	started?: string | undefined;
-}
-
-const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
-	a.pid === b.pid && (a.started ?? null) === (b.started ?? null);
-
-/**
- * The team workspace for `cwd`: one team per repository (`repoKey(cwd).root`, symlinks resolved), unless
- * `TEAM_WORKSPACE_ENV` names it (a subagent in an isolated worktree joins its parent's team).
- */
-export function teamWorkspace(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-	const override = env[TEAM_WORKSPACE_ENV];
-	if (override && path.isAbsolute(override)) return canonicalPath(override);
-	return repoKey(cwd).root;
-}
-
-/**
- * Canonical comparison key of `file` below `workspace`: its components folded as `lease-key.ts` says (the rules the
- * agents-communication package shares), so `Src/A.ts` and `src/a.ts` collide on every platform.
- */
-export function pathKey(workspace: string, file: string): string {
-	const relative = path.relative(workspace, canonicalPath(path.resolve(workspace, file)));
-	return leaseKey(relative.split(path.sep));
-}
-
-/** SQLite's "database is locked" (`SQLITE_BUSY`, extended codes included). */
-const isBusy = (error: unknown): boolean => (Number((error as { errcode?: unknown }).errcode) & 0xff) === 5;
-
-/** Busy wait for a background write (heartbeat, delivery): a locked database is retried on the next tick instead. */
-const QUICK_BUSY_MS = 100;
-/** Busy wait for a write an agent asked for (a lock, a message). */
-const BUSY_MS = 5_000;
 
 export class TeamStore {
 	private readonly db: DatabaseSync;
@@ -184,14 +161,7 @@ export class TeamStore {
 
 	private prune(now = Date.now()): void {
 		if (now - this.prunedAt < PRUNE_INTERVAL_MS) return;
-		this.db
-			.prepare(
-				`DELETE FROM messages WHERE created_at < ? AND NOT EXISTS (
-      SELECT 1 FROM deliveries d WHERE d.message = messages.id AND d.completed_at IS NULL
-        AND (d.dead_at IS NULL OR d.notified_at IS NULL)
-    )`,
-			)
-			.run(now - MESSAGE_RETENTION_MS);
+		pruneMessages(this.db, now - MESSAGE_RETENTION_MS);
 		this.db.prepare("DELETE FROM leases WHERE expires_at < ?").run(now);
 		this.edits.prune(now);
 		this.sweep(now);
@@ -207,64 +177,7 @@ export class TeamStore {
 	 */
 	save(member: Member): boolean {
 		this.prune(member.updatedAt);
-		return this.refresh(member) || this.insert(member);
-	}
-
-	/** The heartbeat's `UPDATE`: matches the row only while it still names this process. */
-	private refresh(member: Member): boolean {
-		const { changes } = this.db
-			.prepare(
-				`UPDATE agents SET status = ?, task = ?, activity = ?, model = ?, seen_at = ?, tool_calls = ?, input = ?, cache_read = ?, output = ?, cost = ?, unpriced = ?
-         WHERE id = ? AND pid = ? AND started IS ?`,
-			)
-			.run(
-				member.status,
-				member.goal ?? null,
-				member.activity ?? null,
-				member.model ?? null,
-				member.updatedAt,
-				member.toolCalls,
-				member.input,
-				member.cacheRead,
-				member.output,
-				member.cost,
-				member.unpriced ? 1 : 0,
-				member.id,
-				member.pid,
-				member.started ?? null,
-			);
-		return changes > 0;
-	}
-
-	/** Adds the row unless the id is taken (`ON CONFLICT DO NOTHING`, so a name held by another process is never overwritten); whether it was added. */
-	private insert(member: Member): boolean {
-		const row = this.db
-			.prepare(
-				`INSERT INTO agents (id, workspace, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, output, cost, unpriced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO NOTHING RETURNING id`,
-			)
-			.get(
-				member.id,
-				this.workspace,
-				member.role,
-				member.parentId ?? null,
-				member.pid,
-				member.started ?? null,
-				member.status,
-				member.goal ?? null,
-				member.activity ?? null,
-				member.model ?? null,
-				member.joinedAt,
-				member.updatedAt,
-				member.toolCalls,
-				member.input,
-				member.cacheRead,
-				member.output,
-				member.cost,
-				member.unpriced ? 1 : 0,
-			);
-		return row !== undefined;
+		return refreshMember(this.db, member) || insertMember(this.db, this.workspace, member);
 	}
 
 	/**
@@ -273,13 +186,7 @@ export class TeamStore {
 	 * retired first (its unread mail becomes dead letters) and the name is taken over.
 	 */
 	join(member: Member): boolean {
-		return this.transaction(() => {
-			if (this.insert(member) || this.refresh(member)) return true;
-			const holder = this.processOf(member.id);
-			if (holder && sameProcess(holder.pid, holder.started)) return false;
-			this.retire(member.id, Date.now());
-			return this.insert(member);
-		});
+		return this.transaction(() => claimMember(this.db, this.workspace, member));
 	}
 
 	/**
@@ -287,29 +194,7 @@ export class TeamStore {
 	 * `owner` (a process leaving its own row) nothing is removed when the row now names another process.
 	 */
 	remove(id: string, now = Date.now(), owner?: ProcessIdentity): boolean {
-		return this.transaction(() => {
-			if (owner) {
-				const row = this.processOf(id);
-				if (row && !sameIdentity(row, owner)) return false;
-			}
-			this.retire(id, now);
-			return true;
-		});
-	}
-
-	/** The process the row of `id` names; undefined when it has no row. */
-	private processOf(id: string): ProcessIdentity | undefined {
-		const row = this.db.prepare("SELECT pid, started FROM agents WHERE id = ?").get(id) as Row | undefined;
-		return row ? { pid: num(row.pid), started: optionalString(row.started) } : undefined;
-	}
-
-	/** Deletes the row, releases the leases and dead-letters the unread mail of `id`; the one place a member is dropped. */
-	private retire(id: string, now: number): void {
-		this.db.prepare("DELETE FROM agents WHERE id = ?").run(id);
-		this.db.prepare("DELETE FROM leases WHERE owner = ?").run(id);
-		this.db
-			.prepare("UPDATE deliveries SET dead_at = ? WHERE recipient = ? AND delivered_at IS NULL AND dead_at IS NULL")
-			.run(now, id);
+		return this.transaction(() => retireOwned(this.db, id, now, owner));
 	}
 
 	/**
@@ -328,12 +213,7 @@ export class TeamStore {
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */
 	private reap(id: string, judged: ProcessIdentity | undefined, now: number): boolean {
-		return this.transaction(() => {
-			const row = this.processOf(id);
-			if (row && (judged === undefined || !sameIdentity(row, judged))) return false;
-			this.retire(id, now);
-			return true;
-		});
+		return this.transaction(() => reapMember(this.db, id, judged, now));
 	}
 
 	/**
@@ -344,12 +224,8 @@ export class TeamStore {
 	 */
 	resume(since: number, now = Date.now()): void {
 		this.transaction(() => {
-			this.db
-				.prepare("UPDATE agents SET seen_at = MAX(seen_at, ?) WHERE workspace = ? AND seen_at >= ?")
-				.run(now, this.workspace, since - STALE_MS);
-			this.db
-				.prepare("UPDATE leases SET expires_at = MAX(expires_at, ?) WHERE workspace = ? AND expires_at > ?")
-				.run(now + LEASE_MS, this.workspace, since);
+			resumeMembers(this.db, this.workspace, since, now);
+			resumeLeases(this.db, this.workspace, since, now);
 		});
 	}
 
@@ -363,34 +239,12 @@ export class TeamStore {
 	 * for `STALE_MS`) or one whose process is gone is left out; nothing is removed here, `sweep` and `remove` do that.
 	 */
 	list(now = Date.now()): Member[] {
-		const rows = this.db
-			.prepare(
-				`SELECT a.*, (SELECT count(*) FROM deliveries d JOIN messages m ON m.id = d.message
-                      WHERE d.recipient = a.id AND d.delivered_at IS NOT NULL AND d.completed_at IS NULL AND m.reply_required = 1) AS pending
-         FROM agents a WHERE a.workspace = ? ORDER BY a.joined_at, a.id`,
-			)
-			.all(this.workspace) as Row[];
-		const live = rows
-			.map(toMember)
-			.filter((member) => !stale(member.updatedAt, now) && sameProcess(member.pid, member.started, now));
-		const held = this.leases(now);
-		return live.map((member) => {
-			const locks = held
-				.filter((lease) => lease.owner === member.id)
-				.map((lease) => (lease.kind === "tree" ? `${lease.path}/` : lease.path));
-			return locks.length > 0 ? { ...member, locks } : member;
-		});
+		return listMembers(this.db, this.workspace, now, () => this.leases(now));
 	}
 
 	/** Ids of this workspace's agents that can still read mail: every one whose process runs, stale (stalled) ones included. */
 	private reachable(): Set<string> {
-		const rows = this.db
-			.prepare("SELECT id, pid, started FROM agents WHERE workspace = ?")
-			.all(this.workspace) as Row[];
-		const now = Date.now();
-		return new Set(
-			rows.filter((row) => sameProcess(num(row.pid), optionalString(row.started), now)).map((row) => String(row.id)),
-		);
+		return reachableMembers(this.db, this.workspace);
 	}
 
 	// ── messages ──────────────────────────────────────────────────────────────
@@ -410,54 +264,15 @@ export class TeamStore {
 		options: SendOptions & { replyRequired: boolean; wake?: boolean; sign?: SignProof },
 		now = Date.now(),
 	): { id: number | undefined; departed: string[] } {
-		return this.transaction(() => {
-			// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
-			const live = this.reachable();
-			const departed = to.filter((recipient) => !live.has(recipient));
-			const recipients = to.filter((recipient) => live.has(recipient));
-			if (recipients.length === 0) return { id: undefined, departed };
-			// The asker is woken by the answer to its own open question, never by a reply to an FYI or a thank-you.
-			let asker: string | undefined;
-			let completesReply = false;
-			if (options.replyTo !== undefined) {
-				const question = this.replyTarget(options.replyTo);
-				const open = this.db
-					.prepare("SELECT 1 FROM deliveries WHERE message = ? AND recipient = ? AND completed_at IS NULL")
-					.get(options.replyTo, from);
-				if (question?.replyRequired && open !== undefined) asker = question.from;
-				completesReply = question !== undefined && recipients.includes(question.from);
-			}
-			const { lastInsertRowid } = this.db
-				.prepare(
-					"INSERT INTO messages (workspace, sender, body, reply_required, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-				)
-				.run(this.workspace, from, body, options.replyRequired ? 1 : 0, options.replyTo ?? null, now);
-			const id = Number(lastInsertRowid);
-			const insert = this.db.prepare("INSERT INTO deliveries (message, recipient, wake, proof) VALUES (?, ?, ?, ?)");
-			for (const recipient of recipients) {
-				const wake = options.interrupt
-					? WAKE.interrupt
-					: options.wake || options.replyRequired || recipient === asker
-						? WAKE.wake
-						: WAKE.none;
-				insert.run(id, recipient, wake, options.sign?.(id, recipient) ?? null);
-			}
-			if (options.replyTo !== undefined && completesReply)
-				this.db
-					.prepare(
-						"UPDATE deliveries SET completed_at = ? WHERE message = ? AND recipient = ? AND completed_at IS NULL",
-					)
-					.run(now, options.replyTo, from);
-			return { id, departed };
-		});
+		// Read in the same IMMEDIATE transaction as the insert: no recipient can leave in between.
+		return this.transaction(() =>
+			insertMessage(this.db, this.workspace, this.reachable(), from, to, body, options, now),
+		);
 	}
 
 	/** The sender of message `id` in this workspace and whether it asked for a reply; undefined when there is no such message. */
 	replyTarget(id: number): { from: string; replyRequired: boolean } | undefined {
-		const row = this.db
-			.prepare("SELECT sender, reply_required FROM messages WHERE id = ? AND workspace = ?")
-			.get(id, this.workspace) as Row | undefined;
-		return row ? { from: String(row.sender), replyRequired: row.reply_required === 1 } : undefined;
+		return replyTarget(this.db, this.workspace, id);
 	}
 
 	/**
@@ -465,105 +280,44 @@ export class TeamStore {
 	 * parent's first reply to it (a message with `replyTo` that id). Read from the existing tables: nothing is stored for it.
 	 */
 	asks(child: string, parent: string, since: number): Ask[] {
-		const rows = this.db
-			.prepare(
-				`SELECT m.id, m.body, m.created_at, r.id AS reply_id, r.created_at AS reply_at, r.sender AS reply_by
-         FROM messages m JOIN deliveries d ON d.message = m.id AND d.recipient = ?
-         LEFT JOIN messages r ON r.id = (
-           SELECT min(reply.id) FROM messages reply
-           JOIN deliveries receipt ON receipt.message = reply.id AND receipt.recipient = m.sender
-           WHERE reply.reply_to = m.id AND reply.sender = d.recipient)
-         WHERE m.workspace = ? AND m.sender = ? AND m.reply_required = 1 AND m.created_at >= ? ORDER BY m.id`,
-			)
-			.all(parent, this.workspace, child, since) as Row[];
-		return rows.map(toAsk);
+		return asks(this.db, this.workspace, child, parent, since);
 	}
 
 	/** Messages `sender` sent whose recipients left before reading them, not yet reported to it (oldest first). */
 	deadLetters(sender: string, limit = INBOX_BATCH_SIZE): DeadLetter[] {
-		const rows = this.db
-			.prepare(
-				`SELECT m.id, m.body, d.recipient FROM deliveries d JOIN messages m ON m.id = d.message
-         WHERE m.workspace = ? AND m.sender = ? AND d.dead_at IS NOT NULL AND d.notified_at IS NULL ORDER BY m.id, d.recipient LIMIT ?`,
-			)
-			.all(this.workspace, sender, limit) as Row[];
-		const letters = new Map<number, DeadLetter>();
-		for (const row of rows) {
-			const id = num(row.id);
-			const letter = letters.get(id) ?? { id, recipients: [], text: String(row.body) };
-			letter.recipients.push(String(row.recipient));
-			letters.set(id, letter);
-		}
-		return [...letters.values()];
+		return deadLetters(this.db, this.workspace, sender, limit);
 	}
 
 	/** Records that the sender was told these dead letters went unread. */
 	markNotified(letters: DeadLetter[], now = Date.now()): void {
 		if (letters.length === 0) return;
-		this.transaction(() => {
-			const mark = this.db.prepare(
-				"UPDATE deliveries SET notified_at = ? WHERE message = ? AND recipient = ? AND dead_at IS NOT NULL",
-			);
-			for (const letter of letters) for (const recipient of letter.recipients) mark.run(now, letter.id, recipient);
-		});
+		this.transaction(() => markNotified(this.db, letters, now));
 	}
 
 	/** How many messages newer than `after` wait undelivered for `id` (the inbox index alone): the inbox reads them only when this is non-zero. */
 	waiting(id: string, after = 0): number {
-		return num(
-			(
-				this.db
-					.prepare(
-						"SELECT COUNT(*) AS n FROM deliveries WHERE recipient = ? AND message > ? AND delivered_at IS NULL AND dead_at IS NULL",
-					)
-					.get(id, after) as Row
-			).n,
-		);
+		return waiting(this.db, this.workspace, id, after);
 	}
 
 	/** The ids of the messages up to `through` that still wait undelivered for `id`: the inbox handed those over, or its mark ran ahead of this database. */
 	waitingThrough(id: string, through: number): number[] {
-		const rows = this.db
-			.prepare(
-				"SELECT message FROM deliveries WHERE recipient = ? AND message <= ? AND delivered_at IS NULL AND dead_at IS NULL",
-			)
-			.all(id, through) as Row[];
-		return rows.map((row) => num(row.message));
+		return waitingThrough(this.db, this.workspace, id, through);
 	}
 
 	/** One bounded batch of messages newer than `after` waiting for `id`, oldest first. `ack` marks the ones the model saw. */
 	pending(id: string, after = 0): Message[] {
-		const rows = this.db
-			.prepare(
-				`SELECT m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, s.role AS sender_role, s.task AS sender_goal
-         FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
-         WHERE d.recipient = ? AND d.message > ? AND d.delivered_at IS NULL AND d.dead_at IS NULL ORDER BY m.id LIMIT ?`,
-			)
-			.all(id, after, INBOX_BATCH_SIZE) as Row[];
-		return rows.map((row) => toMessage(row, id));
+		return pending(this.db, this.workspace, id, after);
 	}
 
 	/** One control message can pass an unseen ordinary batch: interrupts always, waking requests while idle. */
 	pendingUrgent(id: string, after: number, idle: boolean): Message | undefined {
-		const row = this.db
-			.prepare(
-				`SELECT m.id, m.sender, m.body, m.created_at, m.reply_required, m.reply_to, d.wake, d.proof, s.role AS sender_role, s.task AS sender_goal
-         FROM deliveries d JOIN messages m ON m.id = d.message LEFT JOIN agents s ON s.id = m.sender
-         WHERE d.recipient = ? AND d.message > ? AND d.delivered_at IS NULL AND d.dead_at IS NULL AND d.wake >= ? ORDER BY m.id LIMIT 1`,
-			)
-			.get(id, after, idle ? WAKE.wake : WAKE.interrupt) as Row | undefined;
-		return row ? toMessage(row, id) : undefined;
+		return pendingUrgent(this.db, this.workspace, id, after, idle);
 	}
 
 	/** Mark messages delivered to `id` (FYI messages are complete on delivery). One reader per recipient, so no lease. */
 	ack(id: string, messageIds: number[], now = Date.now()): void {
 		if (messageIds.length === 0) return;
-		this.transaction(() => {
-			const mark = this.db.prepare(
-				"UPDATE deliveries SET delivered_at = ?, completed_at = CASE WHEN (SELECT reply_required FROM messages WHERE id = ?) = 1 THEN completed_at ELSE COALESCE(completed_at, ?) END WHERE message = ? AND recipient = ? AND delivered_at IS NULL",
-			);
-			for (const message of messageIds) mark.run(now, message, now, message, id);
-		});
+		this.transaction(() => markDelivered(this.db, id, messageIds, now));
 	}
 
 	/**
@@ -571,49 +325,23 @@ export class TeamStore {
 	 * session in the repository, so the default fetches enough rows for a panel to filter its own and still show a few.
 	 */
 	recent(limit = 30, now = Date.now(), windowMs = 10 * 60_000): Traffic[] {
-		const rows = this.db
-			.prepare("SELECT * FROM messages WHERE workspace = ? AND created_at > ? ORDER BY id DESC LIMIT ?")
-			.all(this.workspace, now - windowMs, limit) as Row[];
-		const deliveries = this.db.prepare(
-			"SELECT recipient, delivered_at, completed_at, dead_at FROM deliveries WHERE message = ? ORDER BY recipient",
-		);
-		return rows.map((row) => toTraffic(row, deliveries.all(num(row.id)) as Row[]));
+		return recent(this.db, this.workspace, limit, now, windowMs);
 	}
 
 	// ── leases ────────────────────────────────────────────────────────────────
 
 	leases(now = Date.now()): Lease[] {
-		return (
-			this.db
-				.prepare("SELECT * FROM leases WHERE workspace = ? AND expires_at > ? ORDER BY id")
-				.all(this.workspace, now) as Row[]
-		).map(toLease);
+		return liveLeases(this.db, this.workspace, now);
 	}
 
 	/** A live lease held by someone other than `self` that covers `file` (or, for a tree request, lies under it). */
 	conflict(file: string, self: string, kind: "file" | "tree" = "file", now = Date.now()): Lease | undefined {
-		const key = pathKey(this.workspace, file);
-		const ancestors = ancestorKeys(key);
-		const marks = ancestors.map(() => "?").join(",");
-		// Same key, a tree above it, or (for a tree request) anything below it. Component boundaries, not string prefixes.
-		const query = this.db.prepare(
-			`SELECT * FROM leases WHERE workspace = ? AND owner <> ? AND expires_at > ? AND
-         (path_key = ? OR (kind = 'tree' AND path_key IN (${marks})) OR (? = 'tree' AND path_key > ? AND path_key < ?)) ORDER BY id LIMIT 1`,
-		);
-		for (;;) {
-			const row = query.get(this.workspace, self, now, key, ...ancestors, kind, `${key}/`, `${key}0`) as
-				Row | undefined;
-			if (!row) return undefined;
-			const lease = toLease(row);
-			// A crashed owner (killed, never left) frees its files now rather than when the lease runs out; a stalled one
-			// (alive, silent) keeps them until they lapse, since its process may resume.
-			if (!this.retireOwner(lease.owner, now)) return lease;
-		}
+		return conflictingLease(this.db, this.workspace, file, self, kind, now, (owner, at) => this.retireOwner(owner, at));
 	}
 
 	/** Retires a lease owner that is gone (it has no row, or its process died or was replaced); whether it was. */
 	private retireOwner(owner: string, now: number): boolean {
-		const judged = this.processOf(owner);
+		const judged = processOf(this.db, owner);
 		if (judged && sameProcess(judged.pid, judged.started, now)) return false;
 		return this.reap(owner, judged, now);
 	}
@@ -629,16 +357,7 @@ export class TeamStore {
 		now = Date.now(),
 	): { ok: true; leases: Lease[] } | { ok: false; conflicts: Array<{ path: string; heldBy: Lease }> } {
 		if (requests.length === 0) throw new Error("Give at least one path.");
-		const overlap = overlappingRequests(
-			requests.map((request) => ({ ...request, key: pathKey(this.workspace, request.path) })),
-		);
-		if (overlap) {
-			const shown = (request: LeaseRequest) =>
-				path.relative(this.workspace, canonicalPath(path.resolve(this.workspace, request.path))) || ".";
-			throw new Error(
-				`Requested paths overlap: ${shown(overlap[0])} and ${shown(overlap[1])}. Nothing was locked; reserve the tree alone, or each path once.`,
-			);
-		}
+		refuseOverlap(this.workspace, requests);
 		return this.transaction(() => {
 			this.prune(now);
 			const conflicts = requests.flatMap((request) => {
@@ -646,21 +365,7 @@ export class TeamStore {
 				return heldBy ? [{ path: request.path, heldBy }] : [];
 			});
 			if (conflicts.length > 0) return { ok: false as const, conflicts };
-			const find = this.db.prepare(
-				"SELECT id FROM leases WHERE workspace = ? AND owner = ? AND path_key = ? AND kind = ? AND expires_at > ?",
-			);
-			const insert = this.db.prepare(
-				"INSERT INTO leases (workspace, path, path_key, kind, owner, reason, acquired_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			);
-			const touch = this.db.prepare("UPDATE leases SET reason = ?, expires_at = ? WHERE id = ?");
-			for (const request of requests) {
-				const relative =
-					path.relative(this.workspace, canonicalPath(path.resolve(this.workspace, request.path))) || ".";
-				const key = pathKey(this.workspace, request.path);
-				const existing = find.get(this.workspace, owner, key, request.kind, now) as Row | undefined;
-				if (existing) touch.run(request.reason, now + LEASE_MS, num(existing.id));
-				else insert.run(this.workspace, relative, key, request.kind, owner, request.reason, now, now + LEASE_MS);
-			}
+			writeLeases(this.db, this.workspace, owner, requests, now);
 			return { ok: true as const, leases: this.leases(now).filter((lease) => lease.owner === owner) };
 		});
 	}
@@ -689,12 +394,6 @@ export class TeamStore {
 
 	/** Release the owner's reservations for the given paths, or all of them; returns how many were released. */
 	unlock(owner: string, paths?: string[]): number {
-		if (!paths || paths.length === 0)
-			return Number(this.db.prepare("DELETE FROM leases WHERE owner = ?").run(owner).changes);
-		const remove = this.db.prepare("DELETE FROM leases WHERE workspace = ? AND owner = ? AND path_key = ?");
-		return paths.reduce(
-			(count, file) => count + Number(remove.run(this.workspace, owner, pathKey(this.workspace, file)).changes),
-			0,
-		);
+		return releaseLeases(this.db, this.workspace, owner, paths);
 	}
 }

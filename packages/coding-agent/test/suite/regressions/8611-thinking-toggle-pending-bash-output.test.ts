@@ -1,18 +1,13 @@
 import { Container, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import {
+	toggleThinkingBlockVisibility,
+	updateThinkingBlockVisibility,
+} from "../../../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
-
-type UpdateThinkingBlockVisibility = (this: { chatContainer: Container; ui: TUI }) => void;
-
-type ToggleThinkingBlockVisibility = (this: {
-	hideThinkingBlock: boolean;
-	settingsManager: { setHideThinkingBlock(hidden: boolean): void };
-	updateThinkingBlockVisibility(): void;
-	showStatus(message: string): void;
-}) => void;
+import { createFakeHost } from "../../interactive-mode-host.ts";
 
 function renderChat(container: Container): string {
 	return stripAnsi(container.render(120).join("\n"));
@@ -39,27 +34,19 @@ describe("thinking visibility while a bash tool is running (#8611)", () => {
 		component.updateResult({ content: [{ type: "text", text: "first" }], isError: false }, true);
 		chatContainer.addChild(component);
 
-		const updateThinkingBlockVisibility = Reflect.get(
-			InteractiveMode.prototype,
-			"updateThinkingBlockVisibility",
-		) as UpdateThinkingBlockVisibility;
-		const toggleThinkingBlockVisibility = Reflect.get(
-			InteractiveMode.prototype,
-			"toggleThinkingBlockVisibility",
-		) as ToggleThinkingBlockVisibility;
 		const fakeThis = {
 			hideThinkingBlock: false,
 			settingsManager: { setHideThinkingBlock: vi.fn() },
 			chatContainer,
 			ui,
 			updateThinkingBlockVisibility() {
-				updateThinkingBlockVisibility.call(this);
+				updateThinkingBlockVisibility(createFakeHost(fakeThis));
 			},
 			showStatus: vi.fn(),
 		};
 
 		expect(renderChat(chatContainer)).toContain("first");
-		toggleThinkingBlockVisibility.call(fakeThis);
+		toggleThinkingBlockVisibility(createFakeHost(fakeThis));
 
 		expect(fakeThis.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
 		expect(chatContainer.children).toContain(component);

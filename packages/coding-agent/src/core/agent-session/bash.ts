@@ -1,0 +1,116 @@
+/** User bash commands run by the session (`!` and `!!`), recorded in session history. */
+
+import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
+import type { BashExecutionMessage } from "../messages.ts";
+import { type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
+import type { SessionInternals } from "./host.ts";
+
+export interface BashHost extends Pick<SessionInternals, "session" | "emit" | "refreshContext"> {
+	/** The session's `recordBashResult()`, which callers may observe. */
+	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void;
+}
+
+export class SessionBash {
+	private readonly _abortControllers = new Set<AbortController>();
+	private _pendingMessages: BashExecutionMessage[] = [];
+
+	private readonly host: BashHost;
+
+	constructor(host: BashHost) {
+		this.host = host;
+	}
+
+	async execute(
+		command: string,
+		onChunk?: (chunk: string) => void,
+		options?: {
+			excludeFromContext?: boolean;
+			id?: string;
+			operations?: BashOperations;
+		},
+	): Promise<BashResult> {
+		const { session } = this.host;
+		const abortController = new AbortController();
+		this._abortControllers.add(abortController);
+
+		// Apply command prefix if configured (e.g., "shopt -s expand_aliases" for alias support)
+		const prefix = session.settingsManager.getShellCommandPrefix();
+		const shellPath = session.settingsManager.getShellPath();
+		const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
+
+		try {
+			const result = await executeBashWithOperations(
+				resolvedCommand,
+				session.sessionManager.getCwd(),
+				options?.operations ?? createLocalBashOperations({ shellPath }),
+				{
+					onChunk: (delta) => {
+						onChunk?.(delta);
+						this.host.emit({
+							type: "bash_execution_update",
+							id: options?.id,
+							delta,
+						});
+					},
+					signal: abortController.signal,
+				},
+			);
+
+			this.host.recordBashResult(command, result, options);
+			return result;
+		} finally {
+			this._abortControllers.delete(abortController);
+		}
+	}
+
+	record(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
+		const bashMessage: BashExecutionMessage = {
+			role: "bashExecution",
+			command,
+			output: result.output,
+			exitCode: result.exitCode,
+			cancelled: result.cancelled,
+			truncated: result.truncated,
+			fullOutputPath: result.fullOutputPath,
+			timestamp: Date.now(),
+			excludeFromContext: options?.excludeFromContext,
+		};
+
+		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
+		if (this.host.session.isStreaming) {
+			// Queue for later - will be flushed on agent_end
+			this._pendingMessages.push(bashMessage);
+		} else {
+			this.host.session.sessionManager.appendMessage(bashMessage);
+			this.host.refreshContext();
+		}
+	}
+
+	abort(): void {
+		for (const abortController of this._abortControllers) {
+			abortController.abort();
+		}
+	}
+
+	get isRunning(): boolean {
+		return this._abortControllers.size > 0;
+	}
+
+	get hasPendingMessages(): boolean {
+		return this._pendingMessages.length > 0;
+	}
+
+	/**
+	 * Flush pending bash messages to agent state and session.
+	 * Called after agent turn completes to maintain proper message ordering.
+	 */
+	flushPending(): void {
+		if (this._pendingMessages.length === 0) return;
+
+		for (const bashMessage of this._pendingMessages) {
+			this.host.session.sessionManager.appendMessage(bashMessage);
+		}
+		this._pendingMessages = [];
+		this.host.refreshContext();
+	}
+}

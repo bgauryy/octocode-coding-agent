@@ -9,6 +9,8 @@ export default mergeConfig(
 			include: ["test/octocode/**/*.test.ts"],
 			exclude: ["test/octocode/e2e*.test.ts", "test/octocode/*-chrome.test.ts"],
 			setupFiles: ["test/octocode/setup-env.ts"],
+			// Names the cause up front when the sibling Octocode MCP build cannot start; outcomes are unchanged.
+			globalSetup: ["test/octocode/mcp-preflight.global.ts"],
 			testTimeout: 30000,
 			hookTimeout: 30000,
 			maxWorkers: 4,

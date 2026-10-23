@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import { shutdown } from "../../../src/modes/interactive/interactive-mode/lifecycle.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 
 // `proper-lockfile` installs `signal-exit`, whose signal listener re-sends
 // SIGTERM/SIGHUP when it observes no other process listeners during the same
@@ -14,12 +15,6 @@ type ShutdownThis = {
 	themeController: { disableAutoSync: () => void };
 	stop: () => void;
 };
-
-type InteractiveModePrototypeWithShutdown = {
-	shutdown(this: ShutdownThis, options?: { fromSignal?: boolean }): Promise<void>;
-};
-
-const interactiveModePrototype = InteractiveMode.prototype as unknown;
 
 class ProcessExitError extends Error {}
 
@@ -36,7 +31,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 async function callShutdown(context: ShutdownThis, options?: { fromSignal?: boolean }): Promise<void> {
 	try {
-		await (interactiveModePrototype as InteractiveModePrototypeWithShutdown).shutdown.call(context, options);
+		await shutdown(createFakeHost(context), options);
 	} catch (error) {
 		if (!(error instanceof ProcessExitError)) throw error;
 	}

@@ -9,7 +9,7 @@ Coding-agent falls back to command-line tools when native reads are unavailable.
 Install a C compiler and XCB development headers, then run from the repository root on each supported Linux architecture:
 
 ```sh
-npm --prefix packages/tui run build:native:linux
+yarn workspace @octocodeai/octocode-tui run build:native:linux
 ```
 
 ## Testing

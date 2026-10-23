@@ -11,111 +11,31 @@ import {
 	toError,
 } from "../protocol/jsonrpc.ts";
 import {
+	contentType,
+	describeHttpFailure,
+	discard,
+	isRetryable,
+	MAX_ERROR_BODY_BYTES,
+	McpAuthRequiredError,
+	McpHttpError,
+	McpSessionExpiredError,
+	needsAuthorization,
+	readText,
+} from "./streamable-http/http.ts";
+import { consumeSseStream, type StreamCursor } from "./streamable-http/sse.ts";
+import {
 	DEFAULT_MAX_MESSAGE_BYTES,
 	type McpTransport,
 	type McpTransportSendOptions,
 	TransportEvents,
 } from "./transport.ts";
 
-const MAX_ERROR_BODY_BYTES = 8 * 1024;
-const ERROR_MESSAGE_BODY_CHARS = 500;
+export { McpAuthRequiredError, McpHttpError, McpSessionExpiredError } from "./streamable-http/http.ts";
+export { type ConsumeSseOptions, consumeSseStream, type SseEvent } from "./streamable-http/sse.ts";
+
 const DEFAULT_RECONNECT_INITIAL_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const DEFAULT_RECONNECT_MAX_RETRIES = 5;
-
-export interface SseEvent {
-	event?: string;
-	data: string;
-	id?: string;
-}
-
-export interface ConsumeSseOptions {
-	maxEventBytes?: number;
-	onEvent(event: SseEvent): void;
-	/** Called for every `id` field, including events without data (for example resumption priming events). */
-	onId?(id: string): void;
-	/** Called for every valid `retry` field, in milliseconds. */
-	onRetry?(delayMs: number): void;
-	/** Stops reading and cancels the body, for example when the request this stream answers was cancelled. */
-	signal?: AbortSignal;
-}
-
-export async function consumeSseStream(stream: ReadableStream<Uint8Array>, options: ConsumeSseOptions): Promise<void> {
-	const reader = stream.getReader();
-	const onAbort = () => void reader.cancel().catch(() => {});
-	if (options.signal?.aborted) onAbort();
-	options.signal?.addEventListener("abort", onAbort, { once: true });
-	let finished = false;
-	const decoder = new TextDecoder();
-	let buffered = "";
-	let eventName: string | undefined;
-	let eventId: string | undefined;
-	let dataLines: string[] = [];
-	// Bytes of the pending event's data, including the "\n" joins, so events streamed as many
-	// short `data:` lines without a terminating blank line cannot grow without bound.
-	let dataBytes = 0;
-	const maxEventBytes = options.maxEventBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
-
-	const dispatch = () => {
-		if (dataLines.length === 0) {
-			eventName = undefined;
-			eventId = undefined;
-			return;
-		}
-		const data = dataLines.join("\n");
-		options.onEvent({ ...(eventName ? { event: eventName } : {}), data, ...(eventId ? { id: eventId } : {}) });
-		eventName = undefined;
-		eventId = undefined;
-		dataLines = [];
-		dataBytes = 0;
-	};
-
-	const processLine = (rawLine: string) => {
-		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-		if (line === "") {
-			dispatch();
-			return;
-		}
-		if (line.startsWith(":")) return;
-		const colon = line.indexOf(":");
-		const field = colon < 0 ? line : line.slice(0, colon);
-		let value = colon < 0 ? "" : line.slice(colon + 1);
-		if (value.startsWith(" ")) value = value.slice(1);
-		if (field === "data") {
-			dataBytes += Buffer.byteLength(value) + (dataLines.length > 0 ? 1 : 0);
-			if (dataBytes > maxEventBytes) throw new Error(`MCP SSE event exceeds ${maxEventBytes} bytes`);
-			dataLines.push(value);
-		} else if (field === "event") eventName = value;
-		else if (field === "id" && !value.includes("\0")) {
-			eventId = value;
-			options.onId?.(value);
-		} else if (field === "retry" && /^\d+$/.test(value)) options.onRetry?.(Number(value));
-	};
-
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			buffered += decoder.decode(value, { stream: true });
-			let newline = buffered.indexOf("\n");
-			while (newline >= 0) {
-				processLine(buffered.slice(0, newline));
-				buffered = buffered.slice(newline + 1);
-				newline = buffered.indexOf("\n");
-			}
-			if (Buffer.byteLength(buffered) > maxEventBytes) throw new Error(`MCP SSE event exceeds ${maxEventBytes} bytes`);
-		}
-		buffered += decoder.decode();
-		if (buffered) processLine(buffered);
-		dispatch();
-		finished = true;
-	} finally {
-		options.signal?.removeEventListener("abort", onAbort);
-		// Stopping early (an error, a rejected event) must release the body and its connection.
-		if (!finished) await reader.cancel().catch(() => {});
-		reader.releaseLock();
-	}
-}
 
 export interface StreamableHttpReconnectOptions {
 	/** Delay before the first reconnection attempt, unless the server sent a `retry` field. Default: 1000. */
@@ -136,95 +56,6 @@ export interface StreamableHttpTransportOptions {
 	authProvider?: AuthProvider;
 	/** Reconnection of dropped SSE streams (the GET stream, and response streams that carry event IDs). */
 	reconnect?: StreamableHttpReconnectOptions;
-}
-
-export class McpHttpError extends Error {
-	readonly status: number;
-	readonly body: string;
-
-	constructor(status: number, message: string, body = "") {
-		super(message);
-		this.name = "McpHttpError";
-		this.status = status;
-		this.body = body;
-	}
-}
-
-export class McpAuthRequiredError extends McpHttpError {
-	readonly wwwAuthenticate: string | null;
-
-	constructor(response: Response, body = "") {
-		super(401, "MCP server requires authentication", body);
-		this.name = "McpAuthRequiredError";
-		this.wwwAuthenticate = response.headers.get("www-authenticate");
-	}
-}
-
-export class McpSessionExpiredError extends McpHttpError {
-	constructor(body = "") {
-		super(404, "MCP session expired", body);
-		this.name = "McpSessionExpiredError";
-	}
-}
-
-function contentType(response: Response): string | undefined {
-	return response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-}
-
-/** 401, or 403 with an `insufficient_scope` bearer challenge (step-up authorization). */
-function needsAuthorization(response: Response): boolean {
-	if (response.status === 401) return true;
-	if (response.status !== 403) return false;
-	return /(?:^|[\s,])error="?insufficient_scope"?/i.test(response.headers.get("www-authenticate") ?? "");
-}
-
-/** Statuses worth retrying when a stream fails to (re)open. */
-function isTransientStatus(status: number): boolean {
-	return status === 408 || status === 429 || status >= 500;
-}
-
-function discard(response: Response): Promise<void> {
-	return response.body?.cancel().catch(() => {}) ?? Promise.resolve();
-}
-
-/**
- * The body as text, reading at most `maxBytes`: a longer body is cancelled, then refused, or cut at the limit with
- * `truncate`. A plain `response.text()` would buffer whatever the server sends.
- */
-async function readText(response: Response, maxBytes: number, truncate = false): Promise<string> {
-	if (!response.body) return "";
-	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (size + value.byteLength > maxBytes) {
-				if (!truncate) throw new Error(`MCP HTTP response exceeds ${maxBytes} bytes`);
-				chunks.push(value.subarray(0, maxBytes - size));
-				break;
-			}
-			chunks.push(value);
-			size += value.byteLength;
-		}
-	} finally {
-		reader.cancel().catch(() => {});
-	}
-	return Buffer.concat(chunks).toString("utf8");
-}
-
-function describeHttpFailure(status: number, body: string): string {
-	const text = body.trim();
-	const snippet = text.length > ERROR_MESSAGE_BODY_CHARS ? `${text.slice(0, ERROR_MESSAGE_BODY_CHARS - 3)}...` : text;
-	return `MCP HTTP request failed with status ${status}${snippet ? `: ${snippet}` : ""}`;
-}
-
-interface StreamCursor {
-	lastEventId: string | undefined;
-	retryMs: number | undefined;
-	/** Whether the stream delivered any event since it was (re)opened. */
-	received: boolean;
 }
 
 export class StreamableHttpTransport extends TransportEvents implements McpTransport {
@@ -442,7 +273,7 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 			}
 			// A settled request (answered, timed out or cancelled) needs neither this stream nor a resumption.
 			if (answered || this.closed || signal?.aborted) return;
-			if (failure !== undefined && !this.isRetryable(failure)) break;
+			if (failure !== undefined && !isRetryable(failure)) break;
 			if (cursor.lastEventId === undefined || attempt >= this.maxRetries()) break;
 			if (cursor.received) attempt = 0;
 			cursor.received = false;
@@ -451,7 +282,7 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 				stream = await this.openSseStream(cursor.lastEventId);
 			} catch (error) {
 				failure = error;
-				if (!this.isRetryable(error)) break;
+				if (!isRetryable(error)) break;
 				stream = undefined;
 			}
 		}
@@ -484,7 +315,7 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 				if (cursor.received || Date.now() - openedAt > this.maxDelay()) attempt = 0;
 			} catch (error) {
 				if (this.closed) return;
-				if (!this.isRetryable(error)) {
+				if (!isRetryable(error)) {
 					this.emitError(error);
 					return;
 				}
@@ -518,17 +349,6 @@ export class StreamableHttpTransport extends TransportEvents implements McpTrans
 			throw new McpHttpError(response.status, `Unsupported MCP GET response content type: ${type ?? "missing"}`);
 		}
 		return response.body;
-	}
-
-	/**
-	 * Network failures and transient statuses are retried; auth, session, and protocol errors are not.
-	 * `fetch` reports network failures, including a connection dropped mid-body, as `TypeError`.
-	 */
-	private isRetryable(error: unknown): boolean {
-		if (error instanceof McpHttpError) return isTransientStatus(error.status);
-		if (error instanceof TypeError) return true;
-		const code = (error as { code?: unknown } | undefined)?.code;
-		return typeof code === "string" && (code.startsWith("E") || code.startsWith("UND_ERR"));
 	}
 
 	private reconnectDelay(attempt: number, serverDelayMs: number | undefined): number {

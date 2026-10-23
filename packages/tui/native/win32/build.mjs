@@ -201,7 +201,7 @@ function buildWithMingw(target) {
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-	console.log(`Usage: npm --prefix packages/tui run build:native:win32
+	console.log(`Usage: yarn workspace @octocodeai/octocode-tui run build:native:win32
 
 Builds win32-x64 and win32-arm64 native prebuilds.
 

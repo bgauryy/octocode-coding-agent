@@ -1,0 +1,101 @@
+import { type Static, Type } from "typebox";
+import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
+import type { QueryOutcome } from "../render.ts";
+
+/** The `file` tool's parameters and the text of its outcomes. */
+
+export const QuerySchema = Type.Object({
+	reasoning: Type.String({ description: "Why this change is needed" }),
+	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
+	type: Type.Unsafe<"edit" | "write" | "delete">({
+		type: "string",
+		enum: ["edit", "write", "delete"],
+		description:
+			"edit: exact replacements; write: create/replace; delete: irreversible, only when the task requires it",
+	}),
+	path: Type.String({ description: "Absolute path or relative to cwd" }),
+	edits: Type.Optional(
+		Type.Array(
+			Type.Object({
+				oldText: Type.String({
+					description: "Exact text; unique unless replaceAll is true",
+				}),
+				newText: Type.String({ description: "Replacement text" }),
+				replaceAll: Type.Optional(
+					Type.Boolean({
+						description: "All non-overlapping matches; default false.",
+					}),
+				),
+			}),
+			{
+				description: "Edits match original content; no overlaps.",
+			},
+		),
+	),
+	content: Type.Optional(Type.String({ description: "For write: complete file content" })),
+});
+
+export const Params = Type.Object({
+	queries: Type.Optional(Type.Array(QuerySchema)),
+	patch: Type.Optional(
+		Type.String({
+			description: "Codex apply_patch text; use instead of queries",
+		}),
+	),
+	reasoning: Type.Optional(Type.String({ description: "Why this patch is needed" })),
+});
+export type FileQuery = Static<typeof QuerySchema>;
+
+export interface PreparedChange {
+	query: FileQuery;
+	mode: "edit" | "write" | "delete";
+	digest: string | null;
+	canonicalPath?: string;
+}
+
+export interface FileReplacementOwner {
+	enabled(input: Record<string, unknown>, cwd: string): boolean;
+	refresh(ctx: ExtensionToolContext): Promise<void>;
+	committed?(id: string, input: Record<string, unknown>): void;
+}
+
+/** The batch's `purpose`: what its changes' `reasoning` fields say, in order; none when they say nothing (the assistant's message then stands in). */
+export function changePurpose(queries: readonly Pick<FileQuery, "reasoning">[]): {
+	purpose?: string;
+} {
+	const said = [...new Set(queries.map((query) => query.reasoning?.trim()).filter(Boolean))];
+	return said.length > 0 ? { purpose: said.join("; ") } : {};
+}
+
+/** The first output-cut placeholder a change would add to the file (one already in the file or the replaced text is fine). */
+export function copiedElision(
+	query: Pick<FileQuery, "type" | "edits" | "content">,
+	original: string,
+): string | undefined {
+	const added =
+		query.type === "write"
+			? [{ oldText: "", newText: query.content ?? "" }]
+			: query.type === "edit"
+				? (query.edits ?? [])
+				: [];
+	for (const { oldText, newText } of added) {
+		const found = elisionMarkers(newText).find((marker) => !oldText.includes(marker) && !original.includes(marker));
+		if (found) return found;
+	}
+	return undefined;
+}
+
+/** Octocode's messages end with "in <path>." or "to <path>"; the outcome line already names the path. */
+function withoutPath(message: string, file: string): string {
+	return message.replace(new RegExp(`\\s+(?:in|to) ${escapeRegExp(file)}\\.?$`), "").replace(/^Successfully /, "");
+}
+
+export function formatOutcomes(outcomes: QueryOutcome[]): string {
+	return outcomes
+		.map(
+			(outcome, index) =>
+				`${index + 1}. ${outcome.ok ? "OK" : "FAILED"} ${outcome.type} ${outcome.path}: ${outcome.ok ? withoutPath(outcome.message, outcome.path) : outcome.message}`,
+		)
+		.join("\n");
+}

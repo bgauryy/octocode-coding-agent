@@ -1,22 +1,22 @@
 import { resolveMcpExposure } from "../../extensions/mcp/exposure.ts";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Tool } from "@octocodeai/octocode-mcp";
-import { getAgentDir, isBunBinary } from "../../config.ts";
+import { getAgentDir } from "../../config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/extensions/index.ts";
 import { TOOL_SEARCH_TOOL_NAME } from "../../extensions/tool-search/tool.ts";
 import { loadMcpConfig } from "../../extensions/mcp/config.ts";
 import { type McpServerStatus, setMcpSessionStatus } from "../../extensions/mcp/status.ts";
 import { notify } from "../shared/commands.ts";
 import { envFlag, MCP_ENV } from "../shared/env.ts";
-import { octocodeHome } from "../shared/home.ts";
 import { OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX, isDirectResearchTool } from "../shared/octocode-tools.ts";
-import { findManifest, packageRoot } from "../shared/package.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { type Launch, OctocodeServer, type ServerStatus } from "./client.ts";
 import { octocodeToolDefinition, TurnBudget } from "./tools.ts";
+import { activateDiscovery, fallbackReader } from "./octocode/active-tools.ts";
+import { octocodeLaunch } from "./octocode/launch.ts";
+
+export { fallbackReader } from "./octocode/active-tools.ts";
+export { OCTOCODE_MCP_SPEC, octocodeLaunch } from "./octocode/launch.ts";
 
 /**
  * Octocode MCP (local code, LSP, GitHub and package registry research) runs on this extension's own MCP client
@@ -25,45 +25,6 @@ import { octocodeToolDefinition, TurnBudget } from "./tools.ts";
  * shared MCP configuration takes precedence, which is how users override or disable it: then
  * Octocode's MCP owns the server and this extension starts nothing.
  */
-/** The npm package of the server this extension runs. */
-const MCP_PACKAGE = "octocode-mcp";
-
-/** The `octocode-mcp` range this package's `package.json` depends on (the one source of the version this extension runs). */
-function octocodeMcpRange(): string {
-	const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot(), "package.json"), "utf8")) as {
-		dependencies?: Record<string, string>;
-	};
-	const range = manifest.dependencies?.[MCP_PACKAGE];
-	if (!range) throw new Error("package.json has no octocode-mcp dependency");
-	return range;
-}
-
-/**
- * The octocode-mcp releases this extension runs, as an npx spec: the `package.json` dependency range, so installing or
- * updating the extension and the npx fallback fetch the same newest compatible server; in this monorepo `dev setup`
- * resolves the dependency to the workspace build (`packages/octocode-mcp`).
- */
-export const OCTOCODE_MCP_SPEC = `${MCP_PACKAGE}@${octocodeMcpRange()}`;
-
-/** The server process: the installed octocode-mcp bin under this Node, else the newest npm release through npx. */
-export function octocodeLaunch(
-	cwd: string,
-	env: NodeJS.ProcessEnv = process.env,
-	entry = octocodeMcpEntry(),
-	skillDirectories: readonly string[] = [],
-): Launch {
-	// Loaded skills may live outside the workspace; their references resolve inside the same skill directories.
-	// Tokens (GITHUB_TOKEN, …) need no forwarding: the server inherits this process's environment.
-	const allowed = [...new Set([cwd, octocodeHome(env), ...skillDirectories])].join(",");
-	if (!entry && OCTOCODE_MCP_SPEC.includes("@file:"))
-		throw new Error(
-			"The local octocode-mcp build is missing. Build the linked package before starting Octocode research.",
-		);
-	const command = entry
-		? { command: isBunBinary ? "node" : process.execPath, args: [entry] }
-		: { command: "npx", args: ["-y", OCTOCODE_MCP_SPEC] };
-	return { ...command, cwd, env: { WORKSPACE_ROOT: cwd, ALLOWED_PATHS: allowed } };
-}
 
 /**
  * The longest the first prompt waits for a connect in progress, so the server's instructions are in that request. A
@@ -376,54 +337,4 @@ export function registerOctocodeMcp(
 	});
 	pi.on("turn_start", async () => mcp.turn.reset());
 	return mcp;
-}
-
-/**
- * Keeps core `read` active while Octocode's local readers are unavailable, so an existing file can still be read before
- * the file tool changes it. It removes `read` again only if it was the one that added it: a `read` the user turned on
- * stays. While the server is still connecting nothing changes, so the declared tools (and the cached prefix) hold.
- */
-export function fallbackReader(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools" | "getAllTools">) {
-	let added = false;
-	return (unavailable: boolean): void => {
-		try {
-			const active = pi.getActiveTools();
-			if (unavailable && !active.includes("read") && pi.getAllTools().some((tool) => tool.name === "read")) {
-				pi.setActiveTools([...active, "read"]);
-				added = true;
-			} else if (!unavailable && added) {
-				pi.setActiveTools(active.filter((tool) => tool !== "read"));
-				added = false;
-			}
-		} catch {
-			// The session is shutting down or not bound yet; the next status change retries.
-		}
-	};
-}
-
-/** Activate native discovery for deferred tools when the discovery tool is registered. */
-function activateDiscovery(pi: ExtensionAPI): void {
-	try {
-		const active = pi.getActiveTools();
-		if (
-			active.includes(TOOL_SEARCH_TOOL_NAME) ||
-			!pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools)
-		)
-			return;
-		pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
-	} catch {
-		// The session is shutting down or not bound yet; the next registration retries.
-	}
-}
-
-/** Absolute path of the bundled octocode-mcp bin (its `exports` hide package.json, so walk up from the entry). */
-function octocodeMcpEntry(): string | undefined {
-	try {
-		const found = findManifest(path.dirname(fileURLToPath(import.meta.resolve(MCP_PACKAGE))), MCP_PACKAGE, 4);
-		const bin = typeof found?.manifest.bin === "string" ? found.manifest.bin : found?.manifest.bin?.[MCP_PACKAGE];
-		return found && bin ? path.join(found.dir, bin) : undefined;
-	} catch {
-		// Not installed next to the extension.
-	}
-	return undefined;
 }

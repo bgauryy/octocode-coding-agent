@@ -52,7 +52,7 @@ Plugin-root, plugin-data and project-root placeholders resolve before registrati
 
 Advanced command execution, remaining MCP capabilities, LSP components, agents, dependencies, marketplaces, update management and Claude Mods are unfinished. Mixed hook files containing `modules` are diagnosed and cannot receive an approval fingerprint. There is no claim of vendor service or full protocol equivalence. Plugin or skill markers now prevent implicit native extension entry discovery; a hybrid package must declare native entry points in `package.json`. A directly supplied native module still executes through the extension API.
 
-See the [compatibility matrix and implementation plan](../../../PLUGINS_MODS_HOOKS.md) for each subsystem's implemented and outstanding contracts.
+See the [compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md) for each subsystem's implemented and outstanding contracts.
 
 ## Claude prompt commands
 

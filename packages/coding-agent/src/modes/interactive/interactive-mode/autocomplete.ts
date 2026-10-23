@@ -1,0 +1,255 @@
+/**
+ * Slash-command autocomplete: built-in, prompt-template, extension and skill commands with their argument completions,
+ * and the provider chain extensions can wrap.
+ */
+
+import {
+	type AutocompleteItem,
+	type AutocompleteProvider,
+	type SlashCommand,
+	CombinedAutocompleteProvider,
+} from "@octocodeai/octocode-tui";
+import type { ExtensionRunner } from "../../../core/extensions/index.ts";
+import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../../../core/slash-commands.ts";
+import { getSkillCommands } from "../../../core/skill-commands.ts";
+import { getPromptCommands } from "../../../core/prompt-templates.ts";
+import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
+import type { SourceInfo } from "../../../core/source-info.ts";
+import { parseGitUrl } from "../../../utils/git.ts";
+import { getModelSearchText } from "../model-search.ts";
+import {
+	createFuzzyAutocompleteItems,
+	getLoginProviderCompletionOptions,
+	getLoginProviderSearchText,
+	formatLoginProviderCompletionDescription,
+} from "./helpers.ts";
+import type { InteractiveModeHost } from "./host.ts";
+
+/** Interactive-mode members used by the slash-command autocomplete. */
+export type AutocompleteHost = Pick<
+	InteractiveModeHost,
+	| "autocompleteProvider"
+	| "autocompleteProviderWrappers"
+	| "createBaseAutocompleteProvider"
+	| "defaultEditor"
+	| "editor"
+	| "fdPath"
+	| "getLoginProviderOptions"
+	| "getSlashCommands"
+	| "session"
+	| "sessionManager"
+	| "settingsManager"
+	| "skillCommands"
+>;
+
+export function getAutocompleteSourceTag(host: AutocompleteHost, sourceInfo?: SourceInfo): string | undefined {
+	// Built-in extension commands are untagged, like built-in commands.
+	if (!sourceInfo || sourceInfo.source === "builtin") {
+		return undefined;
+	}
+
+	const scopePrefix = sourceInfo.scope === "user" ? "u" : sourceInfo.scope === "project" ? "p" : "t";
+	const source = sourceInfo.source.trim();
+
+	if (source === "auto" || source === "local" || source === "cli") {
+		return scopePrefix;
+	}
+
+	if (source.startsWith("npm:")) {
+		return `${scopePrefix}:${source}`;
+	}
+
+	const gitSource = parseGitUrl(source);
+	if (gitSource) {
+		const ref = gitSource.ref ? `@${gitSource.ref}` : "";
+		return `${scopePrefix}:git:${gitSource.host}/${gitSource.path}${ref}`;
+	}
+
+	return scopePrefix;
+}
+
+export function prefixAutocompleteDescription(
+	host: AutocompleteHost,
+	description: string | undefined,
+	sourceInfo?: SourceInfo,
+): string | undefined {
+	const sourceTag = getAutocompleteSourceTag(host, sourceInfo);
+	if (!sourceTag) {
+		return description;
+	}
+	return description ? `[${sourceTag}] ${description}` : `[${sourceTag}]`;
+}
+
+export function getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
+	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]));
+	return extensionRunner
+		.getRegisteredCommands()
+		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.path !== NATIVE_FEATURE_PATH)
+		.map((command) => ({
+			type: "warning" as const,
+			message:
+				command.invocationName === command.name
+					? `Extension command '/${command.name}' conflicts with built-in interactive command. Skipping in autocomplete.`
+					: `Extension command '/${command.name}' conflicts with built-in interactive command. Available as '/${command.invocationName}'.`,
+			path: command.sourceInfo.path,
+		}));
+}
+
+export function getSlashCommands(
+	host: AutocompleteHost,
+	includeSkills = host.settingsManager.getEnableSkillCommands(),
+): SlashCommand[] {
+	// Define commands for autocomplete
+	const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.map((command) => ({
+		name: command.name,
+		aliases: command.aliases,
+		description: command.description,
+		...(command.argumentHint && { argumentHint: command.argumentHint }),
+		...(command.argumentKind && { argumentKind: command.argumentKind }),
+		...(command.argumentValues && {
+			getArgumentCompletions: (prefix: string) =>
+				command.argumentValues!.filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
+		}),
+	}));
+
+	const modelCommand = slashCommands.find((command) => command.name === "model");
+	if (modelCommand) {
+		modelCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
+			const models =
+				host.session.scopedModels.length > 0
+					? host.session.scopedModels.map((s) => s.model)
+					: host.session.modelRuntime.getAvailableSnapshot();
+
+			if (models.length === 0) return null;
+
+			// Create items with provider/id format
+			const items = models.map((m) => ({
+				id: m.id,
+				provider: m.provider,
+				name: m.name,
+				label: `${m.provider}/${m.id}`,
+			}));
+
+			return createFuzzyAutocompleteItems(items, prefix, getModelSearchText, (item) => ({
+				value: item.label,
+				label: item.id,
+				description: item.provider,
+			}));
+		};
+	}
+
+	const thinkingCommand = slashCommands.find((command) => command.name === "effort");
+	if (thinkingCommand) {
+		thinkingCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
+			return createFuzzyAutocompleteItems(
+				host.session.getAvailableThinkingLevels(),
+				prefix,
+				(level) => level,
+				(level) => ({
+					value: level,
+					label: level,
+				}),
+			);
+		};
+	}
+
+	const loginCommand = slashCommands.find((command) => command.name === "login");
+	if (loginCommand) {
+		loginCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
+			const providers = getLoginProviderCompletionOptions(host.getLoginProviderOptions());
+			return createFuzzyAutocompleteItems(providers, prefix, getLoginProviderSearchText, (provider) => ({
+				value: provider.id,
+				label: provider.id,
+				description: formatLoginProviderCompletionDescription(provider),
+			}));
+		};
+	}
+
+	const resumeCommand = slashCommands.find((command) => command.name === "resume");
+	if (resumeCommand)
+		resumeCommand.getArgumentCompletions = host.session.extensionRunner
+			.getRegisteredCommands()
+			.find((command) => command.name === "resume")?.getArgumentCompletions;
+
+	// Convert prompt templates to SlashCommand format for autocomplete
+	const templateCommands: SlashCommand[] = getPromptCommands(
+		host.session.promptTemplates,
+		host.session.extensionRunner.getRegisteredCommands(),
+	).map(({ name, aliases, template }) => ({
+		name,
+		aliases,
+		description: prefixAutocompleteDescription(host, template.description, template.sourceInfo),
+		...(template.argumentHint && { argumentHint: template.argumentHint }),
+	}));
+
+	// Convert extension commands to SlashCommand format
+	const builtinCommandNames = new Set(slashCommands.map((c) => c.name));
+	const extensionCommands: SlashCommand[] = host.session.extensionRunner
+		.getRegisteredCommands()
+		.filter((cmd) => !builtinCommandNames.has(cmd.invocationName))
+		.map((cmd) => ({
+			name: cmd.invocationName,
+			aliases: cmd.aliases,
+			description: prefixAutocompleteDescription(host, cmd.description, cmd.sourceInfo),
+			getArgumentCompletions: cmd.getArgumentCompletions,
+		}));
+
+	host.skillCommands.clear();
+	const skillCommandList: SlashCommand[] = [];
+	if (includeSkills) {
+		for (const { name, aliases, skill } of getSkillCommands(host.session.resourceLoader.getSkills().skills, [
+			...host.session.extensionRunner.getRegisteredCommands(),
+			...host.session.promptTemplates,
+		])) {
+			host.skillCommands.set(name, skill.filePath);
+			skillCommandList.push({
+				name,
+				aliases,
+				description: prefixAutocompleteDescription(host, skill.description, skill.sourceInfo),
+			});
+		}
+	}
+	const allCommands = [...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList];
+	const helpCommand = slashCommands.find((command) => command.name === "help");
+	if (helpCommand)
+		helpCommand.getArgumentCompletions = (prefix) =>
+			createFuzzyAutocompleteItems(
+				allCommands,
+				prefix,
+				(command) => [command.name, ...(command.aliases ?? [])].join(" "),
+				(command) => ({ value: command.name, label: command.name, description: command.description }),
+			);
+	const skillsCommand = slashCommands.find((command) => command.name === "skills");
+	if (skillsCommand)
+		skillsCommand.getArgumentCompletions = (prefix) =>
+			createFuzzyAutocompleteItems(
+				host.session.resourceLoader.getSkills().skills,
+				prefix,
+				(skill) => skill.name,
+				(skill) => ({ value: skill.name, label: skill.name, description: skill.description }),
+			);
+	return allCommands;
+}
+
+export function createBaseAutocompleteProvider(host: AutocompleteHost): AutocompleteProvider {
+	return new CombinedAutocompleteProvider(host.getSlashCommands(), host.sessionManager.getCwd(), host.fdPath);
+}
+
+export function setupAutocompleteProvider(host: AutocompleteHost): void {
+	let provider = host.createBaseAutocompleteProvider();
+	const triggerCharacters: string[] = [];
+	for (const wrapProvider of host.autocompleteProviderWrappers) {
+		provider = wrapProvider(provider);
+		triggerCharacters.push(...(provider.triggerCharacters ?? []));
+	}
+	if (triggerCharacters.length > 0) {
+		provider.triggerCharacters = [...new Set(triggerCharacters)];
+	}
+
+	host.autocompleteProvider = provider;
+	host.defaultEditor.setAutocompleteProvider(provider);
+	if (host.editor !== host.defaultEditor) {
+		host.editor.setAutocompleteProvider?.(provider);
+	}
+}

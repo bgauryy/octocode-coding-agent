@@ -25,7 +25,7 @@ worktree's getSupportedThinkingLevels() implementation.
 
 Examples:
   node scripts/diff-model-catalog.mjs github-copilot
-  npm run diff:model-catalog -- --thinking moonshotai kimi-coding
+  yarn run diff:model-catalog --thinking moonshotai kimi-coding
 `);
 }
 

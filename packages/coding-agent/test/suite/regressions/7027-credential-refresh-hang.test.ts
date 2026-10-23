@@ -3,16 +3,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { defaultModelPerProvider } from "../../../src/core/model-resolver.ts";
 import { ModelRuntime } from "../../../src/core/model-runtime.ts";
-import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
+import * as loginDialogs from "../../../src/modes/interactive/interactive-mode/login-dialogs.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { createFakeHost } from "../../interactive-mode-host.ts";
 
-const complete = Reflect.get(InteractiveMode.prototype, "completeProviderAuthentication") as (
-	this: object,
+function complete(
+	context: object,
 	providerId: string,
 	providerName: string,
 	authType: "oauth" | "api_key",
 	previousModel: Model<Api>,
-) => Promise<void>;
+): Promise<void> {
+	return loginDialogs.completeProviderAuthentication(
+		createFakeHost(context),
+		providerId,
+		providerName,
+		authType,
+		previousModel,
+	);
+}
 
 const dynamicModel: Model<"openai-completions"> = {
 	id: "dynamic",
@@ -109,7 +118,7 @@ describe("issues #7027 and #7113 credential refresh hang", () => {
 			maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
 			ui: { requestRender: vi.fn() },
 		};
-		await complete.call(context, dynamicModel.provider, "Stalled Login", "api_key", harness.getModel());
+		await complete(context, dynamicModel.provider, "Stalled Login", "api_key", harness.getModel());
 		expect(runtime.refresh).toHaveBeenCalledWith({
 			providers: [dynamicModel.provider],
 			signal: expect.any(AbortSignal),
@@ -161,7 +170,7 @@ describe("post-login model discovery", () => {
 			maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
 			ui: { requestRender: vi.fn() },
 		};
-		await complete.call(context, "openrouter", "OpenRouter", "oauth", unknownModel);
+		await complete(context, "openrouter", "OpenRouter", "oauth", unknownModel);
 		expect(context.showStatus).toHaveBeenCalledWith(expect.stringContaining("Credentials saved"));
 		expect(context.showError).not.toHaveBeenCalled();
 		expect(setModel).not.toHaveBeenCalled();

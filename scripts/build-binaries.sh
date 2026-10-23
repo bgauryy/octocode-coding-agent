@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
 # Build octocode binaries for all platforms locally.
-# This checkout has no .github/workflows; this script is the build recipe.
+# CI (.github/workflows/ci.yml) does not build binaries; this script is the build recipe.
 #
 # Usage:
 #   ./scripts/build-binaries.sh [--skip-install] [--skip-build] [--offline-model-data] [--platform <platform>] [--out <dir>]
 #
 # Options:
-#   --skip-install       Skip npm ci
+#   --skip-install       Skip yarn install
 #   --skip-build         Skip the package build
 #   --offline-model-data Build with bundled model data instead of refreshing it
 #   --platform <name>    Build only for specified platform (darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64, windows-arm64)
@@ -83,18 +83,18 @@ fi
 
 if [[ "$SKIP_INSTALL" == "false" ]]; then
     echo "==> Installing dependencies..."
-    npm ci --ignore-scripts
+    yarn install --immutable --mode=skip-build
 else
-    echo "==> Skipping npm ci (--skip-install)"
+    echo "==> Skipping yarn install (--skip-install)"
 fi
 
 if [[ "$SKIP_BUILD" == "false" ]]; then
     if [[ "$OFFLINE_MODEL_DATA" == "true" ]]; then
         echo "==> Building all packages with bundled model data..."
-        npm run build:offline
+        yarn run build:offline
     else
         echo "==> Building all packages..."
-        npm run build
+        yarn run build
     fi
 else
     echo "==> Skipping package build (--skip-build)"
@@ -138,28 +138,9 @@ done
 
 echo "==> Creating release archives..."
 
-# Copy shared files to each platform directory
+# Stage the files each binary reads next to itself (one owner: scripts/stage-binary.mjs).
 for platform in "${PLATFORMS[@]}"; do
-    cp package.json "$OUTPUT_DIR/$platform/"
-    cp README.md "$OUTPUT_DIR/$platform/"
-    cp CHANGELOG.md "$OUTPUT_DIR/$platform/"
-    cp -r dist/licenses "$OUTPUT_DIR/$platform/"
-    cp -r dist/bash-parser "$OUTPUT_DIR/$platform/"
-    cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm "$OUTPUT_DIR/$platform/"
-    mkdir -p "$OUTPUT_DIR/$platform/theme"
-    cp dist/modes/interactive/theme/*.json "$OUTPUT_DIR/$platform/theme/"
-    mkdir -p "$OUTPUT_DIR/$platform/assets"
-    cp dist/modes/interactive/assets/* "$OUTPUT_DIR/$platform/assets/"
-    cp -r dist/core/export-html "$OUTPUT_DIR/$platform/"
-    cp -r docs "$OUTPUT_DIR/$platform/"
-    cp -r src/octocode/instructions/roles "$OUTPUT_DIR/$platform/"
-    cp -r examples "$OUTPUT_DIR/$platform/"
-
-    # Copy the selected architecture's native platform helpers next to the executable.
-    native_platform="${platform/windows-/win32-}"
-    native_path="native/${native_platform%-*}/prebuilds"
-    mkdir -p "$OUTPUT_DIR/$platform/$native_path"
-    cp -R "../tui/$native_path/$native_platform" "$OUTPUT_DIR/$platform/$native_path/"
+    node ../../scripts/stage-binary.mjs "$OUTPUT_DIR/$platform" --platform "$platform"
 done
 
 # Create archives

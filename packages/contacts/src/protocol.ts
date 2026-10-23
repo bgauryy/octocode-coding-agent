@@ -47,4 +47,5 @@ export const BacklogMutationSchema = Type.Object(
 
 export type BacklogMutation = Static<typeof BacklogMutationSchema>;
 export type WorkspaceServerEvent =
-	{ type: "snapshot"; data: Snapshot } | { type: "workspace"; data: WorkspaceSnapshot };
+	| { type: "snapshot"; data: Snapshot }
+	| { type: "workspace"; data: WorkspaceSnapshot };

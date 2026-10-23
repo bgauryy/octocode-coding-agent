@@ -116,7 +116,8 @@ function harness(entries: Array<{ type: string; id: string }>) {
 			vi.spyOn(Date, "now").mockReturnValue(at);
 			const messages = [result(callId)];
 			const outcome = (await fake.fire("context", { type: "context", messages }, ctx)) as
-				{ messages?: any[] } | undefined;
+				| { messages?: any[] }
+				| undefined;
 			return (outcome?.messages ?? messages)[0].content[0].text as string;
 		},
 	};

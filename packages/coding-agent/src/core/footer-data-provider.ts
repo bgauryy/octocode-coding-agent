@@ -1,105 +1,16 @@
-import { type ExecFileException, execFile, spawnSync } from "child_process";
-import {
-	existsSync,
-	type FSWatcher,
-	readdirSync,
-	readFileSync,
-	type Stats,
-	statSync,
-	unwatchFile,
-	watchFile,
-} from "fs";
-import { dirname, join, resolve } from "path";
+import { type FSWatcher, existsSync, readFileSync, type Stats, unwatchFile, watchFile } from "fs";
+import { dirname, join } from "path";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
+import {
+	findGitPaths,
+	type GitPaths,
+	readGitStateSignature,
+	resolveBranchWithGitAsync,
+	resolveBranchWithGitSync,
+	shouldPollGitHead,
+} from "./footer-data-provider/git.ts";
 
-export type GitPaths = {
-	repoDir: string;
-	commonGitDir: string;
-	headPath: string;
-};
-
-/**
- * Find git metadata paths by walking up from cwd.
- * Handles both regular git repos (.git is a directory) and worktrees (.git is a file).
- */
-export function findGitPaths(cwd: string): GitPaths | null {
-	let dir = cwd;
-	while (true) {
-		const gitPath = join(dir, ".git");
-		if (existsSync(gitPath)) {
-			try {
-				const stat = statSync(gitPath);
-				if (stat.isFile()) {
-					const content = readFileSync(gitPath, "utf8").trim();
-					if (content.startsWith("gitdir: ")) {
-						const gitDir = resolve(dir, content.slice(8).trim());
-						const headPath = join(gitDir, "HEAD");
-						if (!existsSync(headPath)) return null;
-						const commonDirPath = join(gitDir, "commondir");
-						const commonGitDir = existsSync(commonDirPath)
-							? resolve(gitDir, readFileSync(commonDirPath, "utf8").trim())
-							: gitDir;
-						return { repoDir: dir, commonGitDir, headPath };
-					}
-				} else if (stat.isDirectory()) {
-					const headPath = join(gitPath, "HEAD");
-					if (!existsSync(headPath)) return null;
-					return { repoDir: dir, commonGitDir: gitPath, headPath };
-				}
-			} catch {
-				return null;
-			}
-		}
-		const parent = dirname(dir);
-		if (parent === dir) return null;
-		dir = parent;
-	}
-}
-
-/** Ask git for the current branch. Returns null on detached HEAD or if git is unavailable. */
-function resolveBranchWithGitSync(repoDir: string): string | null {
-	const result = spawnSync("git", ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"], {
-		cwd: repoDir,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
-	});
-	const branch = result.status === 0 ? result.stdout.trim() : "";
-	return branch || null;
-}
-
-/** Ask git for the current branch asynchronously. Returns null on detached HEAD or if git is unavailable. */
-function resolveBranchWithGitAsync(repoDir: string): Promise<string | null> {
-	return new Promise((resolvePromise) => {
-		execFile(
-			"git",
-			["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
-			{
-				cwd: repoDir,
-				encoding: "utf8",
-			},
-			(error: ExecFileException | null, stdout: string) => {
-				if (error) {
-					resolvePromise(null);
-					return;
-				}
-				const branch = stdout.trim();
-				resolvePromise(branch || null);
-			},
-		);
-	});
-}
-
-function isWslEnvironment(): boolean {
-	return process.platform === "linux" && !!(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
-}
-
-function isWindowsMountedRepoPath(repoDir: string): boolean {
-	return /^\/mnt\/[a-z](?:\/|$)/i.test(repoDir);
-}
-
-function shouldPollGitHead(repoDir: string): boolean {
-	return isWslEnvironment() && isWindowsMountedRepoPath(repoDir);
-}
+export { findGitPaths, type GitPaths } from "./footer-data-provider/git.ts";
 
 /**
  * Provides git branch and extension statuses - data not otherwise accessible to extensions.
@@ -232,7 +143,7 @@ export class FooterDataProvider {
 		// One change reaches us through several watchers (HEAD dir, reftable dir, tables.list watch and
 		// poll), and fs.watch can replay events from before the watcher started. Skip the git call when
 		// the files that determine the branch are unchanged since the last successful resolution.
-		const signature = this.readGitStateSignature();
+		const signature = readGitStateSignature(this.gitPaths);
 		if (signature !== null && signature === this.lastRefreshSignature) return;
 
 		this.refreshInFlight = true;
@@ -252,23 +163,6 @@ export class FooterDataProvider {
 				this.refreshPending = false;
 				this.scheduleRefresh();
 			}
-		}
-	}
-
-	/** Fingerprint of the files that decide the current branch, or null when they cannot be read. */
-	private readGitStateSignature(): string | null {
-		if (!this.gitPaths) return null;
-		try {
-			const parts = [readFileSync(this.gitPaths.headPath, "utf8")];
-			const reftableDir = join(this.gitPaths.commonGitDir, "reftable");
-			if (existsSync(reftableDir)) {
-				parts.push(readdirSync(reftableDir).sort().join("\n"));
-				const tablesListPath = join(reftableDir, "tables.list");
-				parts.push(existsSync(tablesListPath) ? readFileSync(tablesListPath, "utf8") : "");
-			}
-			return parts.join("\0");
-		} catch {
-			return null;
 		}
 	}
 

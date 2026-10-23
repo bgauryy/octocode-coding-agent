@@ -21,7 +21,8 @@ const KITTY_KEYBOARD_PROTOCOL_QUERY = `\x1b[>${DESIRED_KITTY_KEYBOARD_PROTOCOL_F
 const DEVICE_ATTRIBUTES_QUERY = "\x1b[c";
 
 export type KeyboardProtocolNegotiationSequence =
-	{ type: "kitty-flags"; flags: number } | { type: "device-attributes" };
+	| { type: "kitty-flags"; flags: number }
+	| { type: "device-attributes" };
 
 export function parseKeyboardProtocolNegotiationSequence(
 	sequence: string,

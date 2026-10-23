@@ -3,14 +3,17 @@ import path from "node:path";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
-import { parseFrontmatter } from "../../utils/frontmatter.ts";
-import { atomicWriteFileSync, sha256 } from "./atomic.ts";
+import { atomicWriteFileSync } from "./atomic.ts";
 import { notify, type Subcommands, say, wordCompletions } from "./commands.ts";
 import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "./env.ts";
-import { globalPaths, projectAgentDirs, projectHookFiles, projectSkillDirs, workspacePaths } from "./home.ts";
-import { sanitizeTerminalText } from "./sanitize.ts";
-import { isRecord, parseJson } from "./util.ts";
-import { parseConfigDocument } from "../../utils/config-document.ts";
+import { projectHookFiles } from "./home.ts";
+import { isRecord } from "./util.ts";
+import { describeProjectConfig, startsCommands } from "./trust/describe.ts";
+import { fingerprint, projectConfigFiles, readForFingerprint, realPath } from "./trust/files.ts";
+import { isWorktreeOf, readStore, storeKey, storePath, withFileLock } from "./trust/store.ts";
+
+export { describeProjectConfig } from "./trust/describe.ts";
+export { fingerprint, projectConfigFiles } from "./trust/files.ts";
 
 /**
  * Project files that start commands or steer the agent (Claude Code / Codex / Octocode hooks, `.pi/agents`, `.octocode/agents`, `.claude/skills`, `.octocode/skills`) load only after an explicit trust decision. `ctx.isProjectTrusted()` alone is not one: Octocode (checked
@@ -27,145 +30,6 @@ import { parseConfigDocument } from "../../utils/config-document.ts";
 type ProjectContext = Pick<ExtensionContext, "cwd" | "hasUI" | "isProjectTrusted"> & {
 	ui?: Pick<ExtensionContext["ui"], "notify">;
 };
-
-interface StoredDecision {
-	sha: string;
-	trusted: boolean;
-}
-
-/** Files listed without commands (agents, skills) past this many are summarized; command lines are never cut. */
-const MAX_PLAIN_FILES = 40;
-
-/** Every existing trust-gated project file, sorted: the same paths the hooks, profile and skill loaders read. */
-export function projectConfigFiles(cwd: string): string[] {
-	const files = [
-		...projectHookFiles(cwd),
-		...projectAgentDirs(cwd).flatMap((dir) => listDir(dir).filter((file) => file.endsWith(".md"))),
-		...projectSkillDirs(cwd).flatMap((dir) => skillFiles(dir, true, new Set())),
-	];
-	// Real paths: the fingerprint hashes them, and a symlinked spelling of the same project must not ask again.
-	return [...new Set(files.filter(isFile).map(realPath))].sort();
-}
-
-/**
- * SHA-256 over the paths and bytes of `files`: any added, removed or edited file changes it. `as` names each file
- * by another path (a worktree's file as its parent repository's).
- */
-export function fingerprint(
-	files: string[],
-	as: (file: string) => string = (file) => file,
-	read: (file: string) => string = readForFingerprint,
-): string {
-	return sha256(files.map((file) => `${as(file)}\0${read(file)}`).join("\0\0"));
-}
-
-/**
- * The skill files Octocode's loader (0.x `loadSkillsFromDir`) would read from `dir`: a directory holding `SKILL.md` is one
- * skill (that file, no recursion); otherwise the root's direct `.md` files and, at any depth, subdirectories' `SKILL.md`.
- * Dot entries and `node_modules` are skipped like Octocode does. Octocode's ignore files are not applied, so this is a superset.
- */
-function skillFiles(dir: string, root: boolean, seen: Set<string>): string[] {
-	const real = realPath(dir);
-	if (seen.has(real)) return [];
-	seen.add(real);
-	let entries: string[];
-	try {
-		entries = fs.readdirSync(dir);
-	} catch {
-		return [];
-	}
-	const skill = path.join(dir, "SKILL.md");
-	if (entries.includes("SKILL.md") && isFile(skill)) return [skill];
-	return entries.flatMap((name) => {
-		if (name.startsWith(".") || name === "node_modules") return [];
-		const full = path.join(dir, name);
-		const stat = fs.statSync(full, { throwIfNoEntry: false });
-		if (stat?.isDirectory()) return skillFiles(full, false, seen);
-		return root && stat?.isFile() && name.endsWith(".md") ? [full] : [];
-	});
-}
-
-/** One dialog line: escape sequences stripped and newlines folded, so a value cannot draw or fake another line. */
-const dialogLine = (text: string): string => sanitizeTerminalText(text).replace(/\s*\n\s*/g, " ⏎ ");
-
-/**
- * What trusting would run: each file, with every `command`/`args`/`url` found in JSON configs (never cut) and the
- * environment variables their `headers`/`env` pass on. Files without commands past a cap are summarized.
- */
-export function describeProjectConfig(cwd: string, files = projectConfigFiles(cwd)): string {
-	const lines: string[] = [];
-	let plain = 0;
-	for (const file of files) {
-		const shown = dialogLine(path.relative(realPath(cwd), file) || file);
-		// A profile that declares permissions is listed with them, and never folded into the count of plain files.
-		const runs =
-			file.endsWith(".json") || file.endsWith(".toml")
-				? commandsIn(executableConfig(file))
-				: file.endsWith(".md")
-					? permissionsIn(readText(file))
-					: [];
-		if (runs.length === 0 && ++plain > MAX_PLAIN_FILES) continue;
-		lines.push(`- ${shown}${runs.length ? ":" : ""}`, ...runs.map((run) => `    ${dialogLine(run)}`));
-	}
-	if (plain > MAX_PLAIN_FILES) lines.push(`… ${plain - MAX_PLAIN_FILES} more file(s) without commands`);
-	return lines.join("\n");
-}
-
-/** `permissions: browser.control` for a profile (a `.md` file) whose front matter names classes, every name as written (the profile loader decides which it honours); none for any other file. */
-function permissionsIn(text: string): string[] {
-	try {
-		const value = parseFrontmatter(text).frontmatter.permissions;
-		const names = (
-			Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : value === undefined ? [] : [value]
-		)
-			.map((name) => String(name).trim())
-			.filter(Boolean);
-		return names.length > 0 ? [`permissions: ${names.join(", ")}`] : [];
-	} catch {
-		return [];
-	}
-}
-
-const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
-
-function commandsIn(value: unknown, out: string[] = []): string[] {
-	if (Array.isArray(value)) for (const item of value) commandsIn(item, out);
-	else if (isRecord(value)) {
-		if (typeof value.command === "string")
-			out.push([value.command, ...(Array.isArray(value.args) ? value.args.map(String) : [])].join(" "));
-		// An MCP-tool hook calls a tool on the user's server with the user's credentials: it acts like a command and needs
-		// the same review. `input` is shown because its placeholders decide what the call sends.
-		if (value.type === "mcp_tool" && typeof value.server === "string" && typeof value.tool === "string")
-			out.push(
-				`MCP ${value.server}/${value.tool}${value.input === undefined ? "" : ` ${JSON.stringify(value.input)}`}`,
-			);
-		for (const key of ["commandWindows", "command_windows"])
-			if (typeof value[key] === "string") out.push(`Windows: ${value[key]}`);
-		if (typeof value.url === "string") out.push(value.url);
-		const sends = envSent(value);
-		if (sends) out.push(sends);
-		for (const [key, child] of Object.entries(value))
-			if (key !== "args" && key !== "headers" && key !== "env" && typeof child === "object") commandsIn(child, out);
-	}
-	return out;
-}
-
-/** `  sends $A, $B (headers, env)` for the `${VAR}` references Octocode expands in a server's headers and env. */
-function envSent(server: Record<string, unknown>): string | undefined {
-	const names = new Set<string>();
-	const where: string[] = [];
-	for (const key of ["headers", "env"] as const) {
-		const block = server[key];
-		if (!isRecord(block)) continue;
-		const before = names.size;
-		for (const text of Object.values(block))
-			for (const match of String(text).matchAll(ENV_REFERENCE)) names.add(match[1]);
-		if (names.size > before) where.push(key);
-	}
-	return names.size > 0
-		? `  sends your environment variables ${[...names].map((name) => `$${name}`).join(", ")} (in ${where.join(", ")})`
-		: undefined;
-}
 
 /**
  * Answers of `projectTrustNow` for a few seconds: a session start asks from four places (skills, hooks,
@@ -275,21 +139,6 @@ function computeTrust(
 	return files.length === 0 ? true : undefined;
 }
 
-/** Some hooks file among `files` (Claude Code, Codex, Octocode hooks) holds a command, URL or args to run. */
-function startsCommands(cwd: string, files: string[], read: (file: string) => string = readText): boolean {
-	const hooks = new Set(projectHookFiles(cwd).map(realPath));
-	return files.some((file) => hooks.has(file) && commandsIn(executableConfig(file, read)).length > 0);
-}
-
-function executableConfig(file: string, read: (file: string) => string = readText): unknown {
-	try {
-		const value = parseConfigDocument(read(file), file);
-		return file.endsWith(".toml") && isRecord(value) ? value.hooks : value;
-	} catch {
-		return undefined;
-	}
-}
-
 /** Octocode resolved trust itself: protected resources exist, or `/trust` saved a decision. */
 function piDecided(cwd: string): boolean {
 	try {
@@ -317,37 +166,6 @@ export async function projectTrust(ctx: ProjectContext, home?: string): Promise<
 		if (ctx.ui) notify(ctx.ui, `Project config not loaded (${files.length} files). Run /trust to review.`, "warning");
 	}
 	return false;
-}
-
-/** How long a save waits for another session's store lock, and when a lock is old enough to be a crashed holder's. */
-const STORE_LOCK_WAIT_MS = 2_000;
-const STORE_LOCK_STALE_MS = 10_000;
-
-/**
- * Run `update` holding `<file>.lock` (created exclusively), so sessions that read, change and write the same file
- * never drop each other's change. A lock older than `STORE_LOCK_STALE_MS`, or still held after `STORE_LOCK_WAIT_MS`,
- * belongs to a crashed or stuck holder and is taken over.
- */
-function withFileLock(file: string, update: () => void): void {
-	const lock = `${file}.lock`;
-	const deadline = Date.now() + STORE_LOCK_WAIT_MS;
-	for (;;) {
-		try {
-			fs.closeSync(fs.openSync(lock, "wx", 0o600));
-			break;
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			const since = fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs;
-			if (since !== undefined && Date.now() - since < STORE_LOCK_STALE_MS && Date.now() < deadline)
-				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-			else fs.rmSync(lock, { force: true });
-		}
-	}
-	try {
-		update();
-	} finally {
-		fs.rmSync(lock, { force: true });
-	}
 }
 
 /**
@@ -410,79 +228,6 @@ export function registerTrustCommand(commands: Subcommands, home?: string): void
 
 /** Dialogs shown before giving up on config that keeps changing under review. */
 const MAX_TRUST_ASKS = 3;
-
-const storePath = (home?: string) => globalPaths(process.env, home).trust;
-
-/** One decision per repository: the gated files hang from its root, whichever subfolder Octocode starts in. */
-function storeKey(cwd: string): string {
-	return realPath(workspacePaths(cwd).root);
-}
-
-/** `root` is a linked worktree of the repository at `parent`: its `.git` file points into `<parent>/.git/worktrees/`. */
-function isWorktreeOf(root: string, parent: string): boolean {
-	const gitdir = /^gitdir:\s*(.+)$/m.exec(readText(path.join(root, ".git")))?.[1]?.trim();
-	if (!gitdir) return false;
-	const relative = path.relative(path.join(parent, ".git", "worktrees"), realPath(path.resolve(root, gitdir)));
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
-}
-
-function realPath(file: string): string {
-	try {
-		return fs.realpathSync(file);
-	} catch {
-		return path.resolve(file);
-	}
-}
-
-/** Where earlier builds kept this store: the core `/trust` file, which keeps these entries for this migration. */
-const legacyStorePath = (home?: string) => path.join(globalPaths(process.env, home).home, "trust.json");
-
-function readStore(home?: string): Record<string, StoredDecision> {
-	// Until this store is first written, decisions saved by earlier builds (trusted or not) still apply.
-	const file = fs.existsSync(storePath(home)) ? storePath(home) : legacyStorePath(home);
-	const parsed = parseJson(readText(file));
-	if (!isRecord(parsed)) return {};
-	return Object.fromEntries(
-		Object.entries(parsed).flatMap(([key, value]) =>
-			isRecord(value) && typeof value.sha === "string" && typeof value.trusted === "boolean"
-				? [[key, { sha: value.sha, trusted: value.trusted }]]
-				: [],
-		),
-	);
-}
-
-function readText(file: string): string {
-	try {
-		return fs.readFileSync(file, "utf8");
-	} catch {
-		return "";
-	}
-}
-
-/** A file's text for the fingerprint; an unreadable file (permissions, a race) gets a marker, so it never hashes like an empty one. */
-function readForFingerprint(file: string): string {
-	try {
-		return fs.readFileSync(file, "utf8");
-	} catch {
-		return "\0unreadable";
-	}
-}
-
-function listDir(dir: string): string[] {
-	try {
-		return fs.readdirSync(dir).map((name) => path.join(dir, name));
-	} catch {
-		return [];
-	}
-}
-
-function isFile(file: string): boolean {
-	try {
-		return fs.statSync(file).isFile();
-	} catch {
-		return false;
-	}
-}
 
 /** Verify the same settings bytes the caller will parse against the existing project trust fingerprint. */
 export async function projectTrustForContents(

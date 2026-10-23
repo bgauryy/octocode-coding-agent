@@ -1,6 +1,7 @@
 import type * as Tui from "@octocodeai/octocode-tui";
 import { afterEach, expect, test, vi } from "vitest";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { handleClipboardPaste } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
 
 const readClipboardText = vi.hoisted(() => vi.fn<() => Promise<string | null>>());
 vi.mock("@octocodeai/octocode-tui", async (importOriginal) => ({
@@ -26,10 +27,7 @@ test("native image errors abort paste without reading text or changing the edito
 		showError: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
-	const prototype = InteractiveMode.prototype as unknown as {
-		handleClipboardPaste(this: typeof context): Promise<void>;
-	};
-	await prototype.handleClipboardPaste.call(context);
+	await handleClipboardPaste(createFakeHost(context));
 	expect(readClipboardText).not.toHaveBeenCalled();
 	expect(context.editor.insertTextAtCursor).not.toHaveBeenCalled();
 	expect(context.ui.requestRender).not.toHaveBeenCalled();

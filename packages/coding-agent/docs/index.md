@@ -26,7 +26,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Extensions](extensions.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
 - [Plugins: packaging, discovery and current limitations](plugins.md)
-- [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../PLUGINS_MODS_HOOKS.md)
+- [Plugins, skills, extensions and hooks: compatibility matrix and implementation plan](../../../docs/PLUGINS_MODS_HOOKS.md)
 - [Packages](packages.md)
 - [Skills](skills.md)
 - [Prompt templates](prompt-templates.md)
