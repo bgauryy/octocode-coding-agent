@@ -1,5 +1,5 @@
 import path from "node:path";
-import { sha256 } from "../octocode/shared/atomic.ts";
+import { sha256 } from "../utils/atomic-file.ts";
 import { globalPaths } from "../octocode/shared/home.ts";
 import type { PluginManifest } from "./plugin-manifest.ts";
 

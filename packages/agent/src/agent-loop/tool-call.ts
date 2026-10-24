@@ -7,22 +7,23 @@ import type {
 	AgentToolCallOutcome,
 	AgentToolResult,
 } from "../types.ts";
-import type { FinalizedToolCallOutcome, ToolUpdateSink } from "./events.ts";
+import type { ToolUpdateSink } from "./events.ts";
+import { AgentToolExecutionError } from "../tool-error.ts";
 
-export type PreparedToolCall = {
+type PreparedToolCall = {
 	kind: "prepared";
 	toolCall: AgentToolCall;
 	tool: AgentTool<any>;
 	args: unknown;
 };
 
-export type ImmediateToolCallOutcome = {
+type ImmediateToolCallOutcome = {
 	kind: "immediate";
 	result: AgentToolResult<any>;
 	isError: boolean;
 };
 
-export type ExecutedToolCallOutcome = {
+type ExecutedToolCallOutcome = {
 	result: AgentToolResult<any>;
 	isError: boolean;
 	durationMs: number;
@@ -172,7 +173,10 @@ export async function executePreparedToolCall(
 		acceptingUpdates = false;
 		await Promise.all(updateEvents);
 		return {
-			result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
+			result:
+				error instanceof AgentToolExecutionError
+					? { ...error.result, isError: true }
+					: createErrorToolResult(error instanceof Error ? error.message : String(error)),
 			isError: true,
 			durationMs,
 		};
@@ -188,7 +192,7 @@ export async function finalizeExecutedToolCall(
 	executed: ExecutedToolCallOutcome,
 	config: ToolCallHooks,
 	signal: AbortSignal | undefined,
-): Promise<FinalizedToolCallOutcome> {
+): Promise<AgentToolCallOutcome> {
 	let result = executed.result;
 	let isError = executed.isError;
 

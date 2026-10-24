@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { beginVerification, finishVerification, verificationLine } from "../../src/octocode/files/bash/verification.ts";
 import { mutationEpoch, recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
-import { jobReport } from "../../src/octocode/files/bash-jobs.ts";
+import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
 import { tmp } from "./helpers.ts";
 
 describe("verification receipts", () => {

@@ -12,6 +12,7 @@ import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
 export type AuthSelectorProvider = {
+	detail?: string;
 	id: string;
 	name: string;
 	authType: "oauth" | "api_key";
@@ -33,7 +34,7 @@ export function formatAuthSelectorProviderType(
 }
 
 /** Themed suffix describing whether and how a login option is configured, for example " ✓ configured". */
-export function formatAuthSelectorProviderStatus(provider: AuthSelectorProvider): string {
+function formatAuthSelectorProviderStatus(provider: AuthSelectorProvider): string {
 	if (!provider.status) return theme.fg("muted", " • not configured");
 	if (provider.status.type !== provider.authType) {
 		const label = `${formatAuthSelectorProviderType(provider.status.type, provider.subscription)} configured`;
@@ -68,13 +69,13 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 	private allProviders: AuthSelectorProvider[];
 	private filteredProviders: AuthSelectorProvider[];
 	private selectedIndex: number = 0;
-	private mode: "login" | "logout";
+	private mode: "login" | "logout" | "manage";
 	private onSelectCallback: (providerId: string, authType: AuthSelectorProvider["authType"]) => void;
 	private onCancelCallback: () => void;
 	private showAuthTypeLabels: boolean;
 
 	constructor(
-		mode: "login" | "logout",
+		mode: "login" | "logout" | "manage",
 		providers: AuthSelectorProvider[],
 		onSelect: (providerId: string, authType: AuthSelectorProvider["authType"]) => void,
 		onCancel: () => void,
@@ -94,8 +95,25 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 
 		// Add title
-		const title = mode === "login" ? "Select provider to configure:" : "Select provider to logout:";
+		const title =
+			mode === "manage"
+				? "AI providers — connect, update or remove credentials"
+				: mode === "login"
+					? "Select provider to configure:"
+					: "Remove a saved AI provider credential:";
 		this.addChild(new TruncatedText(theme.fg("accent", theme.bold(title)), 1, 0));
+		if (mode === "manage") {
+			this.addChild(
+				new TruncatedText(theme.fg("muted", "/model chooses a model · /github connects GitHub code search"), 1, 0),
+			);
+			this.addChild(
+				new TruncatedText(
+					theme.fg("muted", "Configured means credentials are present; provider access is not verified."),
+					1,
+					0,
+				),
+			);
+		}
 		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
@@ -152,10 +170,13 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 
 			const isSelected = i === this.selectedIndex;
 
-			const statusIndicator = formatAuthSelectorProviderStatus(provider);
-			const authTypeLabel = this.showAuthTypeLabels
-				? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
-				: "";
+			const statusIndicator = provider.detail
+				? theme.fg("muted", ` · ${provider.detail}`)
+				: formatAuthSelectorProviderStatus(provider);
+			const authTypeLabel =
+				this.showAuthTypeLabels && this.mode !== "manage"
+					? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
+					: "";
 			let line = "";
 			if (isSelected) {
 				const prefix = theme.fg("accent", "→ ");
@@ -180,7 +201,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 				this.allProviders.length === 0
 					? this.mode === "login"
 						? "No providers available"
-						: "No providers logged in. Use /login first."
+						: "No providers logged in. Use /providers first."
 					: "No matching providers";
 			this.listContainer.addChild(new TruncatedText(theme.fg("muted", `  ${message}`), 1, 0));
 		}

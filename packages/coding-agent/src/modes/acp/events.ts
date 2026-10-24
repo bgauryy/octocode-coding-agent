@@ -10,7 +10,7 @@ function chunk(text: string): Update[] {
 }
 
 /** Only project visible textual content; details, raw output and binary payloads never cross this adapter. */
-function toolContent(result: unknown): ToolCallContent[] {
+export function toolContent(result: unknown): ToolCallContent[] {
 	if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) return [];
 	let text = "";
 	for (const block of result.content) {

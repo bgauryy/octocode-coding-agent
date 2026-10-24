@@ -21,8 +21,6 @@ export { defaultModelPerProvider } from "./model-resolver/default-models.ts";
 export {
 	findExactModelReferenceMatch,
 	type ModelReferenceRequest,
-	type ModelReferenceResult,
-	type ModelReferenceTarget,
 	resolveModelReference,
 } from "./model-resolver/reference.ts";
 

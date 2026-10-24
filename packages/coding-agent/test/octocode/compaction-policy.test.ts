@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { idleContinuation } from "../../src/octocode/compaction/cache.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCachePolicy } from "./fake-pi.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
@@ -151,7 +151,7 @@ describe("turn_end", () => {
  * the only edit of an old message is the staged recovery from a request rejected as too large (HTTP 413).
  */
 describe("context edits", () => {
-	it("are produced only by the 413 recovery: no source file outside it names a context edit", () => {
+	it("are named only by 413 recovery and the read index that invalidates its cached context", () => {
 		const sourceRoot = path.resolve(__dirname, "../../src/octocode");
 		const walk = (dir: string): string[] =>
 			fs
@@ -166,7 +166,7 @@ describe("context edits", () => {
 		const naming = walk(sourceRoot)
 			.filter((file) => /context_edit|ContextEdit|appendContextEdit/.test(fs.readFileSync(file, "utf8")))
 			.map((file) => path.relative(sourceRoot, file).split(path.sep).join("/"));
-		expect(naming.sort()).toEqual(["compaction/images.ts", "compaction/recovery.ts"]);
+		expect(naming.sort()).toEqual(["compaction/images.ts", "compaction/recovery.ts", "files/dedupe.ts"]);
 	});
 
 	it("are the only entries the turn_end handler returns, and only for a turn rejected as too large", async () => {

@@ -47,7 +47,7 @@ function setup(options: { trusted?: boolean; env?: NodeJS.ProcessEnv; confirms?:
 	}));
 	permission.start(ctx);
 	void fake.emit("session_start", { type: "session_start" }, ctx);
-	const run = (args: string) => commands.get("permission")!.handler(args, ctx);
+	const run = (args: string) => commands.get("permissions")!.handler(args, ctx);
 	/** Tab with `typed` in the input line; returns whether Octocode took the key (else the editor completes as usual). */
 	const tab = async (typed = ""): Promise<boolean> => {
 		text = typed;

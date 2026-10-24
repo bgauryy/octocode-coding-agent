@@ -8,16 +8,21 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionInternals } from "./host.ts";
-import type { PendingUserInput } from "./types.ts";
+import type { PendingUserInput, QueuedInput } from "./types.ts";
+
+interface QueuedEntry {
+	id: string;
+	mode: "steer" | "followUp";
+	text: string;
+	message: Extract<AgentMessage, { role: "user" }>;
+}
 
 export class SessionInputQueue {
 	// Selected batches retain metadata across clearQueue; removed queue objects are weakly held.
 	private readonly _pendingUserInputs = new WeakMap<AgentMessage, PendingUserInput>();
-	/** Tracks pending steering messages for UI display. Removed when delivered. */
-	private _steeringMessages: string[] = [];
-	/** Tracks pending follow-up messages for UI display. Removed when delivered. */
-	private _followUpMessages: string[] = [];
-	private _queuedUserMessages = new WeakMap<AgentMessage, { mode: "steer" | "followUp"; text: string }>();
+	/** Messages in the agent's steering and follow-up queues, in queue order. Removed when delivery begins. */
+	private _queued: QueuedEntry[] = [];
+	private _nextQueuedId = 1;
 	/** Messages queued to be included with the next user prompt as context ("asides"). */
 	private _pendingNextTurnMessages: CustomMessage[] = [];
 	/** Context-only custom messages queued during a run, flushed once the current turn's tool results are in. */
@@ -30,11 +35,32 @@ export class SessionInputQueue {
 	}
 
 	get steeringMessages(): readonly string[] {
-		return this._steeringMessages;
+		return this._texts("steer");
 	}
 
 	get followUpMessages(): readonly string[] {
-		return this._followUpMessages;
+		return this._texts("followUp");
+	}
+
+	/** Queued messages in delivery order: steering first, then follow-ups. */
+	get queuedInputs(): readonly QueuedInput[] {
+		return [...this._entries("steer"), ...this._entries("followUp")].map((entry) => ({
+			id: entry.id,
+			mode: entry.mode,
+			text: entry.text,
+			imageCount: Array.isArray(entry.message.content)
+				? entry.message.content.filter((part) => part.type === "image").length
+				: 0,
+			source: this._pendingUserInputs.get(entry.message)?.source ?? "interactive",
+		}));
+	}
+
+	private _entries(mode: "steer" | "followUp"): QueuedEntry[] {
+		return this._queued.filter((entry) => entry.mode === mode);
+	}
+
+	private _texts(mode: "steer" | "followUp"): string[] {
+		return this._entries(mode).map((entry) => entry.text);
 	}
 
 	get pendingCustomMessages(): readonly CustomMessage[] {
@@ -57,21 +83,65 @@ export class SessionInputQueue {
 	private _emitQueueUpdate(): void {
 		this.host.emit({
 			type: "queue_update",
-			steering: [...this._steeringMessages],
-			followUp: [...this._followUpMessages],
+			steering: this._texts("steer"),
+			followUp: this._texts("followUp"),
 		});
 	}
 
+	/** Delivery of `message` begins: it leaves the queue and can no longer be edited. */
 	consumeQueuedUserMessage(message: AgentMessage): void {
-		const queued = this._queuedUserMessages.get(message);
-		if (!queued) return;
-		this._queuedUserMessages.delete(message);
-		const messages = queued.mode === "steer" ? this._steeringMessages : this._followUpMessages;
-		const index = messages.indexOf(queued.text);
-		if (index !== -1) {
-			messages.splice(index, 1);
-			this._emitQueueUpdate();
+		const index = this._queued.findIndex((entry) => entry.message === message);
+		if (index === -1) return;
+		this._queued.splice(index, 1);
+		this._emitQueueUpdate();
+	}
+
+	/**
+	 * Replace the text of a queued message, keeping its attachments, position and kind. Empty or whitespace-only
+	 * text removes it. "missing" means it is gone, usually because delivery had begun.
+	 */
+	replace(id: string, text: string): "replaced" | "removed" | "missing" {
+		const entry = this._queued.find((candidate) => candidate.id === id);
+		if (!entry || !this.host.session.agent.hasQueuedMessage(entry.message)) return "missing";
+		if (!text.trim()) {
+			return this.remove(id) ? "removed" : "missing";
 		}
+		const { message } = entry;
+		const parts = Array.isArray(message.content) ? message.content : [];
+		const attachments = parts.filter((part) => part.type !== "text");
+		message.content = [{ type: "text", text }, ...attachments];
+		entry.text = text;
+		const input = this._pendingUserInputs.get(message);
+		if (input) this._pendingUserInputs.set(message, { ...input, text, expandedPaths: undefined });
+		this._emitQueueUpdate();
+		return "replaced";
+	}
+
+	/** Take one message out of the queue so it is never delivered; undefined when it is no longer queued. */
+	remove(id: string): QueuedInput | undefined {
+		const queued = this.queuedInputs.find((candidate) => candidate.id === id);
+		if (!queued) return undefined;
+		const entry = this._queued.find((candidate) => candidate.id === id);
+		if (!entry || !this.host.session.agent.removeQueuedMessage(entry.message)) return undefined;
+		this._queued = this._queued.filter((entry) => entry.id !== id);
+		this._emitQueueUpdate();
+		return queued;
+	}
+
+	/** Swap a queued message with its neighbour of the same kind; false at either end or when not queued. */
+	move(id: string, direction: "up" | "down"): boolean {
+		const entry = this._queued.find((candidate) => candidate.id === id);
+		if (!entry) return false;
+		const siblings = this._entries(entry.mode);
+		const from = siblings.indexOf(entry);
+		const neighbour = siblings[direction === "up" ? from - 1 : from + 1];
+		if (!neighbour) return false;
+		if (!this.host.session.agent.swapQueuedMessages(entry.message, neighbour.message)) return false;
+		const a = this._queued.indexOf(entry);
+		const b = this._queued.indexOf(neighbour);
+		[this._queued[a], this._queued[b]] = [neighbour, entry];
+		this._emitQueueUpdate();
+		return true;
 	}
 
 	/**
@@ -87,36 +157,29 @@ export class SessionInputQueue {
 		if (images) {
 			content.push(...images);
 		}
-		const message: AgentMessage = {
+		const message: Extract<AgentMessage, { role: "user" }> = {
 			role: "user",
 			content,
 			timestamp: Date.now(),
 		};
 		if (input) this._pendingUserInputs.set(message, input);
-		this._queuedUserMessages.set(message, { mode, text });
-		if (mode === "steer") {
-			this.host.session.agent.steer(message);
-			this._steeringMessages.push(text);
-		} else {
-			this.host.session.agent.followUp(message);
-			this._followUpMessages.push(text);
-		}
+		this._queued.push({ id: `q${this._nextQueuedId++}`, mode, text, message });
+		if (mode === "steer") this.host.session.agent.steer(message);
+		else this.host.session.agent.followUp(message);
 		this._emitQueueUpdate();
 	}
 
 	clear(): { steering: string[]; followUp: string[] } {
-		const steering = [...this._steeringMessages];
-		const followUp = [...this._followUpMessages];
-		this._steeringMessages = [];
-		this._followUpMessages = [];
+		const steering = this._texts("steer");
+		const followUp = this._texts("followUp");
+		this._queued = [];
 		this.host.session.agent.clearAllQueues();
-		this._queuedUserMessages = new WeakMap();
 		this._emitQueueUpdate();
 		return { steering, followUp };
 	}
 
 	get pendingMessageCount(): number {
-		return this._steeringMessages.length + this._followUpMessages.length;
+		return this._queued.length;
 	}
 
 	addNextTurnMessage(message: CustomMessage): void {

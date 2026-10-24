@@ -41,7 +41,19 @@ const app = agent({ name: 'external-acp-fixture' })
     await chunk('wrong-session-output', 'unrelated-session');
     await chunk('private-thought', sessionId, 'agent_thought_chunk');
     await chunk('first\n');
+    if (mode.startsWith('overflow')) {
+      await client.notify(methods.client.session.update, {
+        sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'large', title: 'Read', rawOutput: 'evidence'.repeat(200_000) },
+      });
+      await chunk('final answer');
+      if (mode === 'overflow-fail') {
+        await new Promise((resolve) => process.stderr.write('x'.repeat(100_000) + '\nfinal diagnostic\n', resolve));
+        throw RequestError.internalError(undefined, 'fixture failure after overflow');
+      }
+      return { stopReason: 'max_tokens' };
+    }
     if (mode === 'wait' || mode === 'descendant') await pending();
+    if (mode === 'delayed') await new Promise((resolve) => setTimeout(resolve, 500));
     if (mode === 'crash-prompt') {
       process.stderr.write('fixture diagnostic\n');
       process.exit(8);

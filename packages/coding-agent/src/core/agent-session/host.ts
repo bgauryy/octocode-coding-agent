@@ -97,7 +97,7 @@ export interface SessionPublic {
 		options?: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean },
 	): Promise<void>;
 	abort(reason?: AbortReason): Promise<void>;
-	compact(): Promise<CompactionResult>;
+	compact(options?: { customInstructions?: string }): Promise<CompactionResult>;
 	abortRetry(): void;
 	abortCompaction(): void;
 	abortBranchSummary(): void;

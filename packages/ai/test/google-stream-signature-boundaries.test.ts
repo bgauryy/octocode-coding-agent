@@ -1,6 +1,7 @@
 import type { GenerateContentResponse, GoogleGenAI, Part } from "@google/genai";
 import { describe, expect, it } from "vitest";
-import { convertMessages, streamGoogle } from "../src/api/google-shared.ts";
+import { convertMessages } from "../src/api/google-shared/messages.ts";
+import { streamGoogle } from "../src/api/google-shared/stream.ts";
 import type { Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 

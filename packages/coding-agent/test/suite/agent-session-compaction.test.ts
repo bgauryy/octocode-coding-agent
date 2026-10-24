@@ -4,6 +4,7 @@ import {
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
 	fauxToolCall,
+	getCurrentSystemMessage,
 	getCurrentSystemPrompt,
 	getCurrentTools,
 	type Model,
@@ -124,6 +125,30 @@ async function createAbortableCompactionHarness(): Promise<{
 }
 
 describe("AgentSession compaction characterization", () => {
+	it("validates manual focus before aborting and does not reuse it for automatic compaction", async () => {
+		const seen: Array<string | undefined> = [];
+		const harness = await createHarness({
+			compactionPolicy: { keepRecentTokens: 1 },
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => {
+						seen.push(event.customInstructions);
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		const abort = vi.spyOn(harness.session, "abort");
+		await expect(harness.session.compact({ customInstructions: "x".repeat(16_001) })).rejects.toThrow("16000");
+		expect(abort).not.toHaveBeenCalled();
+		seedCompactableSession(harness);
+		useSummaryStreamFn(harness, "summary");
+		await harness.session.compact({ customInstructions: "Keep  exact\nfocus" });
+		seedCompactableSession(harness);
+		await (harness.session as unknown as SessionWithCompactionInternals)._runAutoCompaction("threshold", false);
+		expect(seen).toEqual(["Keep  exact\nfocus", undefined]);
+	});
+
 	it("stops automatic compaction after three failures and permits manual recovery", async () => {
 		const harness = await createHarness({ compactionPolicy: { keepRecentTokens: 1 } });
 		harnesses.push(harness);
@@ -271,9 +296,11 @@ describe("AgentSession compaction characterization", () => {
 		harness.sessionManager.appendCompaction("compacted", firstKeptEntryId, 100);
 
 		const messages = harness.sessionManager.buildSessionContext().messages;
-		expect(messages.map((message) => message.role)).toEqual(["system", "compactionSummary", "user", "user"]);
-		const checkpoint = messages[0];
-		if (checkpoint?.role !== "system") throw new Error("expected checkpoint system message");
+		// The head stays the message the provider cached; one update after the summary reaches the checkpointed state.
+		expect(messages.map((message) => message.role)).toEqual(["system", "compactionSummary", "system", "user", "user"]);
+		expect(messages[0]).toEqual(declared);
+		const checkpoint = getCurrentSystemMessage(messages);
+		if (!checkpoint) throw new Error("expected checkpoint system message");
 		expect(checkpoint.content).toBe("summarized instruction\n\nretained instruction");
 		expect(checkpoint.sections).toEqual({
 			...declared.sections,
@@ -399,7 +426,8 @@ describe("AgentSession compaction characterization", () => {
 			requestOptions = options;
 		});
 
-		await harness.session.compact();
+		await harness.session.compact({ customInstructions: "Retain release checklist." });
+		expect(JSON.stringify(requestContext)).toContain("Retain release checklist.");
 
 		expect(transformContext).not.toHaveBeenCalled();
 		expect(getCurrentSystemPrompt(requestContext?.messages ?? [])).not.toBe(harness.session.agent.state.systemPrompt);

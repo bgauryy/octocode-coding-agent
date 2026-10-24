@@ -74,6 +74,19 @@ it("validates, rechecks and commits effective source input without old native op
 	expect(entries).toHaveLength(1);
 	expect(JSON.stringify(entries[0])).toContain("replacement");
 });
+it("does not interpret a model's tool-call ID as the user origin", async () => {
+	const f = setup({ command: "printf replacement" });
+	f.event.toolCallId = "user-bash";
+	f.event.origin = "model";
+	expect(await f.gate(f.event, f.ctx)).toBeUndefined();
+	expect(f.event.input.command).toBe("printf replacement");
+});
+it("blocks user command replacement using origin regardless of invocation ID", async () => {
+	const f = setup({ command: "printf replacement" });
+	f.event.origin = "user";
+	expect(await f.gate(f.event, f.ctx)).toMatchObject({ block: true });
+	expect(f.event.input.command).toBe("printf original");
+});
 it.each([{ command: 7 }, null, "wrong"])("never executes original for invalid replacement %j", async (input) => {
 	const f = setup(input);
 	const original = structuredClone(f.event.input);

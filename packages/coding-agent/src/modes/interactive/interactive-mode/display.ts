@@ -12,7 +12,7 @@ import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the display helpers. */
-export type DisplayHost = Pick<
+type DisplayHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "editor"

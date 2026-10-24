@@ -1,8 +1,8 @@
 import type { SessionInfo } from "../../../../core/session-manager.ts";
-import { canonicalizePath } from "./utils.ts";
+import { canonicalizePath } from "../../../../utils/paths.ts";
 
 /** A session tree node for hierarchical display */
-export interface SessionTreeNode {
+interface SessionTreeNode {
 	session: SessionInfo;
 	children: SessionTreeNode[];
 	latestActivity: number;
@@ -25,16 +25,16 @@ export function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
 	const byPath = new Map<string, SessionTreeNode>();
 
 	for (const session of sessions) {
-		const sessionPath = canonicalizePath(session.path) ?? session.path;
+		const sessionPath = canonicalizePath(session.path);
 		byPath.set(sessionPath, { session, children: [], latestActivity: session.modified.getTime() });
 	}
 
 	const roots: SessionTreeNode[] = [];
 
 	for (const session of sessions) {
-		const sessionPath = canonicalizePath(session.path) ?? session.path;
+		const sessionPath = canonicalizePath(session.path);
 		const node = byPath.get(sessionPath)!;
-		const parentPath = canonicalizePath(session.parentSessionPath);
+		const parentPath = session.parentSessionPath && canonicalizePath(session.parentSessionPath);
 
 		if (parentPath && byPath.has(parentPath)) {
 			byPath.get(parentPath)!.children.push(node);

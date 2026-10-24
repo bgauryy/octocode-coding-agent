@@ -1,5 +1,5 @@
 /** Characters per shingle; a hit needs `RUN` consecutive ones (33 characters at the default). */
-export const SHINGLE = 32;
+const SHINGLE = 32;
 export const RUN = 2;
 const B1 = 0x01000193;
 const B2 = 0x5bd1e995;

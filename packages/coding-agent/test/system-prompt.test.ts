@@ -66,6 +66,19 @@ describe("buildSystemPrompt", () => {
 		},
 	);
 
+	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
+		"keeps skills without advertising the hidden %s reader",
+		(reader) => {
+			const input = { cwd: "/tmp", selectedTools: [reader], hiddenTools: [reader], skills: [testSkill] };
+			const indirect = buildSystemPrompt(input);
+			expect(indirect).toContain("/skills/test-skill/SKILL.md");
+			expect(indirect).not.toContain("Use Octocode localFetch");
+			const shell = buildSystemPrompt({ ...input, selectedTools: [reader, "bash"] });
+			expect(shell).toContain("Use bash");
+			expect(shell).not.toContain("Use Octocode localFetch");
+		},
+	);
+
 	test("keeps the tool list and docs section free of restated rules", () => {
 		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash"], toolSnippets: { bash: "Run." } });
 		expect(prompt).not.toContain("other custom tools");

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
 
 const mockState = vi.hoisted(() => ({
@@ -57,31 +58,31 @@ describe("Copilot Claude via Anthropic Messages", () => {
 	});
 
 	it("applies Copilot-specific adaptive thinking effort overrides", () => {
-		const opus48 = getModel("github-copilot", "claude-opus-4.8");
+		const opus48 = getBuiltinModel("github-copilot", "claude-opus-4.8");
 		expect(opus48.thinkingLevelMap).toMatchObject({ minimal: "low", xhigh: "xhigh", max: "max" });
 		expect(getSupportedThinkingLevels(opus48)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(opus48)).toContain("max");
 
-		const opus5 = getModel("github-copilot", "claude-opus-5");
+		const opus5 = getBuiltinModel("github-copilot", "claude-opus-5");
 		expect(opus5.api).toBe("anthropic-messages");
 		expect(opus5.contextWindow).toBe(1000000);
 		expect(opus5.thinkingLevelMap).toMatchObject({ minimal: "low", xhigh: "xhigh", max: "max" });
 		expect(getSupportedThinkingLevels(opus5)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(opus5)).toContain("max");
 
-		const opus55 = getModel("github-copilot", "claude-opus-5.5");
+		const opus55 = getBuiltinModel("github-copilot", "claude-opus-5.5");
 		expect(opus55.api).toBe("anthropic-messages");
 		expect(opus55.contextWindow).toBe(1000000);
 		expect(getSupportedThinkingLevels(opus55)).toEqual(["low", "medium", "high", "xhigh", "max"]);
 
-		const sonnet46 = getModel("github-copilot", "claude-sonnet-4.6");
+		const sonnet46 = getBuiltinModel("github-copilot", "claude-sonnet-4.6");
 		expect(sonnet46.thinkingLevelMap).toMatchObject({ minimal: "low", max: "max" });
 		expect(getSupportedThinkingLevels(sonnet46)).toContain("max");
 		expect(getSupportedThinkingLevels(sonnet46)).not.toContain("xhigh");
 	});
 
 	it("uses Bearer auth, Copilot headers, and valid Anthropic Messages payload", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.6");
+		const model = getBuiltinModel("github-copilot", "claude-sonnet-4.6");
 		expect(model.api).toBe("anthropic-messages");
 
 		const s = streamAnthropic(model, context, { apiKey: "tid_copilot_session_test_token" });
@@ -115,7 +116,7 @@ describe("Copilot Claude via Anthropic Messages", () => {
 	});
 
 	it("omits interleaved-thinking beta for adaptive-thinking models", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.6");
+		const model = getBuiltinModel("github-copilot", "claude-sonnet-4.6");
 		const s = streamAnthropic(model, context, {
 			apiKey: "tid_copilot_session_test_token",
 			interleavedThinking: true,

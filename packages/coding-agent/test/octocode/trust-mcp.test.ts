@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { loadTrustedMcpConfig, trustedMcpOptions } from "../../src/extensions/mcp-trust.ts";
 import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { createHarness, createTestUiContext } from "../suite/harness.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 beforeEach(() => {
 	vi.stubEnv("OCTOCODE_HOME", tmp("octocode-mcp-trust-home-"));

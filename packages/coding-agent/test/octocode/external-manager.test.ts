@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../../src/core/extensions/index.ts";
 import { AcpError } from "../../src/octocode/external/acp.ts";
-import { ExternalAgents, type ExternalFactories, type ExternalPolicy } from "../../src/octocode/external/manager.ts";
+import {
+	ExternalAgents,
+	MAX_EXTERNAL_CONNECTIONS,
+	type ExternalFactories,
+	type ExternalPolicy,
+} from "../../src/octocode/external/manager.ts";
 import type {
 	ExternalBackend,
 	ExternalInfo,
@@ -87,6 +92,56 @@ afterEach(async () => {
 });
 
 describe("external manager policy and lifecycle", () => {
+	it("reserves the connection cap before concurrent authorization and releases disconnected slots", async () => {
+		const state = setup();
+		const gate = deferred<void>();
+		state.authorize.mockImplementation(() => gate.promise);
+		const pending = Array.from({ length: MAX_EXTERNAL_CONNECTIONS }, (_, i) =>
+			state.manager.call({ ...state.input, id: `connection-${i}` }, state.ctx),
+		);
+		await expect(state.manager.call({ ...state.input, id: "overflow" }, state.ctx)).rejects.toThrow(
+			`limit (${MAX_EXTERNAL_CONNECTIONS})`,
+		);
+		expect(state.authorize).toHaveBeenCalledTimes(MAX_EXTERNAL_CONNECTIONS);
+		expect(state.acp).not.toHaveBeenCalled();
+		gate.resolve();
+		await Promise.all(pending);
+		await state.manager.call({ action: "disconnect", id: "connection-0" }, state.ctx);
+		await state.manager.call({ ...state.input, id: "replacement" }, state.ctx);
+		expect(await state.list()).toHaveLength(MAX_EXTERNAL_CONNECTIONS);
+	});
+
+	it("keeps a live ACP peer after a prompt timeout and releases manager busy state", async () => {
+		const state = setup();
+		const manager = new ExternalAgents(state.policy);
+		managers.push(manager);
+		const journal = join(state.cwd, "timeout-events.jsonl");
+		await manager.call(
+			{
+				...state.input,
+				command: process.execPath,
+				args: [fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url)), "wait", journal],
+			},
+			state.ctx,
+		);
+		await expect(
+			manager.call({ action: "prompt", id: "one", text: "work", timeoutMs: 1000 }, state.ctx),
+		).rejects.toMatchObject({ execution: "uncertain" });
+		expect(manager.running).toBe(0);
+		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({
+			connections: [{ id: "one", busy: false }],
+		});
+		await expect(manager.call({ action: "prompt", id: "one", text: "no overlap" }, state.ctx)).rejects.toMatchObject({
+			execution: "not-sent",
+		});
+		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({ connections: [{ id: "one" }] });
+		await manager.call({ action: "cancel", id: "one" }, state.ctx);
+		await expect(manager.call({ action: "prompt", id: "one", text: "closed" }, state.ctx)).rejects.toThrow(
+			"Unknown external connection",
+		);
+		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({ connections: [] });
+	});
+
 	it("releases prompt ownership if the sender session becomes unavailable before dispatch", async () => {
 		const state = setup();
 		await state.connect();

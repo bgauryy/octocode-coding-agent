@@ -40,7 +40,7 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 }
 
 /** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */
-export function createBuiltinProviders(catalogBaseUrl: string | undefined): Provider[] {
+function createBuiltinProviders(catalogBaseUrl: string | undefined): Provider[] {
 	const builtinModelDataGeneratedAt = builtinProviderCatalog.getBuiltinModelDataGeneratedAt();
 	return builtinProviderCatalog.builtinProviders().map((provider) => {
 		// OpenRouter narrows the catalog to the models, limits and prices of the user's key.

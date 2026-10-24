@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { rewriteFileQuery } from "../../src/octocode/hooks/rewrite.ts";
+import { rewriteFileQuery } from "../../src/octocode/shared/claude-file.ts";
 
 it("reverses each Claude file projection while preserving unrelated queries and native reasoning", () => {
 	const input = {

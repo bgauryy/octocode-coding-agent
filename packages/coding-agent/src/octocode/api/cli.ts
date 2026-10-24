@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { shellCompletion } from "../shared/shell-completion.ts";
 import { completeApi } from "./completion.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { parseArgs, pickInstance } from "./args.ts";
 import { ApiClient } from "./client.ts";
 import { EXTERNAL_CALL_MARGIN_MS, EXTERNAL_PROMPT_DEFAULT_MS } from "./protocol.ts";

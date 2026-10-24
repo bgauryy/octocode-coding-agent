@@ -1,14 +1,14 @@
 import fs from "node:fs";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
-import { AgentDbError } from "../../agentdb/db.ts";
+import { AgentDbError } from "../../agentdb/schema.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import { agentDbPath } from "../../shared/home.ts";
-import { errorMessage } from "../../shared/util.ts";
 import type { Ask } from "../asks.ts";
 import { TeamStore } from "../store.ts";
 import type { TeamView } from "../ticker.ts";
 
 /** What the database access reads of the team (`Team`, `session.ts`): the current values each time. */
-export interface DatabaseHost {
+interface DatabaseHost {
 	ctx(): ExtensionContext | undefined;
 	env(): NodeJS.ProcessEnv;
 }

@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type ApiOperations, OctocodeApi } from "../../src/octocode/api/bridge.ts";
+import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { MAX_FRAME_BYTES } from "../../src/octocode/api/protocol.ts";
 import { apiDir, writeRecord } from "../../src/octocode/api/registry.ts";
 import { OctocodeBackend } from "../../src/octocode/external/octocode.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import type { ApiOperations } from "../../src/octocode/api/bridge/contracts.ts";
 
 const running: OctocodeApi[] = [];
 afterEach(async () => {

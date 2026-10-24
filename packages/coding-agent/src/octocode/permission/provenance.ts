@@ -1,10 +1,13 @@
 import type { ToolAnnotations, ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
 import { formatAgo } from "../shared/format.ts";
-import { canonicalPath, isWithin, readPaths, resolveToolPath, tildePath, workspaceRoot } from "../shared/home.ts";
+import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpTool } from "../shared/octocode-tools.ts";
 import { secretProblem } from "../shared/sanitize.ts";
-import { contentText, isRecord } from "../shared/util.ts";
-import { readOnlyMcp, runsLater } from "./gate.ts";
+import { contentText } from "../shared/util.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { isRecord } from "../../utils/guards.ts";
+import { readOnlyMcp } from "./gate/classify.ts";
+import { runsLater } from "./file-access.ts";
 import { KeyTable } from "./key-table.ts";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";
 import { atoms, capBytes, decoded, normalize, RUN, shingles, tokens, URL_PATTERN } from "./provenance/keys.ts";

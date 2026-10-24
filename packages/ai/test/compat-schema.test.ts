@@ -1,13 +1,9 @@
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import {
-	AnthropicMessagesCompatSchema,
-	BedrockCompatSchema,
-	OpenAICompletionsCompatSchema,
-	OpenAIResponsesCompatSchema,
-	ProviderCompatSchema,
-} from "../src/providers/compat-schema.ts";
+import { BedrockCompatSchema, ProviderCompatSchema } from "../src/providers/compat-schema.ts";
+import { AnthropicMessagesCompatSchema } from "../src/providers/compat-schema/anthropic.ts";
+import { OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema } from "../src/providers/compat-schema/openai.ts";
 
 type ProviderCompat = Static<typeof ProviderCompatSchema>;
 

@@ -1,47 +1,45 @@
 import { Type } from "typebox";
+import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { createBashToolDefinition } from "../../core/tools/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "../shared/env.ts";
 import { formatDuration, shortPath } from "../shared/format.ts";
-import { plural, statusColor, timedTool, toolHeader } from "../shared/render.ts";
+import { toolHeader } from "../shared/render.ts";
 import { STATUS } from "../shared/status.ts";
-import { contentText, errorMessage, firstLine, isRecord, wholeSeconds } from "../shared/util.ts";
-import {
-	type BashJob,
-	BashJobs,
-	JOB_TYPE,
-	type JobExit,
-	jobReport,
-	reapOrphanJobs,
-	type ShellSettings,
-	shellSettings,
-	shellScript,
-} from "./bash-jobs.ts";
-import { foregroundOperations, strayNote } from "./bash-run.ts";
-import { type BashDetails, RERUN_HINT, renderBashResult, renderJobMessage } from "./render.ts";
+import { contentText, firstLine, wholeSeconds } from "../shared/util.ts";
+import { BashJobs } from "./bash-jobs.ts";
+import { foregroundOperations, type HandoffReason, strayNote } from "./bash-run.ts";
+import { foregroundPlan } from "./bash/auto.ts";
+import { type BashDetails, renderBashResult, renderJobMessage } from "./render.ts";
 import {
 	adoptFullOutput,
 	CLAMP_NOTE,
 	DEFAULT_BASH_TIMEOUT,
-	effectiveTimeout,
 	jobLines,
 	MAX_FOREGROUND_TIMEOUT,
-	movedResult,
+	foregroundFailure,
 	orphanNotice,
 } from "./bash/results.ts";
 import {
 	beginVerification,
 	finishVerification,
+	foregroundReceipt,
 	pendingVerification,
-	readableLog,
 	verificationJson,
 	verificationLine,
 	verificationSchema,
 } from "./bash/verification.ts";
-
-export { DEFAULT_BASH_TIMEOUT, effectiveTimeout, MAX_FOREGROUND_TIMEOUT } from "./bash/results.ts";
+import { plural } from "../shared/render/text.ts";
+import { statusColor } from "../shared/render/status.ts";
+import { timedTool } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
+import type { BashJob, JobExit } from "./bash-jobs/types.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
+import { jobReport } from "./bash-jobs/report.ts";
+import { reapOrphanJobs } from "./bash-jobs/records.ts";
+import { type ShellSettings, shellSettings, shellScript } from "./bash-jobs/shell.ts";
 
 /**
  * Octocode's `bash`, with two changes: a waited-for command has a deadline when the call names none (Octocode's has none, so a
@@ -61,9 +59,6 @@ const BACKGROUND_OUTPUT = Type.Object({
 	verification: Type.Optional(verificationSchema),
 });
 
-/** A command starting with `sleep` is stopped at its deadline, not moved to the background (as Claude Code does). */
-const SLEEP_COMMAND = /^\s*sleep(?:\s|$)/;
-
 export function registerBashTool(
 	pi: ExtensionAPI,
 	commands?: Subcommands,
@@ -75,6 +70,7 @@ export function registerBashTool(
 	let current: ExtensionContext | undefined;
 	// Set from session_shutdown: a job that ends meanwhile reports without waking anyone.
 	let closing = false;
+	let sessionGeneration = 0;
 	const reportedAtShutdown = new WeakSet<BashJob>();
 	const showJobs = () => {
 		try {
@@ -90,10 +86,19 @@ export function registerBashTool(
 		}
 	};
 	const report = (job: BashJob, exit: JobExit, wake: boolean) => {
+		const context = current;
+		const generation = sessionGeneration;
+		const deliveryFailed = () => {
+			if (!context || closing || current !== context || sessionGeneration !== generation) return;
+			try {
+				say(context, `Bash job ${job.id} report failed. Output log: ${job.log}`, "warning");
+			} catch {
+				// The session UI ended.
+			}
+		};
 		try {
-			// followUp: read once the current turn ends; triggerTurn wakes an idle session. The log names the job uniquely
-			// (ids restart with each extension instance), so a resumed session can tell which jobs reported.
-			void pi.sendMessage(
+			// Follow-up records output after this turn; the log distinguishes job IDs reused by a later instance.
+			const sending = pi.sendMessage(
 				{
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
@@ -102,8 +107,9 @@ export function registerBashTool(
 				},
 				{ triggerTurn: wake, deliverAs: "followUp" },
 			);
+			if (sending && typeof sending.then === "function") void Promise.resolve(sending).catch(deliveryFailed);
 		} catch {
-			// The session ended while the job ran.
+			deliveryFailed();
 		}
 	};
 	const onExit = (job: BashJob, exit: JobExit) => {
@@ -116,6 +122,7 @@ export function registerBashTool(
 	};
 
 	pi.on("session_start", async (event, ctx) => {
+		sessionGeneration++;
 		current = ctx;
 		closing = false;
 		// Octocode has no hook before a reload: the jobs it stopped are named here, from the note the shutdown left.
@@ -190,8 +197,8 @@ export function registerBashTool(
 			name: "bash",
 			label: "bash",
 			description:
-				"Run shell commands with type bash (default) or powershell (Windows) in the working directory: builds, tests, git, formatters and installed CLIs. Foreground calls return combined output after completion; large output keeps a tail and names the full log. " +
-				"Background calls return a job id, pid and log path; completion arrives automatically as a message. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.",
+				"Run shell commands in the working directory: builds, tests, git, formatters and CLIs. Foreground calls return combined output; large output keeps a tail and names the full log. " +
+				`Background calls return a job id, pid and log path; completion arrives as a message. Use background: true for builds, full test suites, servers and anything over a minute; a foreground call moves to the background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s or when the user sends a message, unless background is false with a timeout. Never sleep-poll for jobs or files. A timeout does not undo side effects: inspect the result before rerunning a command.`,
 			// Octocode's own snippet ("ls, grep, find") would contradict the Octocode research routing.
 			promptSnippet: "Run shell commands: builds, tests, git",
 			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
@@ -263,16 +270,22 @@ export function registerBashTool(
 							log: job.log,
 							...(verification ? { verification: verificationJson(verification) } : {}),
 						},
-						details: { job: job.id, pid: job.pid, log: job.log, ...(verification ? { verification } : {}) },
+						details: {
+							job: job.id,
+							pid: job.pid,
+							log: job.log,
+							...(verification ? { verification, notices: [verificationLine(verification)] } : {}),
+						},
 					};
 				}
-				const { seconds: timeout, clamped } = effectiveTimeout(params.timeout);
+				const { timeout, clamped, movable, auto } = foregroundPlan(params, settings.backgroundAfterSeconds);
 				// Octocode reports the spill file in its updates' details; a timeout or abort throws, and only the updates name it then.
 				let spilled: string | undefined;
 				let group: number | undefined;
 				let endedBy: NodeJS.Signals | null = null;
 				// A command still running at its deadline becomes a background job (see `adoptAtDeadline`).
 				let adopted: BashJob | undefined;
+				let movedFor = "deadline" as HandoffReason;
 				const run = createBashToolDefinition(process.cwd(), {
 					...settings,
 					commandPrefix: undefined,
@@ -282,17 +295,19 @@ export function registerBashTool(
 							group = pid;
 							return group;
 						},
-						SLEEP_COMMAND.test(params.command)
-							? undefined
-							: (child, output, startedAt) => {
+						movable
+							? (child, output, startedAt, reason) => {
+									movedFor = reason;
 									adopted = jobs.adopt(child, params.command, ctx.cwd, onExit, { output, startedAt, verification });
 									if (verification) verification.startedAt = startedAt;
 									showJobs();
 									return adopted;
-								},
+								}
+							: undefined,
 						(signalCode) => {
 							endedBy = signalCode;
 						},
+						{ pending: () => ctx.hasPendingMessages() },
 					),
 				});
 				try {
@@ -307,38 +322,27 @@ export function registerBashTool(
 						ctx,
 					);
 					const stray = group === undefined ? undefined : strayNote(group);
-					const notes = [stray, clamped ? `(${CLAMP_NOTE})` : undefined]
-						.filter((note) => note !== undefined)
-						.join("\n\n");
+					const notices = [stray, clamped ? `(${CLAMP_NOTE})` : undefined].filter((note) => note !== undefined);
+					const notes = notices.join("\n\n");
 					const result = notes
 						? { ...raw, content: [{ type: "text" as const, text: `${contentText(raw.content)}\n\n${notes}` }] }
 						: raw;
-					const details: BashDetails = { ...result.details };
+					const details: BashDetails = { ...result.details, ...(notices.length ? { notices } : {}) };
 					const completed = (value: typeof result, finalDetails: BashDetails) => {
 						if (!verification) return { ...value, details: finalDetails };
 						const output = value.structuredContent;
-						const exitCode = isRecord(output) && typeof output.exit_code === "number" ? output.exit_code : null;
-						verification.output.complete = !finalDetails.truncation || !!finalDetails.fullOutputPath;
-						const receipt = finishVerification(verification, {
-							code: exitCode,
-							signal: endedBy,
-							seconds:
-								isRecord(output) && typeof output.wall_time_seconds === "number"
-									? output.wall_time_seconds
-									: (Date.now() - verification.startedAt) / 1000,
-						});
-						receipt.output.log = finalDetails.fullOutputPath;
-						receipt.output.logAvailable = finalDetails.fullOutputPath
-							? readableLog(finalDetails.fullOutputPath)
-							: undefined;
-						receipt.output.complete &&= !finalDetails.fullOutputPath || receipt.output.logAvailable === true;
+						const receipt = foregroundReceipt(verification, endedBy, output, finalDetails);
 						return {
 							...value,
 							content: [
 								{ type: "text" as const, text: `${contentText(value.content)}\n\n${verificationLine(receipt)}` },
 							],
 							structuredContent: { ...(isRecord(output) ? output : {}), verification: verificationJson(receipt) },
-							details: { ...finalDetails, verification: receipt },
+							details: {
+								...finalDetails,
+								verification: receipt,
+								notices: [...(finalDetails.notices ?? []), verificationLine(receipt)],
+							},
 						};
 					};
 					if (!details.fullOutputPath) return completed(result, details);
@@ -358,17 +362,16 @@ export function registerBashTool(
 						{ ...details, fullOutputPath: moved.path },
 					);
 				} catch (error) {
-					const full = adoptFullOutput(errorMessage(error), spilled, jobs.logDir());
-					const message = full.text;
-					if (adopted) return movedResult(message, adopted, timeout, clamped, ctx.cwd, full.path, verification);
-					if (!/Command timed out after/.test(message))
-						throw new Error(clamped ? `${message}\n\n(${CLAMP_NOTE})` : message);
-					const how = clamped
-						? `with background: true and check its log (${CLAMP_NOTE})`
-						: "with a longer timeout, or with background: true and check its log";
-					throw new Error(
-						`${message}.\n${RERUN_HINT} ${how}; if it waits for input, pass the input or a non-interactive flag.`,
-					);
+					return foregroundFailure(error, {
+						spilled,
+						dir: jobs.logDir(),
+						adopted,
+						seconds: timeout,
+						clamped,
+						cwd: ctx.cwd,
+						verification,
+						how: movedFor === "message" ? "message" : auto ? "threshold" : "deadline",
+					});
 				}
 			},
 			renderCall(args, theme, context) {

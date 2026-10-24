@@ -14,5 +14,3 @@ export function createToolSearchExtension(): ExtensionFactory {
 		pi.registerTool({ ...createToolSearchToolDefinition({ tools: pi }), defaultActive: false });
 	};
 }
-
-export default createToolSearchExtension();

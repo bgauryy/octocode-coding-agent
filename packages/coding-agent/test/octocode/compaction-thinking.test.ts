@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { bindsThinkingToPrefix, stripStaleThinking } from "../../src/octocode/compaction/thinking.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

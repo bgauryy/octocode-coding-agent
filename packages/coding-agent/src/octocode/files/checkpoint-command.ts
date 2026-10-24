@@ -3,8 +3,8 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sessionDir } from "../shared/home.ts";
 import { withDialog } from "../shared/locks.ts";
-import { plural } from "../shared/render.ts";
-import { errorMessage } from "../shared/util.ts";
+import { plural } from "../shared/render/text.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";
 
@@ -39,6 +39,10 @@ function describe(result: RewindResult, cwd: string, turns: number): string {
 			`Partly restored, an older change could not be undone (its checkpoint is kept, rewind again to retry): ${show(result.partly)}.`,
 		);
 	if (result.skipped.length) lines.push(`Left alone, changed since the agent's edit: ${show(result.skipped)}.`);
+	for (const copy of result.recovery ?? [])
+		lines.push(
+			`A concurrent change to ${show([copy.path])} was preserved at ${copy.savedAt}; inspect both files before retrying.`,
+		);
 	return lines.join("\n");
 }
 

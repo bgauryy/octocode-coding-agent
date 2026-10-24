@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { expandPromptTemplate } from "../src/core/prompt-templates.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { inspectPluginHooks } from "../src/core/plugin-hooks.ts";
-import { loadHooks, commandsFor } from "../src/octocode/hooks/config.ts";
+import { loadHooks } from "../src/octocode/hooks/config.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { commandsFor } from "../src/octocode/hooks/config/calls.ts";
 const dirs: string[] = [];
 function fixture(protocol: "claude" | "codex") {
 	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "plugin-runtime-")));

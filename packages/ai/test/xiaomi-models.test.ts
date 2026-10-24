@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getModels, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModels } from "../src/providers/all.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
 import type { ThinkingLevel } from "../src/types.ts";
 
@@ -9,18 +10,18 @@ const REPLACEMENT_MODEL_IDS = ["mimo-v2.6-flash", "mimo-v2.6-pro"] as const;
 
 describe("Xiaomi MiMo models", () => {
 	it.each(XIAOMI_PROVIDERS)("omits deprecated models from %s", (provider) => {
-		const modelIds = getModels(provider).map((model) => model.id);
+		const modelIds = getBuiltinModels(provider).map((model) => model.id);
 		for (const modelId of DEPRECATED_MODEL_IDS) expect(modelIds).not.toContain(modelId);
 	});
 
 	it.each(XIAOMI_PROVIDERS)("keeps replacement models on %s", (provider) => {
-		const modelIds = getModels(provider).map((model) => model.id);
+		const modelIds = getBuiltinModels(provider).map((model) => model.id);
 		for (const modelId of REPLACEMENT_MODEL_IDS) expect(modelIds).toContain(modelId);
 	});
 
 	// #10818: MiMo Chat Completions only supports a thinking on/off toggle.
 	it.each(XIAOMI_PROVIDERS)("models %s reasoning as an off/on toggle", async (provider) => {
-		const models = getModels(provider).filter((model) => model.reasoning);
+		const models = getBuiltinModels(provider).filter((model) => model.reasoning);
 		expect(models.length).toBeGreaterThan(0);
 
 		for (const model of models) {

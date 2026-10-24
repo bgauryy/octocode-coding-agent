@@ -6,10 +6,11 @@ import type { FauxResponseStep } from "@octocodeai/octocode-ai/compat";
 import { expect, it } from "vitest";
 import { createReadToolDefinition } from "./fixtures/read-tool.ts";
 import { Checkpoints } from "../src/octocode/files/checkpoint.ts";
-import { FileGuard, registerFileTool } from "../src/octocode/files/tool.ts";
+import { registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
 import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
+import { FileGuard } from "../src/octocode/files/tool/guard.ts";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const envelope = (body: string) => `*** Begin Patch\n${body}\n*** End Patch`;

@@ -2,10 +2,11 @@ import { type Component, truncateToWidth, visibleWidth, wrapTextWithAnsi } from 
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { formatAgo, formatCost, formatDuration, formatTokenUsage, toolCallCount } from "../shared/format.ts";
-import { clip, plural, statusColor } from "../shared/render.ts";
+import { clip, plural } from "../shared/render/text.ts";
+import { statusColor } from "../shared/render/status.ts";
 import { STATUS } from "../shared/status.ts";
 import { GOAL_SHOWN_CHARS } from "./identity.ts";
-import type { Member, Traffic } from "./model.ts";
+import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
 import type { Team } from "./session.ts";
 
 /** The panel widget's key. The widget is static text only: its rows are pure in (members, width, now), so repainting never moves the transcript. */

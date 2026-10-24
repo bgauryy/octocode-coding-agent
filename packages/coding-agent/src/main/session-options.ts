@@ -3,7 +3,7 @@ import type { Args } from "../cli/args.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../core/agent-session-services.ts";
 import { resolveCliModel, type ScopedModel } from "../core/model-resolver.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
-import type { CreateAgentSessionOptions } from "../core/sdk.ts";
+import type { CreateAgentSessionOptions } from "../core/sdk/types.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { isLocalPath, resolvePath } from "../utils/paths.ts";
 

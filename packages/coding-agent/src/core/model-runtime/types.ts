@@ -6,9 +6,9 @@ import type {
 	CredentialStore,
 	Model,
 	ModelsStore,
-	ProviderHeaders,
 } from "@octocodeai/octocode-ai";
 import type { VirtualModelDefinition } from "../virtual-models.ts";
+import type { CredentialWriteTransform } from "../runtime-credentials.ts";
 
 export interface RegisteredVirtualModel {
 	model: Model<Api>;
@@ -48,7 +48,17 @@ export interface ModelRuntimeAuthOverrides extends AuthOperationOptions {
 	minOAuthValidityMs?: number;
 }
 
-export type CredentialSynchronizationOperation = "login" | "logout" | "setRuntimeApiKey" | "removeRuntimeApiKey";
+export interface ModelRuntimeLoginOptions {
+	/** Rewrites this login's credential before persistence, within the provider's serialized operation. */
+	transformCredential?: CredentialWriteTransform;
+}
+
+export type CredentialSynchronizationOperation =
+	| "login"
+	| "logout"
+	| "importCredential"
+	| "setRuntimeApiKey"
+	| "removeRuntimeApiKey";
 
 /** Credentials changed successfully, but the local model/auth snapshot could not be synchronized. */
 export class CredentialSynchronizationError extends Error {
@@ -68,20 +78,4 @@ export class CredentialSynchronizationError extends Error {
 		this.operation = operation;
 		this.credential = credential;
 	}
-}
-
-export function mergeHeaders(
-	base: ProviderHeaders | undefined,
-	override: ProviderHeaders | undefined,
-): ProviderHeaders | undefined {
-	if (!base && !override) return undefined;
-	const merged = { ...base };
-	for (const [name, value] of Object.entries(override ?? {})) {
-		const lowerName = name.toLowerCase();
-		for (const existingName of Object.keys(merged)) {
-			if (existingName.toLowerCase() === lowerName) delete merged[existingName];
-		}
-		merged[name] = value;
-	}
-	return merged;
 }

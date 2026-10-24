@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { commandsFor, parseHooks } from "../../src/octocode/hooks/config.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import {
 	runPromptHook,
 	interpretPromptHook,

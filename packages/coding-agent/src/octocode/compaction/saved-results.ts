@@ -2,12 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SessionEntry } from "../../core/session-manager.ts";
-import { JOB_TYPE } from "../files/bash-jobs.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../shared/format.ts";
 import { sessionsRoot, tildePath } from "../shared/home.ts";
 import { saveFullOutput } from "../shared/spill.ts";
-import { contentText, escapeRegExp, isRecord } from "../shared/util.ts";
+import { contentText, escapeRegExp } from "../shared/util.ts";
 
 /**
  * The files Octocode saved from the part of the conversation a summary replaces. A result bounded when written

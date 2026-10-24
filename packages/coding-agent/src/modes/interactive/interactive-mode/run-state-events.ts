@@ -29,7 +29,6 @@ export type RunStateEventsHost = Pick<
 	| "defaultEditor"
 	| "editor"
 	| "flushCompactionQueue"
-	| "footer"
 	| "pendingTools"
 	| "renderSessionEntries"
 	| "retryEscapeHandler"
@@ -117,7 +116,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 						usage: event.result.usage,
 					});
 				}
-				host.footer.invalidate();
 			} else if (event.errorMessage) {
 				if (event.reason === "manual") {
 					host.showError(event.errorMessage);

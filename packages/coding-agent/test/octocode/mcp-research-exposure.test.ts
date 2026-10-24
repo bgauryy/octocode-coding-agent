@@ -10,8 +10,8 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createToolSearchExtension } from "../../src/extensions/tool-search/index.ts";
 import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
 
@@ -22,6 +22,7 @@ async function declaredTools(
 	role: "main" | "researcher",
 	server: Record<string, unknown>,
 	expectConnected = true,
+	contextWindow = 200_000,
 ): Promise<string[]> {
 	const root = tmp("octocode-mcp-exposure-");
 	const cwd = path.join(root, "project");
@@ -38,7 +39,7 @@ async function declaredTools(
 	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: server } }));
 	const faux = createFauxCore({
 		provider: "faux",
-		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
+		models: [{ id: "faux-1", contextWindow, maxTokens: 4096 }],
 	});
 	const provider: ExtensionFactory = (pi) => {
 		pi.registerProvider("faux", {
@@ -117,10 +118,21 @@ const RESEARCH = ["localFetch", "localSearch", "structureSearch", "astSearch", "
 
 describe("Octocode research tools declared for a user-owned server", () => {
 	it.each(["main", "researcher"] as const)(
-		"declares only the local research tools in the %s session and defers the rest to tool_search, even without native loading",
+		"declares the local research tools and, without native loading, the rest too in the %s session while the catalog is small",
 		async (role) => {
 			const declared = await declaredTools(role, real());
 			expect(declared).not.toContain("codemode");
+			const octocode = declared.filter((name) => name.startsWith("mcp__octocode__"));
+			expect(octocode).toEqual(expect.arrayContaining(RESEARCH));
+			expect(octocode).toContain("mcp__octocode__ghSearchCode");
+		},
+		60_000,
+	);
+
+	it.each(["main", "researcher"] as const)(
+		"defers the GitHub and package tools to tool_search in the %s session without native loading once the catalog is large for the window",
+		async (role) => {
+			const declared = await declaredTools(role, real(), true, 8_000);
 			expect(declared).toContain("tool_search");
 			expect(declared.filter((name) => name.startsWith("mcp__octocode__")).sort()).toEqual([...RESEARCH].sort());
 		},

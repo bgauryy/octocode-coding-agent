@@ -1,4 +1,4 @@
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * The wire protocol of the external API: JSON-RPC 2.0 (the framing MCP, ACP and Codex's app-server also use).

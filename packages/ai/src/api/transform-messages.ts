@@ -162,8 +162,19 @@ export function transformMessages<TApi extends Api>(
 
 					return normalizedToolCall;
 				}
-
-				return block;
+				if (!["image", "media", "resource", "unsupported"].includes(block.type)) return [];
+				// Generated artifacts remain in the transcript. Only Google accepts them as model-role input;
+				// other providers receive an explicit description instead of unsupported wire content.
+				if (isSameModel && model.api.startsWith("google-") && block.type !== "unsupported") return block;
+				return {
+					type: "text" as const,
+					text:
+						block.type === "unsupported"
+							? block.text
+							: block.type === "resource"
+								? (block.text ?? block.name ?? block.uri)
+								: `[Assistant generated ${block.type}: ${block.mimeType}]`,
+				};
 			});
 
 			return {

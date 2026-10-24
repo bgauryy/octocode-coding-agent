@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
-import { parseHooks, commandsFor } from "../../src/octocode/hooks/config.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 const run = (stdout: string, code = 0, stderr = "") => ({
 	stdout,
 	code,

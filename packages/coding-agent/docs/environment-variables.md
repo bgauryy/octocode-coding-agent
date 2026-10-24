@@ -88,6 +88,7 @@ These variables are read by Octocode itself:
 | `OCTOCODE_SKIP_VERSION_CHECK` | Disable the npm latest-version request for `@octocodeai/octocodecode` |
 | `OCTOCODE_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
 | `OCTOCODE_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
+| `OCTOCODE_INSTRUCTION_CACHE_SPLIT` | Set to `off` to send the leading system prompt as one instruction cache block instead of two; see [second instruction block](prompt-caching.md#second-instruction-block) |
 | `OCTOCODE_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
 | `OCTOCODE_BUG_REPORT_URL` | Endpoint that `/bug` uploads reports to; without it, reports are exported as Zip files |
 | `OCTOCODE_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor |
@@ -115,6 +116,7 @@ These controls belong to the integrated Octocode features. Child identity, grant
 | `OCTOCODE_MCP` | Set to `0` to disable automatic Octocode research MCP startup; an explicitly configured `octocode` server is managed through [MCP configuration](mcp.md) |
 | `OCTOCODE_HOOKS` | Set to `1` at startup to enable [command hooks](hooks.md); off by default; children also require `hooks: true` in their profile |
 | `OCTOCODE_HOOKS_COMPAT` | Set to `1` for the partial [Claude permission-rule preview](permissions.md#claude-permission-rule-preview); also set `OCTOCODE_HOOKS=1` to execute [source-profile hooks](hooks.md#source-profile-preview). Unset/`0` keeps source rules inactive and legacy hook behavior |
+| `OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS` | Whole seconds a foreground `bash` command may run before it moves to the background as a job; overrides the `bashBackgroundAfterSeconds` setting. Default `90`; `0` turns the automatic move off |
 | `OCTOCODE_EDIT_DIAGNOSTICS` | Bounded post-edit LSP and before/after parser observations; enabled by default, `0` disables them. Receipts and file guards remain active |
 | `OCTOCODE_EXTRA_SKILLS` | Set to `0` to disable extra skill directories |
 | `CLAUDE_CONFIG_DIR` | Select Claude user settings for hook/permission previews and Claude extra skills; project paths remain unchanged. See [hook discovery](hooks.md#discovery) |

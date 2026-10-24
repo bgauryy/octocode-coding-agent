@@ -4,6 +4,7 @@ import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } fro
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
+import { splitSystemMessageAtBoundary } from "../utils/instruction-split.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
 	collapseSystemMessages,
@@ -17,8 +18,15 @@ import {
 	clampMaxTokensToContext,
 	clampReasoning,
 } from "./simple-options.ts";
-import { resolveCacheRetention } from "../utils/cache-policy.ts";
+import { resolveLayeredCacheRetention } from "../utils/cache-policy.ts";
+import { fitClaudeThinkingBudget } from "./anthropic-messages/thinking-budget.ts";
 import { buildBedrockClientConfig } from "./bedrock-converse-stream/client-config.ts";
+import {
+	addHistoryLookbackCachePoint,
+	capLayeredCacheRetention,
+	countCachePoints,
+	getCachePoint,
+} from "./bedrock-converse-stream/cache-points.ts";
 import { buildSystemPrompt, convertMessages, convertToolConfig } from "./bedrock-converse-stream/convert.ts";
 import {
 	appendBedrockFailureDiagnostic,
@@ -73,23 +81,43 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			if (customHeaders) {
 				addCustomHeadersMiddleware(client, customHeaders);
 			}
-			const cacheRetention = resolveCacheRetention(options.cacheRetention, options.env);
+			// Up to four checkpoints: tools (or, when split at the boundary, a second system point instead), system, the
+			// last user message and, when a slot is left, the previous request's tail. Instruction checkpoints come first so a one-hour TTL never
+			// follows a five-minute one.
+			const { history: cacheRetention, instructions: instructionCacheRetention } = capLayeredCacheRetention(
+				model,
+				resolveLayeredCacheRetention(options),
+			);
 			const inferenceMaxTokens = options.maxTokens ?? (isAnthropicClaudeModel(model) ? model.maxTokens : undefined);
 			const initialSystemMessage = getInitialSystemMessage(normalizedContext.messages);
-			const initialSystemPrompt = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : undefined;
+			const splitPrompt = initialSystemMessage
+				? splitSystemMessageAtBoundary(initialSystemMessage, options.instructionCacheBoundary)
+				: undefined;
+			const initialSystemPrompt =
+				splitPrompt ?? (initialSystemMessage ? getSystemMessageText(initialSystemMessage) : undefined);
+			const messages = convertMessages(normalizedContext, model, cacheRetention, options.env);
+			const system = buildSystemPrompt(initialSystemPrompt, model, instructionCacheRetention, options.env);
+			const toolConfig = convertToolConfig(
+				getCurrentTools(normalizedContext.messages),
+				options.toolChoice,
+				supportsStrictMode,
+				// A split prompt's base point covers the tools before it; its slot goes to the history lookback.
+				splitPrompt ? undefined : getCachePoint(model, instructionCacheRetention, options.env),
+			);
+			const historyCachePoint = getCachePoint(model, cacheRetention, options.env);
+			if (historyCachePoint) {
+				const usedPoints = countCachePoints(toolConfig?.tools, system, messages);
+				addHistoryLookbackCachePoint(messages, historyCachePoint, usedPoints);
+			}
 			let commandInput = {
 				modelId: model.id,
-				messages: convertMessages(normalizedContext, model, cacheRetention, options.env),
-				system: buildSystemPrompt(initialSystemPrompt, model, cacheRetention, options.env),
+				messages,
+				system,
 				inferenceConfig: {
 					...(inferenceMaxTokens !== undefined && { maxTokens: inferenceMaxTokens }),
 					...(options.temperature !== undefined && { temperature: options.temperature }),
 				},
-				toolConfig: convertToolConfig(
-					getCurrentTools(normalizedContext.messages),
-					options.toolChoice,
-					supportsStrictMode,
-				),
+				toolConfig,
 				additionalModelRequestFields: buildAdditionalModelRequestFields(model, options),
 				...(options.requestMetadata !== undefined && { requestMetadata: options.requestMetadata }),
 			};
@@ -208,9 +236,9 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 		);
 
 		const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
-		const thinkingBudget = Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024));
+		const thinkingBudget = fitClaudeThinkingBudget(adjusted.thinkingBudget, maxTokens);
 		// Budget-based Claude requires at least 1024 thinking tokens. If they cannot fit, answer without thinking.
-		if (thinkingBudget < 1024) {
+		if (thinkingBudget === 0) {
 			return stream(model, context, { ...base, maxTokens, reasoning: undefined } satisfies BedrockOptions);
 		}
 

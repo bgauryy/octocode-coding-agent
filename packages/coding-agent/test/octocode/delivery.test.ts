@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { STATUS } from "../../src/octocode/shared/status.ts";
+import { Mail } from "../../src/octocode/team/mail.ts";
 import { Delivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 
@@ -18,6 +19,78 @@ const report = (id: string) => ({
 });
 
 describe("Delivery", () => {
+	it("propagates synchronous throws and asynchronous rejection to a composed team-mail caller", async () => {
+		const fake = fakePi();
+		const rejected = vi.fn();
+		vi.spyOn(fake.pi, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
+		Delivery.install(fake.pi);
+		const mail = new Mail(fake.pi);
+		expect(mail.notice("failure notice", rejected)).toBe(true);
+		await vi.waitFor(() => expect(rejected).toHaveBeenCalledOnce());
+		const throws = fakePi();
+		vi.spyOn(throws.pi, "sendMessage").mockImplementationOnce(() => {
+			throw new Error("not ready");
+		});
+		Delivery.install(throws.pi);
+		expect(() => throws.pi.sendMessage(report("sync"))).toThrow("not ready");
+	});
+	it("preserves an asynchronous host rejection for callers and removes its queued ledger entry", async () => {
+		const fake = fakePi();
+		vi.spyOn(fake.pi, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
+		const delivery = Delivery.install(fake.pi);
+		const ctx = fakeCtx({ cwd: "/x", mode: "tui" });
+		await fake.emit("session_start", {}, ctx);
+		await fake.emit("agent_start", {}, ctx);
+		await expect(fake.pi.sendMessage(report("rejected"), { deliverAs: "steer" })).rejects.toThrow("host rejected");
+		expect(delivery.pending).toBe(0);
+		await fake.emit("agent_settled", {}, ctx);
+		expect(fake.sent).toHaveLength(0);
+		expect(ctx.ui.notes).toEqual([]);
+	});
+
+	it("waits for queued host acceptance and reports asynchronous re-append failure accurately", async () => {
+		const fake = fakePi();
+		let accept!: () => void;
+		const first = new Promise<void>((resolve) => {
+			accept = resolve;
+		});
+		vi.spyOn(fake.pi, "sendMessage").mockReturnValueOnce(first).mockRejectedValueOnce(new Error("append rejected"));
+		const delivery = Delivery.install(fake.pi);
+		const ctx = fakeCtx({ cwd: "/x", mode: "tui" });
+		await fake.emit("session_start", {}, ctx);
+		await fake.emit("agent_start", {}, ctx);
+		const accepted = fake.pi.sendMessage(report("delayed"), { deliverAs: "steer" });
+		expect(delivery.pending).toBe(1);
+		const settling = fake.emit("agent_settled", {}, ctx);
+		await Promise.resolve();
+		expect(ctx.ui.notes).toEqual([]);
+		accept();
+		await accepted;
+		await settling;
+		expect(ctx.ui.notes).toEqual([
+			{ message: expect.stringContaining("Interrupt lost 1 queued message"), type: "warning" },
+		]);
+	});
+
+	it("does not re-append into a new session after a pending handoff settles", async () => {
+		const fake = fakePi();
+		let accept!: () => void;
+		const first = new Promise<void>((resolve) => {
+			accept = resolve;
+		});
+		const send = vi.spyOn(fake.pi, "sendMessage").mockReturnValueOnce(first);
+		Delivery.install(fake.pi);
+		const old = fakeCtx({ cwd: "/x", mode: "tui" });
+		await fake.emit("session_start", {}, old);
+		await fake.emit("agent_start", {}, old);
+		const handoff = fake.pi.sendMessage(report("old"), { deliverAs: "steer" });
+		const settling = fake.emit("agent_settled", {}, old);
+		await fake.emit("session_start", {}, fakeCtx({ cwd: "/x", mode: "tui" }));
+		accept();
+		await handoff;
+		await settling;
+		expect(send).toHaveBeenCalledTimes(1);
+	});
 	it("paints the new session on start, so a status left on its UI is cleared and the replaced one is not touched", async () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);

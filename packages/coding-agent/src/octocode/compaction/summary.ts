@@ -14,8 +14,9 @@ import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { tildePath } from "../shared/home.ts";
-import { CHARS_PER_TOKEN } from "../shared/tokens.ts";
-import { contentText, errorMessage, escapeRegExp, isRecord } from "../shared/util.ts";
+import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { contentText, escapeRegExp } from "../shared/util.ts";
 import { archivePointer, TLDR_HEADING, TOPICS_LABEL } from "./archive.ts";
 import {
 	SUMMARIZER_RESULT_CHARS,
@@ -122,13 +123,17 @@ interface SplitSummary {
 	omitted: number;
 }
 
-/** Splits a summary this module wrote; any other summary is all body. */
+/** Code appends the file lists after the summary from the compaction's details (see `carryFileLists`), never the model. */
+const FILE_LIST_BLOCKS = /\n\n<(read-files|modified-files)>\n[\s\S]*?\n<\/\1>/g;
+
+/** Splits a summary this module wrote; any other summary is all body. The body never keeps code-appended file lists. */
 export function splitSummary(summary: string): SplitSummary {
 	const recovered = summary.replace(new RegExp(`\\n\\n${RECOVERY_HEADING}\\n(?:- [^\\n]*(?:\\n|$))+$`), "");
+	const modelPart = (text: string) => withoutSavedResults(text).replace(FILE_LIST_BLOCKS, "");
 	const at = recovered.lastIndexOf(`\n\n${USER_HEADING}\n`);
-	if (at < 0) return { body: withoutSavedResults(recovered), messages: [], omitted: 0 };
+	if (at < 0) return { body: modelPart(recovered), messages: [], omitted: 0 };
 	const section = recovered.slice(at);
-	const body = withoutSavedResults(recovered.slice(0, at));
+	const body = modelPart(recovered.slice(0, at));
 	const messages = [...section.matchAll(/<user-message>\n([\s\S]*?)\n<\/user-message>/g)].map((match) => match[1]);
 	const omitted = Number(
 		new RegExp(`^\\n\\n${escapeRegExp(USER_HEADING)}\\nEarlier user messages not kept here: (\\d+)`).exec(
@@ -207,7 +212,7 @@ interface PaidSummary {
 const paid = new WeakMap<object, PaidSummary>();
 
 /** What a summary call depends on: the model and the span it summarizes. */
-function paidKey(model: Model<Api>, preparation: CompactionPreparation): string {
+function paidKey(model: Model<Api>, preparation: CompactionPreparation, instructions?: string): string {
 	return JSON.stringify([
 		model.provider,
 		model.id,
@@ -217,6 +222,7 @@ function paidKey(model: Model<Api>, preparation: CompactionPreparation): string 
 		preparation.messagesToSummarize.length,
 		preparation.turnPrefixMessages.length,
 		preparation.previousSummary ?? null,
+		instructions ?? null,
 	]);
 }
 
@@ -226,6 +232,8 @@ export async function writeSummary(
 	event: SessionBeforeCompactEvent,
 	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
+	/** `cacheCold`: the session's prompt cache is past its lifetime, so sharing it would pay to rewrite it, not read it. */
+	options: { cacheCold?: boolean } = {},
 ): Promise<NativeCompactionResult | undefined> {
 	// A compaction before a downshift summarizes on the model the context still fits.
 	const model = summaryModel ?? ctx.model;
@@ -246,7 +254,9 @@ export async function writeSummary(
 			response.result = () => result;
 			return response;
 		};
-		const instructions = SUMMARY_FOCUS;
+		const instructions = event.customInstructions
+			? `${SUMMARY_FOCUS}\n\nAdditional user focus:\n${event.customInstructions}`
+			: SUMMARY_FOCUS;
 		// The archive writes this compaction's messages as the next segment once it succeeds (`register.ts`).
 		const segment = nextSegment();
 		// An in-memory session has no file to save to: long texts stay inline, cut with a marker.
@@ -261,30 +271,32 @@ export async function writeSummary(
 			turnPrefixMessages: summarizerView(event.preparation.turnPrefixMessages, segment, saveText),
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
 		};
-		const key = paidKey(model, event.preparation);
+		const key = paidKey(model, event.preparation, event.customInstructions);
 		let paidSummary = paid.get(ctx.sessionManager);
 		if (paidSummary?.key !== key) {
 			// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
 			// holds; on another (a downshift) or when that fails, as a standalone request that pays for the whole input.
+			const share = summaryModel === undefined && options.cacheCold !== true;
 			let fallback =
-				summaryModel === undefined
-					? "the cache-sharing request was cancelled"
-					: `the summary ran on ${model.id}, the model before a downshift, not the session's own`;
-			const shared =
-				summaryModel === undefined
-					? await sharedSummary(
-							pi,
-							event,
-							ctx,
-							model,
-							instructions,
-							(reason, userChoice) => {
-								fallback = reason;
-								if (!userChoice) notifyStandalone(ctx, reason);
-							},
-							recordUsage,
-						)
-					: undefined;
+				summaryModel !== undefined
+					? `the summary ran on ${model.id}, the model before a downshift, not the session's own`
+					: share
+						? "the cache-sharing request was cancelled"
+						: "the prompt cache had expired, so sharing it would rewrite the whole context";
+			const shared = share
+				? await sharedSummary(
+						pi,
+						event,
+						ctx,
+						model,
+						instructions,
+						(reason, userChoice) => {
+							fallback = reason;
+							if (!userChoice) notifyStandalone(ctx, reason);
+						},
+						recordUsage,
+					)
+				: undefined;
 			const written =
 				shared ??
 				(await compact(

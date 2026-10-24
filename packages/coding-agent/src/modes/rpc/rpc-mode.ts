@@ -18,7 +18,7 @@ import {
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
-import { killTrackedDetachedChildren } from "../../utils/shell.ts";
+import { handleTerminationSignals } from "../termination-signals.ts";
 import { toJsonEvent } from "../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
@@ -27,15 +27,6 @@ import { error } from "./rpc-mode/responses.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "../../utils/guards.ts";
-
-// Re-export types for consumers
-export type {
-	RpcCommand,
-	RpcExtensionUIRequest,
-	RpcExtensionUIResponse,
-	RpcResponse,
-	RpcSessionState,
-} from "./rpc-types.ts";
 
 /**
  * Run in RPC mode.
@@ -57,7 +48,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	// Shutdown request flag
 	let shutdownRequested = false;
 	let shuttingDown = false;
-	const signalCleanupHandlers: Array<() => void> = [];
+	let removeSignalHandlers = (): void => {};
 
 	runtimeHost.setRebindSession(async () => {
 		await rebindSession();
@@ -112,24 +103,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		});
 	};
 
-	const registerSignalHandlers = (): void => {
-		const signals: NodeJS.Signals[] = ["SIGTERM"];
-		if (process.platform !== "win32") {
-			signals.push("SIGHUP");
-		}
-
-		for (const signal of signals) {
-			const handler = () => {
-				killTrackedDetachedChildren();
-				void shutdown(signal === "SIGHUP" ? 129 : 143, signal);
-			};
-			process.on(signal, handler);
-			signalCleanupHandlers.push(() => process.off(signal, handler));
-		}
-	};
-
 	await rebindSession();
-	registerSignalHandlers();
+	removeSignalHandlers = handleTerminationSignals((signal, signalExitCode) => {
+		void shutdown(signalExitCode, signal);
+	});
 
 	// Handle a single command
 	const commandHost: RpcCommandHost = {
@@ -153,9 +130,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			process.exit(exitCode);
 		}
 		shuttingDown = true;
-		for (const cleanup of signalCleanupHandlers) {
-			cleanup();
-		}
+		removeSignalHandlers();
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
 		await runtimeHost.dispose();

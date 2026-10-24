@@ -72,9 +72,12 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 	.palette-trigger span:not(.kbd), .palette-trigger .kbd { display: none; }
 	.progress-summary { margin-left: 0; }
 	.board { margin-right: -16px; padding-right: 16px; }
-	.column { flex: 0 0 85vw; min-width: 0; max-height: none; }
+	.column { flex: 0 0 min(85vw, 360px); min-width: 0; max-height: none; }
 	.search-field { flex-basis: 100%; max-width: none; }
 	.result-count { margin-left: 0; }
+	.board-sort { margin-left: 0; }
+	.board-overview { gap: 8px; }
+	.board-view > .toolbar, .backlog-view > .toolbar { padding: 10px; }
 	.sheet { inset: auto 0 0 0; top: 6vh; width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; animation-name: slide-up; }
 	.sheet-body, .editor { padding: 16px 18px 28px; }
 	.sheet-bar { margin: -16px -18px 0; padding: 10px 12px 10px 18px; }

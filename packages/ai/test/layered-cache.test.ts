@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stream as anthropicStream } from "../src/api/anthropic-messages.ts";
 import { stream, streamSimple } from "../src/api/openai-responses.ts";
-import { getModel } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { calculateCost } from "../src/models.ts";
 import { withOpenCodeSessionHeader } from "../src/providers/opencode-headers.ts";
 import type { Model, StreamOptions } from "../src/types.ts";
@@ -88,7 +88,7 @@ describe("layered provider caching", () => {
 	});
 	it("keeps legacy Pi options working without adding a long instruction write", async () => {
 		const payload = await capture(model, { instructionCacheRetention: undefined, cacheRetention: "long" });
-		expect(payload.prompt_cache_options).toEqual({ ttl: "30m" });
+		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
 		expect(payload.input[0].content).toBe("Stable agent instructions");
 	});
 	it("honors none even when instructions request long retention", async () => {
@@ -163,7 +163,7 @@ describe("layered provider caching", () => {
 					messages: { content: { cache_control?: { ttl?: string } }[] }[];
 			  }
 			| undefined;
-		await anthropicStream(getModel("anthropic", "claude-haiku-4-5"), context, {
+		await anthropicStream(getBuiltinModel("anthropic", "claude-haiku-4-5"), context, {
 			...options,
 			onPayload: (value) => {
 				payload = value as typeof payload;

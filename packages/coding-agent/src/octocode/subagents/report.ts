@@ -5,13 +5,14 @@ import { formatSize, truncateHead } from "../../core/tools/index.ts";
 import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
 import { shortPath } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { capOutput, cutText, errorMessage as describeError } from "../shared/util.ts";
+import { capOutput, cutText } from "../shared/util.ts";
 import {
 	type ResultContract,
 	type StructuredResultV1,
 	unavailableResult,
 	validateResultAnswer,
 } from "./result-schema.ts";
+import { errorMessage as describeError } from "../../utils/guards.ts";
 
 const REPORT_MAX_LINES = 200;
 const SEPARATOR = "\n\n---\n\n";
@@ -36,7 +37,7 @@ function contradicted(token: string, rest: string): boolean {
 }
 
 /** Where a report named its outcome: its first word (the preferred form) or a labelled last line. */
-export type OutcomeSource = "first" | "last";
+type OutcomeSource = "first" | "last";
 
 /**
  * A report's outcome and where it stands, or undefined when it names none (an unknown outcome, never a failure). The
@@ -152,7 +153,12 @@ export class ReportTracker {
 		if (this.resultContract && stopReason !== "toolUse")
 			this.structured =
 				failed || !raw ? unavailableResult(this.resultContract) : validateResultAnswer(raw, this.resultContract);
-		if (!raw) return;
+		if (!raw) {
+			// An earlier report is evidence, not an answer to a new message that finished without text.
+			if (!failed && stopReason !== "toolUse" && this.fresh && this.sections > 0)
+				this.failure = "Subagent follow-up ended without a final answer";
+			return;
+		}
 		const text = visibleControls(raw);
 		this.lastText = preview(text);
 		if (stopReason === "toolUse" || failed) {

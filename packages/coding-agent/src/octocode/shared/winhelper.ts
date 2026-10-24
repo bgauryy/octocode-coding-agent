@@ -1,8 +1,9 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 import { validPid } from "./util.ts";
-import { type Classification, classifyScript, type ScriptCommand } from "./winclassify.ts";
+import { classifyScript } from "./winclassify.ts";
 import { WINDOWS_HELPER_SCRIPT } from "./winhelper-script.ts";
 import { powerShellCandidates } from "./winpath.ts";
+import type { Classification, ScriptCommand } from "./winclassify/types.ts";
 
 /**
  * The Windows helper: one `pwsh` (else Windows PowerShell), started by absolute path, per Octocode process, started on first use, that owns a Job Object per

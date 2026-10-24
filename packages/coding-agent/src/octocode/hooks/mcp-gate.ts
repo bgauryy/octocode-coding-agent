@@ -9,7 +9,7 @@ import { getMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
  * pipeline on purpose: PreToolUse hooks would run for the hook's own call (recursion), and the reservation gate
  * concerns file changes. Returns a refusal reason, or undefined when the call may run.
  */
-export type HookMcpGate = (
+type HookMcpGate = (
 	call: { toolName: string; input: Record<string, unknown> },
 	ctx: ExtensionContext,
 ) => Promise<string | undefined>;

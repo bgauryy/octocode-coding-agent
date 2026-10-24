@@ -54,7 +54,7 @@ export interface BashOperations {
 }
 
 /** Shared process execution used by the built-in shell tools. */
-export function createLocalShellOperations(shellName: string, resolveShellConfig: () => ShellConfig): BashOperations {
+function createLocalShellOperations(shellName: string, resolveShellConfig: () => ShellConfig): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout, env }) => {
 			const timeoutMs = resolveTimeoutMs(timeout);

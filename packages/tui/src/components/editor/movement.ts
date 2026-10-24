@@ -1,5 +1,5 @@
 import type { TuiMouseEvent, TuiMouseEventResult } from "../../tui.ts";
-import { visibleWidth } from "../../utils.ts";
+import { visibleWidth } from "../../utils/width.ts";
 import { findWordBackward, findWordForward } from "../../word-navigation.ts";
 import { findVisualLineAt } from "./layout.ts";
 import type { EditorModel } from "./model.ts";
@@ -9,7 +9,7 @@ import { isPasteMarker } from "./segmentation.ts";
  * Move cursor to a target visual line, applying sticky column logic.
  * Shared by moveCursor() and pageScroll().
  */
-export function moveToVisualLine(
+function moveToVisualLine(
 	editor: EditorModel,
 	visualLines: Array<{ logicalLine: number; startCol: number; length: number }>,
 	currentVisualLine: number,
@@ -112,7 +112,7 @@ export function moveToVisualLine(
  * - T = target line shorter than current visual col
  * - U = target line shorter than preferred col
  */
-export function computeVerticalMoveColumn(
+function computeVerticalMoveColumn(
 	editor: EditorModel,
 	currentVisualCol: number,
 	sourceMaxVisualCol: number,

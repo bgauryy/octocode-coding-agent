@@ -14,7 +14,7 @@
  */
 
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
+import { pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
 
 // Muse Code CLI client id.
 const CLIENT_ID = "1031625952748946";
@@ -37,33 +37,12 @@ function requestSignal(signal: AbortSignal): AbortSignal {
 	return AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), signal]);
 }
 
-async function readJson(response: Response): Promise<Record<string, unknown> | null> {
-	try {
-		const json = await response.json();
-		return json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
-}
-
 function errorDetail(json: Record<string, unknown> | null): string {
 	for (const key of ["error_description", "detail", "message", "error"]) {
 		const value = json?.[key];
 		if (typeof value === "string" && value.trim()) return `: ${value.trim()}`;
 	}
 	return "";
-}
-
-/** The verification URI is opened in the user's browser; only http(s) URLs are trusted. */
-function trustedHttpUrl(value: unknown): string | null {
-	if (typeof value !== "string" || !value) return null;
-	try {
-		const url = new URL(value);
-		if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-		return url.href;
-	} catch {
-		return null;
-	}
 }
 
 function positiveNumber(value: unknown): number | undefined {
@@ -158,9 +137,7 @@ async function mintApiKey(identityToken: string, signal: AbortSignal): Promise<O
 	const json = await readJson(response);
 	if (response.status === 401 || response.status === 403) {
 		// Identity token is not renewable (see file header); only a fresh device flow helps.
-		throw new Error(
-			`Meta session expired (status ${response.status}). Run \`/login meta\` to sign in again.${errorDetail(json)}`,
-		);
+		throw new Error(`Meta session expired (status ${response.status}). Sign in to Meta again.${errorDetail(json)}`);
 	}
 	if (!response.ok) {
 		throw new Error(`Meta API key mint failed with status ${response.status}${errorDetail(json)}`);

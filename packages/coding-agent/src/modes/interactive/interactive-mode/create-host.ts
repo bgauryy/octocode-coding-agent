@@ -163,6 +163,8 @@ export function createInteractiveModeHost(
 	host.options = { ...options, tuiMode };
 	host.autoTrustOnReloadCwd = options.autoTrustOnReloadCwd;
 	host.runtimeHost.setBeforeSessionInvalidate(() => {
+		// The outgoing session's queue and the compaction queue would be discarded with it; keep the text.
+		host.restoreQueuedMessagesToEditor();
 		host.resetExtensionUI();
 	});
 	host.runtimeHost.setRebindSession(async () => {

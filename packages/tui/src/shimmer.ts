@@ -1,5 +1,5 @@
 import { type Color, foregroundAnsi, mixColors, type TerminalColorMode } from "./colors.ts";
-import { visibleWidth } from "./utils.ts";
+import { visibleWidth } from "./utils/width.ts";
 
 export interface ShimmerOptions {
 	/** Color of the text outside the band. */

@@ -7,7 +7,7 @@ import { expandPasteMarkers, graphemeSegmenter, segmentWithMarkers, wordSegmente
 import type { EditorLastAction, EditorSnapshot, EditorState, EditorTheme, LayoutLine } from "./types.ts";
 
 /** Public `Editor` members the internal editor model reads live, including members subclasses override. */
-export interface EditorHost {
+interface EditorHost {
 	getTui(): TUI;
 	isSubmitDisabled(): boolean;
 	/** `Editor.getText()`. */

@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, dirname, join, resolve, sep } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { parseFrontmatter } from "../utils/frontmatter.ts";
-import { resolvePath } from "../utils/paths.ts";
+import { isUnderPath, resolvePath } from "../utils/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
-import { BUILTIN_SLASH_COMMANDS } from "./slash-commands.ts";
+import { type CommandReservation, reservedCommandNames } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { expandClaudeArguments, expandClaudeVariables, type ClaudeVariables } from "./claude-arguments.ts";
 
@@ -24,25 +24,11 @@ export interface PromptTemplate {
 	filePath: string; // Absolute path to the template file
 }
 
-export interface PromptCommandReservation {
-	name: string;
-	invocationName?: string;
-	aliases?: readonly string[];
-}
-
 export function getPromptCommands(
 	templates: readonly PromptTemplate[],
-	reservedCommands: readonly PromptCommandReservation[] = [],
+	reservedCommands: readonly CommandReservation[] = [],
 ) {
-	const reserved = new Set<string>();
-	for (const command of [...BUILTIN_SLASH_COMMANDS, ...reservedCommands] as PromptCommandReservation[]) {
-		reserved.add(command.name);
-		if (command.invocationName) reserved.add(command.invocationName);
-		for (const alias of command.aliases ?? []) {
-			reserved.add(alias);
-			reserved.add(alias.replace(/:\d+$/, ""));
-		}
-	}
+	const reserved = reservedCommandNames(reservedCommands);
 	const counts = new Map<string, number>();
 	for (const template of templates) counts.set(template.name, (counts.get(template.name) ?? 0) + 1);
 	const occupied = new Set([...reserved, ...templates.map((template) => template.name)]);
@@ -54,13 +40,7 @@ export function getPromptCommands(
 		while (occupied.has(qualifiedName)) qualifiedName = `${base}:${suffix++}`;
 		occupied.add(qualifiedName);
 		const name = reserved.has(template.name) || counts.get(template.name)! > 1 ? qualifiedName : template.name;
-		return {
-			template,
-			name,
-			sourceName: template.name,
-			qualifiedName,
-			aliases: name === qualifiedName ? [] : [qualifiedName],
-		};
+		return { template, name, sourceName: template.name };
 	});
 }
 
@@ -302,15 +282,6 @@ export function loadPromptTemplates(options: LoadPromptTemplatesOptions): LoadPr
 	const globalPromptsDir = join(resolvedAgentDir, "prompts");
 	const projectPromptsDir = resolve(resolvedCwd, CONFIG_DIR_NAME, "prompts");
 
-	const isUnderPath = (target: string, root: string): boolean => {
-		const normalizedRoot = resolve(root);
-		if (target === normalizedRoot) {
-			return true;
-		}
-		const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
-		return target.startsWith(prefix);
-	};
-
 	const getSourceInfo = (resolvedPath: string): SourceInfo => {
 		if (isUnderPath(resolvedPath, globalPromptsDir)) {
 			return createSyntheticSourceInfo(resolvedPath, {
@@ -371,7 +342,7 @@ export function loadPromptTemplates(options: LoadPromptTemplatesOptions): LoadPr
 export function expandPromptTemplate(
 	text: string,
 	templates: PromptTemplate[],
-	reservedCommands: readonly PromptCommandReservation[] = [],
+	reservedCommands: readonly CommandReservation[] = [],
 	variables: ClaudeVariables = {},
 ): string {
 	if (!text.startsWith("/")) return text;
@@ -383,7 +354,7 @@ export function expandPromptTemplate(
 	const argsString = match[2] ?? "";
 
 	const template = getPromptCommands(templates, reservedCommands).find(
-		(command) => command.name === templateName || command.qualifiedName === templateName,
+		(command) => command.name === templateName,
 	)?.template;
 	if (template) {
 		const args = parseCommandArgs(argsString);

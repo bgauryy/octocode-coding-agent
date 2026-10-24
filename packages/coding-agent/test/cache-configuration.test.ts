@@ -1,5 +1,5 @@
-import type { Model } from "@octocodeai/octocode-ai";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import type { Api, Model } from "@octocodeai/octocode-ai";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { withCacheCapabilities, withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { describeCachePolicy, resolveConfiguredCache } from "../src/core/cache-configuration.ts";
@@ -8,7 +8,7 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 describe("cache configuration", () => {
-	const model = getModel("openai", "gpt-6.1-sol");
+	const model = getBuiltinModel("openai", "gpt-6.1-sol");
 	const environment = () => {
 		vi.stubEnv("OCTOCODE_CACHE_RETENTION", undefined);
 		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", undefined);
@@ -73,14 +73,14 @@ describe("cache configuration", () => {
 				.options,
 		).toEqual({ cacheRetention: "none", instructionCacheRetention: "none" });
 	});
-	it("caps history at the instruction retention, since a longer history breakpoint cannot follow a shorter one", () => {
+	it("keeps long history behind short instructions; adapters with an ordering rule apply it themselves", () => {
 		environment();
 		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", "short");
 		const policy = resolveConfiguredCache(model, undefined, {}, [
 			{ source: "global", values: { cacheRetention: "long" } },
 		]);
-		expect(policy.options).toEqual({ cacheRetention: "short", instructionCacheRetention: "short" });
-		expect(policy.sources.cacheRetention).toBe("global (capped by instruction retention)");
+		expect(policy.options).toEqual({ cacheRetention: "long", instructionCacheRetention: "short" });
+		expect(policy.sources.cacheRetention).toBe("global");
 		// Equal or longer instruction retention is untouched; "none" instructions leave history as configured.
 		expect(resolveConfiguredCache(model, undefined, { cacheRetention: "long" }).options).toEqual({
 			cacheRetention: "long",
@@ -120,5 +120,79 @@ describe("cache configuration", () => {
 		expect(describeCachePolicy(proxy, resolveConfiguredCache(proxy, undefined))).toContain(
 			"separate instruction lifetime is unsupported",
 		);
+	});
+
+	describe("describeCachePolicy", () => {
+		const describeWith = (
+			target: Model<Api>,
+			values: { cacheRetention?: "none" | "short" | "long"; instructionCacheRetention?: "none" | "short" | "long" },
+			subscription = false,
+		) => {
+			environment();
+			return describeCachePolicy(target, resolveConfiguredCache(target, undefined, values), subscription);
+		};
+		const asApi = <A extends Api>(api: A, overrides: Partial<Model<A>> = {}) =>
+			({ ...model, api, compat: undefined, ...overrides }) as unknown as Model<Api>;
+
+		it("says explicit OpenAI none means no caching at all", () => {
+			const text = describeWith(model, { cacheRetention: "none" });
+			expect(text).toContain("no caching at all");
+			expect(text).not.toContain("may still cache automatically");
+		});
+		it("reports the explicit 12h tier for long history and instructions", () => {
+			expect(describeWith(model, { cacheRetention: "long", instructionCacheRetention: "long" })).toContain(
+				"Instructions 12h; history 12h.",
+			);
+			expect(describeWith(model, { cacheRetention: "short", instructionCacheRetention: "long" })).toContain(
+				"Instructions 12h; history 30m.",
+			);
+		});
+		it("shows the 24h tier on older OpenAI models only when long and supported", () => {
+			const older = asApi("openai-responses", { compat: { supportsExplicitPromptCacheMode: false } });
+			expect(describeWith(older, { cacheRetention: "long" })).toContain("24h extended retention");
+			expect(describeWith(older, { cacheRetention: "short" })).not.toContain("24h");
+			expect(describeWith(older, { cacheRetention: "none" })).toContain("No cache key is sent");
+			const proxy = asApi("openai-responses", {
+				provider: "custom",
+				baseUrl: "https://proxy.example/v1",
+				compat: { supportsExplicitPromptCacheMode: false },
+			});
+			expect(describeWith(proxy, { cacheRetention: "long" })).not.toContain("24h");
+		});
+		it("shows 1h and 5m for Anthropic-style markers on Anthropic, Bedrock and OpenRouter Claude", () => {
+			const claude = [
+				asApi("anthropic-messages"),
+				asApi("bedrock-converse-stream", { id: "us.anthropic.claude-sonnet-4-5" }),
+				asApi("openai-completions", { provider: "openrouter", id: "anthropic/claude-sonnet-4.5" }),
+			];
+			for (const target of claude) {
+				expect(describeWith(target, { cacheRetention: "short", instructionCacheRetention: "long" })).toContain(
+					"Instructions 1h; history 5m.",
+				);
+				expect(describeWith(target, { cacheRetention: "none" })).toContain("No cache markers are sent");
+				// A 1h entry cannot follow a 5m one, so the request sends long history at 5m.
+				expect(describeWith(target, { cacheRetention: "long", instructionCacheRetention: "short" })).toContain(
+					"Instructions 5m; history 5m (1h history cannot follow 5m instructions).",
+				);
+			}
+			// OpenAI has no ordering rule: a 12h history breakpoint may follow 30m instructions.
+			expect(describeWith(model, { cacheRetention: "long", instructionCacheRetention: "short" })).toContain(
+				"Instructions 30m; history 12h.",
+			);
+		});
+		it("says provider-managed for Azure, Codex, Mistral, Google and generic completions", () => {
+			for (const api of [
+				"azure-openai-responses",
+				"openai-codex-responses",
+				"mistral-conversations",
+				"google-generative-ai",
+				"google-vertex",
+				"openai-completions",
+			] as const) {
+				const text = describeWith(asApi(api), { cacheRetention: "long", instructionCacheRetention: "long" });
+				expect(text, api).toContain("Provider-managed");
+				expect(text, api).not.toMatch(/\b(1h|12h|24h)\b/);
+			}
+		});
 	});
 });

@@ -173,7 +173,6 @@ export class Agent {
 	get followUpMode(): QueueMode {
 		return this.followUpQueue.mode;
 	}
-
 	/** Queue a message to be injected after the current assistant turn finishes. */
 	steer(message: AgentMessage): void {
 		this.steeringQueue.enqueue(message);
@@ -199,7 +198,13 @@ export class Agent {
 		this.clearSteeringQueue();
 		this.clearFollowUpQueue();
 	}
-
+	/** Selectively edit queued messages without clearing unrelated entries. */
+	hasQueuedMessage = (message: AgentMessage) =>
+		this.steeringQueue.contains(message) || this.followUpQueue.contains(message);
+	removeQueuedMessage = (message: AgentMessage) =>
+		this.steeringQueue.remove(message) || this.followUpQueue.remove(message);
+	swapQueuedMessages = (first: AgentMessage, second: AgentMessage) =>
+		this.steeringQueue.swap(first, second) || this.followUpQueue.swap(first, second);
 	/** Returns true when either queue still contains pending messages. */
 	hasQueuedMessages(): boolean {
 		return this.steeringQueue.hasItems() || this.followUpQueue.hasItems();

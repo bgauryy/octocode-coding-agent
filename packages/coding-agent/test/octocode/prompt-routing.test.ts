@@ -35,7 +35,7 @@ describe("Octocode research routing in the policy", () => {
 		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
 		expect(root).toContain("Keep coupled work in one agent");
 		expect(root).toContain("`.octocode/<topic>/contract.md`");
-		expect(root).toContain("check reports against the Definition of Done");
+		expect(root).toContain("check reports against acceptance checks");
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
@@ -48,10 +48,16 @@ describe("registerTurnSetup routing and child trim", () => {
 	beforeEach(() => vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp()));
 	afterEach(() => vi.unstubAllEnvs());
 
-	const run = async (fake: ReturnType<typeof fakePi>, options: { selectedTools: string[]; skills?: Skill[] }) => {
+	const run = async (
+		fake: ReturnType<typeof fakePi>,
+		options: { selectedTools: string[]; skills?: Skill[] },
+	): Promise<Record<string, string>> => {
 		const event = { systemPromptOptions: { sections: {} as Record<string, string>, ...options } };
 		await fake.emit("before_agent_start", event, {});
-		return event.systemPromptOptions.sections;
+		return {
+			...event.systemPromptOptions.sections,
+			octocode: Object.values(event.systemPromptOptions.sections).join("\n\n"),
+		};
 	};
 
 	it("keeps Octocode guidance and server instructions when a user-owned server leaves its tools to discovery", async () => {
@@ -103,6 +109,49 @@ describe("registerTurnSetup routing and child trim", () => {
 		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map(), octocode: mcp });
 		const sections = await run(fake, { selectedTools: ["bash"] });
 		expect(sections.octocode).not.toContain("Use Octocode MCP");
+	});
+
+	it("rebuilds lookup guidance when tools change without recommending unavailable tools", async () => {
+		const fake = fakePi();
+		for (const name of ["bash", "web", "agent"]) fake.tools.set(name, { name, exposure: "direct" });
+		registerTurnSetup(fake.pi, {
+			isSubagent: false,
+			profiles: () => new Map(),
+			octocode: fakeOctocode({ by: "off" }).mcp,
+		});
+		const full = await run(fake, { selectedTools: ["bash", "web", "agent"] });
+		expect(full.octocode).toContain("Use `web`");
+		expect(full.octocode).toContain("`agent` type `external`");
+		const shell = await run(fake, { selectedTools: ["bash"] });
+		expect(shell.octocode).toContain("Use the `gh` CLI in bash when available");
+		expect(shell.octocode).not.toMatch(/`web`|`agent`|agents-communication tools/);
+		const bare = await run(fake, { selectedTools: [] });
+		expect(bare.octocode).toContain("report the missing evidence");
+		expect(bare.octocode).not.toMatch(/`web`|`agent`|bash|agents-communication tools/);
+		expect((await run(fake, { selectedTools: ["bash", "web", "agent"] })).octocode).toBe(full.octocode);
+	});
+
+	it("keeps bounded evidence and authorization guidance in root and child context", async () => {
+		for (const isSubagent of [false, true]) {
+			const fake = fakePi();
+			fake.tools.set("mcp__octocode__localFetch", { name: "mcp__octocode__localFetch", exposure: "direct" });
+			registerTurnSetup(fake.pi, {
+				isSubagent,
+				profiles: () => new Map(),
+				octocode: fakeOctocode({ by: "off" }).mcp,
+			});
+			const { octocode } = await run(fake, { selectedTools: ["mcp__octocode__localFetch"] });
+			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool.");
+			expect(octocode).toContain("exact recovery identifiers");
+			expect(octocode).toContain("state truncation or coverage gaps");
+			expect(octocode).toContain("Cached input still occupies the context window.");
+			expect(octocode).not.toContain("Use bash for builds");
+			expect(octocode).not.toContain("`agent`");
+			if (isSubagent) {
+				expect(octocode).toContain("no messaging tool is active");
+				expect(octocode).toContain("leave it blocked in your report");
+			}
+		}
 	});
 
 	it("drops the docs block and skill descriptions in a child", async () => {

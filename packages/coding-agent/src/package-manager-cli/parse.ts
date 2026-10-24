@@ -20,9 +20,7 @@ interface PackageCommandOptions {
 export function parsePackageCommand(args: string[]): PackageCommandOptions | undefined {
 	const [rawCommand, ...rest] = args;
 	let command: PackageCommand | undefined;
-	if (rawCommand === "uninstall") {
-		command = "remove";
-	} else if (rawCommand === "install" || rawCommand === "remove" || rawCommand === "update" || rawCommand === "list") {
+	if (rawCommand === "install" || rawCommand === "remove" || rawCommand === "update" || rawCommand === "list") {
 		command = rawCommand;
 	}
 	if (!command) {
@@ -175,8 +173,7 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 			}
 			updateTarget = { type: "extensions", source: extensionFlagSource };
 		} else if (source) {
-			const sourceIsSelf = source === "self" || source === "octocode";
-			if (sourceIsSelf) {
+			if (source === "self") {
 				updateTarget = extensionsFlag ? { type: "all" } : { type: "self" };
 			} else {
 				if (extensionsFlag || selfFlag || allFlag) {

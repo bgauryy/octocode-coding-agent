@@ -8,7 +8,7 @@ import {
 	McpSessionExpiredError,
 	StreamableHttpTransport,
 } from "../src/index.ts";
-import { consumeSseStream, type SseEvent } from "../src/transports/streamable-http.ts";
+import { consumeSseStream, type SseEvent } from "../src/transports/streamable-http/sse.ts";
 import { closeServers, listen, readBody } from "./helpers.ts";
 
 interface RecordedRequest {
@@ -469,6 +469,32 @@ describe("StreamableHttpTransport", () => {
 		expect(await kept).toEqual({ content: [{ type: "text", text: "hello" }] });
 		expect(executed).toEqual(["kept"]);
 		expect(refreshes).toBe(1);
+		await client.close();
+	});
+
+	it("releases the connection of a dispatched request when its signal aborts or it times out", async () => {
+		const closed: string[] = [];
+		let arrived!: () => void;
+		const dispatched = new Promise<void>((resolve) => (arrived = resolve));
+		const { url } = await startServer(async (request, response, requests) => {
+			if (request.method !== "POST") return protocolHandler(request, response, requests);
+			const message = JSON.parse(await readBody(request)) as Record<string, unknown>;
+			if (message.method !== "tools/call") return protocolHandler(request, response, requests, message);
+			// The server never answers: only the client giving up can end this exchange.
+			response.on("close", () => closed.push(String((message.params as { name: string }).name)));
+			arrived();
+		});
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await client.connect(new StreamableHttpTransport({ url, openGetStream: false }));
+		const controller = new AbortController();
+		const aborted = client.callTool("aborted", {}, { signal: controller.signal });
+		await dispatched;
+		controller.abort();
+		await expect(aborted).rejects.toMatchObject({ name: "AbortError" });
+		await expect(client.callTool("timed-out", {}, { timeoutMs: 100 })).rejects.toMatchObject({
+			name: "McpTimeoutError",
+		});
+		await vi.waitFor(() => expect([...closed].sort()).toEqual(["aborted", "timed-out"]));
 		await client.close();
 	});
 

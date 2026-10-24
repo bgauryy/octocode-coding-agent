@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaTool, MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { Type } from "typebox";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type AnthropicOptions, stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
+import { clearStrictToolDowngrades } from "../src/api/anthropic-messages/strict-tool-downgrades.ts";
 import type { Model, Tool, TranscriptContext } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -64,6 +65,8 @@ function harness(respond: (payload: MessageCreateParamsStreaming, attempt: numbe
 }
 
 describe("Anthropic preferred strict tool fallback", () => {
+	beforeEach(clearStrictToolDowngrades);
+
 	it.each([
 		grammarError,
 		// Observed from the live API: 32 strict tools, then 20 tools with 24 optional fields each.
@@ -244,11 +247,42 @@ describe("Anthropic preferred strict tool fallback", () => {
 		expect(payloads).toHaveLength(1);
 	});
 
-	it("does not disable strict sampling on later requests", async () => {
+	it("remembers the downgrade so later requests skip the rejected strict attempt", async () => {
 		const { payloads, options } = harness((_payload, attempt) => (attempt === 1 ? errorResponse() : successResponse()));
-		const transcript = context([tool("lookup", "prefer")]);
-		await streamAnthropic(model, transcript, options).result();
-		await streamAnthropic(model, transcript, options).result();
-		expect(payloads.map((payload) => (payload.tools as BetaTool[])[0].strict)).toEqual([true, undefined, true]);
+		const transcript = context([tool("lookup", "prefer"), tool("required", "require")]);
+		const first = await streamAnthropic(model, transcript, options).result();
+		const second = await streamAnthropic(model, transcript, options).result();
+
+		expect(first.diagnostics?.[0]).toMatchObject({ type: "anthropic_strict_tools_fallback" });
+		expect(second.stopReason).toBe("stop");
+		expect(second.diagnostics).toBeUndefined();
+		expect(payloads).toHaveLength(3);
+		expect((payloads[0].tools as BetaTool[])[0].strict).toBe(true);
+		expect((payloads[1].tools as BetaTool[])[0].strict).toBeUndefined();
+		// The remembered request is identical to the fallback request, so the cached prefix is stable.
+		expect(payloads[2]).toEqual(payloads[1]);
+		expect((payloads[2].tools as BetaTool[])[1].strict).toBe(true);
+	});
+
+	it("keeps the memo per endpoint, model and tool set", async () => {
+		const { payloads, options } = harness((_payload, attempt) => (attempt === 1 ? errorResponse() : successResponse()));
+		await streamAnthropic(model, context([tool("lookup", "prefer")]), options).result();
+		await streamAnthropic(
+			{ ...model, baseUrl: "https://other.example" },
+			context([tool("lookup", "prefer")]),
+			options,
+		).result();
+		await streamAnthropic({ ...model, id: "claude-sonnet-4-5" }, context([tool("lookup", "prefer")]), options).result();
+		await streamAnthropic(model, context([tool("lookup", "prefer"), tool("extra", "prefer")]), options).result();
+		await streamAnthropic(model, context([tool("lookup", "prefer")]), options).result();
+
+		expect(payloads.map((payload) => (payload.tools as BetaTool[])[0].strict)).toEqual([
+			true,
+			undefined,
+			true,
+			true,
+			true,
+			undefined,
+		]);
 	});
 });

@@ -1,5 +1,5 @@
 import type { Component } from "../tui.ts";
-import { truncateToWidth } from "../utils.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 
 const DEFAULT_DURATION_MS = 1000;
 

@@ -4,9 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
 import octocode from "../../src/octocode/index.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {

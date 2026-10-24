@@ -1,4 +1,4 @@
-/** How a server connection authenticates: OAuth with stored credentials, a pi provider token, or neither. */
+/** How a server connection authenticates: OAuth with stored credentials, a model provider token, or neither. */
 
 import { McpAuthRequiredError } from "@octocodeai/octocode-mcp";
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@octocodeai/octocode-mcp/oauth";
@@ -13,7 +13,7 @@ import {
 
 export function signInRequiredMessage(entry: McpServerEntry): string {
 	const provider = "url" in entry.config ? entry.config.auth?.provider : undefined;
-	return `MCP server "${entry.name}" requires sign-in. Run ${provider ? `/login ${provider}` : "/mcp"} to sign in.`;
+	return `MCP server "${entry.name}" requires sign-in. Run ${provider ? `/providers ${provider}` : "/mcp"} to sign in.`;
 }
 
 /** Why a connection cannot be used now: disabled in its config, stopped in this session, or shut down. */

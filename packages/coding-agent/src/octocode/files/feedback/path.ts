@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalPath } from "../../shared/home.ts";
-import { isRecord } from "../../shared/util.ts";
+import { canonicalPath } from "../../shared/home/repo.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
 /** Research envelopes compact row paths relative to an explicit `root` or `base`. */
 export function matchesResponsePath(envelope: unknown, row: Record<string, unknown>, target: string): boolean {

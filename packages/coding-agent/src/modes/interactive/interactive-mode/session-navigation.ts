@@ -16,8 +16,25 @@ import { UserMessageSelectorComponent } from "../components/user-message-selecto
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
+/** Redraws the chat after a /tree navigation and puts the navigated entry's text in the editor when it is empty. */
+export function showTreeNavigationResult(
+	host: Pick<
+		InteractiveModeHost,
+		"chatContainer" | "editor" | "flushCompactionQueue" | "renderInitialMessages" | "showStatus"
+	>,
+	editorText: string | undefined,
+): void {
+	host.chatContainer.clear();
+	host.renderInitialMessages();
+	if (editorText && !host.editor.getText().trim()) {
+		host.editor.setText(editorText);
+	}
+	host.showStatus("Navigated to selected point");
+	void host.flushCompactionQueue({ willRetry: false });
+}
+
 /** Interactive-mode members used by the session navigation selectors. */
-export type SessionNavigationHost = Pick<
+type SessionNavigationHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "clearStatusIndicator"
@@ -210,14 +227,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 						return;
 					}
 
-					// Update UI
-					host.chatContainer.clear();
-					host.renderInitialMessages();
-					if (result.editorText && !host.editor.getText().trim()) {
-						host.editor.setText(result.editorText);
-					}
-					host.showStatus("Navigated to selected point");
-					void host.flushCompactionQueue({ willRetry: false });
+					showTreeNavigationResult(host, result.editorText);
 				} catch (error) {
 					host.showError(errorMessage(error));
 				} finally {

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
-import { sha256 } from "../../shared/atomic.ts";
-import { isRecord } from "../../shared/util.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
 
@@ -14,7 +14,7 @@ interface ParseObservation {
 	digest: string;
 	state: ParseState;
 }
-export type ParseFeedback = {
+type ParseFeedback = {
 	path: string;
 	state: "possible-regression" | "already-invalid" | "observed-parsed" | "unsupported" | "superseded";
 };

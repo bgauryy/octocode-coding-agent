@@ -2,11 +2,12 @@
 
 import type { SelectItem } from "@octocodeai/octocode-tui";
 import type { ExtensionContext } from "../../core/extensions/types.ts";
-import { mcpNamespace } from "../../core/mcp-servers.ts";
-import { getMcpToolExposure, type McpExposure } from "./config.ts";
+import type { McpExposure } from "./config.ts";
 import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
-import { formatMcpTool, type McpToolListing } from "./inspection.ts";
+import { formatMcpTool, toolCatalog } from "./inspection.ts";
+
+export { toolCatalog } from "./inspection.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { setExposure } from "./persistence.ts";
 import {
@@ -28,30 +29,6 @@ function notices(state: McpExtensionState): string[] {
 		...state.configErrors.map((error) => `config: ${error}`),
 		...state.overridden.map((line) => `overridden: ${line}`),
 	];
-}
-
-export function toolCatalog(state: McpExtensionState, name: string): McpToolListing[] {
-	const { pi } = state;
-	const server = state.findServer(name);
-	if (server)
-		return server.connection?.state === "connected" && isEnabled(server)
-			? server.connection.tools.map((tool) => ({
-					...tool,
-					exposure: getMcpToolExposure(server.entry.config, tool.name, server.entry.name),
-				}))
-			: [];
-	const automatic = getMcpSessionStatus(pi.events).find((candidate) => candidate.name === name);
-	if (!automatic?.enabled || automatic.state !== "connected") return [];
-	const prefix = `${mcpNamespace(name)}__`;
-	return pi
-		.getAllTools()
-		.filter((tool) => tool.namespace?.name === mcpNamespace(name) && tool.exposure !== "hidden")
-		.map((tool) => ({
-			name: tool.name.startsWith(prefix) ? tool.name.slice(prefix.length) : tool.name,
-			description: tool.description,
-			inputSchema: tool.parameters as McpToolListing["inputSchema"],
-			exposure: tool.exposure === "model-only" ? "direct" : tool.exposure,
-		}));
 }
 
 function serversMenu(state: McpExtensionState): McpMenu {

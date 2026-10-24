@@ -30,42 +30,74 @@ Run `/help` for the commands registered in the current mode. Child sessions inte
 
 ## Find and run commands
 
-In the terminal, `/help` (alias `/commands`) opens a searchable picker for core commands, native features, extensions, prompts, and skills. Add a search term, such as `/help model`. Selecting a command places it in the editor so you can add arguments before running it. `/skills` opens the same picker filtered to loaded skills.
+In the terminal, `/help` opens a searchable picker for core commands, native features, extensions, prompts, and skills. Add a search term, such as `/help model`. Selecting a command places it in the editor so you can add arguments before running it. `/skills` opens the same picker filtered to loaded skills.
 
-| Command | Aliases | Purpose |
-| --- | --- | --- |
-| `/status` | `/info`, `/session` | Session statistics, native activity, loaded skills, then MCP connection status |
-| `/resume` | `/sessions` | Browse and resume saved sessions |
-| `/model` | — | Select the model for this session |
-| `/models` | `/scoped-models` | Choose model cycling, catalog and agent routing, or local llama.cpp models when available |
-| `/effort` | `/thinking`, `/reasoning` | Set reasoning effort |
-| `/settings` | `/config` | Open session settings |
-| `/rename` | `/name` | Set the session display name |
-| `/keys` | `/hotkeys` | Show keyboard shortcuts |
-| `/new` | `/clear` | Start a new session |
-| `/bug` | `/feedback` | Report a bug |
-| `/quit` | `/exit` | Leave the session |
+The [complete command reference](commands.md) lists every built-in command and alias, command arguments, bundled skills and shell entry points.
 
 `/trust` separates project resource trust from native project configuration trust; its menu also offers revoking native configuration trust. `/agents` manages local agents, and `/agents external` reaches connected external agents. Other native features use direct commands such as `/permissions`, `/hooks`, `/memory`, `/backlog`, `/rewind`, `/jobs`, `/archive`, and `/api`.
 
 The old `/octocode ...` prefix only displays migration guidance. It does not execute the requested action or send it to the model. Run the suggested direct command to continue. Terminal pickers are interactive UI; SDK and RPC command discovery expose registered extension, prompt, and skill commands without adding the terminal's core commands.
 
 
+### Compatibility aliases
+
+Aliases use the canonical handler, arguments, permissions and cleanup. Help shows one canonical row with searchable aliases; typing an alias completes its own spelling. Conflicting resources remain available through qualified names, such as `/skill:clear`, `/prompt:clear`, or `/clear:1` for an extension.
+
+The [command and alias table](commands.md#core-commands) owns the full set of compatibility aliases. `/clear [previous-name]` and `/reset [previous-name]` use `/new`: they optionally name the previous session after a successful switch; cancellation leaves that name unchanged.
+
+Terminal-only commands stay terminal-only. SDK/RPC discovery includes aliases on registered commands. Sending a recognized terminal-only slash command through `prompt`, or a native command when its feature is disabled, returns an unavailable-command error instead of sending it to the model.
+
+### Session workflow commands
+
+| Command | Behavior |
+| --- | --- |
+| `/compact [instructions]` | Add up to 16,000 characters of focus to this manual summary. Native recovery sections remain required; automatic compaction does not retain the focus. |
+| `/btw [question]` | Ask a separate, tool-free question using a snapshot of completed conversation context. With no question, reopen the side thread. |
+| `/btw --clear` | Cancel the side request and discard its in-memory exchanges |
+| `/context [all\|size\|reset\|tokens]` | Inspect model capacity, reserve, threshold, the latest valid provider receipt, and estimated contributors. `all` expands the contributor list; `size` selects a session budget, `32k` sets one directly, and `reset` restores the model limit. |
+| `/diff [path]` | Inspect staged, unstaged and untracked changes. Supply one untracked file's path to load its contents. |
+| `/plan [description]` | Enter native planning, optionally submitting a task; otherwise display the current revision |
+| `/plan --off` | Leave planning, retaining the underlying permission mode |
+| `/plan --approve <revision>` | Approve the displayed revision, leave planning and submit its implementation request |
+
+Side questions can run while the main turn continues. Escape dismisses the overlay; Ctrl+C cancels only the side request. Questions accept up to 8,000 characters. The service retains at most 20 exchanges, trimmed further to fit the model. Question and answer text never enter session history, compaction, archives or exports. Only usage receipts persist. Session replacement, tree navigation, reload and disposal clear the side thread. New side questions are rejected while compaction is active; retry after it finishes. The terminal and SDK provide this feature; there is no browser or RPC side-question UI.
+
+Context contributors are estimates of the committed projection. The next request's hooks and provider transformations may change them; unknown usage after compaction remains unknown. The report shows sizes and labels rather than prompt contents. Diff snapshots use bounded Git output with external diff, textconv and clean/process filters disabled, preserve the index and files, and reject selected paths that resolve outside the repository. Each Git output and selected untracked file is capped at 128,000 bytes, with visible truncation. Untracked content is never read through a symlink. Both reports run without a model request; repository ownership of changes is not inferred.
+
+### Native planning constraint
+
+Planning is independent of `manual`, `workspace` and `full`. `/permissions plan` and `/permissions plan off` control the same state. `octocode --plan` enables it at startup. The SDK `controlPlan()` and RPC `plan` operation expose the same user controls. Model text cannot leave planning.
+
+Before a transition completes, the host stops the active turn, direct shell commands, background jobs, children, external prompts and executable hooks through their cancellation owners. A failed stop leaves the previous planning state. Plan revisions are custom entries on the session branch: resume and tree navigation restore them, while fresh sessions start normally. Approval checks the current revision. An active saved constraint cannot be silently executed by an SDK session with native features disabled.
+
+The initial policy allows host-owned Octocode local research, `web`, `archive`, `askUser` and built-in tool discovery. It blocks file changes, all shell execution, debugger/browser operations, agent delegation/messages, and unknown or externally supplied MCP tools, even when their annotations claim read-only behavior. Configured replacements of native research tools need a separate reviewed policy before they can be allowed. Executable compatibility hooks are paused during planning. Children and external agents are stopped on entry; launching new ones is disabled until inherited planning support is implemented.
+
+This is a host execution policy, not an OS sandbox. Loaded extensions are trusted executable code; their arbitrary process/file APIs are outside the tool gate. Keep the optional `plan-mode` extension as a standalone SDK example; if loaded into a native session its command is qualified (for example `/plan:2`) and cannot disable the native constraint.
+
+
 ## Backlog view
 
 `/web` opens the live workspace on Activity, where you can follow agent output and send commands. `/web backlogs` opens its task board. Both commands share one local server with `/backlog`; switching views stays in the same SPA. Keep the terminal session open while using the web workspace.
 
-In interactive sessions, `/backlog` opens the repository task board in your default browser. All tasks appear in Backlog, Todo, Ongoing and Done columns. Search across task fields, notes and completion records, filter by priority, type or readiness, or switch to Table, Tree and Attention views. Select a task to inspect its details and history; Escape closes the details.
+The native terminal footer shows `/web · backlogs & activity`, followed by open-item counts when available. The hint remains visible with an empty backlog and shortens to `/web` when space is limited.
+
+In interactive sessions, `/backlog` opens the repository task board in your default browser. All tasks appear in Backlog, To do, In progress and Done columns, with priorities, assignees, comment counts and dependency warnings on their cards. The **Backlog** tab groups upcoming work into To do and Backlog queues. Search task fields, comments, notes and completion records; filter by priority, type, assignee, tag or readiness; and sort by priority or recent updates. Table, Tree and Attention offer other views of the same items. Select a task to inspect its details and history; Escape closes the details and restores the previous view and filters.
 
 The local board supports creation, editing, status changes, epic children, dependencies, and completion summaries with related files and verification. It receives live updates over an authenticated local WebSocket while the session stays open and reconnects automatically; it does not overwrite an open edit form. Changes from other agent processes are detected within roughly half a second. Stale saves are refused so another session's changes are preserved. The server binds only to loopback and uses a per-launch access token; its address is local to this session. `/backlog web` opens it explicitly.
 
 The web view also includes **Agents**, **Activity**, and **Audit**. Item details have a dedicated **Add comment** action with stable comment IDs. Every new change is recorded transactionally with its actor and before/after values; the audit includes deleted items and supports loading older events. Existing notes become comment records when the database is upgraded; earlier field edits are not reconstructed.
 
-Use **Send to agent** to contact a live agent explicitly. **Work with current agent** queues the item's context in the current session; **Request new agent** asks that agent to delegate through the existing launch and permission flow. Accepted requests are shown separately from agent progress and completion. Repeating the same request ID does not resend it. Agent permission dialogs remain in the terminal. The Activity view renders the same structured agent report as the terminal, with a bounded recent feed; the transcript retains complete output.
+Click **Implement** on a board card or backlog row, or **Implement item** in its details, to send `Implement backlog item B12` (with that item's ID) to the current agent. The host claims the item and attaches its current details, every comment, change history, relationships and prior completions. The agent is instructed to reread the backlog item and every history page before changing code, so queued work checks for newer context. An active agent receives the request as follow-up work. Missing goals or reasons, unfinished dependencies, existing claims and unsent comment drafts have visible explanations before implementation can start. **View activity** opens progress without treating request acceptance as completed work.
+
+If dispatch later fails, its receipt records the failure and keeps the claim because execution may already have begun. Inspect the item and agent activity before releasing it. Disconnected pages label cached agent state; switching sessions rejects stale commands, while closing the browser leaves running agent work intact.
+
+Use **Send to agent** to contact a live agent explicitly. **Request new agent** asks the current agent to delegate through the existing launch and permission flow, with the same complete item context. Accepted requests are shown separately from agent progress and completion. Board and detail controls share request state, and retrying the same request ID does not resend it. Agent permission dialogs remain in the terminal. The Activity view renders the same structured agent report as the terminal, with a bounded recent feed; the transcript retains complete output.
 
 `/backlog html` writes a read-only offline snapshot at `.octocode/backlog.html`; without a UI it writes the file without opening a browser. No-argument `/backlog` in headless mode still prints the board. The general session API keeps its existing browser restrictions.
 
 Capture needs only a title. Starting needs a reason and goal; finishing needs a summary, files (empty is valid), and an explicit verification result. `type: epic` groups children via `parentId`; `dependsOn` identifies prerequisites. Reopening retains completion history and requires a reason. An item with children, dependents, or completion history cannot be silently deleted. See the [entity model](../../../docs/ENTITIES.md).
+
+The `backlog` tool caps list and history pages at 200 entries and returns executable continuation arguments. Unknown fields are rejected with their names, so a misspelled relationship cannot silently disappear. Memory search and list calls are capped at 100 results. If automatic memory retrieval fails, the session displays a warning once until retrieval recovers.
 
 Database upgrade adds backlog fields and history tables. Once upgraded, older builds can read existing data but their backlog writes fail because they lack the `octocode_backlog_writer` and `octocode_audit_actor` capabilities. Upgrade other processes sharing that database before editing backlogs; reverting the executable does not remove this guard.
 
@@ -81,7 +113,7 @@ A complete credited local source read also appends its whole-source SHA-256. An 
 
 Older Octocode servers expose `localGetFileContent`; unminified results (`minify: "none"`) also establish read coverage. Local source retrieval does not replace the former reader's image decoding; use image attachments or an image-capable MCP tool for that.
 
-Shell commands use `bash({ type: "bash", command: "..." })` or `bash({ type: "powershell", command: "..." })`. The type defaults to Bash; PowerShell retains its Windows requirement. Both modes support foreground deadlines and background jobs. A foreground command still running at its deadline (default 15 minutes, at most an hour) is not killed: it moves to the background as a job, its output so far and later goes to the job log, and its exit is reported like any background job (stop it with `/jobs kill <id>`; a headless run stops it when the run ends). A command starting with `sleep` and a call the user aborts are still stopped. The configured Bash command prefix applies only to Bash.
+Shell commands use `bash({ type: "bash", command: "..." })` or `bash({ type: "powershell", command: "..." })`. The type defaults to Bash; PowerShell retains its Windows requirement. Both modes support foreground deadlines and background jobs. A foreground command still running after 90 seconds moves to the background by itself (the `bashBackgroundAfterSeconds` setting, or `OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS` for the process; `0` turns it off), and moves at once, after its first second, when a message from the user is queued for the agent, so the agent can answer. A call that sets `background: false` together with a `timeout` waits in the foreground up to that timeout instead of the 90 seconds, but a queued message still moves it. Otherwise a foreground command still running at its deadline (default 15 minutes, at most an hour) is not killed: it moves to the background as a job, its output so far and later goes to the job log, and its exit is reported like any background job (stop it with `/jobs kill <id>`; a headless run stops it when the run ends). A command starting with `sleep` and a call the user aborts are still stopped. The configured Bash command prefix applies only to Bash.
 
 Use `bash({ command: "yarn test", verify: true })` when the command is a verification step. Its receipt records command, exit or signal, output availability, and mutation revisions at launch and completion. A background handoff remains running until its completion report. Later file-tool commits make the evidence stale. Revisions belong to one process epoch and session; they do not track shell writes, external editors or other processes. A zero exit code describes only the command actually run.
 
@@ -100,11 +132,17 @@ The child receives captured resource identities and invocation policy, including
 
 Child sessions expose only the coordination and message modes, with their existing action restrictions. Every specialist keeps `file`, `agent`, `archive` and the available Octocode local research tools, including source fetch, text/path search, structure, AST and LSP tools. Restrictive allowlists gain these tools. Profiles that remove them or set `mcp: false` are rejected with a migration diagnostic; a global MCP opt-out still applies, so disabled or disconnected servers cannot supply local tools. Researcher and reviewer roles use `file` for requested reports and scratch artifacts while leaving source files unchanged. Hooks see the public `agent` name and its nested input. Permissions, provenance checks and domain lifecycle handling still apply to each operation.
 
-MCP tools use automatic exposure: small catalogs are called directly; large catalogs use discovery on transports that support native tool loading. MCP resource tools access server-owned URIs, and `tool_search` discovers tools rather than source files. The [`mcp` tool](mcp.md#let-the-model-manage-servers) lets the model, and each subagent for its own session, list, restart, stop or add MCP servers; restrictive allowlists gain it with `tool_search`. Skills are instructions loaded from files, not duplicate executable tools.
+MCP tools use automatic exposure: small catalogs are called directly; large catalogs (more than 30 tools, or a large share of the model window) use discovery on transports that support native tool loading. The `octocode` server's GitHub and package tools are deferred on those transports whatever the catalog size, and elsewhere only when their schemas are large; see [Control tool exposure](mcp.md#control-tool-exposure). MCP resource tools access server-owned URIs, and `tool_search` discovers tools rather than source files. The [`mcp` tool](mcp.md#let-the-model-manage-servers) lets the model, and each subagent for its own session, list, restart, stop or add MCP servers; restrictive allowlists gain it with `tool_search`. Skills are instructions loaded from files, not duplicate executable tools.
+
+Use `mcp({ intent: "tools", server: "octocode" })` to inspect the current tool catalog, or add `tool: "localFetch"` for that tool's complete description and input schema. Inspection does not connect a server, execute its tools, read implementation files or change allowed paths. Octocode query envelopes are normalized before validation and permission checks: JSON-encoded `queries` can be decoded, and a misplaced root `cursor` can move into one query when the schema permits it. Ambiguous batches and conflicting cursors fail locally without replaying a server call.
+
+At most eight external-agent connections can be open or starting at once. An ACP prompt timeout reports uncertain execution and retains a live connection. Until the remote turn finishes, another prompt is refused; late output is discarded. Explicit cancellation or a peer exit closes the connection.
 
 ## Browser and web access
 
 The main agent keeps `web` enabled for public search and retrieval: `web({ query: "search terms" })` or `web({ url: "https://example.com" })`. Browser interaction is delegated to the single `browser` specialist, so the main agent does not carry the browser tool schema by default. Chrome starts on first use inside the specialist.
+
+Search providers share a 30-second deadline across the fallback chain. Failures identify the providers already tried; cancellation stops the chain immediately. Fetch warnings come from transport metadata, so page text that resembles an error message remains ordinary page content.
 
 ```json
 {
@@ -128,6 +166,8 @@ Explicit tool selections still apply: `defaultTools: ["+browser"]` or `--tools +
 
 Native `file` edits, writes and deletes check the current content under a shared filesystem lock. Core `edit` and `write` also use atomic replacement; core edits verify the bytes they read before committing. These locks serialize cooperating Octocode processes and resolve symlink aliases. Core `write` remains an intentional full overwrite and does not require a prior read.
 
+Native edits try exact LF-normalized matching, then a whitespace/punctuation fallback. A single-match edit after an outside change requires its exact LF-normalized anchor to remain unique. Checkpoint journals reject malformed paths and digests when loaded. If another writer takes a path during rewind, the displaced copy is preserved and `/rewind` names its recovery path.
+
 Atomic replacement prevents torn files. It does not exclude unrelated editors, shell commands or other processes that ignore the lock. Team reservations are enforced for `file`, core `edit`/`write` and the `bash` write targets the shell parser can name (redirects, `tee`, `rm`, `mv`, `cp`, `sed -i`); a command whose targets it cannot name (`> $FILE`, a script, `git checkout .`) and PowerShell are not checked, so inspect files after concurrent shell work. A reservation lapses 90 seconds after its owner's last heartbeat and is not fenced: an owner that stalled longer and then resumes can write over a peer that took the file. File batches report each outcome and do not roll back earlier successful changes.
 
 ### Canonical patch mode
@@ -150,6 +190,8 @@ Team messages remain queued until they reach the recipient's model context. Ordi
 
 Background subagent reports keep recovery copies under their originating session until the session transcript records them. Asynchronous delivery rejection triggers three quick retries after 1, 2 and 4 seconds, then three slow ones after 30 seconds, 1 minute and 2 minutes, keeping the same report ID; the report is saved for the next start when they are exhausted. While the parent is in the middle of a turn, a report that wants action also leaves a short hidden notice (agent, outcome, and the saved report's path when there is one; never the child's words) that the parent model reads at its next step; the full report still arrives as a follow-up when the turn ends. Receipts are found by reading only the lines the session transcript gained since the last check. Accepted queued reports wait for their receipt without being resent. Restarting that session reconciles report IDs before replaying pending reports. A session switch during a pending-report scan returns those reports to the original session.
 
+Foreground and background child report bodies both carry untrusted-content fences in model context. Terminal rendering removes the wrapper for readability. In-memory receipt checks and repeated-read indexes process newly appended entries, rebuilding after a branch switch or a change to the projected context. Archive reads reject files larger than 32 MiB before loading their content.
+
 The latest completed report determines the displayed outcome, independently of the accumulated report history. A failed follow-up is reported as a failure while preserving earlier results as partial evidence.
 
 The native `agent` task accepts an optional `resultSchema` for callers that need a machine-readable result. Pass a bounded JSON Schema object using `type`, `properties`, `required`, boolean `additionalProperties`, `items`, `enum`, `const`, `description`, or numeric and length bounds. Remote references, patterns, custom keywords and executable schema definitions are rejected before the subagent is claimed or spawn permission is requested. The child receives an immutable copy and is asked to end its ordinary report with `Structured result:` followed by one fenced `json` block. The host validates that complete final answer before shortening the human-readable preview; `details.structured` carries version 1, its SHA-256 schema hash, `valid`/`invalid`/`unavailable` status, and data only when valid. A schema-enabled foreground task is successful only when the run reports `done` and the structured status is `valid`; background launch still returns immediately, and its later durable report carries the verdict. Cancellation and failed final replies leave the structured result unavailable. Runs without `resultSchema` retain their existing text and outcome behavior. The accepted contract is saved in the child's private session folder for recovery; replay rejects corrupt or unknown verdict versions without reinterpreting them under a newer schema.
@@ -167,6 +209,8 @@ A background subagent that reports `blocked` stays resumable for at least 10 min
 Compaction uses the built-in policy. Settings and external extensions cannot replace its summary, budget or cut point; `/compact` requests the same flow manually.
 
 The model learns how full its context is from usage notices: when a turn ends with the context past half, three quarters or nine tenths of the room before automatic compaction (the window less the reserve), Octocode adds one hidden message such as `[Context] 140k of 184k usable tokens used (76%); about 44k left before automatic compaction summarizes older turns. The window is 200k.` Each band is noticed once per compaction cycle, also across a resume; the system prompt never changes for it, so the prompt cache is kept. See [context-notice.ts](../src/octocode/compaction/context-notice.ts).
+
+One assistant message's tool results share a text budget of 200,000 characters, for every tool alike: `bash`, `file`, `web`, the Octocode local tools, other MCP tools and `agent`. Each tool keeps its own cap (`bash` 50 KB; Octocode MCP text parts 60,000 characters, saved whole and shown as head and tail beyond that); the budget bounds only their sum. Results that fit are unchanged. The budget is spent in tool-call order, not completion order, because the agent loop persists the results of parallel calls in call order: the same calls keep and lose the same text however the timing falls, and the cached prefix stays stable. The first text part that does not fit keeps its head and tail with a note, and that part and every later text part of the message are appended to one JSON-lines file in the session's `output/` folder (`{"tool", "text"}` per line) whose path the note names. Each later result shows a short pointer to that file instead of its text. Images are not counted. The overflow is searchable like any saved output; the file is listed in a compaction summary's saved results. The budget starts again at every `turn_start`. A result that already carries its own spill note (a trimmed `bash` result, for instance) is charged for what it shows. Only the stored message and the model's context are bounded: `tool_execution_end` events still carry the tool's full result. See [turn-budget.ts](../src/octocode/shared/turn-budget.ts), registered with the compaction hooks.
 
 The final checkpoint is checked together with retained messages, the current system prompt and tool declarations. Oversized complete checkpoints and long user-message collections are saved beside the session JSONL and represented by recovery references. Long tool results passed to the native standalone summarizer are likewise saved whole. Search these files and read relevant ranges when recovering details. Keep the checkpoint files with the session when moving or backing it up.
 
@@ -204,3 +248,11 @@ Finished workers can remain addressable for the configured `OCTOCODE_SUBAGENT_LI
 `test/octocode/` contains the migrated feature tests. `vitest.octocode.config.ts` runs them separately from the core coding-agent suite and excludes live e2e and Chrome tests. Native resource loading, SDK configuration and compatibility also have tests in `test/`. See [development guidance](../../../AGENTS.md) for commands.
 
 The native runtime supports one active SDK session per process. Permissions are application policy, not an operating-system sandbox. Live provider authentication, browser interaction and external-agent integrations need their own configured integration checks; an offline unit-test pass does not establish those behaviors.
+
+## GitHub authentication in the terminal
+
+Use `/github login` for the Octocode CLI device login, `/github status` to verify the active credentials, and `/github logout` to remove the stored login. Environment tokens and GitHub CLI credentials can still take precedence or remain available after logout.
+
+The built-in terminal footer shows green for a verified GitHub login, red for missing or rejected credentials, and yellow when verification is unavailable. It refreshes at startup and after GitHub commands; use `/github status` after changing credentials outside the application. Background status checks time out after ten seconds and do not run during rendering. Custom extension footers control their own display.
+
+Provider API credentials are separate: use `/providers opencode` or `/providers opencode-go`, choose API-key setup, then choose a model. `/model` and its alias `/models` select the active model; `/modelsettings` manages shortcuts, the catalog and agent routing. `/providers` also updates and removes saved credentials; `/logout` opens the removal picker. `/login` remains an alias for `/providers`. `/help` lists commands and their arguments.

@@ -1,4 +1,5 @@
-import { getWordSegmenter, isWhitespaceChar, PUNCTUATION_REGEX } from "./utils.ts";
+import { isWhitespaceChar, PUNCTUATION_REGEX } from "./utils/chars.ts";
+import { getWordSegmenter } from "./utils/width.ts";
 
 const wordSegmenter = getWordSegmenter();
 

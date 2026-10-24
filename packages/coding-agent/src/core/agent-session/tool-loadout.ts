@@ -25,7 +25,7 @@ import {
 	normalizeBuildSystemPromptOptions,
 } from "../system-prompt.ts";
 import type { SessionInternals } from "./host.ts";
-import { buildToolDefinitionRegistry } from "./tool-definitions.ts";
+import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
@@ -212,7 +212,8 @@ export class SessionToolLoadout {
 	 * requests (see `installHiddenDeclarationsProjection`).
 	 */
 	private _applyToolLoadout(toolNames: string[]): AgentTool[] {
-		const tools = [...new Set(toolNames)].flatMap((name) => {
+		const namespaceOf = (name: string) => this._toolDefinitions.get(name)?.definition.namespace?.name;
+		const tools = orderToolNames(toolNames, namespaceOf).flatMap((name) => {
 			const tool = this._toolRegistry.get(name);
 			return tool && this._getToolExposure(name) !== "hidden" && this._isActivatable(name) ? [tool] : [];
 		});

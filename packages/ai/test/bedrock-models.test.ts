@@ -17,12 +17,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { complete, getModels } from "../src/compat.ts";
+import { complete } from "../src/compat.ts";
+import { getBuiltinModels } from "../src/providers/all.ts";
 import type { Context } from "../src/types.ts";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 
 describe("Amazon Bedrock Models", () => {
-	const models = getModels("amazon-bedrock");
+	const models = getBuiltinModels("amazon-bedrock");
 
 	it("should get all available Bedrock models", () => {
 		expect(models.length).toBeGreaterThan(0);

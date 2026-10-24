@@ -15,7 +15,7 @@ import { type Theme, theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the extension dialogs. */
-export type ExtensionDialogsHost = Pick<
+type ExtensionDialogsHost = Pick<
 	InteractiveModeHost,
 	| "disposeActiveSelector"
 	| "editor"

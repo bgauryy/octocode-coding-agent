@@ -6,9 +6,10 @@ import path from "node:path";
 import { launch } from "chrome-launcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
-import { BrowserTool, registerBrowserTool } from "../../src/octocode/browser/tool.ts";
+import { registerBrowserTool } from "../../src/octocode/browser/tool.ts";
 import type { AuditEntry } from "../../src/octocode/permission/audit.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 /**
  * Real Chrome attached over DevTools (no filtering proxy), so only the page session's Fetch coverage stands between a

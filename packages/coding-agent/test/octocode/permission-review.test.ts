@@ -6,15 +6,18 @@ import type { ToolAnnotations, ToolCallEvent, ToolResultEvent } from "../../src/
 import { closeSharedAgentDb } from "../../src/octocode/agentdb/db.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { classify, permissionGate } from "../../src/octocode/permission/gate.ts";
+import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { createProvenance } from "../../src/octocode/permission/provenance.ts";
-import { LIBRARY_FILE, RECORD_FILE } from "../../src/octocode/shared/archive.ts";
+import { LIBRARY_FILE } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
-import { canonicalPath, octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
+import { octocodeHome, sessionFolder } from "../../src/octocode/shared/home.ts";
 import { askSpawn } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { classify } from "../../src/octocode/permission/gate/classify.ts";
+import { RECORD_FILE } from "../../src/octocode/shared/archive/record.ts";
+import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
 
 const call = (toolName: string, input: Record<string, unknown>) =>
 	({ type: "tool_call", toolCallId: "t1", toolName, input }) as ToolCallEvent;

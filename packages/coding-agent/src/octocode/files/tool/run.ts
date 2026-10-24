@@ -6,11 +6,12 @@ import { FileLockReleaseError, withFileWriteLock } from "../../../utils/file-wri
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { runsLater, stateFolderRefusal } from "../../permission/gate.ts";
-import { atomicWriteFile, changedOnDisk, sha256, sha256File } from "../../shared/atomic.ts";
+import { runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import { atomicWriteFile, ChangedOnDiskError, changedOnDisk, sha256, sha256File } from "../../../utils/atomic-file.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import { notify } from "../../shared/commands.ts";
-import { canonicalPath, isWithin, resolveToolPath, workspaceRoot } from "../../shared/home.ts";
-import { errorMessage } from "../../shared/util.ts";
+import { resolveToolPath } from "../../shared/home.ts";
 import { type Capture, type Checkpoints, lastUserEntry } from "../checkpoint.ts";
 import { lineCount } from "../coverage.ts";
 import type { MutationReceipt, QueryOutcome } from "../render.ts";
@@ -124,7 +125,7 @@ function guardedOperations(
 					};
 					onCommit?.(written.sha256);
 				}
-				throw /changed on disk/.test(errorMessage(error)) ? changedOnDisk(display) : error;
+				throw error instanceof ChangedOnDiskError ? changedOnDisk(display) : error;
 			}
 		},
 		access: (file: string) => fs.promises.access(file, fs.constants.R_OK | fs.constants.W_OK),

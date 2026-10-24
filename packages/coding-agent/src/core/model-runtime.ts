@@ -5,10 +5,8 @@ import {
 	type AssistantMessage,
 	type AssistantMessageEventStream,
 	type AuthCheck,
-	type AuthInteraction,
 	type AuthOperationOptions,
 	type AuthResult,
-	type AuthType,
 	type ClassifierApi,
 	type ClassifierContext,
 	type ClassifierModel,
@@ -21,7 +19,6 @@ import {
 	type ImageApi,
 	type ImageModel,
 	type ImagesContext,
-	type LoginOptions,
 	type Message,
 	type Model,
 	type Models,
@@ -42,6 +39,7 @@ import {
 	type StreamOptions,
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer } from "@octocodeai/octocode-ai/utils/cache-policy";
+import { dirname } from "node:path";
 import { resolveConfiguredCache } from "./cache-configuration.ts";
 import type { ModelConfig } from "./model-config.ts";
 import { ModelAvailability } from "./model-runtime/availability.ts";
@@ -80,6 +78,7 @@ export {
 	CredentialSynchronizationError,
 	type CredentialSynchronizationOperation,
 	type ModelRuntimeAuthOverrides,
+	type ModelRuntimeLoginOptions,
 } from "./model-runtime/types.ts";
 
 /** Configured octocode-ai Models collection used by coding-agent and SDK consumers. */
@@ -142,11 +141,12 @@ export class ModelRuntime implements Models {
 	getProviders(): readonly Provider[] {
 		return this.models.getProviders();
 	}
-
+	getConfigurationDirectory(): string | undefined {
+		return this.modelsPath ? dirname(this.modelsPath) : undefined;
+	}
 	getProvider(providerId: string): Provider | undefined {
 		return this.models.getProvider(providerId);
 	}
-
 	getModels(providerId?: string): readonly Model<Api>[] {
 		return this.models.getModels(providerId);
 	}
@@ -260,7 +260,9 @@ export class ModelRuntime implements Models {
 	listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		return this.credentials.list(options);
 	}
-
+	importCredential(...args: Parameters<CredentialOperations["importCredential"]>): Promise<void> {
+		return this.credentialOperations.importCredential(...args);
+	}
 	getProviderAuthStatus(providerId: string): AuthStatus {
 		return this.availability.getProviderAuthStatus(providerId, this.credentials, this.layers);
 	}
@@ -329,8 +331,8 @@ export class ModelRuntime implements Models {
 		return classifyWithModel(this, model, context, options);
 	}
 
-	login(providerId: string, type: AuthType, interaction: AuthInteraction, options?: LoginOptions): Promise<Credential> {
-		return this.credentialOperations.login(providerId, type, interaction, options);
+	login(...args: Parameters<CredentialOperations["login"]>): Promise<Credential> {
+		return this.credentialOperations.login(...args);
 	}
 
 	logout(providerId: string, options: AuthOperationOptions = {}): Promise<void> {

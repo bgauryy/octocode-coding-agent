@@ -1,12 +1,12 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
+import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type CompactionSettings,
-	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
 	estimateContextTokens,
@@ -603,7 +603,7 @@ describe("Large session fixture", () => {
 describe.skipIf(!process.env.ANTHROPIC_OAUTH_TOKEN)("LLM summarization", () => {
 	it("should generate a compaction result for the large session", async () => {
 		const entries = loadLargeSessionEntries();
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 
 		const preparation = prepareCompaction(entries, DEFAULT_COMPACTION_SETTINGS);
 		expect(preparation).toBeDefined();
@@ -624,7 +624,7 @@ describe.skipIf(!process.env.ANTHROPIC_OAUTH_TOKEN)("LLM summarization", () => {
 	it("should produce valid session after compaction", async () => {
 		const entries = loadLargeSessionEntries();
 		const loaded = buildSessionContext(entries);
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 
 		const preparation = prepareCompaction(entries, DEFAULT_COMPACTION_SETTINGS);
 		expect(preparation).toBeDefined();

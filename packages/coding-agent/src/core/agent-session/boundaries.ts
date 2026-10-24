@@ -53,6 +53,7 @@ export class SessionBoundaries {
 			for (const message of entry.messages) this._entryIdsByMessage.set(message, entry.sourceEntry.id);
 		}
 		this.host.session.agent.state.messages = projection.messages;
+		this.host.emit({ type: "session_context_changed" });
 	}
 
 	findPersistedMessageEntryId(message: AgentMessage): string | undefined {

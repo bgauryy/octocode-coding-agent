@@ -1,4 +1,4 @@
-import type { AutocompleteProvider } from "../autocomplete.ts";
+import type { AutocompleteProvider } from "../autocomplete/types.ts";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -8,7 +8,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 } from "../tui.ts";
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 import { insertTextAtCursorInternal } from "./editor/editing.ts";
 import { addToHistory } from "./editor/history.ts";
 import { handleEditorInput } from "./editor/input.ts";
@@ -16,10 +16,6 @@ import { createScrollBorder } from "./editor/layout.ts";
 import { EditorModel } from "./editor/model.ts";
 import { handleEditorMouse } from "./editor/movement.ts";
 import type { EditorOptions, EditorTheme } from "./editor/types.ts";
-
-export type { TextChunk } from "./editor/word-wrap.ts";
-export { wordWrapLine } from "./editor/word-wrap.ts";
-export type { EditorOptions, EditorTheme } from "./editor/types.ts";
 
 export class Editor implements Component, Focusable {
 	/**

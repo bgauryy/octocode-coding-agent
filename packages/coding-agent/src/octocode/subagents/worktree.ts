@@ -2,11 +2,12 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { atomicWriteFileSync, shortHash } from "../shared/atomic.ts";
+import { atomicWriteFileSync, shortHash } from "../../utils/atomic-file.ts";
+import { repoKey } from "../shared/home/repo.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { claimSuffix, releaseDeadClaims } from "../shared/claims.ts";
-import { HOME_NAMES, octocodeHome, repoKey } from "../shared/home.ts";
+import { HOME_NAMES, octocodeHome } from "../shared/home.ts";
 import { processStartTime, sameProcess } from "../shared/process.ts";
-import { errorMessage } from "../shared/util.ts";
 import {
 	recoverWorktreeBase,
 	saveWorkerRef,

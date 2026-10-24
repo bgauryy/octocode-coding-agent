@@ -1,6 +1,7 @@
 import type { SessionEntry } from "../../../core/session-manager.ts";
-import { fence, headingText, inlineCode } from "../../shared/archive.ts";
-import { contentText, isRecord, stringOrEmpty } from "../../shared/util.ts";
+import { fence, inlineCode, oneLine } from "../../shared/archive/text.ts";
+import { isRecord } from "../../../utils/guards.ts";
+import { contentText, stringOrEmpty } from "../../shared/util.ts";
 
 /** The first line of the first user message, the label of last resort. */
 export function firstUserLine(messages: readonly unknown[]): string | undefined {
@@ -55,7 +56,7 @@ function messageBlocks(message: Record<string, unknown>): string[] {
 				...contentBlocks(message.content),
 			];
 		case "bashExecution": {
-			const exit = message.cancelled === true ? "cancelled" : `exit ${headingText(String(message.exitCode))}`;
+			const exit = message.cancelled === true ? "cancelled" : `exit ${oneLine(String(message.exitCode))}`;
 			return [
 				`Command (${exit}):`,
 				fence(stringOrEmpty(message.command), "sh"),
@@ -105,14 +106,14 @@ export function renderMessages(
 			const record = isRecord(message) ? message : { role: "unknown", value: message };
 			const role =
 				record.role === "custom"
-					? `custom (${headingText(stringOrEmpty(record.customType))})`
-					: headingText(stringOrEmpty(record.role)) || "unknown";
+					? `custom (${oneLine(stringOrEmpty(record.customType))})`
+					: oneLine(stringOrEmpty(record.role)) || "unknown";
 			const entry = entryOf(message);
 			const heading = [
 				"###",
 				role,
 				...(isoTime(record.timestamp) ? [`· ${isoTime(record.timestamp)}`] : []),
-				...(entry ? [`· entry ${headingText(entry)}`] : []),
+				...(entry ? [`· entry ${oneLine(entry)}`] : []),
 			].join(" ");
 			return [heading, ...messageBlocks(record)].join("\n\n");
 		})

@@ -2,6 +2,8 @@
 import {
 	type AssistantMessage,
 	type AssistantMessageEvent,
+	type AssistantContent,
+	type ContentAnnotation,
 	parseStreamingJson,
 	type StopReason,
 	type ToolCall,
@@ -14,13 +16,20 @@ export type ProxyAssistantMessageEvent =
 	| { type: "start" }
 	| { type: "text_start"; contentIndex: number }
 	| { type: "text_delta"; contentIndex: number; delta: string }
-	| { type: "text_end"; contentIndex: number; contentSignature?: string }
+	| {
+			type: "text_end";
+			contentIndex: number;
+			contentSignature?: string;
+			text?: string;
+			annotations?: ContentAnnotation[];
+	  }
 	| { type: "thinking_start"; contentIndex: number }
 	| { type: "thinking_delta"; contentIndex: number; delta: string }
 	| { type: "thinking_end"; contentIndex: number; contentSignature?: string }
 	| { type: "toolcall_start"; contentIndex: number; id: string; toolName: string }
 	| { type: "toolcall_delta"; contentIndex: number; delta: string }
 	| { type: "toolcall_end"; contentIndex: number; toolCall: ToolCall }
+	| { type: "content_update"; contentIndex: number; content: AssistantContent }
 	| {
 			type: "done";
 			reason: Extract<StopReason, "stop" | "length" | "toolUse">;
@@ -48,6 +57,9 @@ export function processProxyEvent(
 	switch (proxyEvent.type) {
 		case "start":
 			return { type: "start", partial };
+		case "content_update":
+			partial.content[proxyEvent.contentIndex] = proxyEvent.content;
+			return { type: "content_update", contentIndex: proxyEvent.contentIndex, partial };
 
 		case "text_start":
 			partial.content[proxyEvent.contentIndex] = { type: "text", text: "" };
@@ -71,6 +83,8 @@ export function processProxyEvent(
 			const content = partial.content[proxyEvent.contentIndex];
 			if (content?.type === "text") {
 				content.textSignature = proxyEvent.contentSignature;
+				if (proxyEvent.text !== undefined) content.text = proxyEvent.text;
+				if (proxyEvent.annotations !== undefined) content.annotations = proxyEvent.annotations;
 				return {
 					type: "text_end",
 					contentIndex: proxyEvent.contentIndex,

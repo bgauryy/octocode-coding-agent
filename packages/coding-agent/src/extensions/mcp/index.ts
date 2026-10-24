@@ -11,13 +11,6 @@ import { registerInheritedMcpServers } from "./session-servers.ts";
 import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
 import { createMcpToolRenderers } from "./tools.ts";
 
-export {
-	MAX_SERVERS_SECTION_CHARS,
-	MCP_SERVERS_SECTION,
-	type McpServerListing,
-	reachesServer,
-	renderServersSection,
-} from "./section.ts";
 export type { McpTransportFactory } from "./runtime.ts";
 export type { McpExtensionOptions } from "./state.ts";
 
@@ -38,5 +31,3 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		registerMcpCommand(state);
 	};
 }
-
-export default createMcpExtension();

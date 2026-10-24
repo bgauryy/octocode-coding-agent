@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { commandsFor, parseHooks } from "../../src/octocode/hooks/config.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

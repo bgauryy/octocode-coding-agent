@@ -2,6 +2,20 @@ import type { Model } from "../../types.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 /**
+ * OpenRouter models whose caching its docs say needs explicit `cache_control` breakpoints (Alibaba).
+ * Snapshot endpoints such as `qwen/qwen3.5-plus-02-15` are excluded there, so ids are matched exactly.
+ * https://openrouter.ai/docs/guides/best-practices/prompt-caching#alibaba-qwen
+ */
+const OPENROUTER_ALIBABA_EXPLICIT_CACHE_MODELS: ReadonlySet<string> = new Set([
+	"deepseek/deepseek-v3.2",
+	"qwen/qwen3-max",
+	"qwen/qwen-plus",
+	"qwen/qwen3.6-plus",
+	"qwen/qwen3-coder-plus",
+	"qwen/qwen3-coder-flash",
+]);
+
+/**
  * Auto-detect compatibility settings from provider name and baseUrl.
  * Used as the base when model.compat is not set; explicit model.compat
  * entries override these detected values.
@@ -55,7 +69,11 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isOpenRouterDeveloperRoleModel =
 		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
-	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
+	const isOpenRouterAnthropic = provider === "openrouter" && /^~?anthropic\//.test(model.id);
+	// OpenRouter documents Alibaba caching as explicit-breakpoint only, with a fixed 5-minute TTL.
+	const isOpenRouterAlibabaExplicitCache =
+		provider === "openrouter" && OPENROUTER_ALIBABA_EXPLICIT_CACHE_MODELS.has(model.id);
+	const cacheControlFormat = isOpenRouterAnthropic || isOpenRouterAlibabaExplicitCache ? "anthropic" : undefined;
 
 	return {
 		supportsStore: !isNonStandard,
@@ -95,7 +113,10 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		cacheControlFormat,
 		sendSessionAffinityHeaders: isOpenRouter,
 		sessionAffinityFormat: isOpenRouter ? "openrouter" : "openai",
+		// OpenCode Go streams `reasoning` but expects it back as `reasoning_content`.
+		reasoningReplayField: provider === "opencode-go" ? "reasoning_content" : undefined,
 		supportsLongCacheRetention: !(
+			isOpenRouterAlibabaExplicitCache ||
 			isTogether ||
 			isCloudflareWorkersAI ||
 			isCloudflareAiGateway ||
@@ -144,5 +165,6 @@ export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICom
 		sessionAffinityFormat: model.compat.sessionAffinityFormat ?? detected.sessionAffinityFormat,
 		supportsLongCacheRetention: model.compat.supportsLongCacheRetention ?? detected.supportsLongCacheRetention,
 		vllmPriority: model.compat.vllmPriority,
+		reasoningReplayField: detected.reasoningReplayField,
 	};
 }

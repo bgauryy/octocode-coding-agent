@@ -1,14 +1,11 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { timedTool } from "../shared/render.ts";
+import { timedTool } from "../shared/render/rows.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { dialogNotice } from "./actions.ts";
 import { browserCallHeader, browserResult } from "./render.ts";
 import type { BrowserTool } from "./tool/browser-tool.ts";
 import { isSessionAction, PAGE_HANDLERS, pageResult, SESSION_HANDLERS } from "./tool/handlers.ts";
 import { PARAMETERS } from "./tool/parameters.ts";
-
-export { AUDIT_KEYS_MAX, BrowserTool } from "./tool/browser-tool.ts";
-export { checkBrowserUrl, checkUploadPaths } from "./tool/checks.ts";
 
 /** Actions that talk to the page, so an open JavaScript dialog must be answered first. */
 const PAGE_ACTIONS = new Set([

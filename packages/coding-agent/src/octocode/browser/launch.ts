@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type LaunchedChrome, launch } from "chrome-launcher";
-import { atomicWriteFileSync } from "../shared/atomic.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { HOME_NAMES, outputDir, PRIVATE_FILE_MODE } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 import { sweepDeadOutputs } from "../shared/sweep.ts";
-import { isRecord } from "../shared/util.ts";
 import { type FilteringProxy, type FilteringProxyOptions, startFilteringProxy } from "./proxy.ts";
 
 /** Starting Chrome for a session, and finding the Chrome already running on a persistent profile. */

@@ -1,5 +1,6 @@
 import type { Component } from "../tui.ts";
-import { applyBackgroundToLine, flattenLines, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
+import { wrapTextWithAnsi } from "../utils/wrap.ts";
+import { frameContentLines } from "../utils.ts";
 
 /**
  * Text component - displays multi-line text with word wrapping
@@ -81,36 +82,7 @@ export class Text implements Component {
 			? normalizedText.split("\n").flatMap((line) => wrapWithHangingIndent(line, contentWidth))
 			: wrapTextWithAnsi(normalizedText, contentWidth);
 
-		// Add margins and background to each line
-		const leftMargin = " ".repeat(paddingX);
-		const rightMargin = " ".repeat(paddingX);
-		const contentLines: string[] = [];
-
-		for (const line of wrappedLines) {
-			// Add margins
-			const lineWithMargins = leftMargin + line + rightMargin;
-
-			// Apply background if specified (this also pads to full width)
-			if (this.customBgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, width, this.customBgFn));
-			} else {
-				// No background - just pad to width with spaces
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, width - visibleLen);
-				contentLines.push(lineWithMargins + " ".repeat(paddingNeeded));
-			}
-		}
-
-		// Add top/bottom padding (empty lines)
-		const emptyLine = " ".repeat(width);
-		const emptyLines: string[] = [];
-		for (let i = 0; i < this.paddingY; i++) {
-			const line = this.customBgFn ? applyBackgroundToLine(emptyLine, width, this.customBgFn) : emptyLine;
-			emptyLines.push(line);
-		}
-
-		const result = [...emptyLines, ...contentLines, ...emptyLines];
-		flattenLines(result);
+		const result = frameContentLines(wrappedLines, width, paddingX, this.paddingY, this.customBgFn);
 
 		// Update cache
 		this.cachedText = this.text;

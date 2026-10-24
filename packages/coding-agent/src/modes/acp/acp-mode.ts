@@ -2,13 +2,14 @@ import { Readable } from "node:stream";
 import { resolve } from "node:path";
 import { ndJsonStream } from "@agentclientprotocol/sdk";
 import type { Args } from "../../cli/args.ts";
-import { ENV_SESSION_DIR, expandTildePath, getCliInvocation } from "../../config.ts";
+import { ENV_SESSION_DIR, getCliInvocation } from "../../config.ts";
 import {
 	flushRawStdout,
 	takeOverStdout,
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
+import { normalizePath } from "../../utils/paths.ts";
 import { RpcClient } from "../rpc/rpc-client.ts";
 import { AcpBroker, type AcpWorker } from "./broker.ts";
 import { prepareAcpMcpServers } from "./mcp.ts";
@@ -52,7 +53,7 @@ export async function runAcpMode(workerArgs: string[]): Promise<void> {
 	const cliSessionDir = sessionDirIndex >= 0 ? workerArgs[sessionDirIndex + 1] : undefined;
 	const envSessionDir = process.env[ENV_SESSION_DIR];
 	const sharedSessionDir = cliSessionDir ?? envSessionDir;
-	const absoluteSessionDir = sharedSessionDir ? resolve(launchDirectory, expandTildePath(sharedSessionDir)) : undefined;
+	const absoluteSessionDir = sharedSessionDir ? resolve(launchDirectory, normalizePath(sharedSessionDir)) : undefined;
 	const sessionArgs = [...workerArgs];
 	if (cliSessionDir && absoluteSessionDir) sessionArgs[sessionDirIndex + 1] = absoluteSessionDir;
 	const broker = new AcpBroker({

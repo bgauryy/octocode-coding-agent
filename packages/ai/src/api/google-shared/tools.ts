@@ -66,7 +66,7 @@ export function supportsGoogleStrictToolSampling(modelId: string): boolean {
 }
 
 /** Map tool choice string to Gemini FunctionCallingConfigMode. */
-export function mapToolChoice(choice: string): FunctionCallingConfigMode {
+function mapToolChoice(choice: string): FunctionCallingConfigMode {
 	switch (choice) {
 		case "auto":
 			return FunctionCallingConfigMode.AUTO;

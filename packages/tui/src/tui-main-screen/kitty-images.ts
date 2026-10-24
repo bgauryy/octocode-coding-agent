@@ -1,5 +1,5 @@
 import { deleteKittyImage, isImageLine } from "../terminal-image.ts";
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 
 const KITTY_SEQUENCE_PREFIX = "\x1b_G";
 

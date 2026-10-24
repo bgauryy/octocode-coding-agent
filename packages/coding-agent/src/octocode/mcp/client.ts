@@ -16,7 +16,7 @@ import {
 import { OCTOCODE_SERVER } from "../shared/octocode-tools.ts";
 import { tailNote } from "../shared/format.ts";
 import { saveFullOutput } from "../shared/spill.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** How the server process starts. */
 export interface Launch {

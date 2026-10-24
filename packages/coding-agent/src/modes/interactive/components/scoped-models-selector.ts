@@ -30,13 +30,13 @@ interface ModelItem {
 	enabled: boolean;
 }
 
-export interface ModelsConfig {
+interface ModelsConfig {
 	allModels: Model<any>[];
 	enabledModelIds: string[] | null;
 	refreshStatus?: string;
 }
 
-export interface ModelsCallbacks {
+interface ModelsCallbacks {
 	/** Called whenever the enabled model set or order changes (session-only, no persist) */
 	onChange: (enabledModelIds: string[] | null) => void | Promise<void>;
 	/** Called when user wants to persist current selection to settings */
@@ -88,7 +88,9 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		// Header
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", theme.bold("Model Configuration")), 0, 0));
+		this.addChild(
+			new Text(theme.fg("accent", theme.bold("Model shortcuts — choose models for keyboard cycling")), 0, 0),
+		);
 		this.addChild(
 			new Text(theme.fg("muted", `Session-only. ${keyDisplayText("app.models.save")} to save to settings.`), 0, 0),
 		);

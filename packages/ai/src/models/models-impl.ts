@@ -1,6 +1,6 @@
 import { defaultProviderAuthContext as defaultAuthContext } from "../auth/context.ts";
 import { InMemoryCredentialStore } from "../auth/credential-store.ts";
-import { type AuthResolutionOverrides, ModelsError, resolveProviderAuth } from "../auth/resolve.ts";
+import { type AuthResolutionOverrides, ModelsError, readCredential, resolveProviderAuth } from "../auth/resolve.ts";
 import type {
 	AuthCheck,
 	AuthContext,
@@ -33,8 +33,9 @@ import type {
 	ModelTypeMap,
 } from "../types.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
+import { mergeHeaders } from "../utils/headers.ts";
 import { isModelType } from "../utils/model-operations.ts";
-import { checkProviderAuth, loginProvider, mergeHeaders, readCredential } from "./auth.ts";
+import { checkProviderAuth, loginProvider } from "./auth.ts";
 import type {
 	CreateModelsOptions,
 	ModelsApiStreamOptions,

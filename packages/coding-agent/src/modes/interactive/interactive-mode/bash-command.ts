@@ -9,7 +9,7 @@ import { BashExecutionComponent } from "../components/bash-execution.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by user bash commands. */
-export type BashCommandHost = Pick<
+type BashCommandHost = Pick<
 	InteractiveModeHost,
 	| "bashComponent"
 	| "chatContainer"

@@ -5,15 +5,10 @@ import { claudeSettingsSources } from "../shared/home.ts";
 import { envFlag, HOOKS_COMPAT_ENV } from "../shared/env.ts";
 import { projectTrustForContents, preparePermissionTrustUpdate } from "../shared/trust.ts";
 import { say } from "../shared/commands.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { parseSourcePolicy, type SourcePolicy } from "./source-policy/rules.ts";
 import { initializeBashSyntax } from "./bash-syntax.ts";
-import {
-	evaluateSourcePolicy,
-	unprojectedSourcePolicy,
-	parseSourcePolicy,
-	sourceToolDenied,
-	type SourcePolicy,
-} from "./source-policy.ts";
+import { evaluateSourcePolicy, unprojectedSourcePolicy, sourceToolDenied } from "./source-policy.ts";
 import {
 	applySessionRuleUpdates,
 	type SourcePermissionUpdate,

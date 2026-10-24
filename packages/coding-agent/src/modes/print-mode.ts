@@ -9,8 +9,9 @@
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../core/output-guard.ts";
-import { killTrackedDetachedChildren } from "../utils/shell.ts";
 import { toJsonEvent } from "./json-event.ts";
+import { handleTerminationSignals } from "./termination-signals.ts";
+import { errorMessage } from "../utils/guards.ts";
 
 /**
  * Options for print mode.
@@ -37,7 +38,6 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;
 	let disposed = false;
-	const signalCleanupHandlers: Array<() => void> = [];
 
 	const disposeRuntime = async (): Promise<void> => {
 		if (disposed) return;
@@ -47,25 +47,11 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		await runtimeHost.dispose();
 	};
 
-	const registerSignalHandlers = (): void => {
-		const signals: NodeJS.Signals[] = ["SIGTERM"];
-		if (process.platform !== "win32") {
-			signals.push("SIGHUP");
-		}
-
-		for (const signal of signals) {
-			const handler = () => {
-				killTrackedDetachedChildren();
-				void disposeRuntime().finally(() => {
-					process.exit(signal === "SIGHUP" ? 129 : 143);
-				});
-			};
-			process.on(signal, handler);
-			signalCleanupHandlers.push(() => process.off(signal, handler));
-		}
-	};
-
-	registerSignalHandlers();
+	const removeSignalHandlers = handleTerminationSignals((_signal, signalExitCode) => {
+		void disposeRuntime().finally(() => {
+			process.exit(signalExitCode);
+		});
+	});
 
 	runtimeHost.setRebindSession(async () => {
 		await rebindSession();
@@ -173,12 +159,10 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 		return exitCode;
 	} catch (error: unknown) {
-		console.error(error instanceof Error ? error.message : String(error));
+		console.error(errorMessage(error));
 		return 1;
 	} finally {
-		for (const cleanup of signalCleanupHandlers) {
-			cleanup();
-		}
+		removeSignalHandlers();
 		await disposeRuntime();
 		await flushRawStdout();
 	}

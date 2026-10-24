@@ -4,9 +4,8 @@ import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts"
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/extensions/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
-import type { HookConfig, HookEvent } from "../config.ts";
+import type { HookConfig, HookEvent, HookVerdict } from "../contracts.ts";
 import type { HookProtocol } from "../profiles.ts";
-import type { HookVerdict } from "../runner.ts";
 
 export const CONTEXT_TYPE = "octocode-hook-context";
 /** Longest the first prompt waits for SessionStart hooks still running. */
@@ -26,7 +25,7 @@ export interface HookTiming {
 }
 
 /** What a Notification hook receives besides the common fields (Claude Code's shape). */
-export interface HookNotice {
+interface HookNotice {
 	message: string;
 	title?: string;
 	/** Claude Code's `notification_type`: `permission_prompt`, `elicitation_dialog` or `idle_prompt`. */
@@ -35,6 +34,7 @@ export interface HookNotice {
 
 /** What `/hooks` and `/octocode` show about hooks. */
 export interface HooksView {
+	suspend?(): Promise<void>;
 	hasFilePermissionRequest(input: Record<string, unknown>, cwd: string): boolean;
 	fileInputCommitted(id: string, input: Record<string, unknown>): void;
 	permissionRequest(

@@ -6,8 +6,8 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";
-import { PERMISSION_ENV, SUBAGENT_ENV } from "../../src/octocode/shared/env.ts";
-import { AGENT_SCRATCH_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/team/store/env.ts";
+import { PERMISSION_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
+
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

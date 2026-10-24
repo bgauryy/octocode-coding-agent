@@ -4,12 +4,25 @@ import type {
 	BetaRefusalStopDetails as RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { calculateCost } from "../../models.ts";
-import type { AssistantMessage, Model, StopReason, TextContent, ThinkingContent, Tool, ToolCall } from "../../types.ts";
+import type {
+	AssistantMessage,
+	Model,
+	StopReason,
+	TextContent,
+	ThinkingContent,
+	Tool,
+	ToolCall,
+	UnsupportedContent,
+} from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { fromClaudeCodeName } from "./claude-code.ts";
+import { providerOutputText } from "../provider-output.ts";
+import { anthropicAnnotation, anthropicNativeFields, anthropicNativeOutput } from "./rich-content.ts";
 
-type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
+type Block = (ThinkingContent | TextContent | UnsupportedContent | (ToolCall & { partialJson: string })) & {
+	index: number;
+};
 
 /** Per-response state the stream loop shares with {@link handleAnthropicStreamEvent}. */
 export interface AnthropicStreamState {
@@ -21,6 +34,8 @@ export interface AnthropicStreamState {
 	/** Model whose cost prices usage; a server-side fallback replaces it on `message_start`. */
 	usageModel: Model<"anthropic-messages">;
 	inputTransformations: BetaInputTransformation[] | undefined;
+	/** Native tool input chunks belong to this stream, never to the persisted/display message. */
+	nativeToolInputs?: Map<number, { type: string; fields: Record<string, unknown>; json: string }>;
 }
 
 /** Applies one Anthropic stream event to the partial message and emits the matching stream events. */
@@ -63,6 +78,9 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 				type: "text",
 				text: event.content_block.text ?? "",
 				index: event.index,
+				...(event.content_block.citations?.length
+					? { annotations: event.content_block.citations.map(anthropicAnnotation) }
+					: {}),
 			};
 			output.content.push(block);
 			stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
@@ -96,6 +114,24 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			};
 			output.content.push(block);
 			stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
+		} else {
+			const native = anthropicNativeOutput(event.content_block);
+			if (event.content_block.type === "server_tool_use" || event.content_block.type === "mcp_tool_use") {
+				(state.nativeToolInputs ??= new Map()).set(event.index, {
+					type: event.content_block.type,
+					fields: anthropicNativeFields(event.content_block)!,
+					json: "",
+				});
+			}
+			output.content.push({
+				...(native ?? {
+					type: "unsupported",
+					providerType: event.content_block.type,
+					text: `Provider output: ${event.content_block.type}`,
+				}),
+				index: event.index,
+			} as Block);
+			stream.push({ type: "content_update", contentIndex: output.content.length - 1, partial: output });
 		}
 	} else if (event.type === "content_block_delta") {
 		if (event.delta.type === "text_delta") {
@@ -134,6 +170,30 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 					delta: event.delta.partial_json,
 					partial: output,
 				});
+			} else if (block?.type === "text") {
+				const native = state.nativeToolInputs?.get(event.index);
+				if (native) {
+					native.json += event.delta.partial_json;
+					native.fields.input = parseStreamingJson(native.json);
+					block.text = providerOutputText(native.type, native.fields).text;
+					stream.push({ type: "content_update", contentIndex: index, partial: output });
+				}
+			}
+		} else if (event.delta.type === "compaction_delta" && event.delta.content) {
+			const index = blocks.findIndex((b) => b.index === event.index);
+			const block = blocks[index];
+			if (block?.type === "unsupported" && block.providerType === "compaction") {
+				blocks[index] = { type: "text", text: `Provider compaction:\n${event.delta.content}`, index: event.index };
+			} else if (block?.type === "text") {
+				block.text += event.delta.content;
+			}
+			if (block) stream.push({ type: "content_update", contentIndex: index, partial: output });
+		} else if (event.delta.type === "citations_delta") {
+			const index = blocks.findIndex((b) => b.index === event.index);
+			const block = blocks[index];
+			if (block?.type === "text") {
+				(block.annotations ??= []).push(anthropicAnnotation(event.delta.citation));
+				stream.push({ type: "content_update", contentIndex: index, partial: output });
 			}
 		} else if (event.delta.type === "signature_delta") {
 			const index = blocks.findIndex((b) => b.index === event.index);
@@ -144,6 +204,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			}
 		}
 	} else if (event.type === "content_block_stop") {
+		state.nativeToolInputs?.delete(event.index);
 		const index = blocks.findIndex((b) => b.index === event.index);
 		const block = blocks[index];
 		if (block) {
@@ -221,7 +282,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 	}
 }
 
-export function mapStopReason(
+function mapStopReason(
 	reason: string,
 	stopDetails?: RefusalStopDetails | null,
 ): { stopReason: StopReason; errorMessage?: string } {

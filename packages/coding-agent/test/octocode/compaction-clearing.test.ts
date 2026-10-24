@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLEAR_AT_LEAST_TOKENS, KEEP_RECENT_RESULTS } from "../../src/octocode/compaction/clearing.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/reads.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
 import { CACHE_RETENTION_ENV } from "../../src/octocode/shared/env.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
-import { CHARS_PER_TOKEN } from "../../src/octocode/shared/tokens.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
@@ -197,6 +197,10 @@ describe("clearing old tool results once the prompt cache is cold", () => {
 		const below = setup(idleMessages(reads(KEEP_RECENT_RESULTS + 4, perResult)));
 		await below.start(T0 + 100 + HOUR + 1_000);
 		expect(below.entries).toEqual([]);
+		// Nothing was saved for a clearing that did not happen.
+		expect(
+			fs.readdirSync(process.env.OCTOCODE_HOME!, { recursive: true }).filter((name) => /cleared-/.test(String(name))),
+		).toEqual([]);
 		const atLeast = setup(idleMessages(reads(KEEP_RECENT_RESULTS + 4, perResult + 200)));
 		await atLeast.start(T0 + 100 + HOUR + 1_000);
 		expect(atLeast.entries).toHaveLength(1);

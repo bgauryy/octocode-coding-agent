@@ -1,4 +1,4 @@
-import { CACHE_RETENTION_VALUES } from "@octocodeai/octocode-ai/utils/cache-policy";
+import { CACHE_RETENTIONS } from "@octocodeai/octocode-ai/providers/model-schema";
 import type { ImageProtocol, SettingItem } from "@octocodeai/octocode-tui";
 import type { SettingsCallbacks, SettingsConfig } from "./types.ts";
 
@@ -18,7 +18,7 @@ export function addConditionalItems(
 				id: field,
 				label,
 				currentValue: config.cachePreferences[field] ?? "short",
-				values: [...CACHE_RETENTION_VALUES],
+				values: [...CACHE_RETENTIONS],
 				description:
 					"Saved default; environment and model overrides take priority. Long writes may cost more. See /session for effective durations.",
 			});

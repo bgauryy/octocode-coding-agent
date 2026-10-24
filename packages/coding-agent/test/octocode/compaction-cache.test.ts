@@ -11,9 +11,9 @@ import {
 } from "../../src/octocode/compaction/cache.ts";
 import { contextChars } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { CACHE_RETENTION_ENV } from "../../src/octocode/shared/env.ts";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 type TestModel = {

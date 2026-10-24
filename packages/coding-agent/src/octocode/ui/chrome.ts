@@ -3,8 +3,10 @@ import path from "node:path";
 import { type Color, mixColors, rgbColor, type TUI } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import { packageRoot } from "../shared/package.ts";
-import { appKey, expandKey, statusColor, stopRowTimers } from "../shared/render.ts";
+import { getPackageDir } from "../../config.ts";
+import { appKey, expandKey } from "../shared/render/text.ts";
+import { statusColor } from "../shared/render/status.ts";
+import { stopRowTimers } from "../shared/render/rows.ts";
 import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
@@ -15,7 +17,7 @@ let version: { value: string | undefined } | undefined;
 export function packageVersion(): string | undefined {
 	if (version) return version.value;
 	try {
-		const manifest = path.join(packageRoot(), "package.json");
+		const manifest = path.join(getPackageDir(), "package.json");
 		version = { value: (JSON.parse(fs.readFileSync(manifest, "utf8")) as { version?: string }).version };
 	} catch {
 		version = { value: undefined };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { convertMessages } from "../src/api/openai-completions.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model, OpenAICompletionsCompat, ToolResultMessage, Usage } from "../src/types.ts";
 
 const emptyUsage: Usage = {
@@ -70,7 +71,7 @@ function buildEmptyToolResult(toolCallId: string, timestamp: number, text = ""):
 
 describe("openai-completions convertMessages", () => {
 	it("omits empty text parts from user messages with images", () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model: Model<"openai-completions"> = {
 			...baseModel,
 			api: "openai-completions",
@@ -98,7 +99,7 @@ describe("openai-completions convertMessages", () => {
 	});
 
 	it("batches tool-result images after consecutive tool results", () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model: Model<"openai-completions"> = {
 			...baseModel,
 			api: "openai-completions",
@@ -145,7 +146,7 @@ describe("openai-completions convertMessages", () => {
 	it.each(["", "\r\n", " \n\t"])(
 		"uses '(no tool output)' placeholder for tool result text %j without images",
 		(text) => {
-			const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+			const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 			const model: Model<"openai-completions"> = {
 				...baseModel,
 				api: "openai-completions",

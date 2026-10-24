@@ -9,14 +9,15 @@ import {
 	sessionCleared,
 	toolCallArguments,
 } from "../files/reads.ts";
-import type { FileGuard } from "../files/tool.ts";
-import { readOnlyCommand } from "../permission/shell.ts";
+import type { FileGuard } from "../files/tool/guard.ts";
+import { readOnlyCommand } from "../permission/shell/read-only.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { shortPath } from "../shared/format.ts";
-import { canonicalPath, readPaths } from "../shared/home.ts";
+import { readPaths } from "../shared/home.ts";
 import { isOctocodeTool } from "../shared/octocode-tools.ts";
 import { saveContentCopy } from "../shared/spill.ts";
-import { CHARS_PER_TOKEN } from "../shared/tokens.ts";
-import { isRecord } from "../shared/util.ts";
 import { cacheClock } from "./cache.ts";
 
 /**

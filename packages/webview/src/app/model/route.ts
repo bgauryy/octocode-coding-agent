@@ -3,7 +3,7 @@ export interface Route {
 	name: string;
 	params: Params;
 }
-export type Destination =
+type Destination =
 	| { kind: "view"; view: string; params: Params }
 	| { kind: "item"; ref: string; mode: "view" | "edit" | "correct" }
 	| { kind: "new" };
@@ -52,5 +52,9 @@ export function resolveRoute(route: Route, views: readonly string[]): Destinatio
 export function readLaunch(hash: string): { access: string; hash: string } | null {
 	if (!hash.startsWith("#access=")) return null;
 	const launch = new URLSearchParams(hash.slice(1));
-	return { access: launch.get("access") ?? "", hash: launch.get("view") === "activity" ? "#activity" : "#board" };
+	const view = launch.get("view");
+	return {
+		access: launch.get("access") ?? "",
+		hash: view === "activity" || view === "backlog" ? `#${view}` : "#board",
+	};
 }

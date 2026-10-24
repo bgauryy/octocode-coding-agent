@@ -215,7 +215,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.tools).toContain("mcp__octocode__localFetch");
 		expect(turn.tools).toContain("mcp__octocode__localSearch");
 		for (const name of ["edit", "write"]) expect(turn.tools).not.toContain(name);
-		expect(turn.systemPrompt).toContain("<octocode>");
+		expect(turn.systemPrompt).toContain("<octocode_work>");
 		// Every tool the server lists, GitHub and package registry ones included, is declared from the first request.
 		for (const name of [
 			"ghSearchRepo",

@@ -207,7 +207,14 @@ export function findMostRecentSession(sessionDir: string, cwd?: string): string 
 		const files = readdirSync(resolvedSessionDir)
 			.filter((file) => file.endsWith(".jsonl"))
 			.map((file) => join(resolvedSessionDir, file))
-			.map((path) => ({ path, mtime: statSync(path).mtimeMs }))
+			.flatMap((path) => {
+				try {
+					const stats = statSync(path);
+					return stats.isFile() ? [{ path, mtime: stats.mtimeMs }] : [];
+				} catch {
+					return [];
+				}
+			})
 			.sort((a, b) => b.mtime - a.mtime);
 
 		for (const { path } of files) {
@@ -216,7 +223,7 @@ export function findMostRecentSession(sessionDir: string, cwd?: string): string 
 		}
 		return null;
 	} catch {
-		// Directory access and stat races make recent-session discovery unavailable.
+		// A directory that cannot be read has no discoverable recent session.
 		return null;
 	}
 }

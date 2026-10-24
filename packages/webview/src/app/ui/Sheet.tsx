@@ -8,6 +8,7 @@ export function Sheet({
 	label,
 	onClose,
 	initialFocus,
+	focusKey,
 	wide,
 	children,
 }: {
@@ -15,11 +16,12 @@ export function Sheet({
 	label?: string;
 	onClose: () => void;
 	initialFocus?: () => HTMLElement | null;
+	focusKey?: string;
 	wide?: boolean;
 	children: ReactNode;
 }) {
 	const ref = useRef<HTMLDialogElement>(null);
-	useModal(ref, onClose, initialFocus);
+	useModal(ref, onClose, initialFocus, focusKey);
 	return (
 		<>
 			{/* A pointer shortcut, hidden from assistive technology: Escape and the Close button are the accessible paths. */}

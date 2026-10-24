@@ -7,7 +7,7 @@ import {
 	parseKittySequence,
 	parseModifyOtherKeysSequence,
 } from "./sequences.ts";
-import { _kittyProtocolActive } from "./state.ts";
+import { isKittyProtocolActive } from "./state.ts";
 import {
 	ARROW_CODEPOINTS,
 	CODEPOINTS,
@@ -92,7 +92,7 @@ export function parseKey(data: string): string | undefined {
 	// When Kitty protocol is active, ambiguous sequences are interpreted as custom terminal mappings:
 	// - \x1b\r = shift+enter (Kitty mapping), not alt+enter
 	// - \n = shift+enter (Ghostty mapping)
-	if (_kittyProtocolActive) {
+	if (isKittyProtocolActive()) {
 		if (data === "\x1b\r" || data === "\n") return "shift+enter";
 	}
 
@@ -109,18 +109,18 @@ export function parseKey(data: string): string | undefined {
 	if (data === "\x1b\x1d") return "ctrl+alt+]";
 	if (data === "\x1b\x1f") return "ctrl+alt+-";
 	if (data === "\t") return "tab";
-	if (data === "\r" || (!_kittyProtocolActive && data === "\n") || data === "\x1bOM") return "enter";
+	if (data === "\r" || (!isKittyProtocolActive() && data === "\n") || data === "\x1bOM") return "enter";
 	if (data === "\x00") return "ctrl+space";
 	if (data === " ") return "space";
 	if (data === "\x7f") return "backspace";
 	if (data === "\x08") return isWindowsTerminalSession() ? "ctrl+backspace" : "backspace";
 	if (data === "\x1b[Z") return "shift+tab";
-	if (!_kittyProtocolActive && data === "\x1b\r") return "alt+enter";
-	if (!_kittyProtocolActive && data === "\x1b ") return "alt+space";
+	if (!isKittyProtocolActive() && data === "\x1b\r") return "alt+enter";
+	if (!isKittyProtocolActive() && data === "\x1b ") return "alt+space";
 	if (data === "\x1b\x7f" || data === "\x1b\b") return "alt+backspace";
-	if (!_kittyProtocolActive && data === "\x1bB") return "alt+left";
-	if (!_kittyProtocolActive && data === "\x1bF") return "alt+right";
-	if (!_kittyProtocolActive && data.length === 2 && data[0] === "\x1b") {
+	if (!isKittyProtocolActive() && data === "\x1bB") return "alt+left";
+	if (!isKittyProtocolActive() && data === "\x1bF") return "alt+right";
+	if (!isKittyProtocolActive() && data.length === 2 && data[0] === "\x1b") {
 		const code = data.charCodeAt(1);
 		if (code >= 1 && code <= 26) {
 			return `ctrl+alt+${String.fromCharCode(code + 96)}`;

@@ -4,7 +4,7 @@ import type { AgentOptions } from "./options.ts";
 import type { PendingMessageQueue } from "./state.ts";
 
 /** The agent settings and hooks each run's loop config reads; `Agent` passes itself. */
-export type AgentLoopHost = Pick<
+type AgentLoopHost = Pick<
 	AgentOptions,
 	| "transformContext"
 	| "getApiKey"

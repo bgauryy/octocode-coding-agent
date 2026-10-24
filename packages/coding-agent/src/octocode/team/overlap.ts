@@ -1,4 +1,4 @@
-import type { Member } from "./model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** Words that carry no topic: a shared one says nothing about two goals overlapping. */
 const STOP_WORDS = new Set(

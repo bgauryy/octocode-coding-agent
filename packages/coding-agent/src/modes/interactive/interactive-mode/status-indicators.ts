@@ -14,7 +14,7 @@ import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the status indicators. */
-export type StatusIndicatorsHost = Pick<
+type StatusIndicatorsHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "activeWorkingIndicatorEmbedded"

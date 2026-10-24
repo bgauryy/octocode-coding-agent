@@ -75,8 +75,7 @@ const commands: Record<string, readonly string[]> = {
 	mcp: ["add", "remove", "enable", "disable", "exposure", "list", "tools", "config", "login", "logout"],
 	install: [],
 	remove: [],
-	uninstall: [],
-	update: ["self", "octocode"],
+	update: ["self"],
 	list: [],
 	config: [],
 	migrate: [],
@@ -225,9 +224,8 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 					"--",
 				);
 		}
-		if (["install", "remove", "uninstall", "config", "list", "update"].includes(command))
-			flags.push("--approve", "--no-approve");
-		if (["install", "remove", "uninstall", "config"].includes(command)) flags.push("--local", "-l");
+		if (["install", "remove", "config", "list", "update"].includes(command)) flags.push("--approve", "--no-approve");
+		if (["install", "remove", "config"].includes(command)) flags.push("--local", "-l");
 		if (command === "update") flags.push("--self", "--extensions", "--models", "--all", "--extension", "--force");
 		return prefix.startsWith("-") ? filter(flags) : [];
 	}

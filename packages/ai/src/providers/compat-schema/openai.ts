@@ -125,7 +125,7 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 		}),
 		supportsMidConvoSystemMessages: optionalCompatBoolean({
 			description:
-				"Whether the exact model accepts system or developer messages after the conversation has started. When false, later system messages are folded into the leading system message. The generated catalog enables this for verified models.",
+				"Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models.",
 			default: false,
 		}),
 		supportsMidConvoToolAdditions: Type.Optional(
@@ -180,7 +180,7 @@ export const OpenAIResponsesCompatSchema = Type.Object(
 		}),
 		supportsMidConvoSystemMessages: optionalCompatBoolean({
 			description:
-				"Whether the exact model accepts developer or system messages after the conversation has started. When false, later system messages are folded into the leading system message. The generated catalog enables this for verified models.",
+				"Whether the exact model accepts developer or system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models.",
 			default: false,
 		}),
 		sessionAffinityFormat: optionalSessionAffinityFormat({
@@ -189,7 +189,7 @@ export const OpenAIResponsesCompatSchema = Type.Object(
 		}),
 		supportsLongCacheRetention: optionalCompatBoolean({
 			description:
-				'Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "30m" on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models.',
+				'Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models.',
 			default: true,
 		}),
 		supportsStrictMode: optionalCompatBoolean({

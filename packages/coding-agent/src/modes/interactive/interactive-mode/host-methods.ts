@@ -13,6 +13,7 @@ import * as display from "./display.ts";
 import * as extensionChrome from "./extension-chrome.ts";
 import * as extensionContext from "./extension-context.ts";
 import * as extensionDialogs from "./extension-dialogs.ts";
+import * as githubCommand from "./github-command.ts";
 import type { InteractiveModeHost, InteractiveModeMethods } from "./host.ts";
 import * as infoCommands from "./info-commands.ts";
 import * as inputHandlers from "./input-handlers.ts";
@@ -21,6 +22,7 @@ import * as loadedResources from "./loaded-resources.ts";
 import * as loginDialogs from "./login-dialogs.ts";
 import * as loginFlow from "./login-flow.ts";
 import * as messageQueue from "./message-queue.ts";
+import * as queueManager from "./queue-manager.ts";
 import * as modelControls from "./model-controls.ts";
 import * as resourceGroups from "./resource-groups.ts";
 import * as resourcePaths from "./resource-paths.ts";
@@ -35,7 +37,7 @@ import * as statusIndicators from "./status-indicators.ts";
 import * as viewState from "./view-state.ts";
 
 /** Each host method as a function that takes the host first. */
-export type InteractiveModeMethodImplementations = {
+type InteractiveModeMethodImplementations = {
 	[K in keyof InteractiveModeMethods]: (
 		host: InteractiveModeHost,
 		...args: Parameters<InteractiveModeMethods[K]>
@@ -116,6 +118,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	handleExportCommand: sessionCommands.handleExportCommand,
 	handleFatalRuntimeError: crashReporting.handleFatalRuntimeError,
 	handleFollowUp: messageQueue.handleFollowUp,
+	handleGithubCommand: githubCommand.handleGithubCommand,
 	handleHotkeysCommand: infoCommands.handleHotkeysCommand,
 	handleImportCommand: sessionCommands.handleImportCommand,
 	handleLoginCommand: loginFlow.handleLoginCommand,
@@ -187,6 +190,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	showModelsSelector: modelControls.showModelsSelector,
 	showNewVersionNotification: startupChecks.showNewVersionNotification,
 	showOAuthSelector: loginFlow.showOAuthSelector,
+	showQueueManager: queueManager.showQueueManager,
 	showPackageUpdateNotification: startupChecks.showPackageUpdateNotification,
 	showSelector: viewState.showSelector,
 	showSessionSelector: sessionNavigation.showSessionSelector,

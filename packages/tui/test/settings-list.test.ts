@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";
 import { getKeybindings, KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
-import { visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
 
 const testTheme: SettingsListTheme = {
 	label: (text) => text,

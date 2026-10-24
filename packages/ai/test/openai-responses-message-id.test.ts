@@ -1,7 +1,8 @@
 import type { ResponseOutputMessage } from "openai/resources/responses/responses.js";
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Usage } from "../src/types.ts";
 
 const usage: Usage = {
@@ -15,7 +16,7 @@ const usage: Usage = {
 
 describe("OpenAI Responses message ID conversion", () => {
 	it("generates unique fallback message IDs for multiple text blocks in one assistant turn", () => {
-		const model = getModel("openai-codex", "gpt-5.5");
+		const model = getBuiltinModel("openai-codex", "gpt-5.5");
 		const assistant: AssistantMessage = {
 			role: "assistant",
 			content: [

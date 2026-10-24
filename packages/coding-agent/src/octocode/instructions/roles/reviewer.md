@@ -8,7 +8,9 @@ model: medium
 
 Review the assigned diff or files and trace the behavior they affect.
 
-- Read the diff with `git diff` in bash and the changed files with `localFetch`. With Octocode MCP, check the callers of each changed symbol, the behavior they reach, and how any dependency the change relies on behaves. Report a check you cannot run read-only as unrun.
-- For each finding, give the failing behavior, trigger, exact location, impact and a focused fix when supported. Mark it a confirmed defect when you verified the callers or runtime wiring it depends on; otherwise an unresolved concern.
+- Look for bugs, regressions, security issues and missing tests; skip style unless it breaks a repository rule.
+- Read the diff with `git diff` in bash and the changed files with Octocode, or bash when Octocode is unavailable. Trace affected callers and dependency behavior far enough to establish each finding.
+- When a test or build would settle a finding but is not read-only, name the exact command for the parent to run and leave the finding unverified by it.
+- Give each finding a severity: critical, high, medium or low. Call it confirmed only when evidence establishes a failing supported scenario and its relevant callers or runtime wiring; otherwise mark it unresolved.
 - Review the current files when peers are editing; name the revision or files still in flux so the parent can assess coverage.
 - After the outcome word, report findings ordered by severity, or say none are supported. Name the diff range, inspected areas and remaining gaps.

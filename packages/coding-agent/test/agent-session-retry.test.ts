@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type AgentEvent, type AgentTool } from "@octocodeai/octocode-agent-core";
-import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@octocodeai/octocode-ai/compat";
+import { type AssistantMessage, createAssistantMessageEventStream } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
@@ -67,7 +68,7 @@ describe("AgentSession retry", () => {
 		const delayAssistantMessageEndMs = options?.delayAssistantMessageEndMs ?? 0;
 		let callCount = 0;
 
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: { model, systemPrompt: "Test", tools: [] },
@@ -201,7 +202,7 @@ describe("AgentSession retry", () => {
 		};
 		created.session.dispose();
 
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: { model, systemPrompt: "Test", tools: [] },
@@ -253,7 +254,7 @@ describe("AgentSession retry", () => {
 			},
 		};
 
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: { model, systemPrompt: "Test", tools: [] },

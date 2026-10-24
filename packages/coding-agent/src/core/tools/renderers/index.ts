@@ -9,10 +9,6 @@
 import type { ToolRenderers } from "../../extensions/types.ts";
 import { createShellRenderers } from "./bash.ts";
 
-export type { ToolRenderers };
-
-export { createShellRenderers };
-
 /**
  * Merge built-in renderers into a tool definition that does not supply its own.
  *

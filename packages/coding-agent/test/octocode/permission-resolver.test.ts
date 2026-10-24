@@ -108,8 +108,9 @@ it("source asks survive full and are answered once per active execution, not onc
 it("refuses applicable source restrictions when SDK arguments cannot be snapshotted", async () => {
 	const { permission, ctx } = setup();
 	const { permissionGate } = await import("../../src/octocode/permission/gate.ts");
-	const { parseSourcePolicy, evaluateSourcePolicy, unprojectedSourcePolicy } =
+	const { evaluateSourcePolicy, unprojectedSourcePolicy } =
 		await import("../../src/octocode/permission/source-policy.ts");
+	const { parseSourcePolicy } = await import("../../src/octocode/permission/source-policy/rules.ts");
 	const policy = parseSourcePolicy(
 		{ permissions: { deny: ["customFoo(flag:true)"] } },
 		{ path: "fixture", anchor: ctx.cwd },

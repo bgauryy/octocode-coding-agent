@@ -13,7 +13,7 @@ import chalk from "chalk";
 import { normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
 import { listModels } from "./cli/list-models.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "./cli/startup-ui.ts";
-import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import { APP_NAME, ENV_SESSION_DIR, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
@@ -211,7 +211,7 @@ export async function main(args: string[], options?: MainOptions) {
 	const envSessionDir = process.env[ENV_SESSION_DIR];
 	const sessionDir =
 		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
-		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
+		(envSessionDir ? normalizePath(envSessionDir) : undefined) ??
 		startupSettingsManager.getSessionDir();
 	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
 	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);

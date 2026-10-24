@@ -7,10 +7,14 @@ import { getMcpToolExposure, type LoadedMcpConfig, loadMcpConfig } from "./confi
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
-import { LIST_MCP_RESOURCE_TEMPLATES_TOOL, LIST_MCP_RESOURCES_TOOL, READ_MCP_RESOURCE_TOOL } from "./resources.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
-import { mcpNamespace } from "../../core/mcp-servers.ts";
-import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
+import {
+	LIST_MCP_RESOURCE_TEMPLATES_TOOL,
+	LIST_MCP_RESOURCES_TOOL,
+	mcpNamespace,
+	READ_MCP_RESOURCE_TOOL,
+} from "../../core/mcp-servers.ts";
+import { resetDiscoveryActivation, TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
 import { MCP_SERVERS_SECTION, type McpServerListing, reachesServer, renderServersSection } from "./section.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { isEnabled, type McpServer } from "./server.ts";
@@ -29,7 +33,7 @@ const RESOURCE_TOOL_NAMES: ReadonlySet<string> = new Set([
  * server, which the `octocode` section indexes.) Deferred tools count only while `tool_search` is active; without it
  * nothing can load them.
  */
-export function serverListings(state: McpExtensionState): McpServerListing[] {
+function serverListings(state: McpExtensionState): McpServerListing[] {
 	const { pi } = state;
 	const discovery = pi.getActiveTools().includes(TOOL_SEARCH_TOOL_NAME);
 	const all = pi.getAllTools();
@@ -37,7 +41,11 @@ export function serverListings(state: McpExtensionState): McpServerListing[] {
 		const named = new Set(names);
 		const tools = all.filter((tool) => named.has(tool.name));
 		return {
-			deferred: discovery ? tools.filter((tool) => tool.exposure === "deferred").map((tool) => tool.name) : [],
+			deferred: discovery
+				? tools
+						.filter((tool) => tool.exposure === "deferred")
+						.map((tool) => ({ name: tool.name, description: tool.description }))
+				: [],
 			direct: tools.filter((tool) => tool.exposure === "direct").length,
 		};
 	};
@@ -77,6 +85,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	const { pi, options } = state;
 
 	pi.on("session_start", (_event, ctx) => {
+		resetDiscoveryActivation(pi);
 		state.resetAutomaticExposure();
 		state.selectedModel = ctx.model;
 		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx);
@@ -145,6 +154,12 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			});
 	});
 
+	// Navigating the tree restores the loadout of the target branch, which may not include tool_search yet.
+	pi.on("session_tree", (_event, ctx) => {
+		resetDiscoveryActivation(pi);
+		ensureDiscoveryActive(state, ctx);
+	});
+
 	pi.on("model_select", (event, ctx) => {
 		state.selectedModel = event.model;
 		for (const connection of state.connections())
@@ -171,6 +186,7 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			await waitForServers(state, changed, ctx.signal);
 		}
 		await waitForDirectServers(state, ctx);
+		state.settleAutomaticExposure();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);
 		ensureDiscoveryActive(state, ctx);

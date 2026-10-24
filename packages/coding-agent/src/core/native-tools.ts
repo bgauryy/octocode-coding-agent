@@ -1,4 +1,5 @@
 import type { Extension } from "./extensions/types.ts";
+import { MCP_MANAGE_TOOL_NAME } from "./mcp-servers.ts";
 import { DEFAULT_TOOL_NAMES } from "./settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "./source-info.ts";
 
@@ -9,7 +10,6 @@ export const NATIVE_FEATURE_PATH = "<inline:octocode>";
  * decide it like a built-in tool, instead of it staying active as extension tools do.
  */
 const MCP_EXTENSION_PATH = `${BUILTIN_PATH_PREFIX}mcp`;
-const MCP_MANAGE_TOOL_NAME = "mcp";
 
 export function defaultToolNames(extensions: readonly Extension[]): string[] {
 	const native = extensions.find((extension) => extension.sourceInfo.path === NATIVE_FEATURE_PATH);

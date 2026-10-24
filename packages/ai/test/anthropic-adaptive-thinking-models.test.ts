@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModels, getProviders } from "../src/compat.ts";
+import { getBuiltinModels, getBuiltinProviders } from "../src/providers/all.ts";
 import type { Api, Model } from "../src/types.ts";
 
 const EXPECTED_CURRENT_ADAPTIVE_THINKING_MODELS = [
@@ -22,7 +22,7 @@ const EXPECTED_CURRENT_ADAPTIVE_THINKING_MODELS = [
 ];
 
 function getAllModels(): Model<Api>[] {
-	return getProviders().flatMap((provider) => getModels(provider) as Model<Api>[]);
+	return getBuiltinProviders().flatMap((provider) => getBuiltinModels(provider) as Model<Api>[]);
 }
 
 describe("Anthropic adaptive thinking model metadata", () => {

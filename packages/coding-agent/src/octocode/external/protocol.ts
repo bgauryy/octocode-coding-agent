@@ -77,6 +77,8 @@ export interface ExternalReply {
 export interface ExternalBackend {
 	readonly sessionId: string;
 	readonly cwd: string;
+	/** Explicit liveness lets a transport retain a connection after an uncertain prompt failure. */
+	readonly isClosed?: boolean;
 	prompt(text: string, options: { timeoutMs: number; signal?: AbortSignal; key?: string }): Promise<ExternalReply>;
 	cancel(): Promise<void>;
 	close(): Promise<void>;

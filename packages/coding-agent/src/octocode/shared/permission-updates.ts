@@ -1,4 +1,4 @@
-import { isRecord } from "./util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 export type SourcePermissionDestination = "session" | "localSettings" | "projectSettings" | "userSettings";
 type SourcePermissionBehavior = "allow" | "deny" | "ask";

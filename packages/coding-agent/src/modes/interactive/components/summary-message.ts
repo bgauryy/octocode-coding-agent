@@ -2,9 +2,10 @@ import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@oct
 import { theme } from "../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
+import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /** What a summary message shows: its `[label]`, one line while collapsed, and a heading over the Markdown summary. */
-export interface SummaryMessageText {
+interface SummaryMessageText {
 	label: string;
 	collapsed: string;
 	heading: string;
@@ -28,9 +29,15 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 		content.addChild(new Spacer(1));
 		if (expanded) {
 			content.addChild(
-				new Markdown(`**${this.text.heading}**\n\n${this.text.summary}`, 0, 0, this.markdownTheme, {
-					color: (text: string) => theme.fg("customMessageText", text),
-				}),
+				new Markdown(
+					sanitizeTerminalText(`**${this.text.heading}**\n\n${this.text.summary}`),
+					0,
+					0,
+					this.markdownTheme,
+					{
+						color: (text: string) => theme.fg("customMessageText", text),
+					},
+				),
 			);
 		} else {
 			content.addChild(

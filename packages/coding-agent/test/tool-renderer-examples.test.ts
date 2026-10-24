@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import type { TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
@@ -53,7 +53,7 @@ describe("tool renderer examples", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager: SessionManager.inMemory(tempDir),
 			resourceLoader,

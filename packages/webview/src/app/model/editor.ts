@@ -1,6 +1,6 @@
 import type { BacklogMutation } from "@octocodeai/octocode-contacts/protocol";
-import type { State } from "@octocodeai/octocode-contacts/snapshot";
-import { ITEM_TYPES, type Item, PRIORITIES } from "./backlog.ts";
+import type { SnapshotItem, State } from "@octocodeai/octocode-contacts/snapshot";
+import { ITEM_TYPES, PRIORITIES } from "./backlog.ts";
 import { choice } from "./format.ts";
 
 export const FILE_ROLES = ["changed", "reviewed", "produced"] as const;
@@ -37,11 +37,11 @@ export interface EditorValues {
 	lesson: string;
 }
 
-function externalUrls(it?: Item): string[] {
+function externalUrls(it?: SnapshotItem): string[] {
 	return (it?.links ?? []).flatMap((link) => (link.target.resource === "external" ? [link.target.url] : []));
 }
 
-export function editorDefaults(it?: Item, correction = false): EditorValues {
+export function editorDefaults(it?: SnapshotItem, correction = false): EditorValues {
 	const prior = correction ? it?.completions?.at(-1) : undefined;
 	return {
 		title: it?.title ?? "",
@@ -69,11 +69,11 @@ export function editorDefaults(it?: Item, correction = false): EditorValues {
 }
 
 /** Whether saving these values records a completion, and so shows the completion fields. */
-export function needsCompletion(values: Pick<EditorValues, "state">, it?: Item, correction = false): boolean {
+export function needsCompletion(values: Pick<EditorValues, "state">, it?: SnapshotItem, correction = false): boolean {
 	return values.state === "done" && (correction || !it || it.state !== "done");
 }
 /** Goal and reason are frozen once an item is done; reopen it to change them. */
-export function locksIntent(values: Pick<EditorValues, "state">, it?: Item): boolean {
+export function locksIntent(values: Pick<EditorValues, "state">, it?: SnapshotItem): boolean {
 	return values.state === "done" && it?.state === "done";
 }
 
@@ -85,7 +85,7 @@ const lines = (text: string) =>
 		.filter(Boolean);
 
 interface MutationContext {
-	item?: Item;
+	item?: SnapshotItem;
 	correction?: boolean;
 	baseVersion?: number;
 	operationKey: string;

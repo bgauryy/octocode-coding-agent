@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
-import { canonicalPath, readPaths, workspacePaths, workspaceScratchDir } from "../../shared/home.ts";
+import { readPaths, workspacePaths, workspaceScratchDir } from "../../shared/home.ts";
 import { processStartTime, sameProcess } from "../../shared/process.ts";
 import { sweepStaleOutputs } from "../../shared/sweep.ts";
 import { DAY_MS } from "../../shared/util.ts";
-import { teamWorkspace } from "../../team/store.ts";
+import { canonicalPath } from "../../shared/home/repo.ts";
+import { teamWorkspace } from "../../team/store/workspace.ts";
 
 /** Subagent scratch folders untouched this long are removed when a session starts. */
 const SCRATCH_MAX_AGE_MS = 7 * DAY_MS;

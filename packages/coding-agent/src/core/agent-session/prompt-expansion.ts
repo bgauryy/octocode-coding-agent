@@ -1,3 +1,4 @@
+import { getBuiltinCommand, parseSlashCommand } from "../slash-commands.ts";
 /**
  * Prompt input handling before a message is sent or queued: extension commands, `input` handlers,
  * skill commands, prompt templates, skill mentions and image normalization.
@@ -5,7 +6,7 @@
 
 import { readFileSync } from "node:fs";
 import type { ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
-import { repoKey } from "../../octocode/shared/home.ts";
+import { repoKey } from "../../octocode/shared/home/repo.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { expandClaudeArguments, expandClaudeVariables } from "../claude-arguments.ts";
@@ -52,12 +53,17 @@ export type ExpansionHost = Pick<SessionInternals, "session" | "cwd">;
  */
 export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: string): Promise<boolean> {
 	// Parse command name and args
-	const spaceIndex = text.indexOf(" ");
-	const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-	const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
+	const parsed = parseSlashCommand(text);
+	if (!parsed) return false;
+	const { name: commandName, args } = parsed;
 
 	const command = runner.getCommand(commandName);
-	if (!command) return false;
+	if (!command) {
+		if (getBuiltinCommand(commandName)?.requiresNative) throw new Error(`/${commandName} requires native features.`);
+		if (getBuiltinCommand(commandName))
+			throw new Error(`/${commandName} is available in the interactive terminal only.`);
+		return false;
+	}
 
 	// Get command context from extension runner (includes session control methods)
 	const ctx = runner.createCommandContext();
@@ -80,11 +86,11 @@ export async function tryExecuteExtensionCommand(runner: ExtensionRunner, text: 
  * Throw an error if the text is an extension command.
  */
 export function throwIfExtensionCommand(runner: ExtensionRunner, text: string): void {
-	const spaceIndex = text.indexOf(" ");
-	const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+	const commandName = parseSlashCommand(text)?.name;
+	if (!commandName) return;
 	const command = runner.getCommand(commandName);
 
-	if (command) {
+	if (command || getBuiltinCommand(commandName)) {
 		throw new Error(
 			`Extension command "/${commandName}" cannot be queued. Use prompt() or execute the command when not streaming.`,
 		);
@@ -159,7 +165,7 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 		...session.promptTemplates,
 	]);
 	const skill =
-		commands.find((command) => command.name === name || command.qualifiedName === name)?.skill ??
+		commands.find((command) => command.name === name)?.skill ??
 		(name.startsWith("skill:")
 			? skills.find((candidate) => candidate.name === name.slice(6) && candidate.userInvocable !== false)
 			: undefined);

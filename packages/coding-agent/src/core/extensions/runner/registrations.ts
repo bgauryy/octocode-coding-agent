@@ -1,9 +1,10 @@
+import type { ResourceDiagnostic } from "../../diagnostics.ts";
 /** Queries over loaded extensions' registrations: tools, flags, handlers, renderers, shortcuts and commands. */
 
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { KeybindingsConfig } from "../../keybindings.ts";
 import { NATIVE_FEATURE_PATH } from "../../native-tools.ts";
-import { BUILTIN_SLASH_COMMANDS } from "../../slash-commands.ts";
+import { BUILTIN_SLASH_COMMANDS, commandNames } from "../../slash-commands.ts";
 import type {
 	EntryRenderer,
 	Extension,
@@ -115,16 +116,22 @@ export function resolveRegisteredCommands(extensions: Extension[]): ResolvedComm
 	}
 
 	const seen = new Map<string, number>();
-	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]));
-	const takenInvocationNames = new Set<string>(builtinNames);
+	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.flatMap(commandNames));
+	const nativeAliases = new Set(
+		commands
+			.filter((command) => command.sourceInfo.path === NATIVE_FEATURE_PATH)
+			.flatMap((command) => command.aliases ?? []),
+	);
+	const takenInvocationNames = new Set<string>([...builtinNames, ...nativeAliases]);
 
-	const resolved = commands.map((command) => {
+	return commands.map((command) => {
 		const occurrence = (seen.get(command.name) ?? 0) + 1;
 		seen.set(command.name, occurrence);
 
-		const nativeBuiltin = command.sourceInfo.path === NATIVE_FEATURE_PATH && builtinNames.has(command.name);
+		const nativeBuiltin = command.sourceInfo.path === NATIVE_FEATURE_PATH;
 		let invocationName =
-			!nativeBuiltin && ((counts.get(command.name) ?? 0) > 1 || builtinNames.has(command.name))
+			!nativeBuiltin &&
+			((counts.get(command.name) ?? 0) > 1 || builtinNames.has(command.name) || nativeAliases.has(command.name))
 				? `${command.name}:${occurrence}`
 				: command.name;
 
@@ -137,38 +144,17 @@ export function resolveRegisteredCommands(extensions: Extension[]): ResolvedComm
 		}
 
 		takenInvocationNames.add(invocationName);
-		return {
-			...command,
-			invocationName,
-		};
+		const invocationAliases = (command.aliases ?? []).map((alias) => {
+			if (command.sourceInfo.path === NATIVE_FEATURE_PATH && (nativeAliases.has(alias) || builtinNames.has(alias)))
+				return alias;
+			let resolved = alias;
+			let suffix = occurrence;
+			while (takenInvocationNames.has(resolved) || counts.has(resolved)) resolved = `${alias}:${suffix++}`;
+			takenInvocationNames.add(resolved);
+			return resolved;
+		});
+		return { ...command, invocationName, ...(invocationAliases.length ? { invocationAliases } : {}) };
 	});
-	const aliases = new Map<string, number>();
-	for (const command of resolved) {
-		for (const alias of command.aliases ?? []) aliases.set(alias, (aliases.get(alias) ?? 0) + 1);
-	}
-	const reserved = new Set([...takenInvocationNames, ...commands.map((command) => command.name)]);
-	const occupied = new Set([...reserved, ...aliases.keys()]);
-	return resolved.map((command) => ({
-		...command,
-		...(command.aliases
-			? {
-					aliases: command.aliases.map((alias) => {
-						const nativeAlias =
-							command.sourceInfo.path === NATIVE_FEATURE_PATH &&
-							BUILTIN_SLASH_COMMANDS.some(
-								(builtin) => builtin.name === command.name && builtin.aliases?.includes(alias),
-							);
-						if (nativeAlias) return alias;
-						if (!reserved.has(alias) && aliases.get(alias) === 1) return alias;
-						let suffix = 1;
-						while (occupied.has(`${alias}:${suffix}`)) suffix++;
-						const qualified = `${alias}:${suffix}`;
-						occupied.add(qualified);
-						return qualified;
-					}),
-				}
-			: {}),
-	}));
 }
 
 /** User registrations override native tools; the first user registration per name wins. */
@@ -226,4 +212,20 @@ export function findEntryRenderer(extensions: Extension[], customType: string): 
 		}
 	}
 	return undefined;
+}
+
+export function commandResolutionDiagnostics(commands: ResolvedCommand[]): ResourceDiagnostic[] {
+	return commands.flatMap((command) => {
+		const spellings = [
+			[command.name, command.invocationName],
+			...(command.aliases ?? []).map((alias, index) => [alias, command.invocationAliases?.[index] ?? alias]),
+		];
+		return spellings
+			.filter(([declared, resolved]) => declared !== resolved)
+			.map(([declared, resolved]) => ({
+				type: "warning" as const,
+				path: command.sourceInfo.path,
+				message: `Command /${declared} conflicts with another command; available as /${resolved}.`,
+			}));
+	});
 }

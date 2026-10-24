@@ -1,27 +1,29 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { ViewProps } from "../extension.ts";
 import {
 	DEFAULT_SORT,
 	distinct,
 	filterTable,
-	PRIORITIES,
-	PRIORITY_TITLES,
+	PRIORITY_OPTIONS,
 	STATE_TITLES,
 	TABLE_COLUMNS,
 	type TableColumn,
 } from "../model/backlog.ts";
 import { FilterSelect, SearchField } from "../ui/fields.tsx";
 import { SortIcon } from "../ui/icons.tsx";
-import { Avatar, PriorityIcon, RelativeTime, StatusLabel } from "../ui/primitives.tsx";
+import { Avatar, Button, PriorityIcon, RelativeTime, StatusLabel } from "../ui/primitives.tsx";
 import { compact, ResultCount, StaleBadge, Toolbar } from "./shared.tsx";
 
 type Filter = "q" | "state" | "p" | "tag" | "assignee" | "sort" | "dir";
 
 export function TableView({ index, params, setParams }: ViewProps) {
+	const search = useRef<HTMLInputElement>(null);
 	const { q = "", state = "", p = "", tag = "", assignee = "" } = params;
-	const sort = TABLE_COLUMNS.some((column) => column.key === params.sort) ? params.sort : DEFAULT_SORT.sort;
-	const dir =
-		params.dir === "asc" || params.dir === "desc" ? params.dir : sort === DEFAULT_SORT.sort ? DEFAULT_SORT.dir : "asc";
+	const column =
+		TABLE_COLUMNS.find((entry) => entry.key === params.sort) ??
+		TABLE_COLUMNS.find((entry) => entry.key === DEFAULT_SORT.sort)!;
+	const sort = column.key;
+	const dir = params.dir === "asc" || params.dir === "desc" ? params.dir : column.first;
 	const shown = useMemo(
 		() => filterTable(index, { q, state, p, tag, assignee, sort, dir }),
 		[index, q, state, p, tag, assignee, sort, dir],
@@ -42,9 +44,10 @@ export function TableView({ index, params, setParams }: ViewProps) {
 		<div className="view table-view">
 			<Toolbar label="Table filters">
 				<SearchField
+					ref={search}
 					data-search=""
 					label="Search"
-					placeholder="Search every field and note"
+					placeholder="Search every field and comment"
 					shortcut="/"
 					value={q}
 					onChange={(event) => update({ q: event.target.value })}
@@ -57,7 +60,7 @@ export function TableView({ index, params, setParams }: ViewProps) {
 				/>
 				<FilterSelect
 					label="Priority"
-					options={PRIORITIES.map((value) => ({ value, label: `${value} · ${PRIORITY_TITLES[value]}` }))}
+					options={PRIORITY_OPTIONS}
 					value={p}
 					onChange={(value) => update({ p: value })}
 				/>
@@ -68,6 +71,18 @@ export function TableView({ index, params, setParams }: ViewProps) {
 					value={assignee}
 					onChange={(value) => update({ assignee: value })}
 				/>
+				{Boolean(q || state || p || tag || assignee) && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => {
+							update({ q: "", state: "", p: "", tag: "", assignee: "" });
+							search.current?.focus();
+						}}
+					>
+						Clear filters
+					</Button>
+				)}
 				<ResultCount shown={shown.length} total={index.items.length} />
 			</Toolbar>
 			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be keyboard-scrollable. */}

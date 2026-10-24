@@ -4,24 +4,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	configuredOctocodeServer,
-	OCTOCODE_MCP_SPEC,
 	OctocodeMcp,
 	reconnectOctocodeMcp,
-	octocodeLaunch,
 	registerOctocodeMcp,
 } from "../../src/octocode/mcp/octocode.ts";
-import {
-	octocodeToolDefinition,
-	sanitizeJson,
-	TEXT_MAX_CHARS,
-	TURN_MAX_CHARS,
-	TurnBudget,
-	toToolResult,
-} from "../../src/octocode/mcp/tools.ts";
+import { octocodeToolDefinition, sanitizeJson, toToolResult } from "../../src/octocode/mcp/tools.ts";
+import { TEXT_MAX_CHARS } from "../../src/octocode/shared/turn-budget.ts";
 import { isOctocodeTool } from "../../src/octocode/shared/octocode-tools.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
 import { noisyPng, pixelSize, tmp } from "./helpers.ts";
+import { OCTOCODE_MCP_SPEC, octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 const ECHO = path.join(import.meta.dirname, "fixtures", "echo-mcp.mjs");
 const PROGRESS = path.join(import.meta.dirname, "fixtures", "progress-mcp.mjs");
@@ -856,13 +850,9 @@ describe("Octocode result size budgets", () => {
 		["BMP text", "日".repeat(50_000)],
 		["astral text", "😀".repeat(25_000)],
 		["short lines", "x\n".repeat(25_000)],
-	])("passes a character-bounded page of %s whole, with and without a turn budget", async (_name, body) => {
+	])("passes a character-bounded page of %s whole", async (_name, body) => {
 		const full = `${body}\nnext:\n  continueChars: { charOffset: 50000 }\n`;
-		for (const budget of [undefined, new TurnBudget()]) {
-			expect(
-				shown(await toToolResult("localFetch", { content: [{ type: "text", text: full }] }, false, undefined, budget)),
-			).toBe(full);
-		}
+		expect(shown(await toToolResult("localFetch", { content: [{ type: "text", text: full }] }, false))).toBe(full);
 	});
 
 	it("keeps the character cap above a server page plus its header", () => {
@@ -886,30 +876,6 @@ describe("Octocode result size budgets", () => {
 		expect(fileOf(text)).toBe(huge);
 	});
 
-	it("bounds all text across concurrent results and preserves overflow in one recoverable archive", async () => {
-		const budget = new TurnBudget();
-		const pages = Array.from({ length: 30 }, (_, i) => page(TEXT_MAX_CHARS - 100, String(i)));
-		const results = await Promise.all(
-			pages.map(async (text) =>
-				shown(await toToolResult("localFetch", { content: [{ type: "text", text }] }, false, undefined, budget)),
-			),
-		);
-		expect(results.slice(0, 3)).toEqual(pages.slice(0, 3));
-		expect(results.reduce((sum, text) => sum + text.length, 0)).toBeLessThanOrEqual(TURN_MAX_CHARS);
-		const archive = /saved as JSON lines at (.+)\.\]/.exec(results[3])![1];
-		const records = fs
-			.readFileSync(archive, "utf8")
-			.trim()
-			.split("\n")
-			.map((line) => JSON.parse(line));
-		expect(records.map((record) => record.text)).toEqual(pages.slice(3));
-		expect(results.slice(4).every((text) => text === "")).toBe(true);
-		budget.reset();
-		expect(
-			shown(await toToolResult("t", { content: [{ type: "text", text: "new turn" }] }, false, undefined, budget)),
-		).toBe("new turn");
-	});
-
 	it("reports an oversized structured result as an error and saves complete JSON", async () => {
 		const value = { required: "x".repeat(TEXT_MAX_CHARS + 1) };
 		const result = await toToolResult(
@@ -921,34 +887,6 @@ describe("Octocode result size budgets", () => {
 		expect(result.structuredContent).toBeUndefined();
 		const file = /Full JSON: (.+)\. Request/.exec(shown(result))![1];
 		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual(value);
-	});
-
-	it("starts a new turn with the whole budget, and counts only what the model gets", async () => {
-		const budget = new TurnBudget();
-		for (let i = 0; i < 5; i++)
-			await toToolResult(
-				"localFetch",
-				{ content: [{ type: "text", text: page(TEXT_MAX_CHARS - 100, String(i)) }] },
-				false,
-				undefined,
-				budget,
-			);
-		expect(budget.limit()).toBeLessThan(8_000);
-		budget.reset();
-		expect(budget.limit()).toBe(TEXT_MAX_CHARS);
-		const small = new TurnBudget();
-		for (let i = 0; i < 100; i++)
-			await toToolResult("t", { content: [{ type: "text", text: "x".repeat(1_000) }] }, false, undefined, small);
-		expect(small.limit()).toBe(TEXT_MAX_CHARS);
-	});
-
-	it("resets the turn budget when Octocode starts a turn", async () => {
-		const fake = fakePi();
-		const mcp = registerOctocodeMcp(fake.pi);
-		mcp.turn.charge(TURN_MAX_CHARS);
-		expect(mcp.turn.limit()).toBeLessThan(8_000);
-		await fake.fire("turn_start", { type: "turn_start" }, fakeCtx({ cwd: tmp() }));
-		expect(mcp.turn.limit()).toBe(TEXT_MAX_CHARS);
 	});
 });
 

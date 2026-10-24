@@ -2,12 +2,8 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
-import {
-	type AssistantMessage,
-	createAssistantMessageEventStream,
-	getModel,
-	type Model,
-} from "@octocodeai/octocode-ai/compat";
+import { type AssistantMessage, createAssistantMessageEventStream, type Model } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import type { AgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
@@ -94,7 +90,7 @@ async function createRuntimeHost(options: {
 	const tempDir = join(tmpdir(), `pi-rpc-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(tempDir, { recursive: true });
 
-	const model = options.model ?? getModel("anthropic", "claude-sonnet-4-5");
+	const model = options.model ?? getBuiltinModel("anthropic", "claude-sonnet-4-5");
 	if (!model) {
 		throw new Error("Test model not found");
 	}
@@ -210,7 +206,7 @@ describe("RPC prompt response semantics", () => {
 					command: "prompt",
 					success: false,
 					error: expect.stringContaining(
-						"No API key found for fake-provider.\n\nUse /login to log into a provider via OAuth or API key. See:",
+						"No API key found for fake-provider.\n\nUse /providers to connect an AI provider with an account or API key. See:",
 					),
 				});
 			});

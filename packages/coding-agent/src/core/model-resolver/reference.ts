@@ -41,7 +41,7 @@ export type ModelReferenceResult =
 			target?: ModelReferenceTarget;
 	  };
 
-export interface ModelReferenceTarget {
+interface ModelReferenceTarget {
 	provider: string;
 	providerModels: [Model<Api>, ...Model<Api>[]];
 	/** Text after the provider prefix as typed, including any `:<suffix>`. */

@@ -1,9 +1,10 @@
+import type { registerPlanning } from "../plan/register.ts";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { PERMISSION_ENV } from "../shared/env.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
-import { modeSummary, type Permission } from "./ask.ts";
+import { type Permission } from "./ask.ts";
 import type { AuditEntry } from "./audit.ts";
 import {
 	ACTION_CLASSES,
@@ -15,6 +16,7 @@ import {
 	type PermissionMode,
 	reasonAsks,
 } from "./mode.ts";
+import { modeSummary } from "./ask/text.ts";
 
 /** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
@@ -77,6 +79,7 @@ export function registerPermissionCommand(
 	commands: Subcommands,
 	permission: Permission,
 	provenanceSize: () => number,
+	planning?: ReturnType<typeof registerPlanning>,
 ): void {
 	const select = async (mode: PermissionMode, ctx: ExtensionContext): Promise<void> => {
 		if (!(await permission.chooseMode(mode, ctx))) return say(ctx, `Permission mode stays ${permission.mode}.`);
@@ -84,13 +87,21 @@ export function registerPermissionCommand(
 	};
 
 	commands.add("permissions", {
-		aliases: ["permission"],
 		description: `permissions [manual|workspace|full|grants [clear]|log] — what Octocode asks before it acts (${shortcutText("app.permission.cycle")} cycles in the editor)`,
-		complete: (prefix) => wordCompletions([...PERMISSION_MODES, "grants", "grants clear", "log"], prefix),
+		complete: (prefix) =>
+			wordCompletions([...PERMISSION_MODES, "grants", "grants clear", "log", "plan", "plan off"], prefix),
 		handler: async (args, ctx) => {
 			const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
 			const [word = "", rest] = words;
-			if (words.length === 0) return say(ctx, status(permission, provenanceSize()));
+			if (words.length === 0)
+				return say(
+					ctx,
+					`${status(permission, provenanceSize())}\nPlanning: ${planning?.blocked() ? "active" : "off"}. /permissions plan [off] controls the independent constraint.`,
+				);
+			if (word === "plan" && planning && (words.length === 1 || (words.length === 2 && rest === "off"))) {
+				await planning.control({ action: rest === "off" ? "leave" : "enter" }, ctx);
+				return say(ctx, `Planning ${planning.blocked() ? "active" : "off"}; permission mode ${permission.mode}.`);
+			}
 			if ((PERMISSION_MODES as readonly string[]).includes(word) && words.length === 1)
 				return select(word as PermissionMode, ctx);
 			if (word === "grants" && rest === "clear" && words.length === 2) {

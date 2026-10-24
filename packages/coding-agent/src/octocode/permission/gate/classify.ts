@@ -1,12 +1,14 @@
 import path from "node:path";
 import type { ExtensionContext, ToolAnnotations, ToolCallEvent } from "../../../core/extensions/index.ts";
 import { readableHistory, readableSessionFolder } from "../../shared/history.ts";
-import { canonicalPath, isWithin, resolveToolPath, sessionsRoot, workspaceRoot } from "../../shared/home.ts";
+import { resolveToolPath, sessionsRoot } from "../../shared/home.ts";
 import { isMcpTool } from "../../shared/octocode-tools.ts";
 import { optionalString } from "../../shared/util.ts";
 import { runsLater } from "../file-access.ts";
 import type { PermissionRequest } from "../request.ts";
-import { catastrophicCommand, SHELL_TOOLS, simpleCommand } from "../shell.ts";
+import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { catastrophicCommand } from "../shell/destructive.ts";
 
 /** Tools named like the removed core readers (Octocode ships none now) that a custom tool or SDK caller may still register: `read` takes `path`; `grep`, `find` and `ls` default to the working directory. They stay classified so a same-named tool cannot read outside the workspace unasked. */
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);

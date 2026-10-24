@@ -1,4 +1,4 @@
-import type { BlobResourceContents, ContentAnnotations, TextResourceContents } from "./content.ts";
+import type { BlobResourceContents, ContentAnnotations, Resource, TextResourceContents } from "./content.ts";
 import type { JsonRpcId } from "./jsonrpc.ts";
 
 export const LATEST_PROTOCOL_VERSION = "2025-11-25";
@@ -87,18 +87,6 @@ export interface Tool {
 export interface ListToolsResult {
 	tools: Tool[];
 	nextCursor?: string;
-	_meta?: Record<string, unknown>;
-}
-
-/** A resource a server lists in `resources/list`. */
-export interface Resource {
-	uri: string;
-	name: string;
-	title?: string;
-	description?: string;
-	mimeType?: string;
-	size?: number;
-	annotations?: ContentAnnotations;
 	_meta?: Record<string, unknown>;
 }
 

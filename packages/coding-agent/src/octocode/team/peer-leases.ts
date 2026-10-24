@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { canonicalPath } from "../shared/home.ts";
-import { errorMessage, loadSqlite } from "../shared/util.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { loadSqlite } from "../shared/util.ts";
 import { keysOverlap, type LeaseKind, leaseKey } from "./lease-key.ts";
 import type { Lease } from "./model.ts";
 import { PeerRegistry } from "./peer-registry.ts";

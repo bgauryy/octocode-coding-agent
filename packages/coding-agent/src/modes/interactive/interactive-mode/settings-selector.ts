@@ -8,18 +8,20 @@ import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../../../core/de
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../../core/http-dispatcher.ts";
 import { SettingsSelectorComponent } from "../components/settings-selector.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
-import { getAvailableThemes, SYSTEM_THEME_NAME } from "../theme/theme.ts";
+import { AssistantMessageComponent } from "../components/assistant-message.ts";
+import { UserMessageComponent } from "../components/user-message.ts";
+import { SYSTEM_THEME_NAME } from "../theme/system-theme.ts";
+import { getAvailableThemes } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the /settings selector. */
-export type SettingsSelectorHost = Pick<
+type SettingsSelectorHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "applyFullscreenScrollbarSetting"
 	| "chatContainer"
 	| "defaultEditor"
 	| "editor"
-	| "footer"
 	| "hideThinkingBlock"
 	| "outputPad"
 	| "pendingMessagesContainer"
@@ -91,7 +93,11 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				onShowImagesChange: (enabled) => {
 					host.settingsManager.setShowImages(enabled);
 					for (const child of host.chatContainer.children) {
-						if (child instanceof ToolExecutionComponent) {
+						if (
+							child instanceof ToolExecutionComponent ||
+							child instanceof AssistantMessageComponent ||
+							child instanceof UserMessageComponent
+						) {
 							child.setShowImages(enabled);
 						}
 					}
@@ -99,7 +105,11 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				onImageWidthCellsChange: (width) => {
 					host.settingsManager.setImageWidthCells(width);
 					for (const child of host.chatContainer.children) {
-						if (child instanceof ToolExecutionComponent) {
+						if (
+							child instanceof ToolExecutionComponent ||
+							child instanceof AssistantMessageComponent ||
+							child instanceof UserMessageComponent
+						) {
 							child.setImageWidthCells(width);
 						}
 					}
@@ -143,7 +153,6 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 					const current = host.session.model;
 					if (current && current.provider === provider && current.id === modelId) {
 						getApplicationPort(host.session).invoke("setThinkingLevel", level);
-						host.footer.invalidate();
 						host.updateEditorBorderColor();
 					}
 				},
@@ -154,7 +163,6 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 					if (current && current.provider === provider && current.id === modelId) {
 						const globalDefault = host.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
 						getApplicationPort(host.session).invoke("setThinkingLevel", globalDefault);
-						host.footer.invalidate();
 						host.updateEditorBorderColor();
 					}
 				},

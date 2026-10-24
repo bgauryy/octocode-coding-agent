@@ -74,6 +74,12 @@ export interface CompactionEntry<T = unknown> extends SessionEntryBase {
 	fromHook?: boolean;
 	/** Complete prompt and tool state at this compaction boundary. */
 	systemMessage?: SystemMessage;
+	/**
+	 * The leading system message as the provider last received it, kept only when later updates changed
+	 * the prompt or tools. Context starts with it, then the summary, then the update that reaches
+	 * `systemMessage`, so the cached head survives compaction.
+	 */
+	systemBase?: SystemMessage;
 }
 
 export interface BranchSummaryEntry<T = unknown> extends SessionEntryBase {

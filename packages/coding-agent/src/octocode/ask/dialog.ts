@@ -12,8 +12,6 @@ import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { type AskAnswer, type AskQuestion, type AskResult, answerOf, rows, SUBMIT_PICKS } from "./dialog/answers.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
 
-export { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
-
 /**
  * Inline question dialog (adapted from Octocode's questionnaire example): a tab per
  * question plus Submit, ↑↓ to move and a free-text row on every question.

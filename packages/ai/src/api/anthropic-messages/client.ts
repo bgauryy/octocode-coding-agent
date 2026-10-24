@@ -56,7 +56,7 @@ class PiAnthropic extends Anthropic {
 	}
 }
 
-export type AnthropicFederationConfig = NonNullable<ClientOptions["config"]>;
+type AnthropicFederationConfig = NonNullable<ClientOptions["config"]>;
 
 /**
  * Workload identity federation config from the ANTHROPIC_* variables the

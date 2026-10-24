@@ -16,7 +16,8 @@ import {
 	createCustomMessage,
 } from "../messages.ts";
 import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
-import { completeSummarization, estimateTokens, getSummarizationFailure } from "./compaction.ts";
+import { completeSummarization, getSummarizationFailure } from "./summarization.ts";
+import { estimateTokens } from "./tokens.ts";
 import {
 	computeFileLists,
 	createFileOps,
@@ -41,12 +42,10 @@ export interface BranchSummaryResult {
 }
 
 /** Details stored in BranchSummaryEntry.details for file tracking */
-export interface BranchSummaryDetails {
+interface BranchSummaryDetails {
 	readFiles: string[];
 	modifiedFiles: string[];
 }
-
-export type { FileOperations } from "./utils.ts";
 
 export interface BranchPreparation {
 	/** Messages extracted for summarization, in chronological order */

@@ -6,7 +6,7 @@ import type * as NativeConfig from "../../src/config.ts";
 import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import { readParked } from "../../src/octocode/subagents/parked.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { Team } from "../../src/octocode/team/session.ts";

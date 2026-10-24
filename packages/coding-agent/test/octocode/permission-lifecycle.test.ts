@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { type Answer, Permission } from "../../src/octocode/permission/ask.ts";
+import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import type { Answer } from "../../src/octocode/permission/ask/types.ts";
 
 const request = (): PermissionRequest => ({
 	action: "shell",

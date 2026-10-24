@@ -1,7 +1,8 @@
 import type { Token } from "marked";
 import { isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
-import { applyBackgroundToLine, flattenLines, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
+import { wrapTextWithAnsi } from "../utils/wrap.ts";
+import { frameContentLines } from "../utils.ts";
 import { renderToken } from "./markdown/blocks.ts";
 import { markdownParser, trimPartialClosingFences } from "./markdown/parser.ts";
 import type {
@@ -11,8 +12,6 @@ import type {
 	MarkdownRenderHost,
 	MarkdownTheme,
 } from "./markdown/types.ts";
-
-export type { DefaultTextStyle, MarkdownOptions, MarkdownTheme } from "./markdown/types.ts";
 
 export class Markdown implements Component {
 	private text: string;
@@ -116,41 +115,14 @@ export class Markdown implements Component {
 			}
 		}
 
-		// Add margins and background to each wrapped line
-		const leftMargin = " ".repeat(this.paddingX);
-		const rightMargin = " ".repeat(this.paddingX);
-		const bgFn = this.defaultTextStyle?.bgColor;
-		const contentLines: string[] = [];
-
-		for (const line of wrappedLines) {
-			if (isImageLine(line)) {
-				contentLines.push(line);
-				continue;
-			}
-
-			const lineWithMargins = leftMargin + line + rightMargin;
-
-			if (bgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, width, bgFn));
-			} else {
-				// No background - just pad to width
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, width - visibleLen);
-				contentLines.push(lineWithMargins + " ".repeat(paddingNeeded));
-			}
-		}
-
-		// Add top/bottom padding (empty lines)
-		const emptyLine = " ".repeat(width);
-		const emptyLines: string[] = [];
-		for (let i = 0; i < this.paddingY; i++) {
-			const line = bgFn ? applyBackgroundToLine(emptyLine, width, bgFn) : emptyLine;
-			emptyLines.push(line);
-		}
-
-		// Combine top padding, content, and bottom padding
-		const result = emptyLines.concat(contentLines, emptyLines);
-		flattenLines(result);
+		const result = frameContentLines(
+			wrappedLines,
+			width,
+			this.paddingX,
+			this.paddingY,
+			this.defaultTextStyle?.bgColor,
+			isImageLine,
+		);
 
 		// Update cache
 		this.cachedText = this.text;
@@ -205,25 +177,7 @@ export class Markdown implements Component {
 		}
 
 		const sentinel = "\u0000";
-		let styled = sentinel;
-
-		if (this.defaultTextStyle.color) {
-			styled = this.defaultTextStyle.color(styled);
-		}
-
-		if (this.defaultTextStyle.bold) {
-			styled = this.theme.bold(styled);
-		}
-		if (this.defaultTextStyle.italic) {
-			styled = this.theme.italic(styled);
-		}
-		if (this.defaultTextStyle.strikethrough) {
-			styled = this.theme.strikethrough(styled);
-		}
-		if (this.defaultTextStyle.underline) {
-			styled = this.theme.underline(styled);
-		}
-
+		const styled = this.applyDefaultStyle(sentinel);
 		const sentinelIndex = styled.indexOf(sentinel);
 		this.defaultStylePrefix = sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
 		return this.defaultStylePrefix;

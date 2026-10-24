@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 const telemetrySrcIndex = fileURLToPath(new URL("../telemetry/src/index.ts", import.meta.url));
 const aiSrcIndex = fileURLToPath(new URL("../ai/src/index.ts", import.meta.url));
 const aiSrcCompat = fileURLToPath(new URL("../ai/src/compat.ts", import.meta.url));
+const aiSrc = fileURLToPath(new URL("../ai/src", import.meta.url));
 const agentSrcIndex = fileURLToPath(new URL("./src/index.ts", import.meta.url));
 
 export default defineConfig({
@@ -21,6 +22,7 @@ export default defineConfig({
 			{ find: /^@octocodeai\/octocode-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@octocodeai\/octocode-ai$/, replacement: aiSrcIndex },
 			{ find: /^@octocodeai\/octocode-ai\/compat$/, replacement: aiSrcCompat },
+			{ find: /^@octocodeai\/octocode-ai\/(providers|utils)\/(.+)$/, replacement: `${aiSrc}/$1/$2.ts` },
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

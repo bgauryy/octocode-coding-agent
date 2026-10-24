@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { bashSyntax, initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
-import { evaluateSourcePolicy, parseSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
+import { evaluateSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
+import { parseSourcePolicy } from "../../src/octocode/permission/source-policy/rules.ts";
 beforeAll(initializeBashSyntax);
 const evaluate = (command: string, target = "secret.txt") =>
 	evaluateSourcePolicy(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertMessages, requiresToolCallId } from "../src/api/google-shared.ts";
+import { convertMessages, requiresToolCallId } from "../src/api/google-shared/messages.ts";
 import type { Context, Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 

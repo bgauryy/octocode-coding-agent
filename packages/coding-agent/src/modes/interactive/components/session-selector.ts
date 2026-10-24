@@ -16,6 +16,7 @@ import { type SessionScope, SessionSelectorHeader } from "./session-selector/hea
 import { SessionList } from "./session-selector/session-list.ts";
 import { deleteSessionFile } from "./session-selector/utils.ts";
 import type { NameFilter, SortMode } from "./session-selector-search.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
 
@@ -329,7 +330,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			}
 			if (scope !== this.scope) return;
 
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			this.header.setLoading(false);
 			this.header.setStatusMessage({ type: "error", message: `Failed to load sessions: ${message}` }, 4000);
 			this.sessionList.setSessions([], showCwd);

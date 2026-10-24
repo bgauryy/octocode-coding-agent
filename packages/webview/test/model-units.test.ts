@@ -13,30 +13,9 @@ import {
 import { editorDefaults, locksIntent, needsCompletion, toMutation } from "../src/app/model/editor.ts";
 import { choice, errorMessage, median, plural, span } from "../src/app/model/format.ts";
 import { hashFor, parseHash, readLaunch, resolveRoute } from "../src/app/model/route.ts";
+import { snapshotItem } from "./helpers.ts";
 
 const STATES = ["backlog", "todo", "ongoing", "done"] as const;
-function item(ref: string, overrides: Partial<SnapshotItem> = {}): SnapshotItem {
-	return {
-		ref,
-		title: `Item ${ref}`,
-		goal: "",
-		body: "",
-		paths: [],
-		why: "",
-		evidence: [],
-		plan: "",
-		state: "backlog",
-		priority: "p2",
-		tags: [],
-		createdBy: "author",
-		createdAt: 0,
-		updatedAt: 0,
-		version: 1,
-		derived: [],
-		notes: [],
-		...overrides,
-	};
-}
 function snapshot(items: SnapshotItem[]): Snapshot {
 	return { repo: "repo", generatedAt: 0, states: STATES, idleMs: 1, items };
 }
@@ -104,35 +83,35 @@ describe("route helpers", () => {
 
 describe("backlog helpers", () => {
 	it("isStale flags only ongoing items whose assignee is not live", () => {
-		expect(isStale(item("B1", { state: "ongoing", assigneeLive: false }))).toBe(true);
-		expect(isStale(item("B1", { state: "ongoing" }))).toBe(true);
-		expect(isStale(item("B1", { state: "ongoing", assigneeLive: true }))).toBe(false);
-		expect(isStale(item("B1", { state: "todo", assigneeLive: false }))).toBe(false);
+		expect(isStale(snapshotItem("B1", { state: "ongoing", assigneeLive: false }))).toBe(true);
+		expect(isStale(snapshotItem("B1", { state: "ongoing" }))).toBe(true);
+		expect(isStale(snapshotItem("B1", { state: "ongoing", assigneeLive: true }))).toBe(false);
+		expect(isStale(snapshotItem("B1", { state: "todo", assigneeLive: false }))).toBe(false);
 	});
 
 	it("cycleTime requires both timestamps and ignores a finish before the start", () => {
-		expect(cycleTime(item("B1", { startedAt: 10, doneAt: 25 }))).toBe(15);
-		expect(cycleTime(item("B1", { startedAt: 10 }))).toBeUndefined();
-		expect(cycleTime(item("B1", { startedAt: 30, doneAt: 20 }))).toBeUndefined();
+		expect(cycleTime(snapshotItem("B1", { startedAt: 10, doneAt: 25 }))).toBe(15);
+		expect(cycleTime(snapshotItem("B1", { startedAt: 10 }))).toBeUndefined();
+		expect(cycleTime(snapshotItem("B1", { startedAt: 30, doneAt: 20 }))).toBeUndefined();
 	});
 
 	it("distinct returns sorted unique values across items", () => {
-		const items = [item("B1", { tags: ["ui", "api"] }), item("B2", { tags: ["api", "db"] })];
+		const items = [snapshotItem("B1", { tags: ["ui", "api"] }), snapshotItem("B2", { tags: ["api", "db"] })];
 		expect(distinct(items, (it) => it.tags)).toEqual(["api", "db", "ui"]);
 	});
 
 	it("filterTable filters by assignee and uses each column's first direction when none is given", () => {
 		const index = indexBacklog(
 			snapshot([
-				item("B1", { assignee: "kim", notes: [] }),
-				item("B2", {
+				snapshotItem("B1", { assignee: "kim", notes: [] }),
+				snapshotItem("B2", {
 					assignee: "lee",
 					notes: [
 						{ at: 0, author: "a", kind: "note", text: "x" },
 						{ at: 0, author: "a", kind: "note", text: "y" },
 					],
 				}),
-				item("B3", { assignee: "kim", notes: [{ at: 0, author: "a", kind: "note", text: "x" }] }),
+				snapshotItem("B3", { assignee: "kim", notes: [{ at: 0, author: "a", kind: "note", text: "x" }] }),
 			]),
 		);
 		expect(filterTable(index, { assignee: "kim" }).map((it) => it.ref)).toEqual(["B1", "B3"]);
@@ -143,7 +122,7 @@ describe("backlog helpers", () => {
 	});
 
 	it("filterBoard treats an untyped item as a task and a whitespace query as no query", () => {
-		const index = indexBacklog(snapshot([item("B1"), item("B2", { type: "epic" })]));
+		const index = indexBacklog(snapshot([snapshotItem("B1"), snapshotItem("B2", { type: "epic" })]));
 		expect(filterBoard(index, { type: "task" }).map((it) => it.ref)).toEqual(["B1"]);
 		expect(filterBoard(index, { q: "   " }).map((it) => it.ref)).toEqual(["B1", "B2"]);
 	});
@@ -151,9 +130,11 @@ describe("backlog helpers", () => {
 	it("search matches assignees, paths, completions and link targets case-insensitively", () => {
 		const index = indexBacklog(
 			snapshot([
-				item("B1", { assignee: "Kim" }),
-				item("B2", { paths: ["src/Router.ts"] }),
-				item("B3", { links: [{ relation: "related", target: { resource: "external", url: "https://Docs.example" } }] }),
+				snapshotItem("B1", { assignee: "Kim" }),
+				snapshotItem("B2", { paths: ["src/Router.ts"] }),
+				snapshotItem("B3", {
+					links: [{ relation: "related", target: { resource: "external", url: "https://Docs.example" } }],
+				}),
 			]),
 		);
 		expect(filterBoard(index, { q: "kim" }).map((it) => it.ref)).toEqual(["B1"]);
@@ -162,17 +143,17 @@ describe("backlog helpers", () => {
 	});
 
 	it("originChain stops at a cycle and at a missing ancestor", () => {
-		const cyclic = indexBacklog(snapshot([item("B1", { from: "B2" }), item("B2", { from: "B1" })]));
+		const cyclic = indexBacklog(snapshot([snapshotItem("B1", { from: "B2" }), snapshotItem("B2", { from: "B1" })]));
 		expect(originChain(cyclic, cyclic.byRef.get("B1")!)).toEqual(["B1", "B2"]);
-		const broken = indexBacklog(snapshot([item("B1", { from: "B9" })]));
+		const broken = indexBacklog(snapshot([snapshotItem("B1", { from: "B9" })]));
 		expect(originChain(broken, broken.byRef.get("B1")!)).toEqual([]);
 	});
 });
 
 describe("editor rules", () => {
 	it("needsCompletion only when saving as done from another state, a new item, or a correction", () => {
-		const done = item("B1", { state: "done" });
-		const todo = item("B1", { state: "todo" });
+		const done = snapshotItem("B1", { state: "done" });
+		const todo = snapshotItem("B1", { state: "todo" });
 		expect(needsCompletion({ state: "done" })).toBe(true);
 		expect(needsCompletion({ state: "done" }, todo)).toBe(true);
 		expect(needsCompletion({ state: "done" }, done)).toBe(false);
@@ -181,14 +162,14 @@ describe("editor rules", () => {
 	});
 
 	it("locksIntent only when a done item stays done", () => {
-		expect(locksIntent({ state: "done" }, item("B1", { state: "done" }))).toBe(true);
-		expect(locksIntent({ state: "todo" }, item("B1", { state: "done" }))).toBe(false);
-		expect(locksIntent({ state: "done" }, item("B1", { state: "todo" }))).toBe(false);
+		expect(locksIntent({ state: "done" }, snapshotItem("B1", { state: "done" }))).toBe(true);
+		expect(locksIntent({ state: "todo" }, snapshotItem("B1", { state: "done" }))).toBe(false);
+		expect(locksIntent({ state: "done" }, snapshotItem("B1", { state: "todo" }))).toBe(false);
 		expect(locksIntent({ state: "done" })).toBe(false);
 	});
 
 	it("editing a done item without correcting drops goal and reason and records no completion", () => {
-		const done = item("B1", { state: "done", goal: "old goal", why: "old why" });
+		const done = snapshotItem("B1", { state: "done", goal: "old goal", why: "old why" });
 		const values = { ...editorDefaults(done), goal: "new goal", reason: "new why", note: " remember " };
 		const mutation = toMutation(values, { item: done, baseVersion: 1, operationKey: "op", states: STATES });
 		expect(mutation).not.toHaveProperty("goal");
@@ -202,7 +183,7 @@ describe("editor rules", () => {
 			relation: "evidence" as const,
 			target: { resource: "external" as const, url: "https://keep.example" },
 		};
-		const it = item("B1", {
+		const it = snapshotItem("B1", {
 			links: [kept, { relation: "related", target: { resource: "external", url: "https://drop.example" } }],
 		});
 		const values = { ...editorDefaults(it), urls: "https://keep.example\nhttps://new.example" };
@@ -214,7 +195,7 @@ describe("editor rules", () => {
 	});
 
 	it("editorDefaults prefills a correction from the latest completion only", () => {
-		const it = item("B1", {
+		const it = snapshotItem("B1", {
 			state: "done",
 			completions: [
 				{

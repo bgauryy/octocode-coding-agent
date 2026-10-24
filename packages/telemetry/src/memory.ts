@@ -31,13 +31,6 @@ import type {
 	TelemetryUpDownCounter,
 } from "./metrics.ts";
 
-export type {
-	RecordedTelemetryEvent,
-	RecordedTelemetryLink,
-	RecordedTelemetryMeasurement,
-	RecordedTelemetrySpan,
-} from "./memory/recording.ts";
-
 /**
  * Backend-neutral reference implementation that records spans in process memory.
  * Create a fresh instance to isolate tests or independent recording scopes.

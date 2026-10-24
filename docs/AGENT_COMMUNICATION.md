@@ -1,5 +1,7 @@
 # Agent communication and worker lifecycle
 
+Internal Team mail, worker RPC, the native process API and ACP have distinct delivery contracts. The [communication RFC](RFC_COMMUNICATION_PROTOCOL.md) maps them and proposes shared versioned contracts plus an optional A2A adapter; A2A is not currently implemented.
+
 Octocode's native `agent` tool starts a child in its own RPC process and saved session. A task can select a profile, model, background execution, collaboration and isolation. The parent checks profile and model, takes a capacity slot, and resolves `agent.spawn` before claiming an identity or launching. Refusal or cancellation releases the slot and launches nothing ([task owner](../packages/coding-agent/src/octocode/subagents/tool.ts), [capacity](../packages/coding-agent/src/octocode/subagents/claim.ts), [spawn decision](../packages/coding-agent/src/octocode/subagents/profiles.ts)).
 
 ```mermaid
@@ -18,7 +20,33 @@ Child-specific environment fields carry its current mode, per-spawn grants and i
 
 Team messages queue in repository-scoped SQLite until they appear in the recipient's model context; unread departures generate dead letters. `replyRequired` wakes an idle teammate, while FYI mail waits for its next step. An interrupt reaches only the sender's child or the user's session tree ([send](../packages/coding-agent/src/octocode/team/session/send.ts), [inbox](../packages/coding-agent/src/octocode/team/inbox.ts), [delivery](../packages/coding-agent/src/octocode/team/delivery.ts), [routing](../packages/coding-agent/src/octocode/team/routing.ts)). A database sender field is not user provenance: the parent signs the message id, recipient and text. Unverified user claims and peer text are fenced in model context; steering does not grant permission ([proof](../packages/coding-agent/src/octocode/team/proof.ts), [mail](../packages/coding-agent/src/octocode/team/mail.ts)). Background reports have separate pending recovery copies until the originating session records them ([native feature guide](../packages/coding-agent/docs/native-features.md)).
 
+```mermaid
+stateDiagram-v2
+    [*] --> Queued: durable recipient record
+    Queued --> Handed: host send
+    Handed --> Queued: rejected before context acknowledgment
+    Handed --> Delivered: recipient model context
+    Queued --> DeadLetter: recipient departed
+    DeadLetter --> NoticeAccepted: sender host accepts notice
+    Delivered --> [*]
+    NoticeAccepted --> [*]
+```
+
+These are delivery stages, not a shared task state machine. Broadcast creates recipient delivery records; a reply is another message. Late rejection after model-context acknowledgment does not replay mail. Session generations prevent old callbacks acknowledging a new inbox. Dead-letter notices retry failed host acceptance, but acceptance does not prove the sender's model saw them. Mail retry currently uses the regular tick without exponential backoff. This is internal agent mail, not an email-provider integration.
+
+| Boundary | What an acknowledgment establishes | Recovery limit |
+| --- | --- | --- |
+| Team mail | Recipient model context contains the message | SQLite delivery records and retries; host-local membership/process checks |
+| Child RPC and reports | Protocol response or matching report recorded in the parent transcript | Pending report copies require a successful disk write |
+| Native process API | `accepted` means dispatched; `settled` means the run ended | An asynchronous failed handoff becomes `uncertain`; the same key cannot dispatch again. Keys and replay are session-memory scoped |
+| Inbound/outbound ACP | Protocol session, streamed updates and prompt stop reason | Client/editor transport and native session persistence; not Team delivery acknowledgment |
+| Application stream | A session/epoch cursor identifies ordered events | Bounded replay; coalesced full-text deltas identify their exact sequence range |
+
+An uncertain native API send releases failed active ownership while retaining its key; actual session activity still prevents an idle-only send. A stale session callback cannot change the replacement session's receipt or audit stream. API acceptance, mail delivery, a completed model run and a completed backlog item are different facts. See the [entity model](ENTITIES.md) and [protocol RFC](RFC_COMMUNICATION_PROTOCOL.md).
+
 A finished background worker in the shared tree may remain addressable for `OCTOCODE_SUBAGENT_LINGER_SECONDS`; `blocked` gets at least 600 seconds. Its parked record is an address for the saved conversation, not a replay queue. Reopen requires the same parent session, workspace, transcript and profile; an explicit browser headless override survives when other profile fields match. Reopen runs nothing. A direct parent or user message checks capacity and current `agent.spawn` permission, verifies the parked generation, then retires the address before launching. Stop and expiry retire it; isolated workers cannot linger ([record](../packages/coding-agent/src/octocode/subagents/parked.ts), [revival](../packages/coding-agent/src/octocode/subagents/linger.ts), [eligibility](../packages/coding-agent/src/octocode/subagents/tool.ts)). A crash after retirement cannot safely replay uncertain execution.
+
+Both parent-run cancellation and tool-call cancellation reach the parked worker's approval and revival path. A clean but empty final answer to a new message is an incomplete follow-up, even if the previous task reported `done`; the earlier report remains evidence, and a later successful retry can resolve the failure.
 
 With `isolate: true`, the child works in a detached Git worktree, starting at HEAD by default. `workingCopy: true` captures tracked and non-ignored untracked files with a temporary index, preserving the parent's branch and index; it refuses filter-bearing paths before snapshotting. Finish exports only the worker delta to a unique `refs/octocode/pi/<id>` ref and removes the worktree. A failed export keeps it for review; `/agents merge` is separate. Owner records and process-start checks guard orphan pruning ([snapshot](../packages/coding-agent/src/octocode/subagents/worktree-snapshot.ts), [worktree](../packages/coding-agent/src/octocode/subagents/worktree.ts)). Ordinary checkout may run configured smudge filters. Isolation is not an OS sandbox: external programs can write paths the tool-level check cannot parse.
 

@@ -5,11 +5,13 @@ import { estimateProjectedContextTokens } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
-import type { FileGuard } from "../files/tool.ts";
-import { sha256 } from "../shared/atomic.ts";
-import { canonicalPath } from "../shared/home.ts";
-import { CHARS_PER_TOKEN, reserveTokensFor } from "../shared/tokens.ts";
-import { cutText, isRecord, isStaleSessionError } from "../shared/util.ts";
+import type { FileGuard } from "../files/tool/guard.ts";
+import { sha256 } from "../../utils/atomic-file.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
+import { isRecord } from "../../utils/guards.ts";
+import { reserveTokensFor } from "../shared/tokens.ts";
+import { cutText, isStaleSessionError } from "../shared/util.ts";
 
 /**
  * After a compaction, the files the agent was working on are read again from disk and put back in its context, as

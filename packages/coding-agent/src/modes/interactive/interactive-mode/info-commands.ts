@@ -20,7 +20,7 @@ import { theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the informational slash commands. */
-export type InfoCommandsHost = Pick<
+type InfoCommandsHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "getAppKeyDisplay"
@@ -150,7 +150,7 @@ export function getAppKeyDisplay(action: AppKeybinding): string {
 /**
  * Get capitalized display string for an editor keybinding action.
  */
-export function getEditorKeyDisplay(action: Keybinding): string {
+function getEditorKeyDisplay(action: Keybinding): string {
 	return keyDisplayText(action);
 }
 
@@ -239,7 +239,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 | \`${externalEditor}\` | Edit message in external editor |
 | \`${copyMessage}\` | Copy selection or last assistant message |
 | \`${followUp}\` | Queue follow-up message |
-| \`${dequeue}\` | Restore queued messages |
+| \`${dequeue}\` | Restore the last queued message (\`/queue\` manages all) |
 | \`${pasteImage}\` | Paste files on macOS, images, or text from clipboard |
 | \`/\` | Slash commands |
 | \`!\` | Run bash command |

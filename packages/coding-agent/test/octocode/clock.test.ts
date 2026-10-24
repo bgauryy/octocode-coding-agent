@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { onSecond } from "../../src/octocode/shared/clock.ts";
 import { LateReports } from "../../src/octocode/subagents/late.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { PARENT_PID_ENV } from "../../src/octocode/team/store.ts";
+import { PARENT_PID_ENV } from "../../src/octocode/team/store/env.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

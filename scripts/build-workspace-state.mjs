@@ -11,6 +11,8 @@ async function bundle(live) {
 		cwd: fileURLToPath(root),
 		input: fileURLToPath(new URL("packages/webview/src/page.tsx", root)),
 		platform: "browser",
+		// Consume the same source contracts as the host and type checker, even before package dist is rebuilt.
+		tsconfig: "tsconfig.json",
 		transform: { jsx: "react-jsx", target: "es2022", define: { "process.env.NODE_ENV": '"production"' } },
 		// The offline export swaps the live extension for a null stub, so transport, Markdown and editor code never ship.
 		plugins: live

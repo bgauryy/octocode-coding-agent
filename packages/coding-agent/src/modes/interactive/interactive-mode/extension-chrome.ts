@@ -13,7 +13,7 @@ import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the extension widgets, header, footer and editor. */
-export type ExtensionChromeHost = Pick<
+type ExtensionChromeHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "activeWorkingIndicatorEmbedded"
@@ -110,7 +110,7 @@ export function setExtensionWidget(
 	host.renderWidgets();
 }
 
-export function clearExtensionWidgets(host: ExtensionChromeHost): void {
+function clearExtensionWidgets(host: ExtensionChromeHost): void {
 	for (const widget of host.extensionWidgetsAbove.values()) {
 		widget.dispose?.();
 	}
@@ -138,7 +138,6 @@ export function resetExtensionUI(host: ExtensionChromeHost): void {
 	host.setExtensionHeader(undefined);
 	clearExtensionWidgets(host);
 	host.footerDataProvider.clearExtensionStatuses();
-	host.footer.invalidate();
 	host.autocompleteProviderWrappers = [];
 	host.setCustomEditorComponent(undefined);
 	host.setupAutocompleteProvider();
@@ -163,7 +162,7 @@ export function renderWidgets(host: ExtensionChromeHost): void {
 	host.ui.requestRender();
 }
 
-export function renderWidgetContainer(
+function renderWidgetContainer(
 	container: Container,
 	widgets: Map<string, Component & { dispose?(): void }>,
 	spacerWhenEmpty: boolean,

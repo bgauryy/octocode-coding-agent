@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModel } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 
 const OPENROUTER_ANTHROPIC_LATEST_MODEL_IDS = [
 	"~anthropic/claude-fable-latest",
@@ -10,7 +10,7 @@ const OPENROUTER_ANTHROPIC_LATEST_MODEL_IDS = [
 
 describe("OpenRouter Anthropic latest alias metadata", () => {
 	it.each(OPENROUTER_ANTHROPIC_LATEST_MODEL_IDS)("keeps completions cache control for %s", (modelId) => {
-		const model = getModel("openrouter", modelId);
+		const model = getBuiltinModel("openrouter", modelId);
 		expect(model.api).toBe("openai-completions");
 		if (model.api !== "openai-completions") throw new Error(`Unexpected API for ${modelId}`);
 		expect(model.compat?.cacheControlFormat).toBe("anthropic");

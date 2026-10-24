@@ -1,9 +1,10 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { completeSimple, getModel } from "../src/compat.ts";
+import { completeSimple } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { getEnvApiKey } from "../src/env-api-keys.ts";
 import type { Api, Context, Model, StopReason, Tool, ToolCall, ToolResultMessage } from "../src/types.ts";
-import { StringEnum } from "../src/utils/typebox-helpers.ts";
+import { StringEnum } from "@octocodeai/octocode-contacts/schema";
 import { hasBedrockCredentials } from "./bedrock-utils.ts";
 
 const calculatorSchema = Type.Object({
@@ -121,24 +122,24 @@ const hasAnthropicCredentials = !!getEnvApiKey("anthropic");
 
 describe.skipIf(!hasBedrockCredentials())("Amazon Bedrock interleaved thinking", () => {
 	it("should do interleaved thinking on Claude Opus 4.5", { retry: 3 }, async () => {
-		const llm = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-5-20251101-v1:0");
+		const llm = getBuiltinModel("amazon-bedrock", "global.anthropic.claude-opus-4-5-20251101-v1:0");
 		await assertSecondToolCallWithInterleavedThinking(llm, "high");
 	});
 
 	it("should do interleaved thinking on Claude Opus 4.6", { retry: 3 }, async () => {
-		const llm = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const llm = getBuiltinModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
 		await assertSecondToolCallWithInterleavedThinking(llm, "high");
 	});
 });
 
 describe.skipIf(!hasAnthropicCredentials)("Anthropic interleaved thinking", () => {
 	it("should do interleaved thinking on Claude Opus 4.5", { retry: 3 }, async () => {
-		const llm = getModel("anthropic", "claude-opus-4-5");
+		const llm = getBuiltinModel("anthropic", "claude-opus-4-5");
 		await assertSecondToolCallWithInterleavedThinking(llm, "high");
 	});
 
 	it("should do interleaved thinking on Claude Opus 4.6", { retry: 3 }, async () => {
-		const llm = getModel("anthropic", "claude-opus-4-6");
+		const llm = getBuiltinModel("anthropic", "claude-opus-4-6");
 		await assertSecondToolCallWithInterleavedThinking(llm, "high");
 	});
 });

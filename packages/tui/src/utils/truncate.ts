@@ -55,15 +55,7 @@ function truncateFragmentToWidth(text: string, maxWidth: number): { text: string
 			continue;
 		}
 
-		let end = i;
-		while (end < text.length && text[end] !== "\t") {
-			const nextAnsi = extractAnsiCode(text, end);
-			if (nextAnsi) {
-				break;
-			}
-			end++;
-		}
-
+		const end = plainRunEnd(text, i);
 		for (const { segment } of graphemeSegmenter.segment(text.slice(i, end))) {
 			const w = graphemeWidth(segment);
 			if (width + w > maxWidth) {
@@ -80,6 +72,13 @@ function truncateFragmentToWidth(text: string, maxWidth: number): { text: string
 	}
 
 	return { text: result, width };
+}
+
+/** End of the run starting at `start` that contains no tab or ANSI sequence. */
+function plainRunEnd(text: string, start: number): number {
+	let end = start;
+	while (end < text.length && text[end] !== "\t" && !extractAnsiCode(text, end)) end++;
+	return end;
 }
 
 function finalizeTruncatedResult(
@@ -209,15 +208,7 @@ export function truncateToWidth(
 				continue;
 			}
 
-			let end = i;
-			while (end < text.length && text[end] !== "\t") {
-				const nextAnsi = extractAnsiCode(text, end);
-				if (nextAnsi) {
-					break;
-				}
-				end++;
-			}
-
+			const end = plainRunEnd(text, i);
 			for (const { segment } of graphemeSegmenter.segment(text.slice(i, end))) {
 				const width = graphemeWidth(segment);
 				if (keepContiguousPrefix && keptWidth + width <= targetWidth) {

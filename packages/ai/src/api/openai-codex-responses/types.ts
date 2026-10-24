@@ -4,6 +4,7 @@ import type {
 	ResponseInput,
 } from "openai/resources/responses/responses.js";
 import type { StreamOptions } from "../../types.ts";
+import { RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
 
 // ============================================================================
 // Configuration
@@ -18,7 +19,7 @@ export const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 // The Codex backend accepts zstd-compressed request bodies on the SSE responses
 // endpoint (the same endpoint the official Codex client compresses against).
 export const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
-export const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+export const CODEX_TOOL_CALL_PROVIDERS = RESPONSES_TOOL_CALL_PROVIDERS;
 export const WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
 export const WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE = "websocket_connection_limit_reached";
 export const PREVIOUS_RESPONSE_NOT_FOUND_CODE = "previous_response_not_found";

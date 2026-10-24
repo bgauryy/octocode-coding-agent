@@ -6,14 +6,17 @@ import type {
 	SessionCompactEvent,
 } from "../../core/extensions/index.ts";
 import { contextReads, seenFiles, sessionCleared, type WorkedFile } from "../files/reads.ts";
-import type { FileGuard } from "../files/tool.ts";
-import { sessionLineage, setSessionLineage, writeSessionRecord } from "../shared/archive.ts";
+import type { FileGuard } from "../files/tool/guard.ts";
+import { writeSessionRecord } from "../shared/archive/record.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
+import { sessionLineage, setSessionLineage } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CACHE_RETENTION_ENV } from "../shared/env.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
-import { ArchiveCapture, deliverArchivePointer, forkLineage, sessionRecordOf, summaryLabel } from "./archive.ts";
-import { PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { registerTurnBudget } from "../shared/turn-budget.ts";
+import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
+import { cacheClock, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { clearColdResults } from "./clearing.ts";
 import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
@@ -39,7 +42,7 @@ import { requestMessages } from "./thinking.ts";
 
 /**
  * Tool results and call arguments stay verbatim until Octocode compacts (a long result is bounded and spilled to a file when
- * written), with two exceptions: after an idle gap longer than the prompt-cache lifetime the old results of re-fetchable
+ * written, and one assistant message's results share a text budget), with two exceptions: after an idle gap longer than the prompt-cache lifetime the old results of re-fetchable
  * tools are replaced by placeholders naming their saved files (`clearing.ts`), and a repeated read of an unchanged file
  * gets a short note (`files/dedupe.ts`). Octocode also supplies prompt-cache lifetimes and warming decisions, strips
  * images from a request rejected as too large (HTTP 413, else the session is stuck), and writes the compaction summary
@@ -56,6 +59,8 @@ function editedReadPaths(entries: ContextEntry[], edited: ReadonlySet<string>, c
 }
 
 export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagent = false): void {
+	// One assistant message's tool results share a text budget; the overflow is saved to a file (`shared/turn-budget.ts`).
+	registerTurnBudget(pi);
 	const tooLarge = new TooLargeRecovery();
 	const lifetimes = new PromptCacheLifetimes();
 	const thrash = new ThrashBreaker();
@@ -123,7 +128,12 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 		carryFileLists(event.preparation, event.branchEntries);
 		const from = downshiftFrom;
 		downshiftFrom = undefined;
-		return writeSummary(pi, event, ctx, from);
+		// Past the cache lifetime, a cache-sharing summary would rewrite the whole context at the cache-write price.
+		const ttlMs =
+			ctx.model && from === undefined ? promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)) : undefined;
+		const lastUse = ttlMs === undefined ? undefined : cacheClock(ctx.sessionManager).useAt;
+		const cacheCold = ttlMs !== undefined && lastUse !== undefined && Date.now() - lastUse > ttlMs;
+		return writeSummary(pi, event, ctx, from, { cacheCold });
 	});
 
 	pi.on("session_start", async (_event, ctx) => {

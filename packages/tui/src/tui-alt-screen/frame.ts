@@ -1,9 +1,6 @@
-import {
-	deleteAllKittyPlacements,
-	getKittyImagePlacementRows,
-	type ImageProtocol,
-	isImageLine,
-} from "../terminal-image.ts";
+import type { ImageProtocol } from "../terminal-image/types.ts";
+import { getKittyImagePlacementRows } from "../terminal-image/kitty-metadata.ts";
+import { deleteAllKittyPlacements, isImageLine } from "../terminal-image.ts";
 import {
 	BEGIN_SYNCHRONIZED_OUTPUT,
 	DISABLE_AUTOWRAP,
@@ -15,7 +12,7 @@ import { deleteKittyImagesFor, prepareKittyScreen } from "./kitty-cache.ts";
 import type { CachedKittyImage } from "./types.ts";
 
 /** What one alternate-screen frame write depends on. */
-export interface AltScreenFrame {
+interface AltScreenFrame {
 	screen: string[];
 	previousScreen: string[];
 	preparedKittyScreen: { lines: string[]; evictedImageDeletion: string };
@@ -32,7 +29,7 @@ export interface AltScreenFrame {
 }
 
 /** Build the synchronized output that clears, redraws changed rows and places the cursor. */
-export function buildAltScreenFrame(frame: AltScreenFrame): string {
+function buildAltScreenFrame(frame: AltScreenFrame): string {
 	const {
 		screen,
 		previousScreen,
@@ -98,7 +95,7 @@ export function buildAltScreenFrame(frame: AltScreenFrame): string {
 }
 
 /** What a frame must redraw: the whole screen after a resize or first frame, and image rows that changed. */
-export function planAltScreenRedraw(options: {
+function planAltScreenRedraw(options: {
 	screen: string[];
 	previousScreen: string[];
 	previousScreenWidth: number;

@@ -45,6 +45,7 @@ export type AgentSessionEvent =
 	| { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
 	| { type: "entry_appended"; entry: SessionEntry }
 	| { type: "session_info_changed"; name: string | undefined }
+	| { type: "session_context_changed" }
 	| { type: "thinking_level_changed"; level: ThinkingLevel }
 	| {
 			type: "compaction_end";
@@ -145,6 +146,16 @@ export interface ExtensionBindings {
 	onError?: ExtensionErrorListener;
 }
 
+/** A message waiting in the steering or follow-up queue, as the session lists it. */
+export interface QueuedInput {
+	/** Stable handle for `replaceQueuedInput`, `removeQueuedInput` and `moveQueuedInput`; gone once delivery begins. */
+	id: string;
+	mode: "steer" | "followUp";
+	text: string;
+	/** Attachments (images) delivered with the text; edits keep them. */
+	imageCount: number;
+	source: InputSource;
+}
 export type QueuedInputDisposition = "handled" | "queued";
 export type PromptDisposition = QueuedInputDisposition | "started";
 

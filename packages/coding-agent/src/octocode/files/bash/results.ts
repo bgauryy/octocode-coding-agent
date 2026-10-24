@@ -2,12 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { formatDuration, shortPath } from "../../shared/format.ts";
 import { PRIVATE_FILE_MODE } from "../../shared/home.ts";
-import { plural } from "../../shared/render.ts";
+import { plural } from "../../shared/render/text.ts";
+import type { BashJob, VerificationReceipt } from "../bash-jobs/types.ts";
+import type { OrphanJob } from "../bash-jobs/records.ts";
 import { moveFile } from "../../shared/sweep.ts";
 import { firstLine } from "../../shared/util.ts";
-import type { BashJob, OrphanJob } from "../bash-jobs.ts";
 import type { BashDetails } from "../render.ts";
-import { type VerificationReceipt, verificationJson, verificationLine } from "./verification.ts";
+import { verificationJson, verificationLine } from "./verification.ts";
+import { BashExecutionError } from "../../../core/tools/bash/outcome.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import { RERUN_HINT } from "../render.ts";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */
 
@@ -39,6 +43,9 @@ export const MAX_FOREGROUND_TIMEOUT = 60 * 60;
 /** What the result says when a foreground timeout was cut to `MAX_FOREGROUND_TIMEOUT`. */
 export const CLAMP_NOTE = `timeout clamped to ${MAX_FOREGROUND_TIMEOUT} s; use background: true for longer`;
 
+/** What the result says when the background threshold, not the call's own timeout, moved the command. */
+const AUTO_NOTE = "foreground commands move to the background after the configured threshold";
+
 /** The timeout a foreground call runs with: what it asked for (at most `MAX_FOREGROUND_TIMEOUT`), else `DEFAULT_BASH_TIMEOUT`. */
 export function effectiveTimeout(requested: unknown): { seconds: number; clamped: boolean } {
 	if (typeof requested !== "number" || !Number.isFinite(requested) || requested <= 0)
@@ -50,23 +57,32 @@ export function effectiveTimeout(requested: unknown): { seconds: number; clamped
 
 /**
  * The result of a foreground command that reached its deadline and went on as `job`: the output it had printed (the
- * message Octocode's bash built for the timeout, less its status line), then where it runs and how to stop it.
+ * bounded command output, without host status lines), then where it runs and how to stop it.
  */
-export function movedResult(
-	message: string,
+function movedResult(
+	output: string,
 	job: BashJob,
 	seconds: number,
 	clamped: boolean,
 	cwd: string,
 	fullOutputPath?: string,
 	verification?: VerificationReceipt,
+	how: "deadline" | "threshold" | "message" = "deadline",
 ) {
-	const output = message.replace(/(?:^|\n\n)Command timed out after [\d.]+ seconds$/, "").trimEnd();
-	const moved = [
-		`Did not finish within ${formatDuration(seconds * 1000)}; moved to the background as ${job.id} (pid ${job.pid}), still running. Its exit status and output tail arrive as a message.`,
-		...jobLines(job, cwd),
-	].join("\n");
-	const text = [output, moved, verification ? verificationLine(verification) : "", clamped ? `(${CLAMP_NOTE})` : ""]
+	const lead =
+		how === "message"
+			? `A message for you is waiting, so this command (running ${formatDuration(Date.now() - job.startedAt)}) moved to the background as ${job.id} (pid ${job.pid}), still running. Answer the message; its exit status and output tail arrive as a message.`
+			: `Did not finish within ${formatDuration(seconds * 1000)}; moved to the background as ${job.id} (pid ${job.pid}), still running. Its exit status and output tail arrive as a message.`;
+	const moved = [lead, ...jobLines(job, cwd)].join("\n");
+	const threshold =
+		how === "threshold" ? `(${AUTO_NOTE}; pass background: false with a timeout to wait in the foreground)` : "";
+	const text = [
+		output.trimEnd(),
+		moved,
+		verification ? verificationLine(verification) : "",
+		threshold,
+		clamped ? `(${CLAMP_NOTE})` : "",
+	]
 		.filter((part) => part !== "")
 		.join("\n\n");
 	const details: BashDetails = {
@@ -74,6 +90,9 @@ export function movedResult(
 		pid: job.pid,
 		log: job.log,
 		moved: true,
+		notices: [verification ? verificationLine(verification) : "", threshold, clamped ? `(${CLAMP_NOTE})` : ""].filter(
+			Boolean,
+		),
 		...(verification ? { verification } : {}),
 		...(fullOutputPath ? { fullOutputPath } : {}),
 	};
@@ -87,6 +106,50 @@ export function movedResult(
 		},
 		details,
 	};
+}
+
+/** Preserve command facts when adding native timeout hints or adopting a still-running process. */
+export function foregroundFailure(
+	error: unknown,
+	options: {
+		spilled?: string;
+		dir: string;
+		adopted?: BashJob;
+		seconds: number;
+		clamped: boolean;
+		cwd: string;
+		verification?: VerificationReceipt;
+		how: "deadline" | "threshold" | "message";
+	},
+) {
+	const full = adoptFullOutput(errorMessage(error), options.spilled, options.dir);
+	const failure = error instanceof BashExecutionError ? error : undefined;
+	const details = { ...failure?.details, ...(full.path ? { fullOutputPath: full.path } : {}) };
+	const output = failure?.outputText ?? "";
+	const adoptedOutput =
+		full.path && options.spilled ? output.split(options.spilled).join(shortPath(full.path)) : output;
+	if (options.adopted)
+		return movedResult(
+			adoptedOutput,
+			options.adopted,
+			options.seconds,
+			options.clamped,
+			options.cwd,
+			full.path,
+			options.verification,
+			options.how,
+		);
+	if (failure?.details.termination !== "timeout") {
+		const text = options.clamped ? `${full.text}\n\n(${CLAMP_NOTE})` : full.text;
+		if (options.clamped) details.notices = [...(details.notices ?? []), `(${CLAMP_NOTE})`];
+		throw failure ? new BashExecutionError(text, details) : new Error(text);
+	}
+	const how = options.clamped
+		? `with background: true and check its log (${CLAMP_NOTE})`
+		: "with a longer timeout, or with background: true and check its log";
+	const hint = `${RERUN_HINT} ${how}; if it waits for input, pass the input or a non-interactive flag.`;
+	details.notices = [...(details.notices ?? []), hint];
+	throw new BashExecutionError(`${full.text}.\n${hint}`, details);
 }
 
 /** The notice for jobs found running after their Octocode died (`reapOrphanJobs`). */

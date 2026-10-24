@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Inbox } from "../../src/octocode/team/inbox.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker } from "../../src/octocode/team/ticker.ts";

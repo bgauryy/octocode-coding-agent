@@ -1,11 +1,11 @@
 import { Agent } from "@octocodeai/octocode-agent-core";
 import {
 	type AssistantMessage,
-	getModel,
 	streamSimple,
 	type ToolResultMessage,
 	type Usage,
 } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -15,7 +15,7 @@ import { getUsageCostBreakdown } from "../src/core/usage-totals.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 
-const model = getModel("anthropic", "claude-sonnet-4-5");
+const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 
 function createUsage(totalTokens: number): Usage {
 	return {

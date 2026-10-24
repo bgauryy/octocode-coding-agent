@@ -8,6 +8,7 @@ The `contacts` package owns common contracts for packages and interfaces. Its pa
 - `workspace`: event, command, receipt and snapshot types.
 - `protocol`: HTTP routes, runtime command/mutation schemas and WebSocket event union.
 - `application`: shared application commands, frames, snapshots, receipts and connection interfaces.
+- `content` (root export): ordered display blocks, source annotations, session-scoped asset references and attachment schemas. Binary bytes and provider continuation tokens do not travel inside display blocks.
 - `schema`: the shared string-enum schema helper, also re-exported by the AI package.
 
 Only TypeBox is a runtime dependency. Keep application behavior, database access, browser DOM, provider code, and permission decisions out of this package. Validate untrusted requests at the host boundary with these schemas; types alone do not validate JSON.

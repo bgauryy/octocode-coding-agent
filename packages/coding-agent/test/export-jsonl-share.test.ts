@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai/compat";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineTool } from "../src/core/extensions/types.ts";
@@ -29,7 +29,7 @@ describe("JSONL share export", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir: join(tempDir, "agent"),
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager: SettingsManager.inMemory(),
 			sessionManager,
 			tools: ["share_tool"],

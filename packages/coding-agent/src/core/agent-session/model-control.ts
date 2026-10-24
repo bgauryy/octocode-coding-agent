@@ -17,12 +17,66 @@ export type ScopedModel = { model: Model<any>; thinkingLevel?: ThinkingLevel };
 
 export class SessionModelControl {
 	scopedModels: ScopedModel[];
+	private contextBudgets = new Map<string, { tokens: number; capacity: number }>();
+	private budgetSessionId?: string;
 
 	private readonly host: Pick<SessionInternals, "session" | "emit">;
 
 	constructor(host: Pick<SessionInternals, "session" | "emit">, scopedModels: ScopedModel[]) {
 		this.host = host;
 		this.scopedModels = scopedModels;
+	}
+	private recordModel(model: Model<any>): void {
+		const manager = this.host.session.sessionManager;
+		const entry = manager.getEntry(manager.appendModelChange(model.provider, model.id));
+		if (entry) this.host.emit({ type: "entry_appended", entry });
+	}
+
+	private contextKey(model: Model<any>): string {
+		const sessionId = this.host.session.sessionManager.getSessionId();
+		if (this.budgetSessionId !== sessionId) {
+			this.contextBudgets.clear();
+			this.budgetSessionId = sessionId;
+		}
+		return `${model.provider}/${model.id}`;
+	}
+
+	private withContextBudget(model: Model<any>): Model<any> {
+		const budget = this.contextBudgets.get(this.contextKey(model));
+		return budget ? { ...model, contextWindow: Math.min(model.contextWindow, budget.tokens) } : model;
+	}
+
+	/** The catalog limit, independent of this session's smaller working budget. */
+	getContextWindowLimit(): number | undefined {
+		const { session } = this.host;
+		const model = session.model;
+		if (!model || isVirtualModel(model)) return undefined;
+		const budget = this.contextBudgets.get(this.contextKey(model));
+		return (
+			session.modelRuntime.getModel(model.provider, model.id)?.contextWindow ?? budget?.capacity ?? model.contextWindow
+		);
+	}
+
+	/** Set a session-only compaction/request budget without changing the provider's advertised capacity. */
+	setContextWindow(tokens?: number): number {
+		const { session } = this.host;
+		if (!session.isIdle || session.isCompacting)
+			throw new Error("Wait for the current request to finish before changing context size.");
+		const model = session.model;
+		const capacity = this.getContextWindowLimit();
+		if (!model || !capacity) throw new Error("Select a physical model with /model before choosing its context size.");
+		const minimum = Math.min(8192, capacity);
+		if (tokens !== undefined && (!Number.isSafeInteger(tokens) || tokens < minimum || tokens > capacity)) {
+			throw new Error(
+				`Context size must be between ${minimum.toLocaleString()} and ${capacity.toLocaleString()} tokens for ${model.provider}/${model.id}.`,
+			);
+		}
+		const key = this.contextKey(model);
+		if (tokens === undefined || tokens === capacity) this.contextBudgets.delete(key);
+		else this.contextBudgets.set(key, { tokens, capacity });
+		session.agent.state.model = { ...model, contextWindow: tokens ?? capacity };
+		this.host.emit({ type: "session_context_changed" });
+		return session.agent.state.model.contextWindow;
 	}
 
 	/**
@@ -52,7 +106,7 @@ export class SessionModelControl {
 		if (!recorded || (recorded.provider === model.provider && recorded.modelId === model.id)) return;
 		const recordedModel = getModel(recorded.provider, recorded.modelId);
 		if (!isVirtualModel(model) && !(recordedModel && isVirtualModel(recordedModel))) return;
-		session.sessionManager.appendModelChange(model.provider, model.id);
+		this.recordModel(model);
 	}
 
 	/** The model whose limits apply to the conversation. */
@@ -91,8 +145,9 @@ export class SessionModelControl {
 
 		const previousModel = session.model;
 		const thinkingLevel = this._getThinkingLevelForModelSwitch(model);
-		session.agent.state.model = model;
-		session.sessionManager.appendModelChange(model.provider, model.id);
+		const selectedModel = this.withContextBudget(model);
+		session.agent.state.model = selectedModel;
+		this.recordModel(model);
 		if (options.persist) {
 			session.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
 			this._addPersistedDefaultToNonEmptyScope(model);
@@ -103,7 +158,7 @@ export class SessionModelControl {
 		// Model persistence does not implicitly rewrite the global thinking default.
 		session.setThinkingLevel(thinkingLevel);
 
-		await this._emitModelSelect(model, previousModel, "set");
+		await this._emitModelSelect(selectedModel, previousModel, "set");
 	}
 
 	private _addPersistedDefaultToNonEmptyScope(model: Model<any>): void {
@@ -154,8 +209,9 @@ export class SessionModelControl {
 		const thinkingLevel = this._getThinkingLevelForModelSwitch(next.model, next.thinkingLevel);
 
 		// Apply model
-		session.agent.state.model = next.model;
-		session.sessionManager.appendModelChange(next.model.provider, next.model.id);
+		const selectedModel = this.withContextBudget(next.model);
+		session.agent.state.model = selectedModel;
+		this.recordModel(next.model);
 		if (options.persist) {
 			session.settingsManager.setDefaultModelAndProvider(next.model.provider, next.model.id);
 			this._addPersistedDefaultToNonEmptyScope(next.model);
@@ -168,10 +224,10 @@ export class SessionModelControl {
 		// Model persistence does not implicitly rewrite the global thinking default.
 		session.setThinkingLevel(thinkingLevel);
 
-		await this._emitModelSelect(next.model, currentModel, "cycle");
+		await this._emitModelSelect(selectedModel, currentModel, "cycle");
 
 		return {
-			model: next.model,
+			model: selectedModel,
 			thinkingLevel: session.thinkingLevel,
 			isScoped: true,
 		};
@@ -194,8 +250,9 @@ export class SessionModelControl {
 		const nextModel = availableModels[nextIndex];
 
 		const thinkingLevel = this._getThinkingLevelForModelSwitch(nextModel);
-		session.agent.state.model = nextModel;
-		session.sessionManager.appendModelChange(nextModel.provider, nextModel.id);
+		const selectedModel = this.withContextBudget(nextModel);
+		session.agent.state.model = selectedModel;
+		this.recordModel(nextModel);
 		if (options.persist) {
 			session.settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
 			this._addPersistedDefaultToNonEmptyScope(nextModel);
@@ -205,10 +262,10 @@ export class SessionModelControl {
 		// Model persistence does not implicitly rewrite the global thinking default.
 		session.setThinkingLevel(thinkingLevel);
 
-		await this._emitModelSelect(nextModel, currentModel, "cycle");
+		await this._emitModelSelect(selectedModel, currentModel, "cycle");
 
 		return {
-			model: nextModel,
+			model: selectedModel,
 			thinkingLevel: session.thinkingLevel,
 			isScoped: false,
 		};
@@ -217,7 +274,7 @@ export class SessionModelControl {
 	setThinkingLevel(level: ThinkingLevel, options: ModelMutationOptions): void {
 		const { session } = this.host;
 		const availableLevels = session.getAvailableThinkingLevels();
-		const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level, availableLevels);
+		const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level);
 
 		// Only persist if actually changing
 		const previousLevel = session.agent.state.thinkingLevel;
@@ -274,7 +331,7 @@ export class SessionModelControl {
 		return session.settingsManager.getDefaultThinkingLevel() ?? session.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
 	}
 
-	private _clampThinkingLevel(level: ThinkingLevel, _availableLevels: ThinkingLevel[]): ThinkingLevel {
+	private _clampThinkingLevel(level: ThinkingLevel): ThinkingLevel {
 		const model = this.host.session.model;
 		return model ? clampThinkingLevel(model, level) : "off";
 	}
@@ -291,6 +348,6 @@ export class SessionModelControl {
 			return;
 		}
 
-		session.agent.state.model = refreshedModel;
+		session.agent.state.model = this.withContextBudget(refreshedModel);
 	}
 }

@@ -1,7 +1,8 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CdpConnection, type PageTarget } from "../../src/octocode/browser/cdp.ts";
+import { CdpConnection } from "../../src/octocode/browser/cdp/connection.ts";
+import type { PageTarget } from "../../src/octocode/browser/cdp/protocol.ts";
 import { type CdpStub, type CdpStubOptions, NO_REPLY, startCdpStub } from "./fixtures/cdp-stub.ts";
 
 const stubs: CdpStub[] = [];

@@ -9,6 +9,7 @@ import {
 	isOpenAIReasoningDetail,
 	type StreamedReasoningDetails,
 } from "./reasoning-details.ts";
+import { getCompat } from "./compat.ts";
 import { mapStopReason, parseChunkUsage } from "./usage.ts";
 
 interface StreamingToolCallBlock extends ToolCall {
@@ -29,7 +30,7 @@ type StreamingToolCallDelta = {
 };
 
 /** Maps Chat Completions stream chunks onto one assistant message and its stream events. */
-export interface CompletionsChunkProcessor {
+interface CompletionsChunkProcessor {
 	/** Applies one chunk object to the output message and pushes its events. */
 	processChunk(chunk: ChatCompletionChunk): void;
 	/** Finalizes every content block in order. */
@@ -45,6 +46,7 @@ export function createCompletionsChunkProcessor(
 	grammarToolInputProperties: ReadonlyMap<string, string>,
 	streamedReasoningDetails: StreamedReasoningDetails,
 ): CompletionsChunkProcessor {
+	const { reasoningReplayField } = getCompat(model);
 	let textBlock: TextContent | null = null;
 	let thinkingBlock: ThinkingContent | null = null;
 	let hasFinishReason = false;
@@ -247,9 +249,7 @@ export function createCompletionsChunkProcessor(
 				const delta = deltaFields[foundReasoningField];
 				if (typeof delta === "string" && delta.length > 0) {
 					const thinkingSignature =
-						model.provider === "opencode-go" && foundReasoningField === "reasoning"
-							? "reasoning_content"
-							: foundReasoningField;
+						foundReasoningField === "reasoning" && reasoningReplayField ? reasoningReplayField : foundReasoningField;
 					const block = ensureThinkingBlock(thinkingSignature);
 					block.thinking += delta;
 					stream.push({
@@ -274,13 +274,14 @@ export function createCompletionsChunkProcessor(
 				}
 			}
 
-			if (choice.delta.content !== null && choice.delta.content !== undefined && choice.delta.content.length > 0) {
+			const visibleDelta = (choice.delta.content ?? "") + (choice.delta.refusal ?? "");
+			if (visibleDelta.length > 0) {
 				const block = ensureTextBlock();
-				block.text += choice.delta.content;
+				block.text += visibleDelta;
 				stream.push({
 					type: "text_delta",
 					contentIndex: getContentIndex(block),
-					delta: choice.delta.content,
+					delta: visibleDelta,
 					partial: output,
 				});
 			}

@@ -3,11 +3,12 @@ import path from "node:path";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { commandsFor, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { failureOf, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 const servers: http.Server[] = [];
 afterEach(async () => {

@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
-import { hookCalls } from "../../src/octocode/hooks/config.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { hookCalls } from "../../src/octocode/hooks/config/calls.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 function setup(content = "A\nA\n", partial = false) {

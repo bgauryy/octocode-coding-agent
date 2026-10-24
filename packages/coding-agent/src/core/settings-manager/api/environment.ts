@@ -14,6 +14,8 @@ export interface EnvironmentSettingsApi {
 	setDefaultProjectTrust(defaultProjectTrust: DefaultProjectTrust): void;
 	getShellCommandPrefix(): string | undefined;
 	setShellCommandPrefix(prefix: string | undefined): void;
+	/** Seconds a foreground bash command runs before moving to the background; 0 = never. */
+	getBashBackgroundAfterSeconds(): number;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

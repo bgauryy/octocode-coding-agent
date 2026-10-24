@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { azureProvider } from "../src/providers/azure.ts";
 import type { AssistantMessage, Context } from "../src/types.ts";
 
@@ -104,7 +105,7 @@ const context = normalizeContext({
 });
 
 function deepSeekModel() {
-	return getModel("azure", "deepseek-v4-pro");
+	return getBuiltinModel("azure", "deepseek-v4-pro");
 }
 
 // Regression for #9645: Azure Foundry rejects DeepSeek's thinking field and every prompt cache parameter here.
@@ -267,7 +268,7 @@ describe("azure Chat Completions endpoint resolution", () => {
 
 describe("azure api map", () => {
 	it("still routes Responses models to the Responses api", async () => {
-		await azure.stream(getModel("azure", "gpt-4o-mini"), context, { apiKey: "test-key" }).result();
+		await azure.stream(getBuiltinModel("azure", "gpt-4o-mini"), context, { apiKey: "test-key" }).result();
 
 		expect(mockState.dispatchedTo).toBe("responses");
 	});

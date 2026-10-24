@@ -5,41 +5,6 @@ import { getCapabilities, getCellDimensions } from "./terminal-image/capabilitie
 import { KITTY_PREFIX, registerKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
 import type { CellDimensions, ImageCellSize, ImageDimensions, ImageRenderOptions } from "./terminal-image/types.ts";
 
-export {
-	detectCapabilities,
-	getCapabilities,
-	getCellDimensions,
-	getTerminalColorMode,
-	resetCapabilitiesCache,
-	setCapabilities,
-	setCapabilityOverrides,
-	setCellDimensions,
-} from "./terminal-image/capabilities.ts";
-export {
-	getGifDimensions,
-	getImageDimensions,
-	getJpegDimensions,
-	getPngDimensions,
-	getWebpDimensions,
-} from "./terminal-image/dimensions.ts";
-export {
-	cropKittyImageLine,
-	getKittyImageMetadata,
-	getKittyImagePlacement,
-	getKittyImagePlacementRows,
-	type KittyImageMetadata,
-	type KittyImagePlacement,
-	registerKittyImageMetadata,
-} from "./terminal-image/kitty-metadata.ts";
-export type {
-	CellDimensions,
-	ImageCellSize,
-	ImageDimensions,
-	ImageProtocol,
-	ImageRenderOptions,
-	TerminalCapabilities,
-} from "./terminal-image/types.ts";
-
 const ITERM2_PREFIX = "\x1b]1337;File=";
 
 export function isImageLine(line: string): boolean {
@@ -165,7 +130,7 @@ function chooseLessDistortedCellCount(upperCount: number, idealCount: number): n
 	return lowerDistortion < upperDistortion ? lowerCount : upperCount;
 }
 
-export function calculateImageCellSize(
+function calculateImageCellSize(
 	imageDimensions: ImageDimensions,
 	maxWidthCells: number,
 	maxHeightCells?: number,

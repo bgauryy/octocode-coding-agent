@@ -1,4 +1,4 @@
-import { EntityFields } from "../../src/octocode/backlog/model.ts";
+import { EntityFields } from "@octocodeai/octocode-contacts/backlogs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
@@ -59,7 +59,10 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 		perTool[tool.name] =
 			description.length + JSON.stringify(parameters).length + (promptGuidelines ?? []).join("").length;
 	}
-	const prompt = (sections.octocode ?? "").length;
+	const prompt = Object.entries(sections)
+		.filter(([name]) => name.startsWith("octocode_"))
+		.map(([, text]) => text)
+		.join("\n\n").length;
 	return {
 		backlogEntities,
 		total: Object.values(perTool).reduce((sum, size) => sum + size, prompt),
@@ -93,11 +96,15 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 21_400 (measured 21_163 after trimming the new descriptions): +193 file for line+sha anchored edits, +153 bash for the
 // opt-in verification receipt (`verify`), +268 agent for bash-write reservations in coordinate and the subagent stop and
 // overlap contract (agent lifecycle signals RFC). All three were requested features; their descriptions were shortened.
-const MAIN_CEILING = 21_400;
+// 22_000 (measured 21_808): +~650 user-requested editing and protocol policy: repository conventions, clean-code and
+// parallel/script rules, one worked example, a task-contract brief, and BLUF, 5W2H and SBAR defined once in
+// Communication (role files now name them instead of restating their slots).
+const MAIN_CEILING = 22_000;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
-const SPECIALIST_CEILING = 14_600;
+// 15_300 (measured 15_051): the same shared policy additions.
+const SPECIALIST_CEILING = 15_300;
 
 describe("prompt size", () => {
 	it("main session", async () => {

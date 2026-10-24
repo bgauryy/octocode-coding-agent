@@ -25,6 +25,28 @@ type OAuthDeviceCodePollOptions<T> = {
 	signal: AbortSignal;
 };
 
+/** A response body parsed as a JSON object, or null when it is not one. */
+export async function readJson(response: Response): Promise<Record<string, unknown> | null> {
+	try {
+		const json = await response.json();
+		return json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The verification URI is opened in the user's browser; only http(s) URLs are trusted. */
+export function trustedHttpUrl(value: unknown): string | null {
+	if (typeof value !== "string" || !value) return null;
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+		return url.href;
+	} catch {
+		return null;
+	}
+}
+
 export async function pollOAuthDeviceCodeFlow<T>(options: OAuthDeviceCodePollOptions<T>): Promise<T> {
 	const deadline =
 		typeof options.expiresInSeconds === "number"

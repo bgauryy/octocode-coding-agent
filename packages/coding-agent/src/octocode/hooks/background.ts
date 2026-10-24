@@ -1,10 +1,11 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { isRecord, parseJson } from "../shared/util.ts";
+import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import type { HookCommand, HookEvent, HookRun } from "./contracts.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 import { limitCodexContext } from "./context-limit.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 function codexContext(event: HookEvent, stdout: string, warn: (message: string) => void): string | undefined {
 	const value = parseJson(stdout);
@@ -84,6 +85,7 @@ export function registerBackgroundHooks(pi: ExtensionAPI) {
 			: undefined;
 	});
 	return {
+		reset,
 		start(
 			hook: HookCommand,
 			event: HookEvent,

@@ -235,6 +235,8 @@ for (const block of response.content) {
 
 Snippets in the rest of this README assume a `models` collection set up like this (with the relevant providers registered).
 
+`usage.cost` estimates inference charges from the selected provider's catalog rates and reported tokens. Known long-context tiers, cache-write lifetimes and served OpenAI service tiers affect the estimate; output usage can include billable reasoning tokens. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not fully represented. Refresh catalog metadata as prices change.
+
 ## Providers and Models
 
 A **provider** is the runtime unit: it owns its model catalog, its auth (API key resolution, OAuth flows), and its stream behavior. A `Models` collection holds providers and routes every request to the provider that owns the model.
@@ -717,10 +719,17 @@ All streaming events emitted during assistant message generation:
 | `toolcall_start` | Tool call begins | `contentIndex`: Position in content array |
 | `toolcall_delta` | Tool arguments streaming | `delta`: JSON chunk, `partial.content[contentIndex].arguments`: Partial parsed args |
 | `toolcall_end` | Tool call complete | `toolCall`: Complete, but not schema-validated, tool call with `id`, `name`, `arguments` |
+| `content_update` | Attachment, source annotation, or other complete block changed | `contentIndex`: Replace this block with `partial.content[contentIndex]` |
 | `done` | Stream complete | `reason`: Stop reason ("stop", "length", "toolUse"), `message`: Final assistant message |
 | `error` | Error occurred | `reason`: Error type ("error" or "aborted"), `error`: AssistantMessage with partial content |
 
 Streaming events for different content blocks are not guaranteed to be contiguous. Providers may emit deltas for text, thinking, and tool calls in the same upstream chunk, and Octocode may surface corresponding events interleaved, for example `text_start`, `text_delta`, `toolcall_start`, `text_delta`, `toolcall_delta`. Consumers must use `contentIndex` to associate each delta/end event with its block and must not assume that a block's `*_start`/`*_delta`/`*_end` sequence is uninterrupted by events for other blocks.
+
+`AssistantMessage.content` preserves ordered text, thinking, tool calls, images, media, resource references, and explicit unsupported-output blocks. Text may carry `annotations` with citation sources. Images use base64 `data` and `mimeType`; media can contain bytes or a URI, while resources carry a URI. An unsupported block names the provider output type so interfaces can show a fallback. Provider continuation signatures are opaque replay data and must not be displayed.
+
+Provider support differs: Responses preserves generated images, partial images, audio bytes and transcripts; Gemini preserves inline media and file references; Bedrock preserves streamed images; Mistral preserves image parts. Source annotations are retained from Responses, Anthropic, Gemini, and Bedrock. Responses audio events do not identify their codec, so their bytes use `application/octet-stream` for download. On cross-provider replay, generated artifacts become explicit text descriptions when the target cannot accept them in assistant messages.
+
+Known provider-native tools retain their visible payloads as readable text/JSON: Responses search, code, computer, shell, patch and MCP outputs; Gemini server calls and results; Anthropic server-tool inputs, search/fetch/execution/MCP results and visible compaction text; and Bedrock native result text/JSON. These summaries preserve queries, code, logs, result fields, file identifiers, URLs and status without executing server tools locally. Execution configuration and opaque continuation, signature, encrypted, context and authentication fields are excluded. Unrecognized or opaque-only output stays an explicit unsupported block; this display normalization does not implement provider-native continuation protocols.
 
 ## Image Input
 
@@ -814,12 +823,13 @@ const pixels = createProvider({
 models.setProvider(pixels);
 ```
 
-The old global API (`getImageModel()` / `getImageModels()` / `getImageProviders()` / `generateImages()`) remains available on the [compat entrypoint](#migrating-from-the-old-global-api):
+The old global `generateImages()` remains available on the [compat entrypoint](#migrating-from-the-old-global-api); built-in image models are read with `getBuiltinImageModel()` / `getBuiltinImageModels()` from `providers/all`:
 
 ```typescript
-import { getImageModel, generateImages } from '@octocodeai/octocode-ai/compat';
+import { generateImages } from '@octocodeai/octocode-ai/compat';
+import { getBuiltinImageModel } from '@octocodeai/octocode-ai/providers/all';
 
-const model = getImageModel('openrouter', 'google/gemini-2.5-flash-image');
+const model = getBuiltinImageModel('openrouter', 'google/gemini-2.5-flash-image');
 const result = await generateImages(model, {
   input: [{ type: 'text', text: 'Generate a red circle on a plain white background.' }]
 }, {
@@ -963,7 +973,7 @@ createProvider({
 
 ## Thinking/Reasoning
 
-Many models support thinking/reasoning capabilities where they can show their internal thought process. You can check if a model supports reasoning via the `reasoning` property. If you pass reasoning options to a non-reasoning model, they are silently ignored.
+Many models support reasoning and can return thinking blocks or reasoning summaries. You can check if a model supports reasoning via the `reasoning` property. If you pass reasoning options to a non-reasoning model, they are silently ignored.
 
 ### Unified Interface (streamSimple/completeSimple)
 
@@ -996,7 +1006,7 @@ for (const block of response.content) {
 }
 ```
 
-`xhigh` and `max` are model-specific, opt-in levels. Use `getSupportedThinkingLevels(model)` to determine whether a concrete model exposes either level; models such as GPT-5.6 can expose both.
+Use `getSupportedThinkingLevels(model)` to build selectors from the concrete provider/model's capabilities, including whether thinking can be turned `off`. Some models reject disabled thinking or omit `minimal`; `xhigh` and `max` require explicit catalog support. `clampThinkingLevel(model, level)` returns a supported level when restoring a saved choice or switching models. Both helpers are exported from `@octocodeai/octocode-ai`.
 
 ### Provider-Specific Options (stream/complete)
 
@@ -1407,7 +1417,7 @@ interface OpenAICompletionsCompat {
   supportsUsageInStreaming?: boolean; // Whether provider supports `stream_options: { include_usage: true }` (default: true)
   supportsStrictMode?: boolean;      // Whether provider supports `strict` in tool definitions (default: false; enabled in metadata for capable built-in models)
   supportsOpenAIGrammarTools?: boolean; // Whether to emit OpenAI custom Lark/regex grammar tools; false falls back to normal function tools (default: false; the generated catalog enables it for capable models)
-  supportsMidConvoSystemMessages?: boolean; // Whether the model accepts system messages after the conversation started; false folds them into the leading prompt (default: false; the generated catalog enables it for verified models)
+  supportsMidConvoSystemMessages?: boolean; // Whether the model accepts system messages after the conversation started; false keeps the leading prompt unchanged and sends them as marked user messages (default: false; the generated catalog enables it for verified models)
   supportsMidConvoToolAdditions?: boolean; // Whether system messages can add tools mid-conversation via Kimi-style `tools` system messages; requires supportsMidConvoSystemMessages (default: false)
   sendSessionAffinityHeaders?: boolean; // Send session-affinity data from `sessionId` (default: true for OpenRouter, false otherwise)
   sessionAffinityFormat?: 'openai' | 'openai-nosession' | 'openrouter'; // Format for session affinity: 'openai' uses `prompt_cache_key`, `session_id`, `x-client-request-id`, and `x-session-affinity`; 'openai-nosession' uses `prompt_cache_key`, `x-client-request-id`, and `x-session-affinity`; 'openrouter' uses `x-session-id` (default: auto-detected)
@@ -1434,6 +1444,8 @@ interface OpenAIResponsesCompat {
   supportsOpenAIGrammarTools?: boolean; // Whether to emit OpenAI custom Lark/regex grammar tools; false falls back to normal function tools (default: false; the generated catalog enables it for capable models)
 }
 ```
+
+OpenAI Responses requests to `xai` also send `x-grok-conv-id` from `sessionId`, as the Chat Completions client does. On explicit-cache models (`supportsExplicitPromptCacheMode`, GPT-5.6+), `cacheRetention: "long"` sends `prompt_cache_options: { ttl: "12h" }`; `"short"` sends no request TTL, and `"none"` sends `{ mode: "explicit" }` with no breakpoints. The leading instructions carry an explicit breakpoint with the instruction retention. When `instructionCacheBoundary` names a section of the leading system message, they are split before that section into two `input_text` parts that each carry the breakpoint; an absent or unknown boundary, or a prompt without sections, keeps one part.
 
 OpenRouter requests send `x-session-id` from `sessionId` when prompt caching is enabled. Chat Completions and Anthropic Messages both auto-detect OpenRouter endpoints unless `sendSessionAffinityHeaders` is explicitly false. On Anthropic-compatible models, `sessionAffinityFormat: "openrouter"` selects `x-session-id`; when unset, the existing `x-session-affinity` format is used. Explicit request headers take precedence over generated headers.
 
@@ -1603,7 +1615,7 @@ getCurrentTools(messages);        // []
 
 A custom `Provider` or `ProviderStreams` implementation reads the prompt and tools the same way from `context.messages`; `context.systemPrompt` and `context.tools` do not exist at that layer.
 
-Models that accept system messages mid-conversation (`supportsMidConvoSystemMessages` in the model's compat settings, set by the generated catalog for verified models) receive each later system message in place, so the cached prefix stays intact; section changes are framed by name for the model. Every other model receives `collapseSystemMessages(transcript)`: the replayed prompt and current tools as the leading system message, with later system messages dropped. Anthropic models that also set `supportsMidConvoToolChanges` send tool changes as native blocks (`inline-tools-2026-09-15` beta): the top-level tool list holds the initial tools plus a stable deferred placeholder and never changes, later tools are defined by value in `tool_addition` blocks (a new definition under an existing name replaces the old one), and removals are `tool_removal` references, so tool changes do not invalidate the prompt cache. That needs at least one initial tool; otherwise the current tool list is sent at the top level with the system text only. OpenAI Responses models with `supportsAdditionalTools` declare every tool in `additional_tools` items, like Codex: the initial tools in one at the head of the input and later additions and redefinitions at their message, with no top-level tool list. A later item replaces same-name definitions from earlier items but cannot replace a top-level tool or remove any tool, so removals are announced as text, later updates restate the tools that are still unavailable, and calls to removed tools fail at execution. OpenAI Responses models with only `supportsToolSearch`, and Kimi models with `supportsMidConvoToolAdditions`, anchor new tools at their message; a removal or a redeclared name moves the tool state up to that point into the top-level list once. Everything else sends the current tool list at the top level.
+Models that accept system messages mid-conversation (`supportsMidConvoSystemMessages` in the model's compat settings, set by the generated catalog for verified models) receive each later system message in place, so the cached prefix stays intact; section changes are framed by name for the model. Every other model receives `collapseSystemMessages(transcript)`: the leading system message keeps its text byte-identical (it takes only the current tools, which these APIs send in one top-level field), and each later system message becomes a user message marked as a harness update, placed just before the next assistant message so it never separates a tool call from its result. Updates keep transcript order and name the sections they replace, so the latest wins. Bedrock merges consecutive user turns because Converse requires alternating roles. Mistral's native API rejects a user message after a tool result, so it uses `collapseSystemMessages(transcript, { holdAfterToolResult: true })`: the leading prompt stays byte-identical, an update that would directly follow a tool result is held and merged into the next user message (it reaches the model one turn later), and other updates go before the next assistant message, consecutive ones as a single user message. A transcript without a leading system message is folded with `foldSystemMessages(transcript)`: the replayed prompt and current tools as the leading system message. Anthropic models that also set `supportsMidConvoToolChanges` send tool changes as native blocks (`inline-tools-2026-09-15` beta): the top-level tool list holds the initial tools plus a stable deferred placeholder and never changes, later tools are defined by value in `tool_addition` blocks (a new definition under an existing name replaces the old one), and removals are `tool_removal` references, so tool changes do not invalidate the prompt cache. That needs at least one initial tool; otherwise the current tool list is sent at the top level with the system text only. OpenAI Responses models with `supportsAdditionalTools` declare every tool in `additional_tools` items, like Codex: the initial tools in one at the head of the input and later additions and redefinitions at their message, with no top-level tool list. A later item replaces same-name definitions from earlier items but cannot replace a top-level tool or remove any tool, so removals are announced as text, later updates restate the tools that are still unavailable, and calls to removed tools fail at execution. OpenAI Responses models with only `supportsToolSearch` (all of these need `supportsMidConvoSystemMessages`; without it there is no message to anchor, and the mode is `none`), and Kimi models with `supportsMidConvoToolAdditions`, anchor new tools at their message; a removal or a redeclared name moves the tool state up to that point into the top-level list once. Everything else sends the current tool list at the top level. `getToolLoadingMode(model)` and `supportsNativeToolLoading(model)` (`@octocodeai/octocode-ai/utils/tool-loading`) report the derived mode (`changes`, `additions` or `none`) that adapters and tool-exposure code share.
 
 ## Context Serialization
 
@@ -1835,14 +1847,15 @@ Provider notes:
 
 ## Migrating from the Old Global API
 
-Older versions exposed a global API: `stream()`/`complete()` dispatching on `model.api` via a global registry, sync `getModel()`/`getModels()`/`getProviders()` catalog reads, `registerApiProvider()`, `getEnvApiKey()`, and per-API lazy stream functions. That surface lives unchanged on the **compat entrypoint**:
+Older versions exposed a global API: `stream()`/`complete()` dispatching on `model.api` via a global registry, sync `getModel()`/`getModels()`/`getProviders()` catalog reads, `registerApiProvider()`, `getEnvApiKey()`, and per-API stream functions such as `streamAnthropic()`. The dispatch, registry and env-key surface lives on the **compat entrypoint**; the catalog reads moved to `getBuiltinModel()`/`getBuiltinModels()`/`getBuiltinProviders()` in `providers/all`, and the per-API stream functions to `stream`/`streamSimple` in `api/<api>`:
 
 ```typescript
 // Before
 import { getModel, complete } from '@octocodeai/octocode-ai';
 
-// After (verbatim behavior, one import-path change)
-import { getModel, complete } from '@octocodeai/octocode-ai/compat';
+// After
+import { complete } from '@octocodeai/octocode-ai/compat';
+import { getBuiltinModel } from '@octocodeai/octocode-ai/providers/all';
 ```
 
 Compat is a strict superset of the root entrypoint, so a file can switch its import path wholesale. It will be removed in a future release; migrate to `createModels()` + provider factories:

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
 

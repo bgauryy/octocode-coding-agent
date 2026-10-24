@@ -1,5 +1,6 @@
 import type { Tool as OpenAITool } from "openai/resources/responses/responses.js";
 import type { Tool } from "../../types.ts";
+import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import type { TranscriptToolSupport } from "../../utils/transcript.ts";
 import {
 	getJsonSchemaToolParameters,
@@ -23,8 +24,7 @@ export function getResponsesToolSupport(options: {
 	supportsAdditionalTools?: boolean;
 	supportsToolSearch?: boolean;
 }): TranscriptToolSupport {
-	if (options.supportsMidConvoSystemMessages && options.supportsAdditionalTools) return "changes";
-	return options.supportsToolSearch ? "additions" : "none";
+	return resolveToolLoadingMode("openai-responses", options);
 }
 
 /**

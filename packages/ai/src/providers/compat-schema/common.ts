@@ -1,6 +1,6 @@
 import { type TSchemaOptions, Type } from "typebox";
 
-export function sessionAffinityFormat(options?: TSchemaOptions) {
+function sessionAffinityFormat(options?: TSchemaOptions) {
 	return Type.Union([Type.Literal("openai"), Type.Literal("openai-nosession"), Type.Literal("openrouter")], options);
 }
 

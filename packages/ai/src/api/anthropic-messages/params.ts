@@ -4,12 +4,15 @@ import type {
 	MessageCreateParamsStreaming,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { Model, Tool } from "../../types.ts";
-import { resolveInstructionCacheRetention } from "../../utils/cache-policy.ts";
+import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
+import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
+import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import { getCurrentTools, getInitialSystemMessage, type TranscriptContext } from "../../utils/transcript.ts";
 import { transformMessages } from "../transform-messages.ts";
-import { getAnthropicCompat, getCacheControl, shouldUseServerSideFallbackBeta } from "./compat.ts";
+import { getAnthropicCompat, getLayeredCacheControl, shouldUseServerSideFallbackBeta } from "./compat.ts";
+import { addHistoryLookbackBreakpoint, countCacheBreakpoints } from "./cache-breakpoints.ts";
 import { convertMessages, insertThinkingLevelMessages, normalizeToolCallId } from "./convert.ts";
 import { convertTools, DEFERRED_TOOL_PLACEHOLDER } from "./tools.ts";
 import type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./types.ts";
@@ -77,16 +80,11 @@ export function buildParams(
 	/** Effort of the final effort marker, recorded on the reply so later requests can replay it. */
 	providerThinkingLevel: AnthropicEffort | undefined;
 } {
-	const { cacheControl } = getCacheControl(model, options?.cacheRetention, options?.env);
-	const instructionRetention = resolveInstructionCacheRetention(options);
-	const { cacheControl: instructionCacheControl } = getCacheControl(
+	const { instructions: instructionCacheControl, history: cacheControl } = getLayeredCacheControl(
 		model,
-		instructionRetention ?? options?.cacheRetention,
+		resolveLayeredCacheRetention(options),
 		options?.env,
 	);
-	if (instructionCacheControl?.ttl !== "1h" && cacheControl?.ttl === "1h" && instructionCacheControl) {
-		throw new Error("Instruction cache retention must be at least as long as conversation retention");
-	}
 	const compat = getAnthropicCompat(model);
 	const initialSystemMessage = getInitialSystemMessage(context.messages);
 	const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
@@ -117,8 +115,13 @@ export function buildParams(
 		return definitions;
 	};
 	const initialTools = initialSystemMessage?.toolsAdded ?? [];
-	const nativeToolChanges =
-		compat.supportsMidConvoSystemMessages && compat.supportsMidConvoToolChanges && initialTools.length > 0;
+	const nativeToolChanges = resolveToolLoadingMode(model.api, compat) === "changes" && initialTools.length > 0;
+	// A second instruction block takes the tools-only marker's slot: the base block's marker already covers the
+	// tools that precede it. Without an instruction marker or a usable boundary, the prompt stays one block.
+	const splitSystem =
+		instructionCacheControl && initialSystemMessage
+			? splitSystemMessageAtBoundary(initialSystemMessage, options?.instructionCacheBoundary)
+			: undefined;
 	const thinkingDisabled =
 		model.reasoning && options?.thinkingEnabled === false && model.thinkingLevelMap?.off !== null;
 	// Effort cannot change between messages while thinking is disabled, so "off" sends no effort markers.
@@ -141,31 +144,26 @@ export function buildParams(
 		...(betaFeatures.length > 0 ? { betas: betaFeatures } : {}),
 	};
 
-	// For OAuth tokens, we MUST include Claude Code identity
+	const promptBlocks = (splitSystem ?? [initialSystemText]).map((text) => ({
+		type: "text" as const,
+		text: sanitizeSurrogates(text),
+		...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
+	}));
+	// For OAuth tokens, we MUST include Claude Code identity. Only the prompt blocks are marked:
+	// the prompt's breakpoint covers the identity line too, and a second marker would take the slot
+	// the history lookback needs.
 	if (isOAuthToken) {
 		params.system = [
 			{
 				type: "text",
 				text: "You are Claude Code, Anthropic's official CLI for Claude.",
-				...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
+				...(instructionCacheControl && !initialSystemText ? { cache_control: instructionCacheControl } : {}),
 			},
+			...(initialSystemText ? promptBlocks : []),
 		];
-		if (initialSystemText) {
-			params.system.push({
-				type: "text",
-				text: sanitizeSurrogates(initialSystemText),
-				...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
-			});
-		}
 	} else if (initialSystemText) {
 		// Add cache control to system prompt for non-OAuth tokens
-		params.system = [
-			{
-				type: "text",
-				text: sanitizeSurrogates(initialSystemText),
-				...(instructionCacheControl ? { cache_control: instructionCacheControl } : {}),
-			},
-		];
+		params.system = promptBlocks;
 	}
 
 	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
@@ -178,7 +176,7 @@ export function buildParams(
 		params.temperature = options.temperature;
 	}
 
-	const toolCacheControl = compat.supportsCacheControlOnTools ? instructionCacheControl : undefined;
+	const toolCacheControl = compat.supportsCacheControlOnTools && !splitSystem ? instructionCacheControl : undefined;
 	if (nativeToolChanges) {
 		// Initial tools stay active with the cache breakpoint on the last one, followed by the
 		// placeholder. The list never changes afterwards: later tools are defined by value in
@@ -190,6 +188,14 @@ export function buildParams(
 		if (tools.length > 0) {
 			params.tools = convertToolDefinitions(tools, toolCacheControl);
 		}
+	}
+
+	if (cacheControl) {
+		addHistoryLookbackBreakpoint(
+			params.messages,
+			cacheControl,
+			countCacheBreakpoints([params.system, params.tools, params.messages]),
+		);
 	}
 
 	if (thinkingDisabled) {

@@ -2,7 +2,7 @@ import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
-import { clip, plural, resultBlock, timedTool, timingOf, toolHeader } from "../shared/render.ts";
+import { resultBlock, toolHeader } from "../shared/render.ts";
 import { projectTrustNow } from "../shared/trust.ts";
 import { contentText, DAY_MS, textResult } from "../shared/util.ts";
 import { memoryLabel, parseMemoryId } from "./query.ts";
@@ -16,8 +16,11 @@ import {
 	noMemory,
 	refuseMemorySecrets,
 } from "./store.ts";
+import { clip, plural } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
 
 const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 100;
 
 /** A note under reads in an untrusted project, where project memories stay hidden as they do from auto-injection. */
 const HIDDEN_NOTE = "(untrusted project: project memories are hidden; only global ones are shown)";
@@ -150,14 +153,18 @@ export function registerMemoryTool(
 									}),
 								),
 							}),
-					limit: Type.Optional(Type.Integer({ description: `search/list: most results (default ${DEFAULT_LIMIT})` })),
+					limit: Type.Optional(
+						Type.Integer({
+							description: `search/list: most results, capped at ${MAX_LIMIT} (default ${DEFAULT_LIMIT})`,
+						}),
+					),
 				}),
 				async execute(_toolCallId, input, signal, _onUpdate, ctx) {
 					// The subagent schema omits the set-only fields; set is refused there before they are read.
 					const params = input as MemoryParams;
 					signal?.throwIfAborted();
 					const store = storeFor(ctx);
-					const limit = Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT));
+					const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT)));
 					const trusted = projectTrustNow(ctx) === true;
 					const readScope = trusted ? (params.scope ?? "all") : "global";
 					const note = (text: string) => (trusted ? text : `${text}\n${HIDDEN_NOTE}`);
@@ -181,7 +188,11 @@ export function registerMemoryTool(
 							const found = store.search(params.query, readScope, limit + 1);
 							const hits = found.slice(0, limit);
 							const more =
-								found.length > hits.length ? "\n… more memories match; raise limit, or narrow the query." : "";
+								found.length > hits.length
+									? limit === MAX_LIMIT
+										? "\n… more memories match; narrow the query."
+										: "\n… more memories match; raise limit, or narrow the query."
+									: "";
 							return textResult(note(`${listText(hits, "No memory matches.")}${more}`), {
 								ids: hits.map((hit) => hit.id),
 							});
@@ -196,7 +207,9 @@ export function registerMemoryTool(
 							const memories = store.list(readScope, limit);
 							const total = store.count(readScope);
 							const more =
-								total > memories.length ? `\n… ${total - memories.length} more; search, or raise limit.` : "";
+								total > memories.length
+									? `\n… ${total - memories.length} more; ${limit === MAX_LIMIT ? "search to narrow the results" : "search, or raise limit"}.`
+									: "";
 							return textResult(note(`${listText(memories, "No memories yet.")}${more}`), {
 								ids: memories.map((memory) => memory.id),
 								total,

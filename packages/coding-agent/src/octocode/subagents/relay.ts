@@ -1,5 +1,5 @@
 import type { ExtensionUIContext } from "../../core/extensions/index.ts";
-import { ALLOW_ONCE, DENY_NOTE, NOTE_TITLE } from "../permission/ask.ts";
+import { ALLOW_ONCE, DENY_NOTE, NOTE_TITLE } from "../permission/ask/text.ts";
 import {
 	AUDIT_NOTIFY_PREFIX,
 	type AuditEntry,

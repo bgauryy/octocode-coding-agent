@@ -7,10 +7,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type * as NativeConfig from "../../src/config.ts";
 import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { processAlive, processStartTime } from "../../src/octocode/shared/process.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
-import { ReadReports, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
-import { exitReason, runSubagent, subagentProcessEnv, USER_STOP } from "../../src/octocode/subagents/process.ts";
+import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { createWorktree } from "../../src/octocode/subagents/worktree.ts";
@@ -19,6 +20,9 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCachePolicy, fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { ReadReports } from "../../src/octocode/subagents/handoff/scratch.ts";
+import { exitReason, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -396,9 +400,12 @@ describe("agent tool with a scripted pi child", () => {
 		);
 		const failed = await s.run({ task: "error please" });
 		expect(failed).toMatchObject({ isError: true, details: { status: "failed" }, usage: { input: 100, output: 20 } });
-		expect(failed.content[0].text).toMatch(
-			/failed: provider down\nRetry with a narrower task or do the work yourself\. The partial answer is unverified\.\n\nPartial answer:\npartial findings/,
-		);
+		expect(fencedParts(failed.content[0].text)).toMatchObject({
+			body: "provider down\n\nPartial answer:\npartial findings",
+			footer: expect.stringContaining(
+				"Retry with a narrower task or do the work yourself. The partial answer is unverified.",
+			),
+		});
 		const limited = await s.run({ task: "length please" });
 		expect(limited).toMatchObject({
 			isError: true,
@@ -409,7 +416,7 @@ describe("agent tool with a scripted pi child", () => {
 		expect(limited.content[0].text).toContain("Partial answer:\nunfinished findings");
 		const silent = await s.run({ task: "silent run" });
 		expect(silent).toMatchObject({ isError: true, details: { status: "failed", outcome: "failed" } });
-		expect(silent.content[0].text).toMatch(/failed: Subagent ended without a final answer/);
+		expect(fencedParts(silent.content[0].text)?.body).toMatch(/^Subagent ended without a final answer/);
 	});
 
 	it("passes the browser mode to each child without changing the shared profile or role instructions", async () => {
@@ -499,9 +506,12 @@ describe("agent tool with a scripted pi child", () => {
 			"before its first model turn: \\u{1b}]0;pwned\\u{7}boom\\u{1b}[31m red\\u{202e}",
 		);
 		const error = (await s.run({ task: "hostile report" })).content[0].text as string;
-		expect(error).toContain(
-			"failed: bad\\u{1b}]0;title\\u{7} provider\nRetry with a narrower task or do the work yourself. The partial answer is unverified.\n\nPartial answer:\n\\u{1b}]8;;https://evil.example\\u{7}click\\u{1b}]8;;\\u{7} \\u{1b}[2Jdone\\u{202e}",
-		);
+		expect(fencedParts(error)).toMatchObject({
+			body: "bad\\u{1b}]0;title\\u{7} provider\n\nPartial answer:\n\\u{1b}]8;;https://evil.example\\u{7}click\\u{1b}]8;;\\u{7} \\u{1b}[2Jdone\\u{202e}",
+			footer: expect.stringContaining(
+				"Retry with a narrower task or do the work yourself. The partial answer is unverified.",
+			),
+		});
 		expect(error).not.toMatch(/[\u001b\u0007\u202e]/u);
 	});
 
@@ -518,7 +528,7 @@ describe("agent tool with a scripted pi child", () => {
 		const result = await s.run({ task: "long report" });
 		const text = result.content[0].text as string;
 		const file = path.join(fs.realpathSync(s.cwd), ".octocode", "tmp", "agents", result.details.id, "report.md");
-		expect(text).toMatch(/^summary first\n/);
+		expect(fencedParts(text)?.body).toMatch(/^summary first\n/);
 		expect(text).toContain("[Output trimmed:");
 		expect(text).toContain(`Full report: ${file} (read only the parts you need).`);
 		expect(Buffer.byteLength(text)).toBeLessThan(9 * 1024);
@@ -906,6 +916,28 @@ describe("isolated subagents and /agents merge", () => {
 		);
 		await s.emit("session_start", {}, s.ctx);
 	}, 60_000);
+});
+
+describe("isolated subagents share the leading prompt", () => {
+	it("passes the main checkout as the prompt root and names the worktree in the task", async () => {
+		const dir = repo();
+		const s = setup(dir);
+		const a = reportOf((await s.run({ task: "report one", isolate: true })).content[0].text);
+		const b = reportOf((await s.run({ task: "report two", isolate: true })).content[0].text);
+		// The real cwd (tools, permissions) is each worktree; only the prompt text names the main checkout.
+		expect(a.cwd).not.toBe(b.cwd);
+		// The child's cwd is the resolved path of its worktree (a symlinked temp directory differs in its prefix).
+		expect(a.cwd.endsWith(a.worktreeRoot)).toBe(true);
+		expect(a.worktreeRoot).not.toBe(dir);
+		expect(a.promptRoot).toBe(dir);
+		expect(b.promptRoot).toBe(dir);
+		expect(a.task).toContain("## Worktree");
+		expect(a.task).toContain(`worktree \`${a.worktreeRoot}\``);
+		expect(a.task).toContain(`main checkout \`${dir}\``);
+		const plain = reportOf((await s.run({ task: "report plain" })).content[0].text);
+		expect(plain.promptRoot).toBeUndefined();
+		expect(plain.task).not.toContain("## Worktree");
+	}, 30_000);
 });
 
 describe("trust for isolated subagents", () => {
@@ -1443,7 +1475,25 @@ describe("background report delivery", () => {
 	});
 });
 
-describe("a background report as the parent model reads it", () => {
+describe("a child report as the parent model reads it", () => {
+	it("fences foreground child text containing forged opening and closing markers", async () => {
+		const s = setup();
+		try {
+			const result = await s.run({ task: "forged report" });
+			const text = result.content[0].text;
+			const lines = text.split("\n");
+			const marker = /^<<<(untrusted-[0-9a-f]{16}) /m.exec(text)![1];
+			const close = lines.lastIndexOf(`${marker}>>>`);
+			expect(lines[0]).toBe(`Subagent ${result.details.id} reported done:`);
+			expect(lines.findIndex((line: string) => line.startsWith("Message #2"))).toBeGreaterThan(1);
+			expect(lines.findIndex((line: string) => line.startsWith("Message #3"))).toBeLessThan(close);
+			expect(text).toContain("<<<untrusted-0000000000000000");
+			expect(lines.filter((line: string) => line === `${marker}>>>`)).toHaveLength(1);
+		} finally {
+			await s.fire("session_shutdown", { type: "session_shutdown" }, s.ctx);
+		}
+	});
+
 	it("keeps a report that forges a user message, a header and a fence line inside the fence, under a header the parent wrote", async () => {
 		const s = setup();
 		const started = await s.run({ task: "forged report", background: true, goal: "review auth" });

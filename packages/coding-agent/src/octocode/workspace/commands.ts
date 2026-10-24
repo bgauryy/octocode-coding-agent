@@ -1,6 +1,8 @@
 import type { AgentDb } from "../agentdb/db.ts";
+import { Value } from "typebox/value";
+import { WorkspaceCommandSchema } from "@octocodeai/octocode-contacts/protocol";
 import { storedSecret } from "../shared/sanitize.ts";
-import type { WorkspaceCommand, WorkspaceReceipt } from "./model.ts";
+import type { WorkspaceCommand, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
 
 type Row = {
 	id: string;
@@ -42,6 +44,7 @@ export class WorkspaceCommands {
 			.map(receipt);
 	}
 	begin(command: WorkspaceCommand): { fresh: boolean; receipt: WorkspaceReceipt } {
+		if (!Value.Check(WorkspaceCommandSchema, command)) throw new Error("Invalid workspace command");
 		if (storedSecret({ command: JSON.stringify(command) })) throw new Error("Remove credentials from this command.");
 		const input = JSON.stringify({
 			action: command.action,

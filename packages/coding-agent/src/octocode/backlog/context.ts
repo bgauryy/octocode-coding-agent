@@ -1,7 +1,7 @@
 import type { ExtensionContext, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
 import { PARENT_SESSION_ENV } from "../shared/env.ts";
-import { repoKey } from "../shared/home.ts";
+import { repoKey } from "../shared/home/repo.ts";
 import { type Actor, BacklogStore } from "./store.ts";
 
 export interface BacklogOptions {

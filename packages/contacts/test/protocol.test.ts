@@ -15,5 +15,5 @@ it("shares entity schemas with transport and rejects invalid lifecycle values", 
 	).toBe(true);
 	expect(Value.Check(BacklogMutationSchema, { op: "update", state: "invented" })).toBe(false);
 	expect(Value.Check(BacklogMutationSchema, { op: "update", priority: 9 })).toBe(false);
-	expect(new Set(Object.values(WORKSPACE_ROUTES)).size).toBe(5);
+	expect(new Set(Object.values(WORKSPACE_ROUTES)).size).toBe(7);
 });

@@ -11,6 +11,8 @@ import type { AssistantMessage, Model, StopReason } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { type Block, REDACTED_THINKING_PLACEHOLDER } from "./types.ts";
+import { bedrockAnnotation } from "./rich-content.ts";
+import { outputFields, providerOutputText } from "../provider-output.ts";
 
 export function handleContentBlockStart(
 	event: ContentBlockStartEvent,
@@ -32,6 +34,24 @@ export function handleContentBlockStart(
 		};
 		output.content.push(block);
 		stream.push({ type: "toolcall_start", contentIndex: blocks.length - 1, partial: output });
+	} else if (start?.image) {
+		output.content.push({ type: "image", data: "", mimeType: `image/${start.image.format ?? "png"}`, index } as Block);
+		stream.push({ type: "content_update", contentIndex: blocks.length - 1, partial: output });
+	} else if (start?.toolResult) {
+		output.content.push({
+			...providerOutputText("toolResult", outputFields(start.toolResult, ["toolUseId", "type", "status"])),
+			index,
+		} as Block);
+		stream.push({ type: "content_update", contentIndex: blocks.length - 1, partial: output });
+	} else if (start) {
+		const providerType = start.$unknown?.[0] ?? "toolResult";
+		output.content.push({
+			type: "unsupported",
+			providerType,
+			text: `Provider output: ${providerType}`,
+			index,
+		} as Block);
+		stream.push({ type: "content_update", contentIndex: blocks.length - 1, partial: output });
 	}
 }
 
@@ -59,6 +79,57 @@ export function handleContentBlockDelta(
 			block.text += delta.text;
 			stream.push({ type: "text_delta", contentIndex: index, delta: delta.text, partial: output });
 		}
+	} else if (delta?.citation) {
+		if (!block) {
+			block = { type: "text", text: "", index: contentBlockIndex };
+			output.content.push(block);
+			index = blocks.length - 1;
+		}
+		if (block.type === "text") {
+			(block.annotations ??= []).push(bedrockAnnotation(delta.citation));
+			stream.push({ type: "content_update", contentIndex: index, partial: output });
+		}
+	} else if (delta?.image) {
+		if (block?.type === "image" && delta.image.source?.bytes) {
+			(block.imageChunks ??= []).push(delta.image.source.bytes);
+			block.data = bytesToBase64(block.imageChunks);
+		} else if (delta.image.source?.s3Location?.uri) {
+			block = { type: "resource", uri: delta.image.source.s3Location.uri, index: contentBlockIndex };
+		} else if (delta.image.error) {
+			block = {
+				type: "unsupported",
+				providerType: "image",
+				text: `Image output failed: ${delta.image.error.message ?? "Provider error"}`,
+				index: contentBlockIndex,
+			};
+		}
+		if (block) {
+			if (index < 0) index = output.content.length;
+			output.content[index] = block;
+			stream.push({ type: "content_update", contentIndex: index, partial: output });
+		}
+	} else if (delta?.toolResult) {
+		if (!block) {
+			block = { type: "text", text: "", index: contentBlockIndex };
+			output.content.push(block);
+			index = blocks.length - 1;
+		}
+		if (block.type === "text") {
+			for (const part of delta.toolResult) {
+				block.text +=
+					part.text ??
+					`\n${providerOutputText("toolResult", part.json !== undefined ? { result: part.json } : { type: part.$unknown?.[0] }).text}`;
+			}
+			stream.push({ type: "content_update", contentIndex: index, partial: output });
+		}
+	} else if (delta?.$unknown && !block) {
+		output.content.push({
+			type: "unsupported",
+			providerType: delta.$unknown[0],
+			text: `Provider output: ${delta.$unknown[0]}`,
+			index: contentBlockIndex,
+		} as Block);
+		stream.push({ type: "content_update", contentIndex: blocks.length - 1, partial: output });
 	} else if (delta?.toolUse && block?.type === "toolCall") {
 		block.partialJson = (block.partialJson || "") + (delta.toolUse.input || "");
 		block.arguments = parseStreamingJson(block.partialJson);
@@ -131,6 +202,7 @@ export function finalizeStreamingBlock(block: Block): void {
 	delete block.index;
 	// partialJson is only a streaming scratch buffer; never persist it.
 	delete block.partialJson;
+	delete block.imageChunks;
 	flushRedactedContent(block);
 }
 
@@ -148,7 +220,10 @@ export function handleMetadata(
 			(total, detail) => total + (detail.ttl === CacheTTL.ONE_HOUR ? (detail.inputTokens ?? 0) : 0),
 			0,
 		);
-		output.usage.totalTokens = event.usage.totalTokens || output.usage.input + output.usage.output;
+		// Bedrock's total includes cache reads and writes; the fallback counts them the same way.
+		output.usage.totalTokens =
+			event.usage.totalTokens ||
+			output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
 		calculateCost(model, output.usage);
 	}
 }
@@ -163,6 +238,7 @@ export function handleContentBlockStop(
 	const block = blocks[index];
 	if (!block) return;
 	delete block.index;
+	delete block.imageChunks;
 
 	switch (block.type) {
 		case "text":

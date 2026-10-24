@@ -11,16 +11,6 @@ import {
 } from "./compat-schema/common.ts";
 import { OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema } from "./compat-schema/openai.ts";
 
-export { AnthropicAllowedFallbackModelSchema, AnthropicMessagesCompatSchema } from "./compat-schema/anthropic.ts";
-export {
-	ChatTemplateKwargValueSchema,
-	OpenRouterRoutingSchema,
-	SessionAffinityFormatSchema,
-	ThinkingTokenBudgetFieldSchema,
-	VercelGatewayRoutingSchema,
-} from "./compat-schema/common.ts";
-export { OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema } from "./compat-schema/openai.ts";
-
 export const BedrockCompatSchema = Type.Object(
 	{
 		supportsStrictMode: optionalCompatBoolean({
@@ -36,11 +26,11 @@ export const BedrockCompatSchema = Type.Object(
 	{ description: "Compatibility settings for Amazon Bedrock models.", additionalProperties: true },
 );
 
-export const MistralConversationsCompatSchema = Type.Object(
+const MistralConversationsCompatSchema = Type.Object(
 	{
 		supportsMidConvoSystemMessages: optionalCompatBoolean({
 			description:
-				"Whether the exact model accepts system messages after the conversation has started. When false, later system messages are folded into the leading system message.",
+				"Whether the exact model accepts system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages.",
 			default: false,
 		}),
 	},
@@ -53,7 +43,7 @@ const ProviderCompatPropertyOverrides = {
 	}),
 	supportsMidConvoSystemMessages: optionalCompatBoolean({
 		description:
-			"Whether the exact model accepts system or developer messages after the conversation has started. When false, later system messages are folded into the leading system message.",
+			"Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages.",
 		default: false,
 	}),
 	sessionAffinityFormat: optionalSessionAffinityFormat({

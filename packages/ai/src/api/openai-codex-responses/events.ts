@@ -1,7 +1,7 @@
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import type { AssistantMessage, Model, StreamOptions } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { processResponsesStream } from "../openai-responses-shared.ts";
+import { processResponsesStream } from "../openai-responses-shared/stream-processing.ts";
 import { CodexApiError, ProviderStreamEventCallbackError } from "./errors.ts";
 import { applyServiceTierPricing, resolveCodexServiceTier } from "./request.ts";
 import { parseSSE } from "./sse.ts";

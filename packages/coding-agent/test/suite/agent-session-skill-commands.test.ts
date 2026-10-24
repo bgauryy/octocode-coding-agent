@@ -63,10 +63,10 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 				sourceInfo: skills[1].sourceInfo,
 			},
 			{
-				name: "config",
-				description: "Config",
-				content: "Config $1",
-				filePath: join(root, "config.md"),
+				name: "settings",
+				description: "Settings",
+				content: "Settings $1",
+				filePath: join(root, "settings.md"),
 				sourceInfo: skills[1].sourceInfo,
 			},
 		],
@@ -80,7 +80,7 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 			.getCommands()
 			.filter((command) => command.source === "prompt")
 			.map((command) => command.name),
-	).toEqual(["review", "prompt:config"]);
+	).toEqual(["review", "prompt:settings"]);
 	const discovered = api.getCommands().filter((command) => command.source === "skill");
 	expect(discovered.map((command) => command.name)).toEqual([
 		"research",
@@ -93,7 +93,7 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 	await harness.session.prompt("/custom arguments");
 	expect(extensionCalls).toBe(1);
 	for (const [command, expected] of [
-		['/prompt:config "quoted argument"', "Config quoted argument"],
+		['/prompt:settings "quoted argument"', "Settings quoted argument"],
 		["/research\tkeep  two spaces", "Body 0"],
 		["/skill:research fallback", "Body 0"],
 		["/review argument", "Template argument"],
@@ -108,6 +108,6 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 		expect(user && getMessageText(user)).toContain(expected);
 		if (command.includes("keep")) expect(user && getMessageText(user)).toContain("keep  two spaces");
 	}
-	await harness.session.steer('/prompt:config "steering argument"');
-	expect(harness.session.getSteeringMessages()).toEqual(["Config steering argument"]);
+	await harness.session.steer('/prompt:settings "steering argument"');
+	expect(harness.session.getSteeringMessages()).toEqual(["Settings steering argument"]);
 });

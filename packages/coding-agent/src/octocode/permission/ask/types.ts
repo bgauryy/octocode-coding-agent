@@ -4,7 +4,7 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import type { ExtensionToolContext, ToolInvocation } from "../../../core/extensions/types.ts";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import type { ActionClass, PermissionMode } from "../mode.ts";
-import type { SourceDecision } from "../source-policy.ts";
+import type { SourceDecision } from "../source-policy/rules.ts";
 import type { PermissionRequest } from "../request.ts";
 
 /**
@@ -50,7 +50,7 @@ export type PermissionResolver = (
 	| undefined
 >;
 
-export type ReplacementCommit = (signal: AbortSignal, source: SourceDecision | undefined) => Promise<void>;
+type ReplacementCommit = (signal: AbortSignal, source: SourceDecision | undefined) => Promise<void>;
 export type PrepareReplacement = (
 	input: JsonObject,
 ) => Promise<{ request: PermissionRequest; commit: ReplacementCommit; fileIndices?: number[] }>;

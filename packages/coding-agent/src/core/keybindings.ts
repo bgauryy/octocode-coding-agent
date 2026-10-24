@@ -81,7 +81,7 @@ const APP_KEYBINDINGS = {
 	},
 	"app.message.dequeue": {
 		defaultKeys: windowsKeybindings ? "alt+q" : "alt+up",
-		description: "Restore queued messages",
+		description: "Restore the last queued message",
 	},
 	"app.clipboard.pasteImage": {
 		defaultKeys: windowsKeybindings ? "alt+v" : "ctrl+v",
@@ -182,7 +182,7 @@ const APP_KEYBINDINGS = {
 } as const satisfies KeybindingDefinitions;
 
 export type AppKeybinding = keyof typeof APP_KEYBINDINGS;
-export type AppKeybindings = { [K in AppKeybinding]: true };
+type AppKeybindings = { [K in AppKeybinding]: true };
 
 declare module "@octocodeai/octocode-tui" {
 	interface Keybindings extends AppKeybindings {}
@@ -367,4 +367,4 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	}
 }
 
-export type { Keybinding, KeyId, KeybindingsConfig };
+export type { KeyId, KeybindingsConfig };

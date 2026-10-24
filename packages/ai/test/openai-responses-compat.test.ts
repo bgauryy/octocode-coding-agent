@@ -1,7 +1,8 @@
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
 import { getCopilotResponsesReasoningModel } from "./catalog-models.ts";
 
@@ -31,7 +32,7 @@ function getHeader(headers: CapturedHeaders, name: string): string | null {
 
 async function captureOpenAIResponseHeaders(
 	options: Parameters<typeof streamOpenAIResponses>[2],
-	model: Model<"openai-responses"> = getModel("openai", "gpt-5.4"),
+	model: Model<"openai-responses"> = getBuiltinModel("openai", "gpt-5.4"),
 ): Promise<{
 	sessionId: string | null;
 	clientRequestId: string | null;
@@ -119,7 +120,7 @@ describe("openai-responses provider defaults", () => {
 		);
 
 		const stream = streamOpenAIResponses(
-			getModel("openai", "gpt-5.4"),
+			getBuiltinModel("openai", "gpt-5.4"),
 			normalizeContext({
 				messages: [
 					{
@@ -157,7 +158,7 @@ describe("openai-responses provider defaults", () => {
 	});
 
 	it("sets strict mode explicitly for Cloudflare OpenAI Responses tools", async () => {
-		const model = getModel("cloudflare-ai-gateway", "gpt-5.6-sol");
+		const model = getBuiltinModel("cloudflare-ai-gateway", "gpt-5.6-sol");
 		let capturedPayload: CapturedResponsesPayload | undefined;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -221,7 +222,7 @@ describe("openai-responses provider defaults", () => {
 		"gpt-6-sol",
 		"gpt-6-luna",
 	] as const)("sends none reasoning effort for OpenAI %s when no reasoning is requested", async (modelId) => {
-		const model = getModel("openai", modelId);
+		const model = getBuiltinModel("openai", modelId);
 		let capturedPayload: unknown;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -257,7 +258,7 @@ describe("openai-responses provider defaults", () => {
 	it.each(["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "gpt-5.2-pro", "gpt-5.4-pro", "gpt-5.5-pro"] as const)(
 		"omits reasoning effort for OpenAI %s when off is unsupported",
 		async (modelId) => {
-			const model = getModel("openai", modelId);
+			const model = getBuiltinModel("openai", modelId);
 			let capturedPayload: unknown;
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -309,7 +310,7 @@ describe("openai-responses provider defaults", () => {
 		);
 
 		const stream = streamOpenAIResponses(
-			getModel("openai", "gpt-5.4"),
+			getBuiltinModel("openai", "gpt-5.4"),
 			normalizeContext({
 				systemPrompt: "sys",
 				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
@@ -332,7 +333,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("sets cache-affinity headers for proxy OpenAI Responses requests with a sessionId", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...getBuiltinModel("openai", "gpt-5.4"),
 			provider: "opencode",
 			baseUrl: "https://proxy.example.com/v1",
 		};
@@ -344,7 +345,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("uses OpenRouter session-affinity header when configured", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...getBuiltinModel("openai", "gpt-5.4"),
 			provider: "proxy",
 			baseUrl: "https://proxy.example.com/v1",
 			compat: { sessionAffinityFormat: "openrouter" },
@@ -369,7 +370,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("auto-detects OpenRouter session-affinity header for OpenRouter Responses endpoints", async () => {
 		const openRouterModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...getBuiltinModel("openai", "gpt-5.4"),
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
 		};
@@ -393,7 +394,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("uses OpenAI no-session format when configured", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...getBuiltinModel("openai", "gpt-5.4"),
 			provider: "proxy",
 			baseUrl: "https://proxy.example.com/v1",
 			compat: { sessionAffinityFormat: "openai-nosession" },
@@ -417,7 +418,7 @@ describe("openai-responses provider defaults", () => {
 	});
 
 	it("uses OpenAI no-session format for OpenCode Responses models", async () => {
-		const model = getModel("opencode", "gpt-5.4");
+		const model = getBuiltinModel("opencode", "gpt-5.4");
 		let capturedPayload: CapturedResponsesPayload | undefined;
 		const captured = await captureOpenAIResponseHeaders(
 			{
@@ -438,7 +439,7 @@ describe("openai-responses provider defaults", () => {
 
 	it("can omit OpenAI session_id header while preserving other affinity data", async () => {
 		const proxyModel: Model<"openai-responses"> = {
-			...getModel("openai", "gpt-5.4"),
+			...getBuiltinModel("openai", "gpt-5.4"),
 			provider: "opencode",
 			baseUrl: "https://proxy.example.com/v1",
 			compat: { sessionAffinityFormat: "openai-nosession" },
@@ -489,7 +490,7 @@ describe("openai-responses provider defaults", () => {
 	] as const)(
 		"applies %s cost multiplier for requested %s and returned %s service tier",
 		async (modelId, serviceTier, responseServiceTier, multiplier) => {
-			const model = getModel("openai", modelId);
+			const model = getBuiltinModel("openai", modelId);
 			const tokenCount = 100_000;
 			const tokenScale = tokenCount / 1_000_000;
 			const sse = `${[
@@ -549,7 +550,7 @@ describe("openai-responses max_output_tokens compat", () => {
 		);
 
 		const stream = streamOpenAIResponses(
-			getModel("openai", "gpt-5.4"),
+			getBuiltinModel("openai", "gpt-5.4"),
 			normalizeContext({
 				systemPrompt: "sys",
 				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
@@ -571,7 +572,7 @@ describe("openai-responses max_output_tokens compat", () => {
 	});
 
 	it("omits max_output_tokens when supportsMaxOutputTokens is false", async () => {
-		const baseModel = getModel("openai", "gpt-5.4");
+		const baseModel = getBuiltinModel("openai", "gpt-5.4");
 		const model: Model<"openai-responses"> = {
 			...baseModel,
 			compat: { ...baseModel.compat, supportsMaxOutputTokens: false },

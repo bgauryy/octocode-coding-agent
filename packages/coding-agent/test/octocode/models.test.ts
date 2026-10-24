@@ -214,7 +214,7 @@ describe("model purposes", () => {
 		});
 	});
 
-	it("lists models cheapest first with the purposes and profiles", () => {
+	it("groups models by provider, cheapest first within each group, with purposes and profiles", () => {
 		const text = describeModels(
 			[opus, haiku, sonnet],
 			opus,
@@ -222,8 +222,9 @@ describe("model purposes", () => {
 			indexCatalog(api, 1),
 		);
 		const lines = text.split("\n");
-		expect(lines[1]).toMatch(/^ {2}p\/haiku · \$0\.10\/\$0\.50 per M in\/out · 200k · tools, images/);
-		expect(lines[3]).toMatch(/^● p\/opus/);
+		expect(lines[2]).toBe("p:");
+		expect(lines[3]).toMatch(/^ {2}p\/haiku · \$0\.10\/\$0\.50 per M in\/out · 200k · tools, images/);
+		expect(lines[5]).toMatch(/^● p\/opus/);
 		expect(text).toContain("small: p/haiku");
 		expect(text).toContain("medium: p/sonnet");
 		expect(text).toContain("researcher: p/haiku (small, a purpose)");

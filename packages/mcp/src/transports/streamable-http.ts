@@ -31,14 +31,11 @@ import {
 	TransportEvents,
 } from "./transport.ts";
 
-export { McpAuthRequiredError, McpHttpError, McpSessionExpiredError } from "./streamable-http/http.ts";
-export { type ConsumeSseOptions, consumeSseStream, type SseEvent } from "./streamable-http/sse.ts";
-
 const DEFAULT_RECONNECT_INITIAL_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const DEFAULT_RECONNECT_MAX_RETRIES = 5;
 
-export interface StreamableHttpReconnectOptions {
+interface StreamableHttpReconnectOptions {
 	/** Delay before the first reconnection attempt, unless the server sent a `retry` field. Default: 1000. */
 	initialDelayMs?: number;
 	/** Upper bound for the exponential backoff. Default: 30000. */

@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { APP_NAME, CONFIG_DIR_NAME } from "../config.ts";
+import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME } from "../config.ts";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
 
@@ -10,7 +10,7 @@ export function getPackageCommandUsage(command: PackageCommand): string {
 		case "remove":
 			return `${APP_NAME} remove <source> [-l] [--approve|--no-approve]`;
 		case "update":
-			return `${APP_NAME} update [source|self|pi] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
+			return `${APP_NAME} update [source|self] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--approve|--no-approve]`;
 	}
@@ -61,7 +61,6 @@ Examples:
   ${getPackageCommandUsage("remove")}
 
 Remove a package and its source from settings.
-Alias: ${APP_NAME} uninstall <source> [-l]
 
 Options:
   -l, --local       Remove from project settings (${CONFIG_DIR_NAME}/settings.json)
@@ -70,7 +69,6 @@ Options:
 
 Examples:
   ${APP_NAME} remove npm:@foo/bar
-  ${APP_NAME} uninstall npm:@foo/bar
 `);
 			return;
 
@@ -78,24 +76,24 @@ Examples:
 			console.log(`${chalk.bold("Usage:")}
   ${getPackageCommandUsage("update")}
 
-Update pi, installed packages, or model catalogs.
+Update ${APP_TITLE}, installed packages, or model catalogs.
 
 Options:
-  --self                  Update pi only (default when no target is given)
+  --self                  Update ${APP_TITLE} only (default when no target is given)
   --extensions            Update installed packages only
   --models                Refresh model catalogs only
-  --all                   Update pi and installed packages
+  --all                   Update ${APP_TITLE} and installed packages
   --extension <source>    Update one package only
   -a, --approve           Trust project-local files for this command
   -na, --no-approve       Ignore project-local files for this command
-  --force                 Reinstall pi even if the current version is latest
+  --force                 Reinstall ${APP_TITLE} even if the current version is latest
 
 Short forms:
-  ${APP_NAME} update                Update pi only
-  ${APP_NAME} update --all          Update pi and all extensions
+  ${APP_NAME} update                Update ${APP_TITLE} only
+  ${APP_NAME} update --all          Update ${APP_TITLE} and all extensions
   ${APP_NAME} update --models       Refresh model catalogs only
   ${APP_NAME} update <source>       Update one package
-  ${APP_NAME} update pi             Update pi only (self works as alias to pi)
+  ${APP_NAME} update self           Update ${APP_TITLE} only
 `);
 			return;
 

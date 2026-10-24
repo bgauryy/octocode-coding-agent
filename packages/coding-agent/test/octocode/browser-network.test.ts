@@ -13,11 +13,12 @@ import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import type { HostLookup } from "../../src/octocode/web/guard.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { type CdpHandler, type CdpStub, startCdpStub } from "./fixtures/cdp-stub.ts";
+import { AUDIT_KEYS_MAX, BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 const launch = vi.hoisted(() => vi.fn());
 vi.mock("chrome-launcher", () => ({ launch }));
 
-const { AUDIT_KEYS_MAX, BrowserTool, registerBrowserTool } = await Promise.resolve(importedModule1);
+const { registerBrowserTool } = await Promise.resolve(importedModule1);
 const { openBrowser } = await Promise.resolve(importedModule2);
 
 const PRIVATE_HOSTS = [

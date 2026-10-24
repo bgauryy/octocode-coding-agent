@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { visibleWidth, wrapTextWithAnsi } from "../src/utils.ts";
+import { wrapTextWithAnsi } from "../src/utils/wrap.ts";
+import { visibleWidth } from "../src/utils/width.ts";
 
 describe("wrapTextWithAnsi", () => {
 	it("splits a single grapheme wider than the line instead of overflowing it", () => {

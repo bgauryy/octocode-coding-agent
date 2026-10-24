@@ -6,7 +6,7 @@ import {
 	HOOK_OUTPUT_MAX_BYTES,
 	type HookRun,
 } from "./contracts.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 const RESPONSE_LIMIT = HOOK_OUTPUT_MAX_BYTES;
 const stringArray = (value: unknown): value is string[] =>

@@ -1,8 +1,10 @@
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { errorMessage } from "../shared/util.ts";
-import { type AgentDirectory, type ApiOperations, OctocodeApi, optionsFromEnv, transportsFor } from "./bridge.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import type { AgentDirectory, ApiOperations } from "./bridge/contracts.ts";
+import { optionsFromEnv, transportsFor } from "./bridge/options.ts";
+import { OctocodeApi } from "./bridge.ts";
 
 /** Wire the external API into Octocode: event publishing, lifecycle and `/api`. Subagents never expose one. */
 export function registerApi(

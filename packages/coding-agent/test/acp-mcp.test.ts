@@ -122,14 +122,14 @@ for await (const line of createInterface({input: process.stdin})) {
 		).rejects.toThrow("Duplicate MCP environment");
 	});
 
-	it("registers streamable HTTP headers as literal client data", async () => {
+	it.each(["Authorization", "__proto__"])("preserves literal HTTP header %s through registration", async (header) => {
 		const literal = "!printf never; ${MISSING_ENV}";
 		const entry = await prepare([
 			{
 				type: "http",
 				name: "remote",
 				url: "https://example.com/mcp",
-				headers: [{ name: "Authorization", value: literal }],
+				headers: [{ name: header, value: literal }],
 			},
 		]);
 		const loaded = await loadExtensions([entry.args[1]], workspace);
@@ -138,13 +138,29 @@ for await (const line of createInterface({input: process.stdin})) {
 		expect(config).toMatchObject({
 			type: "http",
 			url: "https://example.com/mcp",
-			headers: { Authorization: literal },
+			headers: { [header]: literal },
 			literalHeaders: true,
 		});
 		const transport = createDefaultTransport({ name: "client", config, source: entry.args[1] }, workspace, undefined);
 		expect(transport).toBeInstanceOf(StreamableHttpTransport);
 		if (!(transport instanceof StreamableHttpTransport)) throw new Error("Expected streamable HTTP transport");
-		expect(transport.options.headers?.Authorization).toBe(literal);
+		expect(transport.options.headers?.[header]).toBe(literal);
+	});
+
+	it("rejects duplicate special-property header names before writing configuration", async () => {
+		await expect(
+			prepare([
+				{
+					type: "http",
+					name: "remote",
+					url: "https://example.com/mcp",
+					headers: [
+						{ name: "__proto__", value: "first" },
+						{ name: "__PROTO__", value: "second" },
+					],
+				},
+			]),
+		).rejects.toThrow("Duplicate MCP HTTP header");
 	});
 
 	it("registers legacy SSE using the native transport and preserves literal headers", async () => {

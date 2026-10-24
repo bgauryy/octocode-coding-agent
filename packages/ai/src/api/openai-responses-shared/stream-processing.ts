@@ -10,6 +10,8 @@ import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-par
 import { appendGrammarToolInputJsonDelta, type GrammarToolInputJsonBuffer } from "../constrained-sampling.ts";
 import { mapStopReason, parseResponsesUsage } from "./response-result.ts";
 import { encodeTextSignatureV1 } from "./text-signature.ts";
+import { responseAnnotation, responseAnnotations } from "./rich-content.ts";
+import { ResponsesArtifacts } from "./stream-artifacts.ts";
 import type { OpenAIResponsesStreamOptions } from "./types.ts";
 
 // =============================================================================
@@ -42,7 +44,8 @@ function appendCustomToolCallInput(block: StreamingToolCall, nextInput: string, 
 type ResponsesOutputSlot =
 	| { type: "thinking"; block: ThinkingContent; contentIndex: number }
 	| { type: "text"; block: TextContent; contentIndex: number }
-	| { type: "toolCall"; block: StreamingToolCall; contentIndex: number };
+	| { type: "toolCall"; block: StreamingToolCall; contentIndex: number }
+	| { type: "rich"; contentIndex: number };
 
 type ToolCallOutputSlot = Extract<ResponsesOutputSlot, { type: "toolCall" }>;
 
@@ -56,6 +59,7 @@ export async function processResponsesStream<TApi extends Api>(
 	let sawTerminalResponseEvent = false;
 	const outputSlots = new Map<number, ResponsesOutputSlot>();
 	const reasoningBlocksById = new Map<string, ThinkingContent>();
+	const artifacts = new ResponsesArtifacts(output, stream);
 	const applyMessagePhaseStopReason = (item: ResponseOutputItem): void => {
 		if (item.type === "message" && item.phase === "final_answer") {
 			output.stopReason = "stop";
@@ -142,7 +146,9 @@ export async function processResponsesStream<TApi extends Api>(
 			stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
 			return slot;
 		}
-		return undefined;
+		const slot = { type: "rich", contentIndex: artifacts.upsert(item, outputIndex) } satisfies ResponsesOutputSlot;
+		outputSlots.set(outputIndex, slot);
+		return slot;
 	};
 	const getOrCreateSlot = (outputIndex: number, item: ResponseOutputItem): ResponsesOutputSlot | undefined => {
 		return outputSlots.get(outputIndex) ?? createSlot(outputIndex, item);
@@ -170,6 +176,7 @@ export async function processResponsesStream<TApi extends Api>(
 	): void => {
 		sawTerminalResponseEvent = true;
 		backfillReasoningSignatures(response.output ?? []);
+		artifacts.finish(response.output ?? []);
 		if (response?.id) {
 			output.responseId = response.id;
 		}
@@ -200,6 +207,7 @@ export async function processResponsesStream<TApi extends Api>(
 
 	for await (const event of openaiStream) {
 		await options?.onProviderStreamEvent?.(event, model);
+		if (artifacts.accept(event)) continue;
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
 		} else if (event.type === "response.output_item.added") {
@@ -244,6 +252,11 @@ export async function processResponsesStream<TApi extends Api>(
 				delta: event.delta,
 				partial: output,
 			});
+		} else if (event.type === "response.output_text.annotation.added") {
+			const slot = getSlot(event.output_index, "text");
+			if (!slot || !event.annotation) continue;
+			(slot.block.annotations ??= []).push(responseAnnotation(event.annotation));
+			stream.push({ type: "content_update", contentIndex: slot.contentIndex, partial: output });
 		} else if (event.type === "response.refusal.delta") {
 			const slot = getSlot(event.output_index, "text");
 			if (!slot) continue;
@@ -303,12 +316,17 @@ export async function processResponsesStream<TApi extends Api>(
 			} else if (item.type === "message" && slot?.type === "text") {
 				slot.block.text = item.content?.map((c) => (c.type === "output_text" ? c.text : c.refusal)).join("") || "";
 				slot.block.textSignature = encodeTextSignatureV1(item.id, item.phase ?? undefined);
+				const annotations = responseAnnotations(item);
+				if (annotations.length) slot.block.annotations = annotations;
 				stream.push({
 					type: "text_end",
 					contentIndex: slot.contentIndex,
 					content: slot.block.text,
 					partial: output,
 				});
+				outputSlots.delete(event.output_index);
+			} else if (slot?.type === "rich") {
+				artifacts.upsert(item, event.output_index);
 				outputSlots.delete(event.output_index);
 			} else if (item.type === "function_call" && slot?.type === "toolCall" && slot.block.partialJson !== undefined) {
 				Object.assign(slot.block, parseToolCallArguments(item.arguments || slot.block.partialJson));

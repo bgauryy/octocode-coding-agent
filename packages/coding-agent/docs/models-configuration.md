@@ -134,7 +134,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `thinkingTokenBudgetField` | `"thinking_token_budget" \| "thinking_budget" \| "thinking_budget_tokens"` |  | Top-level request field used to cap reasoning tokens from thinkingBudgets. Reasoning and the answer share max_tokens on these endpoints. "thinking_token_budget" is vLLM, "thinking_budget" is Qwen, DashScope, or SGLang, and "thinking_budget_tokens" is llama.cpp. Off by default and not set on the generated catalog. |
 | `supportsThinkingTokenBudget` | boolean | `false` | Alias for thinkingTokenBudgetField: "thinking_token_budget" (vLLM). Prefer thinkingTokenBudgetField. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether the provider supports OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
-| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system or developer messages after the conversation has started. When false, later system messages are folded into the leading system message. The generated catalog enables this for verified models. |
+| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `supportsMidConvoToolAdditions` | boolean | `false` | Whether system messages can introduce additional tools mid-conversation. Requires supportsMidConvoSystemMessages. The generated catalog enables this for capable models. |
 | `supportsStrictMode` | boolean | `false` | Whether the provider supports the strict field in tool definitions. Generated capable models enable it explicitly. |
 | `cacheControlFormat` | `"anthropic"` |  | Cache control convention for prompt caching. Anthropic applies cache_control markers to the system prompt, last tool definition, and last user, assistant, or tool-result text content. |
@@ -150,9 +150,9 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `supportsDeveloperRole` | boolean | `true` | Whether the provider supports the developer role instead of system. |
-| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts developer or system messages after the conversation has started. When false, later system messages are folded into the leading system message. The generated catalog enables this for verified models. |
+| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts developer or system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `sessionAffinityFormat` | `"openai" \| "openai-nosession" \| "openrouter"` |  | Session-affinity header format. openai sends session_id and x-client-request-id; openai-nosession sends x-client-request-id; openrouter sends x-session-id. Does not affect prompt_cache_key. Default: auto-detected. |
-| `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "30m" on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. |
+| `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports long prompt cache retention. This uses prompt_cache_options.ttl: "12h" for long history on GPT-5.6+ and prompt_cache_retention: "24h" on earlier models. |
 | `supportsStrictMode` | boolean |  | Whether the provider supports strict JSON-schema function tools. Defaults are API-specific; generated OpenAI models enable it explicitly. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether to emit OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
 | `supportsAdditionalTools` | boolean | `false` | Whether the model supports message-anchored additional_tools input items. |
@@ -175,7 +175,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | `allowEmptySignature` | boolean | `false` | Whether to replay empty thinking signatures instead of converting thinking to text. |
 | `supportsStrictTools` | boolean | `false` | Whether the provider supports Anthropic strict tool schemas. Generated Anthropic models enable it explicitly. |
 | `supportsMidConvoEffort` | boolean | `false` | Whether the exact model transport supports effort-only system messages and thinking binding controls. |
-| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system-role messages inside the conversation. When false, later system messages are folded into the top-level system prompt. |
+| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system-role messages inside the conversation. When false, the top-level system prompt stays unchanged and later system messages are sent as marked user messages. |
 | `supportsMidConvoToolChanges` | boolean | `false` | Whether the exact model accepts mid-conversation tool_addition and tool_removal blocks. Requires supportsMidConvoSystemMessages. |
 | `allowedFallbackModels` | `object[]` |  | Models Anthropic accepts for server-side refusal fallback, with local pricing metadata for returned fallback responses. When absent or empty, callers must omit fallbacks; Anthropic rejects the field for models with no permitted fallback targets. |
 
@@ -190,4 +190,4 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system messages after the conversation has started. When false, later system messages are folded into the leading system message. |
+| `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. |

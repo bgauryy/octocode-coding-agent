@@ -3,6 +3,7 @@ import { type Component, Box, Container, Markdown, type MarkdownTheme, Spacer, T
 import type { MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /**
  * Component that renders a custom message entry from extensions.
@@ -16,6 +17,7 @@ export class CustomMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private _expanded = false;
 	private outputPad: number;
+	private rendererFailed = false;
 
 	constructor(
 		message: CustomMessage,
@@ -56,6 +58,17 @@ export class CustomMessageComponent extends Container {
 		this.rebuild();
 	}
 
+	override render(width: number): string[] {
+		try {
+			return super.render(width);
+		} catch {
+			this.customRenderer = undefined;
+			this.rendererFailed = true;
+			this.rebuild();
+			return super.render(width);
+		}
+	}
+
 	private rebuild(): void {
 		// Remove previous content component
 		if (this.customComponent) {
@@ -89,7 +102,10 @@ export class CustomMessageComponent extends Container {
 		this.box.setPaddingX(this.outputPad);
 
 		// Default rendering: label + content
-		const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
+		const label = theme.fg(
+			"customMessageLabel",
+			`\x1b[1m[${sanitizeTerminalText(this.message.customType)}]${this.rendererFailed ? " Renderer failed; showing message." : ""}\x1b[22m`,
+		);
 		this.box.addChild(new Text(label, 0, 0));
 		this.box.addChild(new Spacer(1));
 
@@ -105,7 +121,7 @@ export class CustomMessageComponent extends Container {
 		}
 
 		this.box.addChild(
-			new Markdown(text, 0, 0, this.markdownTheme, {
+			new Markdown(sanitizeTerminalText(text), 0, 0, this.markdownTheme, {
 				color: (text: string) => theme.fg("customMessageText", text),
 			}),
 		);

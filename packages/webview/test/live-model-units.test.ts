@@ -66,7 +66,7 @@ describe("activityCard", () => {
 });
 
 describe("projection and merging", () => {
-	it("skips user messages and assistant messages with no visible text", () => {
+	it("retains user messages and skips legacy assistant messages with no visible content", () => {
 		const events = new ApplicationProjection().update(
 			{
 				...application,
@@ -80,6 +80,7 @@ describe("projection and merging", () => {
 			1,
 		);
 		expect(events.map((item) => [item.type, item.text, (item.details as { status: string }).status])).toEqual([
+			["message", "question", "completed"],
 			["message", "answer", "streaming"],
 		]);
 	});

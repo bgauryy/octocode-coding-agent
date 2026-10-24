@@ -4,11 +4,13 @@ import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/f
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 import { visibleControls } from "../shared/sanitize.ts";
-import { cutText, errorMessage, firstLine } from "../shared/util.ts";
+import { cutText, firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { Change } from "./edits.ts";
 import { keysOverlap } from "./lease-key.ts";
-import type { DeadLetter, Lease, Member, Message } from "./model.ts";
+import type { DeadLetter, Lease, Message } from "./model.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** Pure text and routing helpers for the team: recipients, what `coordinate list` prints, which paths a call edits. */
 

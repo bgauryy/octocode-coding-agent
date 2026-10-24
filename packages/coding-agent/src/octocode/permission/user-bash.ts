@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
 import type {
 	ExtensionContext,
@@ -8,7 +9,7 @@ import type {
 import { visibleControls } from "../shared/sanitize.ts";
 import type { Permission } from "./ask.ts";
 import type { GateVerdict } from "./gate.ts";
-import { catastrophicCommand } from "./shell.ts";
+import { catastrophicCommand } from "./shell/destructive.ts";
 
 interface UserBashGateOptions {
 	permission: Pick<Permission, "check" | "refused" | "typed" | "hasSourcePolicy">;
@@ -28,7 +29,8 @@ export function userBashGate({ permission, preToolUse }: UserBashGateOptions) {
 	return async (event: UserBashEvent, ctx: ExtensionContext): Promise<UserBashEventResult | undefined> => {
 		const call = {
 			type: "tool_call",
-			toolCallId: "user-bash",
+			toolCallId: randomUUID(),
+			origin: "user",
 			toolName: "bash",
 			input: { command: event.command },
 		} as ToolCallEvent;

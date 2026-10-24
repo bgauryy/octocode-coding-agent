@@ -3,7 +3,7 @@ import { visibleControls } from "../shared/sanitize.ts";
 import { saveFullOutput } from "../shared/spill.ts";
 import { capChars } from "../shared/util.ts";
 import { dialogNotice } from "./actions.ts";
-import type { BrowserSession } from "./cdp.ts";
+import type { BrowserSession } from "./cdp/browser-session.ts";
 
 /** Snapshot budget: the element list comes first, page text fills what is left. */
 const SNAPSHOT_MAX_CHARS = 8_000;

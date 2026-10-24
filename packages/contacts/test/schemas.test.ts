@@ -259,6 +259,7 @@ describe("backlog schemas", () => {
 			}),
 		).toBe(true);
 		expect(Value.Check(EntityFieldsSchema, { type: "story" })).toBe(false);
+		expect(Value.Check(EntityFieldsSchema, { parentId: "B1", bogus: 1 })).toBe(false);
 		expect(Value.Check(EntityFieldsSchema, { version: 1.5 })).toBe(false);
 		expect(Value.Check(EntityFieldsSchema, { dependsOn: [{ resource: "files", repositoryKey: "r", path: "p" }] })).toBe(
 			false,

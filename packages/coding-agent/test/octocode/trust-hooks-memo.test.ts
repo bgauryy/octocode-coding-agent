@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fingerprint, projectConfigFiles, projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 beforeEach(() => {
 	vi.stubEnv("OCTOCODE_HOME", tmp("octocode-trust-home-"));

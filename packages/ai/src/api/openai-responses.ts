@@ -11,11 +11,8 @@ import { requestJsonEventStream } from "../utils/json-event-stream.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import {
-	assertResponsesStreamCompleted,
-	processResponsesStream,
-	stripResponsesStreamScratch,
-} from "./openai-responses-shared.ts";
+import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
+import { processResponsesStream } from "./openai-responses-shared/stream-processing.ts";
 import { getCompat, getConfigurationUpdateEffort } from "./openai-responses/compat.ts";
 import { applyServiceTierPricing, buildParams, createRequestHeaders } from "./openai-responses/request.ts";
 import type { OpenAIResponsesOptions, ResponsesRequest } from "./openai-responses/types.ts";

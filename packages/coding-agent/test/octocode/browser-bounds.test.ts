@@ -2,17 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "../../src/core/extensions/index.ts";
-import * as importedModule2 from "../../src/octocode/browser/cdp.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import { fakeCtx, fakePermission } from "./fake-pi.ts";
 import { type CdpStub, startCdpStub } from "./fixtures/cdp-stub.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
+import { noteOrigin, ORIGINS_MAX } from "../../src/octocode/browser/cdp/browser-session.ts";
 
 const launch = vi.hoisted(() => vi.fn());
 vi.mock("chrome-launcher", () => ({ launch }));
 vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] })); // public: no network
 
-const { BrowserTool, registerBrowserTool } = await Promise.resolve(importedModule1);
-const { ORIGINS_MAX, noteOrigin } = await Promise.resolve(importedModule2);
+const { registerBrowserTool } = await Promise.resolve(importedModule1);
 
 type Result = { content: Array<{ type: string; text?: string; data?: string }> };
 type Tool = {

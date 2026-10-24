@@ -3,6 +3,8 @@ import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instru
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OctocodeOwner } from "../../src/octocode/mcp/octocode.ts";
+import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
+import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeOctocode, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
@@ -29,7 +31,7 @@ describe("registerTurnSetup", () => {
 			systemPromptOptions: { sections: {} as Record<string, string>, ...(selectedTools ? { selectedTools } : {}) },
 		};
 		await fake.emit("before_agent_start", event, {});
-		return event.systemPromptOptions.sections.octocode;
+		return Object.values(event.systemPromptOptions.sections).join("\n\n");
 	};
 	const argv = process.argv;
 	let agentDir = "";
@@ -64,11 +66,18 @@ describe("registerTurnSetup", () => {
 		expect(event.systemPromptOptions.selectedTools).toEqual(["read", "edit"]);
 	});
 
-	it("keeps read-only shell restrictions when PowerShell is the only shell", async () => {
-		const { fake } = setup({ by: "off" });
-		const prompt = await run(fake, ["read", "powershell"]);
-		expect(prompt).toContain("Run only read-only commands.");
+	it("keeps read-only shell restrictions for a read-only role when PowerShell is the only shell", async () => {
+		vi.stubEnv(ROLE_PROMPT_FILE_ENV, writeRolePrompt("Review the diff.", tmp()));
+		vi.stubEnv(READ_ONLY_ENV, "1");
+		const fake = fakePi();
+		registerTurnSetup(fake.pi, {
+			isSubagent: true,
+			profiles: () => new Map(),
+			octocode: fakeOctocode({ by: "off" }).mcp,
+		});
+		expect(await run(fake, ["read", "powershell"])).toContain("Run only read-only commands.");
 		expect(await run(fake, ["read"])).not.toContain("Run only read-only commands.");
+		vi.unstubAllEnvs();
 	});
 
 	it("keeps custom tools across reload and resume without name-based pruning", async () => {
@@ -257,6 +266,40 @@ describe("registerTurnSetup", () => {
 		// Collaboration changes the section for every child alike, not per child.
 		const team = await sectionFor("a-1", "main-aaaaaa", "/x/a-1", true);
 		expect(team).toBe(await sectionFor("b-2", "main-bbbbbb", "/y/b-2", true));
-		expect(team).not.toBe(first);
+		// All children share the same bidirectional communication policy; team membership stays in task data.
+		expect(team).toBe(first);
+	});
+
+	it("gives isolated children of one profile byte-identical leading system prompts", async () => {
+		const main = "/repo";
+		const promptFor = async (worktree: string) => {
+			vi.stubEnv("OCTOCODE_WORKTREE_ROOT", worktree);
+			vi.stubEnv("OCTOCODE_PROMPT_ROOT", main);
+			const fake = fakePi();
+			for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
+			registerTurnSetup(fake.pi, {
+				isSubagent: true,
+				profiles: () => new Map(),
+				octocode: fakeOctocode({ by: "off" }).mcp,
+			});
+			// What the session builds before the hook runs: the child's real cwd and its worktree's AGENTS.md.
+			const systemPromptOptions = normalizeBuildSystemPromptOptions({
+				cwd: `${worktree}/packages/app`,
+				selectedTools: ["read", "file"],
+				contextFiles: [
+					{ path: `${worktree}/AGENTS.md`, content: "Project rules." },
+					{ path: "/home/user/.octocode/AGENTS.md", content: "User rules." },
+				],
+			});
+			await fake.emit("before_agent_start", { systemPromptOptions }, {});
+			return { prompt: buildSystemPrompt(systemPromptOptions), options: systemPromptOptions };
+		};
+		const first = await promptFor("/home/user/.octocode/worktrees/aaa/researcher-1a2b");
+		const second = await promptFor("/home/user/.octocode/worktrees/aaa/researcher-9z8y");
+		expect(second.prompt).toBe(first.prompt);
+		expect(first.options.cwd).toBe("/repo/packages/app");
+		expect(first.prompt).toContain('<project_instructions path="/repo/AGENTS.md">');
+		expect(first.prompt).toContain('<project_instructions path="/home/user/.octocode/AGENTS.md">');
+		expect(first.prompt).not.toContain("worktrees");
 	});
 });

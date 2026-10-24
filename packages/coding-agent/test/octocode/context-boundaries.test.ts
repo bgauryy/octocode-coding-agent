@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeOctocode, fakePi } from "./fake-pi.ts";
@@ -94,7 +94,7 @@ describe("agent context boundaries", () => {
 		const prompt = async (selectedTools: string[]) => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools } };
 			await fake.emit("before_agent_start", event, {});
-			return event.systemPromptOptions.sections.octocode;
+			return Object.values(event.systemPromptOptions.sections).join("\n\n");
 		};
 		const inactive = await prompt(["read"]);
 		expect(inactive).not.toContain("Use Octocode MCP");

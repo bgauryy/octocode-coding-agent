@@ -2,12 +2,6 @@ import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai";
 import type { SessionEntry } from "./session-manager.ts";
 import { customMessageUsage } from "./usage-totals.ts";
 
-/**
- * Prompt-cache TTL: idle gaps longer than this are worth mentioning as the
- * likely cause of a miss. Anthropic's default cache TTL is 5 minutes.
- */
-export const CACHE_TTL_MS = 5 * 60 * 1000;
-
 /** Per-turn misses at or below this are cache breakpoint granularity noise. */
 const NOISE_FLOOR_TOKENS = 1024;
 
@@ -21,6 +15,27 @@ export interface CacheMiss {
 	idleMs: number;
 	/** True when the model changed relative to the previous request. */
 	modelChanged: boolean;
+	/**
+	 * True when nothing was read from the cache, so the instructions (system prompt and tools) were re-billed with the
+	 * history. False when the request still read a cached prefix: only history after it was re-billed.
+	 */
+	fullMiss: boolean;
+	/** True when an instruction or tool update (a system message) entered the conversation since the previous request. */
+	promptChanged: boolean;
+}
+
+/**
+ * The area a miss re-billed and its likely cause. The cause is a model switch, an instruction or tool update, or an idle
+ * gap past a known `ttlMs`, the lifetime of the history entry the previous request wrote; an unknown lifetime or shorter gap
+ * does not explain the miss, so none is named. The area is "Full" when the instructions were re-billed too, "History"
+ * when a cached prefix was still read.
+ */
+export function cacheMissLabel(miss: CacheMiss, ttlMs?: number): string {
+	if (miss.modelChanged) return "Cache miss after model switch";
+	if (miss.promptChanged) return "Cache miss after instruction or tool update";
+	const area = miss.fullMiss ? "Full cache miss" : "History cache miss";
+	if (ttlMs !== undefined && miss.idleMs >= ttlMs) return `${area} after ${Math.round(miss.idleMs / 60_000)}m idle`;
+	return area;
 }
 
 interface CacheWasteTotals {
@@ -46,6 +61,16 @@ interface PreviousRequest {
 	 * writes unreported) from a provider that never reports caching at all.
 	 */
 	reportedCache: boolean;
+	/** A system message (instruction or tool update) was recorded after this request. */
+	promptChanged: boolean;
+}
+
+/**
+ * The model a request was answered by: the concrete model the provider reported (a dated snapshot of an alias, or the
+ * model a router chose), else the requested one. Cache refreshes record the same, so both compare alike.
+ */
+function modelKeyOf(message: Pick<AssistantMessage, "provider" | "model" | "responseModel">): string {
+	return `${message.provider}/${message.responseModel ?? message.model}`;
 }
 
 /**
@@ -86,7 +111,9 @@ function detectMiss(
 		missedTokens,
 		missedCost: missedTokens * Math.max(0, paidPerToken - readPerToken),
 		idleMs: Math.max(0, message.timestamp - prev.timestamp),
-		modelChanged: `${message.provider}/${message.model}` !== prev.modelKey,
+		modelChanged: modelKeyOf(message) !== prev.modelKey,
+		fullMiss: usage.cacheRead === 0,
+		promptChanged: prev.promptChanged,
 	};
 }
 
@@ -96,9 +123,10 @@ function asPreviousRequest(message: AssistantMessage, reportedCache: boolean): P
 	if (promptTokens <= 0) return undefined;
 	return {
 		promptTokens,
-		modelKey: `${message.provider}/${message.model}`,
+		modelKey: modelKeyOf(message),
 		timestamp: message.timestamp,
 		reportedCache: reportedCache || usage.cacheRead + usage.cacheWrite > 0,
+		promptChanged: false,
 	};
 }
 
@@ -126,8 +154,11 @@ function scan(
 					modelKey: `${entry.provider}/${entry.model}`,
 					timestamp: Date.parse(entry.timestamp),
 					reportedCache: true,
+					promptChanged: prev?.promptChanged ?? false,
 				};
 			}
+		} else if (entry.type === "message" && entry.message.role === "system") {
+			if (prev) prev = { ...prev, promptChanged: true };
 		} else if (entry.type === "message" && entry.message.role === "assistant") {
 			const miss = detectMiss(prev, entry.message, models);
 			if (miss) {

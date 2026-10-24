@@ -225,6 +225,7 @@ export type ReadonlySessionManager = Pick<
 	| "buildSessionProjection"
 	| "getHeader"
 	| "getEntries"
+	| "getEntryCount"
 	| "getTree"
 	| "getSessionName"
 >;

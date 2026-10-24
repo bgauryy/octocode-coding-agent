@@ -1,17 +1,6 @@
 import { STARTUP_RETRY_DELAY_MS, StartupError, type SubagentOutcome } from "./process/outcome.ts";
 import { runChild } from "./process/run-child.ts";
 
-export { type Identity, subagentProcessEnv } from "./process/env.ts";
-export {
-	ABORT_SETTLE_MS,
-	exitReason,
-	STARTUP_RETRY_DELAY_MS,
-	StartupError,
-	SUBAGENT_STOP_GRACE_MS,
-	USER_STOP,
-} from "./process/outcome.ts";
-export { buildAgentArgs, type ChildSession, childSession, childSessionFile } from "./process/session.ts";
-
 /** Resolves after `ms`, or early when `signal` aborts (a user stop must not wait out the delay). */
 function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
 	return new Promise((resolve) => {

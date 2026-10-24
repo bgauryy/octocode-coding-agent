@@ -16,7 +16,7 @@ interface RegisterBacklogOptions extends BacklogOptions {
 
 /**
  * The repository backlog: the `backlog` tool, `/backlog` (registered centrally after
- * `commands` is registered) and footer counts in words with the `/backlog` hint that opens the board.
+ * `commands` is registered) and footer counts with a persistent `/web` hint for backlogs and activity.
  */
 export function registerBacklog(
 	pi: ExtensionAPI,

@@ -1,3 +1,4 @@
+import { mergeWithNextLine, mergeWithPreviousLine } from "./editing.ts";
 import type { EditorModel } from "./model.ts";
 import { moveWordBackwards, moveWordForwards } from "./movement.ts";
 
@@ -24,11 +25,7 @@ export function deleteToStartOfLine(editor: EditorModel): void {
 		editor.killRing.push("\n", { prepend: true, accumulate: editor.lastAction === "kill" });
 		editor.lastAction = "kill";
 
-		const previousLine = editor.state.lines[editor.state.cursorLine - 1] || "";
-		editor.state.lines[editor.state.cursorLine - 1] = previousLine + currentLine;
-		editor.state.lines.splice(editor.state.cursorLine, 1);
-		editor.state.cursorLine--;
-		editor.setCursorCol(previousLine.length);
+		mergeWithPreviousLine(editor);
 	}
 
 	editor.notifyChange();
@@ -56,9 +53,7 @@ export function deleteToEndOfLine(editor: EditorModel): void {
 		editor.killRing.push("\n", { prepend: false, accumulate: editor.lastAction === "kill" });
 		editor.lastAction = "kill";
 
-		const nextLine = editor.state.lines[editor.state.cursorLine + 1] || "";
-		editor.state.lines[editor.state.cursorLine] = currentLine + nextLine;
-		editor.state.lines.splice(editor.state.cursorLine + 1, 1);
+		mergeWithNextLine(editor);
 	}
 
 	editor.notifyChange();
@@ -78,11 +73,7 @@ export function deleteWordBackwards(editor: EditorModel): void {
 			editor.killRing.push("\n", { prepend: true, accumulate: editor.lastAction === "kill" });
 			editor.lastAction = "kill";
 
-			const previousLine = editor.state.lines[editor.state.cursorLine - 1] || "";
-			editor.state.lines[editor.state.cursorLine - 1] = previousLine + currentLine;
-			editor.state.lines.splice(editor.state.cursorLine, 1);
-			editor.state.cursorLine--;
-			editor.setCursorCol(previousLine.length);
+			mergeWithPreviousLine(editor);
 		}
 	} else {
 		editor.pushUndoSnapshot();
@@ -121,9 +112,7 @@ export function deleteWordForward(editor: EditorModel): void {
 			editor.killRing.push("\n", { prepend: false, accumulate: editor.lastAction === "kill" });
 			editor.lastAction = "kill";
 
-			const nextLine = editor.state.lines[editor.state.cursorLine + 1] || "";
-			editor.state.lines[editor.state.cursorLine] = currentLine + nextLine;
-			editor.state.lines.splice(editor.state.cursorLine + 1, 1);
+			mergeWithNextLine(editor);
 		}
 	} else {
 		editor.pushUndoSnapshot();
@@ -187,7 +176,7 @@ export function yankPop(editor: EditorModel): void {
 /**
  * Insert text at cursor position (used by yank operations).
  */
-export function insertYankedText(editor: EditorModel, text: string): void {
+function insertYankedText(editor: EditorModel, text: string): void {
 	editor.exitHistoryBrowsing();
 	const lines = text.split("\n");
 
@@ -228,7 +217,7 @@ export function insertYankedText(editor: EditorModel, text: string): void {
  * Delete the previously yanked text (used by yank-pop).
  * The yanked text is derived from killRing[end] since it hasn't been rotated yet.
  */
-export function deleteYankedText(editor: EditorModel): void {
+function deleteYankedText(editor: EditorModel): void {
 	const yankedText = editor.killRing.peek();
 	if (!yankedText) return;
 

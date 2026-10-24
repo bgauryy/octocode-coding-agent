@@ -7,7 +7,7 @@ export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
 
 export type ModelDataStructure = Record<string, Record<string, string>>;
 
-export interface ModelDataManifest {
+interface ModelDataManifest {
 	schemaVersion: number;
 	generatedAt: string;
 	structureHash: string;
@@ -122,7 +122,7 @@ export function readModelDataStructure(packageRoot: string): ModelDataStructure 
 	);
 }
 
-export function modelDataStructureHash(structure: ModelDataStructure): string {
+function modelDataStructureHash(structure: ModelDataStructure): string {
 	const normalized = sortedRecord(
 		Object.entries(structure).map(
 			([providerId, models]) => [providerId, sortedRecord(Object.entries(models))] as const,

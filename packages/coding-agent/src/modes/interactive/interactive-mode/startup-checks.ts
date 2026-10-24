@@ -17,7 +17,7 @@ import { theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the startup checks and notices. */
-export type StartupChecksHost = Pick<
+type StartupChecksHost = Pick<
 	InteractiveModeHost,
 	| "changelogMarkdown"
 	| "chatContainer"
@@ -126,7 +126,7 @@ export function getChangelogForDisplay(host: StartupChecksHost): string | undefi
 	return undefined;
 }
 
-export function reportInstallTelemetry(host: StartupChecksHost, version: string): void {
+function reportInstallTelemetry(host: StartupChecksHost, version: string): void {
 	if (process.env.OCTOCODE_OFFLINE) {
 		return;
 	}

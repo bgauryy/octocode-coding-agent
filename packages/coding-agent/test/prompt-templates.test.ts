@@ -435,25 +435,25 @@ describe("parseCommandArgs", () => {
 
 describe("expandPromptTemplate", () => {
 	test("qualifies core and extension collisions while preserving source and arguments", () => {
-		const templates = ["config", "custom", "review"].map((name) => ({
+		const templates = ["settings", "custom", "review"].map((name) => ({
 			name,
 			description: name,
 			content: `${name}: $1 / $2`,
 			filePath: `/tmp/${name}.md`,
 			sourceInfo: { path: `/tmp/${name}.md`, source: "local", scope: "temporary", origin: "top-level" } as const,
 		}));
-		const reserved = [{ name: "extension", invocationName: "extension:1", aliases: ["custom"] }];
+		const reserved = [{ name: "custom", invocationName: "custom:1" }];
 		const commands = getPromptCommands(templates, reserved);
-		expect(commands.map((command) => command.name)).toEqual(["prompt:config", "prompt:custom", "review"]);
-		expect(commands[0].sourceName).toBe("config");
+		expect(commands.map((command) => command.name)).toEqual(["prompt:settings", "prompt:custom", "review"]);
+		expect(commands[0].sourceName).toBe("settings");
 		expect(commands[0].template).toBe(templates[0]);
-		expect(expandPromptTemplate('/prompt:config "two words" value', templates, reserved)).toBe(
-			"config: two words / value",
+		expect(expandPromptTemplate('/prompt:settings "two words" value', templates, reserved)).toBe(
+			"settings: two words / value",
 		);
 		expect(expandPromptTemplate("/prompt:custom a b", templates, reserved)).toBe("custom: a / b");
 		expect(expandPromptTemplate("/review a b", templates, reserved)).toBe("review: a / b");
-		expect(expandPromptTemplate("/prompt:review a b", templates, reserved)).toBe("review: a / b");
-		expect(expandPromptTemplate("/config a b", templates, reserved)).toBe("/config a b");
+		expect(expandPromptTemplate("/prompt:review a b", templates, reserved)).toBe("/prompt:review a b");
+		expect(expandPromptTemplate("/settings a b", templates, reserved)).toBe("/settings a b");
 	});
 
 	test("keeps qualified prompts distinct from extension names and duplicate templates", () => {

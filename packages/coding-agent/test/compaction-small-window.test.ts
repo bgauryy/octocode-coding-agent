@@ -14,7 +14,6 @@ import {
 	shouldCompact,
 } from "../src/core/compaction/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { CHARS_PER_TOKEN as SHARED_CHARS_PER_TOKEN } from "../src/octocode/shared/tokens.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -73,7 +72,6 @@ function seed(sessionManager: SessionManager, pairs: number): void {
 
 describe("one token estimator", () => {
 	it("is shared by core and the Octocode add-ons at the more conservative three characters per token", () => {
-		expect(SHARED_CHARS_PER_TOKEN).toBe(CHARS_PER_TOKEN);
 		expect(CHARS_PER_TOKEN).toBe(3);
 		expect(estimateTokens({ role: "user", content: "x".repeat(300), timestamp: 0 })).toBe(100);
 		expect(estimateTokens({ role: "toolResult", content: [{ type: "text", text: "x".repeat(301) }] } as never)).toBe(
@@ -114,6 +112,20 @@ describe("one token estimator", () => {
 		);
 		expect(estimateUndeclaredToolTokens(messages, declared)).toBe(0);
 		expect(estimateUndeclaredToolTokens(messages, [fresh], new Set(["fresh"]))).toBe(0);
+	});
+
+	it("counts a replacement schema before a same-name tool is redeclared", () => {
+		const sessionManager = SessionManager.inMemory();
+		seed(sessionManager, 1);
+		const { messages } = sessionManager.buildSessionProjection();
+		const replacement = {
+			...declared[0],
+			parameters: { type: "object", description: "larger replacement schema ".repeat(1_000) },
+		};
+		expect(estimateUndeclaredToolTokens(messages, [replacement])).toBe(
+			charsToTokens(JSON.stringify(replacement).length),
+		);
+		expect(estimateUndeclaredToolTokens(messages, [replacement], new Set([replacement.name]))).toBe(0);
 	});
 });
 

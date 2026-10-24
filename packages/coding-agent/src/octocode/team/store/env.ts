@@ -8,5 +8,3 @@ export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
 export const AGENT_GOAL_ENV = "OCTOCODE_AGENT_GOAL";
 /** Set in a subagent started with `collaborate`: it works with its sibling subagents, not only for its parent. */
 export const AGENT_COLLABORATE_ENV = "OCTOCODE_AGENT_COLLABORATE";
-/** Defined in `shared/env.ts` so the permission layer can read them without importing team code. */
-export { AGENT_SCRATCH_ENV, TEAM_WORKSPACE_ENV } from "../../shared/env.ts";

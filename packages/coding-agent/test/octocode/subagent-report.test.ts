@@ -110,6 +110,17 @@ describe("incremental subagent reports", () => {
 		expect(report.result()).toMatchObject({ outcome: "partial" });
 		expect(report.result().error).toBeUndefined();
 	});
+	it("does not reuse a completed outcome for an empty final follow-up", () => {
+		const report = new ReportTracker();
+		report.answer("done: first task", "stop");
+		report.incoming("custom");
+		report.answer(undefined, "stop");
+		expect(report.result().error).toMatch(/follow-up.*without a final answer/i);
+		expect(report.result().text).toContain("done: first task");
+		report.answer("partial: new task needs more work", "stop");
+		expect(report.result()).toMatchObject({ outcome: "partial" });
+		expect(report.result().error).toBeUndefined();
+	});
 	it("marks output-limit answers incomplete and accepts a later successful retry", () => {
 		const report = new ReportTracker(tmp());
 		report.answer("The analysis is unfinished", "length");

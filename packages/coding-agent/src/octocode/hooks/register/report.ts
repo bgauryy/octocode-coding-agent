@@ -2,8 +2,10 @@ import { HOOKS_ENV } from "../../shared/env.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { configFileLines, tildePath } from "../../shared/home.ts";
 import { clipText } from "../../shared/util.ts";
-import { HOOK_EVENTS, hookLabel, type HookConfig, hookFiles, hookIdentity } from "../config.ts";
+import { hookLabel, hookFiles } from "../config.ts";
 import type { HookTiming } from "./types.ts";
+import { HOOK_EVENTS, type HookConfig } from "../contracts.ts";
+import { hookIdentity } from "../config/calls.ts";
 
 export const hookCount = (config: HookConfig): number =>
 	HOOK_EVENTS.reduce((sum, event) => sum + config[event].reduce((n, group) => n + group.hooks.length, 0), 0);

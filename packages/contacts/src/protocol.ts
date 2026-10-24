@@ -7,6 +7,8 @@ import type { WorkspaceSnapshot } from "./workspace.ts";
 
 export const WORKSPACE_ROUTES = {
 	application: "/api/application",
+	assets: "/api/application/assets",
+	history: "/api/application/history",
 	backlogs: "/api/backlogs",
 	workspace: "/api/workspace",
 	audit: "/api/audit",

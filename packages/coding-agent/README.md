@@ -14,6 +14,10 @@ See [native features](docs/native-features.md) for ownership and migration detai
 
 ## Command hints
 
+Use `/providers` to connect an AI account or API key, manage saved credentials, or import Pi configuration. `/model` selects the model for this chat; `/modelsettings` manages model shortcuts, catalog details and agent routing. `/thinking` changes reasoning effort and `/context size` selects a session context budget. `/github` connects code-search access separately from AI providers.
+
+Claude Code-style aliases include `/clear`, `/exit`, `/config`, `/continue`, `/cost` and `/allowed-tools`. Session workflows include `/btw`, `/compact [instructions]`, `/context`, `/diff` and native `/plan`. The [complete command reference](docs/commands.md) lists all built-in commands and aliases, bundled skills, command operations and shell entry points.
+
 In the terminal editor, type a command and a space to see its available values. Tab accepts a suggestion; command and nested-command completions ending with a space show the next choices immediately. Arrow keys select an option and Escape dismisses hints. Tab reopens them. Free text stays free text; import and export offer file paths.
 
 The installed `octocode` and `octocode-api` commands can also provide shell completions. Run the setup for your shell; add these lines to its startup file to keep them enabled:
@@ -61,5 +65,7 @@ node packages/coding-agent/src/octocode/api/cli.ts status --to <id>
 Installed builds expose the same commands through `octocode-api`. Within the agent, `/api on` and `/api off` control the API. See [environment variables](docs/environment-variables.md) for opt-in transport settings.
 
 The native SDK supports one active `AgentSession` per process. Sequential CLI/RPC reloads are supported; concurrent native sessions share session and database state and are not isolated.
+
+For an existing session, `getApplicationPort(session)` returns the shared application service. Its `getSnapshot()` and `subscribeState(listener)` methods expose copied runtime snapshots through the `ApplicationStateSource` contract. Read once for the initial value, then unsubscribe when the view closes. The service's Zustand vanilla store also supplies terminal semantic events and serialized web snapshots. Commands still pass through the service and execution owners. See [interface architecture](../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for state lifetimes and [runtime storage](docs/configuration.md#runtime-storage) for persistence.
 
 MIT; original Pi copyright notices are retained in [LICENSE](../../LICENSE).

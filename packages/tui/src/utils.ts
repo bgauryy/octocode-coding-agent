@@ -1,27 +1,6 @@
 import { extractAnsiCode } from "./utils/ansi-codes.ts";
 import { visibleWidth } from "./utils/width.ts";
-
-export { extractAnsiCode } from "./utils/ansi-codes.ts";
-export { getActiveBackgroundAnsi } from "./utils/ansi-tracker.ts";
-export {
-	autocompleteBoundaryRegex,
-	autocompleteSeparatorRegex,
-	cjkBreakRegex,
-	cjkPunctuationRegex,
-	isPunctuationChar,
-	isWhitespaceChar,
-	PUNCTUATION_REGEX,
-} from "./utils/chars.ts";
-export {
-	extractSegments,
-	getGraphemeCellRange,
-	getOsc8LinkAtColumn,
-	sliceByColumn,
-	sliceWithWidth,
-} from "./utils/columns.ts";
-export { truncateToWidth } from "./utils/truncate.ts";
-export { getGraphemeSegmenter, getWordSegmenter, visibleWidth } from "./utils/width.ts";
-export { flattenLines, splitWideGrapheme, wrapTextWithAnsi } from "./utils/wrap.ts";
+import { flattenLines } from "./utils/wrap.ts";
 
 /** Remove ANSI, OSC, and APC control sequences while preserving visible text. */
 export function stripTerminalSequences(str: string): string {
@@ -76,20 +55,27 @@ export function normalizeTerminalOutput(str: string): string {
 }
 
 /**
- * Apply background color to a line, padding to full width.
- *
- * @param line - Line of text (may contain ANSI codes)
- * @param width - Total width to pad to
- * @param bgFn - Background color function
- * @returns Line with background applied and padded to width
+ * Frame wrapped rows for a text component: add `paddingX` spaces on each side and `paddingY` blank rows above and
+ * below, pad every row to `width`, and apply `bgFn` across the padded row when given. Rows for which `keepRow`
+ * returns true, such as terminal image rows, pass through unchanged.
  */
-export function applyBackgroundToLine(line: string, width: number, bgFn: (text: string) => string): string {
-	// Calculate padding needed
-	const visibleLen = visibleWidth(line);
-	const paddingNeeded = Math.max(0, width - visibleLen);
-	const padding = " ".repeat(paddingNeeded);
-
-	// Apply background to content + padding
-	const withPadding = line + padding;
-	return bgFn(withPadding);
+export function frameContentLines(
+	lines: readonly string[],
+	width: number,
+	paddingX: number,
+	paddingY: number,
+	bgFn?: (text: string) => string,
+	keepRow?: (line: string) => boolean,
+): string[] {
+	const fill = (line: string): string => {
+		const padded = line + " ".repeat(Math.max(0, width - visibleWidth(line)));
+		return bgFn ? bgFn(padded) : padded;
+	};
+	const margin = " ".repeat(paddingX);
+	const contentLines = lines.map((line) => (keepRow?.(line) ? line : fill(margin + line + margin)));
+	const blankLines: string[] = [];
+	for (let i = 0; i < paddingY; i++) blankLines.push(fill(" ".repeat(width)));
+	const result = [...blankLines, ...contentLines, ...blankLines];
+	flattenLines(result);
+	return result;
 }

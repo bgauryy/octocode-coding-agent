@@ -1,5 +1,7 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollbarGeometry, getScrollViewBox, getScrollViewsAt, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getScrollbarGeometry } from "../layout/scrollbar.ts";
+import { getScrollViewBox, getScrollViewsAt } from "../layout.ts";
 import { scrollScrollbarToPointer } from "./selection.ts";
 import type { ScrollbarDrag, ScrollbarTarget, SgrMouseEvent } from "./types.ts";
 

@@ -1,7 +1,7 @@
 import { onSecond } from "../shared/clock.ts";
 import type { AgentRuns } from "./claim.ts";
-import { pendingReportsDir, releasePendingReports, takePendingReports } from "./handoff.ts";
-import { SUBAGENT_STOP_GRACE_MS } from "./process.ts";
+import { pendingReportsDir, releasePendingReports, takePendingReports } from "./handoff/pending.ts";
+import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
 
 /**
  * After a session starts, how long it keeps looking for reports of runs the previous runtime stopped (a reload): a

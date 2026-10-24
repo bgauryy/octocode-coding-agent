@@ -104,8 +104,14 @@ interface ModalEntry {
 	opener: HTMLElement | null;
 	fallback: HTMLElement | null;
 	container: RefObject<HTMLElement | null>;
+	wasInert: boolean;
 }
 const modals: ModalEntry[] = [];
+function updateModalLayers(): void {
+	for (const [index, modal] of modals.entries()) {
+		modal.container.current?.toggleAttribute("inert", modal.wasInert || index !== modals.length - 1);
+	}
+}
 let originalOverflow: string | undefined;
 export function hasOpenModal(): boolean {
 	return modals.length > 0;
@@ -114,6 +120,7 @@ export function hasOpenModal(): boolean {
 /** Return focus from a closed modal to its opener, else to the next modal down; read once that modal is interactive. */
 function restoreFocus(removed: ModalEntry): void {
 	const activeDialog = modals.at(-1)?.container.current;
+	if (activeDialog && document.activeElement && activeDialog.contains(document.activeElement)) return;
 	const available = (element: HTMLElement | null) =>
 		element?.isConnected && !element.closest("[inert]") && (!activeDialog || activeDialog.contains(element));
 	const target = [removed.opener, removed.fallback].find(available);
@@ -129,19 +136,27 @@ export function useModal(
 	container: RefObject<HTMLElement | null>,
 	onClose: () => void,
 	initialFocus?: () => HTMLElement | null,
+	focusKey?: string,
 ) {
 	const close = useEffectEvent(onClose);
 	const focusInitial = useEffectEvent(() => (initialFocus?.() ?? container.current)?.focus({ preventScroll: true }));
 	useLayoutEffect(() => {
 		const token = Symbol("modal");
+		const element = container.current;
 		const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		if (!modals.length) originalOverflow = document.body.style.overflow;
-		modals.push({ token, opener, fallback: null, container });
+		modals.push({
+			token,
+			opener,
+			fallback: null,
+			container,
+			wasInert: element?.hasAttribute("inert") ?? false,
+		});
+		updateModalLayers();
 		document.body.style.overflow = "hidden";
-		focusInitial();
 		function onKeyDown(event: KeyboardEvent) {
 			const root = container.current;
-			if (!root || modals.at(-1)?.token !== token) return;
+			if (!root || modals.at(-1)?.token !== token || event.defaultPrevented || event.isComposing) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
 				close();
@@ -172,6 +187,8 @@ export function useModal(
 			if (index < 0) return;
 			const top = index === modals.length - 1;
 			const [removed] = modals.splice(index, 1);
+			element?.toggleAttribute("inert", removed.wasInert);
+			updateModalLayers();
 			if (modals[index]) modals[index].fallback = removed.opener?.isConnected ? removed.opener : removed.fallback;
 			if (!modals.length) {
 				document.body.style.overflow = originalOverflow ?? "";
@@ -182,6 +199,9 @@ export function useModal(
 			queueMicrotask(() => restoreFocus(removed));
 		};
 	}, [container]);
+	useLayoutEffect(() => {
+		if (modals.at(-1)?.container === container) focusInitial();
+	}, [container, focusKey]);
 }
 
 /** Milliseconds since `since`, ticking once a second while `active`. */

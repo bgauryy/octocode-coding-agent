@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import type { BacklogStore, LiveExtension, ViewDefinition } from "./extension.ts";
 import { AppHeader, Tabs } from "./features/AppHeader.tsx";
 import { AttentionView } from "./features/AttentionView.tsx";
+import { BacklogView } from "./features/BacklogView.tsx";
 import { BoardView } from "./features/BoardView.tsx";
 import { buildCommands, CommandPalette, type PaletteCommand } from "./features/CommandPalette.tsx";
 import { ItemDetail, MissingItem } from "./features/ItemDetail.tsx";
@@ -14,11 +15,12 @@ import { attention, indexBacklog } from "./model/backlog.ts";
 import { hashFor, type Params, resolveRoute } from "./model/route.ts";
 import { AlertIcon, BoardIcon, PlusIcon, TableIcon, TerminalIcon, TreeIcon } from "./ui/icons.tsx";
 import { RichTextContext } from "./ui/LongText.tsx";
-import { Button } from "./ui/primitives.tsx";
+import { Button, Skeleton, SkeletonLine } from "./ui/primitives.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
 
 const BASE_VIEWS: readonly ViewDefinition[] = [
 	{ name: "board", label: "Board", Icon: BoardIcon, Component: BoardView },
+	{ name: "backlog", label: "Backlog", Icon: TableIcon, Component: BacklogView },
 	{ name: "table", label: "Table", Icon: TableIcon, Component: TableView },
 	{ name: "tree", label: "Tree", Icon: TreeIcon, Component: TreeView },
 	{ name: "attention", label: "Attention", Icon: AlertIcon, Component: AttentionView },
@@ -117,7 +119,10 @@ export function App({
 
 	const badges = useMemo(() => {
 		const { claims, idle } = attention(index);
-		return { attention: new Set([...claims, ...idle]).size };
+		return {
+			attention: new Set([...claims, ...idle]).size,
+			backlog: index.items.filter((item) => item.state === "backlog" || item.state === "todo").length,
+		};
 	}, [index]);
 
 	const View = current.Component;
@@ -157,11 +162,19 @@ export function App({
 					{!loaded && BASE_VIEWS.includes(current) ? (
 						<BoardSkeleton />
 					) : (
-						<View key={current.name} index={index} params={nav.params[current.name] ?? {}} setParams={setParams} />
+						<View
+							key={current.name}
+							index={index}
+							params={nav.params[current.name] ?? {}}
+							setParams={setParams}
+							ItemAction={live?.ItemQuickAction}
+						/>
 					)}
 				</main>
 			</div>
-			{sheetOpen && <ItemSheet destination={destination} index={index} live={live} onClose={backToView} />}
+			{sheetOpen && (
+				<ItemSheet destination={destination} index={index} live={live} loaded={loaded} onClose={backToView} />
+			)}
 			{paletteOpen && <CommandPalette commands={commands} onClose={closePalette} />}
 		</RichTextContext.Provider>
 	);
@@ -178,11 +191,13 @@ function ItemSheet({
 	destination,
 	index,
 	live,
+	loaded,
 	onClose,
 }: {
 	destination: Exclude<ReturnType<typeof resolveRoute>, { kind: "view" }>;
 	index: ReturnType<typeof indexBacklog>;
 	live: LiveExtension | null;
+	loaded: boolean;
 	onClose: () => void;
 }) {
 	const item = destination.kind === "item" ? index.byRef.get(destination.ref) : undefined;
@@ -209,8 +224,24 @@ function ItemSheet({
 		);
 	}
 	return (
-		<Sheet labelledBy="item-title" onClose={onClose} initialFocus={titleFocus}>
-			{item ? (
+		<Sheet
+			labelledBy="item-title"
+			onClose={onClose}
+			initialFocus={titleFocus}
+			focusKey={`${destination.kind === "item" ? destination.ref : "new"}:${loaded}:${Boolean(item)}`}
+		>
+			{!loaded ? (
+				<div className="sheet-body">
+					<Button onClick={onClose}>Close</Button>
+					<h2 id="item-title" tabIndex={-1}>
+						Loading item…
+					</h2>
+					<Skeleton label="Loading item details">
+						<SkeletonLine />
+						<SkeletonLine width="70%" />
+					</Skeleton>
+				</div>
+			) : item ? (
 				<ItemDetail
 					key={item.ref}
 					item={item}

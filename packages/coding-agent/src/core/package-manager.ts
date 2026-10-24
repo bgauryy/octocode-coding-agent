@@ -48,13 +48,9 @@ import type {
 import { checkForAvailableUpdates, updatePackages } from "./package-manager/updates.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 
-export { getExtensionTempFolder } from "./package-manager/discovery.ts";
 export { isSkillEnabledBySettings } from "./package-manager/patterns.ts";
 export type {
-	ConfiguredPackage,
-	MissingSourceAction,
 	PackageManager,
-	PackageUpdate,
 	PathMetadata,
 	ProgressCallback,
 	ProgressEvent,

@@ -7,16 +7,11 @@ import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import { Image } from "../src/components/image.ts";
 import { Input } from "../src/components/input.ts";
 import type { Terminal } from "../src/terminal.ts";
-import {
-	deleteKittyImage,
-	encodeKitty,
-	resetCapabilitiesCache,
-	setCapabilities,
-	setCellDimensions,
-} from "../src/terminal-image.ts";
+import { resetCapabilitiesCache, setCapabilities, setCellDimensions } from "../src/terminal-image/capabilities.ts";
+import { deleteKittyImage, encodeKitty } from "../src/terminal-image.ts";
 import { type Component, CURSOR_MARKER, renderFakeCursor, type TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
-import { sliceByColumn } from "../src/utils.ts";
+import { sliceByColumn } from "../src/utils/columns.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 class TestComponent implements Component {

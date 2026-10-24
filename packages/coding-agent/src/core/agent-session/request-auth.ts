@@ -15,13 +15,13 @@ export interface RequestAuth {
 	env?: Record<string, string>;
 }
 
-export function withoutDeletedHeaders(headers: ProviderHeaders | undefined): Record<string, string> | undefined {
+function withoutDeletedHeaders(headers: ProviderHeaders | undefined): Record<string, string> | undefined {
 	return headers
 		? Object.fromEntries(Object.entries(headers).filter((entry): entry is [string, string] => entry[1] !== null))
 		: undefined;
 }
 
-export async function getRequiredRequestAuth(
+async function getRequiredRequestAuth(
 	modelRuntime: ModelRuntime,
 	model: Model<any>,
 	signal?: AbortSignal,
@@ -51,7 +51,7 @@ export async function getRequiredRequestAuth(
 		throw new Error(
 			`Authentication failed for "${model.provider}". ` +
 				`Credentials may have expired or network is unavailable. ` +
-				`Run '/login ${model.provider}' to re-authenticate.`,
+				`Run '/providers ${model.provider}' to re-authenticate.`,
 		);
 	}
 	throw new Error(formatNoApiKeyFoundMessage(model.provider));

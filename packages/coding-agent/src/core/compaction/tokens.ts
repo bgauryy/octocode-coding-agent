@@ -3,7 +3,7 @@
  */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
-import { getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
+import { getCurrentSystemMessage, getCurrentTools, type Tool } from "@octocodeai/octocode-ai";
 import type { Usage } from "@octocodeai/octocode-ai/compat";
 import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry, SessionProjection } from "../session-manager.ts";
@@ -217,20 +217,33 @@ export function estimateTokens(message: AgentMessage): number {
 }
 
 /**
- * Tokens of the declarations of `tools` that the transcript's system messages do not declare yet. The loop declares a
+ * Tokens of new or changed declarations of `tools` that the transcript's system messages do not declare yet. The loop declares a
  * loadout change in the request that carries it, after the pre-request estimate, and a provider's usage counts only the
  * declarations of the last response, so the estimate adds these. Declared tools are already part of the system message.
  */
 export function estimateUndeclaredToolTokens(
 	messages: AgentMessage[],
-	tools: ReadonlyArray<{ name: string; description?: string; parameters?: unknown }>,
+	tools: ReadonlyArray<{
+		name: string;
+		description?: string;
+		parameters?: unknown;
+		constrainedSampling?: Tool["constrainedSampling"];
+	}>,
 	hidden: ReadonlySet<string> = new Set(),
 ): number {
-	const declared = new Set(getCurrentTools(messages).map((tool) => tool.name));
+	const serialize = (tool: (typeof tools)[number]): string =>
+		JSON.stringify({
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+			constrainedSampling: tool.constrainedSampling,
+		});
+	const declared = new Map(getCurrentTools(messages).map((tool) => [tool.name, serialize(tool)]));
 	let chars = 0;
 	for (const tool of tools) {
-		if (declared.has(tool.name) || hidden.has(tool.name)) continue;
-		chars += JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }).length;
+		if (hidden.has(tool.name)) continue;
+		const declaration = serialize(tool);
+		if (declared.get(tool.name) !== declaration) chars += declaration.length;
 	}
 	return charsToTokens(chars);
 }

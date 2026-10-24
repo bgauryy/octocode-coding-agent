@@ -1,5 +1,7 @@
 /** User bash commands run by the session (`!` and `!!`), recorded in session history. */
 
+import { randomUUID } from "node:crypto";
+import { readOutputFile } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
 import { type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
@@ -12,6 +14,7 @@ export interface BashHost extends Pick<SessionInternals, "session" | "emit" | "r
 
 export class SessionBash {
 	private readonly _abortControllers = new Set<AbortController>();
+	private readonly idleWaiters = new Set<() => void>();
 	private _pendingMessages: BashExecutionMessage[] = [];
 
 	private readonly host: BashHost;
@@ -30,6 +33,7 @@ export class SessionBash {
 		},
 	): Promise<BashResult> {
 		const { session } = this.host;
+		const executionId = options?.id ?? randomUUID();
 		const abortController = new AbortController();
 		this._abortControllers.add(abortController);
 
@@ -48,7 +52,7 @@ export class SessionBash {
 						onChunk?.(delta);
 						this.host.emit({
 							type: "bash_execution_update",
-							id: options?.id,
+							id: executionId,
 							delta,
 						});
 					},
@@ -60,6 +64,10 @@ export class SessionBash {
 			return result;
 		} finally {
 			this._abortControllers.delete(abortController);
+			if (!this.isRunning) {
+				for (const done of this.idleWaiters) done();
+				this.idleWaiters.clear();
+			}
 		}
 	}
 
@@ -75,6 +83,18 @@ export class SessionBash {
 			timestamp: Date.now(),
 			excludeFromContext: options?.excludeFromContext,
 		};
+		if (result.truncated) {
+			try {
+				bashMessage.fullOutput = result.fullOutputPath
+					? readOutputFile(result.fullOutputPath, 32 * 1024 * 1024)
+					: undefined;
+			} catch (error) {
+				bashMessage.fullOutputUnavailable =
+					error instanceof Error ? error.message : "Full shell output could not be retained";
+			}
+			if (bashMessage.fullOutput === undefined)
+				bashMessage.fullOutputUnavailable ??= "Full shell output is unavailable; the displayed output is truncated";
+		}
 
 		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
 		if (this.host.session.isStreaming) {
@@ -84,6 +104,12 @@ export class SessionBash {
 			this.host.session.sessionManager.appendMessage(bashMessage);
 			this.host.refreshContext();
 		}
+	}
+
+	async abortAndWait(): Promise<void> {
+		this.abort();
+		if (!this.isRunning) return;
+		await new Promise<void>((resolve) => this.idleWaiters.add(resolve));
 	}
 
 	abort(): void {

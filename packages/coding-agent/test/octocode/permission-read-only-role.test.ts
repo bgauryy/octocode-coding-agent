@@ -3,11 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
-import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "../../src/octocode/shared/env.ts";
-import { AGENT_SCRATCH_ENV } from "../../src/octocode/team/store/env.ts";
+import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV } from "../../src/octocode/shared/env.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

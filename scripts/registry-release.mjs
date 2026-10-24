@@ -9,7 +9,7 @@ function isLocal(spec) {
 	return localSpec.test(spec) || isAbsolute(spec) || win32.isAbsolute(spec);
 }
 
-export function assertRegistrySpecifier(name, spec) {
+function assertRegistrySpecifier(name, spec) {
 	if (typeof spec !== "string" || isLocal(spec)) throw new Error(`Local dependency ${name}: ${String(spec)}`);
 	// Registry semver/ranges only. Tarball URLs, Git and aliases need separately reviewed mappings.
 	if (!semver.validRange(spec)) {

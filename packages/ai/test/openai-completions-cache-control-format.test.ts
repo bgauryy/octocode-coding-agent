@@ -1,7 +1,8 @@
 import { Type } from "typebox";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Message, Model } from "../src/types.ts";
 
 interface CacheControl {
@@ -125,7 +126,11 @@ function expectAnthropicCacheMarkers(params: CapturedParams): void {
 describe("openai-completions cacheControlFormat", () => {
 	beforeEach(() => {
 		mockState.lastParams = undefined;
+		// These cases assert default markers; retention preferences in the caller's environment would change the TTLs.
+		vi.stubEnv("OCTOCODE_CACHE_RETENTION", undefined);
+		vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_RETENTION", undefined);
 	});
+	afterEach(() => vi.unstubAllEnvs());
 
 	it("applies Anthropic-style cache markers when model compat enables them", async () => {
 		const model: Model<"openai-completions"> = {
@@ -154,13 +159,13 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("preserves Anthropic-style cache markers for OpenRouter Anthropic batch aliases", async () => {
-		const model = getModel("openrouter", "anthropic/claude-fable-5.1:batch");
+		const model = getBuiltinModel("openrouter", "anthropic/claude-fable-5.1:batch");
 		const params = await capturePayload(model);
 		expectAnthropicCacheMarkers(params);
 	});
 
 	it("moves the conversation cache marker to a tool result", async () => {
-		const model = getModel("openrouter", "anthropic/claude-fable-5.1:batch");
+		const model = getBuiltinModel("openrouter", "anthropic/claude-fable-5.1:batch");
 		const timestamp = Date.now();
 		const params = await capturePayload(model, undefined, [
 			{ role: "user", content: "Read the file", timestamp },
@@ -191,8 +196,9 @@ describe("openai-completions cacheControlFormat", () => {
 			},
 		]);
 
-		const userMessage = params.messages.find((message) => message.role === "user");
-		expect(userMessage?.content).toBe("Read the file");
+		// The previous request ended at the user message, so it carries the lookback breakpoint.
+		const userMessage = params.messages.find((message) => message.role === "user")!;
+		expect((userMessage.content as TextPart[])[0]?.cache_control).toEqual({ type: "ephemeral" });
 
 		const toolMessage = params.messages[params.messages.length - 1];
 		expect(toolMessage.role).toBe("tool");

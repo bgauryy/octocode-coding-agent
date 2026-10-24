@@ -43,6 +43,7 @@ import {
 	findEntryRenderer,
 	findMessageRenderer,
 	hasEventHandlers,
+	commandResolutionDiagnostics,
 	resolveRegisteredCommands,
 	resolveShortcuts,
 } from "./runner/registrations.ts";
@@ -51,16 +52,7 @@ import { UIPromptTracker } from "./runner/ui-prompt.ts";
 import type * as Types from "./types.ts";
 
 export { emitProjectTrustEvent } from "./runner/event-handlers.ts";
-export type {
-	BeforeAgentStartTrigger,
-	ExtensionErrorListener,
-	ForkHandler,
-	NavigateTreeHandler,
-	NewSessionHandler,
-	ReloadHandler,
-	ShutdownHandler,
-	SwitchSessionHandler,
-} from "./runner/types.ts";
+export type { BeforeAgentStartTrigger, ExtensionErrorListener, ShutdownHandler } from "./runner/types.ts";
 
 /**
  * Helper function to emit session_shutdown event to extensions.
@@ -264,8 +256,9 @@ export class ExtensionRunner {
 	}
 
 	getRegisteredCommands(): Types.ResolvedCommand[] {
-		this.commandDiagnostics = [];
-		return resolveRegisteredCommands(this.extensions);
+		const commands = resolveRegisteredCommands(this.extensions);
+		this.commandDiagnostics = commandResolutionDiagnostics(commands);
+		return commands;
 	}
 
 	getCommandDiagnostics(): ResourceDiagnostic[] {
@@ -273,10 +266,8 @@ export class ExtensionRunner {
 	}
 
 	getCommand(name: string): Types.ResolvedCommand | undefined {
-		const commands = resolveRegisteredCommands(this.extensions);
-		return (
-			commands.find((command) => command.invocationName === name) ??
-			commands.find((command) => command.aliases?.includes(name))
+		return resolveRegisteredCommands(this.extensions).find(
+			(command) => command.invocationName === name || command.invocationAliases?.includes(name),
 		);
 	}
 

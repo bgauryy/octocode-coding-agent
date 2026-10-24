@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../shared/atomic.ts";
-import { canonicalPath, PRIVATE_FILE_MODE, privateDir, sessionDir } from "../shared/home.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { childSession, childSessionFile } from "./process/session.ts";
+import { PRIVATE_FILE_MODE, privateDir, sessionDir } from "../shared/home.ts";
 import { scratchRoot } from "./handoff/scratch.ts";
-import { childSession, childSessionFile } from "./process.ts";
 import type { Run } from "./claim.ts";
 
 /** A private, bounded address book; the child transcript, not this record, owns its conversation. */

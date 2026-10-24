@@ -56,4 +56,5 @@ export interface RegisteredCommand {
 
 export interface ResolvedCommand extends RegisteredCommand {
 	invocationName: string;
+	invocationAliases?: readonly string[];
 }

@@ -32,8 +32,14 @@ export interface FetchedImage {
 	bytes: Uint8Array;
 }
 
-/** What a URL holds: text (a page, JSON, a notice) or an image. */
-export type Fetched = string | FetchedImage;
+export interface FetchedNotice {
+	kind: "notice";
+	reason: "redirect" | "unsupported";
+	text: string;
+}
+
+/** Page content and transport notices have distinct shapes: page text cannot impersonate a notice. */
+export type Fetched = string | FetchedImage | FetchedNotice;
 
 /** The system's locale (Node follows LC_ALL / LANG), e.g. `en-US`. */
 const systemLocale = (): string => Intl.DateTimeFormat().resolvedOptions().locale;
@@ -56,12 +62,11 @@ const INLINE_IMAGE_HEADERS = new Set(["image/png", "image/jpeg", "image/jpg", "i
 const mediaType = (contentType: string) => contentType.split(";")[0].trim().toLowerCase();
 
 /** Why a fetch result is a notice rather than page text (a cross-host redirect, a binary type), or undefined for a page. */
-export function unreadReason(text: string): "redirect" | "unsupported" | undefined {
-	const lines = text.split("\n");
-	if (lines.length === 2 && lines[1] === REDIRECT_NOTE) return "redirect";
-	if (lines.length === 1 && text.endsWith(UNREAD_NOTE)) return "unsupported";
-	return undefined;
+export function unreadReason(value: Fetched): FetchedNotice["reason"] | undefined {
+	return typeof value !== "string" && "kind" in value ? value.reason : undefined;
 }
+
+const unsupported = (text: string): FetchedNotice => ({ kind: "notice", reason: "unsupported", text });
 
 /**
  * A URL as text: HTML reduced to its readable content with a note when a browser may show something else, JSON
@@ -94,7 +99,8 @@ export function pageFetcher(): PageFetcher {
 			text = await fetchResource(url, signal, options);
 		} catch (error) {
 			// The model decides whether a server-supplied target is worth fetching; it is not followed on the page's word.
-			if (error instanceof CrossHostRedirect) return `${error.message}\n${REDIRECT_NOTE}`;
+			if (error instanceof CrossHostRedirect)
+				return { kind: "notice", reason: "redirect", text: `${error.message}\n${REDIRECT_NOTE}` };
 			throw error;
 		}
 		if (typeof text !== "string") return text;
@@ -215,15 +221,19 @@ async function fetchImage(response: Response, url: string, type: string): Promis
 	const declared = Number(response.headers.get("content-length"));
 	if (declared > MAX_BODY_BYTES) {
 		await discardBody(response);
-		return `${where} is ${type}, ${formatSize(declared)}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`;
+		return unsupported(
+			`${where} is ${type}, ${formatSize(declared)}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`,
+		);
 	}
 	const { bytes, truncated } = await readBytesCapped(response).catch((error: unknown) => {
 		throw describeFetchError(error, url, 1);
 	});
-	if (truncated) return `${where} is ${type}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`;
+	if (truncated) return unsupported(`${where} is ${type}, over web's ${MAX_BODY_MB} MB limit${UNREAD_NOTE}`);
 	const mimeType = sniffImageType(bytes);
 	if (!mimeType)
-		return `${where} is ${type} by its header, but the body is not a PNG, JPEG, GIF or WebP image${UNREAD_NOTE}`;
+		return unsupported(
+			`${where} is ${type} by its header, but the body is not a PNG, JPEG, GIF or WebP image${UNREAD_NOTE}`,
+		);
 	return { url: where, mimeType, bytes };
 }
 
@@ -254,7 +264,7 @@ async function fetchResource(
 		await discardBody(response);
 		if (!response.ok) throw httpError(response, url);
 		// Decoding binary as UTF-8 would flood the context with garbage.
-		return `${response.url} is ${mediaType(type)}, not text${UNREAD_NOTE}`;
+		return unsupported(`${response.url} is ${mediaType(type)}, not text${UNREAD_NOTE}`);
 	}
 	// The timeout covers the body too: a slow stream reports like a slow connect, not as a bare abort.
 	const { text: body, truncated } = await readCapped(response, type).catch((error: unknown) => {

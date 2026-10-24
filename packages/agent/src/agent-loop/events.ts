@@ -3,8 +3,6 @@ import type { AgentEvent, AgentToolCall, AgentToolCallOutcome, AgentToolResult }
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
-export type FinalizedToolCallOutcome = AgentToolCallOutcome;
-
 export type ToolUpdateSink = (partialResult: AgentToolResult<any>) => Promise<void> | void;
 
 export function emitToolExecutionUpdate(toolCall: AgentToolCall, emit: AgentEventSink): ToolUpdateSink {
@@ -18,7 +16,7 @@ export function emitToolExecutionUpdate(toolCall: AgentToolCall, emit: AgentEven
 		});
 }
 
-export async function emitToolExecutionEnd(finalized: FinalizedToolCallOutcome, emit: AgentEventSink): Promise<void> {
+export async function emitToolExecutionEnd(finalized: AgentToolCallOutcome, emit: AgentEventSink): Promise<void> {
 	await emit({
 		type: "tool_execution_end",
 		toolCallId: finalized.toolCall.id,
@@ -29,7 +27,7 @@ export async function emitToolExecutionEnd(finalized: FinalizedToolCallOutcome, 
 	});
 }
 
-export function createToolResultMessage(finalized: FinalizedToolCallOutcome): ToolResultMessage {
+export function createToolResultMessage(finalized: AgentToolCallOutcome): ToolResultMessage {
 	return {
 		role: "toolResult",
 		toolCallId: finalized.toolCall.id,
@@ -38,6 +36,9 @@ export function createToolResultMessage(finalized: FinalizedToolCallOutcome): To
 		// so the null never enters session history or provider payloads.
 		content: finalized.result.content ?? [],
 		details: finalized.result.details,
+		...(finalized.result.structuredContent === undefined
+			? {}
+			: { structuredContent: finalized.result.structuredContent }),
 		usage: finalized.result.usage,
 		isError: finalized.isError,
 		...(finalized.durationMs === undefined ? {} : { durationMs: finalized.durationMs }),

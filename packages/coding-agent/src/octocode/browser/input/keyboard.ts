@@ -1,4 +1,4 @@
-import type { BrowserSession } from "../cdp.ts";
+import type { BrowserSession } from "../cdp/browser-session.ts";
 
 type Page = BrowserSession["page"];
 const MODIFIERS: Record<string, number> = { alt: 1, control: 2, ctrl: 2, meta: 4, cmd: 4, command: 4, shift: 8 };

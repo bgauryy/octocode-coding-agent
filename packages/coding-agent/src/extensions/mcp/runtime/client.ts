@@ -20,11 +20,11 @@ import { visibleControls } from "../../../octocode/shared/sanitize.ts";
 import { cutText } from "../../../octocode/shared/util.ts";
 import type { McpServerLog } from "../log.ts";
 
-export const DEFAULT_TIMEOUT_SECONDS = 60;
+const DEFAULT_TIMEOUT_SECONDS = 60;
 /** The default bound on one request of a server, shared with the built-in Octocode server (`octocode/mcp/client.ts`). */
 export const DEFAULT_TIMEOUT_MS = DEFAULT_TIMEOUT_SECONDS * 1000;
 /** Characters of a stdio server's stderr a connection error shows (its end). */
-export const STDERR_TAIL_CHARS = 2_000;
+const STDERR_TAIL_CHARS = 2_000;
 /** Delays between attempts to connect to an HTTP server that failed with a transient error. */
 export const CONNECT_RETRY_DELAYS_MS = [250, 1_000];
 

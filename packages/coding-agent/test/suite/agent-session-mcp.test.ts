@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import type { McpExposure, McpServerEntry } from "../../src/extensions/mcp/config.ts";
-import { createMcpExtension, MCP_SERVERS_SECTION } from "../../src/extensions/mcp/index.ts";
+import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
+import { MCP_SERVERS_SECTION } from "../../src/extensions/mcp/section.ts";
 import { getMcpSessionStatus, setMcpSessionStatus } from "../../src/extensions/mcp/status.ts";
 import { createMcpToolName } from "../../src/extensions/mcp/tools.ts";
 import { createToolSearchExtension } from "../../src/extensions/tool-search/index.ts";
@@ -464,7 +465,7 @@ describe("AgentSession MCP integration", () => {
 
 		await harness.session.prompt("go");
 
-		expect(declaredToolNames(harness)).toEqual(["mcp__docs__search", "mcp__docs__fail", "mcp__docs__shot"]);
+		expect(declaredToolNames(harness)).toEqual(["mcp__docs__fail", "mcp__docs__search", "mcp__docs__shot"]);
 		expect(harness.session.getActiveToolNames()).not.toContain("codemode");
 		// Boolean annotation hints are passed on for permission extensions.
 		const annotations = new Map(harness.session.getAllTools().map((tool) => [tool.name, tool.annotations]));
@@ -564,7 +565,9 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("go");
 
 		const section = serversSection(harness);
-		expect(section).toContain("- mcp__docs (tool_search): Docs search.\n  tool_search loads: ");
+		expect(section).toContain(
+			"- mcp__docs (tool_search): Docs search.\n  tool_search loads:\n    fail: Always fails.\n    search: Search the docs.\n",
+		);
 		expect(section).toContain("\n  instructions: Long guidance.\n");
 		expect(section?.match(/Docs search\./g)).toHaveLength(1);
 	});
@@ -593,6 +596,28 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("start");
 
 		expect(harness.session.getActiveToolNames()).toEqual([]);
+		expect(notifications).toEqual([
+			"Deferred MCP tools need tool_search. Enable it or select direct exposure for these servers.",
+		]);
+	});
+
+	it("does not add tool_search again after it was deselected programmatically", async () => {
+		let api: ExtensionAPI | undefined;
+		const { harness, notifications } = await setup("deferred", undefined, {
+			extensionFactories: [
+				(pi) => {
+					api = pi;
+				},
+			],
+		});
+		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+		await harness.session.prompt("start");
+		expect(harness.session.getActiveToolNames()).toContain("tool_search");
+
+		api!.setActiveTools(api!.getActiveTools().filter((name) => name !== "tool_search"));
+		await harness.session.prompt("again");
+
+		expect(harness.session.getActiveToolNames()).not.toContain("tool_search");
 		expect(notifications).toEqual([
 			"Deferred MCP tools need tool_search. Enable it or select direct exposure for these servers.",
 		]);
@@ -660,7 +685,7 @@ describe("AgentSession MCP integration", () => {
 		await harness.session.prompt("start");
 
 		expect(serversSection(harness)).toContain("- mcp__slow (tool_search): Slow docs.");
-		expect(serversSection(harness)).toContain("tool_search loads: search");
+		expect(serversSection(harness)).toContain("tool_search loads:\n    fail: Always fails.\n    search");
 	});
 
 	it("does not delay the first prompt beyond the grace for a hanging deferred server", async () => {
@@ -823,7 +848,8 @@ describe("AgentSession MCP integration", () => {
 			id: "combined-budget",
 			contextWindow: 10000,
 			maxTokens: 1000,
-			compat: { supportsToolSearch: true },
+			api: "openai-responses",
+			compat: { supportsMidConvoSystemMessages: true, supportsToolSearch: true },
 		});
 		for (const name of ["mcp__docs__search", "mcp__second__search"]) {
 			expect(harness.session.getAllTools().find((tool) => tool.name === name)?.exposure).toBe("deferred");
@@ -832,7 +858,7 @@ describe("AgentSession MCP integration", () => {
 	});
 
 	it("adapts a large automatic catalog when the provider's native loading support changes", async () => {
-		const { harness, calls } = await setup(undefined, () => [
+		const { harness } = await setup(undefined, () => [
 			{ ...SERVER_TOOLS[0], description: "Search docs. " + "x".repeat(100_000) },
 		]);
 		const original = harness.session.model!;
@@ -841,19 +867,12 @@ describe("AgentSession MCP integration", () => {
 			...original,
 			id: "native-loading",
 			contextWindow: 200_000,
-			compat: { supportsToolSearch: true },
+			api: "openai-responses",
+			compat: { supportsMidConvoSystemMessages: true, supportsToolSearch: true },
 		});
 		expect(harness.session.getActiveToolNames()).toContain("tool_search");
 		expect(harness.session.getActiveToolNames()).not.toContain("mcp__docs__search");
-		harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("tool_search", { query: "search", namespace: "docs", limit: 1 })], {
-				stopReason: "toolUse",
-			}),
-			fauxAssistantMessage([fauxToolCall("mcp__docs__search", { query: "native" })], { stopReason: "toolUse" }),
-			fauxAssistantMessage("done"),
-		]);
-		await harness.session.prompt("Search docs");
-		expect(calls).toEqual(['search:{"query":"native"}']);
+		// The faux provider streams only for its own api, so loading through tool_search is covered by the deferred tests.
 		await harness.session.setModel(original);
 		expect(harness.session.getAllTools().find((tool) => tool.name === "mcp__docs__search")?.exposure).toBe("direct");
 	});
@@ -893,7 +912,7 @@ describe("AgentSession MCP integration", () => {
 
 			const search = toolResult(harness, "tool_search");
 			expect(getMessageText(search)).toBe(
-				`Loaded 1 tool. They are available from your next call:\n- ${searchName}: Search the docs.`,
+				`Loaded 1 of 3 matching tools (the closest ones; use more specific words to find the rest). They are available from your next call:\n- ${searchName}: Search the docs.`,
 			);
 			// Only the loaded tool is added; earlier declarations are not repeated.
 			const loadMessages = harness.session.messages.filter(

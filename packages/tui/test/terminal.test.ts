@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it, mock } from "node:test";
-import { setKittyProtocolActive } from "../src/keys.ts";
+import { setKittyProtocolActive } from "../src/keys/state.ts";
 import {
 	normalizeAppleTerminalInput,
 	normalizeNativeShiftEnterInput,

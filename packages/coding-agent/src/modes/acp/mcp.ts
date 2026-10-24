@@ -116,14 +116,14 @@ function definitions(servers: McpServer[]): ServerDefinition[] {
 			const url = new URL(server.url);
 			if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.hash)
 				invalid("MCP URL must use http or https without credentials or fragment.");
-			const headers: Record<string, string> = {};
+			const headerNames = new Set<string>();
 			for (const { name, value } of server.headers) {
 				if (!name || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || /[\r\n\0]/.test(value))
 					invalid("MCP HTTP header contains an invalid name or value.");
-				if (Object.keys(headers).some((existing) => existing.toLowerCase() === name.toLowerCase()))
-					invalid(`Duplicate MCP HTTP header: ${name}`);
-				headers[name] = value;
+				if (headerNames.has(name.toLowerCase())) invalid(`Duplicate MCP HTTP header: ${name}`);
+				headerNames.add(name.toLowerCase());
 			}
+			const headers = Object.fromEntries(server.headers.map(({ name, value }) => [name, value]));
 			return { name: server.name, namespace, type: server.type, url: server.url, headers };
 		}
 		if (!isAbsolute(server.command) || server.command.includes("\0"))

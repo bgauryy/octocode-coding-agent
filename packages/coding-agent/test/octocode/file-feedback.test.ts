@@ -7,8 +7,9 @@ import { currentMutationRevision, mutationEpoch } from "../../src/octocode/files
 import { captureParseBefore, inspectParseAfter } from "../../src/octocode/files/feedback/parse.ts";
 import { matchesResponsePath } from "../../src/octocode/files/feedback/path.ts";
 import type { MutationReceipt } from "../../src/octocode/files/render.ts";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
-import { sha256 } from "../../src/octocode/shared/atomic.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { sha256 } from "../../src/utils/atomic-file.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

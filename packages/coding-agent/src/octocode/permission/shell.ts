@@ -1,8 +1,5 @@
 import { base, BODY, hide, mask, REMOVERS, SEPARATOR, SHELLS, shellScript, unhide, words } from "./shell/words.ts";
 
-export { catastrophicCommand, expandHome } from "./shell/destructive.ts";
-export { readOnlyCommand } from "./shell/read-only.ts";
-
 /**
  * The base program name of every simple command `command` runs (past wrappers and `VAR=value`), including the scripts
  * of `sh -c`, `eval` and `$(…)`, each once in order of appearance.

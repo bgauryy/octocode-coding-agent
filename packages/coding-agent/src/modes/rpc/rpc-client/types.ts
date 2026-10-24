@@ -6,7 +6,7 @@ import type { JsonAgentSessionEvent } from "../../json-event.ts";
 // ============================================================================
 
 /** Distributive Omit that works with union types */
-export type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
 /** RpcCommand without the id field (for internal send) */
 export type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;

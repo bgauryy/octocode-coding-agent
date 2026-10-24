@@ -1,3 +1,4 @@
+import { type ManualCompactionOptions, validateCompactionInstructions } from "../compaction/manual-options.ts";
 /**
  * Manual and automatic compaction of a session: their abort controllers, events and failure
  * accounting around the shared compaction core (`session-compaction.ts`), and Pi's default summary.
@@ -33,6 +34,7 @@ export async function runDefaultCompaction(
 	model: Model<any>,
 	signal: AbortSignal,
 	reason: CompactionReason,
+	customInstructions?: string,
 ): Promise<CompactionResult> {
 	const { session } = host;
 	// Resolve the request only when Pi summarizes itself: routing may call models or fail.
@@ -46,7 +48,7 @@ export async function runDefaultCompaction(
 		request.model,
 		request.apiKey,
 		request.headers,
-		undefined,
+		customInstructions,
 		signal,
 		request.thinkingLevel,
 		async (model, context, options) => {
@@ -103,7 +105,7 @@ export class SessionCompaction {
 		return {
 			sessionManager: session.sessionManager,
 			extensionRunner: session.extensionRunner,
-			summarize: (preparation, model, signal, reason) => this.host.summarize(preparation, model, signal, reason),
+			summarize: (...args) => this.host.summarize(...args),
 			refreshContext: () => this.host.refreshContext(),
 		};
 	}
@@ -123,10 +125,10 @@ export class SessionCompaction {
 		this.host.resolveIdleWaitIfIdle();
 	}
 
-	async compact(): Promise<CompactionResult> {
+	async compact(options?: ManualCompactionOptions): Promise<CompactionResult> {
+		const customInstructions = validateCompactionInstructions(options?.customInstructions);
 		const { session } = this.host;
 		await session.abort("internal");
-		this.host.cacheWarmer?.cancel();
 		// A local reference: a later clear (or a listener error) must not leave the catch without its signal.
 		const controller = new AbortController();
 		this._compactionAbortController = controller;
@@ -152,9 +154,12 @@ export class SessionCompaction {
 				}
 				throw new Error("Nothing to compact (session too small)");
 			}
+			// Only a compaction that runs replaces the cached prefix; "nothing to compact" keeps the warm entry.
+			this.host.cacheWarmer?.cancel();
 
 			compactionResult = await runCompaction(this._compactionHost(), {
 				reason: "manual",
+				customInstructions,
 				willRetry: false,
 				model,
 				contextWindow: session.model?.contextWindow ?? model.contextWindow,
@@ -240,7 +245,6 @@ export class SessionCompaction {
 			});
 			return false;
 		}
-		this.host.cacheWarmer?.cancel();
 		let abortController: AbortController | undefined;
 		let started = false;
 		const outcome = { fromExtension: false, cancelledByExtension: false };
@@ -255,6 +259,7 @@ export class SessionCompaction {
 			if (!preparation) {
 				return false;
 			}
+			this.host.cacheWarmer?.cancel();
 
 			abortController = new AbortController();
 			this._autoCompactionAbortController = abortController;

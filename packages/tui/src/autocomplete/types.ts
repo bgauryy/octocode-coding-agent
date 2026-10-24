@@ -8,7 +8,6 @@ type Awaitable<T> = T | Promise<T>;
 
 export interface SlashCommand {
 	name: string;
-	aliases?: readonly string[];
 	description?: string;
 	argumentHint?: string;
 	argumentKind?: "path";

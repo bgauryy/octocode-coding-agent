@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** Temporary Git indexes keep both snapshot and delta generation off the parent's branch and index. */
 const execFileAsync = promisify(execFile);

@@ -1,4 +1,5 @@
-import { sliceByColumn, visibleWidth } from "../../utils.ts";
+import { visibleWidth } from "../../utils/width.ts";
+import { sliceByColumn } from "../../utils/columns.ts";
 import type { EditorState, LayoutLine } from "./types.ts";
 import { wordWrapLine } from "./word-wrap.ts";
 

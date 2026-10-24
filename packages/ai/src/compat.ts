@@ -1,8 +1,7 @@
 /**
  * Temporary compatibility entrypoint preserving the old global octocode-ai API
  * surface: api-dispatch `stream()`/`complete()` with env API key injection,
- * the api-registry, generated catalog reads (`getModel`/`getModels`/
- * `getProviders`), per-API lazy stream wrappers, and image generation.
+ * the api-registry, per-API lazy stream wrappers, and image generation.
  *
  * Existing apps switch imports from "@octocodeai/octocode-ai" to
  * "@octocodeai/octocode-ai/compat" unchanged; new code uses `createModels()`
@@ -20,11 +19,9 @@ export * from "./api/openai-codex-responses.lazy.ts";
 export * from "./api/openai-completions.lazy.ts";
 export * from "./api/openai-responses.lazy.ts";
 export * from "./env-api-keys.ts";
-export * from "./image-models.ts";
 export * from "./images.ts";
 export * from "./images-api-registry.ts";
 export * from "./index.ts";
-export * from "./legacy-api-aliases.ts";
 export * from "./providers/images/register-builtins.ts";
 
 import { anthropicMessagesApi } from "./api/anthropic-messages.lazy.ts";
@@ -38,7 +35,7 @@ import { openAICompletionsApi } from "./api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "./api/openai-responses.lazy.ts";
 import { getEnvApiKey } from "./env-api-keys.ts";
 import type { ModelsApiStreamOptions } from "./models.ts";
-import { builtinModels, getBuiltinModel, getBuiltinModels, getBuiltinProviders } from "./providers/all.ts";
+import { builtinModels } from "./providers/all.ts";
 
 export type { BuiltinProvider } from "./providers/all.ts";
 
@@ -59,28 +56,19 @@ import type {
 } from "./types.ts";
 import { normalizeContext } from "./utils/transcript.ts";
 
-/** @deprecated Static catalog read. Use `getBuiltinModel` from "@octocodeai/octocode-ai/providers/all" or `Models.getModel()`. */
-export const getModel = getBuiltinModel;
-
-/** @deprecated Static catalog read. Use `getBuiltinModels` from "@octocodeai/octocode-ai/providers/all" or `Models.getModels()`. */
-export const getModels = getBuiltinModels;
-
-/** @deprecated Static catalog read. Use `getBuiltinProviders` from "@octocodeai/octocode-ai/providers/all" or `Models.getProviders()`. */
-export const getProviders = getBuiltinProviders;
-
-export type ApiStreamFunction = (
+type ApiStreamFunction = (
 	model: Model<Api>,
 	context: TranscriptContext,
 	options?: StreamOptions,
 ) => AssistantMessageEventStream;
 
-export type ApiStreamSimpleFunction = (
+type ApiStreamSimpleFunction = (
 	model: Model<Api>,
 	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream;
 
-export interface ApiProvider<TApi extends Api = Api, TOptions extends StreamOptions = StreamOptions> {
+interface ApiProvider<TApi extends Api = Api, TOptions extends StreamOptions = StreamOptions> {
 	api: TApi;
 	stream: StreamFunction<TApi, TOptions>;
 	streamSimple: StreamFunction<TApi, SimpleStreamOptions>;
@@ -141,11 +129,7 @@ export function getApiProvider(api: Api): ApiProviderInternal | undefined {
 	return apiProviderRegistry.get(api)?.provider;
 }
 
-export function getApiProviders(): ApiProviderInternal[] {
-	return Array.from(apiProviderRegistry.values(), (entry) => entry.provider);
-}
-
-export function unregisterApiProviders(sourceId: string): void {
+function unregisterApiProviders(sourceId: string): void {
 	for (const [api, entry] of apiProviderRegistry.entries()) {
 		if (entry.sourceId === sourceId) {
 			apiProviderRegistry.delete(api);
@@ -194,7 +178,7 @@ const builtinApiProviderInstances = new Map<Api, ReturnType<typeof getApiProvide
  * clobbering existing entries: compat may load after a test or extension has
  * already registered an override for a builtin api id.
  */
-export function registerBuiltInApiProviders(): void {
+function registerBuiltInApiProviders(): void {
 	for (const [api, streams] of BUILTIN_APIS) {
 		if (!getApiProvider(api)) {
 			registerApiProvider({ api, stream: streams.stream, streamSimple: streams.streamSimple });

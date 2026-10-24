@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { redactData, redactSecrets, visibleControls } from "../shared/sanitize.ts";
-import { contentText, errorMessage, isRecord, isStaleSessionError, toolHint } from "../shared/util.ts";
+import { contentText, isStaleSessionError, toolHint } from "../shared/util.ts";
 import { boundedExternal, boundedText } from "./bridge/bounded.ts";
 import { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
 import { historyPage } from "./bridge/history.ts";
@@ -30,9 +30,7 @@ import {
 	writeRecord,
 } from "./registry.ts";
 import { ApiServer, type Connection } from "./server.ts";
-
-export { type AgentDirectory, type ApiOperations, nesting } from "./bridge/contracts.ts";
-export { optionsFromEnv, transportsFor } from "./bridge/options.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 /** Session entry (`pi.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";

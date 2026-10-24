@@ -15,13 +15,11 @@ import {
 import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
 import { appendClearedExtraLines, appendFullRenderLines, cursorMoveSequence } from "./tui-main-screen/render-output.ts";
 import { BoundedTerminalWriter } from "./tui-main-screen/terminal-writer.ts";
-import { visibleWidth } from "./utils.ts";
+import { visibleWidth } from "./utils/width.ts";
 
 function isTermuxSession(): boolean {
 	return Boolean(process.env.TERMUX_VERSION);
 }
-
-export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
 
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {

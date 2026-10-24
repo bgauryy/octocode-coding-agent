@@ -107,7 +107,7 @@ describe("application projection", () => {
 			session({
 				messages: [
 					{ id: "m", role: "assistant", text: "Partial", complete: true },
-					{ id: "u", role: "user", text: "ignored", complete: true },
+					{ id: "u", role: "user", text: "Follow-up", complete: true },
 				],
 				tools: [{ toolCallId: "t", toolName: "read", text: "ok", status: "failed" }],
 			}),
@@ -121,10 +121,11 @@ describe("application projection", () => {
 			details: { status: "completed" },
 		});
 		expect(second.find((event) => event.type === "tool.result")).toMatchObject({
-			id: -2,
+			id: -3,
 			outcome: "failed",
 			text: "read\nok",
 		});
+		expect(second.find((event) => event.message?.role === "user")).toMatchObject({ id: -2, text: "Follow-up" });
 		expect(projection.update(session(), 30)).toEqual([]);
 	});
 	it("forgets events from another session", () => {

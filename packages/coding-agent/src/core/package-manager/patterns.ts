@@ -53,31 +53,24 @@ export function splitPatterns(entries: string[]): { plain: string[]; patterns: s
 	return { plain, patterns };
 }
 
-function matchesAnyPattern(filePath: string, patterns: string[], baseDir: string): boolean {
-	const rel = toPosixPath(relative(baseDir, filePath));
-	const name = basename(filePath);
-	const filePathPosix = toPosixPath(filePath);
-	const isSkillFile = name === "SKILL.md";
-	const parentDir = isSkillFile ? dirname(filePath) : undefined;
-	const parentRel = isSkillFile ? toPosixPath(relative(baseDir, parentDir!)) : undefined;
-	const parentName = isSkillFile ? basename(parentDir!) : undefined;
-	const parentDirPosix = isSkillFile ? toPosixPath(parentDir!) : undefined;
+/** The forms of `filePath` a pattern can name: relative, base name and absolute; for `SKILL.md`, also its directory's. */
+function patternTargets(filePath: string, baseDir: string): { paths: string[]; names: string[] } {
+	const paths = [toPosixPath(relative(baseDir, filePath)), toPosixPath(filePath)];
+	const names = [basename(filePath)];
+	if (names[0] === "SKILL.md") {
+		const parentDir = dirname(filePath);
+		paths.push(toPosixPath(relative(baseDir, parentDir)), toPosixPath(parentDir));
+		names.push(basename(parentDir));
+	}
+	return { paths, names };
+}
 
+function matchesAnyPattern(filePath: string, patterns: string[], baseDir: string): boolean {
+	const { paths, names } = patternTargets(filePath, baseDir);
+	const targets = [...paths, ...names];
 	return patterns.some((pattern) => {
 		const normalizedPattern = toPosixPath(normalizePath(pattern));
-		if (
-			minimatch(rel, normalizedPattern) ||
-			minimatch(name, normalizedPattern) ||
-			minimatch(filePathPosix, normalizedPattern)
-		) {
-			return true;
-		}
-		if (!isSkillFile) return false;
-		return (
-			minimatch(parentRel!, normalizedPattern) ||
-			minimatch(parentName!, normalizedPattern) ||
-			minimatch(parentDirPosix!, normalizedPattern)
-		);
+		return targets.some((target) => minimatch(target, normalizedPattern));
 	});
 }
 
@@ -88,22 +81,8 @@ function normalizeExactPattern(pattern: string): string {
 
 function matchesAnyExactPattern(filePath: string, patterns: string[], baseDir: string): boolean {
 	if (patterns.length === 0) return false;
-	const rel = toPosixPath(relative(baseDir, filePath));
-	const name = basename(filePath);
-	const filePathPosix = toPosixPath(filePath);
-	const isSkillFile = name === "SKILL.md";
-	const parentDir = isSkillFile ? dirname(filePath) : undefined;
-	const parentRel = isSkillFile ? toPosixPath(relative(baseDir, parentDir!)) : undefined;
-	const parentDirPosix = isSkillFile ? toPosixPath(parentDir!) : undefined;
-
-	return patterns.some((pattern) => {
-		const normalized = normalizeExactPattern(pattern);
-		if (normalized === rel || normalized === filePathPosix) {
-			return true;
-		}
-		if (!isSkillFile) return false;
-		return normalized === parentRel || normalized === parentDirPosix;
-	});
+	const { paths } = patternTargets(filePath, baseDir);
+	return patterns.some((pattern) => paths.includes(normalizeExactPattern(pattern)));
 }
 
 export function getOverridePatterns(entries: string[]): string[] {

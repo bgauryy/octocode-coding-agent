@@ -3,10 +3,8 @@
  */
 
 import * as fs from "node:fs";
-import type { Model } from "@octocodeai/octocode-ai/compat";
 import { type AutocompleteItem, type EditorComponent, fuzzyFilter } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../../config.ts";
-import { defaultModelPerProvider } from "../../../core/model-resolver.ts";
 import type { SessionManager, SessionEntry } from "../../../core/session-manager.ts";
 import { type AuthSelectorProvider, formatAuthSelectorProviderType } from "../components/oauth-selector.ts";
 import { ThemedText } from "../components/themed-text.ts";
@@ -101,10 +99,6 @@ export function isAnthropicSubscriptionAuthKey(apiKey: string | undefined): bool
 	return typeof apiKey === "string" && apiKey.startsWith("sk-ant-oat");
 }
 
-export function isUnknownModel(model: Model<any> | undefined): boolean {
-	return !!model && model.provider === "unknown" && model.id === "unknown" && model.api === "unknown";
-}
-
 export function quoteIfNeeded(value: string): string {
 	if (value.length > 0 && !/[^a-zA-Z0-9_\-./~:@]/.test(value)) {
 		return value;
@@ -125,16 +119,6 @@ export function formatResumeCommand(sessionManager: SessionManager): string | un
 	}
 	args.push("--session", sessionManager.getSessionId());
 	return args.join(" ");
-}
-
-export function hasDefaultModelProvider(providerId: string): providerId is keyof typeof defaultModelPerProvider {
-	return providerId in defaultModelPerProvider;
-}
-
-export function llamaCppPostLoginGuidance(actionLabel: string, loadedModelCount: number): string {
-	return loadedModelCount === 0
-		? `${actionLabel}. No llama.cpp models are loaded. Use /llama to load a model, then /model to select it.`
-		: `${actionLabel}. Use /model to select a loaded llama.cpp model, or /llama to manage models.`;
 }
 
 const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorProvider["authType"], number>;

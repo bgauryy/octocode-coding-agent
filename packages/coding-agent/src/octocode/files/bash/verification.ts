@@ -3,8 +3,8 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts";
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
-
-export type { VerificationReceipt } from "../bash-jobs/types.ts";
+import type { BashDetails } from "../render.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
 /** Public tool schema for the receipt's stable, JSON-only fields. */
 export const verificationSchema = Type.Object({
@@ -55,7 +55,7 @@ export function beginVerification(
 	};
 }
 
-export function readableLog(file: string): boolean {
+function readableLog(file: string): boolean {
 	try {
 		const handle = fs.openSync(file, "r");
 		fs.closeSync(handle);
@@ -145,4 +145,26 @@ export function verificationJson(receipt: VerificationReceipt): JsonObject {
 				currentMutationRevision(receipt.sessionId) !== receipt.revisionAtLaunch,
 		}),
 	) as JsonObject;
+}
+
+/** The receipt of a foreground command that returned: its exit from the tool's structured `output`, and where its full output went. */
+export function foregroundReceipt(
+	verification: VerificationReceipt,
+	endedBy: NodeJS.Signals | null,
+	output: unknown,
+	details: BashDetails,
+): VerificationReceipt {
+	verification.output.complete = !details.truncation || !!details.fullOutputPath;
+	const receipt = finishVerification(verification, {
+		code: isRecord(output) && typeof output.exit_code === "number" ? output.exit_code : null,
+		signal: endedBy,
+		seconds:
+			isRecord(output) && typeof output.wall_time_seconds === "number"
+				? output.wall_time_seconds
+				: (Date.now() - verification.startedAt) / 1000,
+	});
+	receipt.output.log = details.fullOutputPath;
+	receipt.output.logAvailable = details.fullOutputPath ? readableLog(details.fullOutputPath) : undefined;
+	receipt.output.complete &&= !details.fullOutputPath || receipt.output.logAvailable === true;
+	return receipt;
 }

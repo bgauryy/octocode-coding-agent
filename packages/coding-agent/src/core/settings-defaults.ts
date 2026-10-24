@@ -26,6 +26,7 @@ export const SETTINGS_DEFAULTS = {
 	hideThinkingBlock: false,
 	showCacheMissNotices: false,
 	quietStartup: false,
+	bashBackgroundAfterSeconds: 90,
 	defaultProjectTrust: "ask",
 	collapseChangelog: false,
 	enableInstallTelemetry: true,

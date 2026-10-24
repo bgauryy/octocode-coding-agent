@@ -13,12 +13,12 @@ import type {
 } from "../../core/extensions/index.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
-import type { Classification } from "../shared/winclassify.ts";
+import type { Classification } from "../shared/winclassify/types.ts";
+import type { SourceDecision } from "./source-policy/rules.ts";
 import { classifyPowerShell } from "../shared/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import type { SourceDecision } from "./source-policy.ts";
 import { args, CHANGE_TOOLS, classify } from "./gate/classify.ts";
 
 /**
@@ -32,10 +32,6 @@ import { args, CHANGE_TOOLS, classify } from "./gate/classify.ts";
 
 /** A gate's result: a block, or an `ask` a later gate turns into a question (PreToolUse `permissionDecision: "ask"`). */
 export type GateVerdict = ToolCallEventResult & { ask?: string; rewritten?: true };
-
-export { classify, readOnlyMcp } from "./gate/classify.ts";
-
-export { runsLater, stateFolderRefusal } from "./file-access.ts";
 
 /**
  * Whether a `powershell` command is `shell.destructive`: the helper flagged it, or could not parse it (no PowerShell, a
@@ -165,7 +161,7 @@ export function permissionGate(options: PermissionGateOptions) {
 				...(ctx.signal ? { signal: ctx.signal } : {}),
 			};
 			const prepare =
-				options.replacement && originalEvent.toolName === "bash" && originalEvent.toolCallId !== "user-bash"
+				options.replacement && originalEvent.toolName === "bash" && originalEvent.origin !== "user"
 					? async (updated: JsonObject) => {
 							const owner = options.replacement!;
 							if (!active || ctx.signal?.aborted) throw new Error("PermissionRequest replacement cancelled");

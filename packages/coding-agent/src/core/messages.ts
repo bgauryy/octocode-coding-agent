@@ -8,20 +8,20 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
 
-export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
+const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 
 <summary>
 `;
 
-export const COMPACTION_SUMMARY_SUFFIX = `
+const COMPACTION_SUMMARY_SUFFIX = `
 </summary>`;
 
-export const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch that this conversation came back from:
+const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch that this conversation came back from:
 
 <summary>
 `;
 
-export const BRANCH_SUMMARY_SUFFIX = `</summary>`;
+const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
 /**
  * Message type for bash executions via the ! command.
@@ -34,6 +34,10 @@ export interface BashExecutionMessage {
 	cancelled: boolean;
 	truncated: boolean;
 	fullOutputPath?: string;
+	/** Full display output captured from this process's trusted executor spill; never added to model context. */
+	fullOutput?: string;
+	/** Explicit recovery information when complete display output could not be retained. */
+	fullOutputUnavailable?: string;
 	timestamp: number;
 	/** If true, this message is excluded from LLM context (!! prefix) */
 	excludeFromContext?: boolean;
@@ -79,7 +83,7 @@ declare module "@octocodeai/octocode-agent-core" {
 /**
  * Convert a BashExecutionMessage to user message text for LLM context.
  */
-export function bashExecutionToText(msg: BashExecutionMessage): string {
+function bashExecutionToText(msg: BashExecutionMessage): string {
 	let text = `Ran \`${msg.command}\`\n`;
 	if (msg.output) {
 		text += `\`\`\`\n${msg.output}\n\`\`\``;

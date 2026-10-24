@@ -17,6 +17,8 @@ interface Waiter {
  */
 export interface SendReceipt {
 	phase: "preparing" | "accepted" | "uncertain" | "cancelled" | "settled";
+	/** The asynchronous host handoff failed after an acknowledgement; retries must not dispatch again. */
+	failure?: Error;
 	reject(error: Error): void;
 	controller: AbortController;
 	ready: Promise<void>;
@@ -38,8 +40,14 @@ export class SendReceipts {
 	private readonly byKey = new Map<string, SendReceipt>();
 	private readonly preparing = new Set<SendReceipt>();
 	private readonly waiters = new Set<Waiter>();
+	/** A settlement or session replacement invalidates late host-promise rejections, including unkeyed sends. */
+	private completedVersion = 0;
 	/** The key of the receipt that owns the run in progress. */
 	activeKey: string | undefined;
+
+	get settlementVersion(): number {
+		return this.completedVersion;
+	}
 
 	get(key: string): SendReceipt | undefined {
 		return this.byKey.get(key);
@@ -83,6 +91,7 @@ export class SendReceipts {
 	}
 
 	private clear(reason: string): void {
+		this.completedVersion++;
 		for (const waiter of this.waiters) waiter.reject(new RpcError(ERR.unavailable, reason, { execution: "accepted" }));
 		this.waiters.clear();
 		for (const receipt of this.preparing) this.cancelPreparation(receipt, reason);
@@ -145,8 +154,13 @@ export class SendReceipts {
 		this.preparing.delete(receipt);
 		this.waiters.delete(waiter);
 		receipt.reject(failure);
-		if (dispatched) receipt.phase = "uncertain";
-		else {
+		if (dispatched) {
+			receipt.phase = "uncertain";
+			receipt.failure = failure;
+			// This receipt cannot own turn.abort now, and a rejected handoff may never emit agent_settled.
+			// The session's actual idle/pending state still controls whether a new send may start.
+			if (this.activeKey === key) this.activeKey = undefined;
+		} else {
 			if (key) this.byKey.delete(key);
 			if (this.activeKey === key) this.activeKey = undefined;
 		}
@@ -185,6 +199,7 @@ export class SendReceipts {
 
 	/** Octocode settled: sends still being prepared are void (the session ran meanwhile), accepted ones are settled, and every waiter gets the result. */
 	settle(result: RunResult): void {
+		this.completedVersion++;
 		for (const receipt of this.preparing)
 			this.cancelPreparation(receipt, "The session ran while the message was being prepared");
 		for (const receipt of this.byKey.values()) if (receipt.phase === "accepted") receipt.phase = "settled";

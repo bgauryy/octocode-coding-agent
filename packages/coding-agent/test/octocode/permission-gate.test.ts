@@ -4,11 +4,13 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { classify, permissionGate, powershellDestructive, runsLater } from "../../src/octocode/permission/gate.ts";
+import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
 import { archiveFolder } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV, PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { classify } from "../../src/octocode/permission/gate/classify.ts";
+import { runsLater } from "../../src/octocode/permission/file-access.ts";
 
 const call = (toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}) =>
 	({ type: "tool_call", toolCallId: "t1", toolName, input, ...extra }) as ToolCallEvent;

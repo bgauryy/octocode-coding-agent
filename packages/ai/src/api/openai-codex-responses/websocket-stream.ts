@@ -2,7 +2,8 @@ import type { ResponseStreamEvent } from "openai/resources/responses/responses.j
 import type { AssistantMessage, Model } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { normalizeContext } from "../../utils/transcript.ts";
-import { convertResponsesMessages, processResponsesStream } from "../openai-responses-shared.ts";
+import { convertResponsesMessages } from "../openai-responses-shared/messages.ts";
+import { processResponsesStream } from "../openai-responses-shared/stream-processing.ts";
 import { mapCodexEvents } from "./events.ts";
 import { applyServiceTierPricing, resolveCodexServiceTier } from "./request.ts";
 import { CODEX_TOOL_CALL_PROVIDERS, type OpenAICodexResponsesOptions, type RequestBody } from "./types.ts";

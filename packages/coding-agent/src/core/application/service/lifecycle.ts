@@ -1,0 +1,29 @@
+import { randomUUID } from "node:crypto";
+import type { ApplicationEvent } from "@octocodeai/octocode-contacts";
+import type { AgentSessionEvent } from "../../agent-session.ts";
+import { queuePreview } from "./projection.ts";
+
+/** Translate engine lifecycle events; the application store owns their state. */
+export function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEvent | undefined {
+	switch (event.type) {
+		case "agent_start":
+			return { type: "run.started", runId: randomUUID() };
+		case "agent_settled":
+			return { type: "run.settled", runId: runId ?? "unknown", aborted: event.aborted };
+		case "queue_update":
+			return {
+				type: "queue.changed",
+				steering: queuePreview([...event.steering]),
+				followUp: queuePreview([...event.followUp]),
+			};
+		case "compaction_start":
+			return { type: "session.status", status: "compacting" };
+		case "auto_retry_start":
+			return { type: "session.status", status: "retrying" };
+		case "compaction_end":
+		case "auto_retry_end":
+			return { type: "session.status", status: "idle" };
+		default:
+			return undefined;
+	}
+}

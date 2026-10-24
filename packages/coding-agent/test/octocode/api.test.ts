@@ -2,13 +2,15 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { nesting, OctocodeApi, optionsFromEnv } from "../../src/octocode/api/bridge.ts";
+import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiCallError, ApiClient, isNestedToolEvent } from "../../src/octocode/api/client.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { type ApiEvent, parseRequest } from "../../src/octocode/api/protocol.ts";
 import { apiDir, listInstances } from "../../src/octocode/api/registry.ts";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
-import { spilledMessage } from "../../src/octocode/team/session.ts";
+import { nesting } from "../../src/octocode/api/bridge/contracts.ts";
+import { optionsFromEnv } from "../../src/octocode/api/bridge/options.ts";
+import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
 import { fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

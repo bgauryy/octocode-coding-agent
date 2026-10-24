@@ -17,9 +17,12 @@ process.once("exit", () => {
 	for (const dir of created) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** A fetched page's text; a case that expects text fails on an image. */
+/** A fetched page's text; a case that expects text fails on an image or a transport notice. */
 export function asText(fetched: Fetched): string {
-	if (typeof fetched !== "string") throw new Error(`expected page text, got an ${fetched.mimeType} image`);
+	if (typeof fetched !== "string")
+		throw new Error(
+			`expected page text, got ${"kind" in fetched ? `a ${fetched.reason} notice` : `an ${fetched.mimeType} image`}`,
+		);
 	return fetched;
 }
 

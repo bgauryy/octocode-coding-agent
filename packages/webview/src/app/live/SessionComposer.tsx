@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
+import type { ApplicationAsset, ApplicationSnapshot } from "@octocodeai/octocode-contacts";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -6,7 +6,8 @@ import { choice, errorMessage, plural } from "../model/format.ts";
 import { Field, Select } from "../ui/fields.tsx";
 import { SendIcon, StopIcon } from "../ui/icons.tsx";
 import { Badge, Button } from "../ui/primitives.tsx";
-import { StatusLine } from "./controls.tsx";
+import { ConnectionNotice, StatusLine } from "./controls.tsx";
+import { SessionAttachments } from "./SessionAttachments.tsx";
 import { useLive } from "./session.tsx";
 
 type SessionAction = "prompt" | "steer" | "followUp";
@@ -36,6 +37,11 @@ function useRunAnnouncement(session: Pick<ApplicationSnapshot, "streaming" | "ru
 
 /** Send prompts, guidance and follow-ups to the session, stop its run, and show recent requests. */
 export function SessionComposer() {
+	const sessionId = useStore(useLive().session, (state) => state.application?.sessionId ?? "");
+	return <SessionComposerForSession key={sessionId} />;
+}
+
+function SessionComposerForSession() {
 	const { session: sessionStore, workspace } = useLive();
 	const session = useStore(
 		sessionStore,
@@ -58,11 +64,12 @@ export function SessionComposer() {
 	const draftKey = `session-command:${session?.sessionId ?? ""}`;
 	const draft = useStore(workspace, (state) => state.drafts[draftKey]);
 	const [pending, setPending] = useState(false);
-	// Stopping belongs to one run: the next run gets its own button state and its own request id (a retry within a run
-	// reuses the id, so the host answers it from the same receipt).
-	const [stoppingRun, setStoppingRun] = useState<string>();
+	const [uploading, setUploading] = useState(false);
+	const sending = useRef(false);
 	const [status, setStatus] = useState("");
-	const stopIds = useRef(new Map<string, string>());
+	const stopKey = `abort:${session?.sessionId ?? ""}:${session?.runId ?? ""}`;
+	const stopRequest = useStore(workspace, (state) => state.requests[stopKey]);
+	const stopState = session?.receipts.find((receipt) => receipt.id === stopRequest?.id) ?? stopRequest;
 	const announcement = useRunAnnouncement(session);
 	if (!session || !connection) return null;
 
@@ -76,36 +83,62 @@ export function SessionComposer() {
 				? "steer"
 				: choices[0];
 	const text = draft?.text ?? "";
-	const edit = (patch: { text?: string; to?: string }) =>
-		workspace.getState().setDraft(draftKey, { text, to: mode, ...patch, id: crypto.randomUUID() });
+	const attachments = draft?.attachments ?? [];
+	const edit = (patch: { text?: string; to?: string; attachments?: ApplicationAsset[] }) =>
+		workspace.getState().setDraft(draftKey, {
+			...(workspace.getState().drafts[draftKey] ?? { text, attachments, to: mode }),
+			...patch,
+			id: crypto.randomUUID(),
+		});
 
 	async function submit(event: FormEvent) {
 		event.preventDefault();
-		if (!session || !connection || !text.trim() || !mode) return;
+		if (sending.current || !session || !connection || (!text.trim() && !attachments.length) || !mode || uploading)
+			return;
+		const id = draft?.id ?? crypto.randomUUID();
+		workspace.getState().setDraft(draftKey, { id, text, attachments, to: mode });
+		const current = () =>
+			sessionStore.getState().application?.sessionId === session.sessionId &&
+			sessionStore.getState().connection === connection;
+		const sameDraft = () => current() && workspace.getState().drafts[draftKey]?.id === id;
+		sending.current = true;
 		setPending(true);
 		setStatus("Sending…");
 		try {
 			const receipt = await connection.execute({
-				id: draft?.id ?? crypto.randomUUID(),
+				id,
 				sessionId: session.sessionId,
 				action: choice(mode, choices),
 				text,
+				...(attachments.length ? { attachments: attachments.map((asset) => asset.id) } : {}),
 			});
+			if (!current()) return;
 			sessionStore.setState({ application: connection.stream.snapshot });
 			setStatus(receipt.message || receipt.status);
-			if (receipt.status !== "failed") workspace.getState().setDraft(draftKey, null);
+			if (sameDraft())
+				workspace
+					.getState()
+					.setDraft(
+						draftKey,
+						receipt.status === "failed" ? { id: crypto.randomUUID(), text, attachments, to: mode } : null,
+					);
 		} catch (error) {
-			setStatus(`${errorMessage(error)} Retry checks the same request.`);
+			if (current()) setStatus(`${errorMessage(error)} Retry checks the same request.`);
 		} finally {
+			sending.current = false;
 			setPending(false);
 		}
 	}
 	async function stop() {
 		if (!session?.runId || !connection) return;
 		const runId = session.runId;
-		const id = stopIds.current.get(runId) ?? crypto.randomUUID();
-		stopIds.current.set(runId, id);
-		setStoppingRun(runId);
+		const existing = workspace.getState().requests[stopKey];
+		if (existing?.status === "sending") return;
+		const id = stopState?.status === "failed" ? crypto.randomUUID() : (existing?.id ?? crypto.randomUUID());
+		const current = () =>
+			sessionStore.getState().application?.sessionId === session.sessionId &&
+			sessionStore.getState().connection === connection;
+		workspace.getState().setRequest(stopKey, { id, status: "sending", message: "Stopping…" });
 		try {
 			const receipt = await connection.execute({
 				id,
@@ -113,11 +146,18 @@ export function SessionComposer() {
 				action: "abort",
 				runId,
 			});
+			if (!current()) return;
+			workspace.getState().setRequest(stopKey, {
+				id,
+				status: receipt.status === "completed" ? "accepted" : receipt.status,
+				message: receipt.message || receipt.status,
+			});
 			sessionStore.setState({ application: connection.stream.snapshot });
-			setStatus(receipt.message || receipt.status);
+			if (sessionStore.getState().application?.runId === runId) setStatus(receipt.message || receipt.status);
 		} catch (error) {
-			setStatus(errorMessage(error));
-			setStoppingRun(undefined);
+			if (!current()) return;
+			workspace.getState().setRequest(stopKey, { id, status: "uncertain", message: errorMessage(error) });
+			if (sessionStore.getState().application?.runId === runId) setStatus(errorMessage(error));
 		}
 	}
 
@@ -126,7 +166,8 @@ export function SessionComposer() {
 			<Button
 				variant="danger"
 				icon={<StopIcon />}
-				loading={stoppingRun === session.runId}
+				loading={stopState?.status === "sending"}
+				disabled={stopState?.status === "accepted" || stopState?.status === "completed"}
 				onClick={stop}
 				title="Stopping keeps changes already made."
 			>
@@ -135,6 +176,7 @@ export function SessionComposer() {
 		) : null;
 	return (
 		<section className="session-panel" aria-label="Session controls">
+			<ConnectionNotice />
 			<div className="session-panel-header">
 				<h3>Work with this session</h3>
 				{session.streaming ? (
@@ -159,7 +201,7 @@ export function SessionComposer() {
 								placeholder={
 									session.streaming ? "Guide the agent or queue the next step…" : "What should the agent do?"
 								}
-								required
+								required={!attachments.length}
 								value={text}
 								disabled={pending}
 								onChange={(event) => edit({ text: event.target.value })}
@@ -170,6 +212,14 @@ export function SessionComposer() {
 							/>
 						)}
 					</Field>
+					<SessionAttachments
+						key={session.sessionId}
+						sessionId={session.sessionId}
+						value={attachments}
+						disabled={pending}
+						onChange={(assets) => edit({ attachments: assets })}
+						onUploading={setUploading}
+					/>
 					<div className="composer-actions">
 						<Field label="When to send">
 							{(props) => (
@@ -187,6 +237,7 @@ export function SessionComposer() {
 							variant="primary"
 							icon={<SendIcon />}
 							loading={pending}
+							disabled={uploading}
 							aria-keyshortcuts="Meta+Enter Control+Enter"
 						>
 							Send

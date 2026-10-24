@@ -24,33 +24,8 @@ export function toolResultText(value: unknown): string {
 	return keepEnds(text, OUTPUT_CHARS);
 }
 
-/** Message content as display text; images, tool calls and other blocks become short placeholders. */
-export function messageContentText(content: unknown): string {
-	return typeof content === "string"
-		? content
-		: Array.isArray(content)
-			? content
-					.map((block) =>
-						block.type === "text"
-							? block.text
-							: block.type === "image"
-								? "[Image attachment: open the session to view]"
-								: block.type === "toolCall"
-									? `[Tool call: ${block.name}]`
-									: "[Content available in the session]",
-					)
-					.join("")
-			: "";
-}
-
 export function queuePreview(values: string[]): string[] {
 	return values
 		.slice(-10)
 		.map((text) => (text.length > 1000 ? `${text.slice(0, 1000)} [Queue preview shortened]` : text));
-}
-
-/** Drop the oldest entries until at most `maxEntries` remain and their JSON fits `maxChars`; one entry always stays. */
-export function trimOldest<V>(map: Map<string, V>, maxEntries: number, maxChars: number): void {
-	while (map.size > 1 && (map.size > maxEntries || JSON.stringify([...map.values()]).length > maxChars))
-		map.delete(map.keys().next().value!);
 }

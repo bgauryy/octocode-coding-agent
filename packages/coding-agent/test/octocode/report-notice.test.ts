@@ -6,16 +6,11 @@ import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import {
-	noticeText,
-	NOTICE_TYPE,
-	RESULT_TYPE,
-	ReportQueue,
-	type Report,
-} from "../../src/octocode/subagents/handoff.ts";
+import { noticeText, NOTICE_TYPE, RESULT_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
 
 const report = (id: string, extra: Partial<Report> = {}): Report => ({
 	content: `Background subagent ${id} reported done`,

@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { commandsFor, hookFiles, loadHooks, parseHooks } from "../../src/octocode/hooks/config.ts";
+import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
 import { interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 
 describe("documented hook discovery and controls", () => {
 	it("runs the quick-start JSON example from the hook guide", async () => {

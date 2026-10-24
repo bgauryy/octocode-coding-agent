@@ -1,6 +1,8 @@
 import { REPORT_STATUSES } from "../instructions/report.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
-import { entryMessage, isRecord } from "../shared/util.ts";
+import { plural } from "../shared/render/text.ts";
+import { entryMessage, finiteOrZero } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /** The `custom_message` type of a background subagent's report (`handoff.ts` `RESULT_TYPE`). */
 const RESULT_CUSTOM_TYPE = "octocode-agent-result";
@@ -30,8 +32,6 @@ interface ProfileStats {
 	/** Runs that reported their first-turn context size, and the sum of those sizes. */
 	cold: { runs: number; tokens: number };
 }
-
-const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
 const emptyStats = (profile: string): ProfileStats => ({
 	profile,
@@ -79,13 +79,19 @@ function runOf(entry: unknown): Run | undefined {
 
 function tokensOf(run: Run): number {
 	const { usage, details } = run;
-	if (usage) return num(usage.input) + num(usage.output) + num(usage.cacheRead) + num(usage.cacheWrite);
+	if (usage)
+		return (
+			finiteOrZero(usage.input) +
+			finiteOrZero(usage.output) +
+			finiteOrZero(usage.cacheRead) +
+			finiteOrZero(usage.cacheWrite)
+		);
 	// `RunDetails.input` already holds the cache reads and writes.
-	return num(details.input) + num(details.output);
+	return finiteOrZero(details.input) + finiteOrZero(details.output);
 }
 
 const costOf = (run: Run): number =>
-	isRecord(run.usage?.cost) ? num(run.usage.cost.total) : run.usage ? 0 : num(run.details.cost);
+	isRecord(run.usage?.cost) ? finiteOrZero(run.usage.cost.total) : run.usage ? 0 : finiteOrZero(run.details.cost);
 
 /** A run's outcome; `named`: stated as the first word (a run recorded before sources were kept counts as first). */
 function outcomeOf(details: Record<string, unknown>): { outcome: StatsOutcome; named: boolean; trailing: boolean } {
@@ -96,7 +102,7 @@ function outcomeOf(details: Record<string, unknown>): { outcome: StatsOutcome; n
 }
 
 function compactionsOf(details: Record<string, unknown>): number {
-	return isRecord(details.compactions) ? num(details.compactions.done) : 0;
+	return isRecord(details.compactions) ? finiteOrZero(details.compactions.done) : 0;
 }
 
 /** Per-profile statistics of the subagent runs in session entries (`general` for a run with no role), most runs first. */
@@ -140,8 +146,6 @@ export function agentStats(entries: readonly unknown[]): ProfileStats[] {
 	}
 	return [...byProfile.values()].sort((a, b) => b.runs - a.runs || a.profile.localeCompare(b.profile));
 }
-
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 function describe(stats: ProfileStats): string[] {
 	const { outcomes } = stats;

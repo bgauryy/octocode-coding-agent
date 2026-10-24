@@ -1,8 +1,8 @@
 import { getAgentDir } from "../config.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/extensions/types.ts";
 import { projectMcpConfigPaths } from "../core/mcp-config-paths.ts";
-import { fingerprint, projectConfigFiles, projectTrustNow, saveDecision } from "../octocode/shared/trust.ts";
-import { projectMcpFiles } from "../octocode/shared/trust/files.ts";
+import { projectTrustNow, saveDecision } from "../octocode/shared/trust.ts";
+import { projectMcpFiles, fingerprint, projectConfigFiles } from "../octocode/shared/trust/files.ts";
 import { readStore, storeKey } from "../octocode/shared/trust/store.ts";
 import { type LoadedMcpConfig, loadMcpConfig, updateMcpServerConfig } from "./mcp/config.ts";
 import type { McpExtensionOptions } from "./mcp/state.ts";

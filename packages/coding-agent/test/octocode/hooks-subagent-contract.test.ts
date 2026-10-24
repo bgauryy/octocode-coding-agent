@@ -55,7 +55,7 @@ it("projects live turn/model/permission metadata for Codex child lifecycle", () 
 });
 
 it("hands down the actual parent transcript and clears inherited stale identity", async () => {
-	const { subagentProcessEnv } = await import("../../src/octocode/subagents/process.ts");
+	const { subagentProcessEnv } = await import("../../src/octocode/subagents/process/env.ts");
 	expect(subagentProcessEnv(undefined, { OCTOCODE_PARENT_TRANSCRIPT: "stale" }, { id: "child" })).not.toHaveProperty(
 		"OCTOCODE_PARENT_TRANSCRIPT",
 	);
@@ -74,7 +74,8 @@ it("keeps lifecycle handler eligibility and context limits source-specific", asy
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const { tmp } = await import("./helpers.ts");
-	const { loadHooks, commandsFor } = await import("../../src/octocode/hooks/config.ts");
+	const { loadHooks } = await import("../../src/octocode/hooks/config.ts");
+	const { commandsFor } = await import("../../src/octocode/hooks/config/calls.ts");
 	const home = tmp();
 	const cwd = tmp();
 	const handlers = [

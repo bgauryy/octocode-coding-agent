@@ -2,13 +2,13 @@
 
 export { Marked, type Token, type Tokens } from "marked";
 // Autocomplete support
-export {
-	type AutocompleteItem,
-	type AutocompleteProvider,
-	type AutocompleteSuggestions,
-	CombinedAutocompleteProvider,
-	type SlashCommand,
-} from "./autocomplete.ts";
+export type {
+	AutocompleteItem,
+	AutocompleteProvider,
+	AutocompleteSuggestions,
+	SlashCommand,
+} from "./autocomplete/types.ts";
+export { CombinedAutocompleteProvider } from "./autocomplete.ts";
 // Colors and styling
 export {
 	backgroundAnsi,
@@ -40,7 +40,8 @@ export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
-export { Editor, type EditorOptions, type EditorTheme } from "./components/editor.ts";
+export type { EditorOptions, EditorTheme } from "./components/editor/types.ts";
+export { Editor } from "./components/editor.ts";
 export { HStack } from "./components/h-stack.ts";
 export {
 	Image,
@@ -51,7 +52,8 @@ export {
 } from "./components/image.ts";
 export { Input } from "./components/input.ts";
 export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
-export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
+export type { DefaultTextStyle, MarkdownOptions, MarkdownTheme } from "./components/markdown/types.ts";
+export { Markdown } from "./components/markdown.ts";
 export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
 export {
 	ScrollView,
@@ -70,13 +72,8 @@ export { type SettingItem, SettingsList, type SettingsListTheme } from "./compon
 export { Spacer } from "./components/spacer.ts";
 export { Text } from "./components/text.ts";
 export { TruncatedText } from "./components/truncated-text.ts";
-export {
-	type StackChild,
-	type StackEntry,
-	type StackEntryOptions,
-	type StackOptions,
-	VStack,
-} from "./components/v-stack.ts";
+export type { StackChild, StackEntry, StackEntryOptions, StackOptions } from "./components/stack.ts";
+export { VStack } from "./components/v-stack.ts";
 // Editor component interface (for custom editors)
 export type { EditorComponent } from "./editor-component.ts";
 // Fuzzy matching
@@ -95,18 +92,11 @@ export {
 	TUI_KEYBINDINGS,
 } from "./keybindings.ts";
 // Keyboard input handling
-export {
-	decodeKittyPrintable,
-	isKeyRelease,
-	isKeyRepeat,
-	isKittyProtocolActive,
-	Key,
-	type KeyEventType,
-	type KeyId,
-	matchesKey,
-	parseKey,
-	setKittyProtocolActive,
-} from "./keys.ts";
+export { matchesKey } from "./keys/match.ts";
+export { Key, type KeyId } from "./keys/key-id.ts";
+export { isKittyProtocolActive, setKittyProtocolActive } from "./keys/state.ts";
+export { isKeyRelease, isKeyRepeat, type KeyEventType } from "./keys/sequences.ts";
+export { decodeKittyPrintable, parseKey } from "./keys/parse.ts";
 // LaTeX rendering
 export { type RenderLatexOptions, renderLatex } from "./latex.ts";
 // Native platform integration
@@ -127,33 +117,39 @@ export {
 } from "./terminal-colors.ts";
 // Terminal image support
 export {
-	allocateImageId,
-	type CellDimensions,
-	calculateImageRows,
-	deleteAllKittyImages,
-	deleteKittyImage,
-	detectCapabilities,
-	encodeITerm2,
-	encodeKitty,
-	getCapabilities,
-	getCellDimensions,
 	getGifDimensions,
 	getImageDimensions,
 	getJpegDimensions,
 	getPngDimensions,
-	getTerminalColorMode,
 	getWebpDimensions,
-	hyperlink,
-	type ImageDimensions,
-	type ImageProtocol,
-	type ImageRenderOptions,
-	imageFallback,
-	renderImage,
+} from "./terminal-image/dimensions.ts";
+export {
+	detectCapabilities,
+	getCapabilities,
+	getCellDimensions,
+	getTerminalColorMode,
 	resetCapabilitiesCache,
 	setCapabilities,
 	setCapabilityOverrides,
 	setCellDimensions,
-	type TerminalCapabilities,
+} from "./terminal-image/capabilities.ts";
+export type {
+	CellDimensions,
+	ImageDimensions,
+	ImageProtocol,
+	ImageRenderOptions,
+	TerminalCapabilities,
+} from "./terminal-image/types.ts";
+export {
+	allocateImageId,
+	calculateImageRows,
+	deleteAllKittyImages,
+	deleteKittyImage,
+	encodeITerm2,
+	encodeKitty,
+	hyperlink,
+	imageFallback,
+	renderImage,
 } from "./terminal-image.ts";
 export {
 	type Component,
@@ -185,15 +181,14 @@ export {
 	type TuiStopOptions,
 	type ViewportTUI,
 } from "./tui.ts";
-export { TuiAltScreen, type TuiAltScreenOptions } from "./tui-alt-screen.ts";
-export { TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
+export type { TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
+export { TuiAltScreen } from "./tui-alt-screen.ts";
+export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
+export { TuiMainScreen } from "./tui-main-screen.ts";
 // Utilities
-export {
-	getOsc8LinkAtColumn,
-	sliceByColumn,
-	stripTerminalSequences,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "./utils.ts";
+export { wrapTextWithAnsi } from "./utils/wrap.ts";
+export { visibleWidth } from "./utils/width.ts";
+export { truncateToWidth } from "./utils/truncate.ts";
+export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
+export { stripTerminalSequences } from "./utils.ts";
 export type { WheelScrollLines } from "./wheel-scroll.ts";

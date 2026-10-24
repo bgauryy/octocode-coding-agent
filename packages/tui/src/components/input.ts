@@ -1,9 +1,10 @@
 import { getKeybindings } from "../keybindings.ts";
-import { decodeKittyPrintable } from "../keys.ts";
+import { decodeKittyPrintable } from "../keys/parse.ts";
 import { KillRing } from "../kill-ring.ts";
 import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { UndoStack } from "../undo-stack.ts";
-import { getGraphemeSegmenter, isWhitespaceChar } from "../utils.ts";
+import { isWhitespaceChar } from "../utils/chars.ts";
+import { getGraphemeSegmenter } from "../utils/width.ts";
 import { findWordBackward, findWordForward } from "../word-navigation.ts";
 import { BracketedPasteBuffer } from "./input/paste.ts";
 import { cursorAtColumn, renderInputLine } from "./input/render.ts";
@@ -16,6 +17,7 @@ interface InputState {
 }
 
 export interface InputOptions {
+	secret?: boolean;
 	prompt?: string;
 	placeholder?: string;
 	placeholderStyle?: (text: string) => string;
@@ -30,6 +32,7 @@ export class Input implements Component, Focusable {
 	private readonly prompt: string;
 	private readonly placeholder: string;
 	private readonly placeholderStyle: (text: string) => string;
+	private readonly secret: boolean;
 	private renderedStartColumn = 0;
 	public onSubmit?: (value: string) => void;
 	public onEscape?: () => void;
@@ -40,14 +43,13 @@ export class Input implements Component, Focusable {
 	// Bracketed paste mode buffering
 	private paste = new BracketedPasteBuffer();
 
-	// Kill ring for Emacs-style kill/yank operations
 	private killRing = new KillRing();
 	private lastAction: "kill" | "yank" | "type-word" | null = null;
 
-	// Undo support
 	private undoStack = new UndoStack<InputState>();
 
 	constructor(options: InputOptions = {}) {
+		this.secret = options.secret ?? false;
 		this.prompt = options.prompt ?? "> ";
 		this.placeholder = options.placeholder ?? "";
 		this.placeholderStyle = options.placeholderStyle ?? ((text) => text);
@@ -209,7 +211,7 @@ export class Input implements Component, Focusable {
 		if (event.type !== "press" || event.button !== "left" || event.y !== 0) return undefined;
 		const visibleColumn = Math.max(0, event.x - 2);
 		const targetColumn = this.renderedStartColumn + visibleColumn;
-		this.cursor = cursorAtColumn(this.value, targetColumn);
+		this.cursor = this.secret ? Math.min(this.value.length, targetColumn) : cursorAtColumn(this.value, targetColumn);
 		this.lastAction = null;
 		return { handled: true, focus: true };
 	}
@@ -385,7 +387,7 @@ export class Input implements Component, Focusable {
 				prompt: this.prompt,
 				placeholder: this.placeholder,
 				placeholderStyle: this.placeholderStyle,
-				value: this.value,
+				value: this.secret ? "*".repeat(this.value.length) : this.value,
 				cursor: this.cursor,
 				focused: this.focused,
 			},

@@ -2,27 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import type { ReadonlySessionManager } from "../../core/session-manager.ts";
-import { atomicWriteFileSync } from "../shared/atomic.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
-import { isRecord } from "../shared/util.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
-
-export {
-	pendingReportsDir,
-	releasePendingReports,
-	type Report,
-	savePendingReport,
-	takePendingReports,
-} from "./handoff/pending.ts";
-export {
-	agentScratch,
-	dropEmptyScratch,
-	ReadReports,
-	scratchNames,
-	scratchRoot,
-	sweepScratch,
-} from "./handoff/scratch.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -43,6 +27,9 @@ const FAST_RETRIES = 3;
 const SLOW_RETRIES = 3;
 const SLOW_RETRY_MS = 30_000;
 
+type ReceiptSession = Pick<ReadonlySessionManager, "getEntries" | "getSessionFile"> &
+	Partial<Pick<ReadonlySessionManager, "getEntryCount">>;
+
 /**
  * Delivers background reports. Reports that finish close together are batched: all are sent at once and only the last
  * may start a turn, so three subagents finishing in a second cost one parent turn instead of three. Delivery is
@@ -55,9 +42,11 @@ export class ReportQueue {
 	private timer: NodeJS.Timeout | undefined;
 	private readonly pending = new Map<string, Report>();
 	private readonly retries = new Map<string, { attempts: number; timer?: NodeJS.Timeout }>();
-	private session: Pick<ReadonlySessionManager, "getEntries" | "getSessionFile"> | undefined;
+	private session: ReceiptSession | undefined;
 	/** The transcript file being scanned for receipts, and how many bytes of it end in a complete line already read. */
 	private scanned: { file: string; offset: number } | undefined;
+	private scannedEntries: { length: number; tail: string } | undefined;
+	private scannedEntryCount: number | undefined;
 	/** Whether the parent is between turns; reports finishing while it is not also get a short steering notice. */
 	private idle: () => boolean = () => true;
 	/** Reports whose notice was sent. */
@@ -75,13 +64,15 @@ export class ReportQueue {
 		this.windowMs = windowMs;
 	}
 
-	start(session: Pick<ReadonlySessionManager, "getEntries" | "getSessionFile">, isIdle?: () => boolean): void {
+	start(session: ReceiptSession, isIdle?: () => boolean): void {
 		this.persist();
 		this.session = session;
 		this.idle = isIdle ?? (() => true);
 		this.known.clear();
 		this.noticed.clear();
 		this.scanned = undefined;
+		this.scannedEntries = undefined;
+		this.scannedEntryCount = undefined;
 		this.recorded();
 	}
 
@@ -122,12 +113,29 @@ export class ReportQueue {
 		if (typeof id === "string") this.known.add(id);
 	}
 
+	/** Entries are immutable and append-only; a replaced tail invalidates the high-water mark. */
+	private scanEntries(): void {
+		const count = this.session?.getEntryCount?.();
+		if (count !== undefined && count === this.scannedEntryCount) return;
+		const entries = this.session?.getEntries() ?? [];
+		const scanned = this.scannedEntries;
+		const from =
+			scanned && entries.length >= scanned.length && entries[scanned.length - 1]?.id === scanned.tail
+				? scanned.length
+				: 0;
+		for (let index = from; index < entries.length; index++) this.receipt(entries[index]);
+		const tail = entries.at(-1)?.id;
+		this.scannedEntries = typeof tail === "string" ? { length: entries.length, tail } : undefined;
+		this.scannedEntryCount = count;
+	}
+
 	/** Session entries, rather than send-call returns, acknowledge accepted reports. */
 	recorded(): void {
 		if (!this.session) return;
 		const file = this.session.getSessionFile();
 		if (file) this.scanFile(file);
-		else for (const entry of this.session.getEntries()) this.receipt(entry);
+		// Include in-memory receipts even before the session writer flushes them to disk.
+		this.scanEntries();
 		for (const [id, report] of this.pending) {
 			if (this.known.has(id)) {
 				try {
@@ -259,19 +267,7 @@ export class ReportQueue {
 		const id = report.reportId;
 		if (!id || this.pending.get(id) !== report) return;
 		this.recorded();
-		if (
-			!this.pending.has(id) ||
-			this.session
-				?.getEntries()
-				.some(
-					(entry) =>
-						entry.type === "custom_message" &&
-						entry.customType === RESULT_TYPE &&
-						isRecord(entry.details) &&
-						entry.details.reportId === id,
-				)
-		)
-			return;
+		if (!this.pending.has(id)) return;
 		const retry = this.retries.get(id) ?? { attempts: 0 };
 		if (retry.timer || retry.attempts >= FAST_RETRIES + SLOW_RETRIES) return;
 		retry.attempts++;

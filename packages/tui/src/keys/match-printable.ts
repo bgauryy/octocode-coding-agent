@@ -1,5 +1,5 @@
 import { isDigitKey, matchesKittySequence, matchesPrintableModifyOtherKeys, rawCtrlChar } from "./sequences.ts";
-import { _kittyProtocolActive } from "./state.ts";
+import { isKittyProtocolActive } from "./state.ts";
 import { MODIFIERS, SYMBOL_KEYS } from "./tables.ts";
 
 /** Match a single letter, digit or symbol key with its modifiers. */
@@ -9,14 +9,14 @@ export function matchesPrintableKey(data: string, key: string, modifier: number)
 	const isLetter = key >= "a" && key <= "z";
 	const isDigit = isDigitKey(key);
 
-	if (modifier === MODIFIERS.ctrl + MODIFIERS.alt && !_kittyProtocolActive && rawCtrl) {
+	if (modifier === MODIFIERS.ctrl + MODIFIERS.alt && !isKittyProtocolActive() && rawCtrl) {
 		// Legacy: ctrl+alt+key is ESC followed by the control character.
 		// If that legacy form does not match, continue so CSI-u and
 		// modifyOtherKeys sequences from tmux can still be recognized.
 		if (data === `\x1b${rawCtrl}`) return true;
 	}
 
-	if (modifier === MODIFIERS.alt && !_kittyProtocolActive && (isLetter || isDigit || SYMBOL_KEYS.has(key))) {
+	if (modifier === MODIFIERS.alt && !isKittyProtocolActive() && (isLetter || isDigit || SYMBOL_KEYS.has(key))) {
 		// Legacy: alt+printable key is ESC followed by the key
 		if (data === `\x1b${key}`) return true;
 	}

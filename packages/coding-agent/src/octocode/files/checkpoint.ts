@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
-import { atomicWriteFile, atomicWriteFileSync, sha256, sha256File, tempSibling } from "../shared/atomic.ts";
-import { PRIVATE_FILE_MODE as mode, privateDir } from "../shared/home.ts";
+import { atomicWriteFile, atomicWriteFileSync, sha256, sha256File, tempSibling } from "../../utils/atomic-file.ts";
+import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
 import { type CheckpointEntry, journalOf, readJournal, serialize } from "./checkpoint-store.ts";
 
 /**
@@ -40,6 +40,18 @@ export interface RewindResult {
 	partly: string[];
 	/** Changed since the agent's change (or its checkpoint is gone): left as they are, and the checkpoint stays. */
 	skipped: string[];
+	/** Copies preserved after a concurrent writer took the original path during rewind. */
+	recovery?: Array<{ path: string; savedAt: string }>;
+}
+
+class CheckpointRecoveryError extends Error {
+	readonly file: string;
+	readonly savedAt: string;
+	constructor(file: string, savedAt: string) {
+		super(`${file} changed during the rewind; its displaced content is preserved at ${savedAt}`);
+		this.file = file;
+		this.savedAt = savedAt;
+	}
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -61,7 +73,8 @@ async function removeIfUnchanged(file: string, expected: string): Promise<void> 
 		await fs.promises.link(aside, file);
 		await fs.promises.rm(aside, { force: true });
 	} catch (error) {
-		if (errorCode(error) !== "EEXIST") await fs.promises.rename(aside, file);
+		if (errorCode(error) === "EEXIST") throw new CheckpointRecoveryError(file, aside);
+		await fs.promises.rename(aside, file);
 	}
 	throw new Error(`${file} changed during the rewind`);
 }
@@ -84,7 +97,7 @@ export class Checkpoints {
 		this.turn = Math.max(0, ...entries.map((entry) => entry.turn));
 		this.anchor = undefined;
 		// A torn last line would swallow the next appended one: rewrite the journal from what parsed.
-		if (dirty) atomicWriteFileSync(this.journal(), serialize(entries), { mode });
+		if (dirty) atomicWriteFileSync(this.journal(), serialize(entries), { mode: PRIVATE_FILE_MODE });
 	}
 
 	/** A new user turn: its first change to each file is checkpointed again. */
@@ -220,10 +233,11 @@ export class Checkpoints {
 		const undone = new Map<string, number>();
 		const stuck = new Set<string>();
 		const kept = new Set<CheckpointEntry>();
+		const recovery: NonNullable<RewindResult["recovery"]> = [];
 		for (const entry of this.entries
 			.filter((candidate) => chosen.has(candidate.turn) && candidate.after !== undefined)
 			.reverse()) {
-			if (!stuck.has(entry.path) && (await this.undo(entry))) {
+			if (!stuck.has(entry.path) && (await this.undo(entry, recovery))) {
 				undone.set(entry.path, (undone.get(entry.path) ?? 0) + 1);
 				continue;
 			}
@@ -237,19 +251,21 @@ export class Checkpoints {
 			restored: [],
 			partly: [],
 			skipped: [...stuck].filter((file) => !undone.has(file)),
+			...(recovery.length ? { recovery } : {}),
 		};
 		for (const file of undone.keys()) (stuck.has(file) ? result.partly : result.restored).push(file);
 		return result;
 	}
 
 	/** Restore one entry if the file is still as the agent left it; whether it was restored. */
-	private async undo(entry: CheckpointEntry): Promise<boolean> {
+	private async undo(entry: CheckpointEntry, recovery: NonNullable<RewindResult["recovery"]>): Promise<boolean> {
 		const current = (await sha256File(entry.path)) ?? null;
 		if (current !== entry.after) return false;
 		try {
 			await this.restore(entry, current);
 			return true;
-		} catch {
+		} catch (error) {
+			if (error instanceof CheckpointRecoveryError) recovery.push({ path: error.file, savedAt: error.savedAt });
 			return false;
 		}
 	}
@@ -279,7 +295,7 @@ export class Checkpoints {
 		if (size === state.data.length) return;
 		privateDir(path.dirname(blob));
 		this.made = true;
-		await atomicWriteFile(blob, state.data, undefined, { mode });
+		await atomicWriteFile(blob, state.data, undefined, { mode: PRIVATE_FILE_MODE });
 	}
 
 	/** Keep within the caps by dropping the oldest turns, never the in-flight one. Returns whether anything was dropped. */
@@ -320,7 +336,7 @@ export class Checkpoints {
 			privateDir(this.dir ?? "");
 			this.made = true;
 		}
-		await fs.promises.appendFile(this.journal(), `${JSON.stringify(entry)}\n`, { mode });
+		await fs.promises.appendFile(this.journal(), `${JSON.stringify(entry)}\n`, { mode: PRIVATE_FILE_MODE });
 	}
 
 	private async rewrite(): Promise<void> {
@@ -331,7 +347,7 @@ export class Checkpoints {
 			this.journal(),
 			serialize(this.entries.filter((entry) => entry.after !== undefined)),
 			undefined,
-			{ mode },
+			{ mode: PRIVATE_FILE_MODE },
 		);
 	}
 

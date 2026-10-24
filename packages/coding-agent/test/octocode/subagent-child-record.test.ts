@@ -9,11 +9,12 @@ import { transcriptNote } from "../../src/octocode/compaction/summary.ts";
 import { archiveFolder, archiveSearch, LIBRARY_FILE } from "../../src/octocode/shared/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
-import { buildAgentArgs, childSession, childSessionFile, runSubagent } from "../../src/octocode/subagents/process.ts";
+import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { buildAgentArgs, childSession, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
 const savedArgv = process.argv[1];
@@ -289,8 +290,8 @@ describe("what the parent keeps of a child's run", () => {
 		const result = await s.run({ task: "thrash" });
 		expect(result.isError).toBe(true);
 		const text = result.content[0].text as string;
-		expect(text).toContain(
-			"failed: Subagent stopped: Automatic compaction stopped: the context refilled to the limit within 2 turns",
+		expect(text).toMatch(
+			/failed:\n<<<untrusted-[0-9a-f]{16} [^\n]*\nSubagent stopped: Automatic compaction stopped: the context refilled to the limit within 2 turns/,
 		);
 		expect(text).not.toContain("cancelled before its run settled");
 		// Every warning and error it showed is kept (the info note is not), the cancelled compaction is counted, and the transcript is named.

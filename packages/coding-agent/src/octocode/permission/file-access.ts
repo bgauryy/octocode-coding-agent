@@ -1,7 +1,8 @@
 import path from "node:path";
-import { canonicalPath, isWithin, OCTOCODE_DIR, octocodeHome, resolveToolPath, workspaceRoot } from "../shared/home.ts";
+import { OCTOCODE_DIR, octocodeHome, resolveToolPath } from "../shared/home.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 
 /**
  * Repository paths that load code, hooks or agent instructions in later sessions (git config, Octocode, Claude Code, Codex

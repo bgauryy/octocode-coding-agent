@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { getModel, streamSimple } from "@octocodeai/octocode-ai/compat";
-import { getBuiltinModels, getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
+import { streamSimple } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModels, getBuiltinProviders, getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -793,8 +793,8 @@ describe("default model selection", () => {
 
 	describe("persisted default model scoping", () => {
 		const tempDirs: string[] = [];
-		const sonnet = getModel("anthropic", "claude-sonnet-4-5");
-		const opus = getModel("anthropic", "claude-opus-4-8");
+		const sonnet = getBuiltinModel("anthropic", "claude-sonnet-4-5");
+		const opus = getBuiltinModel("anthropic", "claude-opus-4-8");
 
 		afterEach(() => {
 			for (const dir of tempDirs.splice(0)) {

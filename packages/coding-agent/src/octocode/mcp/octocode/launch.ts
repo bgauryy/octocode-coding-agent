@@ -2,9 +2,9 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isBunBinary } from "../../../config.ts";
+import { getPackageDir, isBunBinary } from "../../../config.ts";
 import { sessionsRoot } from "../../shared/home.ts";
-import { findManifest, packageRoot } from "../../shared/package.ts";
+import { findManifest } from "../../shared/package.ts";
 import type { Launch } from "../client.ts";
 
 /** The npm package of the server this extension runs. */
@@ -12,7 +12,7 @@ const MCP_PACKAGE = "octocode-mcp";
 
 /** The `octocode-mcp` range this package's `package.json` depends on (the one source of the version this extension runs). */
 function octocodeMcpRange(): string {
-	const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot(), "package.json"), "utf8")) as {
+	const manifest = JSON.parse(fs.readFileSync(path.join(getPackageDir(), "package.json"), "utf8")) as {
 		dependencies?: Record<string, string>;
 	};
 	const range = manifest.dependencies?.[MCP_PACKAGE];

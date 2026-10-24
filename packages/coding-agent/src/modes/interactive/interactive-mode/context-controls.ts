@@ -1,0 +1,54 @@
+import { getApplicationPort } from "../../../core/application/index.ts";
+import type { InteractiveModeHost } from "./host.ts";
+
+type Host = Pick<InteractiveModeHost, "session" | "showExtensionSelector" | "showStatus" | "ui">;
+
+/** Decimal k/m suffixes follow the provider catalog's token units. */
+export function parseContextSize(value: string): number | undefined {
+	const match = /^(\d+(?:\.\d+)?)(k|m)?$/i.exec(value.trim());
+	if (!match) return undefined;
+	const tokens = Number(match[1]) * (match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2] ? 1000 : 1);
+	return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
+}
+
+/** Returns false for the read-only report commands. */
+export async function handleContextSize(host: Host, args: string): Promise<boolean> {
+	if (!args || args === "all") return false;
+	const session = host.session;
+	const port = getApplicationPort(session);
+	let tokens: number | undefined;
+	if (args === "size") {
+		const sessionId = session.sessionManager.getSessionId();
+		const selectedModel = session.model;
+		const capacity = port.invoke("getContextWindowLimit");
+		if (!capacity) throw new Error("Select a physical model with /model before choosing its context size.");
+		const sizes = [8192, 16000, 32000, 64000, 128000, 200000, 256000, 512000, 1_000_000].filter(
+			(size) => size < capacity,
+		);
+		const full = `Full model capacity — ${capacity.toLocaleString()} tokens`;
+		const labels = [full, ...sizes.map((size) => `${size.toLocaleString()} tokens`)];
+		const selection = await host.showExtensionSelector(
+			"Context budget for this session (custom: /context 32k)",
+			labels,
+		);
+		if (!selection) return true;
+		if (
+			host.session !== session ||
+			session.sessionManager.getSessionId() !== sessionId ||
+			session.model !== selectedModel
+		) {
+			throw new Error("Model or session changed while choosing context size. Reopen /context size.");
+		}
+		if (selection !== full) tokens = sizes[labels.indexOf(selection) - 1];
+	} else if (args !== "reset") {
+		tokens = parseContextSize(args);
+		if (tokens === undefined)
+			throw new Error("Usage: /context [all|size|reset|tokens]. Examples: /context 32k, /context 128000.");
+	}
+	const applied = port.invoke("setContextWindow", tokens);
+	host.showStatus(
+		`Context budget: ${applied.toLocaleString()} tokens for this model in this session. Automatic compaction uses this budget. /context reset restores full capacity.`,
+	);
+	host.ui.requestRender();
+	return true;
+}

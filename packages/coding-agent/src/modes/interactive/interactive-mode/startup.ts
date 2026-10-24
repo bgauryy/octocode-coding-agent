@@ -16,11 +16,12 @@ import { createChatViewport } from "../chat-viewport.ts";
 import { formatKeyText, keyHint, keyText, rawKeyHint } from "../components/keybinding-hints.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../theme/theme.ts";
+import { refreshGithubFooter } from "./github-footer.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
-export type StartupHost = Pick<
+type StartupHost = Pick<
 	InteractiveModeHost,
 	| "builtInHeader"
 	| "changelogMarkdown"
@@ -175,7 +176,7 @@ export async function init(host: StartupHost): Promise<void> {
 				rawKeyHint("!", "to run bash"),
 				rawKeyHint("!!", "to run bash (no context)"),
 				hint("app.message.followUp", "to queue follow-up"),
-				hint("app.message.dequeue", "to edit all queued messages"),
+				hint("app.message.dequeue", "to restore the last queued message"),
 				hint("app.clipboard.pasteImage", "to paste files on macOS, images, or text"),
 				rawKeyHint("drop files", "to attach"),
 			].join("\n");
@@ -245,6 +246,8 @@ export async function init(host: StartupHost): Promise<void> {
 	host.footerDataProvider.onBranchChange(() => {
 		host.ui.requestRender();
 	});
+
+	void refreshGithubFooter(host);
 
 	// Initialize available provider count for footer display
 	host.updateAvailableProviderCount();

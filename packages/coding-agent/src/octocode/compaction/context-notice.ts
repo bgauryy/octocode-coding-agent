@@ -1,7 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { MessageRef } from "../files/reads.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
-import { isRecord, isStaleSessionError } from "../shared/util.ts";
+import { isStaleSessionError } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * Context usage notices: when the context crosses half, three quarters and nine tenths of the room before automatic
@@ -14,7 +15,7 @@ import { isRecord, isStaleSessionError } from "../shared/util.ts";
 export const CONTEXT_NOTICE_TYPE = "octocode-context-usage";
 
 /** Shares of the room before automatic compaction (window less reserve) that each get one notice. */
-export const CONTEXT_NOTICE_BANDS = [0.5, 0.75, 0.9] as const;
+const CONTEXT_NOTICE_BANDS = [0.5, 0.75, 0.9] as const;
 
 /** The highest band `tokens` has reached, if any. */
 export function noticeBand(tokens: number, limit: number): number | undefined {

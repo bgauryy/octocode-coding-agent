@@ -21,7 +21,7 @@ import type { Provider, ProviderModel, RefreshModelsContext } from "./contracts.
 const KNOWN_MODEL_TYPES: Record<ModelType, true> = { chat: true, image: true, classifier: true };
 
 /** Models from stores and remote sources may have types that only newer versions know. */
-export function hasKnownModelType(model: AnyModel): boolean {
+function hasKnownModelType(model: AnyModel): boolean {
 	return Object.hasOwn(KNOWN_MODEL_TYPES, getModelType(model));
 }
 

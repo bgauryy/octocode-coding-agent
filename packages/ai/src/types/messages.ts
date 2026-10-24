@@ -3,6 +3,7 @@ import type { ModelThinkingLevel } from "../providers/model-schema.ts";
 import type { AssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import type { Api, ProviderId } from "./ids.ts";
 import type { IsJsonCompatible, JsonObject, JsonRepresentation, JsonValue } from "./json.ts";
+import type { ContentAnnotation, MediaContent, ResourceContent, UnsupportedContent } from "./content.ts";
 
 export interface TextSignatureV1 {
 	v: 1;
@@ -14,6 +15,7 @@ export interface TextContent {
 	type: "text";
 	text: string;
 	textSignature?: string; // e.g., for OpenAI responses, message metadata (legacy id string or TextSignatureV1 JSON)
+	annotations?: ContentAnnotation[];
 }
 
 export interface ThinkingContent {
@@ -30,7 +32,17 @@ export interface ImageContent {
 	type: "image";
 	data: string; // base64 encoded image data
 	mimeType: string; // e.g., "image/jpeg", "image/png"
+	thoughtSignature?: string; // Google-specific opaque replay data, never display text
 }
+
+export type AssistantContent =
+	| TextContent
+	| ThinkingContent
+	| ToolCall
+	| ImageContent
+	| MediaContent
+	| ResourceContent
+	| UnsupportedContent;
 
 export interface ToolCall {
 	type: "toolCall";
@@ -52,7 +64,7 @@ export interface Usage {
 	output: number;
 	cacheRead: number;
 	cacheWrite: number;
-	/** Subset of `cacheWrite` written with 1h retention. Only Anthropic reports this split. */
+	/** Subset of `cacheWrite` written with 1h retention, as Anthropic and Bedrock report it. */
 	cacheWrite1h?: number;
 	/** Subset of `cacheWrite` written with OpenAI 12h retention. */
 	cacheWrite12h?: number;
@@ -122,7 +134,7 @@ export interface UserMessage {
 
 export interface AssistantMessage {
 	role: "assistant";
-	content: (TextContent | ThinkingContent | ToolCall)[];
+	content: AssistantContent[];
 	api: Api;
 	provider: ProviderId;
 	model: string;
@@ -183,6 +195,8 @@ export type ToolResultMessage<TDetails = JsonValue> =
 				toolName: string;
 				content: (TextContent | ImageContent)[]; // Supports text and images
 				details?: JsonRepresentation<TDetails>;
+				/** Machine-readable tool output, retained for replay and interface consumers. */
+				structuredContent?: JsonValue;
 				/** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
 				usage?: Usage;
 				/** Calls this tool made to other tools. Kept for the session record; not sent to the model. */
@@ -282,6 +296,7 @@ export type AssistantMessageEvent =
 	| { type: "toolcall_start"; contentIndex: number; partial: AssistantMessage }
 	| { type: "toolcall_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
 	| { type: "toolcall_end"; contentIndex: number; toolCall: ToolCall; partial: AssistantMessage }
+	| { type: "content_update"; contentIndex: number; partial: AssistantMessage }
 	| {
 			type: "done";
 			reason: Extract<StopReason, "stop" | "length" | "toolUse" | "deferred">;

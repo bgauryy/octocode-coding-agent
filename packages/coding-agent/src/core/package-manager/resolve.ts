@@ -17,7 +17,7 @@ import {
 	toResolvedPaths,
 } from "./resources.ts";
 import {
-	dedupePackages,
+	configuredPackages,
 	getBaseDirForScope,
 	getPackageIdentity,
 	getPackageSourceString,
@@ -45,18 +45,7 @@ export async function resolvePackages(
 	const accumulator = createAccumulator();
 	const globalSettings = host.settingsManager.getGlobalSettings();
 	const projectSettings = host.settingsManager.getProjectSettings();
-
-	// Collect all packages with scope (project first so cwd resources win collisions)
-	const allPackages: Array<{ pkg: PackageSource; scope: SourceScope }> = [];
-	for (const pkg of projectSettings.packages ?? []) {
-		allPackages.push({ pkg, scope: "project" });
-	}
-	for (const pkg of globalSettings.packages ?? []) {
-		allPackages.push({ pkg, scope: "user" });
-	}
-
-	// Dedupe: project scope wins over global for same package identity
-	const packageSources = dedupePackages(host, allPackages);
+	const packageSources = configuredPackages(host);
 	await resolvePackageSources(host, packageSources, accumulator, onMissing);
 
 	const globalBaseDir = host.agentDir;

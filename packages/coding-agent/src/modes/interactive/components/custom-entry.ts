@@ -4,6 +4,7 @@ import type { EntryRenderer } from "../../../core/extensions/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
 import { theme } from "../theme/theme.ts";
 import { errorMessage } from "../../../utils/guards.ts";
+import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /**
  * Component that renders a custom session entry from extensions.
@@ -45,6 +46,18 @@ export class CustomEntryComponent extends Container {
 		this.rebuild();
 	}
 
+	override render(width: number): string[] {
+		try {
+			return super.render(width);
+		} catch (error) {
+			return new Text(
+				theme.fg("error", sanitizeTerminalText(`[${this.entry.customType}] renderer failed: ${errorMessage(error)}`)),
+				this.outputPad,
+				0,
+			).render(width);
+		}
+	}
+
 	private rebuild(): void {
 		this.clear();
 		this.customComponent = undefined;
@@ -53,7 +66,7 @@ export class CustomEntryComponent extends Container {
 		try {
 			component = this.renderer(this.entry, { expanded: this._expanded }, theme);
 		} catch (error) {
-			const message = errorMessage(error);
+			const message = sanitizeTerminalText(errorMessage(error));
 			const box = new Box(this.outputPad, 1, (text) => theme.bg("customMessageBg", text));
 			box.addChild(new Text(theme.fg("error", `[${this.entry.customType}] renderer failed: ${message}`), 0, 0));
 			component = box;

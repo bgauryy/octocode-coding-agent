@@ -1,5 +1,5 @@
 import { compositeTuiLine } from "../tui.ts";
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 import { allocateStackSizes, Stack, type StackChild, type StackOptions, visibleStackEntries } from "./stack.ts";
 
 export class HStack extends Stack {

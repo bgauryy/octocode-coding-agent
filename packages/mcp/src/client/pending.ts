@@ -15,7 +15,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_TOTAL_TIMEOUT_MS = 30 * 60_000;
 
 /** What the pending-request table needs from its client. */
-export interface PendingRequestsHost {
+interface PendingRequestsHost {
 	/** Tell the server a request was cancelled; called after the request settled locally. */
 	sendCancelled(id: JsonRpcId, reason: string | undefined): void;
 	emitError(error: unknown): void;

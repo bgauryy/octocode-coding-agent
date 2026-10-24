@@ -32,6 +32,8 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];
 	supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];
 	vllmPriority?: OpenAICompletionsCompat["vllmPriority"];
+	/** The field streamed `reasoning` deltas are recorded and replayed under, when the provider expects another. */
+	reasoningReplayField?: "reasoning_content";
 };
 
 export type ResolvedChatTemplateKwargValue = string | number | boolean | null;

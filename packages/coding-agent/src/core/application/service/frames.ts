@@ -1,4 +1,20 @@
-import type { ApplicationFrame } from "@octocodeai/octocode-contacts";
+import {
+	APPLICATION_PROTOCOL_VERSION,
+	type ApplicationCursor,
+	type ApplicationFrame,
+} from "@octocodeai/octocode-contacts";
+import { redactData } from "../../../octocode/shared/sanitize.ts";
+
+export type ApplicationFramePayload =
+	| Omit<Extract<ApplicationFrame, { type: "snapshot" }>, "protocolVersion" | "cursor" | "at">
+	| Omit<Extract<ApplicationFrame, { type: "event" }>, "protocolVersion" | "cursor" | "at">
+	| { type: "resumed" }
+	| { type: "resync"; reason: "overflow" | "session-changed" };
+
+/** Serialized views retain rich fields without exporting credentials from native transcript data. */
+export function createApplicationFrame(cursor: ApplicationCursor, payload: ApplicationFramePayload): ApplicationFrame {
+	return redactData({ protocolVersion: APPLICATION_PROTOCOL_VERSION, cursor, at: Date.now(), ...payload });
+}
 
 /**
  * Append an event frame to the replay buffer, then drop the oldest frames until at most 200 remain within 256 KB.

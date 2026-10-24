@@ -1,6 +1,6 @@
 import {
 	type Tool as BedrockTool,
-	CachePointType,
+	type CachePointBlock,
 	type ContentBlock,
 	ConversationRole,
 	ImageFormat,
@@ -26,31 +26,28 @@ import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { type TranscriptContext, withoutInitialSystemMessage } from "../../utils/transcript.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
 import { splitErrorToolResultImages, transformMessages } from "../transform-messages.ts";
-import {
-	isAnthropicClaudeModel,
-	longCacheTtl,
-	supportsPromptCaching,
-	supportsThinkingSignature,
-} from "./model-support.ts";
+import { getCachePoint } from "./cache-points.ts";
+import { isAnthropicClaudeModel, supportsThinkingSignature } from "./model-support.ts";
 import { type BedrockOptions, EMPTY_TEXT_PLACEHOLDER } from "./types.ts";
 
+/**
+ * Builds the system blocks. Each prompt part (one, or a base and a project block when split) is followed by a cache
+ * point, so a split prompt keeps the base block cached for sessions that share tools but differ in project context.
+ */
 export function buildSystemPrompt(
-	systemPrompt: string | undefined,
+	systemPrompt: string | readonly string[] | undefined,
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 	env?: ProviderEnv,
 ): SystemContentBlock[] | undefined {
 	if (!systemPrompt) return undefined;
 
-	const blocks: SystemContentBlock[] = [{ text: sanitizeSurrogates(systemPrompt) }];
-
-	// Add cache point for supported Claude models when caching is enabled
-	if (cacheRetention !== "none" && supportsPromptCaching(model, env)) {
-		blocks.push({
-			cachePoint: { type: CachePointType.DEFAULT, ...longCacheTtl(model, cacheRetention) },
-		});
+	const cachePoint = getCachePoint(model, cacheRetention, env);
+	const blocks: SystemContentBlock[] = [];
+	for (const text of typeof systemPrompt === "string" ? [systemPrompt] : systemPrompt) {
+		blocks.push({ text: sanitizeSurrogates(text) });
+		if (cachePoint) blocks.push({ cachePoint });
 	}
-
 	return blocks;
 }
 
@@ -134,7 +131,7 @@ export function convertMessages(
 					}
 					if (content.length === 0) content.push({ text: EMPTY_TEXT_PLACEHOLDER });
 				}
-				result.push({ role: ConversationRole.USER, content });
+				pushUserMessage(result, content);
 				break;
 			}
 			case "assistant": {
@@ -243,7 +240,7 @@ export function convertMessages(
 				// Skip the messages we've already processed
 				i = j - 1;
 
-				result.push({ role: ConversationRole.USER, content: [...toolResults, ...errorImages] });
+				pushUserMessage(result, [...toolResults, ...errorImages]);
 				break;
 			}
 			default:
@@ -252,25 +249,33 @@ export function convertMessages(
 	}
 
 	// Add cache point to the last user message for supported Claude models when caching is enabled
-	if (cacheRetention !== "none" && supportsPromptCaching(model, env) && result.length > 0) {
+	const cachePoint = getCachePoint(model, cacheRetention, env);
+	if (cachePoint && result.length > 0) {
 		const lastMessage = result[result.length - 1];
 		if (lastMessage.role === ConversationRole.USER && lastMessage.content) {
-			lastMessage.content.push({
-				cachePoint: {
-					type: CachePointType.DEFAULT,
-					...longCacheTtl(model, cacheRetention),
-				},
-			});
+			lastMessage.content.push({ cachePoint });
 		}
 	}
 
 	return result;
 }
 
+/**
+ * Converse requires alternating roles, so a user turn that follows another user turn (a
+ * collapsed system update after tool results, or a queued user message) joins its content.
+ */
+function pushUserMessage(result: Message[], content: ContentBlock[]): void {
+	const last = result[result.length - 1];
+	if (last?.role === ConversationRole.USER && last.content) last.content.push(...content);
+	else result.push({ role: ConversationRole.USER, content });
+}
+
+/** `cachePoint` ends the tool list with a checkpoint that covers every tool; it precedes the system prompt in the prefix. */
 export function convertToolConfig(
 	tools: Tool[] | undefined,
 	toolChoice: BedrockOptions["toolChoice"],
 	supportsStrictMode: boolean,
+	cachePoint?: CachePointBlock,
 ): ToolConfiguration | undefined {
 	if (!tools?.length) return undefined;
 	if (toolChoice === "none") return undefined;
@@ -286,6 +291,8 @@ export function convertToolConfig(
 			},
 		};
 	});
+
+	if (cachePoint) bedrockTools.push({ cachePoint });
 
 	let bedrockToolChoice: ToolChoice | undefined;
 	switch (toolChoice) {

@@ -4,10 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
-import { FileGuard, registerFileTool } from "../src/octocode/files/tool.ts";
+import { registerFileTool } from "../src/octocode/files/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
 import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
+import { FileGuard } from "../src/octocode/files/tool/guard.ts";
 
 const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 

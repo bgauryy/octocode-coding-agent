@@ -3,9 +3,8 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { agentDbPath, globalPaths, privateDir } from "../shared/home.ts";
 import { loadSqlite } from "../shared/util.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
 import { AgentDbError, ensureSchema, schemaCurrent } from "./schema.ts";
-
-export { AGENT_APPLICATION_ID, AgentDbError } from "./schema.ts";
 
 /** An open agent database. Features write their own SQL against the schema tables (`./schema.ts`). */
 export interface AgentDb {
@@ -127,32 +126,33 @@ function tighten(target: string): void {
 	}
 }
 
-let shared: AgentDb | undefined;
+const shared = new Map<string, AgentDb>();
 const refused = new Map<string, AgentDbError>();
 
 /**
- * The process's agent database, opened on first use (and reopened when `OCTOCODE_AGENT_DB` / `OCTOCODE_HOME` in `env`
- * now name another file). An `AgentDbError` is remembered per file and thrown again without retrying.
+ * One process connection per configured file. Opening another home must not close a database borrowed by a live
+ * session. An `AgentDbError` is remembered per file and thrown again without retrying.
  */
 export function sharedAgentDb(env: NodeJS.ProcessEnv = process.env): AgentDb {
 	const file = agentDbPath(env);
-	if (shared?.file === file) return shared;
-	const problem = refused.get(file);
+	const key = canonicalPath(file);
+	const current = shared.get(key);
+	if (current) return current;
+	const problem = refused.get(key);
 	if (problem) throw problem;
-	shared?.close();
-	shared = undefined;
 	try {
-		shared = openAgentDb(file, env);
+		const opened = openAgentDb(file, env);
+		shared.set(key, opened);
+		return opened;
 	} catch (error) {
-		if (error instanceof AgentDbError) refused.set(file, error);
+		if (error instanceof AgentDbError) refused.set(key, error);
 		throw error;
 	}
-	return shared;
 }
 
-/** Closes the process's agent database (tests, process exit); the next `sharedAgentDb` opens it again. */
+/** Closes all process-owned agent databases (tests, process exit); the next access opens a fresh connection. */
 export function closeSharedAgentDb(): void {
-	shared?.close();
-	shared = undefined;
+	for (const connection of shared.values()) connection.close();
+	shared.clear();
 	refused.clear();
 }

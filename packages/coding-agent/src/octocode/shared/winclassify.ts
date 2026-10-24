@@ -10,8 +10,6 @@ import {
 } from "./winclassify/targets.ts";
 import type { Classification, ParseScript, ScriptCommand, ScriptElement } from "./winclassify/types.ts";
 
-export type { Classification, ParseScript, ScriptCommand, ScriptElement } from "./winclassify/types.ts";
-
 /**
  * Which PowerShell commands are destructive. The helper's parser (winhelper-script.ts) only reports the commands of a
  * script and their arguments; everything that decides (aliases, `-Command` and `-EncodedCommand` unwrapping, `cmd /c`,

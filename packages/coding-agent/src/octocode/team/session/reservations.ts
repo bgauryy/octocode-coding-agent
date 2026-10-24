@@ -1,10 +1,12 @@
 import { USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
 import type { HeldLeases } from "../held.ts";
-import type { Lease, LeaseRequest, Member } from "../model.ts";
+import type { Lease, LeaseRequest } from "../model.ts";
 import type { PeerLease, PeerLeases } from "../peer-leases.ts";
 import { dbFailure, leaseAge, resolveLockPath } from "../routing.ts";
-import { pathKey, type TeamStore } from "../store.ts";
+import { type TeamStore } from "../store.ts";
+import { pathKey } from "../store/workspace.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** What path reservations use of the team (`Team`, `session.ts`). */
 export interface ReservationHost {
@@ -75,7 +77,7 @@ export function unlockPaths(host: ReservationHost, paths?: string[]): number {
  * database error all forbid it. A database error fails closed only for an agent that collaborates; a solo session
  * (never joined, nothing held) keeps editing when the database is missing, foreign, too new or unusable.
  */
-export function checkReservation(
+function checkReservation(
 	host: ReservationHost,
 	file: string,
 ): { lease?: Lease; peer?: PeerLease; lapsed?: string; error?: string } {

@@ -1,14 +1,14 @@
-import { errorMessage, optionalString, stringOrEmpty, withTimeout } from "../shared/util.ts";
+import { optionalString, stringOrEmpty, withTimeout } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import type { AttachedTarget, CdpPage } from "./cdp/connection.ts";
 import {
-	type AttachedTarget,
 	type BrowserSession,
-	type CdpPage,
 	httpOrigin,
 	logConsole,
 	noteOrigin,
 	noteTabOrigin,
 	pruneClosed,
-} from "./cdp.ts";
+} from "./cdp/browser-session.ts";
 import { closeTarget } from "./launch.ts";
 import type { PageNetworkPolicy, RequestSource } from "./policy.ts";
 

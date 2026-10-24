@@ -10,7 +10,7 @@
 
 export const DEFAULT_MAX_LINES = 2000;
 export const DEFAULT_MAX_BYTES = 50 * 1024; // 50KB
-export const GREP_MAX_LINE_LENGTH = 500; // Max chars per grep match line
+const GREP_MAX_LINE_LENGTH = 500; // Max chars per grep match line
 
 export interface TruncationResult {
 	/** The truncated content */
@@ -49,7 +49,7 @@ export interface TruncationResult {
  * the end. The tail gets the larger share; one fifth of the default budget (400 lines, 10KB) still holds
  * the first error with its context.
  */
-export const HEAD_SHARE = 0.2;
+const HEAD_SHARE = 0.2;
 
 /** Lines and bytes the head may use; the tail gets the rest of the same budget. */
 export function splitHeadTailBudget(maxLines: number, maxBytes: number): { headLines: number; headBytes: number } {
@@ -131,6 +131,31 @@ function measureForTruncation(
 	return { maxLines, maxBytes, totalBytes, lines, totalLines };
 }
 
+/** The result of head or tail truncation from the kept lines; a line limit hit within the byte limit wins. */
+function truncatedResult(
+	measured: { maxLines: number; maxBytes: number; totalBytes: number; totalLines: number },
+	outputLines: string[],
+	outputBytesCount: number,
+	truncatedBy: "lines" | "bytes",
+	lastLinePartial: boolean,
+): TruncationResult {
+	const { maxLines, maxBytes, totalBytes, totalLines } = measured;
+	const content = outputLines.join("\n");
+	return {
+		content,
+		truncated: true,
+		truncatedBy: outputLines.length >= maxLines && outputBytesCount <= maxBytes ? "lines" : truncatedBy,
+		totalLines,
+		totalBytes,
+		outputLines: outputLines.length,
+		outputBytes: Buffer.byteLength(content, "utf-8"),
+		lastLinePartial,
+		firstLineExceedsLimit: false,
+		maxLines,
+		maxBytes,
+	};
+}
+
 /**
  * Truncate content from the head (keep first N lines/bytes).
  * Suitable for file reads where you want to see the beginning.
@@ -179,27 +204,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 		outputBytesCount += lineBytes;
 	}
 
-	// If we exited due to line limit
-	if (outputLinesArr.length >= maxLines && outputBytesCount <= maxBytes) {
-		truncatedBy = "lines";
-	}
-
-	const outputContent = outputLinesArr.join("\n");
-	const finalOutputBytes = Buffer.byteLength(outputContent, "utf-8");
-
-	return {
-		content: outputContent,
-		truncated: true,
-		truncatedBy,
-		totalLines,
-		totalBytes,
-		outputLines: outputLinesArr.length,
-		outputBytes: finalOutputBytes,
-		lastLinePartial: false,
-		firstLineExceedsLimit: false,
-		maxLines,
-		maxBytes,
-	};
+	return truncatedResult(measured, outputLinesArr, outputBytesCount, truncatedBy, false);
 }
 
 /**
@@ -211,7 +216,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 export function truncateTail(content: string, options: TruncationOptions = {}): TruncationResult {
 	const measured = measureForTruncation(content, options);
 	if ("untruncated" in measured) return measured.untruncated;
-	const { maxLines, maxBytes, totalBytes, lines, totalLines } = measured;
+	const { maxLines, maxBytes, lines } = measured;
 
 	// Work backwards from the end
 	const outputLinesArr: string[] = [];
@@ -240,27 +245,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 		outputBytesCount += lineBytes;
 	}
 
-	// If we exited due to line limit
-	if (outputLinesArr.length >= maxLines && outputBytesCount <= maxBytes) {
-		truncatedBy = "lines";
-	}
-
-	const outputContent = outputLinesArr.join("\n");
-	const finalOutputBytes = Buffer.byteLength(outputContent, "utf-8");
-
-	return {
-		content: outputContent,
-		truncated: true,
-		truncatedBy,
-		totalLines,
-		totalBytes,
-		outputLines: outputLinesArr.length,
-		outputBytes: finalOutputBytes,
-		lastLinePartial,
-		firstLineExceedsLimit: false,
-		maxLines,
-		maxBytes,
-	};
+	return truncatedResult(measured, outputLinesArr, outputBytesCount, truncatedBy, lastLinePartial);
 }
 
 /**

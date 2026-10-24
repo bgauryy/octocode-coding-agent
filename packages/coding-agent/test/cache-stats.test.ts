@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import {
+	cacheMissLabel,
 	collectCacheMisses,
 	computeCacheWaste,
 	computeCacheMetrics,
@@ -199,5 +200,79 @@ describe("measured cache usage by purpose", () => {
 	it("reports unknown for no input, and zero for a measured cold request", () => {
 		expect(computeCacheMetrics([]).conversation.hitRate).toBeNull();
 		expect(computeCacheMetrics([entry(assistant({ input: 100 }))]).conversation.hitRate).toBe(0);
+	});
+});
+
+describe("cache miss areas", () => {
+	const systemEntry = {
+		type: "message",
+		id: "s",
+		parentId: null,
+		timestamp: "",
+		message: { role: "system", content: "", toolsAdded: [{ name: "web" }], timestamp: 90_000 },
+	} as SessionEntry;
+	const missTurn = (fields: { cacheRead?: number; cacheWrite: number }) =>
+		assistant({ ...fields, cost: { cacheWrite: fields.cacheWrite * 3.75e-6 }, timestamp: 600_000 });
+
+	it("attributes a miss that still read the cached prefix to the history", () => {
+		const miss = detectCacheMiss(
+			[entry(turn1), entry(turn2)],
+			missTurn({ cacheRead: 20_000, cacheWrite: 90_000 }),
+			models,
+		);
+		expect(miss).toMatchObject({ missedTokens: 85_000, fullMiss: false, promptChanged: false });
+	});
+
+	it("marks a miss that read nothing from the cache as full", () => {
+		const miss = detectCacheMiss([entry(turn1), entry(turn2)], missTurn({ cacheWrite: 110_000 }), models);
+		expect(miss).toMatchObject({ fullMiss: true, promptChanged: false });
+	});
+
+	it("notes an instruction or tool update since the previous request", () => {
+		const entries = [entry(turn1), entry(turn2), systemEntry];
+		expect(detectCacheMiss(entries, missTurn({ cacheWrite: 110_000 }), models)?.promptChanged).toBe(true);
+		// The update is attributed once: the request after the next one compares against that next one.
+		const next = assistant({ cacheRead: 110_000, cacheWrite: 0, timestamp: 620_000 });
+		const later = assistant({ cacheWrite: 120_000, cost: { cacheWrite: 0.45 }, timestamp: 640_000 });
+		const misses = collectCacheMisses([...entries, entry(next), entry(later)], models);
+		expect(misses.get(later)?.promptChanged).toBe(false);
+	});
+
+	it("compares the concrete model a cache refresh reported with the concrete model of the next reply", () => {
+		// Providers report a dated snapshot for an alias; the refresh records it, so the reply must be keyed the same way.
+		const aliased = (message: AssistantMessage) => ({ ...message, responseModel: "test-model-20260101" });
+		const warm = { ...usageEntry("cache_warm", 500_000), model: "test-model-20260101" } as SessionEntry;
+		const miss = detectCacheMiss([entry(aliased(turn1)), warm], aliased(missTurn({ cacheWrite: 110_000 })), models);
+		expect(miss?.modelChanged).toBe(false);
+	});
+});
+
+describe("cacheMissLabel", () => {
+	const miss = {
+		missedTokens: 50_000,
+		missedCost: 0.2,
+		idleMs: 10 * 60_000,
+		modelChanged: false,
+		fullMiss: false,
+		promptChanged: false,
+	};
+
+	it("names an idle gap only when it outlasted the cache lifetime", () => {
+		expect(cacheMissLabel(miss)).toBe("History cache miss");
+		expect(cacheMissLabel(miss, 5 * 60_000)).toBe("History cache miss after 10m idle");
+		// A 1-hour entry outlives a 10-minute gap, so the gap does not explain the miss.
+		expect(cacheMissLabel(miss, 60 * 60_000)).toBe("History cache miss");
+	});
+
+	it("says whether the instructions were re-billed too", () => {
+		expect(cacheMissLabel({ ...miss, fullMiss: true })).toBe("Full cache miss");
+		expect(cacheMissLabel({ ...miss, fullMiss: true }, 60 * 60_000)).toBe("Full cache miss");
+	});
+
+	it("names a model switch first, then an instruction or tool update", () => {
+		expect(cacheMissLabel({ ...miss, modelChanged: true, promptChanged: true }, 60 * 60_000)).toBe(
+			"Cache miss after model switch",
+		);
+		expect(cacheMissLabel({ ...miss, promptChanged: true })).toBe("Cache miss after instruction or tool update");
 	});
 });

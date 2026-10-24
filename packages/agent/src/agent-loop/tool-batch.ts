@@ -1,12 +1,11 @@
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai";
-import type { AgentContext, AgentLoopConfig, AgentToolCall } from "../types.ts";
+import type { AgentContext, AgentLoopConfig, AgentToolCall, AgentToolCallOutcome } from "../types.ts";
 import {
 	type AgentEventSink,
 	createToolResultMessage,
 	emitToolExecutionEnd,
 	emitToolExecutionUpdate,
 	emitToolResultMessage,
-	type FinalizedToolCallOutcome,
 } from "./events.ts";
 import {
 	createErrorToolResult,
@@ -34,7 +33,7 @@ export async function failToolCallsFromTruncatedMessage(
 			toolName: toolCall.name,
 			args: toolCall.arguments,
 		});
-		const finalized: FinalizedToolCallOutcome = {
+		const finalized: AgentToolCallOutcome = {
 			toolCall,
 			result: createErrorToolResult(
 				`Tool call "${toolCall.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
@@ -69,7 +68,7 @@ export async function executeToolCalls(
 	return executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit);
 }
 
-export type ExecutedToolCallBatch = {
+type ExecutedToolCallBatch = {
 	messages: ToolResultMessage[];
 	terminate: boolean;
 };
@@ -82,7 +81,7 @@ async function executeToolCallsSequential(
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
 ): Promise<ExecutedToolCallBatch> {
-	const finalizedCalls: FinalizedToolCallOutcome[] = [];
+	const finalizedCalls: AgentToolCallOutcome[] = [];
 	const messages: ToolResultMessage[] = [];
 
 	for (const [index, toolCall] of toolCalls.entries()) {
@@ -94,7 +93,7 @@ async function executeToolCallsSequential(
 		});
 
 		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
-		let finalized: FinalizedToolCallOutcome;
+		let finalized: AgentToolCallOutcome;
 		if (preparation.kind === "immediate") {
 			finalized = {
 				toolCall,
@@ -160,7 +159,7 @@ async function executeToolCallsParallel(
 				toolCall,
 				result: preparation.result,
 				isError: preparation.isError,
-			} satisfies FinalizedToolCallOutcome;
+			} satisfies AgentToolCallOutcome;
 			await emitToolExecutionEnd(finalized, emit);
 			finalizedCalls.push(finalized);
 			if (signal?.aborted) {
@@ -176,7 +175,7 @@ async function executeToolCallsParallel(
 					toolCall,
 					result: createErrorToolResult("Operation aborted"),
 					isError: true,
-				} satisfies FinalizedToolCallOutcome;
+				} satisfies AgentToolCallOutcome;
 				await emitToolExecutionEnd(finalized, emit);
 				return finalized;
 			}
@@ -222,8 +221,8 @@ async function executeToolCallsParallel(
 async function skipRemainingToolCalls(
 	toolCalls: AgentToolCall[],
 	emit: AgentEventSink,
-): Promise<FinalizedToolCallOutcome[]> {
-	const skipped: FinalizedToolCallOutcome[] = [];
+): Promise<AgentToolCallOutcome[]> {
+	const skipped: AgentToolCallOutcome[] = [];
 	for (const toolCall of toolCalls) {
 		await emit({
 			type: "tool_execution_start",
@@ -231,7 +230,7 @@ async function skipRemainingToolCalls(
 			toolName: toolCall.name,
 			args: toolCall.arguments,
 		});
-		const finalized: FinalizedToolCallOutcome = {
+		const finalized: AgentToolCallOutcome = {
 			toolCall,
 			result: createErrorToolResult("Operation aborted"),
 			isError: true,
@@ -242,8 +241,8 @@ async function skipRemainingToolCalls(
 	return skipped;
 }
 
-type FinalizedToolCallEntry = FinalizedToolCallOutcome | (() => Promise<FinalizedToolCallOutcome>);
+type FinalizedToolCallEntry = AgentToolCallOutcome | (() => Promise<AgentToolCallOutcome>);
 
-function shouldTerminateToolBatch(finalizedCalls: FinalizedToolCallOutcome[]): boolean {
+function shouldTerminateToolBatch(finalizedCalls: AgentToolCallOutcome[]): boolean {
 	return finalizedCalls.length > 0 && finalizedCalls.every((finalized) => finalized.result.terminate === true);
 }

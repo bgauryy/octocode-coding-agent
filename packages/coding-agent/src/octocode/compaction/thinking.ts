@@ -1,4 +1,4 @@
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { applyClearedResults } from "./clearing.ts";
 
 /**

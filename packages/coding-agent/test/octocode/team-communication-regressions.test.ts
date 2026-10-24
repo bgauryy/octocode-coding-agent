@@ -123,4 +123,29 @@ describe("team communication identity and lifecycle", () => {
 		expect(delivered!.message.content).not.toContain("from the user at");
 		expect(delivered!.message.content).toContain("untrusted-");
 	});
+
+	it.each([false, true])(
+		"forwards run cancellation to a pending continuation (call signal: %s)",
+		async (withCallSignal) => {
+			const { agent } = setup();
+			const controller = new AbortController();
+			const sender = agent(controller.signal);
+			sender.team.rememberFinished("parked-child", "its report reached this session");
+			const resume = vi.fn(async (_to: string, _text: string, _from: string, signal?: AbortSignal) => {
+				await Promise.resolve();
+				controller.abort(new Error("run cancelled while resuming"));
+				signal?.throwIfAborted();
+				return "resumed after cancellation";
+			});
+			sender.team.setResumer(resume);
+			await expect(
+				sender.team.send(
+					"parked-child",
+					"continue the task",
+					withCallSignal ? { signal: new AbortController().signal } : {},
+				),
+			).rejects.toThrow("run cancelled while resuming");
+			expect(resume).toHaveBeenCalledOnce();
+		},
+	);
 });

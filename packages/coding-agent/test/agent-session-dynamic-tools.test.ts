@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
@@ -61,7 +61,7 @@ describe("AgentSession dynamic tool registration", () => {
 		});
 		await resourceLoader.reload();
 
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
@@ -128,7 +128,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -176,7 +176,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -236,7 +236,7 @@ describe("AgentSession dynamic tool registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,

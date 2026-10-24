@@ -22,7 +22,7 @@ export interface McpCommandOptions {
 	/** Defaults to console output. */
 	log?: (line: string) => void;
 	error?: (line: string) => void;
-	/** The token of a pi provider. Defaults to the stored `/login` credentials of the agent directory. */
+	/** The token of a model provider. Defaults to the stored `/providers` credentials of the agent directory. */
 	providerToken?: (provider: string) => Promise<string | undefined>;
 	/** Defaults to the roots a session gives the local `octocode` server, without skill directories. */
 	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;

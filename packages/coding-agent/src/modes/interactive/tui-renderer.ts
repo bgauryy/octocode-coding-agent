@@ -12,7 +12,7 @@ import { keyDisplayText } from "./components/keybinding-hints.ts";
 import { theme } from "./theme/theme.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
-export interface InteractiveTuiOptions {
+interface InteractiveTuiOptions {
 	readonly tuiMode: "regular" | "fullscreen";
 	readonly showHardwareCursor: boolean;
 	readonly logDirectory: string;

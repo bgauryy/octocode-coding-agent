@@ -15,7 +15,9 @@ import { adjustMaxTokensForThinking, buildBaseOptions, clampMaxTokensToContext }
 import { assertRequestAuth, createClient, getAnthropicFederation } from "./anthropic-messages/client.ts";
 import { getAnthropicCompat } from "./anthropic-messages/compat.ts";
 import { buildParams } from "./anthropic-messages/params.ts";
+import { hasStrictToolDowngrade, rememberStrictToolDowngrade } from "./anthropic-messages/strict-tool-downgrades.ts";
 import { iterateAnthropicEvents } from "./anthropic-messages/sse.ts";
+import { fitClaudeThinkingBudget } from "./anthropic-messages/thinking-budget.ts";
 import { type AnthropicStreamState, handleAnthropicStreamEvent } from "./anthropic-messages/stream-events.ts";
 import type { AnthropicEffort, AnthropicOptions } from "./anthropic-messages/types.ts";
 
@@ -74,7 +76,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
-			let disablePreferredStrictTools = false;
+			let disablePreferredStrictTools = hasStrictToolDowngrade(model, currentTools);
 			let response: Response;
 			for (;;) {
 				options?.signal?.throwIfAborted();
@@ -113,6 +115,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 						throw error;
 					}
 					disablePreferredStrictTools = true;
+					rememberStrictToolDowngrade(model, currentTools);
 					appendAssistantMessageDiagnostic(output, {
 						type: "anthropic_strict_tools_fallback",
 						timestamp: Date.now(),
@@ -247,10 +250,10 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 	);
 
 	const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
-	const thinkingBudgetTokens = Math.min(adjusted.thinkingBudget, Math.max(0, maxTokens - 1024));
+	const thinkingBudgetTokens = fitClaudeThinkingBudget(adjusted.thinkingBudget, maxTokens);
 	// The API rejects a budget under its 1024-token minimum, and a turn this close to the context limit cannot hold one:
 	// answer without thinking rather than send a request that fails.
-	if (thinkingBudgetTokens < ANTHROPIC_MIN_THINKING_BUDGET) {
+	if (thinkingBudgetTokens === 0) {
 		return stream(model, context, { ...base, maxTokens, thinkingEnabled: false } satisfies AnthropicOptions);
 	}
 
@@ -261,6 +264,3 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 		thinkingBudgetTokens,
 	} satisfies AnthropicOptions);
 };
-
-/** Anthropic's smallest accepted `budget_tokens`. */
-const ANTHROPIC_MIN_THINKING_BUDGET = 1024;

@@ -2,6 +2,7 @@ import { Box, type Component, Container } from "@octocodeai/octocode-tui";
 import type { AgentToolResult, MessageRenderer, ToolRenderResultOptions } from "../../core/extensions/index.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
+import { fencedParts } from "../shared/fence.ts";
 import { presentAgentReport } from "./presentation.ts";
 import {
 	formatCost,
@@ -11,17 +12,8 @@ import {
 	shortPath,
 	toolCallCount,
 } from "../shared/format.ts";
-import {
-	bodyLines,
-	clip,
-	plural,
-	type RenderContext,
-	ReportView,
-	resultBlock,
-	timingOf,
-	toolHeader,
-} from "../shared/render.ts";
-import { contentText, isRecord } from "../shared/util.ts";
+import { resultBlock, toolHeader } from "../shared/render.ts";
+import { contentText } from "../shared/util.ts";
 import { noticeText } from "./events.ts";
 
 /**
@@ -30,8 +22,12 @@ import { noticeText } from "./events.ts";
  * stays one short line; the full prompt the agent was given shows in the expanded view, above its progress or report.
  */
 
-export type { RunDetails, ResultDetails } from "./run-types.ts";
 import type { RunDetails, ResultDetails } from "./run-types.ts";
+import { bodyLines, clip, plural } from "../shared/render/text.ts";
+import type { RenderContext } from "../shared/render/types.ts";
+import { ReportView } from "../shared/render/report.ts";
+import { timingOf } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /** The model a run is on: its `provider/id`, marked as the parent's when the profile's preference was unavailable. */
 function modelLabel(details: Pick<RunDetails, "model" | "fallback">): string {
@@ -187,11 +183,13 @@ export function renderAgentResult(
 	context: RenderContext,
 ): Component {
 	const details = result.details as RunDetails | undefined;
-	const body = contentText(result.content);
+	const raw = contentText(result.content);
+	const fenced = fencedParts(raw);
+	const body = fenced ? [fenced.body, fenced.footer].filter(Boolean).join("\n\n") : raw;
 	const task = argsOf(context).task;
 	if (context.isError || !details) {
-		const [head = "", ...rest] = body.split("\n");
-		const more = rest.join("\n");
+		const [head = "", ...rest] = raw.split("\n");
+		const more = fenced ? body : rest.join("\n");
 		return resultBlock(theme, context, {
 			summary: head,
 			body: more,

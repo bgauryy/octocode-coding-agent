@@ -7,9 +7,10 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { Permission, sessionOption } from "../../src/octocode/permission/ask.ts";
+import { Permission } from "../../src/octocode/permission/ask.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import { sessionOption } from "../../src/octocode/permission/ask/text.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import {
 	type AgentProfile,
 	askSpawn,

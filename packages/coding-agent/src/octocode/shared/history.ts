@@ -1,19 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-	archiveFolder,
-	ownArchives,
-	RECORD_FILE,
-	type RecordHeader,
-	readRecordHeader,
-	readSegments,
-	type Segment,
-	segmentFiles,
-	sessionLineage,
-} from "./archive.ts";
+import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
 import { PARENT_SESSION_ENV } from "./env.ts";
-import { matchHistory } from "./history-search.ts";
-import { canonicalPath, isWithin, repoKey, sessionsRoot } from "./home.ts";
+import { HISTORY_BYTES, matchHistory } from "./history-search.ts";
+import { sessionsRoot } from "./home.ts";
+import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";
+import { canonicalPath, isWithin, repoKey } from "./home/repo.ts";
 
 /**
  * The history a session may read: archives of compacted messages and session records (`shared/archive.ts`). Its own
@@ -212,10 +204,30 @@ interface SearchResult extends HistoryPage {
 }
 
 const readLines = (file: string): string[] | undefined => {
+	let fd: number | undefined;
+	const tooLarge = () =>
+		new Error("Archive read exceeds 32 MiB; split the archive into smaller files before reading it.");
 	try {
-		return fs.readFileSync(file, "utf8").split("\n");
-	} catch {
+		fd = fs.openSync(file, "r");
+		const stat = fs.fstatSync(fd);
+		if (!stat.isFile()) return undefined;
+		if (stat.size > HISTORY_BYTES) throw tooLarge();
+		const chunks: Buffer[] = [];
+		let bytes = 0;
+		for (;;) {
+			const chunk = Buffer.allocUnsafe(Math.min(65_536, HISTORY_BYTES - bytes + 1));
+			const count = fs.readSync(fd, chunk, 0, chunk.length, null);
+			if (!count) break;
+			bytes += count;
+			if (bytes > HISTORY_BYTES) throw tooLarge();
+			chunks.push(chunk.subarray(0, count));
+		}
+		return Buffer.concat(chunks).toString("utf8").split("\n");
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error)) throw error;
 		return undefined;
+	} finally {
+		if (fd !== undefined) fs.closeSync(fd);
 	}
 };
 

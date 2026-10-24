@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { loadSkills } from "../../src/core/skills.ts";
-import { commandsFor, hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { extraSkillDirs } from "../../src/octocode/skills.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 const definition = (command: string) =>

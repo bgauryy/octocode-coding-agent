@@ -5,8 +5,8 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
-import { READ_ONLY_ENV, SUBAGENT_ENV } from "../../src/octocode/shared/env.ts";
-import { TEAM_WORKSPACE_ENV } from "../../src/octocode/team/store/env.ts";
+import { READ_ONLY_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
+
 import { profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
 

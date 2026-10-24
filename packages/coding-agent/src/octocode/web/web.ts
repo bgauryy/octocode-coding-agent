@@ -4,17 +4,20 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "
 import type { Permission } from "../permission/ask.ts";
 import { actionWhy } from "../permission/mode.ts";
 import { shortPath } from "../shared/format.ts";
-import { plural, resultBlock, resultText, spillPath, timedTool, timingOf, toolHeader } from "../shared/render.ts";
+import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { boundImagePart, capOutputToFile, saveFullOutput, saveImageFile } from "../shared/spill.ts";
-import { capChars, cutText, errorMessage, textResult } from "../shared/util.ts";
+import { capChars, cutText, textResult } from "../shared/util.ts";
 import { visibleError } from "../shared/visible-error.ts";
 import { imageLimits } from "../shared/vision.ts";
-import { type FetchedImage, pageFetcher, unreadReason } from "./fetch.ts";
+import { type FetchedImage, pageFetcher } from "./fetch.ts";
 import { classifyHost } from "./guard.ts";
 import { collapseLinkRuns } from "./html.ts";
 import { savedPageLead, savedPageTools } from "./leads.ts";
 import { search } from "./search.ts";
+import { plural } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** Default and largest page text a fetch returns; `maxChars` picks a size in between. */
 const DEFAULT_FETCH_CHARS = 20_000;
@@ -172,10 +175,15 @@ export function registerWebTool(pi: ExtensionAPI, permission: Permission): void 
 						// Page text is untrusted: terminal escapes, bidi and invisible characters become visible escapes (nothing is dropped) before the model sees it.
 						const approved = await approveFetch(permission, ctx, id, url, signal);
 						const fetched = await fetchUrl(url, signal, approved);
-						if (typeof fetched !== "string") return imageResult(fetched, ctx.model);
+						if (typeof fetched !== "string") {
+							if ("kind" in fetched)
+								return textResult<WebDetails>(visibleControls(fetched.text), {
+									kind: "notice",
+									reason: fetched.reason,
+								});
+							return imageResult(fetched, ctx.model);
+						}
 						const text = visibleControls(fetched);
-						const reason = unreadReason(text);
-						if (reason) return textResult<WebDetails>(text, { kind: "notice", reason });
 						const lines = text.split("\n").length;
 						const size = { kind: "fetch" as const, bytes: Buffer.byteLength(text), lines };
 						if (text.length <= max) return textResult<WebDetails>(capOutputToFile(text, { label: "web" }), size);

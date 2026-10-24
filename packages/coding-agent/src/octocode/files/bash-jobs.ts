@@ -5,21 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { bashSessionEnv } from "../../core/tools/bash.ts";
 import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
-import { atomicWriteFileSync } from "../shared/atomic.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { formatDuration, shortPath } from "../shared/format.ts";
 import { PRIVATE_FILE_MODE, privateDir, sessionOutputDir } from "../shared/home.ts";
 import { adoptTree, groupAlive, killTree, prepareTree, processStartTime, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
-import { errorMessage, firstLine, wholeSeconds } from "../shared/util.ts";
+import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { type JobRecord, recordFile, sessionBashDirs } from "./bash-jobs/records.ts";
 import { nonInteractiveEnv, type ShellSettings, shellScript } from "./bash-jobs/shell.ts";
-import type { BashJob, JobExit } from "./bash-jobs/types.ts";
-import type { VerificationReceipt } from "./bash/verification.ts";
-
-export { liveJobFiles, type OrphanJob, reapOrphanJobs } from "./bash-jobs/records.ts";
-export { jobReport, logTail } from "./bash-jobs/report.ts";
-export { nonInteractiveEnv, prefixed, type ShellSettings, shellScript, shellSettings } from "./bash-jobs/shell.ts";
-export type { BashJob, JobExit } from "./bash-jobs/types.ts";
+import type { BashJob, JobExit, VerificationReceipt } from "./bash-jobs/types.ts";
 
 /**
  * Background shell jobs for the `bash` tool (bash.ts): each runs in its own process group, with the user's Octocode shell,
@@ -36,7 +31,6 @@ const MAX_JOB_LOG_BYTES = 16 * 1024 * 1024;
 const DRAIN_MS = 1_000;
 /** How often a job whose shell exited checks whether children it left in its group are still running, in ms. */
 const GROUP_POLL_MS = 250;
-export { JOB_TYPE } from "../shared/messages.ts";
 
 /** Background shell jobs of one session: each runs in its own process group with output going to a log file. */
 export class BashJobs {

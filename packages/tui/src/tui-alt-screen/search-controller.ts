@@ -1,6 +1,7 @@
 import { AltScreenSearchComponent, AltScreenSearchIndex, getAltScreenSearchMatchKey } from "../alt-screen-search.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollViewBox, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getScrollViewBox } from "../layout.ts";
 import type { Component, OverlayHandle, OverlayOptions } from "../tui.ts";
 import { pickSearchSelection } from "./search.ts";
 import type { ActiveSearch, SgrMouseEvent } from "./types.ts";

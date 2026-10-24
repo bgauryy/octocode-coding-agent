@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
 
 interface CachePayload {
@@ -34,7 +35,7 @@ async function cachePoints(
 }
 
 describe("Bedrock long cache retention", () => {
-	const model = getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+	const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
 
 	it("sends one-hour cache points by default", async () => {
 		const points = await cachePoints(model);

@@ -33,10 +33,13 @@ describe("workspace browser state", () => {
 		store.getState().accept(snapshot(["message"]));
 		const events = store.getState().displayedEvents;
 		store.getState().setDraft("comment:B1", { id: "draft", text: "Keep this context" });
+		store.getState().setRequest("work:B1:1", { id: "request", status: "accepted", message: "Queued" });
 		store.getState().accept(snapshot(["message"]));
 		expect(store.getState().displayedEvents).toBe(events);
 		expect(store.getState().drafts["comment:B1"].text).toBe("Keep this context");
+		expect(store.getState().requests["work:B1:1"].id).toBe("request");
 		store.getState().accept({ ...snapshot([]), sessionId: "different" });
 		expect(store.getState().drafts).toEqual({});
+		expect(store.getState().requests).toEqual({});
 	});
 });

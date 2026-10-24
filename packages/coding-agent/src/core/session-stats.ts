@@ -1,7 +1,8 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { type CacheMetrics, computeCacheMetrics } from "./cache-stats.ts";
-import { calculateContextTokens, estimateProjectedContextTokens } from "./compaction/index.ts";
+import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
+import { estimateProjectedContextTokens } from "./compaction/index.ts";
 import type { ContextUsage } from "./extensions/index.ts";
 import { getLatestCompactionEntry, type SessionManager } from "./session-manager.ts";
 import { addUsageToTotals, createUsageTotals } from "./usage-totals.ts";

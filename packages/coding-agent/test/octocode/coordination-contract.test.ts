@@ -8,8 +8,9 @@ const TARGET = new URL("../../src/octocode/team/casefold-table.ts", import.meta.
 
 import { CASE_FOLDING_UNICODE_VERSION } from "../../src/octocode/team/casefold-table.ts";
 import { foldComponent, keysOverlap, type LeaseKind, leaseKey } from "../../src/octocode/team/lease-key.ts";
-import { pathKey, TeamStore } from "../../src/octocode/team/store.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
+import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 
 /**
  * The reservation rules Octocode's team shares with the octocode-agents-communication package. The vectors live in

@@ -1,8 +1,8 @@
 import path from "node:path";
-import { atomicWriteFileSync } from "../atomic.ts";
+import { atomicWriteFileSync } from "../../../utils/atomic-file.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "../home.ts";
 import { escapeRegExp } from "../util.ts";
-import { fence, headingText, oneLine, readHeader } from "./text.ts";
+import { fence, oneLine, readHeader } from "./text.ts";
 
 /** The session's record in its archive folder: its repository, goal and ending (`SessionRecord`). */
 export const RECORD_FILE = "SESSION.md";
@@ -56,7 +56,7 @@ function renderRecord(record: SessionRecord): string {
 	const line = (label: string, value: string | undefined) => (value ? [`- ${label}: ${oneLine(value)}`] : []);
 	const last = record.ending.at(-1);
 	const message = (entry: RecordMessage) => [
-		`### ${headingText(entry.role)}${entry.at ? ` · ${entry.at}` : ""}`,
+		`### ${oneLine(entry.role)}${entry.at ? ` · ${entry.at}` : ""}`,
 		"",
 		fence(entry.text),
 		"",

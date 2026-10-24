@@ -205,7 +205,8 @@ describe("workspace data and commands", () => {
 	it("exposes comments and scoped commands through authenticated HTTP", async () => {
 		const app = setup();
 		const item = add();
-		const web = await startWorkspaceWeb(app.backlog, () => {}, app.connection);
+		const changed = vi.fn();
+		const web = await startWorkspaceWeb(app.backlog, changed, app.connection);
 		try {
 			const url = new URL(web.url);
 			const headers = { Authorization: `Bearer ${url.hash.slice(8)}`, "Content-Type": "application/json" };
@@ -219,6 +220,7 @@ describe("workspace data and commands", () => {
 			expect(store.comments(item.ref)[0].author).toBe("user");
 			const sent = await post("/api/workspace", { id: "http-1", action: "message", to: "worker", text: "Hello" });
 			expect(await sent.json()).toMatchObject({ receipt: { status: "accepted" } });
+			expect(changed).toHaveBeenCalledTimes(2);
 			expect((await post("/api/workspace", { id: "bad", action: "shell", text: "anything" })).status).toBe(400);
 			expect((await fetch(url.origin + "/api/audit", { headers })).status).toBe(200);
 		} finally {

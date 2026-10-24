@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-export const workspaceSourcePaths = {
+const workspaceSourcePaths = {
 	telemetryIndex: fileURLToPath(new URL("./packages/telemetry/src/index.ts", import.meta.url)),
 	telemetryTesting: fileURLToPath(new URL("./packages/telemetry/src/testing/index.ts", import.meta.url)),
 	mcpIndex: fileURLToPath(new URL("./packages/mcp/src/index.ts", import.meta.url)),
@@ -21,10 +21,22 @@ export const workspaceSourcePaths = {
 export default defineConfig({
 	resolve: {
 		alias: [
-			{ find: /^@octocodeai\/octocode-contacts$/, replacement: fileURLToPath(new URL("./packages/contacts/src/index.ts", import.meta.url)) },
-			{ find: /^@octocodeai\/octocode-contacts\/(.+)$/, replacement: fileURLToPath(new URL("./packages/contacts/src/", import.meta.url)) + "$1.ts" },
-			{ find: /^@octocodeai\/octocode-webview$/, replacement: fileURLToPath(new URL("./packages/webview/src/index.ts", import.meta.url)) },
-			{ find: /^@octocodeai\/octocode-webview\/(.+)$/, replacement: fileURLToPath(new URL("./packages/webview/src/", import.meta.url)) + "$1.ts" },
+			{
+				find: /^@octocodeai\/octocode-contacts$/,
+				replacement: fileURLToPath(new URL("./packages/contacts/src/index.ts", import.meta.url)),
+			},
+			{
+				find: /^@octocodeai\/octocode-contacts\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/contacts/src/", import.meta.url)) + "$1.ts",
+			},
+			{
+				find: /^@octocodeai\/octocode-webview$/,
+				replacement: fileURLToPath(new URL("./packages/webview/src/index.ts", import.meta.url)),
+			},
+			{
+				find: /^@octocodeai\/octocode-webview\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/webview/src/", import.meta.url)) + "$1.ts",
+			},
 
 			{ find: /^@octocodeai\/octocode-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
 			{ find: /^@octocodeai\/octocode-telemetry\/testing$/, replacement: workspaceSourcePaths.telemetryTesting },

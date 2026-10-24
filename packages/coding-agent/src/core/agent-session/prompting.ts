@@ -103,7 +103,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 			throw new Error(
 				`Authentication failed for "${session.model.provider}". ` +
 					`Credentials may have expired or network is unavailable. ` +
-					`Run '/login ${session.model.provider}' to re-authenticate.`,
+					`Run '/providers ${session.model.provider}' to re-authenticate.`,
 			);
 		}
 		throw new Error(formatNoApiKeyFoundMessage(session.model.provider));

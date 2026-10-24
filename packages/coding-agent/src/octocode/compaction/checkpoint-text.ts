@@ -1,8 +1,9 @@
 import { CheckpointPersistenceError } from "../../core/compaction/checkpoint.ts";
 import { clipWithMarker } from "../../core/compaction/inline.ts";
 import { saveFullOutput } from "../shared/spill.ts";
-import { contentText, isRecord } from "../shared/util.ts";
+import { contentText } from "../shared/util.ts";
 import { fullTextIn } from "./archive.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * Text the summary cannot hold whole: a long tool result for the summarizer, the user's own messages in the summary.
@@ -11,7 +12,7 @@ import { fullTextIn } from "./archive.ts";
  */
 
 /** Saves a text and returns where, or undefined when it could not be saved. */
-export type SaveText = (text: string) => string | undefined;
+type SaveText = (text: string) => string | undefined;
 
 export const USER_HEADING = "## User Messages (verbatim, oldest first)";
 
@@ -26,7 +27,7 @@ export const SUMMARIZER_RESULT_CHARS = 2_000;
  * User text made inert inside the section: its own `<user-message>` tags and a line starting like the section heading
  * get a backslash, so a pasted summary or a quote of this feature cannot split or fake the section.
  */
-export function inertUserText(text: string): string {
+function inertUserText(text: string): string {
 	return text
 		.replace(/<(\/?)user-message>/g, "<\\$1user-message>")
 		.replace(/^## User Messages/gm, "\\## User Messages");

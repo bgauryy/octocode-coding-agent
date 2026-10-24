@@ -5,10 +5,10 @@ import { getCustomThemesDir, getThemesDir } from "../../../config.ts";
 import { stripBom } from "../../../utils/text.ts";
 import { generateSystemThemeColors, SYSTEM_THEME_NAME } from "./system-theme.ts";
 import { resolveThemeColors, splitThemeColors, Theme, withThemeTokenFallbacks } from "./theme-class.ts";
-import type { ValidatedThemeJson as ThemeJson } from "./theme-schema.ts";
+import type { ValidatedThemeJson } from "./theme-schema.ts";
 import { areTerminalColorsPending, getTerminalColors, getTerminalTheme } from "./theme-terminal.ts";
 
-export type ThemeJsonValidator = (label: string, json: unknown) => ThemeJson;
+type ThemeJsonValidator = (label: string, json: unknown) => ValidatedThemeJson;
 
 let themeJsonValidator: ThemeJsonValidator | undefined;
 
@@ -38,9 +38,9 @@ export function setRegisteredThemes(themes: Theme[]): void {
 // Theme Loading
 // ============================================================================
 
-let BUILTIN_THEMES: Record<string, ThemeJson> | undefined;
+let BUILTIN_THEMES: Record<string, ValidatedThemeJson> | undefined;
 
-export function getBuiltinThemes(): Record<string, ThemeJson> {
+export function getBuiltinThemes(): Record<string, ValidatedThemeJson> {
 	if (!BUILTIN_THEMES) {
 		const themesDir = getThemesDir();
 		BUILTIN_THEMES = Object.fromEntries(
@@ -49,7 +49,7 @@ export function getBuiltinThemes(): Record<string, ThemeJson> {
 				.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
 				.map((entry) => [
 					path.basename(entry.name, ".json"),
-					JSON.parse(stripBom(fs.readFileSync(path.join(themesDir, entry.name), "utf-8"))) as ThemeJson,
+					JSON.parse(stripBom(fs.readFileSync(path.join(themesDir, entry.name), "utf-8"))) as ValidatedThemeJson,
 				]),
 		);
 	}
@@ -60,7 +60,7 @@ export function getAvailableThemes(): string[] {
 	return getAvailableThemesWithPaths().map(({ name }) => name);
 }
 
-export interface ThemeInfo {
+interface ThemeInfo {
 	name: string;
 	path: string | undefined;
 }
@@ -131,15 +131,15 @@ function assertThemeNameIsValid(name: string): void {
 	}
 }
 
-function parseThemeJson(label: string, json: unknown): ThemeJson {
+function parseThemeJson(label: string, json: unknown): ValidatedThemeJson {
 	if (themeJsonValidator) return themeJsonValidator(label, json);
 	if (typeof json !== "object" || json === null || !("colors" in json)) {
 		throw new Error(`Invalid theme "${label}": expected an object with a "colors" map.`);
 	}
-	return json as ThemeJson;
+	return json as ValidatedThemeJson;
 }
 
-function parseThemeJsonContent(label: string, content: string): ThemeJson {
+function parseThemeJsonContent(label: string, content: string): ValidatedThemeJson {
 	let json: unknown;
 	try {
 		json = JSON.parse(stripBom(content));
@@ -149,7 +149,7 @@ function parseThemeJsonContent(label: string, content: string): ThemeJson {
 	return parseThemeJson(label, json);
 }
 
-export function loadThemeJson(name: string): ThemeJson {
+export function loadThemeJson(name: string): ValidatedThemeJson {
 	const builtinThemes = getBuiltinThemes();
 	if (name in builtinThemes) {
 		return builtinThemes[name];
@@ -171,7 +171,7 @@ export function loadThemeJson(name: string): ThemeJson {
 	return parseThemeJsonContent(name, content);
 }
 
-function createTheme(themeJson: ThemeJson, mode?: TerminalColorMode, sourcePath?: string): Theme {
+function createTheme(themeJson: ValidatedThemeJson, mode?: TerminalColorMode, sourcePath?: string): Theme {
 	const colorMode = mode ?? getTerminalColorMode();
 	const resolvedColors = withThemeTokenFallbacks(resolveThemeColors(themeJson.colors, themeJson.vars));
 	const { fgColors, bgColors } = splitThemeColors(resolvedColors);

@@ -1,4 +1,4 @@
-import type { AutocompleteProvider } from "./autocomplete.ts";
+import type { AutocompleteProvider } from "./autocomplete/types.ts";
 import type { Component } from "./tui.ts";
 
 /**

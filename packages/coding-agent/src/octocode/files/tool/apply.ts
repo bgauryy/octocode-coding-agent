@@ -21,7 +21,7 @@ export interface ChangeOperations {
 }
 
 /** What an applied change reports: the line of text for the outcome and, for an edit, its display diff. */
-export interface AppliedChange {
+interface AppliedChange {
 	message: string;
 	diff?: string;
 }

@@ -64,12 +64,12 @@ export function AppHeader({
 			</div>
 			<details className="snapshot-info">
 				<summary>
-					{live ? "Live board · Updated " : "Read-only snapshot · "}
+					{live ? "Board snapshot · Updated " : "Read-only snapshot · "}
 					{stamp(index.now)}
 				</summary>
 				<p>
 					{live
-						? "Saved to this repository. Updates appear automatically."
+						? "Saved to this repository. Updates appear automatically while connected."
 						: "Run /backlog to open the live board. This export is read-only."}
 				</p>
 				<dl className="stats">
@@ -120,8 +120,12 @@ export function Tabs({
 				>
 					<Icon />
 					{label}
+					{badges[name] ? " " : null}
 					{badges[name] ? (
-						<span className="tab-badge" title={`${badges[name]} need attention`}>
+						<span
+							className={`tab-badge${name === "attention" ? " needs-attention" : ""}`}
+							title={name === "attention" ? `${badges[name]} need attention` : `${badges[name]} planned items`}
+						>
 							{badges[name]}
 						</span>
 					) : null}

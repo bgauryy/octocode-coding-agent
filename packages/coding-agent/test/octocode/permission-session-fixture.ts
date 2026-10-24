@@ -4,13 +4,14 @@ import { createFauxCore, type JsonObject, fauxAssistantMessage, fauxToolCall } f
 import { vi } from "vitest";
 import { Type } from "typebox";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { createReadTool } from "../fixtures/read-tool.ts";
 import { createWriteTool } from "../fixtures/write-tool.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 type Options = {

@@ -3,14 +3,15 @@ import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { AGENT_NAMES } from "../../src/octocode/team/identity.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { describeMembers, messageText, resolveTarget } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, TeamStore } from "../../src/octocode/team/store.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "../../src/octocode/team/store/env.ts";
 
 const NOW = 1_000_000;
 const member = (id: string, role: string, extra: Partial<Member> = {}): Member => ({

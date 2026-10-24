@@ -7,17 +7,13 @@ import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
-import {
-	BASH_READER,
-	FileGuard,
-	formatOutcomes,
-	LOCAL_FETCH_READER,
-	registerFileTool,
-	returnedContent,
-} from "../../src/octocode/files/tool.ts";
-import { catastrophicCommand } from "../../src/octocode/permission/shell.ts";
-import { sha256 } from "../../src/octocode/shared/atomic.ts";
-import { canonicalPath, readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { BASH_READER, FileGuard, LOCAL_FETCH_READER, returnedContent } from "../../src/octocode/files/tool/guard.ts";
+import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
+import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
+import { sha256 } from "../../src/utils/atomic-file.ts";
+import { canonicalPath } from "../../src/octocode/shared/home/repo.ts";
+import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";

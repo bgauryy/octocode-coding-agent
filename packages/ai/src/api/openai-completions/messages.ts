@@ -20,6 +20,7 @@ import type {
 import { shortHash } from "../../utils/hash.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
+import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import { resolveTranscript, resolveTranscriptTools, type TranscriptContext } from "../../utils/transcript.ts";
 import { getGrammarToolInput } from "../constrained-sampling.ts";
 import { transformMessages } from "../transform-messages.ts";
@@ -97,9 +98,7 @@ export function convertMessages(
 	const transformedMessages = transformMessages(normalizedContext.messages, model, (id) => normalizeToolCallId(id));
 	const transcriptTools = resolveTranscriptTools(
 		normalizedContext.messages,
-		compat.supportsMidConvoSystemMessages === true && compat.supportsMidConvoToolAdditions === true
-			? "additions"
-			: "none",
+		resolveToolLoadingMode("openai-completions", compat),
 	);
 	const instructionRole = model.reasoning && compat.supportsDeveloperRole ? "developer" : "system";
 
@@ -211,8 +210,8 @@ export function convertMessages(
 					if (!preservedReasoningDetails) {
 						// Use the signature from the first thinking block if available (for llama.cpp server + gpt-oss)
 						let signature = nonEmptyThinkingBlocks[0].thinkingSignature;
-						if (model.provider === "opencode-go" && signature === "reasoning") {
-							signature = "reasoning_content";
+						if (signature === "reasoning" && compat.reasoningReplayField) {
+							signature = compat.reasoningReplayField;
 						}
 						if (signature && isOpenAICompletionsReasoningField(signature)) {
 							assistantMsg[signature] = nonEmptyThinkingBlocks.map((block) => block.thinking).join("\n");

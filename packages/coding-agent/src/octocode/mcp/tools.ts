@@ -1,18 +1,17 @@
-import fs from "node:fs";
 import { type CallToolResult, type ProgressNotification, type Tool, toLlmContent } from "@octocodeai/octocode-mcp";
-import type {
-	AgentToolResult,
-	ToolAnnotations as PiToolAnnotations,
-	ToolDefinition,
-} from "../../core/extensions/index.ts";
+import type { AgentToolResult, ToolAnnotations, ToolDefinition } from "../../core/extensions/index.ts";
 import { createMcpToolName, toParameters } from "../../extensions/mcp/tools.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
 import { isDirectResearchTool, OCTOCODE_SERVER } from "../shared/octocode-tools.ts";
-import { clip, queryTarget, resultBlock, resultText, timedTool, timingOf, toolHeader } from "../shared/render.ts";
+import { resultBlock, resultText, toolHeader } from "../shared/render.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { boundImagePart, capOutputToFile, saveFullOutput } from "../shared/spill.ts";
-import { isRecord } from "../shared/util.ts";
+import { TEXT_MAX_CHARS } from "../shared/turn-budget.ts";
+import { clip, queryTarget } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { type ImageLimits, imageLimits } from "../shared/vision.ts";
+import { prepareOctocodeArguments } from "./arguments.ts";
 
 /** What the extension registers a server's tool as. */
 interface ToolBinding {
@@ -25,8 +24,6 @@ interface ToolBinding {
 		signal?: AbortSignal,
 		onProgress?: (progress: ProgressNotification) => void,
 	): Promise<CallToolResult>;
-	/** The text the turn's results have put in the context so far; every result of one assistant message shares it. */
-	budget?: TurnBudget;
 }
 
 /** What the extension registers one of the server's tools as: the generic path's name rules (charset, length) apply here too. */
@@ -35,73 +32,14 @@ export function octocodeToolName(tool: string): string {
 }
 
 /** Hints the server gave about the tool, as Octocode's annotations (booleans only: nothing else is a hint). */
-function annotations(tool: Tool): PiToolAnnotations | undefined {
+function annotations(tool: Tool): ToolAnnotations | undefined {
 	const hints = tool.annotations;
 	if (!hints) return undefined;
-	const picked: PiToolAnnotations = {};
+	const picked: ToolAnnotations = {};
 	for (const key of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const) {
 		if (typeof hints[key] === "boolean") picked[key] = hints[key];
 	}
 	return Object.keys(picked).length > 0 ? picked : undefined;
-}
-
-/** UTF-16 characters kept whole per MCP text part, allowing headroom around the server's 50,000-character page. */
-export const TEXT_MAX_CHARS = 60_000;
-/** Characters of tool results one assistant message may put in the context whole (Claude Code's per-message budget). */
-export const TURN_MAX_CHARS = 200_000;
-/** Space reserved for the recovery pointer when a turn exhausts its text budget. */
-const RECOVERY_CHARS = 1024;
-
-/** Bounds turn text; overflow records remain recoverable from the first omitted result's archive. */
-export class TurnBudget {
-	private used = 0;
-	private archive: string | undefined;
-
-	limit(): number {
-		return Math.min(TEXT_MAX_CHARS, Math.max(0, TURN_MAX_CHARS - this.used - RECOVERY_CHARS));
-	}
-
-	charge(chars: number): void {
-		this.used += chars;
-	}
-
-	text(text: string, tool: string): string {
-		const preview = this.archive
-			? ""
-			: text.length <= TEXT_MAX_CHARS
-				? text
-				: capOutputToFile(text, { label: `mcp ${tool}`, maxBytes: TEXT_MAX_CHARS, maxLines: TEXT_MAX_CHARS + 1 });
-		if (this.archive || preview.length > TURN_MAX_CHARS - this.used - RECOVERY_CHARS) {
-			const record = `${JSON.stringify({ tool, text })}\n`;
-			if (this.archive) {
-				fs.appendFileSync(this.archive, record);
-				return "";
-			}
-			const file = saveFullOutput(record, "mcp-turn-overflow");
-			if (!file) throw new Error("Could not save MCP output beyond the turn budget");
-			const note = `\n[Turn text budget reached. This result and all later omitted MCP text in this turn are saved as JSON lines at ${file}.]`;
-			const gap = "\n[…]\n";
-			const available = Math.min(
-				text.length,
-				TEXT_MAX_CHARS - note.length - gap.length,
-				Math.max(0, TURN_MAX_CHARS - this.used - note.length - gap.length),
-			);
-			if (note.length + gap.length > TURN_MAX_CHARS - this.used)
-				throw new Error("MCP recovery pointer exceeds remaining turn budget");
-			this.archive = file;
-			const head = Math.floor(available * 0.7);
-			const shown = `${text.slice(0, head)}${gap}${available > head ? text.slice(-(available - head)) : ""}${note}`;
-			this.charge(shown.length);
-			return shown;
-		}
-		this.charge(preview.length);
-		return preview;
-	}
-
-	reset(): void {
-		this.used = 0;
-		this.archive = undefined;
-	}
 }
 
 /**
@@ -122,7 +60,6 @@ export async function toToolResult(
 	result: CallToolResult,
 	declaresOutput: boolean,
 	limits?: ImageLimits,
-	budget?: TurnBudget,
 ): Promise<AgentToolResult<{ tool: string }>> {
 	const content: AgentToolResult["content"] = [];
 	let outputTruncated = false;
@@ -152,9 +89,8 @@ export async function toToolResult(
 	}
 	for (const part of sanitizeJson(toLlmContent(result)) as ReturnType<typeof toLlmContent>) {
 		if (part.type === "text") {
-			const text = budget
-				? budget.text(part.text, tool)
-				: part.text.length <= TEXT_MAX_CHARS
+			const text =
+				part.text.length <= TEXT_MAX_CHARS
 					? part.text
 					: capOutputToFile(part.text, {
 							label: `mcp ${tool}`,
@@ -164,16 +100,11 @@ export async function toToolResult(
 			outputTruncated ||= text !== part.text;
 			content.push({ ...part, text });
 		} else if (part.type === "image") {
-			for (const bounded of await boundImagePart(part, `mcp ${tool} image`, limits ? { limits } : {})) {
-				content.push(
-					bounded.type === "text" && budget ? { ...bounded, text: budget.text(bounded.text, tool) } : bounded,
-				);
-			}
+			content.push(...(await boundImagePart(part, `mcp ${tool} image`, limits ? { limits } : {})));
 		} else content.push(part);
 	}
 	if (failed && content.length === 0) {
-		const text = `${tool} failed without a message.`;
-		content.push({ type: "text", text: budget ? budget.text(text, tool) : text });
+		content.push({ type: "text", text: `${tool} failed without a message.` });
 	}
 	return {
 		content,
@@ -229,6 +160,7 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 		description: tool.description?.trim() || tool.title?.trim() || `Octocode tool ${tool.name}`,
 		// The generic path's schema rules apply: an object schema with `type` and `properties`.
 		parameters: toParameters(tool.inputSchema),
+		prepareArguments: (args) => prepareOctocodeArguments(tool.inputSchema, args) as Record<string, unknown>,
 		...(declaresOutput ? { outputSchema: outputSchema } : {}),
 		exposure: isDirectResearchTool(name) ? "direct" : (binding.exposure ?? "direct"),
 		namespace: binding.namespace,
@@ -258,7 +190,6 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding): ToolDe
 				}),
 				declaresOutput,
 				imageLimits(ctx.model),
-				binding.budget,
 			);
 		},
 	});

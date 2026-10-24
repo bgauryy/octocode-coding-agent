@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../src/auth/types.ts";
-import { getModels as getCompatModels } from "../src/compat.ts";
 import {
 	type CreateProviderOptions,
 	createModels,
@@ -371,16 +370,14 @@ describe("Models with image models", () => {
 		expect(stored?.models.map((model) => model.id)).toEqual(["listed", "chat"]);
 	});
 
-	it("keeps existing built-in and compat model reads chat-only", () => {
+	it("keeps built-in chat model reads chat-only", () => {
 		const chat = getBuiltinModels("openrouter");
 		const images = getBuiltinImageModels("openrouter");
 		const all = getAllBuiltinModels("openrouter");
-		const compat = getCompatModels("openrouter");
 
 		expect(chat.every((model) => isModelType(model, "chat"))).toBe(true);
 		expect(images.every((model) => isModelType(model, "image"))).toBe(true);
 		expect(all.some((model) => isModelType(model, "image"))).toBe(true);
-		expect(compat).toEqual(chat);
 		expect(chat.every((model) => model.contextWindow > 0)).toBe(true);
 		expect(chat.length + images.length + getBuiltinClassifierModels("openrouter").length).toBe(all.length);
 		expect(getBuiltinImageModel("openrouter", "black-forest-labs/flux.2-pro").type).toBe("image");

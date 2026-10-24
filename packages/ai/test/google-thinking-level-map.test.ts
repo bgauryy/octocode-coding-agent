@@ -1,7 +1,7 @@
 import type { GenerateContentParameters } from "@google/genai";
 import { describe, expect, it } from "vitest";
 import { streamSimple as streamSimpleGoogle } from "../src/api/google-generative-ai.ts";
-import { resolveGoogleThinkingLevel } from "../src/api/google-shared.ts";
+import { resolveGoogleThinkingLevel } from "../src/api/google-shared/thinking.ts";
 import { streamSimple as streamSimpleVertex } from "../src/api/google-vertex.ts";
 import type { Model, ThinkingBudgets, ThinkingLevel, ThinkingLevelMap } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";

@@ -1,3 +1,4 @@
+import type { PlanOptions, PlanState } from "../../octocode/plan/state.ts";
 /**
  * RPC Client for programmatic access to the coding agent.
  *
@@ -12,6 +13,7 @@ import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { JsonAgentSessionEvent } from "../json-event.ts";
 import { RpcConnection } from "./rpc-client/connection.ts";
+import { createQueueClient } from "./rpc-client/queue.ts";
 import type { ModelInfo, RpcClientOptions, RpcCommandBody, RpcEventListener } from "./rpc-client/types.ts";
 import type {
 	RpcExtensionUIRequest,
@@ -23,12 +25,10 @@ import type {
 
 export type { ModelInfo, RpcClientOptions, RpcEventListener } from "./rpc-client/types.ts";
 
-// ============================================================================
-// RPC Client
-// ============================================================================
-
 export class RpcClient {
 	private connection: RpcConnection;
+	/** List, edit, remove and move queued messages by queue id. */
+	readonly queue = createQueueClient(async (command) => this.getData(await this.send(command)));
 
 	constructor(options: RpcClientOptions = {}) {
 		this.connection = new RpcConnection(options);
@@ -212,17 +212,18 @@ export class RpcClient {
 		await this.send({ type: "set_follow_up_mode", mode });
 	}
 
-	/**
-	 * Compact session context.
-	 */
-	async compact(): Promise<CompactionResult> {
-		const response = await this.send({ type: "compact" }, null);
+	/** Control native planning and read its revision. */
+	async plan(options: PlanOptions): Promise<PlanState> {
+		const response = await this.send({ type: "plan", ...options });
 		return this.getData(response);
 	}
 
-	/**
-	 * Set auto-retry enabled/disabled.
-	 */
+	async compact(options?: { customInstructions?: string }): Promise<CompactionResult> {
+		const response = await this.send({ type: "compact", ...options }, null);
+		return this.getData(response);
+	}
+
+	/** Set auto-retry enabled/disabled. */
 	async setAutoRetry(enabled: boolean): Promise<void> {
 		await this.send({ type: "set_auto_retry", enabled });
 	}

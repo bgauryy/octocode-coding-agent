@@ -10,9 +10,11 @@ const MAX_SERVER_DESCRIPTION_CHARS = 250;
 const MAX_SERVER_INSTRUCTIONS_CHARS = 512;
 /** Tool names listed per server before the rest are counted; tool_search still finds them. */
 const MAX_LISTED_TOOLS = 40;
+/** Characters of a tool's one-line description next to its name. */
+const MAX_TOOL_DESCRIPTION_CHARS = 80;
 /**
- * Characters of the whole section. Instructions shrink first, then summaries and tool lists; when the server lines
- * alone do not fit, the last servers are left out and counted in a closing line.
+ * Characters of the whole section. Instructions shrink first, then tool descriptions, then summaries and tool lists;
+ * when the server lines alone do not fit, the last servers are left out and counted in a closing line.
  */
 export const MAX_SERVERS_SECTION_CHARS = 6144;
 
@@ -21,11 +23,19 @@ export interface McpServerListing {
 	entry: McpServerEntry;
 	connection?: { instructions?: string };
 	/**
-	 * The server's registered tools once it connected: the full names of those `tool_search` loads, and how many are
-	 * declared directly. Before it connects, its configured exposures decide how it is listed.
+	 * The server's registered tools once it connected: the full names (with descriptions) of those `tool_search` loads,
+	 * and how many are declared directly. Before it connects, its configured exposures decide how it is listed.
 	 */
-	tools?: { deferred: readonly string[]; direct: number };
+	tools?: { deferred: readonly McpListedTool[]; direct: number };
 }
+
+/** A tool `tool_search` loads: its full name and, when it has one, its description. */
+export interface McpListedTool {
+	name: string;
+	description?: string;
+}
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 function truncate(text: string, max: number): string {
 	if (text.length <= max) return text;
@@ -57,16 +67,43 @@ function reachOf(server: McpServerListing): "tool_search" | "declared" | undefin
 	return hasDirectTools(server.entry) ? "declared" : undefined;
 }
 
+/** The lines that name the tools `tool_search` loads: one per tool with its description, or one line of names. */
+function toolLines(names: readonly ListedName[], limits: Limits): string[] {
+	if (names.length === 0) return [];
+	const shown = names.slice(0, limits.tools);
+	if (shown.length === 0) return [`  tool_search loads ${names.length} tools`];
+	const more = names.length - shown.length;
+	if (limits.descriptions > 0 && shown.some((tool) => tool.description)) {
+		return [
+			"  tool_search loads:",
+			...shown.map(({ name, description }) => {
+				const text = truncate(description, limits.descriptions);
+				return text ? `    ${name}: ${text}` : `    ${name}`;
+			}),
+			...(more > 0 ? [`    … ${more} more`] : []),
+		];
+	}
+	return [`  tool_search loads: ${shown.map((tool) => tool.name).join(", ")}${more > 0 ? `, … ${more} more` : ""}`];
+}
+
+interface ListedName {
+	name: string;
+	description: string;
+}
+
 interface Limits {
 	summary: number;
 	instructions: number;
+	/** Characters of each tool's description; 0 lists names only. */
+	descriptions: number;
 	tools: number;
 }
 
 /**
  * The `mcp_servers` section: every enabled server, how its tools are reached, a one-line summary, the names of the
- * tools `tool_search` loads (the server's prefix left out), and an excerpt of its instructions. The model learns of the
- * servers and their tools from it before discovery loads any. Undefined when there are no servers to list.
+ * tools `tool_search` loads (sorted, the server's prefix left out, each with a one-line description while they fit), and
+ * an excerpt of its instructions. The model learns of the servers and their tools from it before discovery loads any.
+ * Undefined when there are no servers to list.
  *
  * The `octocode` server is left out: the `octocode` section carries its whole instructions and the names of its tools
  * that `tool_search` loads (`octocodePrompt`), because the automatic server registers its tools after this is built.
@@ -87,7 +124,12 @@ export function renderServersSection(servers: readonly McpServerListing[]): stri
 	const texts = listed.map(serverText);
 	const toolNames = listed.map((server) => {
 		const prefix = `${mcpNamespace(server.entry.name)}__`;
-		return (server.tools?.deferred ?? []).map((name) => (name.startsWith(prefix) ? name.slice(prefix.length) : name));
+		return [...(server.tools?.deferred ?? [])]
+			.sort((a, b) => compareText(a.name, b.name))
+			.map(({ name, description }) => ({
+				name: name.startsWith(prefix) ? name.slice(prefix.length) : name,
+				description: oneLine((description ?? "").split("\n", 1)[0] ?? ""),
+			}));
 	});
 	const omitted = (count: number) =>
 		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with tool_search`] : [];
@@ -95,29 +137,30 @@ export function renderServersSection(servers: readonly McpServerListing[]): stri
 		const lines = listed.slice(0, kept).flatMap((_, index) => {
 			const summary = truncate(texts[index].summary, limits.summary);
 			const names = toolNames[index];
-			const shown = names.slice(0, limits.tools);
-			const more = names.length - shown.length;
 			const instructions = truncate(texts[index].instructions, limits.instructions);
 			return [
 				summary ? `${heads[index]}: ${summary}` : heads[index],
-				...(shown.length > 0
-					? [`  tool_search loads: ${shown.join(", ")}${more > 0 ? `, … ${more} more` : ""}`]
-					: names.length > 0
-						? [`  tool_search loads ${names.length} tools`]
-						: []),
+				...toolLines(names, limits),
 				...(instructions ? [`  instructions: ${instructions}`] : []),
 			];
 		});
 		return [intro, ...lines, ...omitted(listed.length - kept)].join("\n");
 	};
 	// Shrink the optional parts in order until the section fits; the server lines and tool counts stay longest.
+	const full = {
+		summary: MAX_SERVER_DESCRIPTION_CHARS,
+		instructions: MAX_SERVER_INSTRUCTIONS_CHARS,
+		descriptions: MAX_TOOL_DESCRIPTION_CHARS,
+		tools: MAX_LISTED_TOOLS,
+	};
 	const steps: Limits[] = [
-		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: MAX_SERVER_INSTRUCTIONS_CHARS, tools: MAX_LISTED_TOOLS },
-		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: 200, tools: MAX_LISTED_TOOLS },
-		{ summary: MAX_SERVER_DESCRIPTION_CHARS, instructions: 0, tools: MAX_LISTED_TOOLS },
-		{ summary: 120, instructions: 0, tools: 12 },
-		{ summary: 60, instructions: 0, tools: 0 },
-		{ summary: 0, instructions: 0, tools: 0 },
+		full,
+		{ ...full, instructions: 200 },
+		{ ...full, instructions: 0 },
+		{ ...full, instructions: 0, descriptions: 0 },
+		{ summary: 120, instructions: 0, descriptions: 0, tools: 12 },
+		{ summary: 60, instructions: 0, descriptions: 0, tools: 0 },
+		{ summary: 0, instructions: 0, descriptions: 0, tools: 0 },
 	];
 	for (const limits of steps) {
 		const text = render(listed.length, limits);

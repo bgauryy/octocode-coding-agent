@@ -1,16 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
-import { canonicalPath, resolveToolPath } from "./home.ts";
-import { sha256, sha256File } from "./atomic.ts";
+import { resolveToolPath } from "./home.ts";
+import { canonicalPath } from "./home/repo.ts";
+import { sha256, sha256File } from "../../utils/atomic-file.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { OCTOCODE_TOOL_PREFIX } from "./octocode-tools.ts";
-import { isRecord } from "./util.ts";
 
 export const LOCAL_READ_TOOLS = new Set([
 	`${OCTOCODE_TOOL_PREFIX}localFetch`,
 	`${OCTOCODE_TOOL_PREFIX}localGetFileContent`,
 ]);
 
-export interface LocalRead {
+interface LocalRead {
 	file: string;
 	sha256: string;
 	size: number;

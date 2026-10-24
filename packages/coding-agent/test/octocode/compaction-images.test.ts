@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { isRequestTooLarge, planTooLargeRecovery } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCachePolicy } from "./fake-pi.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;

@@ -1,5 +1,6 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollViewsAt, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getScrollViewsAt } from "../layout.ts";
 import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
 import type { WheelScrollAccelerator } from "../wheel-scroll.ts";
 import { ALT_WHEEL_SCROLL_MULTIPLIER, FOCUS_IN, FOCUS_OUT } from "./constants.ts";

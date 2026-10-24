@@ -18,6 +18,24 @@ export function getCacheControl(
 	};
 }
 
+/**
+ * Cache controls for the instruction breakpoints (tools and system) and the history breakpoints. Anthropic requires
+ * one-hour entries before five-minute ones, and instructions precede history, so five-minute instructions cap
+ * one-hour history at five minutes rather than sending a request the API rejects.
+ */
+export function getLayeredCacheControl(
+	model: Model<"anthropic-messages">,
+	retention: { history: CacheRetention; instructions: CacheRetention },
+	env?: ProviderEnv,
+): { instructions?: CacheControlEphemeral; history?: CacheControlEphemeral } {
+	const { cacheControl: instructions } = getCacheControl(model, retention.instructions, env);
+	const { cacheControl: history } = getCacheControl(model, retention.history, env);
+	if (instructions && instructions.ttl !== "1h" && history?.ttl === "1h") {
+		return { instructions, history: { type: "ephemeral" } };
+	}
+	return { instructions, history };
+}
+
 export function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages">): boolean {
 	return (model.compat?.allowedFallbackModels?.length ?? 0) > 0;
 }

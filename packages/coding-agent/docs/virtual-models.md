@@ -24,9 +24,11 @@ Octocode keeps the two pairs apart:
 
 Providers only receive physical models. Assistant messages name the physical model, so replaying a conversation across different physical models works the same as after a manual model switch. Resuming a session restores the virtual selection from its latest `model_change` entry. If the virtual model is no longer registered, Octocode falls back to the physical model that answered last.
 
-In interactive mode, the footer shows the routed model next to the selection, for example `auto • high → gpt-5.6-luna • medium`. `/status` lists the cost for each physical model.
+In interactive mode, the built-in footer keeps the selected provider/model and thinking level visible on a coordinator line, for example `Coordinator · thinking high · router/auto`. A separate line shows the latest physical route, such as `Latest route · openai-codex/gpt-5.6-luna · thinking medium`. On narrow terminals the coordinator identity wraps onto a separate model line. `/thinking` changes the selected virtual level; the router decides the physical effort. `/status` lists the cost for each physical model.
 
 Context usage uses the limits of the physical model that produced the latest response, even if that response came before switching to the virtual model. Without such a response, it uses the limits declared on the virtual model, if any. Compaction checks the same limits, and again the limits of the model each request is routed to. If that model's context window is too small for the conversation, Octocode compacts before sending the request; the route stays as the router chose it.
+
+`/context` reports those effective limits and their output reserve. `/context size`, `/context <tokens>` and `/context reset` require a physical model selection because a virtual route has no single capacity. A working budget set while a physical model is selected applies when selecting that model directly; it does not override the limits of routes chosen by a virtual model.
 
 ## Register a virtual model
 

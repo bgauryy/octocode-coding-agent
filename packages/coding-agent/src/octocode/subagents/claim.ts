@@ -4,13 +4,14 @@ import { teamTask } from "../instructions/task.ts";
 import { envInt } from "../shared/env.ts";
 import { shortPath } from "../shared/format.ts";
 import { sessionFolderNames } from "../shared/home.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
+import type { Identity } from "./process/env.ts";
 import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
-import { agentScratch, dropEmptyScratch, type ReadReports, type ReportQueue, scratchNames } from "./handoff.ts";
-import { type ModelRoute, routeModel } from "./model.ts";
-import type { Identity } from "./process.ts";
+import { type ReportQueue } from "./handoff.ts";
+import { type ModelRoute, routedModel, routeModel } from "./model.ts";
 import { type AgentProfile, GENERAL_PROFILE, profileSelectsTool, profileTools } from "./profiles.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
@@ -208,8 +209,12 @@ export function claimRun(
 		...(collaborate ? { collaborate } : {}),
 	};
 	runs.running.set(identity.id, undefined);
-	if (ctx.model && ctx.modelRegistry) {
-		identity.cachePreferences = ctx.modelRegistry.getCachePolicy(ctx.model, [
+	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
+	const childModel = ctx.modelRegistry
+		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)
+		: undefined;
+	if (childModel && ctx.modelRegistry) {
+		identity.cachePreferences = ctx.modelRegistry.getCachePolicy(childModel, [
 			{ source: "parent settings", values: runs.pi.getSettings() },
 		]).options;
 	}

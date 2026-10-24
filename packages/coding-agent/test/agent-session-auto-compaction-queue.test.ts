@@ -7,7 +7,8 @@ import {
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
 } from "@octocodeai/octocode-ai";
-import { getModel, streamSimple } from "@octocodeai/octocode-ai/compat";
+import { streamSimple } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -26,7 +27,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		tempDir = join(tmpdir(), `pi-auto-compaction-queue-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			streamFn: streamSimple,
 			initialState: {

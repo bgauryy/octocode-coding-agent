@@ -1,17 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../../agentdb/rows.ts";
 import type { Ask } from "../asks.ts";
-import {
-	type DeadLetter,
-	type Message,
-	type SendOptions,
-	type Traffic,
-	toAsk,
-	toMessage,
-	toTraffic,
-	WAKE,
-} from "../model.ts";
+import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
 import { INBOX_BATCH_SIZE } from "./limits.ts";
+import type { Traffic } from "@octocodeai/octocode-contacts/team";
 
 /** The message rows behind `TeamStore` (`store.ts`); each is described on the `TeamStore` method that runs it. */
 

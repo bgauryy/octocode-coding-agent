@@ -1,7 +1,7 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { USER_AUTHOR } from "../agentdb/author.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { lastInjection } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import {

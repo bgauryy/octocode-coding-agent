@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, ToolResultMessage, Usage } from "../src/types.ts";
 
 const usage: Usage = {
@@ -28,7 +29,7 @@ describe("OpenAI Responses convertResponsesMessages empty tool result", () => {
 	it.each(["", "\r\n", " \n\t"])(
 		"uses '(no tool output)' placeholder for tool result text %j without images",
 		(text) => {
-			const model = getModel("openai", "gpt-4o-mini");
+			const model = getBuiltinModel("openai", "gpt-4o-mini");
 			const now = Date.now();
 			const assistant: AssistantMessage = {
 				role: "assistant",

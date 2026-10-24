@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	doneSummary,
-	type RunDetails,
 	renderAgentCall,
 	renderAgentMessage,
 	renderAgentResult,
 } from "../../src/octocode/subagents/render.ts";
 import { rendered, theme } from "./fake-pi.ts";
+import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
+import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
 
 const ctx = (extra: Record<string, unknown> = {}) =>
 	({
@@ -35,6 +36,24 @@ const details = (extra: Partial<RunDetails> = {}): RunDetails => ({
 });
 
 describe("subagent renderers", () => {
+	it.each([false, true])(
+		"shows foreground fenced reports and host footers without fence markers (error=%s)",
+		(isError) => {
+			const content = fenceUntrusted("Subagent general-0001 finished", "Child answer", { footer: "Host follow-up" });
+			const text = rendered(
+				renderAgentResult(
+					{ content: [{ type: "text", text: content }], details: details() },
+					{ isPartial: false, expanded: true },
+					theme,
+					ctx({ expanded: true, isError }),
+				),
+			);
+			expect(text).toContain("Child answer");
+			expect(text).toContain("Host follow-up");
+			expect(text).not.toContain("untrusted-");
+		},
+	);
+
 	it("names the goal in the call row, without the profile", () => {
 		expect(
 			rendered(

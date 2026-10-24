@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 
 /** Append one full-redraw reason to the debug log when OCTOCODE_TUI_DEBUG_REDRAW=1 gave a directory. */
 export function writeRedrawLog(
@@ -55,7 +55,7 @@ export function widthErrorMessage(i: number, line: string, width: number, crashL
 }
 
 /** Values of one differential render, dumped when OCTOCODE_TUI_DEBUG=1. */
-export interface RenderDebugState {
+interface RenderDebugState {
 	firstChanged: number;
 	viewportTop: number;
 	cursorRow: number;

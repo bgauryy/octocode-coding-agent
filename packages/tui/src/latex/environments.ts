@@ -1,4 +1,4 @@
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 import { LAYOUT_MARKER_END, LAYOUT_MARKER_START, PROTECTED_SPACE } from "./layout.ts";
 import { LatexParserBase } from "./parser-base.ts";
 

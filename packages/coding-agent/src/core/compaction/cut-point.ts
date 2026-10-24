@@ -6,7 +6,7 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { type ProjectedSessionEntry, type SessionEntry, sessionEntryToContextMessages } from "../session-manager.ts";
 import { estimateTokens } from "./tokens.ts";
 
-export function isCutPointMessage(message: AgentMessage): boolean {
+function isCutPointMessage(message: AgentMessage): boolean {
 	switch (message.role) {
 		case "user":
 		case "assistant":
@@ -21,7 +21,7 @@ export function isCutPointMessage(message: AgentMessage): boolean {
 	return false;
 }
 
-export function isTurnStartMessage(message: AgentMessage): boolean {
+function isTurnStartMessage(message: AgentMessage): boolean {
 	switch (message.role) {
 		case "user":
 		case "bashExecution":

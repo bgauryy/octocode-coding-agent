@@ -109,6 +109,24 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 							text: sanitizeSurrogates(block.thinking),
 						});
 					}
+				} else if (block.type === "image" || block.type === "media") {
+					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.thoughtSignature);
+					if (block.data)
+						parts.push({
+							inlineData: { data: block.data, mimeType: block.mimeType },
+							...(thoughtSignature && { thoughtSignature }),
+						});
+					else if (block.type === "media" && block.uri)
+						parts.push({
+							fileData: { fileUri: block.uri, mimeType: block.mimeType },
+							...(thoughtSignature && { thoughtSignature }),
+						});
+				} else if (block.type === "resource") {
+					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.thoughtSignature);
+					parts.push({
+						fileData: { fileUri: block.uri, mimeType: block.mimeType },
+						...(thoughtSignature && { thoughtSignature }),
+					});
 				} else if (block.type === "toolCall") {
 					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.thoughtSignature);
 					const part: Part = {

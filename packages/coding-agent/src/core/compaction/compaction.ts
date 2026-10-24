@@ -9,7 +9,6 @@ import { builtInCompactionSettings } from "./settings.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
-import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import {
 	buildSessionProjection,
 	type CompactionEntry,
@@ -28,30 +27,12 @@ import {
 	formatFileOperations,
 } from "./utils.ts";
 
-export { type CutPointResult, findCutPoint, findTurnStartIndex } from "./cut-point.ts";
-export {
-	completeSummarization,
-	generateSummary,
-	generateSummaryWithUsage,
-	getSummarizationFailure,
-} from "./summarization.ts";
-export {
-	CHARS_PER_TOKEN,
-	type ContextUsageEstimate,
-	charsToTokens,
-	estimateContextTokens,
-	estimateProjectedContextTokens,
-	estimateTokens,
-	estimateUndeclaredToolTokens,
-	getLastAssistantUsage,
-} from "./tokens.ts";
-
 // ============================================================================
 // File Operation Tracking
 // ============================================================================
 
 /** Details stored in CompactionEntry.details for file tracking */
-export interface CompactionDetails {
+interface CompactionDetails {
 	readFiles: string[];
 	modifiedFiles: string[];
 }
@@ -302,6 +283,7 @@ export async function compact(
 			retry,
 			callbacks,
 			sessionId,
+			customInstructions,
 		);
 		// Merge into single summary
 		summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
@@ -344,6 +326,3 @@ export async function compact(
 		details: { readFiles, modifiedFiles },
 	};
 }
-
-// The usage math is ai's; SDK users keep importing it from here.
-export { calculateContextTokens };

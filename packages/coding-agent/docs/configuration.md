@@ -15,6 +15,14 @@ the core configuration directory. Project configuration remains in `.octocode/`.
 Place provider configuration in `models.json` within that directory.
 See [models](models.md) and [environment variables](environment-variables.md).
 
+## Runtime storage
+
+Interface-visible runtime state uses a session-scoped Zustand vanilla store in the application core. It is not persisted by Zustand. Session transcripts remain JSONL files; native session metadata, backlogs and history, memories, team coordination, and command receipts use the agent SQLite database. Settings, credentials, checkpoints, and output files retain their existing file owners.
+
+`OCTOCODE_AGENT_DB` overrides the native database file; otherwise the shared home supplies `agent/octocode.db`. The process opens one shared connection per canonical file path. Distinct configured files can coexist without closing each other's connections; symlink aliases reuse a connection. Process cleanup closes all shared connections. This does not make concurrent native sessions supported: the native runtime still has other process-scoped resources. The separate peer-communication database remains read-only to Octocode.
+
+All native tables are reconciled by `octocode/agentdb/schema.ts`. Feature repositories own entity validation and transactions; interfaces do not write SQL. Runtime store changes require no database migration. See the [interface architecture](../../../docs/INTERFACE_ARCHITECTURE.md#runtime-state-and-database-ownership) for runtime ownership and snapshot subscriptions.
+
 ## Pi configuration fallback
 
 With the default home, Octocode also reads `~/.pi/agent/` and `~/.pi/`, in that
@@ -48,8 +56,10 @@ the native features it duplicates. Other extensions can still register their
 own tools and commands; normal conflict diagnostics apply.
 
 Explicit home overrides and custom SDK directories disable automatic Pi fallback.
-Pi sessions, trust decisions, authentication files, device identity and telemetry
-consent are not imported. Existing directories are neither moved nor deleted.
+Pi sessions, trust decisions, device identity and telemetry consent are not imported.
+Pi authentication is not loaded automatically; `/providers pi` offers an explicit,
+confirmed credential import. Pi model definitions remain fallback inputs. Existing
+directories are neither moved nor deleted. See [provider setup](providers.md#use-pi-configuration).
 Project trust decisions are saved by atomically replacing the native `trust.json`.
 The separate agents-communication service keeps its shared directory at
 `~/.octocode/agents-communication/`.

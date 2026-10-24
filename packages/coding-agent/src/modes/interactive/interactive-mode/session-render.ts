@@ -6,27 +6,30 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import { Spacer, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { CONFIG_DIR_NAME } from "../../../config.ts";
-import { CACHE_TTL_MS, type CacheMiss, collectCacheMisses, detectCacheMiss } from "../../../core/cache-stats.ts";
+import { type CacheMiss, cacheMissLabel, collectCacheMisses, detectCacheMiss } from "../../../core/cache-stats.ts";
 import { formatCacheWarmingUsage } from "../../../core/cache-warmer.ts";
+import { getPromptCacheTtlMs } from "../../../core/cache-warmer/economics.ts";
 import { type SessionEntry, sessionEntryToContextMessages, type UsageEntry } from "../../../core/session-manager.ts";
 import { hasTrustRequiringProjectResources } from "../../../core/trust-manager.ts";
 import { formatTokens } from "../components/footer.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
+import { AssistantMessageComponent } from "../components/assistant-message.ts";
+import { getApplicationPort } from "../../../core/application/index.ts";
+import { toolContent } from "../components/application-content.ts";
 import { theme } from "../theme/theme.ts";
 import { isCustomSessionEntry, isCompactionCostNotice, isUsageSessionEntry } from "./helpers.ts";
 import type { CompactionCostNotice, RenderSessionItem } from "./types.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by session rendering. */
-export type SessionRenderHost = Pick<
+type SessionRenderHost = Pick<
 	InteractiveModeHost,
 	| "addCacheWarmingUsage"
 	| "addCompactionCostNotice"
 	| "addCustomEntryToChat"
 	| "addMessageToChat"
 	| "chatContainer"
-	| "footer"
 	| "getRegisteredToolDefinition"
 	| "outputPad"
 	| "pendingTools"
@@ -60,6 +63,7 @@ export function addToolExecution(
 	toolName: string,
 	toolCallId: string,
 	args: unknown,
+	parent?: AssistantMessageComponent,
 ): ToolExecutionComponent {
 	const component = new ToolExecutionComponent(
 		toolName,
@@ -75,7 +79,8 @@ export function addToolExecution(
 		host.sessionManager.getCwd(),
 	);
 	component.setExpanded(host.toolOutputExpanded);
-	host.chatContainer.addChild(component);
+	if (parent) parent.attachTool(toolCallId, component);
+	else host.chatContainer.addChild(component);
 	return component;
 }
 
@@ -87,13 +92,13 @@ export function renderSessionItems(
 	host.pendingTools.clear();
 	const renderedPendingTools = new Map<string, ToolExecutionComponent>();
 	// Cache misses are not persisted, unlike successful cache-warming usage.
-	// Re-derive them and inject them after the assistant messages that paid for them.
+	// Re-derive them and inject them after the assistant messages that paid for them. Only the current branch's requests
+	// are compared: entries of other branches interleave in the file but were never part of this prefix.
 	const cacheMisses = host.settingsManager.getShowCacheMissNotices()
-		? collectCacheMisses(host.sessionManager.getEntries(), host.session.modelRuntime)
+		? collectCacheMisses(host.sessionManager.getBranch(), host.session.modelRuntime)
 		: new Map<AssistantMessage, CacheMiss>();
 
 	if (options.updateFooter) {
-		host.footer.invalidate();
 		host.updateEditorBorderColor();
 	}
 
@@ -115,10 +120,12 @@ export function renderSessionItems(
 		// Assistant messages need special handling for tool calls
 		if (message.role === "assistant") {
 			host.addMessageToChat(message);
+			const last = host.chatContainer.children.at(-1);
+			const parent = last instanceof AssistantMessageComponent ? last : undefined;
 			// Render tool call components
 			for (const content of message.content) {
 				if (content.type === "toolCall") {
-					const component = addToolExecution(host, content.name, content.id, content.arguments);
+					const component = addToolExecution(host, content.name, content.id, content.arguments, parent);
 
 					if (message.stopReason === "aborted" || message.stopReason === "error") {
 						let errorMessage: string;
@@ -139,13 +146,18 @@ export function renderSessionItems(
 			}
 			if (message.stopReason !== "aborted" && message.stopReason !== "error") {
 				const miss = cacheMisses.get(message);
-				if (miss) addCacheMissNotice(host, miss);
+				if (miss) addCacheMissNotice(host, miss, message);
 			}
 		} else if (message.role === "toolResult") {
 			// Match tool results to pending tool components
 			const component = renderedPendingTools.get(message.toolCallId);
 			if (component) {
-				component.updateResult(message);
+				const port = getApplicationPort(host.session);
+				const normalized = port.normalizeMessage(message);
+				component.updateResult({
+					...message,
+					content: toolContent(normalized.content ?? [], (id) => port.readAsset(id)),
+				});
 				renderedPendingTools.delete(message.toolCallId);
 			}
 		} else {
@@ -204,13 +216,15 @@ export function addCompactionCostNotice(host: SessionRenderHost, notice: Compact
 	const tokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 	const cost = usage.cost.total >= 0.01 ? ` (~$${usage.cost.total.toFixed(2)})` : "";
 	const label = notice.kind === "compaction" ? "Compaction" : "Branch summary";
+	// A summary that shared the session's prompt cache read its prefix from it; a standalone summary reads nothing.
+	const cached = usage.cacheRead > 0 ? `, ${formatTokens(usage.cacheRead)} read from cache` : "";
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		new ThemedText(() => theme.fg("warning", `${label}: ${formatTokens(tokens)} tokens billed${cost}`), 1, 0),
+		new ThemedText(() => theme.fg("warning", `${label}: ${formatTokens(tokens)} tokens billed${cached}${cost}`), 1, 0),
 	);
 }
 
-export function countDroppedThinkingBlocks(message: AssistantMessage): number {
+function countDroppedThinkingBlocks(message: AssistantMessage): number {
 	let count = 0;
 	for (const diagnostic of message.diagnostics ?? []) {
 		if (diagnostic.type !== "anthropic_input_transformations") continue;
@@ -260,22 +274,26 @@ export function maybeShowThinkingDropNotice(host: SessionRenderHost, message: As
 export function maybeShowCacheMissNotice(host: SessionRenderHost, message: AssistantMessage): void {
 	if (!host.settingsManager.getShowCacheMissNotices()) return;
 
-	// Entries don't contain `message` yet: message_end fires before persistence.
-	const miss = detectCacheMiss(host.sessionManager.getEntries(), message, host.session.modelRuntime);
-	if (miss) addCacheMissNotice(host, miss);
+	// The branch doesn't contain `message` yet: message_end fires before persistence.
+	const miss = detectCacheMiss(host.sessionManager.getBranch(), message, host.session.modelRuntime);
+	if (miss) addCacheMissNotice(host, miss, message);
 }
 
-export function addCacheMissNotice(host: SessionRenderHost, miss: CacheMiss): void {
+/** Lifetime of the history entry the message's model writes under the cache settings now in effect, when known. */
+function historyTtlMs(host: SessionRenderHost, message: AssistantMessage): number | undefined {
+	const runtime = host.session.modelRuntime;
+	const model = runtime.getModel(message.provider, message.model);
+	if (!model) return undefined;
+	const policy = runtime.getCachePolicy(model, undefined, host.settingsManager.getCachePreferenceLayers());
+	return getPromptCacheTtlMs(model, policy.options);
+}
+
+function addCacheMissNotice(host: SessionRenderHost, miss: CacheMiss, message: AssistantMessage): void {
 	if (miss.missedTokens < 20_000 && miss.missedCost < 0.1) return;
 
 	const cost = miss.missedCost >= 0.01 ? ` (~$${miss.missedCost.toFixed(2)})` : "";
 	const reBilled = `${formatTokens(miss.missedTokens)} tokens re-billed${cost}`;
-	let label = "Cache miss";
-	if (miss.modelChanged) {
-		label = "Cache miss after model switch";
-	} else if (miss.idleMs >= CACHE_TTL_MS) {
-		label = `Cache miss after ${Math.round(miss.idleMs / 60_000)}m idle`;
-	}
+	const label = cacheMissLabel(miss, historyTtlMs(host, message));
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", `${label}: ${reBilled}`), 1, 0));
 }
@@ -297,7 +315,7 @@ export function renderInitialMessages(host: SessionRenderHost): void {
 	}
 }
 
-export function renderProjectTrustWarningIfNeeded(host: SessionRenderHost): void {
+function renderProjectTrustWarningIfNeeded(host: SessionRenderHost): void {
 	if (host.settingsManager.isProjectTrusted() || !hasTrustRequiringProjectResources(host.sessionManager.getCwd())) {
 		return;
 	}

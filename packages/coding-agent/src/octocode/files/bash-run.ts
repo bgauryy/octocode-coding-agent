@@ -5,7 +5,9 @@ import type { BashOperations } from "../../core/tools/index.ts";
 import { getPowerShellConfig, getShellConfig } from "../../utils/shell.ts";
 import { adoptTree, groupAlive, groupMembers, killTree, prepareTree, signalTree } from "../shared/process.ts";
 import { firstLine } from "../shared/util.ts";
-import { type BashJob, MAX_TIMER_SECONDS, nonInteractiveEnv, type ShellSettings } from "./bash-jobs.ts";
+import { MAX_TIMER_SECONDS } from "./bash-jobs.ts";
+import type { BashJob } from "./bash-jobs/types.ts";
+import { nonInteractiveEnv, type ShellSettings } from "./bash-jobs/shell.ts";
 
 /**
  * How a foreground command runs: Octocode's local shell execution (core/tools/bash `createLocalShellOperations`, handed to
@@ -60,11 +62,25 @@ class KeptOutput {
 	}
 }
 
+/** Why a running foreground command moves: its deadline passed, or a message from the user is waiting for the agent. */
+export type HandoffReason = "deadline" | "message";
+
 /**
  * Hands a foreground command that is still running to the background job manager: what it printed so far, and when it
  * started. Returns the job, which now owns the process and its pipes.
  */
-type Handoff = (child: ChildProcess, output: Buffer, startedAt: number) => BashJob;
+type Handoff = (child: ChildProcess, output: Buffer, startedAt: number, reason: HandoffReason) => BashJob;
+
+/** Moves a command to the background once `pending()` says a user message waits for the agent. */
+export interface PendingWatch {
+	pending: () => boolean;
+	/** The command must have run this long first, so a quick one still returns its own result. */
+	afterMs?: number;
+	pollMs?: number;
+}
+
+const DEFAULT_WATCH_AFTER_MS = 1000;
+const DEFAULT_WATCH_POLL_MS = 250;
 
 /**
  * Resolves with the shell's exit code once it exited and its pipes ended, or fell quiet for `EXIT_STDIO_GRACE_MS`: a
@@ -136,13 +152,15 @@ function waitForExit(child: ChildProcess): { done: Promise<number | null | undef
  * The foreground shell operations for one call. `onGroup` receives the command's process group leader when the
  * command returned on its own. At the deadline a command still running goes to `handoff` when there is one (it
  * keeps running; exec then throws the usual `timeout:` error, and the caller knows the job from its own handoff); with
- * none, or when the handoff fails, or after an abort, the whole group is stopped.
+ * none, or when the handoff fails, or after an abort, the whole group is stopped. With `watch`, a command that has
+ * run a moment also moves as soon as a user message is waiting, so the agent can answer it.
  */
 export function foregroundOperations(
 	settings: ShellSettings,
 	onGroup: (pid: number) => void,
 	handoff?: Handoff,
 	onExit?: (signal: NodeJS.Signals | null) => void,
+	watch?: PendingWatch,
 ): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout, env }) => {
@@ -173,6 +191,8 @@ export function foregroundOperations(
 				adoptTree(pid);
 			}
 			let timedOut = false;
+			// Seconds the command ran when a waiting message moved it (a deadline reports its own length).
+			let movedAfter: number | undefined;
 			const startedAt = Date.now();
 			const kept = handoff ? new KeptOutput() : undefined;
 			const stop = () => killTree(pid);
@@ -181,33 +201,50 @@ export function foregroundOperations(
 				onData(chunk);
 			};
 			const waiter = waitForExit(child);
+			// Only a shell still running can move; one that exited is waiting for its pipes to end.
+			const moveToBackground = (reason: HandoffReason): boolean => {
+				if (!handoff || !kept || child.exitCode !== null || child.signalCode !== null) return false;
+				child.stdout?.off("data", read);
+				child.stderr?.off("data", read);
+				try {
+					handoff(child, kept.snapshot(), startedAt, reason);
+				} catch {
+					child.stdout?.on("data", read);
+					child.stderr?.on("data", read);
+					return false;
+				}
+				waiter.detach();
+				return true;
+			};
 			const timer =
 				timeout === undefined
 					? undefined
 					: setTimeout(() => {
 							timedOut = true;
-							// Only a shell still running can move; one that exited is waiting for its pipes to end.
-							if (handoff && kept && child.exitCode === null && child.signalCode === null) {
-								try {
-									child.stdout?.off("data", read);
-									child.stderr?.off("data", read);
-									handoff(child, kept.snapshot(), startedAt);
-									waiter.detach();
-									return;
-								} catch {
-									child.stdout?.on("data", read);
-									child.stderr?.on("data", read);
-								}
-							}
-							stop();
+							if (!moveToBackground("deadline")) stop();
 						}, timeout * 1000);
+			const watcher =
+				watch && handoff
+					? setInterval(() => {
+							if (timedOut || Date.now() - startedAt < (watch.afterMs ?? DEFAULT_WATCH_AFTER_MS)) return;
+							try {
+								if (!watch.pending()) return;
+							} catch {
+								return;
+							}
+							timedOut = true;
+							movedAfter = Math.round((Date.now() - startedAt) / 1000);
+							if (moveToBackground("message")) clearInterval(watcher);
+							else timedOut = false;
+						}, watch.pollMs ?? DEFAULT_WATCH_POLL_MS)
+					: undefined;
 			child.stdout?.on("data", read);
 			child.stderr?.on("data", read);
 			if (signal) signal.addEventListener("abort", stop, { once: true });
 			try {
 				const code = await waiter.done;
 				if (signal?.aborted) throw new Error("aborted");
-				if (timedOut) throw new Error(`timeout:${timeout}`);
+				if (timedOut) throw new Error(`timeout:${movedAfter ?? timeout}`);
 				onExit?.(child.signalCode);
 				if (pid) onGroup(pid);
 				// A signal-killed shell has no exit code: the shell convention keeps it from reading as success.
@@ -215,6 +252,7 @@ export function foregroundOperations(
 			} finally {
 				if (pid) untrack(pid);
 				if (timer) clearTimeout(timer);
+				if (watcher) clearInterval(watcher);
 				signal?.removeEventListener("abort", stop);
 			}
 		},

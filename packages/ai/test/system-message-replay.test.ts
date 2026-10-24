@@ -5,11 +5,11 @@ import { getSystemMessageText, renderSystemMessageUpdate } from "../src/utils/te
 import {
 	collapseSystemMessages,
 	declarationsEqual,
+	foldSystemMessages,
 	getCurrentSystemMessage,
 	getCurrentSystemPrompt,
 	getToolStateChanges,
 	hasNonAdditiveToolChanges,
-	hasToolRedefinitions,
 	normalizeContext,
 } from "../src/utils/transcript.ts";
 
@@ -53,10 +53,18 @@ describe("system message replay", () => {
 		expect(getCurrentSystemPrompt(transcript.messages)).toBe("base\n\nalso do this\n\n<a>2</a>\n\n<c>1</c>");
 	});
 
-	test("collapse keeps only non-system messages after the replayed head", () => {
+	test("collapse keeps the leading message and turns later system messages into user updates", () => {
 		const collapsed = collapseSystemMessages(transcript);
-		expect(collapsed.messages.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
+		expect(collapsed.messages.map((message) => message.role)).toEqual(["system", "user", "user", "assistant", "user"]);
+		expect(collapsed.messages[0]).toMatchObject({ content: "base", sections: { a: "<a>1</a>", b: "<b>1</b>" } });
 		expect(collapseSystemMessages(collapsed)).toEqual(collapsed);
+	});
+
+	test("fold replays every system message into the leading message", () => {
+		const folded = foldSystemMessages(transcript);
+		expect(folded.messages.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
+		expect(folded.messages[0]).toEqual(getCurrentSystemMessage(transcript.messages));
+		expect(foldSystemMessages(folded)).toEqual(folded);
 	});
 
 	test("replay of a transcript without system messages is empty", () => {
@@ -123,9 +131,8 @@ describe("system message replay", () => {
 		expect(getToolStateChanges([tool("a")], [tool("a")])).toEqual({ toolsAdded: [], toolsRemoved: [] });
 	});
 
-	test("detects non-additive tool history and redefinitions", () => {
+	test("detects non-additive tool history", () => {
 		expect(hasNonAdditiveToolChanges(transcript.messages)).toBe(true);
-		expect(hasToolRedefinitions(transcript.messages)).toBe(false);
 		const additive = normalizeContext({
 			messages: [
 				{ role: "system", content: "", toolsAdded: [tool("a")], timestamp: 1 },
@@ -140,6 +147,5 @@ describe("system message replay", () => {
 			],
 		});
 		expect(hasNonAdditiveToolChanges(redeclared.messages)).toBe(true);
-		expect(hasToolRedefinitions(redeclared.messages)).toBe(true);
 	});
 });

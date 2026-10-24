@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AttachedTarget, type BrowserSession, CdpConnection } from "../../src/octocode/browser/cdp.ts";
+import { type AttachedTarget, CdpConnection } from "../../src/octocode/browser/cdp/connection.ts";
+import type { BrowserSession } from "../../src/octocode/browser/cdp/browser-session.ts";
 import { PagePolicy } from "../../src/octocode/browser/network.ts";
 import type { NetworkEvent } from "../../src/octocode/browser/policy.ts";
 import { openBrowser, switchTo } from "../../src/octocode/browser/session.ts";

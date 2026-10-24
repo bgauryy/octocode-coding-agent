@@ -1072,7 +1072,7 @@
         },
         "supportsMidConvoSystemMessages": {
           "type": "boolean",
-          "description": "Whether the exact model accepts system or developer messages after the conversation has started. When false, later system messages are folded into the leading system message.",
+          "description": "Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages.",
           "default": false
         },
         "supportsMidConvoToolAdditions": {

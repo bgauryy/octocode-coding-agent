@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../shared/atomic.ts";
+import { atomicWriteFile } from "../../utils/atomic-file.ts";
 import { PRIVATE_FILE_MODE, privateDir } from "../shared/home.ts";
 
 /** The checkpoint store on disk: the append-only journal and fork inheritance (the sessions sweep handles retention). */
@@ -21,6 +21,24 @@ export interface CheckpointEntry {
 /** A SHA-256 digest as the store writes it: also the blob's file name, so nothing else may name one. */
 const isDigest = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 
+function isEntry(value: unknown): value is CheckpointEntry {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const entry = value as CheckpointEntry;
+	return (
+		Number.isSafeInteger(entry.turn) &&
+		entry.turn >= 0 &&
+		typeof entry.path === "string" &&
+		path.isAbsolute(entry.path) &&
+		!entry.path.includes("\0") &&
+		(entry.before === null || isDigest(entry.before)) &&
+		(entry.after === undefined || entry.after === null || isDigest(entry.after)) &&
+		Number.isSafeInteger(entry.bytes) &&
+		entry.bytes >= 0 &&
+		(entry.anchor === undefined || typeof entry.anchor === "string") &&
+		(entry.mode === undefined || (Number.isSafeInteger(entry.mode) && entry.mode >= 0))
+	);
+}
+
 const key = (entry: CheckpointEntry) => `${entry.turn}\0${entry.path}`;
 export const serialize = (entries: CheckpointEntry[]) => entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
 export const journalOf = (dir: string) => path.join(dir, "journal.jsonl");
@@ -40,10 +58,14 @@ export function readJournal(dir: string): { entries: CheckpointEntry[]; dirty: b
 	for (const line of text.split("\n")) {
 		if (!line.trim()) continue;
 		lines++;
-		let entry: CheckpointEntry;
+		let entry: unknown;
 		try {
-			entry = JSON.parse(line) as CheckpointEntry;
+			entry = JSON.parse(line);
 		} catch {
+			dirty = true;
+			continue;
+		}
+		if (!isEntry(entry)) {
 			dirty = true;
 			continue;
 		}
@@ -67,13 +89,7 @@ export function readJournal(dir: string): { entries: CheckpointEntry[]; dirty: b
 export async function inheritCheckpoints(from: string, to: string, branch: Iterable<string>): Promise<number> {
 	if (fs.existsSync(journalOf(to))) return 0;
 	const ids = new Set(branch);
-	// A journal is plain text a session folder may hold from elsewhere: an entry whose digests are not 64 hex characters
-	// (a blob name like `../../x`) is dropped, so it never names a path outside `blobs/`.
-	const wellFormed = (entry: CheckpointEntry) =>
-		(entry.before === null || isDigest(entry.before)) && (entry.after == null || isDigest(entry.after));
-	const entries = readJournal(from).entries.filter(
-		(entry) => entry.anchor !== undefined && ids.has(entry.anchor) && wellFormed(entry),
-	);
+	const entries = readJournal(from).entries.filter((entry) => entry.anchor !== undefined && ids.has(entry.anchor));
 	if (entries.length === 0) return 0;
 	privateDir(to);
 	privateDir(path.join(to, "blobs"));

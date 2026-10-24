@@ -11,7 +11,7 @@ import type {
 	TuiMode,
 	WarningSettings,
 } from "../../../../core/settings-manager.ts";
-import type { TerminalTheme } from "../../theme/theme.ts";
+import type { ThemeAppearance } from "../../theme/theme.ts";
 
 export interface SettingsConfig {
 	cachePreferences?: CachePreferences;
@@ -32,7 +32,7 @@ export interface SettingsConfig {
 	availableThinkingLevels: ThinkingLevel[];
 	modelThinkingLevels: Record<string, ThinkingLevel>;
 	currentTheme: string;
-	terminalTheme: TerminalTheme;
+	terminalTheme: ThemeAppearance;
 	availableThemes: string[];
 	hideThinkingBlock: boolean;
 	mermaidRenderingMode: MermaidRenderingMode;

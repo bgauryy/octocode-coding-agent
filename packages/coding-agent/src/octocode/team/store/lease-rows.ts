@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../../agentdb/rows.ts";
-import { canonicalPath } from "../../shared/home.ts";
+import { canonicalPath } from "../../shared/home/repo.ts";
 import { ancestorKeys, overlappingRequests } from "../lease-key.ts";
 import { type Lease, type LeaseRequest, toLease } from "../model.ts";
 import { LEASE_MS } from "./limits.ts";

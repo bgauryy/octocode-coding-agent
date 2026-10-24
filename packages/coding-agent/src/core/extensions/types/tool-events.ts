@@ -15,6 +15,8 @@ interface ToolCallEventBase {
 	 * in the parent result's `nestedCalls` record.
 	 */
 	toolCallId: string;
+	/** Who issued the call. Omitted by older extension callers; treat omission as a model call. */
+	origin?: "model" | "tool" | "user" | "hook";
 	/** Set when another tool (for example another tool) issued this call. */
 	parentToolCallId?: string;
 }

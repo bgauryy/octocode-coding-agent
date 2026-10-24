@@ -7,10 +7,11 @@ import {
 	isRecoverableLength,
 	type Model,
 } from "@octocodeai/octocode-ai/compat";
+import { calculateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import {
-	calculateContextTokens,
 	estimateContextTokens,
 	estimateProjectedContextTokens,
+	estimateTokens,
 	shouldCompact,
 } from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../extensions/index.ts";
@@ -45,6 +46,8 @@ export interface CompactionCheckHost extends Pick<SessionInternals, "session" | 
  *
  * @param assistantMessage The assistant message to check
  * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
+ * @param toolResults Tool results of the final attempt, omitted with it on overflow recovery
+ * @param incoming Messages about to be appended (the pre-prompt path passes the incoming prompt); counted toward the threshold
  * @returns Whether the post-run loop should call `agent.continue()` for overflow recovery or queued messages
  */
 export async function checkCompaction(
@@ -52,6 +55,7 @@ export async function checkCompaction(
 	assistantMessage: AssistantMessage,
 	skipAbortedCheck: boolean,
 	toolResults: AgentMessage[],
+	incoming: readonly AgentMessage[] = [],
 ): Promise<boolean> {
 	const { session, run } = host;
 	const messageModel = host.modelForMessage(assistantMessage);
@@ -177,10 +181,25 @@ export async function checkCompaction(
 		}
 		contextTokens = estimate.tokens;
 	} else {
+		// The provider counted the context up to this response. Before a prompt, idle bash output, custom or
+		// steering messages and restored files appended after it are not in that count, so add their estimate.
+		// After a run, the messages that follow are its own tool results; a terminating tool's large result must
+		// not compact straight after the run, and the next prompt's check counts it.
 		contextTokens = directContextTokens;
+		if (!skipAbortedCheck) contextTokens += estimateTrailingTokens(session.agent.state.messages, assistantMessage);
 	}
+	for (const message of incoming) contextTokens += estimateTokens(message);
 	if (shouldCompact(contextTokens, contextWindow, settings)) {
 		return await host.runAutoCompaction("threshold", false, messageModel);
 	}
 	return false;
+}
+
+/** Estimated tokens of the messages after `assistantMessage`, whose provider usage does not include them. */
+function estimateTrailingTokens(messages: readonly AgentMessage[], assistantMessage: AssistantMessage): number {
+	const index = messages.lastIndexOf(assistantMessage);
+	if (index < 0) return 0;
+	let tokens = 0;
+	for (let i = index + 1; i < messages.length; i++) tokens += estimateTokens(messages[i]);
+	return tokens;
 }

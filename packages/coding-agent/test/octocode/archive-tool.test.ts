@@ -1,20 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { archivePointer, forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive.ts";
+import { archivePointer } from "../../src/octocode/compaction/archive.ts";
 import { registerArchiveTool } from "../../src/octocode/compaction/archive-tool.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import { FileGuard } from "../../src/octocode/files/tool.ts";
+import { forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive/session-record.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { RECORD_FILE, readRecordHeader, writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
 import {
 	archiveFolder,
 	ownArchives,
-	RECORD_FILE,
-	readRecordHeader,
 	type Segment,
 	sessionLineage,
 	setSessionLineage,
 	writeSegment,
-	writeSessionRecord,
 } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
@@ -136,7 +135,7 @@ describe("the archive tool", () => {
 		fileFor("far", "secret", repo());
 		const call = tool(cwd);
 		await expect(call({ ...why, file: path.join(archiveFolder("far"), RECORD_FILE) })).rejects.toThrow(
-			/not in the history this session may read.*needs `read`, which asks the user/,
+			/not in the history this session may read.*available file reader with the required permission/,
 		);
 		await expect(call({ ...why, query: "a(" })).rejects.toThrow(/invalid .*escape/);
 		const missed = await call({ ...why, query: "nothing-like-this" });

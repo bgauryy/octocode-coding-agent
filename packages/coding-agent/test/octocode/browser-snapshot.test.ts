@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { BrowserSession } from "../../src/octocode/browser/cdp.ts";
+import type { BrowserSession } from "../../src/octocode/browser/cdp/browser-session.ts";
 import { formatChanges, formatSnapshot, snapshot } from "../../src/octocode/browser/snapshot.ts";
 
 const sessionOf = (data: unknown) =>

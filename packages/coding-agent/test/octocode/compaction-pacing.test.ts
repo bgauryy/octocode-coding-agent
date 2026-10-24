@@ -10,7 +10,8 @@ import {
 } from "../../src/octocode/compaction/pacing.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
-import { CHARS_PER_TOKEN, reserveTokensFor } from "../../src/octocode/shared/tokens.ts";
+import { reserveTokensFor } from "../../src/octocode/shared/tokens.ts";
+import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
 
 describe("thrash breaker", () => {
 	const refill = (breaker: ThrashBreaker, turns: number) => {

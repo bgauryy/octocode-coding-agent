@@ -1,7 +1,8 @@
 import { sameSecret } from "../shared/env.ts";
-import { isRecord, stringList } from "../shared/util.ts";
+import { stringList } from "../shared/util.ts";
 import { auditLine } from "./effect.ts";
 import { ACTION_CLASSES, type ActionClass, ASK_REASONS, type AskReason } from "./mode.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * The first line of a subagent's permission prompt: what its parent needs to answer the prompt without a dialog when the

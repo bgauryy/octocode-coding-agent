@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getModel, getModels, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModel, getBuiltinModels } from "../src/providers/all.ts";
 import type { AssistantMessage, Context, Model } from "../src/types.ts";
 
 interface AnthropicPayload {
@@ -99,7 +100,7 @@ describe("Anthropic empty thinking signature compat", () => {
 
 	// Regression for #9676: Vercel AI Gateway emits unsigned thinking for translated models.
 	it("allows empty thinking signatures for every Vercel AI Gateway model", () => {
-		const models = getModels("vercel-ai-gateway");
+		const models = getBuiltinModels("vercel-ai-gateway");
 		expect(models.length).toBeGreaterThan(0);
 		expect(models.every((model) => model.compat?.allowEmptySignature === true)).toBe(true);
 	});
@@ -111,7 +112,7 @@ describe("Anthropic empty thinking signature compat", () => {
 		"accounts/fireworks/models/qwen3p8-2p4t-a95b",
 		"accounts/fireworks/models/nemotron-3-ultra-nvfp4",
 	] as const)("preserves unsigned thinking for Fireworks %s", async (modelId) => {
-		const model = getModel("fireworks", modelId);
+		const model = getBuiltinModel("fireworks", modelId);
 		expect(model.compat?.allowEmptySignature).toBe(true);
 		const context = makeContext("", "internal reasoning", "fireworks", modelId);
 		const assistant = context.messages[1] as AssistantMessage;

@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { canonicalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { atomicWriteFileSync } from "../utils/atomic-file.ts";
+import { lockSyncWithRetry } from "../utils/file-write-lock.ts";
 import { projectMcpConfigPaths } from "./mcp-config-paths.ts";
 import { errorMessage } from "../utils/guards.ts";
 
@@ -61,7 +61,7 @@ function findNearestTrustEntry(data: TrustFile, cwd: string): ProjectTrustStoreE
 	}
 }
 
-export function getProjectTrustParentPath(cwd: string): string | undefined {
+function getProjectTrustParentPath(cwd: string): string | undefined {
 	const trustPath = normalizeCwd(cwd);
 	const parentDir = dirname(trustPath);
 	return parentDir === trustPath ? undefined : parentDir;
@@ -166,33 +166,7 @@ function writeTrustFile(path: string, data: TrustFile, legacy: Record<string, un
 function acquireTrustLockSync(path: string): () => void {
 	const trustDir = dirname(path);
 	mkdirSync(trustDir, { recursive: true });
-	const maxAttempts = 10;
-	const delayMs = 20;
-	let lastError: unknown;
-
-	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-		try {
-			return lockfile.lockSync(trustDir, { realpath: false, lockfilePath: `${path}.lock` });
-		} catch (error) {
-			const code =
-				typeof error === "object" && error !== null && "code" in error
-					? String((error as { code?: unknown }).code)
-					: undefined;
-			if (code !== "ELOCKED" || attempt === maxAttempts) {
-				throw error;
-			}
-			lastError = error;
-			const start = Date.now();
-			while (Date.now() - start < delayMs) {
-				// Sleep synchronously to avoid changing trust store callers to async.
-			}
-		}
-	}
-
-	if (lastError instanceof Error) {
-		throw lastError;
-	}
-	throw new Error("Failed to acquire trust store lock");
+	return lockSyncWithRetry(trustDir, { lockfilePath: `${path}.lock` });
 }
 
 function withTrustFileLock<T>(path: string, fn: () => T): T {

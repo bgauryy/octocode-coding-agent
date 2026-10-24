@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { commandsFor, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 function sources(matcher = "Bash", event = "PreToolUse", command = "echo same") {
 	const home = tmp();

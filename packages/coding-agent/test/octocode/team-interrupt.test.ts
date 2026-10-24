@@ -65,6 +65,34 @@ const mail = (sent: Array<{ message: any; options: any }>) =>
 	);
 
 describe("interrupt", () => {
+	it("retries a held interrupt whose settlement handoff rejects asynchronously", async () => {
+		const cwd = repo();
+		const db = path.join(tmp(), "team.sqlite");
+		const parent = agent(db, cwd);
+		const parentId = parent.team.join().id;
+		const child = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-async", OCTOCODE_PARENT_ID: parentId }, { idle: false });
+		child.team.join();
+		const { id } = (await parent.team.send(child.team.id, "redirect", {
+			replyRequired: false,
+			interrupt: true,
+		})) as { id: number };
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		const send = vi.spyOn(child.pi, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		await child.emit("agent_settled", {}, child.ctx);
+		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		const retried = mail(child.sent);
+		expect(retried).toHaveLength(1);
+		await child.emit(
+			"context",
+			{ messages: [{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: retried[0].message.details }] },
+			child.ctx,
+		);
+		const store = TeamStore.open(cwd, db);
+		stores.push(store);
+		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("delivered");
+	});
+
 	it("retries held mail when an interactive session temporarily refuses the settlement send", async () => {
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");

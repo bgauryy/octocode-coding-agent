@@ -37,7 +37,7 @@ function exceedsCompactionThreshold(host: AgentHooksHost, model: Model<any>, pro
 	const tokens =
 		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
 		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations);
-	return shouldCompact(tokens, model.contextWindow, session.settingsManager.getCompactionSettings(session.model));
+	return shouldCompact(tokens, model.contextWindow, session.settingsManager.getCompactionSettings(model));
 }
 
 async function compactBeforeNextAssistantResponse(host: AgentHooksHost, context: AgentContext): Promise<AgentContext> {

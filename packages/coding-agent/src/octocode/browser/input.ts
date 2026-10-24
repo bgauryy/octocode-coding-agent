@@ -1,11 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import type { BrowserSession } from "./cdp/browser-session.ts";
 import { abortError } from "./abort.ts";
-import type { BrowserSession } from "./cdp.ts";
 import { pressKey } from "./input/keyboard.ts";
-
-export { pressKey } from "./input/keyboard.ts";
-export { settle, settleAfterLoad, waitForText } from "./input/settle.ts";
 
 type Page = BrowserSession["page"];
 

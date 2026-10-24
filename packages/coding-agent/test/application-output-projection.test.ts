@@ -58,8 +58,20 @@ describe("application output projection", () => {
 		f.service.setToolOutputProjector(() => "safe");
 		expect((await iterator.next()).value.type).toBe("resync");
 		const after = await snapshot(f.service);
-		expect(after.tools[0]).toEqual({ ...before.tools[0], text: "Tool output unavailable" });
-		expect(after.messages[0]).toEqual({ ...before.messages[0], text: "safe" });
+		expect(after.tools[0]).toEqual({
+			...before.tools[0],
+			text: "safe",
+			content: [{ id: "tool:a:0", type: "text", text: "safe" }],
+			full: expect.objectContaining({ mimeType: "application/json" }),
+		});
+		expect(after.messages[0]).toEqual({
+			...before.messages[0],
+			text: "safe",
+			content: [{ id: `${before.messages[0].id}:0`, type: "text", text: "safe" }],
+			full: expect.objectContaining({ mimeType: "application/json" }),
+		});
+		expect(f.service.readAsset(after.messages[0].full.id)?.data).toContain("RAW_PAYLOAD");
+		expect(f.service.readAsset(after.tools[0].full.id)?.data).toContain("RAW_PAYLOAD");
 		expect(JSON.stringify(after)).not.toContain("RAW_PAYLOAD");
 		connection.close();
 		f.service.dispose();

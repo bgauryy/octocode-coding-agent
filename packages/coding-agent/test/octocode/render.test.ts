@@ -4,25 +4,13 @@ import { visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgo, formatDuration, formatSpan } from "../../src/octocode/shared/format.ts";
 import { recordCheck } from "../../src/octocode/shared/locks.ts";
-import {
-	appKey,
-	clip,
-	clipColumns,
-	expandKey,
-	livePaint,
-	plural,
-	queryTarget,
-	resultBlock,
-	statusColor,
-	stopRowTimers,
-	type ToolRow,
-	timed,
-	timedTool,
-	timingOf,
-	toolHeader,
-} from "../../src/octocode/shared/render.ts";
+import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
 import { rendered, theme } from "./fake-pi.ts";
+import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/render/text.ts";
+import { livePaint, statusColor } from "../../src/octocode/shared/render/status.ts";
+import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/shared/render/rows.ts";
+import type { ToolRow } from "../../src/octocode/shared/render/types.ts";
 
 const row = (overrides: Record<string, unknown> = {}) => ({
 	state: {} as ToolRow,

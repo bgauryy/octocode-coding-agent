@@ -6,7 +6,7 @@ import { sameProcess } from "../shared/process.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
-import type { DeadLetter, Lease, LeaseRequest, Member, Message, SendOptions, Traffic } from "./model.ts";
+import type { DeadLetter, Lease, LeaseRequest, Message, SendOptions } from "./model.ts";
 import {
 	BUSY_MS,
 	INBOX_BATCH_SIZE,
@@ -52,19 +52,7 @@ import {
 	writeLeases,
 } from "./store/lease-rows.ts";
 import { pathKey, teamWorkspace } from "./store/workspace.ts";
-
-export {
-	AGENT_COLLABORATE_ENV,
-	AGENT_GOAL_ENV,
-	AGENT_ID_ENV,
-	AGENT_ROLE_ENV,
-	AGENT_SCRATCH_ENV,
-	PARENT_ID_ENV,
-	PARENT_PID_ENV,
-	TEAM_WORKSPACE_ENV,
-} from "./store/env.ts";
-export { INBOX_BATCH_SIZE, LEASE_MS } from "./store/limits.ts";
-export { pathKey, teamWorkspace } from "./store/workspace.ts";
+import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
 
 /**
  * The team tables of the agent database: who works in this repository, what they say to each other, and which files

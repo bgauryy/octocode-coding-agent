@@ -8,13 +8,14 @@ import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import * as importedModule3 from "../../src/octocode/shared/home.ts";
 import { fakePermission } from "./fake-pi.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, type StubPage, startCdpStub } from "./fixtures/cdp-stub.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 const launch = vi.hoisted(() => vi.fn());
 vi.mock("chrome-launcher", () => ({ launch }));
 // Every name resolves to a public address, so the private-address guard needs no network here.
 vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
 
-const { BrowserTool, registerBrowserTool } = await Promise.resolve(importedModule1);
+const { registerBrowserTool } = await Promise.resolve(importedModule1);
 const { sharedChromePort } = await Promise.resolve(importedModule2);
 const { sessionOutputDir } = await Promise.resolve(importedModule3);
 

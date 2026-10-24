@@ -4,7 +4,7 @@ import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { SHARED_SUMMARY_PROMPT, sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
-import { CHARS_PER_TOKEN } from "../../src/octocode/shared/tokens.ts";
+import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
 
 const model = {
 	provider: "p",
@@ -385,10 +385,29 @@ describe("cache-sharing compaction summary", () => {
 });
 
 describe("writeSummary with the shared path", () => {
+	it("keys paid summaries by manual focus and never carries that focus into automatic compaction", async () => {
+		const { calls, pi, ctx, event } = setup({ customInstructions: "Keep parser boundaries." });
+		await writeSummary(pi, event, ctx);
+		await writeSummary(pi, event, ctx);
+		expect(calls).toHaveLength(1);
+		Object.assign(event, { customInstructions: "Keep the release checklist." });
+		await writeSummary(pi, event, ctx);
+		expect(calls).toHaveLength(2);
+		expect(finalPrompt(calls[1])).toContain("Keep the release checklist.");
+		expect(finalPrompt(calls[1])).not.toContain("Keep parser boundaries.");
+		Object.assign(event, { customInstructions: undefined });
+		await writeSummary(pi, event, ctx);
+		expect(calls).toHaveLength(3);
+		expect(finalPrompt(calls[2])).not.toContain("Keep parser boundaries.");
+		expect(finalPrompt(calls[2])).not.toContain("Keep the release checklist.");
+	});
+
 	it("uses the shared request for the session model and still appends the user messages and the note", async () => {
-		const { calls, pi, ctx, event, recordedUsage } = setup();
+		const { calls, pi, ctx, event, recordedUsage } = setup({ customInstructions: "Retain the release checklist." });
 		const out = await writeSummary(pi, event, ctx);
 		expect(calls).toHaveLength(1);
+		expect(finalPrompt(calls[0])).toContain("Retain the release checklist.");
+		expect(finalPrompt(calls[0])).toContain("## Errors & Fixes");
 		expect(calls[0].context.messages[0]).toBe(system);
 		expect(out?.compaction?.summary).toMatch(/^## Goal\nfix the parser\n\n<read-files>/);
 		expect(out?.compaction?.details).toEqual({
@@ -405,6 +424,7 @@ describe("writeSummary with the shared path", () => {
 
 	it("falls back to the standalone summary request when the shared reply is unusable", async () => {
 		const { calls, pi, ctx, event, notices } = setup({
+			customInstructions: "Retain the release checklist.",
 			reply: (n) =>
 				n === 1
 					? reply([{ type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse")
@@ -413,6 +433,10 @@ describe("writeSummary with the shared path", () => {
 		const out = await writeSummary(pi, event, ctx);
 		expect(calls).toHaveLength(2);
 		expect(finalPrompt(calls[1])).toContain("<conversation>");
+		for (const call of calls) {
+			expect(finalPrompt(call)).toContain("Retain the release checklist.");
+			expect(finalPrompt(call)).toContain("## Errors & Fixes");
+		}
 		expect(out?.compaction?.summary).toContain("fallback");
 		// The extra cost is not silent: the user is told why the cache was not used.
 		expect(notices).toEqual([
@@ -447,6 +471,17 @@ describe("writeSummary with the shared path", () => {
 				reason: expect.stringContaining("the model before a downshift"),
 			},
 		});
+	});
+
+	it("skips the shared request when the prompt cache has expired, without a warning", async () => {
+		const { calls, pi, ctx, event, notices } = setup();
+		const out = await writeSummary(pi, event, ctx, undefined, { cacheCold: true });
+		expect(calls).toHaveLength(1);
+		expect(finalPrompt(calls[0])).toContain("<conversation>");
+		expect(out?.compaction?.details).toMatchObject({
+			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: expect.stringContaining("prompt cache had expired") },
+		});
+		expect(notices).toEqual([]);
 	});
 
 	it("warns about the fallback and then about the failure when both paths fail", async () => {

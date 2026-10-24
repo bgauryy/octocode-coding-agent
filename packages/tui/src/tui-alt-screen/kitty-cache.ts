@@ -1,9 +1,6 @@
-import {
-	deleteAllKittyImages,
-	deleteKittyImage,
-	getKittyImagePlacement,
-	type ImageProtocol,
-} from "../terminal-image.ts";
+import type { ImageProtocol } from "../terminal-image/types.ts";
+import { getKittyImagePlacement } from "../terminal-image/kitty-metadata.ts";
+import { deleteAllKittyImages, deleteKittyImage } from "../terminal-image.ts";
 import {
 	MAX_CACHED_OFFSCREEN_KITTY_DECODED_BYTES,
 	MAX_CACHED_OFFSCREEN_KITTY_IMAGES,

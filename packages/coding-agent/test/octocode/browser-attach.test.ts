@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { checkDevtoolsUrl } from "../../src/octocode/browser/cdp.ts";
+import { checkDevtoolsUrl } from "../../src/octocode/browser/cdp/devtools-url.ts";
 import { openBrowser } from "../../src/octocode/browser/session.ts";
 
 describe("the DevTools attach check", () => {

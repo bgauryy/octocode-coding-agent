@@ -1,10 +1,11 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { chipText } from "../../src/octocode/permission/mode.ts";
-import { statusColor } from "../../src/octocode/shared/render.ts";
+import { statusColor } from "../../src/octocode/shared/render/status.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
 import * as importedModule2 from "../../src/octocode/ui/footer.ts";
 import { contextBar, type FooterState, footerLines } from "../../src/octocode/ui/footer.ts";
+import { reasoningTwin } from "../../src/octocode/ui/footer/notices.ts";
 import * as importedModule1 from "./fake-pi.ts";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
@@ -431,7 +432,7 @@ describe("footer wiring", () => {
 
 	it("says once when the model leaves out the reasoning its built-in twin declares", async () => {
 		const { fakeCtx, fakePi } = await Promise.resolve(importedModule1);
-		const { registerFooter, reasoningTwin } = await Promise.resolve(importedModule2);
+		const { registerFooter } = await Promise.resolve(importedModule2);
 		const builtIn = {
 			provider: "anthropic",
 			id: "claude-opus-5-5",

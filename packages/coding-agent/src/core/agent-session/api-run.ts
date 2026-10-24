@@ -1,3 +1,4 @@
+import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 /** Public `AgentSession` members that start, queue, interrupt and compact agent runs, and run bash. */
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
@@ -6,7 +7,7 @@ import type { CompactionResult } from "../compaction/index.ts";
 import type { InputSource } from "../extensions/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { BashOperations } from "../tools/bash.ts";
-import type { PromptOptions, QueuedInputDisposition } from "./types.ts";
+import type { PromptOptions, QueuedInput, QueuedInputDisposition } from "./types.ts";
 
 /** Prompting and input queues of `AgentSession`. */
 export interface AgentSessionPromptingApi {
@@ -95,6 +96,21 @@ export interface AgentSessionPromptingApi {
 	/** Get pending follow-up messages (read-only) */
 	getFollowUpMessages(): readonly string[];
 
+	/** Queued messages in delivery order (steering first, then follow-ups), each with an id for the edit methods. */
+	getQueuedInputs(): readonly QueuedInput[];
+
+	/**
+	 * Replace the text of a queued message, keeping its attachments, kind and position. Empty or whitespace-only text
+	 * removes it. "missing" means it is no longer queued, for example because its delivery has begun.
+	 */
+	replaceQueuedInput(id: string, text: string): "replaced" | "removed" | "missing";
+
+	/** Remove one queued message so it is never delivered; undefined when it is no longer queued. */
+	removeQueuedInput(id: string): QueuedInput | undefined;
+
+	/** Move a queued message one place earlier or later among messages of its kind; false when it cannot move. */
+	moveQueuedInput(id: string, direction: "up" | "down"): boolean;
+
 	/** Abort the current operation; internal cancellation and replacement do not emit interruption hooks. */
 	abort(reason?: "interrupted" | "replacement" | "shutdown" | "internal"): Promise<void>;
 
@@ -117,7 +133,7 @@ export interface AgentSessionRecoveryApi {
 	 * continues the interrupted agent turn.
 	 *
 	 */
-	compact(): Promise<CompactionResult>;
+	compact(options?: ManualCompactionOptions): Promise<CompactionResult>;
 
 	/**
 	 * Cancel in-progress compaction (manual or auto).

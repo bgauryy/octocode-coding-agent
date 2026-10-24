@@ -2,18 +2,13 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentDbError, closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
-import { AGENT_APPLICATION_ID } from "../../src/octocode/agentdb/schema.ts";
-import {
-	agentDbPath,
-	repoKey,
-	sessionDir,
-	sessionOutputDir,
-	setCurrentSession,
-} from "../../src/octocode/shared/home.ts";
+import { closeSharedAgentDb, openAgentDb, sharedAgentDb } from "../../src/octocode/agentdb/db.ts";
+import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
+import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { redactSecrets, secretProblem } from "../../src/octocode/shared/sanitize.ts";
 import { loadSqlite } from "../../src/octocode/shared/util.ts";
 import { tmp } from "./helpers.ts";
+import { repoKey } from "../../src/octocode/shared/home/repo.ts";
 
 const modeOf = (file: string) => fs.statSync(file).mode & 0o777;
 

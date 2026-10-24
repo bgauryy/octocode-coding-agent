@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { type BuiltinProvider, complete, getModels, getProviders } from "../src/compat.ts";
+import { type BuiltinProvider, complete } from "../src/compat.ts";
+import { getBuiltinModels, getBuiltinProviders } from "../src/providers/all.ts";
 import { getEnvApiKey } from "../src/env-api-keys.ts";
 import type { Api, KnownProvider, Model, ProviderStreamOptions, Tool } from "../src/types.ts";
 import { resolveApiKey } from "./oauth.ts";
@@ -32,11 +33,11 @@ function getE2EApiKey(provider: KnownProvider): string | undefined {
 }
 
 function getAnthropicMessagesModels(provider: BuiltinProvider): Model<"anthropic-messages">[] {
-	const models = getModels(provider) as Model<Api>[];
+	const models = getBuiltinModels(provider) as Model<Api>[];
 	return models.filter((model) => model.api === "anthropic-messages") as Model<"anthropic-messages">[];
 }
 
-const anthropicMessagesCases: AnthropicEagerE2ECase[] = getProviders().flatMap((provider) =>
+const anthropicMessagesCases: AnthropicEagerE2ECase[] = getBuiltinProviders().flatMap((provider) =>
 	getAnthropicMessagesModels(provider).map((model) => ({
 		name: `${provider}/${model.id}`,
 		provider,
@@ -125,7 +126,7 @@ async function expectToolEnabledRequestAccepted(
 
 describe("Anthropic Messages eager tool input streaming E2E", () => {
 	it("covers every generated anthropic-messages model", () => {
-		const expectedModels = getProviders().flatMap((provider) =>
+		const expectedModels = getBuiltinProviders().flatMap((provider) =>
 			getAnthropicMessagesModels(provider).map((model) => `${provider}/${model.id}`),
 		);
 		expect(anthropicMessagesCases.map((testCase) => testCase.name).sort()).toEqual(expectedModels.sort());

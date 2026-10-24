@@ -1,16 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BrowserSession } from "../../src/octocode/browser/cdp.ts";
-import {
-	click,
-	drag,
-	fillFields,
-	hover,
-	pressKey,
-	refForText,
-	settle,
-	typeInto,
-	waitForText,
-} from "../../src/octocode/browser/input.ts";
+import type { BrowserSession } from "../../src/octocode/browser/cdp/browser-session.ts";
+import { pressKey } from "../../src/octocode/browser/input/keyboard.ts";
+import { settle, waitForText } from "../../src/octocode/browser/input/settle.ts";
+import { click, drag, fillFields, hover, refForText, typeInto } from "../../src/octocode/browser/input.ts";
 
 type Page = BrowserSession["page"];
 type Sent = { method: string; params: Record<string, unknown> };

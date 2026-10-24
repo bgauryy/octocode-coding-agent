@@ -11,6 +11,14 @@ function setup(
 ) {
 	const operations: McpManageOperations = {
 		servers: () => servers,
+		tools: vi.fn(() => [
+			{
+				name: "read",
+				description: "Read a known file.\nUse a returned cursor unchanged.",
+				inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+				exposure: "direct" as const,
+			},
+		]),
 		restart: vi.fn(async () => undefined),
 		stop: vi.fn(async () => undefined),
 		add: vi.fn(),
@@ -19,14 +27,67 @@ function setup(
 	const tool = createMcpManageTool(operations);
 	const confirm = vi.fn(async () => true);
 	const ctx = (hasUI = true) => ({ hasUI, ui: { confirm } }) as unknown as ExtensionToolContext;
-	const run = (params: Record<string, unknown>, hasUI = true) =>
-		tool.execute("call", params as never, new AbortController().signal, undefined, ctx(hasUI));
+	const run = (params: Record<string, unknown>, hasUI = true, signal = new AbortController().signal) =>
+		tool.execute("call", params as never, signal, undefined, ctx(hasUI));
 	const text = async (params: Record<string, unknown>, hasUI = true) =>
 		((await run(params, hasUI)).content[0] as { text: string }).text;
 	return { operations, run, text, confirm };
 }
 
 describe("mcp tool", () => {
+	it("inspects one complete tool schema without connecting, executing or asking for permission", async () => {
+		const { run, operations, confirm } = setup();
+		const result = await run({ intent: "tools", server: "docs", tool: "read" }, false);
+		expect(result.content).toEqual([{ type: "text", text: expect.stringContaining('"required": [') }]);
+		expect(result.details).toMatchObject({ tool: { name: "read", inputSchema: { required: ["path"] } } });
+		expect(operations.tools).toHaveBeenCalledWith("docs");
+		expect(operations.restart).not.toHaveBeenCalled();
+		expect(operations.add).not.toHaveBeenCalled();
+		expect(confirm).not.toHaveBeenCalled();
+	});
+
+	it("lists compact tool summaries and reports unknown tools without fetching them", async () => {
+		const { run, text, operations } = setup();
+		expect(await text({ intent: "tools", server: "docs" })).toBe("read [direct] — Read a known file.");
+		await expect(run({ intent: "tools", server: "docs", tool: "missing" })).rejects.toThrow(
+			'No available tool named "missing"',
+		);
+		expect(operations.restart).not.toHaveBeenCalled();
+	});
+
+	it("does not expose stale catalogs or reconnect disconnected servers during inspection", async () => {
+		const { run, text, operations } = setup([
+			{ name: "docs", state: "stopped", connected: false, origin: "configured" },
+		]);
+		expect(await text({ intent: "tools", server: "docs" })).toBe("No tools available in the current connection.");
+		await expect(run({ intent: "tools", server: "docs", tool: "read" })).rejects.toThrow("No available tool");
+		expect(operations.tools).not.toHaveBeenCalled();
+		expect(operations.restart).not.toHaveBeenCalled();
+	});
+
+	it.each(["restart", "stop", "remove"])("does not %s after cancellation", async (intent) => {
+		const { run, operations } = setup();
+		const reason = new Error("cancelled before execution");
+		await expect(run({ intent, server: "docs" }, true, AbortSignal.abort(reason))).rejects.toThrow(reason);
+		expect(operations.restart).not.toHaveBeenCalled();
+		expect(operations.stop).not.toHaveBeenCalled();
+		expect(operations.remove).not.toHaveBeenCalled();
+	});
+
+	it("does not add a server if its confirmation outlives cancellation", async () => {
+		const { run, operations, confirm } = setup();
+		const controller = new AbortController();
+		const reason = new Error("cancelled while awaiting approval");
+		confirm.mockImplementationOnce(async () => {
+			controller.abort(reason);
+			return true;
+		});
+		await expect(
+			run({ intent: "add", server: "notes", config: { command: "notes-mcp" } }, true, controller.signal),
+		).rejects.toThrow(reason);
+		expect(operations.add).not.toHaveBeenCalled();
+	});
+
 	it("lists and reports this session's servers, naming the known ones when a name is wrong", async () => {
 		const { text, run } = setup([
 			{ name: "docs", state: "connected · 3 tools", connected: true, origin: "configured" },
@@ -76,6 +137,7 @@ describe("mcp tool", () => {
 		expect(confirm).toHaveBeenLastCalledWith(
 			"Add MCP server?",
 			'The agent wants to add "notes" for this session: notes-mcp --stdio',
+			{ signal: expect.any(AbortSignal) },
 		);
 		await run(add);
 		expect(operations.add).toHaveBeenCalledWith("notes", { command: "notes-mcp", args: ["--stdio"] });
@@ -91,6 +153,7 @@ describe("mcp tool", () => {
 		expect(confirm).toHaveBeenLastCalledWith(
 			"Add MCP server?",
 			'The agent wants to add "notes" for this session: notes-mcp\nWorking directory: /work\nEnvironment variables: API_KEY, MODE',
+			{ signal: expect.any(AbortSignal) },
 		);
 		await run({
 			intent: "add",
@@ -100,6 +163,7 @@ describe("mcp tool", () => {
 		expect(confirm).toHaveBeenLastCalledWith(
 			"Add MCP server?",
 			'The agent wants to add "remote" for this session: https://example.com/mcp\nHeaders: Authorization',
+			{ signal: expect.any(AbortSignal) },
 		);
 	});
 

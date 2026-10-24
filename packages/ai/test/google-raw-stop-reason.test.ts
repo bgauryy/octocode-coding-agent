@@ -92,7 +92,8 @@ vi.mock("@google/genai", () => {
 
 import { stream as streamGoogleGenerativeAi } from "../src/api/google-generative-ai.ts";
 import { stream as streamGoogleVertex } from "../src/api/google-vertex.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, Model, StreamOptions } from "../src/types.ts";
 
 beforeEach(() => {
@@ -109,7 +110,7 @@ async function captureGoogleHeaders(headers?: Record<string, string>): Promise<R
 	googleGenAiMock.constructorCalls.length = 0;
 	googleGenAiMock.finishReason = "STOP";
 	googleGenAiMock.includeFunctionCall = false;
-	await streamGoogleGenerativeAi(getModel("google", "gemini-2.5-flash"), context, {
+	await streamGoogleGenerativeAi(getBuiltinModel("google", "gemini-2.5-flash"), context, {
 		apiKey: "test-api-key",
 		headers,
 	}).result();
@@ -124,7 +125,7 @@ describe("Google raw stop reasons", () => {
 		googleGenAiMock.finishReason = "MALFORMED_FUNCTION_CALL";
 		googleGenAiMock.includeFunctionCall = false;
 
-		const stream = streamGoogleGenerativeAi(getModel("google", "gemini-2.5-flash"), context, {
+		const stream = streamGoogleGenerativeAi(getBuiltinModel("google", "gemini-2.5-flash"), context, {
 			apiKey: "test-api-key",
 		});
 
@@ -139,7 +140,7 @@ describe("Google raw stop reasons", () => {
 		googleGenAiMock.finishReason = "SAFETY";
 		googleGenAiMock.includeFunctionCall = false;
 
-		const stream = streamGoogleVertex(getModel("google-vertex", "gemini-3-flash-preview"), context, {
+		const stream = streamGoogleVertex(getBuiltinModel("google-vertex", "gemini-3-flash-preview"), context, {
 			project: "test-project",
 			location: "us-central1",
 		});
@@ -155,14 +156,14 @@ describe("Google raw stop reasons", () => {
 		{
 			name: "Google Generative AI",
 			createStream: () =>
-				streamGoogleGenerativeAi(getModel("google", "gemini-2.5-flash"), context, {
+				streamGoogleGenerativeAi(getBuiltinModel("google", "gemini-2.5-flash"), context, {
 					apiKey: "test-api-key",
 				}),
 		},
 		{
 			name: "Google Vertex",
 			createStream: () =>
-				streamGoogleVertex(getModel("google-vertex", "gemini-3-flash-preview"), context, {
+				streamGoogleVertex(getBuiltinModel("google-vertex", "gemini-3-flash-preview"), context, {
 					project: "test-project",
 					location: "us-central1",
 				}),
@@ -193,8 +194,8 @@ describe("Google raw stop reasons", () => {
 });
 
 describe("Google provider stream events", () => {
-	const googleModel = getModel("google", "gemini-2.5-flash");
-	const vertexModel = getModel("google-vertex", "gemini-3-flash-preview");
+	const googleModel = getBuiltinModel("google", "gemini-2.5-flash");
+	const vertexModel = getBuiltinModel("google-vertex", "gemini-3-flash-preview");
 	const adapters = [
 		{
 			name: "Google Generative AI",

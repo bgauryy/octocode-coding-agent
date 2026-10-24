@@ -1,12 +1,5 @@
-import type {
-	AssistantMessage,
-	DeferredHandle,
-	Model,
-	TextContent,
-	ThinkingContent,
-	ToolCall,
-	Usage,
-} from "../../types.ts";
+import type { AssistantMessage, DeferredHandle, Model, TextContent, ThinkingContent, ToolCall } from "../../types.ts";
+import { createEmptyUsage } from "../../utils/assistant-message.ts";
 import type { FauxContentBlock } from "./types.ts";
 
 export const DEFAULT_API = "faux";
@@ -16,15 +9,6 @@ export const DEFAULT_MODEL_NAME = "Faux Model";
 export const DEFAULT_BASE_URL = "http://localhost:0";
 export const DEFAULT_MIN_TOKEN_SIZE = 3;
 export const DEFAULT_MAX_TOKEN_SIZE = 5;
-
-export const DEFAULT_USAGE: Usage = {
-	input: 0,
-	output: 0,
-	cacheRead: 0,
-	cacheWrite: 0,
-	totalTokens: 0,
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
 
 export function fauxText(text: string): TextContent {
 	return { type: "text", text };
@@ -66,7 +50,7 @@ export function fauxAssistantMessage(
 		api: DEFAULT_API,
 		provider: DEFAULT_PROVIDER,
 		model: DEFAULT_MODEL_ID,
-		usage: DEFAULT_USAGE,
+		usage: createEmptyUsage(),
 		stopReason: options.stopReason ?? "stop",
 		...(options.deferred === undefined ? {} : { deferred: options.deferred }),
 		...(options.errorMessage === undefined ? {} : { errorMessage: options.errorMessage }),
@@ -96,7 +80,7 @@ export function cloneMessage(
 		provider,
 		model: modelId,
 		timestamp: cloned.timestamp ?? Date.now(),
-		usage: cloned.usage ?? DEFAULT_USAGE,
+		usage: cloned.usage ?? createEmptyUsage(),
 	};
 }
 
@@ -107,7 +91,7 @@ export function createDeferredMessage(model: Model<string>, handle: DeferredHand
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: DEFAULT_USAGE,
+		usage: createEmptyUsage(),
 		stopReason: "deferred",
 		deferred: handle,
 		timestamp: Date.now(),
@@ -121,7 +105,7 @@ export function createErrorMessage(error: unknown, api: string, provider: string
 		api,
 		provider,
 		model: modelId,
-		usage: DEFAULT_USAGE,
+		usage: createEmptyUsage(),
 		stopReason: "error",
 		errorMessage: error instanceof Error ? error.message : String(error),
 		timestamp: Date.now(),

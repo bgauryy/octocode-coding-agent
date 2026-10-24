@@ -96,6 +96,7 @@ export interface SessionBeforeForkEvent {
 
 /** Fired before context compaction. Return values are ignored; preparation is an isolated snapshot. */
 export interface SessionBeforeCompactEvent {
+	customInstructions?: string;
 	type: "session_before_compact";
 	preparation: CompactionPreparation;
 	branchEntries: SessionEntry[];

@@ -2,7 +2,6 @@ import type { CacheRetention, ProviderEnv, StreamOptions } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
 
 export const INSTRUCTION_CACHE_RETENTION_ENV = "OCTOCODE_INSTRUCTION_CACHE_RETENTION";
-export const CACHE_RETENTION_VALUES = ["none", "short", "long"] as const;
 export type CachePreferences = Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention">;
 export interface CachePreferenceLayer {
 	source: string;
@@ -37,12 +36,8 @@ export function mergeCachePreferences(layers: readonly CachePreferenceLayer[]) {
 		options.instructionCacheRetention = "none";
 		sources.instructionCacheRetention = sources.cacheRetention;
 	}
-	// Instructions come before history, and a cache breakpoint with a longer lifetime cannot follow a shorter one: short
-	// instructions with long history would fail every request, so history is capped here, where the choice is made.
-	if (options.instructionCacheRetention === "short" && options.cacheRetention === "long") {
-		options.cacheRetention = "short";
-		sources.cacheRetention = `${sources.cacheRetention} (capped by instruction retention)`;
-	}
+	// Short instructions with long history are kept as configured: whether a longer-lived breakpoint may follow a shorter
+	// one is the provider's rule, so the adapters that have it (Anthropic-style markers) cap history themselves.
 	return { options, sources };
 }
 
@@ -63,6 +58,20 @@ export function resolveCacheRetention(cacheRetention?: CacheRetention, env?: Pro
 	if (cacheRetention !== undefined) return cacheRetention;
 	const value = getProviderEnvValue("OCTOCODE_CACHE_RETENTION", env);
 	return value === "long" || value === "none" ? value : "short";
+}
+
+/**
+ * Retention of the instruction breakpoint (system prompt and tools) and of the history breakpoint, for adapters that
+ * place both. Instructions default to the history retention. The pair is returned as requested: an adapter whose
+ * provider requires longer-lived breakpoints first (Anthropic, Bedrock) caps long history behind short instructions.
+ */
+export function resolveLayeredCacheRetention(options?: StreamOptions): {
+	history: CacheRetention;
+	instructions: CacheRetention;
+} {
+	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
+	const instructions = resolveInstructionCacheRetention(options) ?? history;
+	return { history, instructions };
 }
 
 /** Explicit Pi retention still controls the whole prompt unless a separate instruction preference is supplied. */

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
@@ -49,7 +49,7 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 			({ session } = await createAgentSession({
 				cwd: root,
 				agentDir: root,
-				model: getModel("anthropic", "claude-sonnet-4-5"),
+				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 				sessionManager: manager,
 				resourceLoader: loader,
 				settingsManager,

@@ -11,6 +11,6 @@
  */
 
 export { createMcpAuthProvider, type McpAuthProvider } from "./oauth/auth-provider.ts";
-export { McpOAuthCredentialStore, type McpOAuthServerStore } from "./oauth/credential-store.ts";
+export { McpOAuthCredentialStore } from "./oauth/credential-store.ts";
 export type { McpOAuthSettings } from "./oauth/shared.ts";
 export { McpSignInCancelledError, type McpSignInPrompt, signInMcpServer } from "./oauth/sign-in.ts";

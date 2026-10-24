@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "fs";
-import { join, resolve, sep } from "path";
+import { join, resolve } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
-import { canonicalizePath, resolvePath } from "../utils/paths.ts";
+import { canonicalizePath, isUnderPath, resolvePath } from "../utils/paths.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 import {
 	type ExplicitSkill,
@@ -47,9 +47,9 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  * 200k-token window, the share Claude Code gives its skill listing. Past it, descriptions are dropped from the last
  * skills first, then the last skills are named without an entry.
  */
-export const SKILLS_PROMPT_BUDGET_CHARS = 8_000;
+const SKILLS_PROMPT_BUDGET_CHARS = 8_000;
 /** Characters of one description in the prompt: the Agent Skills limit, which the loader only warns about. */
-export const SKILL_PROMPT_DESCRIPTION_CHARS = 1024;
+const SKILL_PROMPT_DESCRIPTION_CHARS = 1024;
 
 export interface FormatSkillsOptions {
 	/** Characters for the skill entries; defaults to {@link SKILLS_PROMPT_BUDGET_CHARS}. */
@@ -195,7 +195,7 @@ interface SkillCandidate {
  * candidate (project, settings, `--skill`, package, agent directory) wins, then the bundled skill, and a replaceable
  * copy only when neither exists: the agent gets the version this build ships unless the user chose another on purpose.
  */
-export function chooseSkillWinner(candidates: readonly SkillCandidate[]): SkillCandidate {
+function chooseSkillWinner(candidates: readonly SkillCandidate[]): SkillCandidate {
 	if (!candidates.some((candidate) => candidate.rank === "bundled")) return candidates[0];
 	return (
 		candidates.find((candidate) => candidate.rank === undefined) ??
@@ -258,15 +258,6 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 
 	const userSkillsDir = join(resolvedAgentDir, "skills");
 	const projectSkillsDir = resolve(resolvedCwd, CONFIG_DIR_NAME, "skills");
-
-	const isUnderPath = (target: string, root: string): boolean => {
-		const normalizedRoot = resolve(root);
-		if (target === normalizedRoot) {
-			return true;
-		}
-		const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
-		return target.startsWith(prefix);
-	};
 
 	const getSource = (resolvedPath: string): "user" | "project" | "path" => {
 		if (!includeDefaults) {

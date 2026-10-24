@@ -2,20 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "../../src/config.ts";
-import {
-	DEFAULT_BASH_TIMEOUT,
-	effectiveTimeout,
-	MAX_FOREGROUND_TIMEOUT,
-	registerBashTool,
-} from "../../src/octocode/files/bash.ts";
-import {
-	BashJobs,
-	jobReport,
-	logTail,
-	prefixed,
-	type ShellSettings,
-	shellSettings,
-} from "../../src/octocode/files/bash-jobs.ts";
+import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { RERUN_HINT } from "../../src/octocode/files/render.ts";
 import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -23,6 +11,13 @@ import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { groupAlive, processAlive } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import {
+	DEFAULT_BASH_TIMEOUT,
+	effectiveTimeout,
+	MAX_FOREGROUND_TIMEOUT,
+} from "../../src/octocode/files/bash/results.ts";
+import { jobReport, logTail } from "../../src/octocode/files/bash-jobs/report.ts";
+import { prefixed, type ShellSettings, shellSettings } from "../../src/octocode/files/bash-jobs/shell.ts";
 
 const until = async (check: () => boolean, ms = 5_000) => {
 	const end = Date.now() + ms;

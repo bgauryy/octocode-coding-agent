@@ -8,8 +8,6 @@ import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
 import type {
 	AutocompleteProvider,
 	MarkdownTheme,
-	OverlayHandle,
-	OverlayOptions,
 	SlashCommand,
 	Component,
 	TUI,
@@ -29,8 +27,7 @@ import type {
 	WorkingIndicatorOptions,
 	ToolRenderers,
 } from "../../../core/extensions/index.ts";
-import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+import type { AppKeybinding } from "../../../core/keybindings.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import type { SessionEntry, UsageEntry } from "../../../core/session-manager.ts";
@@ -42,10 +39,15 @@ import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import type { Theme } from "../theme/theme.ts";
-import type { CompactionCostNotice, RenderSessionItem } from "./types.ts";
+import type {
+	CompactionCostNotice,
+	RenderSessionItem,
+	ScopeGroup,
+	ScopeGroupFormatOptions,
+	ScopeGroupName,
+	SourcedPath,
+} from "./types.ts";
 import type { InteractiveModeState } from "./host-state.ts";
-
-export type { InteractiveModeState } from "./host-state.ts";
 
 /** Mode methods the collaborators call. */
 export interface InteractiveModeMethods {
@@ -59,11 +61,7 @@ export interface InteractiveModeMethods {
 	applyFullscreenScrollbarSetting(): void;
 	applyRuntimeSettings(): void;
 	bindCurrentSessionExtensions(): Promise<void>;
-	buildScopeGroups(items: Array<{ path: string; sourceInfo?: SourceInfo }>): Array<{
-		scope: "user" | "project" | "path";
-		paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
-		packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
-	}>;
+	buildScopeGroups(items: SourcedPath[]): ScopeGroup[];
 	checkForPackageUpdates(): Promise<string[]>;
 	checkShutdownRequested(): Promise<void>;
 	checkTmuxKeyboardSetup(): Promise<string | undefined>;
@@ -75,7 +73,6 @@ export interface InteractiveModeMethods {
 		providerId: string,
 		providerName: string,
 		authType: "oauth" | "api_key",
-		previousModel: Model<any> | undefined,
 	): Promise<void>;
 	crashReportInstructions(): string;
 	createBaseAutocompleteProvider(): AutocompleteProvider;
@@ -93,24 +90,14 @@ export interface InteractiveModeMethods {
 	formatDiagnostics(diagnostics: readonly ResourceDiagnostic[], sourceInfos: Map<string, SourceInfo>): string;
 	formatDisplayPath(p: string): string;
 	formatExtensionDisplayPath(path: string): string;
-	formatScopeGroups(
-		groups: Array<{
-			scope: "user" | "project" | "path";
-			paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
-			packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
-		}>,
-		options: {
-			formatPath: (item: { path: string; sourceInfo?: SourceInfo }) => string;
-			formatPackagePath: (item: { path: string; sourceInfo?: SourceInfo }, source: string) => string;
-		},
-	): string;
+	formatScopeGroups(groups: ScopeGroup[], options: ScopeGroupFormatOptions): string;
 	getAllQueuedMessages(): { steering: string[]; followUp: string[] };
 	getAppKeyDisplay(action: AppKeybinding): string;
 	getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[];
 	getChangelogForDisplay(): string | undefined;
 	getCompactDisplayPathSegments(resourcePath: string): string[];
 	getCompactExtensionLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
-	getCompactExtensionLabels(extensions: Array<{ path: string; sourceInfo?: SourceInfo }>): string[];
+	getCompactExtensionLabels(extensions: SourcedPath[]): string[];
 	getCompactNonPackageExtensionLabel(
 		resourcePath: string,
 		index: number,
@@ -124,7 +111,7 @@ export interface InteractiveModeMethods {
 	getMarkdownTransformers(): MarkdownTransformer[];
 	getPathCommandArgument(text: string, command: "/export" | "/import"): string | undefined;
 	getRegisteredToolDefinition(toolName: string): ToolRenderers | undefined;
-	getScopeGroup(sourceInfo?: SourceInfo): "user" | "project" | "path";
+	getScopeGroup(sourceInfo?: SourceInfo): ScopeGroupName;
 	getShortPath(fullPath: string, sourceInfo?: SourceInfo): string;
 	getSlashCommands(includeSkills?: boolean): SlashCommand[];
 	getStartupExpansionState(): boolean;
@@ -132,10 +119,10 @@ export interface InteractiveModeMethods {
 	handleBashCommand(command: string, excludeFromContext?: boolean): Promise<void>;
 	handleBugCommand(hint: string | undefined): Promise<void>;
 	handleChangelogCommand(): void;
-	handleClearCommand(): Promise<void>;
+	handleClearCommand(previousName?: string): Promise<void>;
 	handleClipboardPaste(): Promise<void>;
 	handleCloneCommand(): Promise<void>;
-	handleCompactCommand(): Promise<void>;
+	handleCompactCommand(customInstructions?: string): Promise<void>;
 	handleCopyCommand(options?: { flashConfirmation?: boolean; preferSelection?: boolean }): Promise<void>;
 	handleCtrlC(): void;
 	handleCtrlD(): void;
@@ -147,6 +134,7 @@ export interface InteractiveModeMethods {
 	handleFatalRuntimeError(prefix: string, error: unknown): Promise<never>;
 	handleFollowUp(): Promise<void>;
 	handleHotkeysCommand(): void;
+	handleGithubCommand(args: string): Promise<void>;
 	handleImportCommand(text: string): Promise<void>;
 	handleLoginCommand(providerRef?: string): Promise<void>;
 	handleModelCommand(searchTerm?: string): Promise<void>;
@@ -193,12 +181,8 @@ export interface InteractiveModeMethods {
 	restoreQueuedMessagesToEditor(options?: { abort?: boolean; currentText?: string }): number;
 	setCustomEditorComponent(factory: EditorFactory | undefined): void;
 	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
-	setExtensionFooter(
-		factory:
-			| ((tui: TUI, thm: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
-			| undefined,
-	): void;
-	setExtensionHeader(factory: ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined): void;
+	setExtensionFooter: ExtensionUIContext["setFooter"];
+	setExtensionHeader: ExtensionUIContext["setHeader"];
 	setExtensionStatus(key: string, text: string | undefined): void;
 	setExtensionWidget(
 		key: string,
@@ -219,19 +203,7 @@ export interface InteractiveModeMethods {
 	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
 	showError(errorMessage: string): void;
 	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
-	showExtensionCustom<T>(
-		factory: (
-			tui: TUI,
-			theme: Theme,
-			keybindings: KeybindingsManager,
-			done: (result: T) => void,
-		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: {
-			overlay?: boolean;
-			overlayOptions?: OverlayOptions | (() => OverlayOptions);
-			onHandle?: (handle: OverlayHandle) => void;
-		},
-	): Promise<T>;
+	showExtensionCustom: ExtensionUIContext["custom"];
 	showExtensionEditor(title: string, prefill?: string): Promise<string | undefined>;
 	showExtensionError(extensionPath: string, error: string, stack?: string): void;
 	showExtensionInput(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
@@ -242,7 +214,7 @@ export interface InteractiveModeMethods {
 		blocked?: BlockedStatus,
 	): Promise<string | undefined>;
 	showLoadedResources(options?: {
-		extensions?: Array<{ path: string; sourceInfo?: SourceInfo }>;
+		extensions?: SourcedPath[];
 		force?: boolean;
 		showDiagnosticsWhenQuiet?: boolean;
 	}): void;
@@ -257,6 +229,7 @@ export interface InteractiveModeMethods {
 	showSessionSelector(): void;
 	showSettingsSelector(): void;
 	showStartupNoticesIfNeeded(): void;
+	showQueueManager(): Promise<void>;
 	showStatus(message: string): void;
 	showStatusIndicator(indicator: StatusIndicator): void;
 	showTreeSelector(initialSelectedId?: string): void;

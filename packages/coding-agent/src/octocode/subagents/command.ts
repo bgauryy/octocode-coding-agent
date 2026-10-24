@@ -1,12 +1,12 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { USER_SENDER } from "../shared/messages.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { USER_STOP } from "./process/outcome.ts";
 import { type Ask, UserQuestions } from "../team/asks.ts";
-import type { Member } from "../team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { describeMembers } from "../team/routing.ts";
 import type { Team } from "../team/session.ts";
-import { USER_STOP } from "./process.ts";
 import { agentStats, renderStats } from "./stats.ts";
 import { mergeAgent, pendingRefs } from "./worktree.ts";
 
@@ -47,7 +47,7 @@ export function stopBackground(
 }
 
 /**
- * `/agents` (aliased as `/agents`) lists the agents; `tell`, `kill` and `merge` act on one. `kill` stops a
+ * `/agents` lists the agents; `tell`, `kill` and `merge` act on one. `kill` stops a
  * background subagent, or a foreground one (`foreground`) whose call then returns that the user stopped it.
  */
 export function agentsCommand(

@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Tool } from "@octocodeai/octocode-mcp";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/extensions/index.ts";
-import { activateDiscovery, canDiscoverTools } from "../../extensions/tool-search/tool.ts";
+import { activateDiscovery, canDiscoverTools, resetDiscoveryActivation } from "../../extensions/tool-search/tool.ts";
 import { loadMcpConfig } from "../../extensions/mcp/config.ts";
 import { type McpServerStatus, setMcpSessionStatus } from "../../extensions/mcp/status.ts";
 import { notify } from "../shared/commands.ts";
@@ -12,10 +12,8 @@ import { OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX, isDirectResearchTool } from "../
 import { visibleControls } from "../shared/sanitize.ts";
 import { projectTrustNow } from "../shared/trust.ts";
 import { type Launch, OctocodeServer, type ServerStatus } from "./client.ts";
-import { octocodeToolDefinition, octocodeToolName, TurnBudget } from "./tools.ts";
+import { octocodeToolDefinition, octocodeToolName } from "./tools.ts";
 import { octocodeLaunch } from "./octocode/launch.ts";
-
-export { OCTOCODE_MCP_SPEC, octocodeLaunch } from "./octocode/launch.ts";
 
 /**
  * Octocode MCP (local code, LSP, GitHub and package registry research) runs on this extension's own MCP client
@@ -66,8 +64,6 @@ export class OctocodeMcp {
 	private readonly registered = new Map<string, { tool: Tool; definition: ToolDefinition }>();
 	private readonly hidden = new Set<string>();
 	private ctx: ExtensionContext | undefined;
-	/** The text this turn's results have put in the context; `registerOctocodeMcp` resets it at every `turn_start`. */
-	readonly turn = new TurnBudget();
 	/** Who ran the server when the session started. */
 	private owned: OctocodeOwner = { by: "off" };
 
@@ -246,7 +242,8 @@ export class OctocodeMcp {
 		this.catalogTools = tools;
 		// Local research tools stay direct (`octocodeToolDefinition`); the rest wait for tool_search when it is available.
 		const discovery = canDiscoverTools(this.pi);
-		const exposure = resolveMcpExposure("auto", tools, this.ctx?.model, discovery, true) as "direct" | "deferred";
+		const waiting = tools.filter((tool) => !isDirectResearchTool(octocodeToolName(tool.name)));
+		const exposure = resolveMcpExposure("auto", waiting, this.ctx?.model, discovery, true) as "direct" | "deferred";
 		const namespace = {
 			name: OCTOCODE_TOOL_PREFIX.replace(/__$/, ""),
 			...(instructions ? { instructions: visibleControls(instructions).trim() } : {}),
@@ -272,7 +269,6 @@ export class OctocodeMcp {
 				exposure,
 				namespace,
 				call: (name, args, signal, onProgress) => this.server.call(name, args, signal, onProgress),
-				budget: this.turn,
 			});
 			this.registered.set(definition.name, { tool, definition });
 			this.pi.registerTool(definition);
@@ -341,12 +337,15 @@ export function registerOctocodeMcp(
 		skillDirectories: () => pi.getSkillDirectories(),
 		ensureDiscovery: () => activateDiscovery(pi),
 	});
-	pi.on("session_start", async (_event, ctx) => mcp.start(ctx));
+	pi.on("session_start", async (_event, ctx) => {
+		resetDiscoveryActivation(pi);
+		await mcp.start(ctx);
+	});
+	pi.on("session_tree", () => resetDiscoveryActivation(pi));
 	pi.on("model_select", (_event, ctx) => mcp.updateModel(ctx));
 	pi.on("session_shutdown", async () => {
 		await mcp.close();
 		setMcpSessionStatus(pi.events, "native", []);
 	});
-	pi.on("turn_start", async () => mcp.turn.reset());
 	return mcp;
 }

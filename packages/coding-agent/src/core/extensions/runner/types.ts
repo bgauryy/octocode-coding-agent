@@ -122,8 +122,6 @@ export interface BoundaryDispatchResult {
 	valid: boolean;
 }
 
-export type { ForkHandler, NavigateTreeHandler, NewSessionHandler, ReloadHandler, SwitchSessionHandler };
-
 export type ShutdownHandler = () => void;
 
 /** Provider registration actions a mode may supply to `bindCore()`; the model registry is the fallback. */

@@ -1,11 +1,10 @@
 import type {
 	AssistantMessage,
+	AssistantContent,
 	ImageContent,
 	Message,
 	StreamOptions,
 	TextContent,
-	ThinkingContent,
-	ToolCall,
 	ToolResultMessage,
 	TranscriptContext,
 } from "../../types.ts";
@@ -26,7 +25,7 @@ function contentToText(content: string | Array<TextContent | ImageContent>): str
 		.join("\n");
 }
 
-function assistantContentToText(content: Array<TextContent | ThinkingContent | ToolCall>): string {
+function assistantContentToText(content: AssistantContent[]): string {
 	return content
 		.map((block) => {
 			if (block.type === "text") {
@@ -35,7 +34,10 @@ function assistantContentToText(content: Array<TextContent | ThinkingContent | T
 			if (block.type === "thinking") {
 				return block.thinking;
 			}
-			return `${block.name}:${JSON.stringify(block.arguments)}`;
+			if (block.type === "toolCall") return `${block.name}:${JSON.stringify(block.arguments)}`;
+			if (block.type === "unsupported") return block.text;
+			if (block.type === "resource") return block.text ?? block.uri;
+			return `[${block.type}:${block.mimeType}]`;
 		})
 		.join("\n");
 }

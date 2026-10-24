@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import * as os from "node:os";
-import { canonicalizePath as _canonicalizePath } from "../../../../utils/paths.ts";
 import { errorMessage } from "../../../../utils/guards.ts";
 
 export function shortenPath(path: string): string {
@@ -28,11 +27,6 @@ export function formatSessionDate(date: Date): string {
 	if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
 	if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
 	return `${Math.floor(diffDays / 365)}y`;
-}
-
-export function canonicalizePath(path: string | undefined): string | undefined {
-	if (!path) return path;
-	return _canonicalizePath(path);
 }
 
 /**

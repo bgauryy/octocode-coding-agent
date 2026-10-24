@@ -87,7 +87,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	return state.sessionFile;
 }
 
-export function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSessionOptions): void {
+function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSessionOptions): void {
 	const header = entries.find((e) => e.type === "session");
 
 	if (header) {

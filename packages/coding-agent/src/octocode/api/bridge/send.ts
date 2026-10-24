@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
-import { sha256 } from "../../shared/atomic.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";
-import { capChars, errorMessage } from "../../shared/util.ts";
+import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
 import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS } from "../protocol.ts";
 import type { SendReceipt, SendReceipts } from "../receipts.ts";
@@ -13,7 +14,7 @@ import type { AgentDirectory, ApiOperations } from "./contracts.ts";
 const RESERVED_SENDERS = new Set([USER_SENDER, EXTERNAL_SENDER]);
 
 /** What `message.send` needs of the API it runs in; `OctocodeApi` passes its own state and checks. */
-export interface SendHost {
+interface SendHost {
 	readonly pi: ExtensionAPI;
 	readonly agents: AgentDirectory;
 	readonly operations: ApiOperations;
@@ -69,6 +70,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			});
 		if (wait) return { ...prior.accepted, ...(await host.receipts.wait(prior, timeout)) };
 		await prior.ready;
+		if (prior.phase === "uncertain") throw prior.failure;
 		return prior.accepted;
 	}
 	const busy = !ctx.isIdle() || ctx.hasPendingMessages() || host.receipts.busy;
@@ -106,7 +108,8 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		clearTimeout(preparingTimer);
 		host.receipts.accept(receipt, waiter, key !== undefined || wait);
 		dispatched = true;
-		void host.pi.sendMessage(
+		const settlementVersion = host.receipts.settlementVersion;
+		const sending = host.pi.sendMessage(
 			{
 				customType: EXTERNAL_MESSAGE_TYPE,
 				content: fenceUntrusted(messageHeader(apiClientLabel(from), at), text),
@@ -115,6 +118,35 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			},
 			{ triggerTurn: true, deliverAs },
 		);
+		// sendMessage may encompass the whole turn, so non-waiting callers cannot await it. An asynchronous rejection
+		// still invalidates an unsettled handoff, and the keyed receipt must prevent an unsafe second dispatch.
+		void Promise.resolve(sending).catch((error: unknown) => {
+			if (receipt.phase !== "accepted" || host.receipts.settlementVersion !== settlementVersion) return;
+			// A replaced/stopped session has forgotten this receipt; never record its late failure in the new session.
+			let current: ExtensionContext;
+			try {
+				current = host.session();
+			} catch {
+				return;
+			}
+			if (
+				current !== ctx ||
+				current.sessionManager.getSessionId() !== originalSessionId ||
+				(key && host.receipts.get(key) !== receipt)
+			)
+				return;
+			const failure = new RpcError(ERR.unavailable, `The session could not take the message: ${errorMessage(error)}`, {
+				execution: "uncertain",
+				...accepted,
+			});
+			host.receipts.fail(receipt, waiter, key, failure, true);
+			try {
+				host.audit({ method: "message.send.failed", id, from, execution: "uncertain" });
+				host.log.publish("external.message", { id, from, execution: "uncertain", status: "failed" });
+			} catch {
+				// Audit/streaming is best effort after the receipt has been rejected.
+			}
+		});
 		receipt.resolveReady();
 	} catch (error) {
 		clearTimeout(preparingTimer);

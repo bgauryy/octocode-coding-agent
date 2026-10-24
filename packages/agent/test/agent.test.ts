@@ -2,10 +2,10 @@ import {
 	type AssistantMessage,
 	createAssistantMessageEventStream,
 	getCurrentSystemMessage,
-	getModel,
 	toToolDeclaration,
 	type UserMessage,
 } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {
@@ -125,7 +125,7 @@ describe("Agent", () => {
 	});
 
 	it("should create an agent instance with custom initial state", () => {
-		const customModel = getModel("openai", "gpt-4o-mini");
+		const customModel = getBuiltinModel("openai", "gpt-4o-mini");
 		const agent = new Agent({
 			streamFn: unusedStreamFunction,
 			initialState: {
@@ -685,7 +685,7 @@ describe("Agent", () => {
 		const agent = new Agent({ streamFn: unusedStreamFunction });
 
 		// Test setModel
-		const newModel = getModel("google", "gemini-2.5-flash");
+		const newModel = getBuiltinModel("google", "gemini-2.5-flash");
 		agent.state.model = newModel;
 		expect(agent.state.model).toBe(newModel);
 
@@ -734,6 +734,29 @@ describe("Agent", () => {
 
 		// The message is queued but not yet in state.messages
 		expect(agent.state.messages).not.toContainEqual(message);
+	});
+
+	it("selectively edits pending messages without dropping interleaved or other-lane input", () => {
+		const agent = new Agent({ streamFn: unusedStreamFunction });
+		agent.steeringMode = "all";
+		const first = { role: "user" as const, content: "first", timestamp: 1 };
+		const untouched = { role: "user" as const, content: "unrelated", timestamp: 2 };
+		const last = { role: "user" as const, content: "last", timestamp: 3 };
+		const followUp = { role: "user" as const, content: "follow-up", timestamp: 4 };
+		agent.steer(first);
+		agent.steer(untouched);
+		agent.steer(last);
+		agent.followUp(followUp);
+
+		expect(agent.swapQueuedMessages(first, followUp)).toBe(false);
+		expect(agent.swapQueuedMessages(first, last)).toBe(true);
+		expect(agent.peekQueuedMessages()).toEqual([last, untouched, first]);
+		expect(agent.removeQueuedMessage(first)).toBe(true);
+		expect(agent.removeQueuedMessage(first)).toBe(false);
+		expect(agent.hasQueuedMessage(first)).toBe(false);
+		expect(agent.peekQueuedMessages()).toEqual([last, untouched]);
+		agent.clearSteeringQueue();
+		expect(agent.peekQueuedMessages()).toEqual([followUp]);
 	});
 
 	it("should handle abort controller", () => {

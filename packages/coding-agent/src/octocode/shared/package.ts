@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPackageDir } from "../../config.ts";
 
 interface Manifest {
 	name?: string;
@@ -27,5 +26,3 @@ export function findManifest(
 	}
 	return undefined;
 }
-
-export const packageRoot = getPackageDir;

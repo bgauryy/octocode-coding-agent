@@ -6,14 +6,15 @@ import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import type { ScopeGroup, ScopeGroupFormatOptions, ScopeGroupName, SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the resource groups and diagnostics. */
-export type ResourceGroupsHost = Pick<
+type ResourceGroupsHost = Pick<
 	InteractiveModeHost,
 	"formatDisplayPath" | "getScopeGroup" | "getShortPath" | "isPackageSource"
 >;
 
-export function getDisplaySourceInfo(sourceInfo?: SourceInfo): {
+function getDisplaySourceInfo(sourceInfo?: SourceInfo): {
 	label: string;
 	scopeLabel?: string;
 	color: "accent" | "muted";
@@ -42,7 +43,7 @@ export function getDisplaySourceInfo(sourceInfo?: SourceInfo): {
 	return { label: source, scopeLabel, color: "accent" };
 }
 
-export function getScopeGroup(sourceInfo?: SourceInfo): "user" | "project" | "path" {
+export function getScopeGroup(sourceInfo?: SourceInfo): ScopeGroupName {
 	const source = sourceInfo?.source ?? "local";
 	const scope = sourceInfo?.scope ?? "project";
 	if (source === "cli" || scope === "temporary") return "path";
@@ -56,22 +57,8 @@ export function isPackageSource(sourceInfo?: SourceInfo): boolean {
 	return source.startsWith("npm:") || source.startsWith("git:");
 }
 
-export function buildScopeGroups(
-	host: ResourceGroupsHost,
-	items: Array<{ path: string; sourceInfo?: SourceInfo }>,
-): Array<{
-	scope: "user" | "project" | "path";
-	paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
-	packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
-}> {
-	const groups: Record<
-		"user" | "project" | "path",
-		{
-			scope: "user" | "project" | "path";
-			paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
-			packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
-		}
-	> = {
+export function buildScopeGroups(host: ResourceGroupsHost, items: SourcedPath[]): ScopeGroup[] {
+	const groups: Record<ScopeGroupName, ScopeGroup> = {
 		user: { scope: "user", paths: [], packages: new Map() },
 		project: { scope: "project", paths: [], packages: new Map() },
 		path: { scope: "path", paths: [], packages: new Map() },
@@ -96,17 +83,7 @@ export function buildScopeGroups(
 	);
 }
 
-export function formatScopeGroups(
-	groups: Array<{
-		scope: "user" | "project" | "path";
-		paths: Array<{ path: string; sourceInfo?: SourceInfo }>;
-		packages: Map<string, Array<{ path: string; sourceInfo?: SourceInfo }>>;
-	}>,
-	options: {
-		formatPath: (item: { path: string; sourceInfo?: SourceInfo }) => string;
-		formatPackagePath: (item: { path: string; sourceInfo?: SourceInfo }, source: string) => string;
-	},
-): string {
+export function formatScopeGroups(groups: ScopeGroup[], options: ScopeGroupFormatOptions): string {
 	const lines: string[] = [];
 
 	for (const group of groups) {
@@ -130,7 +107,7 @@ export function formatScopeGroups(
 	return lines.join("\n");
 }
 
-export function findSourceInfoForPath(p: string, sourceInfos: Map<string, SourceInfo>): SourceInfo | undefined {
+function findSourceInfoForPath(p: string, sourceInfos: Map<string, SourceInfo>): SourceInfo | undefined {
 	const exact = sourceInfos.get(p);
 	if (exact) return exact;
 
@@ -144,7 +121,7 @@ export function findSourceInfoForPath(p: string, sourceInfos: Map<string, Source
 	return undefined;
 }
 
-export function formatPathWithSource(host: ResourceGroupsHost, p: string, sourceInfo?: SourceInfo): string {
+function formatPathWithSource(host: ResourceGroupsHost, p: string, sourceInfo?: SourceInfo): string {
 	if (sourceInfo) {
 		const shortPath = host.getShortPath(p, sourceInfo);
 		const { label, scopeLabel } = getDisplaySourceInfo(sourceInfo);

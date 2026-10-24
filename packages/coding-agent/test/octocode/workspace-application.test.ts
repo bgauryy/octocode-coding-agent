@@ -153,20 +153,40 @@ describe("application server boundary", () => {
 		const message = { role: "assistant", content: [{ type: "text", text: "" }] } as never;
 		app.emit({ type: "agent_start" });
 		app.emit({ type: "message_start", message });
-		for (let i = 0; i < 100; i++)
+		for (let i = 0; i < 100; i++) {
+			Object.assign(message, {
+				content: [{ type: "text", text: Array.from({ length: i + 1 }, (_, n) => "w" + n + " ").join("") }],
+			});
+			if (i === 50) app.emit({ type: "compaction_start", reason: "manual" });
+			if (i === 75)
+				app.emit({ type: "tool_execution_start", toolCallId: "wire-tool", toolName: "read", args: { path: "x" } });
 			app.emit({
 				type: "message_update",
 				message,
 				assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "w" + i + " ", partial: message },
 			});
+		}
 		app.emit({
 			type: "message_end",
 			message: { role: "assistant", content: [{ type: "text", text: "done" }] } as never,
 		});
+		const second = { role: "assistant", content: [{ type: "text", text: "" }] } as never;
+		app.emit({ type: "message_start", message: second });
+		let secondText = "";
+		for (const delta of ["different", " message"]) {
+			secondText += delta;
+			Object.assign(second, { content: [{ type: "text", text: secondText }] });
+			app.emit({
+				type: "message_update",
+				message: second,
+				assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial: second },
+			});
+		}
+		app.emit({ type: "message_end", message: second });
 		const deltas = () =>
 			frames.flatMap((f) => (f.type === "event" && f.event.type === "message.delta" ? [f.event] : []));
 		await vi.waitFor(() =>
-			expect(frames.some((f) => f.type === "event" && f.event.type === "message.completed")).toBe(true),
+			expect(frames.filter((f) => f.type === "event" && f.event.type === "message.completed")).toHaveLength(2),
 		);
 		expect(deltas().length).toBeLessThan(10);
 		// The last delta before the completion carries every token, in order.
@@ -178,6 +198,15 @@ describe("application server boundary", () => {
 		expect(last?.type === "event" && last.event.type === "message.delta" && last.event.text).toBe(
 			Array.from({ length: 100 }, (_, i) => "w" + i + " ").join(""),
 		);
+		for (let i = 1; i < frames.length; i++) {
+			const previous = frames[i - 1];
+			const current = frames[i];
+			if ((previous.type === "snapshot" || previous.type === "event") && current.type === "event") {
+				expect(current.fromSequence ?? current.cursor.sequence).toBe(previous.cursor.sequence + 1);
+				if (current.fromSequence !== undefined)
+					expect(current.event).toMatchObject({ type: "message.delta", text: expect.any(String) });
+			}
+		}
 	});
 	it("rejects incompatible protocol before exposing application state", async () => {
 		const app = setup();

@@ -181,11 +181,11 @@ export function formatLabelTimestamp(timestamp: string): string {
 	return `${year}/${month}/${day} ${time}`;
 }
 
-export function extractContent(content: unknown): string {
+function extractContent(content: unknown): string {
 	return extractFullContent(content).slice(0, 200);
 }
 
-export function extractFullContent(content: unknown): string {
+function extractFullContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 
@@ -240,7 +240,7 @@ export function hasTextContent(content: unknown): boolean {
 	return false;
 }
 
-export function formatToolCall(name: string, args: Record<string, unknown>): string {
+function formatToolCall(name: string, args: Record<string, unknown>): string {
 	const text = (...values: unknown[]): string => {
 		for (const value of values) if (typeof value === "string" && value) return value;
 		return "";

@@ -1,7 +1,8 @@
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
-import { contentText, isRecord } from "../../shared/util.ts";
-import { commandsFor, hookCalls } from "../config.ts";
+import { contentText } from "../../shared/util.ts";
+import { isRecord } from "../../../utils/guards.ts";
+import { commandsFor, hookCalls } from "../config/calls.ts";
 import { CODEX_PATCH_NAMES } from "../patch.ts";
 import { capContext } from "../runner.ts";
 import type { Dispatch, HookSession } from "./types.ts";

@@ -1,6 +1,7 @@
 import {
 	type AssistantMessage,
 	createAssistantMessageEventStream,
+	EventStream,
 	type Message,
 	type Model,
 	type ToolResultMessage,
@@ -132,6 +133,24 @@ describe("agentLoop failures", () => {
 			expect(events.at(-1)?.type).toBe("agent_end");
 			expect(messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "error", errorMessage: "convert failed" });
 		}
+	});
+});
+
+describe("agentLoop stream end", () => {
+	it("delivers one agent_end: a failure after the loop ended adds no second run end", async () => {
+		// `endWithFailure` pushes its own agent_end when the loop promise rejects; a stream that already completed drops it.
+		const stream = new EventStream<AgentEvent, AgentMessage[]>(
+			(event) => event.type === "agent_end",
+			(event) => (event.type === "agent_end" ? event.messages : []),
+		);
+		const first = createUserMessage("first");
+		stream.push({ type: "agent_end", messages: [first] });
+		stream.push({ type: "agent_end", messages: [createAssistantMessage([{ type: "text", text: "late" }], "error")] });
+		stream.end([first]);
+		const events: AgentEvent[] = [];
+		for await (const event of stream) events.push(event);
+		expect(events.filter((event) => event.type === "agent_end")).toHaveLength(1);
+		expect(await stream.result()).toEqual([first]);
 	});
 });
 

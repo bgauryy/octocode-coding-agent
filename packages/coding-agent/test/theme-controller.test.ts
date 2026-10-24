@@ -5,7 +5,7 @@ import {
 	initTheme,
 	setTerminalColorScheme,
 	setTerminalColors,
-	type TerminalTheme,
+	type ThemeAppearance,
 	theme,
 } from "../src/modes/interactive/theme/theme.ts";
 import { InteractiveThemeController } from "../src/modes/interactive/theme/theme-controller.ts";
@@ -18,13 +18,13 @@ type ColorQueryOptions = { timeoutMs: number; onLateReply?: (colors: TerminalCol
 function createUi() {
 	const queryTerminalColors = vi.fn(async (_options: ColorQueryOptions): Promise<TerminalColors> => ({}));
 	const setTerminalColorSchemeNotifications = vi.fn();
-	let terminalColorSchemeListener: ((terminalTheme: TerminalTheme) => void) | undefined;
+	let terminalColorSchemeListener: ((terminalTheme: ThemeAppearance) => void) | undefined;
 	const unsubscribeTerminalColorScheme = vi.fn();
 	const ui = {
 		invalidate: vi.fn(),
 		requestRender: vi.fn(),
 		setTerminalColorSchemeNotifications,
-		onTerminalColorSchemeChange: vi.fn((listener: (terminalTheme: TerminalTheme) => void) => {
+		onTerminalColorSchemeChange: vi.fn((listener: (terminalTheme: ThemeAppearance) => void) => {
 			terminalColorSchemeListener = listener;
 			return unsubscribeTerminalColorScheme;
 		}),
@@ -35,7 +35,7 @@ function createUi() {
 		queryTerminalColors,
 		setTerminalColorSchemeNotifications,
 		unsubscribeTerminalColorScheme,
-		emitTerminalColorScheme: (terminalTheme: TerminalTheme) => terminalColorSchemeListener?.(terminalTheme),
+		emitTerminalColorScheme: (terminalTheme: ThemeAppearance) => terminalColorSchemeListener?.(terminalTheme),
 	};
 }
 

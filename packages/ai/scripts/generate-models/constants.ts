@@ -224,6 +224,8 @@ export const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
 	"gpt-6-luna",
 	"gpt-6.1-sol",
 ]);
+// These capabilities share a model cohort, but their transport gates differ:
+// proxies allow transcript updates without tool search; Codex has its own additions subset.
 export const OPENAI_ADDITIONAL_TOOLS_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 export const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 export const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([

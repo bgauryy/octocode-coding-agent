@@ -1,5 +1,5 @@
 import type { TelemetryContext, TelemetryMetrics, TelemetryPropagation } from "../index.ts";
-import type { RecordedTelemetryMeasurement, RecordedTelemetrySpan } from "../memory.ts";
+import type { RecordedTelemetryMeasurement, RecordedTelemetrySpan } from "../memory/recording.ts";
 
 /** A fresh adapter instance and normalized snapshot reader owned by one conformance case. */
 export interface TelemetryAdapterFixture extends AsyncDisposable {

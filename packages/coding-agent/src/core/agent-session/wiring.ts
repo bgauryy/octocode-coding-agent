@@ -58,6 +58,7 @@ export interface SessionSeams {
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck?: boolean,
 		toolResults?: AgentMessage[],
+		incoming?: readonly AgentMessage[],
 	): Promise<boolean>;
 	runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean>;
 	emitExtensionEvent: AgentEventsHost["emitExtensionEvent"];

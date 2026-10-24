@@ -1,4 +1,5 @@
 import type { MarkdownTransformContext, MarkdownTransformer } from "../../../core/extensions/types.ts";
+import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 export function createMarkdownTransform(
 	messageType: MarkdownTransformContext["messageType"],
@@ -14,7 +15,7 @@ function applyMarkdownTransformers(
 	context: MarkdownTransformContext,
 	transformers: readonly MarkdownTransformer[],
 ): string {
-	let transformedMarkdown = markdown;
+	let transformedMarkdown = sanitizeTerminalText(markdown);
 	for (const transformer of transformers) {
 		try {
 			const transformed = transformer(transformedMarkdown, context);
@@ -25,5 +26,5 @@ function applyMarkdownTransformers(
 			// Keep the current Markdown and continue with the next transformer.
 		}
 	}
-	return transformedMarkdown;
+	return sanitizeTerminalText(transformedMarkdown);
 }

@@ -1,5 +1,6 @@
 import { type Component, dispatchMouseEvent, type TuiMouseDispatchResult, type TuiMouseEvent } from "../tui.ts";
-import { flattenLines, visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { flattenLines } from "../utils/wrap.ts";
 
 type RenderCache = {
 	childLines: string[];

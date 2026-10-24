@@ -7,8 +7,9 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openAgentDb, type AgentDb } from "../../src/octocode/agentdb/db.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { startWorkspaceWeb as startBacklogWeb, type BacklogWeb } from "../../src/octocode/workspace/server.ts";
+import { startWorkspaceWeb } from "../../src/octocode/workspace/server.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
+import type { BacklogWeb } from "../../src/octocode/backlog/context.ts";
 
 let db: AgentDb;
 let store: BacklogStore;
@@ -196,7 +197,7 @@ describe("backlog composition", () => {
 
 describe("live local backlog", () => {
 	it("pushes authenticated snapshots and changes from another database connection", async () => {
-		web = await startBacklogWeb({ store, actor, session: actor.id, repoName: "repo" });
+		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo" });
 		const url = new URL(web.url);
 		const address = url.origin.replace("http:", "ws:") + "/api/backlogs/live";
 		const bad = new WebSocket(address, { origin: url.origin });
@@ -222,7 +223,7 @@ describe("live local backlog", () => {
 		}
 	});
 	it("authenticates reads and writes, rejects other origins and preserves version conflicts", async () => {
-		web = await startBacklogWeb({ store, actor, session: actor.id, repoName: "repo" });
+		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo" });
 		const url = new URL(web.url);
 		const token = url.hash.slice(8);
 		const api = url.origin + "/api/backlogs";

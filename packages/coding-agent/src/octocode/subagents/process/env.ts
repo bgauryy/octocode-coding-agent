@@ -21,19 +21,20 @@ import {
 	SUBAGENT_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	TRUST_ROOT_ENV,
+	AGENT_SCRATCH_ENV,
+	TEAM_WORKSPACE_ENV,
 } from "../../shared/env.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "../../shared/home.ts";
+import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
 import {
 	AGENT_COLLABORATE_ENV,
 	AGENT_GOAL_ENV,
 	AGENT_ID_ENV,
 	AGENT_ROLE_ENV,
-	AGENT_SCRATCH_ENV,
 	PARENT_ID_ENV,
 	PARENT_PID_ENV,
-	TEAM_WORKSPACE_ENV,
-} from "../../team/store.ts";
+} from "../../team/store/env.ts";
 import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
 
@@ -50,6 +51,11 @@ export interface Identity {
 	goal?: string;
 	/** Works with its sibling subagents (messages them directly), not only for its parent. */
 	collaborate?: boolean;
+	/**
+	 * Set for an isolated child. `path` is its worktree, `repo` the main checkout and `cwd` where it runs. Its system
+	 * prompt names the main checkout, so every child of one profile shares the prompt; the task names the worktree.
+	 */
+	isolation?: { path: string; repo: string; cwd: string };
 	/** The parent's team workspace, for a child whose cwd is an isolated worktree (a different git root). */
 	workspace?: string;
 	/** Set only when the parent's project config is trusted: the repository whose stored decision an isolated child follows. */
@@ -99,6 +105,8 @@ export function subagentProcessEnv(
 		PERMISSION_GRANTS_ENV,
 		PERMISSION_NONCE_FILE_ENV,
 		PERMISSION_RELAY_ENV,
+		WORKTREE_ROOT_ENV,
+		PROMPT_ROOT_ENV,
 		AGENT_ID_ENV,
 		AGENT_ROLE_ENV,
 		PARENT_ID_ENV,
@@ -130,6 +138,9 @@ export function subagentProcessEnv(
 		...(identity?.role ? { [AGENT_ROLE_ENV]: identity.role } : {}),
 		...(identity?.goal ? { [AGENT_GOAL_ENV]: identity.goal } : {}),
 		...(identity?.collaborate ? { [AGENT_COLLABORATE_ENV]: "1" } : {}),
+		...(identity?.isolation
+			? { [WORKTREE_ROOT_ENV]: identity.isolation.path, [PROMPT_ROOT_ENV]: identity.isolation.repo }
+			: {}),
 		...(identity?.workspace ? { [TEAM_WORKSPACE_ENV]: identity.workspace } : {}),
 		...(identity?.trustRoot ? { [TRUST_ROOT_ENV]: identity.trustRoot } : {}),
 		...(identity?.scratch ? { [AGENT_SCRATCH_ENV]: identity.scratch } : {}),

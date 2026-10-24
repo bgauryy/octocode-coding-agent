@@ -37,7 +37,7 @@ interface ProviderModelConfigBase {
 	headers?: Record<string, string>;
 }
 
-export interface ProviderChatModelConfig extends ProviderModelConfigBase {
+interface ProviderChatModelConfig extends ProviderModelConfigBase {
 	type?: "chat";
 	api?: Api;
 	reasoning: boolean;
@@ -50,13 +50,13 @@ export interface ProviderChatModelConfig extends ProviderModelConfigBase {
 	compat?: Model<Api>["compat"];
 }
 
-export interface ProviderImageModelConfig extends ProviderModelConfigBase {
+interface ProviderImageModelConfig extends ProviderModelConfigBase {
 	type: "image";
 	api?: ImageApi;
 	output: ("text" | "image")[];
 }
 
-export interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
+interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
 	type: "classifier";
 	api?: ClassifierApi;
 	contextWindow: number;

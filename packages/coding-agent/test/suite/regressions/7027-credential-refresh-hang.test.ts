@@ -1,7 +1,6 @@
-import type { Api, Model, Provider } from "@octocodeai/octocode-ai";
+import type { Model, Provider } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
-import { defaultModelPerProvider } from "../../../src/core/model-resolver.ts";
 import { ModelRuntime } from "../../../src/core/model-runtime.ts";
 import * as loginDialogs from "../../../src/modes/interactive/interactive-mode/login-dialogs.ts";
 import { createHarness, type Harness } from "../harness.ts";
@@ -12,15 +11,8 @@ function complete(
 	providerId: string,
 	providerName: string,
 	authType: "oauth" | "api_key",
-	previousModel: Model<Api>,
 ): Promise<void> {
-	return loginDialogs.completeProviderAuthentication(
-		createFakeHost(context),
-		providerId,
-		providerName,
-		authType,
-		previousModel,
-	);
+	return loginDialogs.completeProviderAuthentication(createFakeHost(context), providerId, providerName, authType);
 }
 
 const dynamicModel: Model<"openai-completions"> = {
@@ -94,136 +86,23 @@ describe("issues #7027 and #7113 credential refresh hang", () => {
 		await expect(stalledRefresh).resolves.toMatchObject({ aborted: false });
 	});
 
-	it("completes interactive login before its bounded background refresh", async () => {
+	it("opens model selection without waiting for a network refresh or changing the default", async () => {
 		harness = await createHarness();
-		vi.useFakeTimers();
 		const runtime = harness.session.modelRuntime;
-		vi.spyOn(runtime, "refresh").mockImplementation(
-			(options) =>
-				new Promise((resolve) => {
-					options?.signal?.addEventListener("abort", () => resolve({ aborted: true, errors: new Map() }), {
-						once: true,
-					});
-				}),
-		);
-		const showWarning = vi.fn();
+		const refresh = vi.spyOn(runtime, "refresh");
+		const setModel = vi.spyOn(harness.session, "setModel");
 		const context = {
 			session: harness.session,
 			updateAvailableProviderCount: vi.fn(),
-			footer: { invalidate: vi.fn() },
-			updateEditorBorderColor: vi.fn(),
-			showStatus: vi.fn(),
-			showError: vi.fn(),
-			showWarning,
-			maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
-			ui: { requestRender: vi.fn() },
-		};
-		await complete(context, dynamicModel.provider, "Stalled Login", "api_key", harness.getModel());
-		expect(runtime.refresh).toHaveBeenCalledWith({
-			providers: [dynamicModel.provider],
-			signal: expect.any(AbortSignal),
-		});
-		expect(showWarning).not.toHaveBeenCalled();
-
-		await vi.advanceTimersByTimeAsync(15_000);
-		expect(showWarning).toHaveBeenCalledWith(
-			"Saved API key for Stalled Login, but its model catalog refresh timed out; using cached models.",
-		);
-	});
-});
-
-describe("post-login model discovery", () => {
-	let harness: Harness | undefined;
-	afterEach(() => {
-		vi.useRealTimers();
-		harness?.cleanup();
-		vi.restoreAllMocks();
-	});
-
-	async function startLogin() {
-		harness = await createHarness();
-		vi.useFakeTimers();
-		const session = harness.session;
-		const model = harness.getModel();
-		const unknownModel = { ...model, id: "unknown", provider: "unknown", api: "unknown" };
-		const currentModel = vi.spyOn(session, "model", "get").mockReturnValue(unknownModel);
-		const availableModels = vi.spyOn(session.modelRuntime, "getAvailableSnapshot").mockReturnValue([]);
-		let finishRefresh = () => {};
-		vi.spyOn(session.modelRuntime, "refresh").mockImplementation(
-			(options) =>
-				new Promise((resolve) => {
-					finishRefresh = () => resolve({ aborted: false, errors: new Map() });
-					options?.signal?.addEventListener("abort", () => resolve({ aborted: true, errors: new Map() }), {
-						once: true,
-					});
-				}),
-		);
-		const setModel = vi.spyOn(session, "setModel").mockResolvedValue();
-		const context = {
-			session,
-			updateAvailableProviderCount: vi.fn(),
-			footer: { invalidate: vi.fn() },
 			updateEditorBorderColor: vi.fn(),
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 			showWarning: vi.fn(),
-			maybeWarnAboutAnthropicSubscriptionAuth: vi.fn(),
-			ui: { requestRender: vi.fn() },
+			showModelSelector: vi.fn(),
 		};
-		await complete(context, "openrouter", "OpenRouter", "oauth", unknownModel);
-		expect(context.showStatus).toHaveBeenCalledWith(expect.stringContaining("Credentials saved"));
-		expect(context.showError).not.toHaveBeenCalled();
+		await complete(context, dynamicModel.provider, "Stalled Login", "api_key");
+		expect(context.showModelSelector).toHaveBeenCalledWith(`${dynamicModel.provider}/`);
+		expect(refresh).not.toHaveBeenCalled();
 		expect(setModel).not.toHaveBeenCalled();
-
-		return {
-			...context,
-			setModel,
-			currentModel,
-			async discover(ids: string[]) {
-				availableModels.mockReturnValue(ids.map((id) => ({ ...model, provider: "openrouter", id })));
-				finishRefresh();
-				await vi.advanceTimersByTimeAsync(0);
-			},
-		};
-	}
-
-	it("selects the provider default from the refreshed catalog", async () => {
-		const selected = defaultModelPerProvider.openrouter!;
-		const login = await startLogin();
-		await login.discover(["fast", selected]);
-		expect(login.setModel).toHaveBeenCalledWith(expect.objectContaining({ provider: "openrouter", id: selected }), {
-			persist: true,
-		});
-		expect(login.showError).not.toHaveBeenCalled();
-	});
-
-	it("reports a refreshed catalog without the provider default", async () => {
-		const login = await startLogin();
-		await login.discover(["fast"]);
-		expect(login.setModel).not.toHaveBeenCalled();
-		expect(login.showError).toHaveBeenCalledWith(expect.stringContaining("is not available"));
-	});
-
-	it("reports an empty catalog only after refresh", async () => {
-		const login = await startLogin();
-		await login.discover([]);
-		expect(login.setModel).not.toHaveBeenCalled();
-		expect(login.showError).toHaveBeenCalledWith(expect.stringContaining("no models are available"));
-	});
-
-	it("preserves a model selected during refresh", async () => {
-		const login = await startLogin();
-		login.currentModel.mockReturnValue(harness!.getModel());
-		await login.discover(["fast", "balanced"]);
-		expect(login.setModel).not.toHaveBeenCalled();
-		expect(login.showError).not.toHaveBeenCalled();
-	});
-
-	it("bounds refresh to 15 seconds", async () => {
-		const login = await startLogin();
-		await vi.advanceTimersByTimeAsync(15_000);
-		expect(login.showWarning).toHaveBeenCalledWith(expect.stringContaining("timed out"));
-		expect(login.showError).toHaveBeenCalledWith(expect.stringContaining("no models are available"));
-		expect(login.setModel).not.toHaveBeenCalled();
 	});
 });

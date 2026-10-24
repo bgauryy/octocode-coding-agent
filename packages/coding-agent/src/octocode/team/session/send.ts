@@ -1,12 +1,13 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
-import { errorMessage } from "../../shared/util.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import type { Mail } from "../mail.ts";
-import type { Member, SendOptions } from "../model.ts";
+import type { SendOptions } from "../model.ts";
 import { interruptRefusal, outside, resolveTarget } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
 import { spilledMessage } from "./spilled-message.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** What sending reads of the team (`Team`, `session.ts`): the current values each time, so a change while a hook runs is seen. */
 export interface SendHost {
@@ -39,6 +40,10 @@ export async function sendMessage(
 	const db = host.store();
 	const sendingContext = host.ctx();
 	const sendingMember = host.me();
+	// A parked child's permission check can outlive the outbound hook: keep both cancellations through resumption.
+	const signal = options.signal
+		? AbortSignal.any([options.signal, ...(sendingContext?.signal ? [sendingContext.signal] : [])])
+		: sendingContext?.signal;
 	const changed = () => host.ctx() !== sendingContext || host.me() !== sendingMember || host.db() !== db;
 	const answered = options.replyTo === undefined ? undefined : db.replyTarget(options.replyTo);
 	if (options.replyTo !== undefined && !answered)
@@ -61,7 +66,6 @@ export async function sendMessage(
 		if (changed()) return "The session or team membership changed before the message could be sent.";
 		const ctx = sendingContext;
 		if (!host.messageHook() || !ctx) return undefined;
-		const signal = options.signal ? AbortSignal.any([options.signal, ...(ctx.signal ? [ctx.signal] : [])]) : ctx.signal;
 		try {
 			await host.messageHook()!(
 				{
@@ -89,9 +93,7 @@ export async function sendMessage(
 		if (sendingContext?.signal?.aborted) return { error: errorMessage(sendingContext.signal.reason) };
 	}
 	const resumed =
-		typeof targets === "string" && host.finished.has(to)
-			? await host.resumer()?.(to, text, from, options.signal)
-			: undefined;
+		typeof targets === "string" && host.finished.has(to) ? await host.resumer()?.(to, text, from, signal) : undefined;
 	if (resumed) return { sent: [to], id: 0, resumed };
 	if (typeof targets === "string")
 		return {

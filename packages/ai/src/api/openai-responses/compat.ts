@@ -8,7 +8,7 @@ import type { OpenAIResponsesOptions } from "./types.ts";
 export function isChatGPTSignIn(model: Model<"openai-responses">, apiKey: string | undefined): boolean {
 	return (
 		model.provider === "openai" &&
-		model.baseUrl === "https://api.openai.com/v1" &&
+		model.baseUrl.replace(/\/+$/, "") === "https://api.openai.com/v1" &&
 		apiKey !== undefined &&
 		!apiKey.startsWith("sk-")
 	);

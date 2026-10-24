@@ -1,7 +1,8 @@
 import { formatAgo, formatSpan } from "../shared/format.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { refText } from "./row.ts";
-import { type BacklogStore, type Item, type Note, priorityName, STATES, type State } from "./store.ts";
+import { type BacklogStore, type Item, priorityName } from "./store.ts";
+import { type Note, STATES, type State } from "@octocodeai/octocode-contacts/snapshot";
 
 export const STATE_TITLE: Record<State, string> = {
 	ongoing: "Ongoing",
@@ -69,7 +70,7 @@ function noteLine(note: Note, now: number, self?: string, parents?: ReadonlySet<
 }
 
 /** The item's saved fields in reading order, empty ones omitted: Goal, Where, Why, Evidence (one `-` line per entry), Plan. */
-export function itemFields(item: Item): string[] {
+function itemFields(item: Item): string[] {
 	const lines: string[] = [`Type: ${item.type}`];
 	if (item.parentId) lines.push(`Parent: ${item.parentId}`);
 	if (item.dependsOn.length) lines.push(`Depends on: ${item.dependsOn.map((ref) => ref.id).join(", ")}`);
@@ -148,14 +149,14 @@ export function boardText(store: BacklogStore, self?: string): string {
 	return sections.join("\n");
 }
 
-/** Footer counts: `backlog 1 ongoing · 4 todo · 2 to triage · /backlog`; empty when there is nothing open. */
+/** Keep the web workspace discoverable even when there are no open items; append live backlog counts. */
 export function countsText(counts: Record<State, number>): string {
 	const parts = [
 		counts.ongoing ? `${counts.ongoing} ongoing` : "",
 		counts.todo ? `${counts.todo} todo` : "",
 		counts.backlog ? `${counts.backlog} to triage` : "",
 	].filter(Boolean);
-	return parts.length ? `backlog ${parts.join(" · ")} · /backlog` : "";
+	return ["/web · backlogs & activity", ...parts].join(" · ");
 }
 
 /** Markdown snapshot of the whole board with every note, for `<repo>/.octocode/backlog.md`. Nothing reads it back. */

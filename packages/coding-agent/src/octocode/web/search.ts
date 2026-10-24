@@ -1,7 +1,8 @@
-import { errorMessage, isRecord, stringOrEmpty } from "../shared/util.ts";
+import { stringOrEmpty, untilAborted } from "../shared/util.ts";
 import { combineSignals, language, readCapped, USER_AGENT } from "./fetch.ts";
 import { isHttpUrl, type PublicFetchInit, publicFetch } from "./guard.ts";
 import { decodeEntities, htmlToText } from "./html.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 interface SearchHit {
 	title: string;
@@ -106,7 +107,7 @@ interface SearchOutcome {
  * Searches through a chain: every configured API (Tavily, Serper, Exa, Brave), then the keyless HTML pages
  * (DuckDuckGo, Bing, DuckDuckGo lite). A provider that fails (a bad key, a rate limit) passes to the next, and so
  * does one with no hits (a block page often parses as empty, and another index may know the query). Throws only when
- * every provider failed.
+ * every provider failed or the shared 30-second deadline expires.
  */
 export async function search(
 	query: string,
@@ -116,7 +117,8 @@ export async function search(
 ): Promise<SearchOutcome> {
 	// Every provider call goes through the guarded request: public addresses only, pinned connection, no redirect for a
 	// keyed API (it carries a secret), and a body read to at most the shared cap.
-	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: combineSignals(signal) });
+	const deadline = combineSignals(signal);
+	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: deadline });
 	const read = async (response: Response): Promise<{ text: string; truncated: boolean }> =>
 		readCapped(response, response.headers.get("content-type") ?? "");
 	const post = async (url: string, headers: Record<string, string>, body: unknown) => {
@@ -228,7 +230,8 @@ export async function search(
 	const empty: string[] = [];
 	for (const provider of [...keyed, ...keyless]) {
 		try {
-			const hits = await provider.run();
+			deadline.throwIfAborted();
+			const hits = await untilAborted(provider.run(), deadline);
 			if (hits.length > 0)
 				return {
 					provider: provider.name,
@@ -239,6 +242,8 @@ export async function search(
 		} catch (error) {
 			if (signal?.aborted) throw error;
 			failures.push(`${provider.name}: ${errorMessage(error)}`);
+			if (deadline.aborted)
+				throw new Error(`Search deadline reached (${failures.join("; ")}). Try a known URL or a narrower search.`);
 		}
 	}
 	if (empty.length > 0) return { provider: empty.join(", "), hits: [], failures };

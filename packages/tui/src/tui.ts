@@ -3,7 +3,8 @@
  */
 
 import { performance } from "node:perf_hooks";
-import { isKeyRelease, matchesKey } from "./keys.ts";
+import { matchesKey } from "./keys/match.ts";
+import { isKeyRelease } from "./keys/sequences.ts";
 import type { OutputTelemetry, Terminal } from "./terminal.ts";
 import {
 	parseOscColorResponse,
@@ -12,8 +13,11 @@ import {
 	type TerminalColorScheme,
 	type TerminalColors,
 } from "./terminal-colors.ts";
-import { getCapabilities, isImageLine, setCellDimensions } from "./terminal-image.ts";
-import { extractSegments, normalizeTerminalOutput, sliceByColumn, sliceWithWidth, visibleWidth } from "./utils.ts";
+import { getCapabilities, setCellDimensions } from "./terminal-image/capabilities.ts";
+import { isImageLine } from "./terminal-image.ts";
+import { visibleWidth } from "./utils/width.ts";
+import { extractSegments, sliceByColumn, sliceWithWidth } from "./utils/columns.ts";
+import { normalizeTerminalOutput } from "./utils.ts";
 
 /**
  * Component interface - all components must implement this
@@ -205,7 +209,7 @@ export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
 /** Fake cursor markers - zero-width APC sequences around the text drawn as the cursor. See resolveFakeCursors(). */
 export const FAKE_CURSOR_START = "\x1b_pi:fc\x07";
-export const FAKE_CURSOR_END = "\x1b_pi:/fc\x07";
+const FAKE_CURSOR_END = "\x1b_pi:/fc\x07";
 // CURSOR_MARKER + FAKE_CURSOR_START + text + FAKE_CURSOR_END. Truncating the line right after the cursor cell drops the end.
 const FOCUSED_FAKE_CURSOR = /(\x1b_pi:c\x07)\x1b_pi:fc\x07(.*?)(?:\x1b_pi:\/fc\x07|$)/s;
 
@@ -213,8 +217,6 @@ const FOCUSED_FAKE_CURSOR = /(\x1b_pi:c\x07)\x1b_pi:fc\x07(.*?)(?:\x1b_pi:\/fc\x
 export function renderFakeCursor(text: string): string {
 	return `${FAKE_CURSOR_START}${text}${FAKE_CURSOR_END}`;
 }
-
-export { visibleWidth };
 
 /**
  * Anchor position for overlays

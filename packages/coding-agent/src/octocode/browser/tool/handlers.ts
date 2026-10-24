@@ -5,20 +5,10 @@ import { capOutputToFile } from "../../shared/spill.ts";
 import { contentText, textResult, withTimeout } from "../../shared/util.ts";
 import { imageLimits } from "../../shared/vision.ts";
 import { answerDialog, dialogNotice, download, uploadFiles } from "../actions.ts";
-import { blockedSuffix, type BrowserSession, CONSOLE_KEEP } from "../cdp.ts";
-import {
-	click,
-	drag,
-	elementExpr,
-	fillFields,
-	hover,
-	pressKey,
-	refForText,
-	settle,
-	settleAfterLoad,
-	typeInto,
-	waitForText,
-} from "../input.ts";
+import { blockedSuffix, type BrowserSession, CONSOLE_KEEP } from "../cdp/browser-session.ts";
+import { pressKey } from "../input/keyboard.ts";
+import { settle, settleAfterLoad, waitForText } from "../input/settle.ts";
+import { click, drag, elementExpr, fillFields, hover, refForText, typeInto } from "../input.ts";
 import { screenshot } from "../screenshot.ts";
 import { snapshot } from "../snapshot.ts";
 import { describeTabs, followNewTab, NAVIGATE_LOAD_MS, newTab, selectTab, tabIds } from "../tabs.ts";
@@ -26,11 +16,11 @@ import type { BrowserTool } from "./browser-tool.ts";
 import { checkUploadPaths } from "./checks.ts";
 import { type ACTIONS, type BrowserParams, WAIT_DEFAULT_S, WAIT_MAX_S } from "./parameters.ts";
 
-export type ActionResult = {
+type ActionResult = {
 	content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
 	details: undefined;
 };
-export type BrowserAction = (typeof ACTIONS)[number];
+type BrowserAction = (typeof ACTIONS)[number];
 /** Actions that manage the session itself rather than act on its page. */
 type SessionAction = "close" | "info" | "attach";
 type PageActionName = Exclude<BrowserAction, SessionAction>;

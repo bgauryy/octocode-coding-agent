@@ -5,6 +5,7 @@ import { ActivityView } from "./ActivityView.tsx";
 import { AgentsView } from "./AgentsView.tsx";
 import { AuditView } from "./AuditView.tsx";
 import { Editor } from "./Editor.tsx";
+import { ItemQuickAction } from "./ItemImplementation.tsx";
 import { ItemActions, ItemActivity } from "./ItemPanels.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ConnectionStatus, LiveProvider } from "./session.tsx";
@@ -34,6 +35,7 @@ export const live: LiveExtension | null = {
 	Provider: LiveProvider,
 	ConnectionStatus,
 	ItemActions,
+	ItemQuickAction,
 	ItemActivity,
 	Editor,
 	RichText: Markdown,

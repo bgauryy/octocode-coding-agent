@@ -1,9 +1,7 @@
-import type { ImageContent, SystemMessage, TextContent, ThinkingContent, ToolCall } from "../types.ts";
-
-type Content = TextContent | ImageContent | ThinkingContent | ToolCall;
+import type { AssistantContent, SystemMessage } from "../types.ts";
 
 /** Extract and join text from message content. */
-export function contentText(content: string | readonly Content[], separator = "\n"): string {
+export function contentText(content: string | readonly AssistantContent[], separator = "\n"): string {
 	if (typeof content === "string") return content;
 	return content
 		.filter((block) => block.type === "text")
@@ -37,4 +35,20 @@ export function renderSystemMessageUpdate(message: SystemMessage): string {
 		);
 	}
 	return parts.join("\n\n");
+}
+
+/**
+ * Render a later system message as the text of a user-role message, for APIs that reject
+ * mid-conversation system messages. The leading prompt must stay byte-identical for prefix
+ * caching, so an update travels as a marked user turn instead of rewriting it. Returns an
+ * empty string when the message carries no prompt text (a tool-only change).
+ * This framing is request-time only and may change between versions.
+ */
+export function renderSystemUpdateAsUserText(message: SystemMessage): string {
+	const update = renderSystemMessageUpdate(message);
+	if (update.length === 0) return "";
+	return [
+		"[System update from the harness, not written by the user. It amends the system prompt and overrides earlier instructions it contradicts. Continue the user's current request.]",
+		update,
+	].join("\n\n");
 }

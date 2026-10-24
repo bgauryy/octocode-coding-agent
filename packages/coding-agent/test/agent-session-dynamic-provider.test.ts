@@ -2,18 +2,18 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Provider } from "@octocodeai/octocode-ai";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import type { ExtensionFactory } from "../src/core/sdk.ts";
+import type { ExtensionFactory } from "../src/core/extensions/index.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
 function nativeAnthropicProvider(baseUrl: string): Provider {
-	const model = { ...getModel("anthropic", "claude-sonnet-4-5"), baseUrl };
+	const model = { ...getBuiltinModel("anthropic", "claude-sonnet-4-5"), baseUrl };
 	return {
 		id: "anthropic",
 		name: "Native Anthropic",
@@ -70,7 +70,7 @@ describe("AgentSession dynamic provider registration", () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager,
 			modelRuntime,

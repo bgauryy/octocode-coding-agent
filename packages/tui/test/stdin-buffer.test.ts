@@ -7,7 +7,7 @@
 
 import assert from "node:assert";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { matchesKey } from "../src/keys.ts";
+import { matchesKey } from "../src/keys/match.ts";
 import { PASTE_IDLE_TIMEOUT_MS, StdinBuffer } from "../src/stdin-buffer.ts";
 
 describe("StdinBuffer", () => {

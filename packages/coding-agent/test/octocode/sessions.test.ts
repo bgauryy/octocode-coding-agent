@@ -11,10 +11,11 @@ import * as sessionStore from "../../src/octocode/sessions/store.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { describeWork, unreportedWork } from "../../src/octocode/sessions/work.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { repoKey, sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/shared/home.ts";
+import { sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { repoKey } from "../../src/octocode/shared/home/repo.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -269,7 +270,7 @@ describe("session extras", () => {
 	it("keeps no rows for a subagent and registers only the after-compaction running-work note", async () => {
 		const { handlers, commands } = setup({ subagent: true });
 		expect([...handlers.keys()].sort()).toEqual(["session_compact", "session_start"]);
-		expect(commands.get("sessions")).toBeUndefined();
+		expect(commands.get("resume")).toBeUndefined();
 	});
 
 	it("warns once and keeps the session going when the agent database is not ours", async () => {
@@ -618,17 +619,17 @@ describe("/octocode sessions", () => {
 	it("lists Octocode's sessions of this directory newest first with their extras, all directories with `all`, and filters by a query", async () => {
 		const { current } = await withSessions();
 		const ctx = Object.assign(current.ctx, { hasUI: false });
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		const text = ctx.ui.notes.at(-1)!.message;
 		expect(text.split("\n")[1]).toMatch(/^● Current work · moments ago · 0 messages · cur \(current\)$/);
 		expect(text).toMatch(/○ Old task · feat\/x · 2h ago · ≈\$1\.50 \+ n\/a · 2 files · 4 messages · other/);
 		expect(text).not.toMatch(/elsewhere/);
-		await current.commands.get("sessions")!.handler("all", ctx);
+		await current.commands.get("resume")!.handler("all", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/○ Far away · elsewhere · 3h ago · cost n\/a/);
-		await current.commands.get("sessions")!.handler("MORE", ctx);
+		await current.commands.get("resume")!.handler("MORE", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).not.toMatch(/Current work/);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/Old task/);
-		expect(current.commands.get("sessions")!.complete!("a")).toEqual([{ value: "all", label: "all" }]);
+		expect(current.commands.get("resume")!.complete!("a")).toEqual([{ value: "all", label: "all" }]);
 	});
 
 	it("still lists without the agent database, and says when Octocode cannot list", async () => {
@@ -638,17 +639,17 @@ describe("/octocode sessions", () => {
 		closeSharedAgentDb();
 		process.env.OCTOCODE_AGENT_DB = foreign;
 		const ctx = Object.assign(current.ctx, { hasUI: false });
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/○ Old task · 2h ago · 4 messages/);
 		vi.mocked(SessionManager.list).mockRejectedValueOnce(new Error("disk gone"));
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/Octocode could not list its sessions: disk gone/);
 	});
 
 	it("resumes, shows, renames and forgets a picked session", async () => {
 		const { current, other } = await withSessions();
 		const ctx = current.ctx;
-		const handler = current.commands.get("sessions")!.handler;
+		const handler = current.commands.get("resume")!.handler;
 		const pick = async (index: number, action: string) => {
 			const lines: string[][] = [];
 			Object.assign(ctx.ui, {
@@ -719,7 +720,7 @@ describe("/octocode sessions", () => {
 				},
 			});
 			ctx.ui.confirms.push(true);
-			await current.commands.get("sessions")!.handler("", ctx);
+			await current.commands.get("resume")!.handler("", ctx);
 			expect(ctx.ui.notes.at(-1)!.message).toMatch(/Refusing to forget "Odd id"/);
 			expect(fs.readFileSync(inside, "utf8")).toBe("x");
 			expect(fs.readFileSync(outside, "utf8")).toBe("x");
@@ -735,7 +736,7 @@ describe("/octocode sessions", () => {
 			select: async (_title: string, options: string[]) => (calls++ === 0 ? options[1] : "Resume"),
 		});
 		ctx.ui.confirms.push(false);
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		expect(current.switched).toEqual([]);
 	});
 
@@ -762,7 +763,7 @@ describe("/octocode sessions", () => {
 					return "Details";
 				},
 			});
-			await current.commands.get("sessions")!.handler("", ctx);
+			await current.commands.get("resume")!.handler("", ctx);
 			expect(ctx.ui.notes.at(-1)!.message).toContain(`id: ${id}`);
 		}
 		expect(new Set(lines).size).toBe(lines.length);
@@ -773,7 +774,7 @@ describe("/octocode sessions", () => {
 		const { current, other } = await withSessions();
 		piSessions.push(info("fork", { parentSessionPath: other.path, modified: new Date(Date.now() - 4 * HOUR) }));
 		const ctx = Object.assign(current.ctx, { hasUI: false });
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/↳ Old task · .*\n\s+fork/);
 	});
 
@@ -786,7 +787,7 @@ describe("/octocode sessions", () => {
 			select: async (_title: string, options: string[]) => (calls++ === 0 ? options[1] : "Forget Octocode data"),
 		});
 		ctx.ui.confirms.push(true);
-		await current.commands.get("sessions")!.handler("", ctx);
+		await current.commands.get("resume")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(
 			new RegExp(`open in another Octocode process \\(pid ${process.ppid}\\)`),
 		);
@@ -802,16 +803,16 @@ describe("/octocode sessions", () => {
 			return true;
 		});
 		try {
-			await current.commands.get("sessions")!.handler("all", ctx);
+			await current.commands.get("resume")!.handler("all", ctx);
 		} finally {
 			write.mockRestore();
 		}
 		expect(written.at(-1)).toMatch(/^Sessions \(all directories\), newest first:\n[\s\S]*elsewhere\n$/);
 	});
 
-	it("registers /resume with sessions as alias", () => {
+	it("registers /resume under one name", () => {
 		const { piCommands } = setup();
-		expect(piCommands.get("resume")?.aliases).toEqual(["sessions"]);
+		expect(piCommands.has("resume")).toBe(true);
 		expect(piCommands.has("sessions")).toBe(false);
 	});
 });

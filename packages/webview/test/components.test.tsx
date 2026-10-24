@@ -6,28 +6,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "../src/app/App.tsx";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { rankCommands } from "../src/app/features/CommandPalette.tsx";
+import { snapshotItem } from "./helpers.ts";
 
 function item(ref: string, overrides: Partial<SnapshotItem> = {}): SnapshotItem {
-	return {
-		ref,
-		title: `Task ${ref}`,
-		goal: "",
-		body: "",
-		paths: [],
-		why: "",
-		evidence: [],
-		plan: "",
-		state: "todo",
-		priority: "p2",
-		tags: [],
-		createdBy: "kim",
-		createdAt: 0,
-		updatedAt: 0,
-		version: 1,
-		derived: [],
-		notes: [],
-		...overrides,
-	};
+	return snapshotItem(ref, { title: `Task ${ref}`, state: "todo", createdBy: "kim", ...overrides });
 }
 const snapshot: Snapshot = {
 	repo: "octo-repo",

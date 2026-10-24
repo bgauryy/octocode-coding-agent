@@ -5,8 +5,10 @@ import { resultBlock } from "../../shared/render.ts";
 import { redactSecrets, sanitizeTerminalText } from "../../shared/sanitize.ts";
 import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
-import { commandsFor, type HookHandler, hookLabel, type HookEvent } from "../config.ts";
+import { hookLabel } from "../config.ts";
 import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
+import { commandsFor } from "../config/calls.ts";
+import type { HookHandler, HookEvent } from "../contracts.ts";
 
 /**
  * Shows `label` in the footer status while `work` runs, with its elapsed time in the TUI. For hooks that run after Octocode

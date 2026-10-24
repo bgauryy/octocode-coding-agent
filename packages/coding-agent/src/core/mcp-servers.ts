@@ -30,6 +30,9 @@ export const LIST_MCP_RESOURCES_TOOL = "list_mcp_resources";
 export const LIST_MCP_RESOURCE_TEMPLATES_TOOL = "list_mcp_resource_templates";
 export const READ_MCP_RESOURCE_TOOL = "read_mcp_resource";
 
+/** The built-in MCP extension's tool that lists, connects and edits servers. */
+export const MCP_MANAGE_TOOL_NAME = "mcp";
+
 const MCP_RESOURCE_TOOLS: ReadonlySet<string> = new Set([
 	LIST_MCP_RESOURCES_TOOL,
 	LIST_MCP_RESOURCE_TEMPLATES_TOOL,
@@ -81,7 +84,7 @@ interface McpServerConfigBase {
 	timeout?: number;
 }
 
-export interface McpStdioServerConfig extends McpServerConfigBase {
+interface McpStdioServerConfig extends McpServerConfigBase {
 	type?: "stdio";
 	command: string;
 	args?: string[];
@@ -150,7 +153,7 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 	literalHeaders?: boolean;
 	oauth?: McpOAuthConfig;
 	/**
-	 * Send the token of a pi provider (`/login <provider>`) instead of using OAuth. Not allowed in project
+	 * Send the token of a model provider (`/providers <provider>`) instead of using OAuth. Not allowed in project
 	 * `mcp.json` files, and requires https except on loopback hosts, since it sends the credential to `url`.
 	 */
 	auth?: { provider: string };

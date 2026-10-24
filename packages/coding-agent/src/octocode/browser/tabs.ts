@@ -1,6 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { blockedSuffix, type BrowserSession, httpOrigin, openTab, type PageTarget, pageTargets } from "./cdp.ts";
+import { openTab, pageTargets } from "./cdp.ts";
 import { switchTo } from "./session.ts";
+import { blockedSuffix, type BrowserSession, httpOrigin } from "./cdp/browser-session.ts";
+import type { PageTarget } from "./cdp/protocol.ts";
 
 /** What the agent opening a private page records for the tab that loads it (see `BrowserTool.open`); nothing for a public page. */
 export type Approval = (tab: string) => void;

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
 import { notify } from "../../shared/commands.ts";
-import { isRecord, modelLookup, unpricedModel } from "../../shared/util.ts";
+import { modelLookup, unpricedModel } from "../../shared/util.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
 /**
  * Says once per session, as a warning, that a reply came from a model without pricing: the cost shown leaves its usage

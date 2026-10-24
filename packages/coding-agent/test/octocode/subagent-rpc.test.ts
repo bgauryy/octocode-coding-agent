@@ -4,9 +4,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type * as NativeConfig from "../../src/config.ts";
 import octocode from "../../src/octocode/index.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
-import { ABORT_SETTLE_MS, runSubagent, USER_STOP } from "../../src/octocode/subagents/process.ts";
+import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { ABORT_SETTLE_MS, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
 const savedArgv = process.argv[1];

@@ -7,22 +7,6 @@ import type { PageTarget } from "./cdp/protocol.ts";
  * session is `session.ts`; checking its requests is `page-network.ts`.
  */
 
-export {
-	blockedSuffix,
-	type BrowserSession,
-	CONSOLE_KEEP,
-	type Download,
-	httpOrigin,
-	logConsole,
-	noteOrigin,
-	noteTabOrigin,
-	ORIGINS_MAX,
-	pruneClosed,
-	trackDownload,
-} from "./cdp/browser-session.ts";
-export { type AttachedTarget, CdpConnection, CdpPage } from "./cdp/connection.ts";
-export { checkDevtoolsUrl } from "./cdp/devtools-url.ts";
-export type { PageTarget } from "./cdp/protocol.ts";
 /** The browser's page targets (tabs), in the order Chrome lists them (most recently used first). */
 export async function pageTargets(port: number): Promise<PageTarget[]> {
 	const targets = (await (await devtoolsFetch(port, "/json/list", 2_000)).json()) as Array<

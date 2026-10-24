@@ -21,6 +21,7 @@ import type {
 } from "../../types.ts";
 import { shortHash } from "../../utils/hash.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
+import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../../utils/text.ts";
 import { resolveTranscript, resolveTranscriptTools } from "../../utils/transcript.ts";
 import { getGrammarToolInput } from "../constrained-sampling.ts";
@@ -68,6 +69,17 @@ function convertToolResultOutput<TApi extends Api>(
 // =============================================================================
 // Message conversion
 // =============================================================================
+
+/**
+ * Providers whose Responses endpoints use OpenAI's `call_…|fc_…` tool-call ids: replayed to one of them, a recorded id
+ * keeps its call id and item id instead of being flattened into one.
+ */
+export const RESPONSES_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
+	"openai",
+	"openai-codex",
+	"opencode",
+	"opencode-go",
+]);
 
 export function convertResponsesMessages<TApi extends Api>(
 	model: Model<TApi>,
@@ -174,14 +186,25 @@ export function convertResponsesMessages<TApi extends Api>(
 				}
 				const text = parts.filter((part) => part.length > 0).join("\n\n");
 				if (text.length > 0) {
-					const block = {
+					const ttl = options?.instructionCacheTtl;
+					const block = (blockText: string) => ({
 						type: "input_text" as const,
-						text: sanitizeSurrogates(text),
-						prompt_cache_breakpoint: { mode: "explicit" as const, ttl: options?.instructionCacheTtl },
-					};
+						text: sanitizeSurrogates(blockText),
+						prompt_cache_breakpoint: { mode: "explicit" as const, ttl },
+					});
+					// A named section starts a second block with its own breakpoint; the blocks join to the same text.
+					const fullText = getSystemMessageText(msg);
+					const split =
+						isLeadingSystemMessage && ttl && text.startsWith(fullText)
+							? splitSystemMessageAtBoundary(msg, options?.instructionCacheBoundary)
+							: undefined;
 					messages.push({
 						role: instructionRole,
-						content: isLeadingSystemMessage && options?.instructionCacheTtl ? [block] : block.text,
+						content: split
+							? [block(split[0]), block(`${split[1]}${text.slice(fullText.length)}`)]
+							: isLeadingSystemMessage && ttl
+								? [block(text)]
+								: sanitizeSurrogates(text),
 					});
 				}
 			}

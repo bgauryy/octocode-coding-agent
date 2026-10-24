@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type AnthropicOptions, stream } from "../src/api/anthropic-messages.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Context, Model } from "../src/types.ts";
 
 interface WireMessage {
@@ -229,9 +230,9 @@ describe("Anthropic mid-conversation effort", () => {
 	});
 
 	it("generates exact model and transport gates", () => {
-		const direct = getModel("anthropic", "claude-fable-5-1");
-		const openRouter = getModel("openrouter", "anthropic/claude-fable-5.1");
-		const unsupported = getModel("anthropic", "claude-opus-4-8");
+		const direct = getBuiltinModel("anthropic", "claude-fable-5-1");
+		const openRouter = getBuiltinModel("openrouter", "anthropic/claude-fable-5.1");
+		const unsupported = getBuiltinModel("anthropic", "claude-opus-4-8");
 		expect(direct.compat?.supportsMidConvoEffort).toBe(true);
 		expect(direct.thinkingLevelMap?.off).toBeNull();
 		expect(openRouter.api).toBe("anthropic-messages");
@@ -239,18 +240,18 @@ describe("Anthropic mid-conversation effort", () => {
 		expect(openRouter.compat?.supportsMidConvoEffort).toBe(true);
 		expect(unsupported.compat?.supportsMidConvoEffort).toBeUndefined();
 		// OpenRouter rejects configuration_update on Opus 5 but accepts it on Fable 5.1.
-		expect(getModel("openrouter", "anthropic/claude-opus-5").compat?.supportsMidConvoEffort).toBeUndefined();
-		expect(getModel("anthropic", "claude-opus-5").compat?.allowedFallbackModels).toBeUndefined();
+		expect(getBuiltinModel("openrouter", "anthropic/claude-opus-5").compat?.supportsMidConvoEffort).toBeUndefined();
+		expect(getBuiltinModel("anthropic", "claude-opus-5").compat?.allowedFallbackModels).toBeUndefined();
 	});
 
 	it("supports off only on managed models that accept disabled thinking", () => {
 		for (const id of ["claude-opus-5", "claude-haiku-5-5"] as const) {
-			const model = getModel("anthropic", id);
+			const model = getBuiltinModel("anthropic", id);
 			expect(model.compat?.supportsMidConvoEffort).toBe(true);
 			expect(model.thinkingLevelMap?.off).not.toBeNull();
 		}
 		for (const id of ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"] as const) {
-			expect(getModel("anthropic", id).thinkingLevelMap?.off).toBeNull();
+			expect(getBuiltinModel("anthropic", id).thinkingLevelMap?.off).toBeNull();
 		}
 	});
 });

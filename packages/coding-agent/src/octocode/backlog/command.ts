@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extension
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { openFile } from "../shared/open.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { doItPrompt } from "./actions.ts";
 import { showBoard } from "./board.ts";
 import { type Backlog, openBacklog } from "./context.ts";
@@ -10,9 +10,10 @@ import { boardText, isState, itemLine } from "./format.ts";
 import { exportBacklog, exportBacklogHtml } from "./command/export-files.ts";
 import { type CommandDeps, createItemActions, detail } from "./command/item-actions.ts";
 import { refText } from "./row.ts";
-import { type Item, parseRef, STATES } from "./store.ts";
+import { type Item, parseRef } from "./store.ts";
+import { STATES } from "@octocodeai/octocode-contacts/snapshot";
 
-/** The `/backlog` subcommand (and its `/backlog` alias). */
+/** The `/backlog` subcommand. */
 export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand {
 	const doWeb = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
 		await deps.openView(ctx, backlog);

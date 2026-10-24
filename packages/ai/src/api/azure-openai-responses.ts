@@ -13,17 +13,13 @@ import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } 
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { requestOpenAISdkStream } from "./openai-sdk-request.ts";
-import {
-	assertResponsesStreamCompleted,
-	convertResponsesMessages,
-	convertResponsesTools,
-	getResponsesToolSupport,
-	processResponsesStream,
-	stripResponsesStreamScratch,
-} from "./openai-responses-shared.ts";
+import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
+import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "./openai-responses-shared/messages.ts";
+import { processResponsesStream } from "./openai-responses-shared/stream-processing.ts";
+import { convertResponsesTools, getResponsesToolSupport } from "./openai-responses-shared/tools.ts";
 import { buildBaseOptions, resolveSamplingParams } from "./simple-options.ts";
 
-const AZURE_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode", "azure"]);
+const AZURE_TOOL_CALL_PROVIDERS = new Set([...RESPONSES_TOOL_CALL_PROVIDERS, "azure"]);
 // OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 

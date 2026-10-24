@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { commandsFor, parseHooks, type HookCommand } from "../../src/octocode/hooks/config.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+import type { HookCommand } from "../../src/octocode/hooks/contracts.ts";
 import { runHook } from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakePi } from "./fake-pi.ts";

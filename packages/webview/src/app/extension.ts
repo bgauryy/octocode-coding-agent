@@ -1,7 +1,7 @@
-import type { Snapshot } from "@octocodeai/octocode-contacts/snapshot";
+import type { Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
 import type { ComponentType, ReactNode } from "react";
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { BacklogIndex, Item } from "./model/backlog.ts";
+import type { BacklogIndex } from "./model/backlog.ts";
 import type { Params } from "./model/route.ts";
 import type { IconProps } from "./ui/icons.tsx";
 
@@ -25,6 +25,8 @@ export interface ViewProps {
 	index: BacklogIndex;
 	params: Params;
 	setParams: (params: Params) => void;
+	/** Optional authenticated action; static exports keep cards read-only. */
+	ItemAction?: ComponentType<{ item: SnapshotItem }>;
 }
 export interface ViewDefinition {
 	name: string;
@@ -34,7 +36,7 @@ export interface ViewDefinition {
 }
 
 export interface EditorProps {
-	item?: Item;
+	item?: SnapshotItem;
 	correction: boolean;
 	/** Close the editor; with a ref, open that item. */
 	onClose: (ref?: string) => void;
@@ -50,8 +52,9 @@ export interface LiveExtension {
 	views: readonly ViewDefinition[];
 	Provider: ComponentType<{ access: string; backlog: BacklogStore; children: ReactNode }>;
 	ConnectionStatus: ComponentType;
-	ItemActions: ComponentType<{ item: Item }>;
-	ItemActivity: ComponentType<{ item: Item }>;
+	ItemActions: ComponentType<{ item: SnapshotItem }>;
+	ItemQuickAction?: ComponentType<{ item: SnapshotItem }>;
+	ItemActivity: ComponentType<{ item: SnapshotItem }>;
 	Editor: ComponentType<EditorProps>;
 	RichText: ComponentType<{ text: string }>;
 }

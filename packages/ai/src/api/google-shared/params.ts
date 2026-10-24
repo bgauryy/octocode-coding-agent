@@ -17,7 +17,7 @@ import {
 } from "./thinking.ts";
 import { convertTools, resolveGoogleFunctionCallingMode, supportsGoogleStrictToolSampling } from "./tools.ts";
 
-export interface GoogleThinkingOptions {
+interface GoogleThinkingOptions {
 	enabled: boolean;
 	budgetTokens?: number; // -1 for dynamic, 0 to disable
 	level?: GoogleApiThinkingLevel;

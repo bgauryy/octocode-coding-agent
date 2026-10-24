@@ -1,8 +1,8 @@
-import { sha256 } from "../shared/atomic.ts";
+import { sha256 } from "../../utils/atomic-file.ts";
 import { Value } from "typebox/value";
 import type { TSchema } from "typebox";
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type StructuredResultV1 = {
 	version: 1;
 	schemaHash: string;

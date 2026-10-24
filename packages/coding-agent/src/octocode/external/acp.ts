@@ -12,8 +12,10 @@ import {
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
-import { errorMessage, untilAborted } from "../shared/util.ts";
+import { untilAborted } from "../shared/util.ts";
 import type { ExternalBackend, ExternalReply } from "./protocol.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { AcpDiagnostics, AcpOutput } from "./acp-output.ts";
 
 interface AcpConnectInput {
 	command: string;
@@ -43,7 +45,7 @@ export class AcpError extends Error {
 }
 
 /** A prompt refused before anything reached the agent: the model may retry once the cause is gone. */
-export class AcpRefusal extends Error {
+class AcpRefusal extends Error {
 	readonly execution = "not-sent";
 	constructor(message: string) {
 		super(message);
@@ -57,21 +59,10 @@ function timeoutSignal(timeoutMs: number): AbortSignal {
 	return AbortSignal.timeout(timeoutMs);
 }
 
-/** A text chunk notification with its text blanked: two chunks with the same value differ only in their text. */
-function withoutText(notification: SessionNotification): string {
-	const { update } = notification;
-	return JSON.stringify(
-		update.sessionUpdate === "agent_message_chunk" && update.content.type === "text"
-			? { ...notification, update: { ...update, content: { ...update.content, text: "" } } }
-			: notification,
-	);
-}
-
 interface Turn {
 	controller: AbortController;
 	signal: AbortSignal;
-	chunks: string[];
-	updates: unknown[];
+	output: AcpOutput;
 }
 
 export class AcpBackend implements ExternalBackend {
@@ -80,7 +71,7 @@ export class AcpBackend implements ExternalBackend {
 	private active?: Turn;
 	private closing?: Promise<void>;
 	private cancelling?: Promise<void>;
-	private stderr = "";
+	private readonly stderr = new AcpDiagnostics();
 	private readonly child: ChildProcessWithoutNullStreams;
 	readonly cwd: string;
 	private currentSessionId: string;
@@ -98,7 +89,7 @@ export class AcpBackend implements ExternalBackend {
 
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (text: string) => {
-			this.stderr += text;
+			this.stderr.append(text);
 		});
 		child.once("error", (error) => {
 			void this.shutdown(error);
@@ -116,6 +107,10 @@ export class AcpBackend implements ExternalBackend {
 
 	get sessionId(): string {
 		return this.currentSessionId;
+	}
+
+	get isClosed(): boolean {
+		return this.lifetime.signal.aborted;
 	}
 
 	static async connect(input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal): Promise<AcpBackend> {
@@ -200,50 +195,47 @@ export class AcpBackend implements ExternalBackend {
 		if (!this.connection || this.closing)
 			throw new AcpRefusal("ACP connection is closed; connect explicitly before sending another prompt.");
 		const controller = new AbortController();
-		const signal = AbortSignal.any([
+		const requestSignal = AbortSignal.any([
 			this.lifetime.signal,
 			controller.signal,
-			timeoutSignal(options.timeoutMs),
 			...(options.signal ? [options.signal] : []),
 		]);
+		const deadline = timeoutSignal(options.timeoutMs);
+		const signal = AbortSignal.any([requestSignal, deadline]);
 		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
-		const turn: Turn = { controller, signal, chunks: [], updates: [] };
+		const turn: Turn = { controller, signal, output: new AcpOutput() };
 		this.active = turn;
+		// A timed-out request can still emit session-scoped updates. Keep its slot until the peer
+		// settles it so a new turn cannot receive those updates. Cancellation still closes the process.
+		const cancelled = () => {
+			void this.terminatePrompt(options.signal?.reason);
+		};
+		options.signal?.addEventListener("abort", cancelled, { once: true });
+		const pending = this.connection.agent
+			.request(
+				methods.agent.session.prompt,
+				{ sessionId: this.sessionId, prompt: [{ type: "text", text }] },
+				{ cancellationSignal: requestSignal },
+			)
+			.finally(() => {
+				options.signal?.removeEventListener("abort", cancelled);
+				if (this.active === turn) this.active = undefined;
+			});
 		try {
-			const response = await untilAborted(
-				this.connection.agent.request(
-					methods.agent.session.prompt,
-					{
-						sessionId: this.sessionId,
-						prompt: [{ type: "text", text }],
-					},
-					{ cancellationSignal: signal },
-				),
-				signal,
-			);
-			turn.updates.push({ type: "prompt_response", response });
-			return { text: turn.chunks.join(""), stopReason: response.stopReason, updates: turn.updates };
+			const response = await untilAborted(pending, signal);
+			return turn.output.reply(response);
 		} catch (error) {
-			await this.terminatePrompt(error);
+			if (!deadline.aborted || requestSignal.aborted) await this.terminatePrompt(error);
 			throw new AcpError(
 				`ACP prompt failed: ${errorMessage(error)}`,
-				{
-					text: turn.chunks.join(""),
-					updates: turn.updates,
-				},
-				this.stderr,
+				turn.output.reply(),
+				this.stderr.toString(),
 				error,
 			);
-		} finally {
-			this.active = undefined;
 		}
 	}
 
-	/**
-	 * Keeps every non-thought update of the active turn in order. Consecutive text chunks of the reply (an agent streams
-	 * it token by token) merge into one update, so the list carries the text once per run between other updates instead
-	 * of one JSON envelope per token; nothing is dropped.
-	 */
+	/** Ignore unrelated sessions and thoughts; the turn capture owns bounded previews and overflow evidence. */
 	private update(notification: SessionNotification): void {
 		const turn = this.active;
 		if (
@@ -253,20 +245,7 @@ export class AcpBackend implements ExternalBackend {
 			notification.update.sessionUpdate === "agent_thought_chunk"
 		)
 			return;
-		const update = notification.update;
-		if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
-			turn.updates.push(notification);
-			return;
-		}
-		turn.chunks.push(update.content.text);
-		const last = turn.updates.at(-1) as SessionNotification | undefined;
-		const run =
-			last?.update.sessionUpdate === "agent_message_chunk" && last.update.content.type === "text"
-				? last.update.content
-				: undefined;
-		// Only chunks that differ in nothing but their text merge, so no per-chunk field (an id, annotations, `_meta`) is lost.
-		if (run && last && withoutText(last) === withoutText(notification)) run.text += update.content.text;
-		else turn.updates.push({ ...notification, update: { ...update, content: { ...update.content } } });
+		turn.output.append(notification);
 	}
 
 	private async requestPermission(

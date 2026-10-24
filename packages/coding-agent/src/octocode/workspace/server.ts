@@ -8,12 +8,13 @@ import {
 import { redactData } from "../shared/sanitize.ts";
 import { renderBacklogHtml } from "@octocodeai/octocode-webview";
 import {
-	WorkspaceCommandSchema as Command,
-	BacklogMutationSchema as Mutation,
+	WorkspaceCommandSchema,
+	BacklogMutationSchema,
 	WORKSPACE_ROUTES,
 	type WorkspaceServerEvent,
 } from "@octocodeai/octocode-contacts/protocol";
-import type { WorkspaceConnection } from "./model.ts";
+import type { WorkspaceConnection } from "@octocodeai/octocode-contacts/workspace";
+import { STATES } from "@octocodeai/octocode-contacts/snapshot";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -22,9 +23,8 @@ import { Value } from "typebox/value";
 import { USER_AUTHOR } from "../agentdb/author.ts";
 import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
-import { BacklogError, STATES } from "../backlog/store.ts";
-
-export type { BacklogWeb } from "../backlog/context.ts";
+import { BacklogError } from "../backlog/store.ts";
+import { handleApplicationDataRequest } from "./application-data.ts";
 
 /** Streamed text reaches a browser at most this often per message (about 20 updates a second). */
 const DELTA_WINDOW_MS = 50;
@@ -36,6 +36,13 @@ export async function startWorkspaceWeb(
 	workspace?: WorkspaceConnection,
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
+	const notifyChanged = () => {
+		try {
+			changed();
+		} catch {
+			// Refreshing a view cannot turn a committed mutation into a failed request.
+		}
+	};
 	let origin = "";
 	const sockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
 	const authenticated = new Set<WebSocket>();
@@ -84,6 +91,8 @@ export async function startWorkspaceWeb(
 							: undefined;
 					if (previous !== undefined && previous !== safe.event.messageId) flushDelta();
 					if (deltaWindow) {
+						if (pendingDelta?.type === "event")
+							safe.fromSequence = pendingDelta.fromSequence ?? pendingDelta.cursor.sequence;
 						pendingDelta = safe;
 						continue;
 					}
@@ -136,18 +145,24 @@ export async function startWorkspaceWeb(
 	let workspaceStamp = "";
 	const workspaceUpdates = () => {
 		if (!workspace || !authenticated.size) return;
-		const next = JSON.stringify(workspace.snapshot());
-		if (next === workspaceStamp) return;
-		workspaceStamp = next;
-		for (const socket of authenticated) sendWorkspace(socket);
-	};
-	const unsubscribe = workspace?.subscribe(() => {
+		let next: string;
 		try {
-			workspaceUpdates();
+			next = JSON.stringify(workspace.snapshot());
 		} catch {
 			for (const socket of authenticated) socket.terminate();
+			return;
 		}
-	});
+		if (next === workspaceStamp) return;
+		workspaceStamp = next;
+		for (const socket of authenticated) {
+			try {
+				sendWorkspace(socket);
+			} catch {
+				socket.terminate();
+			}
+		}
+	};
+	const unsubscribe = workspace?.subscribe(workspaceUpdates);
 	const server = http.createServer((req, res) => {
 		const reply = (status: number, body: unknown) => {
 			res.writeHead(status, {
@@ -185,6 +200,7 @@ export async function startWorkspaceWeb(
 			if (req.url === WORKSPACE_ROUTES.workspace && !workspace)
 				return reply(503, { error: "Agent controls are unavailable in this session." });
 			const requestUrl = new URL(req.url ?? "/", origin);
+			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {
 				const before = requestUrl.searchParams.get("before");
 				if (before !== null && !/^[1-9][0-9]*$/.test(before)) return reply(400, { error: "Invalid audit cursor" });
@@ -231,13 +247,14 @@ export async function startWorkspaceWeb(
 				return reply(200, { receipt: redactData(receipt) });
 			}
 			if (req.url === WORKSPACE_ROUTES.workspace) {
-				if (!Value.Check(Command, input)) return reply(400, { error: "Invalid workspace command" });
+				if (!Value.Check(WorkspaceCommandSchema, input)) return reply(400, { error: "Invalid workspace command" });
 				const receipt = await workspace!.execute(input);
+				if (receipt.status === "accepted") notifyChanged();
 				broadcast();
 				workspaceUpdates();
 				return reply(200, { receipt });
 			}
-			if (!Value.Check(Mutation, input)) return reply(400, { error: "Invalid backlog fields" });
+			if (!Value.Check(BacklogMutationSchema, input)) return reply(400, { error: "Invalid backlog fields" });
 			const actor = { ...backlog.actor, kind: "human" as const };
 			const { op, id, ...fields } = input;
 			if (op !== "add" && (!id || fields.version === undefined))
@@ -258,7 +275,7 @@ export async function startWorkspaceWeb(
 						: op === "comment"
 							? backlog.store.comment(id!, fields.note ?? "", { id: USER_AUTHOR, kind: "human" }, fields.version)
 							: backlog.store.update(id!, fields, actor);
-			changed();
+			notifyChanged();
 			broadcast();
 			reply(200, { item });
 		};

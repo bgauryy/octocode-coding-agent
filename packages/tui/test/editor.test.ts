@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { type AutocompleteProvider, CombinedAutocompleteProvider } from "../src/autocomplete.ts";
-import { Editor, wordWrapLine } from "../src/components/editor.ts";
+import type { AutocompleteProvider } from "../src/autocomplete/types.ts";
+import { CombinedAutocompleteProvider } from "../src/autocomplete.ts";
+import { wordWrapLine } from "../src/components/editor/word-wrap.ts";
+import { Editor } from "../src/components/editor.ts";
 import { FAKE_CURSOR_START, renderFakeCursor, type TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
-import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
+import { stripTerminalSequences } from "../src/utils.ts";
 import { defaultEditorTheme } from "./test-themes.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 

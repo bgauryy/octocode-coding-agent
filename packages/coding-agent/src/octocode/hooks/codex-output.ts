@@ -1,4 +1,4 @@
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 export function usesCodexSpecificDecision(specific: Record<string, unknown>): boolean {
 	return ["permissionDecision", "permissionDecisionReason", "updatedInput"].some((key) => specific[key] != null);

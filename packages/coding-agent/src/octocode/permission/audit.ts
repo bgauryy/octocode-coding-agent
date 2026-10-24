@@ -1,5 +1,5 @@
 import { sameSecret } from "../shared/env.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { auditLine } from "./effect.ts";
 import {
 	ACTION_CLASSES,

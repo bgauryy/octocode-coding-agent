@@ -5,30 +5,29 @@
 
 import * as path from "node:path";
 import type { AuthEvent, AuthPrompt } from "@octocodeai/octocode-ai";
-import type { Model } from "@octocodeai/octocode-ai/compat";
-import { APP_NAME, getAuthPath, getDocsPath } from "../../../config.ts";
-import { getApplicationPort } from "../../../core/application/index.ts";
-import { defaultModelPerProvider } from "../../../core/model-resolver.ts";
+import type { Component } from "@octocodeai/octocode-tui";
+import { APP_NAME, getDocsPath } from "../../../config.ts";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
+import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
+import { KeychainLoginSession } from "../../../core/auth-storage/keychain-login.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import { theme } from "../theme/theme.ts";
-import { isUnknownModel, hasDefaultModelProvider, llamaCppPostLoginGuidance } from "./helpers.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the provider login dialogs. */
-export type LoginDialogsHost = Pick<
+type LoginDialogsHost = Pick<
 	InteractiveModeHost,
 	| "completeProviderAuthentication"
 	| "editor"
 	| "editorContainer"
-	| "footer"
-	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "programStatus"
 	| "session"
 	| "settingsManager"
 	| "showError"
+	| "showModelSelector"
 	| "showStatus"
 	| "showWarning"
 	| "ui"
@@ -41,93 +40,18 @@ export async function completeProviderAuthentication(
 	providerId: string,
 	providerName: string,
 	authType: "oauth" | "api_key",
-	previousModel: Model<any> | undefined,
 ): Promise<void> {
 	const actionLabel = authType === "oauth" ? `Logged in to ${providerName}` : `Saved API key for ${providerName}`;
-
-	const session = host.session;
-	// Dynamic catalogs may be empty until the first authenticated network refresh.
-	const deferSelection =
-		isUnknownModel(previousModel) &&
-		hasDefaultModelProvider(providerId) &&
-		!session.modelRuntime
-			.getAvailableSnapshot()
-			.some((model) => model.provider === providerId && model.id === defaultModelPerProvider[providerId]);
-	const finishAuthentication = async () => {
-		let selectedModel: Model<any> | undefined;
-		let selectionError: string | undefined;
-		if (isUnknownModel(previousModel)) {
-			const availableModels = host.session.modelRuntime.getAvailableSnapshot();
-			const providerModels = availableModels.filter((model) => model.provider === providerId);
-			// Matches LLAMA_PROVIDER_ID from extensions/llama/provider.ts; kept inline to avoid coupling interactive mode to the built-in extension.
-			if (providerId === "llama.cpp") {
-				selectionError = llamaCppPostLoginGuidance(actionLabel, providerModels.length);
-			} else if (!hasDefaultModelProvider(providerId)) {
-				selectionError = `${actionLabel}, but no default model is configured for provider "${providerId}". Use /model to select a model.`;
-			} else if (providerModels.length === 0) {
-				selectionError = `${actionLabel}, but no models are available for that provider. Use /model to select a model.`;
-			} else {
-				const defaultModelId = defaultModelPerProvider[providerId];
-				selectedModel = providerModels.find((model) => model.id === defaultModelId);
-				if (!selectedModel) {
-					selectionError = `${actionLabel}, but its default model "${defaultModelId}" is not available. Use /model to select a model.`;
-				} else {
-					try {
-						await getApplicationPort(host.session).invoke("setModel", selectedModel, { persist: true });
-					} catch (error: unknown) {
-						selectedModel = undefined;
-						const errorMessage = error instanceof Error ? error.message : String(error);
-						selectionError = `${actionLabel}, but selecting its default model failed: ${errorMessage}. Use /model to select a model.`;
-					}
-				}
-			}
-		}
-
-		host.updateAvailableProviderCount();
-		host.footer.invalidate();
-		host.updateEditorBorderColor();
-		if (selectedModel) {
-			host.showStatus(`${actionLabel}. Selected ${selectedModel.id}. Credentials saved to ${getAuthPath()}`);
-			void host.maybeWarnAboutAnthropicSubscriptionAuth(selectedModel);
-		} else {
-			host.showStatus(`${actionLabel}. Credentials saved to ${getAuthPath()}`);
-			if (selectionError) {
-				host.showError(selectionError);
-			} else {
-				void host.maybeWarnAboutAnthropicSubscriptionAuth();
-			}
-		}
-	};
-	if (deferSelection) {
-		host.showStatus(`${actionLabel}. Credentials saved to ${getAuthPath()}. Refreshing model catalog…`);
-	} else {
-		await finishAuthentication();
+	host.updateAvailableProviderCount();
+	host.updateEditorBorderColor();
+	host.showStatus(`${actionLabel}. Choose a model; Esc keeps the current model.`);
+	if (host.session.modelRuntime.getProviderAuthStatus(providerId).source === "runtime") {
+		host.showWarning(
+			"The session API key override still takes priority. Clear it in /providers to use the saved credential.",
+		);
 	}
-
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 15_000);
-	void session.modelRuntime
-		.refresh({ providers: [providerId], signal: controller.signal })
-		.then(async (result) => {
-			if (result.aborted) {
-				host.showWarning(`${actionLabel}, but its model catalog refresh timed out; using cached models.`);
-			} else if (result.errors.size > 0) {
-				host.showWarning(`${actionLabel}, but its model catalog could not be refreshed; using cached models.`);
-			}
-			// Do not replace a model or session selected while the refresh was running.
-			if (deferSelection && host.session === session && session.model === previousModel) {
-				await finishAuthentication();
-			}
-			host.updateAvailableProviderCount();
-			host.footer.invalidate();
-			host.ui.requestRender();
-		})
-		.catch((error: unknown) => {
-			host.showWarning(
-				`${actionLabel}, but its model catalog could not be refreshed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		})
-		.finally(() => clearTimeout(timeout));
+	// The picker owns its bounded catalog refresh and cancellation. Connecting never silently changes the default.
+	host.showModelSelector(`${providerId}/`);
 }
 
 export function showAmbientAuthDialog(
@@ -135,29 +59,18 @@ export function showAmbientAuthDialog(
 	providerOption: AuthSelectorProvider,
 	onBack?: () => void,
 ): void {
-	const restoreEditor = () => {
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.editor);
-		host.ui.setFocus(host.editor);
-		host.ui.requestRender();
-	};
-
 	const dialog = new LoginDialogComponent(
 		host.ui,
 		providerOption.id,
 		() => {
-			restoreEditor();
+			showInEditorSlot(host, host.editor);
 			onBack?.();
 		},
 		providerOption.name,
 		`${providerOption.name} setup`,
 	);
 	dialog.showInfo(`${providerOption.method?.name ?? "Authentication"} is configured outside ${APP_NAME}.`, [], true);
-
-	host.editorContainer.clear();
-	host.editorContainer.addChild(dialog);
-	host.ui.setFocus(dialog);
-	host.ui.requestRender();
+	showInEditorSlot(host, dialog);
 }
 
 export async function showApiKeyLoginDialog(
@@ -166,17 +79,7 @@ export async function showApiKeyLoginDialog(
 	providerName: string,
 	onBack?: () => void,
 ): Promise<void> {
-	const previousModel = host.session.model;
-
-	const dialog = new LoginDialogComponent(
-		host.ui,
-		providerId,
-		(_success, _message) => {
-			// Completion handled below
-		},
-		providerName,
-	);
-
+	const dialog = new LoginDialogComponent(host.ui, providerId, () => {}, providerName);
 	if (providerId === "amazon-bedrock") {
 		dialog.showDetails([
 			theme.fg("text", "You can also use an AWS profile, IAM keys, or role-based credentials."),
@@ -184,48 +87,66 @@ export async function showApiKeyLoginDialog(
 			theme.fg("accent", `  ${path.join(getDocsPath(), "providers.md")}`),
 		]);
 	}
+	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack);
+}
 
+export async function showLoginDialog(
+	host: LoginDialogsHost,
+	providerId: string,
+	providerName: string,
+	onBack?: () => void,
+): Promise<void> {
+	const dialog = new LoginDialogComponent(host.ui, providerId, () => {}, providerName);
+	await runLoginDialog(host, dialog, providerId, providerName, "oauth", onBack);
+}
+
+/** Puts `component` in the editor slot and focuses it. */
+export function showInEditorSlot(
+	host: Pick<InteractiveModeHost, "editorContainer" | "ui">,
+	component: Component,
+): void {
 	host.editorContainer.clear();
-	host.editorContainer.addChild(dialog);
-	host.ui.setFocus(dialog);
+	host.editorContainer.addChild(component);
+	host.ui.setFocus(component);
 	host.ui.requestRender();
+}
 
-	const restoreEditor = () => {
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.editor);
-		host.ui.setFocus(host.editor);
-		host.ui.requestRender();
-	};
-
+/** Runs a provider login inside `dialog`, then restores the editor and reports the outcome. */
+async function runLoginDialog(
+	host: LoginDialogsHost,
+	dialog: LoginDialogComponent,
+	providerId: string,
+	providerName: string,
+	method: "api_key" | "oauth",
+	onBack: (() => void) | undefined,
+): Promise<void> {
+	showInEditorSlot(host, dialog);
 	try {
-		await loginProvider(host, dialog, providerId, providerName, "api_key");
-		restoreEditor();
-		await host.completeProviderAuthentication(providerId, providerName, "api_key", previousModel);
+		await loginProvider(host, dialog, providerId, providerName, method);
+		showInEditorSlot(host, host.editor);
+		await host.completeProviderAuthentication(providerId, providerName, method);
 	} catch (error: unknown) {
-		restoreEditor();
-		const errorMsg = error instanceof Error ? error.message : String(error);
+		showInEditorSlot(host, host.editor);
+		const errorMsg = errorMessage(error);
 		if (error instanceof CredentialSynchronizationError) {
-			host.showError(`Saved API key for ${providerName}, but local model state could not be synchronized: ${errorMsg}`);
-		} else if (errorMsg === "Login cancelled") {
+			const done = method === "oauth" ? `Logged in to ${providerName}` : `Saved API key for ${providerName}`;
+			host.showError(`${done}, but local model state could not be synchronized: ${errorMsg}`);
+		} else if (dialog.signal.aborted || errorMsg === "Login cancelled") {
 			onBack?.();
 		} else {
-			host.showError(`Failed to save API key for ${providerName}: ${errorMsg}`);
+			const action = method === "oauth" ? "login to" : "save API key for";
+			host.showError(`Failed to ${action} ${providerName}: ${errorMsg}`);
 		}
 	}
 }
 
-export function showAuthSelect(
+function showAuthSelect(
 	host: LoginDialogsHost,
 	dialog: LoginDialogComponent,
 	prompt: Extract<AuthPrompt, { type: "select" }>,
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
-		const restoreDialog = () => {
-			host.editorContainer.clear();
-			host.editorContainer.addChild(dialog);
-			host.ui.setFocus(dialog);
-			host.ui.requestRender();
-		};
+		const restoreDialog = () => showInEditorSlot(host, dialog);
 		const labels = prompt.options.map((option) => option.label);
 		const selector = new ExtensionSelectorComponent(
 			prompt.message,
@@ -241,14 +162,11 @@ export function showAuthSelect(
 				reject(new Error("Login cancelled"));
 			},
 		);
-		host.editorContainer.clear();
-		host.editorContainer.addChild(selector);
-		host.ui.setFocus(selector);
-		host.ui.requestRender();
+		showInEditorSlot(host, selector);
 	});
 }
 
-export async function showAuthPrompt(
+async function showAuthPrompt(
 	host: LoginDialogsHost,
 	dialog: LoginDialogComponent,
 	prompt: AuthPrompt,
@@ -259,7 +177,7 @@ export async function showAuthPrompt(
 	} else if (prompt.type === "manual_code") {
 		response = dialog.showManualInput(prompt.message);
 	} else {
-		response = dialog.showPrompt(prompt.message, prompt.placeholder);
+		response = dialog.showPrompt(prompt.message, prompt.placeholder, prompt.type === "secret");
 	}
 	if (!prompt.signal) return response;
 	if (prompt.signal.aborted) throw new Error("Login cancelled");
@@ -276,7 +194,7 @@ export async function showAuthPrompt(
 	}
 }
 
-export function notifyAuthDialog(dialog: LoginDialogComponent, event: AuthEvent): void {
+function notifyAuthDialog(dialog: LoginDialogComponent, event: AuthEvent): void {
 	if (event.type === "auth_url") {
 		dialog.showAuth(event.url, event.instructions);
 	} else if (event.type === "device_code") {
@@ -289,7 +207,7 @@ export function notifyAuthDialog(dialog: LoginDialogComponent, event: AuthEvent)
 	}
 }
 
-export async function loginProvider(
+async function loginProvider(
 	host: LoginDialogsHost,
 	dialog: LoginDialogComponent,
 	providerId: string,
@@ -298,54 +216,39 @@ export async function loginProvider(
 ): Promise<void> {
 	host.programStatus.setBlocked("login", { kind: "auth", message: `Log in to ${providerName}` });
 	try {
+		const keychain = method === "api_key" ? detectKeychain(process.platform) : undefined;
+		const prompt = (request: AuthPrompt) => showAuthPrompt(host, dialog, request);
+		const storage = keychain
+			? new KeychainLoginSession(keychain, providerId, async () => {
+					const choice = await showAuthPrompt(host, dialog, {
+						type: "select",
+						message: "Where should this API key be stored?",
+						signal: dialog.signal,
+						options: [
+							{ id: "keychain", label: `${keychain.name} (recommended)` },
+							{ id: "file", label: "Local auth.json file (plaintext; created with owner-only permissions)" },
+						],
+					});
+					return choice === "keychain" ? "keychain" : "file";
+				})
+			: undefined;
+		if (method === "api_key" && !keychain) {
+			dialog.showInfo(
+				"No system keychain is available. API keys are stored in plaintext in auth.json, created with owner-only permissions.",
+			);
+		}
 		await host.session.modelRuntime.login(
 			providerId,
 			method,
 			{
 				signal: dialog.signal,
-				prompt: (prompt) => showAuthPrompt(host, dialog, prompt),
+				prompt: storage ? storage.wrapPrompt(prompt) : prompt,
 				notify: (event) => notifyAuthDialog(dialog, event),
 			},
 			{ getDeviceId: () => host.settingsManager.getOrCreateDeviceId() },
+			storage ? { transformCredential: storage.transformCredential } : undefined,
 		);
 	} finally {
 		host.programStatus.setBlocked("login", undefined);
-	}
-}
-
-export async function showLoginDialog(
-	host: LoginDialogsHost,
-	providerId: string,
-	providerName: string,
-	onBack?: () => void,
-): Promise<void> {
-	const previousModel = host.session.model;
-	const dialog = new LoginDialogComponent(host.ui, providerId, (_success, _message) => {}, providerName);
-	host.editorContainer.clear();
-	host.editorContainer.addChild(dialog);
-	host.ui.setFocus(dialog);
-	host.ui.requestRender();
-
-	const restoreEditor = () => {
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.editor);
-		host.ui.setFocus(host.editor);
-		host.ui.requestRender();
-	};
-
-	try {
-		await loginProvider(host, dialog, providerId, providerName, "oauth");
-		restoreEditor();
-		await host.completeProviderAuthentication(providerId, providerName, "oauth", previousModel);
-	} catch (error: unknown) {
-		restoreEditor();
-		const errorMsg = error instanceof Error ? error.message : String(error);
-		if (error instanceof CredentialSynchronizationError) {
-			host.showError(`Logged in to ${providerName}, but local model state could not be synchronized: ${errorMsg}`);
-		} else if (errorMsg === "Login cancelled") {
-			onBack?.();
-		} else {
-			host.showError(`Failed to login to ${providerName}: ${errorMsg}`);
-		}
 	}
 }

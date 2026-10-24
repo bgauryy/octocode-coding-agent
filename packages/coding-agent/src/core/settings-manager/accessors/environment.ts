@@ -77,6 +77,13 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 		this.save();
 	}
 
+	getBashBackgroundAfterSeconds(): number {
+		const seconds = this.settings.bashBackgroundAfterSeconds;
+		return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+			? seconds
+			: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds;
+	}
+
 	getNpmCommand(): string[] | undefined {
 		return this.settings.npmCommand ? [...this.settings.npmCommand] : undefined;
 	}

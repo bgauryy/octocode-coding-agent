@@ -5,7 +5,8 @@ import { ScrollView } from "../src/components/scroll-view.ts";
 import { Text } from "../src/components/text.ts";
 import { VStack } from "../src/components/v-stack.ts";
 import { renderLayoutFrame } from "../src/layout.ts";
-import { encodeKitty, registerKittyImageMetadata } from "../src/terminal-image.ts";
+import { registerKittyImageMetadata } from "../src/terminal-image/kitty-metadata.ts";
+import { encodeKitty } from "../src/terminal-image.ts";
 import { stripTerminalSequences } from "../src/utils.ts";
 
 function visibleLines(lines: string[]): string[] {

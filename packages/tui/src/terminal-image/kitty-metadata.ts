@@ -2,7 +2,7 @@ import type { ImageCellSize } from "./types.ts";
 
 export const KITTY_PREFIX = "\x1b_G";
 
-export interface KittyImageMetadata extends ImageCellSize {
+interface KittyImageMetadata extends ImageCellSize {
 	imageId: number;
 	widthPx: number;
 	heightPx: number;
@@ -12,7 +12,7 @@ interface RegisteredKittyImageMetadata extends KittyImageMetadata {
 	transmissionGeneration: number;
 }
 
-export interface KittyImagePlacement {
+interface KittyImagePlacement {
 	imageId: number;
 	transmissionGeneration: number;
 	transmissionBytes: number;

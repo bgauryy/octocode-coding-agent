@@ -4,7 +4,7 @@ import https from "node:https";
 import net from "node:net";
 import { pipeline, Readable, type Transform } from "node:stream";
 import zlib from "node:zlib";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** Redirect hops `web` follows; each target is checked before it is fetched. */
 const MAX_REDIRECTS = 10;

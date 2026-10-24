@@ -9,9 +9,10 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { theme } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
+import { recallLastQueuedMessage } from "./queue-manager.ts";
 
 /** Interactive-mode members used by the message queues. */
-export type MessageQueueHost = Pick<
+type MessageQueueHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "clearAllQueues"
@@ -27,6 +28,8 @@ export type MessageQueueHost = Pick<
 	| "restoreQueuedMessagesToEditor"
 	| "session"
 	| "showError"
+	| "showExtensionEditor"
+	| "showExtensionSelector"
 	| "showStatus"
 	| "ui"
 	| "updatePendingMessagesDisplay"
@@ -57,21 +60,28 @@ export async function queueInteractiveMessage(
 	host.ui.requestRender();
 }
 
+/** While compaction runs, executes extension commands at once and queues other input; returns whether it did. */
+export async function handleInputDuringCompaction(
+	host: Pick<InteractiveModeHost, "editor" | "isExtensionCommand" | "queueCompactionMessage" | "session">,
+	text: string,
+	mode: "steer" | "followUp",
+): Promise<boolean> {
+	if (!host.session.isCompacting) return false;
+	if (host.isExtensionCommand(text)) {
+		host.editor.addToHistory?.(text);
+		host.editor.setText("");
+		await getApplicationPort(host.session).invoke("prompt", text);
+	} else {
+		host.queueCompactionMessage(text, mode);
+	}
+	return true;
+}
+
 export async function handleFollowUp(host: MessageQueueHost): Promise<void> {
 	const text = (host.editor.getExpandedText?.() ?? host.editor.getText()).trim();
 	if (!text) return;
 
-	// Queue input during compaction (extension commands execute immediately)
-	if (host.session.isCompacting) {
-		if (host.isExtensionCommand(text)) {
-			host.editor.addToHistory?.(text);
-			host.editor.setText("");
-			await getApplicationPort(host.session).invoke("prompt", text);
-		} else {
-			host.queueCompactionMessage(text, "followUp");
-		}
-		return;
-	}
+	if (await handleInputDuringCompaction(host, text, "followUp")) return;
 
 	// Alt+Enter queues a follow-up message (waits until agent finishes)
 	// This handles extension commands (execute immediately), prompt template expansion, and queueing
@@ -85,13 +95,9 @@ export async function handleFollowUp(host: MessageQueueHost): Promise<void> {
 	}
 }
 
+/** The dequeue key recalls the last queued message only; Escape restores them all (see the keybinding docs). */
 export function handleDequeue(host: MessageQueueHost): void {
-	const restored = host.restoreQueuedMessagesToEditor();
-	if (restored === 0) {
-		host.showStatus("No queued messages to restore");
-	} else {
-		host.showStatus(`Restored ${restored} queued message${restored > 1 ? "s" : ""} to editor`);
-	}
+	recallLastQueuedMessage(host);
 }
 
 /**
@@ -160,7 +166,7 @@ export function updatePendingMessagesDisplay(host: MessageQueueHost): void {
 		const dequeueHint = host.getAppKeyDisplay("app.message.dequeue");
 		const hintText = theme.fg(
 			"muted",
-			`↳ ${dequeueHint} to restore all to editor${host.session.isCompacting ? " · waiting for compaction" : ""}`,
+			`↳ ${dequeueHint} to restore the last · /queue to manage · Esc restores all${host.session.isCompacting ? " · waiting for compaction" : ""}`,
 		);
 		host.pendingMessagesContainer.addChild(new TruncatedText(hintText, 1, 0));
 	}

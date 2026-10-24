@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Inbox } from "../../src/octocode/team/inbox.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
-import type { Member, Message } from "../../src/octocode/team/model.ts";
+import type { Message } from "../../src/octocode/team/model.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { INBOX_BATCH_SIZE, TeamStore } from "../../src/octocode/team/store.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { TeamTicker, type TeamView } from "../../src/octocode/team/ticker.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { INBOX_BATCH_SIZE } from "../../src/octocode/team/store/limits.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 const member = (id: string): Member => ({
 	id,
@@ -180,6 +182,75 @@ describe("team delivery efficiency", () => {
 		} finally {
 			oldStore.close();
 			newStore.close();
+		}
+	});
+
+	it("ignores an old notice handoff that settles after a new session starts", async () => {
+		const oldStore = TeamStore.open(tmp(), path.join(tmp(), "old.sqlite"));
+		const newStore = TeamStore.open(tmp(), path.join(tmp(), "new.sqlite"));
+		const { pi } = fakePi();
+		const mail = new Mail(pi);
+		let acceptOld!: () => void;
+		const oldHandoff = new Promise<void>((resolve) => {
+			acceptOld = resolve;
+		});
+		let acceptNew!: () => void;
+		const newHandoff = new Promise<void>((resolve) => {
+			acceptNew = resolve;
+		});
+		const send = vi.spyOn(pi, "sendMessage").mockReturnValueOnce(oldHandoff).mockReturnValueOnce(newHandoff);
+		try {
+			for (const store of [oldStore, newStore]) {
+				store.save(member("recipient"));
+				store.send("sender", ["recipient"], store === oldStore ? "old" : "new", { replyRequired: true });
+				store.remove("recipient");
+			}
+			mail.reportDeadLetters(oldStore, "sender");
+			mail.reset();
+			mail.reportDeadLetters(newStore, "sender");
+			acceptOld();
+			await oldHandoff;
+			await Promise.resolve();
+			expect(oldStore.deadLetters("sender")).toHaveLength(1);
+			expect(newStore.deadLetters("sender")).toHaveLength(1);
+			mail.reportDeadLetters(newStore, "sender");
+			expect(send).toHaveBeenCalledTimes(2);
+			acceptNew();
+			await newHandoff;
+			await Promise.resolve();
+			expect(newStore.deadLetters("sender")).toEqual([]);
+		} finally {
+			oldStore.close();
+			newStore.close();
+		}
+	});
+
+	it("retries a busy notice acknowledgement after asynchronous host acceptance without resending", async () => {
+		const store = TeamStore.open(tmp(), path.join(tmp(), "team.sqlite"));
+		const { pi } = fakePi();
+		const mail = new Mail(pi);
+		let accept!: () => void;
+		const handoff = new Promise<void>((resolve) => {
+			accept = resolve;
+		});
+		const send = vi.spyOn(pi, "sendMessage").mockReturnValueOnce(handoff);
+		try {
+			store.save(member("recipient"));
+			store.send("sender", ["recipient"], "request", { replyRequired: true });
+			store.remove("recipient");
+			vi.spyOn(store, "markNotified").mockImplementationOnce(() => {
+				throw new Error("busy");
+			});
+			mail.reportDeadLetters(store, "sender");
+			accept();
+			await handoff;
+			await Promise.resolve();
+			expect(store.deadLetters("sender")).toHaveLength(1);
+			mail.reportDeadLetters(store, "sender");
+			expect(store.deadLetters("sender")).toEqual([]);
+			expect(send).toHaveBeenCalledTimes(1);
+		} finally {
+			store.close();
 		}
 	});
 

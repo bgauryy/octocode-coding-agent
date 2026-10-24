@@ -5,11 +5,12 @@ import { parsePatch } from "../shared/codex-patch/patch.ts";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { envFlag, HOOKS_COMPAT_ENV, HOOKS_ENV, SUBAGENT_ENV } from "../shared/env.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
-import { commandsFor, emptyHooks, hookCalls } from "./config.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
+import { commandsFor, hookCalls } from "./config/calls.ts";
+import { emptyHooks } from "./config/parse.ts";
+import type { HookVerdict } from "./contracts.ts";
 import { CODEX_PATCH_NAMES, projectCodexPatch } from "./patch.ts";
 import type { HookProtocol } from "./profiles.ts";
-import type { HookVerdict } from "./runner.ts";
 import { createDispatcher } from "./register/dispatcher.ts";
 import {
 	registerInterruptHook,
@@ -45,12 +46,18 @@ export function registerHooks(
 	home?: string,
 	onFailure?: HookFailureSink,
 	metadata?: () => HookHostMetadata,
+	paused?: () => boolean,
 ): HooksView {
 	const session: HookSession = { config: emptyHooks(), errors: [], root: undefined };
 	const enabled = hooksEnabled(env);
 	const timings = new Map<string, HookTiming>();
 	const view: HooksView = {
-		summary: () => (enabled ? `on, ${hookCount(session.config)} commands` : `off (${HOOKS_ENV}=1 to enable)`),
+		summary: () =>
+			enabled
+				? paused?.()
+					? "paused during planning"
+					: `on, ${hookCount(session.config)} commands`
+				: `off (${HOOKS_ENV}=1 to enable)`,
 		report: (cwd) =>
 			hooksReport(enabled, session.config, session.errors, cwd, home, timings, envFlag(env, HOOKS_COMPAT_ENV)),
 		preToolUse: async () => undefined,
@@ -66,7 +73,10 @@ export function registerHooks(
 	if (!enabled) return view;
 	const background = envFlag(env, HOOKS_COMPAT_ENV) ? registerBackgroundHooks(pi) : undefined;
 	const child = envFlag(env, SUBAGENT_ENV) && envFlag(env, HOOKS_COMPAT_ENV);
-	const runner = createDispatcher(pi, session, timings, onFailure, background, child, metadata);
+	const runner = createDispatcher(pi, session, timings, onFailure, background, child, metadata, paused);
+	view.suspend = async () => {
+		await Promise.all([runner.stop(), background?.reset(false)]);
+	};
 	// The message handlers go first: their session_start reset runs before the hook files load.
 	Object.assign(view, registerMessageHooks(pi, runner));
 	registerStopHook(pi, session, runner.dispatch, child);

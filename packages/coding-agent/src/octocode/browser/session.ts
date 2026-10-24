@@ -1,20 +1,7 @@
 import { BROWSER_VISIBLE_ENV, envFlag } from "../shared/env.ts";
 import { optionalString, stringOrEmpty } from "../shared/util.ts";
 import { throwIfAborted, unlessAborted } from "./abort.ts";
-import {
-	type BrowserSession,
-	CdpConnection,
-	type CdpPage,
-	checkDevtoolsUrl,
-	type Download,
-	logConsole,
-	noteTabOrigin,
-	openTab,
-	type PageTarget,
-	pageTargets,
-	pruneClosed,
-	trackDownload,
-} from "./cdp.ts";
+import { openTab, pageTargets } from "./cdp.ts";
 import { applyDownloads } from "./emulation.ts";
 import {
 	closeTarget,
@@ -28,6 +15,17 @@ import {
 import { applyPolicy, guardTargets, watchNetwork } from "./page-network.ts";
 import type { PageNetworkPolicy } from "./policy.ts";
 import type { BlockedConnection } from "./proxy.ts";
+import {
+	type BrowserSession,
+	type Download,
+	logConsole,
+	noteTabOrigin,
+	pruneClosed,
+	trackDownload,
+} from "./cdp/browser-session.ts";
+import { CdpConnection, type CdpPage } from "./cdp/connection.ts";
+import { checkDevtoolsUrl } from "./cdp/devtools-url.ts";
+import type { PageTarget } from "./cdp/protocol.ts";
 
 interface OpenOptions {
 	/** DevTools port to attach to instead of OCTOCODE_CHROME_PORT. */

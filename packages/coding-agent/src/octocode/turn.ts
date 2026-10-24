@@ -1,13 +1,14 @@
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import type { Skill } from "../core/skills.ts";
-import { octocodePrompt } from "./instructions/policy.ts";
+import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
 import type { OctocodeMcp } from "./mcp/octocode.ts";
 import { envFlag, READ_ONLY_ENV } from "./shared/env.ts";
+import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
 import { visibleControls } from "./shared/sanitize.ts";
 import { isOctocodeTool } from "./shared/octocode-tools.ts";
 import { type AgentProfile, profileSelectsTool } from "./subagents/profiles.ts";
-import { AGENT_COLLABORATE_ENV } from "./team/store.ts";
+import { AGENT_COLLABORATE_ENV } from "./team/store/env.ts";
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
@@ -18,10 +19,11 @@ export function registerTurnSetup(
 		octocode: Pick<OctocodeMcp, "owner" | "ready" | "instructions">;
 	},
 ): { reset(): void } {
-	let prompt: string | undefined;
+	let prompt: Record<string, string> | undefined;
 	let promptKey: string | undefined;
 	const role = options.isSubagent ? readRolePrompt() : undefined;
 	const readOnlyRole = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
+	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const selected = event.systemPromptOptions.selectedTools ?? pi.getActiveTools();
@@ -68,6 +70,7 @@ export function registerTurnSetup(
 			readOnlyRole,
 			canSave: ["file", "write", "edit"].some((name) => selected.includes(name)),
 			canShell: selected.includes("bash") || selected.includes("powershell"),
+			canWeb: selected.includes("web"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: available.some((name) => name.startsWith("mcp__") || name === "mcp" || name === "tool_search"),
 			...(octocode && instructions ? { octocodeInstructions: instructions } : {}),
@@ -78,11 +81,20 @@ export function registerTurnSetup(
 		const key = JSON.stringify(inputs);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
-			prompt = octocodePrompt(inputs);
+			prompt = octocodePromptSections(inputs);
 		}
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta.
-		event.systemPromptOptions.sections.octocode = prompt;
+		Object.assign(event.systemPromptOptions.sections, prompt);
 		if (role !== undefined) event.systemPromptOptions.sections.role = role;
+		if (promptRoots) {
+			// An isolated child's prompt names the main checkout, so siblings share the cached prefix. Tools and
+			// permissions keep the real worktree cwd; the task text names it.
+			event.systemPromptOptions.cwd = rebasePath(event.systemPromptOptions.cwd, promptRoots);
+			event.systemPromptOptions.contextFiles = event.systemPromptOptions.contextFiles.map((file) => ({
+				...file,
+				path: rebasePath(file.path, promptRoots),
+			}));
+		}
 		if (options.isSubagent) {
 			// Keep skill routing metadata; task-specific bodies are read only when needed.
 			event.systemPromptOptions.sections.docs = "";

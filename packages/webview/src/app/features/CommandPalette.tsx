@@ -1,4 +1,4 @@
-import { type ComponentType, type ReactNode, useId, useMemo, useRef, useState } from "react";
+import { type ComponentType, type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useModal } from "../hooks.ts";
 import type { BacklogIndex } from "../model/backlog.ts";
 import type { IconProps } from "../ui/icons.tsx";
@@ -79,6 +79,10 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 	const results = useMemo(() => rankCommands(commands, query), [commands, query]);
 	useModal(dialog, onClose, () => input.current);
 	const current = results[Math.min(active, results.length - 1)];
+	const activeId = current?.id;
+	useLayoutEffect(() => {
+		if (activeId) document.getElementById(`${listId}-${activeId}`)?.scrollIntoView?.({ block: "nearest" });
+	}, [activeId, listId]);
 
 	function run(command: PaletteCommand | undefined) {
 		if (!command) return;
@@ -86,6 +90,7 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Palet
 		command.run();
 	}
 	function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+		if (event.nativeEvent.isComposing) return;
 		const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
 		if (move && results.length) {
 			event.preventDefault();

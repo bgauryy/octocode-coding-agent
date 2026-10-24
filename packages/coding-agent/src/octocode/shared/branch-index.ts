@@ -1,6 +1,8 @@
 /** What reading a branch needs from a session manager. */
 export interface BranchSource {
 	getBranch(): readonly unknown[];
+	getLeafId?(): string | null;
+	getEntry?(id: string): unknown;
 }
 
 /** How far a session's fold has read: the branch length, the id of its last entry (the proof it is the same branch), and the state. */
@@ -29,10 +31,11 @@ export class BranchIndex<S> {
 		this.visit = visit;
 	}
 
-	/** The state for the session's current branch. `getBranch` itself still builds the branch array (Octocode walks it from the leaf). */
+	/** Native sessions walk only new ancestors; adapters without entry lookup use the branch-array fallback. */
 	read(session: BranchSource): S {
-		const branch = session.getBranch();
 		const known = this.cursors.get(session);
+		if (known && this.resume(session, known)) return known.state;
+		const branch = session.getBranch();
 		const resumes =
 			known !== undefined && branch.length >= known.length && idOf(branch[known.length - 1]) === known.tail;
 		const cursor = resumes ? known : { length: 0, tail: "", state: this.start() };
@@ -41,6 +44,28 @@ export class BranchIndex<S> {
 		const tail = idOf(branch[branch.length - 1]);
 		if (tail !== undefined) this.cursors.set(session, { length: branch.length, tail, state: cursor.state });
 		return cursor.state;
+	}
+
+	private resume(session: BranchSource, cursor: Cursor<S>): boolean {
+		if (!session.getEntry || !session.getLeafId) return false;
+		const leaf = session.getLeafId();
+		if (leaf === cursor.tail) return true;
+		const added: unknown[] = [];
+		const seen = new Set<string>();
+		let id: string | null | undefined = leaf;
+		while (id !== cursor.tail) {
+			if (!id || seen.has(id)) return false;
+			seen.add(id);
+			const entry = session.getEntry(id);
+			if (idOf(entry) !== id) return false;
+			added.push(entry);
+			const parent = (entry as { parentId?: unknown }).parentId;
+			id = typeof parent === "string" ? parent : undefined;
+		}
+		this.cursors.delete(session);
+		for (const entry of added.reverse()) this.visit(cursor.state, entry);
+		this.cursors.set(session, { length: cursor.length + added.length, tail: leaf!, state: cursor.state });
+		return true;
 	}
 }
 

@@ -21,12 +21,7 @@ export {
 	truncateTail,
 } from "./truncate.ts";
 
-import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import type { ToolDefinition } from "../extensions/types.ts";
 import type { BashToolOptions } from "./bash.ts";
-
-export type Tool = AgentTool<any>;
-export type ToolDef = ToolDefinition<any, any>;
 
 /** Options of the core tools. `bash` is the only core tool; every other built-in tool belongs to the native feature. */
 export interface ToolsOptions {

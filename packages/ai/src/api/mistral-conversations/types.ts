@@ -56,13 +56,15 @@ export type MistralChatPayload = {
 	promptCacheKey?: string;
 };
 
-export type MistralStreamContentChunk = {
+type MistralStreamContentChunk = {
 	type: string;
 	text?: string;
+	image_url?: string | { url: string };
+	imageUrl?: string;
 	thinking?: Array<{ text?: string }>;
 };
 
-export type MistralStreamToolCall = {
+type MistralStreamToolCall = {
 	id?: string;
 	index?: number;
 	function: {

@@ -6,7 +6,7 @@ interface HistoryMatches {
 	matched: number[];
 }
 
-const SEARCH_BYTES = 32 * 1024 * 1024;
+export const HISTORY_BYTES = 32 * 1024 * 1024;
 const SEARCH_TIMEOUT_MS = 5_000;
 
 // Inline JavaScript needs no source file or TypeScript loader in an installed bundle.
@@ -70,7 +70,7 @@ export async function matchHistory(
 			files,
 			pattern: pattern.source,
 			flags: pattern.flags.replace("g", ""),
-			maxBytes: SEARCH_BYTES,
+			maxBytes: HISTORY_BYTES,
 		},
 		resourceLimits: { maxOldGenerationSizeMb: 256 },
 	});

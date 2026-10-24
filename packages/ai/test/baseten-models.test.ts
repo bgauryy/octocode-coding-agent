@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getModel, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { findEnvKeys, getEnvApiKey } from "../src/env-api-keys.ts";
 import { getSupportedThinkingLevels } from "../src/models.ts";
 
@@ -15,14 +16,14 @@ afterEach(() => {
 
 describe("Baseten models", () => {
 	it("keeps both GLM 5.2 endpoints text-only", () => {
-		expect(getModel("baseten", "zai-org/GLM-5.2").input).toEqual(["text"]);
-		expect(getModel("baseten", "zai-org/GLM-5.2-Fast").input).toEqual(["text"]);
+		expect(getBuiltinModel("baseten", "zai-org/GLM-5.2").input).toEqual(["text"]);
+		expect(getBuiltinModel("baseten", "zai-org/GLM-5.2-Fast").input).toEqual(["text"]);
 	});
 
 	it("models toggle-only Baseten reasoning as an explicit off/on toggle", async () => {
 		// No current catalog model is toggle-only (Kimi K2.6 was, and has been retired), so derive a fixture
 		// from a catalog model that uses the Baseten thinking format.
-		const base = getModel("baseten", "zai-org/GLM-5.2");
+		const base = getBuiltinModel("baseten", "zai-org/GLM-5.2");
 		const model = {
 			...base,
 			thinkingLevelMap: {
@@ -72,7 +73,7 @@ describe("Baseten models", () => {
 	});
 
 	it("sends Baseten chat_template_args with reasoning effort", async () => {
-		const model = getModel("baseten", "zai-org/GLM-5.2");
+		const model = getBuiltinModel("baseten", "zai-org/GLM-5.2");
 		let payload: Record<string, unknown> | undefined;
 
 		await streamSimple(
@@ -93,7 +94,7 @@ describe("Baseten models", () => {
 	});
 
 	it("disables Baseten opt-in reasoning when thinking is off", async () => {
-		const model = getModel("baseten", "zai-org/GLM-5.2");
+		const model = getBuiltinModel("baseten", "zai-org/GLM-5.2");
 		let payload: Record<string, unknown> | undefined;
 
 		await streamSimple(

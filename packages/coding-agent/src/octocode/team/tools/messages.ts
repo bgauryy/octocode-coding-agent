@@ -3,11 +3,14 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import { formatClock } from "../../shared/format.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
-import { clip, plural, resultBlock, timedTool, timingOf, toolHeader } from "../../shared/render.ts";
-import { contentText, firstLine, isRecord, textResult } from "../../shared/util.ts";
+import { resultBlock, toolHeader } from "../../shared/render.ts";
+import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { MailDetails } from "../model.ts";
 import { senderLabel } from "../routing.ts";
 import type { Team } from "../session.ts";
+import { clip, plural } from "../../shared/render/text.ts";
+import { timedTool, timingOf } from "../../shared/render/rows.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
 /** Shows team mail in the conversation. */
 export function registerMessageRenderer(pi: ExtensionAPI): void {

@@ -153,7 +153,7 @@ export class SessionExtensionBindings {
 		const getCommands = (): SlashCommandInfo[] => {
 			const extensionCommands: SlashCommandInfo[] = runner.getRegisteredCommands().map((command) => ({
 				name: command.invocationName,
-				aliases: command.aliases,
+				aliases: command.invocationAliases,
 				description: command.description,
 				source: "extension",
 				sourceInfo: command.sourceInfo,
@@ -162,9 +162,8 @@ export class SessionExtensionBindings {
 			const templates: SlashCommandInfo[] = getPromptCommands(
 				session.promptTemplates,
 				runner.getRegisteredCommands(),
-			).map(({ template, name, aliases }) => ({
+			).map(({ template, name }) => ({
 				name,
-				aliases,
 				description: template.description,
 				source: "prompt",
 				sourceInfo: template.sourceInfo,
@@ -173,9 +172,8 @@ export class SessionExtensionBindings {
 			const skills: SlashCommandInfo[] = getSkillCommands(session.resourceLoader.getSkills().skills, [
 				...runner.getRegisteredCommands(),
 				...session.promptTemplates,
-			]).map(({ skill, name, aliases }) => ({
+			]).map(({ skill, name }) => ({
 				name,
-				aliases,
 				description: skill.description,
 				source: "skill",
 				sourceInfo: skill.sourceInfo,
@@ -220,7 +218,9 @@ export class SessionExtensionBindings {
 					return session.sessionManager.getSessionName();
 				},
 				setLabel: (entryId, label) => {
-					session.sessionManager.appendLabelChange(entryId, label);
+					const id = session.sessionManager.appendLabelChange(entryId, label);
+					const entry = session.sessionManager.getEntry(id);
+					if (entry) this.host.emit({ type: "entry_appended", entry });
 				},
 				getActiveTools: () => session.getActiveToolNames(),
 				getAllTools: () => session.getAllTools(),
@@ -266,7 +266,7 @@ export class SessionExtensionBindings {
 				compact: (options) => {
 					void (async () => {
 						try {
-							const result = await session.compact();
+							const result = await session.compact({ customInstructions: options?.customInstructions });
 							options?.onComplete?.(result);
 						} catch (error) {
 							const err = error instanceof Error ? error : new Error(String(error));

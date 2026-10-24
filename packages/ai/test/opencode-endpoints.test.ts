@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getModels, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModels } from "../src/providers/all.ts";
 import { getOpenCodeBaseUrl, withOpenCodeEndpoint } from "../src/providers/opencode-endpoints.ts";
 import type { Api, Model } from "../src/types.ts";
 
@@ -13,7 +14,7 @@ const operations = {
 };
 
 describe.each(["opencode", "opencode-go"] as const)("OpenCode routing: %s", (provider) => {
-	const models = getModels(provider);
+	const models = getBuiltinModels(provider);
 	it.each(Object.keys(operations))("routes the %s transport with conversation and client identity", async (api) => {
 		const model = models.find((entry) => entry.api === api);
 		expect(model, `catalog missing ${api}`).toBeDefined();

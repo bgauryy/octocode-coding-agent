@@ -1,11 +1,19 @@
 import { getOpenCodeBaseUrl } from "../../src/providers/opencode-endpoints.ts";
-import type { Api, Model, OpenAICompletionsCompat, OpenAIResponsesCompat } from "../../src/types.ts";
+import type {
+	AnthropicMessagesCompat,
+	Api,
+	Model,
+	ModelPromptCache,
+	OpenAICompletionsCompat,
+	OpenAIResponsesCompat,
+} from "../../src/types.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { getAnthropicMessagesCompat } from "./anthropic.ts";
 import {
 	COPILOT_STATIC_HEADERS,
 	OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS,
 } from "./constants.ts";
+import { getOpenCodeAnthropicCacheMetadata } from "./opencode.ts";
 import { getModelsDevCost } from "./pricing.ts";
 import { getGoogleThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
@@ -24,16 +32,18 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 	] as const;
 
 	for (const variant of opencodeVariants) {
-		if (!data[variant.key]?.models) continue;
+		const variantModels = data[variant.key]?.models;
+		if (!variantModels) continue;
 
-		for (const [modelId, model] of Object.entries(data[variant.key].models)) {
+		for (const [modelId, model] of Object.entries(variantModels)) {
 			const m = model;
 			if (m.tool_call !== true) continue;
 			if (m.status === "deprecated") continue;
 
 			const npm = m.provider?.npm;
 			let api: Api;
-			let compat: OpenAICompletionsCompat | OpenAIResponsesCompat | undefined;
+			let compat: AnthropicMessagesCompat | OpenAICompletionsCompat | OpenAIResponsesCompat | undefined;
+			let promptCache: ModelPromptCache | undefined;
 
 			if (npm === "@ai-sdk/openai") {
 				api = "openai-responses";
@@ -72,6 +82,12 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				}
 			}
 
+			if (api === "anthropic-messages") {
+				const cacheMetadata = getOpenCodeAnthropicCacheMetadata(modelId);
+				promptCache = cacheMetadata.promptCache;
+				if (cacheMetadata.compat) compat = { ...compat, ...cacheMetadata.compat };
+			}
+
 			if (api === "openai-completions") {
 				compat = { ...compat, maxTokensField: "max_tokens" };
 				if (OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS.has(`${variant.provider}:${modelId}`)) {
@@ -96,6 +112,7 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
 				...(compat ? { compat } : {}),
+				...(promptCache ? { promptCache } : {}),
 				contextWindow: m.limit?.context || 4096,
 				maxTokens: m.limit?.output || 4096,
 			});

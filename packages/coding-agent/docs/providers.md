@@ -5,19 +5,35 @@ Most hosted providers support one or both of these authentication methods:
 - Sign in through a browser or device flow backed by OAuth.
 - Provide an API key.
 
-Use `/login [provider]` to see the methods supported by a provider. Amazon Bedrock and Google Vertex AI can also use ambient cloud credentials.
+Use `/providers [provider]` (`/login` is an alias) to see status and the methods supported by a provider. Amazon Bedrock and Google Vertex AI can also use ambient cloud credentials.
+
+GitHub Copilot model access uses `/providers github-copilot`. The separate `/github` command manages GitHub code-search credentials; signing in there does not configure Copilot inference.
 
 For instruction and conversation retention, see [Prompt caching](prompt-caching.md).
 
 ## Authenticate interactively
 
-Run `/login` and select a provider. Octocode guides you through its OAuth or API-key flow and saves the resulting credential in `auth.json`.
+Run `/providers` and choose a provider. Each provider appears once with its credential source and available model count. “Configured” means credentials are present; it does not verify that the provider will accept a request. Choose **Sign in** for the provider’s browser/device authentication flow, or **Add API key** / **Replace API key** for a key. Only supported methods appear. Choose **Choose a model for this chat** to open that provider’s models. Successful sign-in opens this picker automatically; Esc keeps the current model and Ctrl+S explicitly changes the default. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
 On a remote or headless machine, an OAuth callback may not reach the local process. When prompted, paste the final redirect URL or authorization code back into Octocode.
 
-Run `/logout` and select a provider to remove its stored credential. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
+Choose **Remove saved credential** on the provider’s page, or run `/logout` and select a provider, then confirm removal. This does not unset environment variables, remove authentication from `models.json`, or revoke the credential at the provider.
 
-`auth.json` can contain API keys and OAuth tokens. Keep it private and do not commit it.
+Secret input and pasted authorization codes are hidden. When macOS Keychain or Linux Secret Service is available, API-key entry offers it first: only a command reference is written to `auth.json`. A failed keychain write aborts without silently saving plaintext. You can explicitly choose local-file storage; new files use mode `0600` and new directories `0700`. Existing administrator-managed modes and ACLs are preserved. Startup warns when its credential file has group/world permissions or is inside a Git worktree; injected SDK model runtimes retain responsibility for their own credential storage. OAuth tokens and file-stored API keys remain plaintext; keep `auth.json` private and out of Git. Removal also attempts to delete an owned keychain entry.
+
+## Use Pi configuration
+
+Select **Pi (config)** in `/providers`, or run `/providers pi`. It lists providers found in Pi’s `models.json` and saved sign-ins from `auth.json`. Model definitions follow the existing [Pi fallback precedence](configuration.md#pi-configuration-fallback); models retain their real provider IDs and use those providers’ APIs, authentication and pricing. Pi is a setup source, not a network model service.
+
+Saved Pi sign-ins are copied only after you select a provider and confirm import. Existing Octocode credentials can be replaced; Pi files are never modified. API keys can be imported into the system keychain. File imports preserve environment references; keychain imports resolve the key once and reject missing values. Command-based Pi keys are not executed or imported by this flow; configure those providers directly. Explicit home overrides and custom SDK directories disable discovery. After import, the model picker shows only that provider. Providers defined only in Pi’s model file remain usable through the normal fallback loader.
+
+## Use OpenCode and choose a model
+
+Run `/providers opencode` for OpenCode Console (Zen), or `/providers opencode-go` for Go. Choose **Add API key** (or **Replace API key**) and paste your key when prompted. After saving it, Octocode opens the model picker with that provider as the search term; your current model stays selected until you choose another. Press Esc to keep it.
+
+To choose later, run `/model opencode/` or `/model opencode-go/`; the trailing slash restricts the picker to that exact provider. You can also select an exact model with `/model <provider>/<model-id>`. Both providers support `OPENCODE_API_KEY` for environment-based authentication. A saved key takes precedence over that variable.
+
+The [OpenCode Console model list](https://opencode.ai/v2/docs/console/models/) and [Go documentation](https://opencode.ai/v2/docs/console/go/) describe availability and account requirements. A model appearing in the local catalog does not guarantee that your account can use it.
 
 ## Use an API key from the environment
 
@@ -104,11 +120,11 @@ A stored API-key credential can include an `env` object. Its values take priorit
 
 ### OpenRouter
 
-Authenticate with `/login openrouter` or `OPENROUTER_API_KEY`.
+Authenticate with `/providers openrouter` or `OPENROUTER_API_KEY`.
 
 With a key, Octocode lists only the OpenRouter chat models that key may use, with the key's context size, max output, and prices. These come from OpenRouter's `/models/user` endpoint and reflect guardrails and provider restrictions set in OpenRouter. Image and classifier models are not filtered.
 
-Octocode refreshes the list in the background at startup in interactive mode, when `/model` opens, after `/login`, and on `octocode update --models`. The last list is saved and used offline and in `octocode -p` and RPC mode. After switching keys outside `/login`, the previous key's list stays until the next refresh.
+Octocode refreshes the list in the background at startup in interactive mode, when `/model` opens, after provider sign-in, and on `octocode update --models`. The last list is saved and used offline and in `octocode -p` and RPC mode. After switching keys outside `/providers`, the previous key's list stays until the next refresh.
 
 Regional endpoints filter models to their region. To use one, set the base URL in [`models.json`](models.md#configure-a-compatible-endpoint):
 

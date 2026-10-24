@@ -10,7 +10,11 @@ import { operationSignal, raceWithAbortSignal } from "@octocodeai/octocode-ai/ut
 import type { RuntimeCredentials } from "../runtime-credentials.ts";
 import type { ModelAvailability } from "./availability.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
-import { CredentialSynchronizationError, type CredentialSynchronizationOperation } from "./types.ts";
+import {
+	CredentialSynchronizationError,
+	type CredentialSynchronizationOperation,
+	type ModelRuntimeLoginOptions,
+} from "./types.ts";
 
 /** The runtime parts a credential change updates. */
 export interface CredentialOperationsHost {
@@ -91,10 +95,19 @@ export class CredentialOperations {
 		});
 	}
 
-	login(providerId: string, type: AuthType, interaction: AuthInteraction, options?: LoginOptions): Promise<Credential> {
+	login(
+		providerId: string,
+		type: AuthType,
+		interaction: AuthInteraction,
+		options?: LoginOptions,
+		hostOptions: ModelRuntimeLoginOptions = {},
+	): Promise<Credential> {
 		const signal = operationSignal(interaction.signal);
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
-			const credential = await this.host.models.login(providerId, type, { ...interaction, signal }, options);
+			const login = () => this.host.models.login(providerId, type, { ...interaction, signal }, options);
+			const credential = hostOptions.transformCredential
+				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, login)
+				: await login();
 			await this.synchronizeCredentialState(providerId, "login", credential, signal);
 			return credential;
 		});
@@ -105,6 +118,23 @@ export class CredentialOperations {
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
 			await this.host.models.logout(providerId, { signal });
 			await this.synchronizeCredentialState(providerId, "logout", undefined, signal);
+		});
+	}
+
+	importCredential(
+		providerId: string,
+		credential: Credential,
+		options: AuthOperationOptions = {},
+		hostOptions: ModelRuntimeLoginOptions = {},
+	): Promise<void> {
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			if (!this.host.models.getProvider(providerId)) throw new Error(`Unknown provider: ${providerId}`);
+			const write = () => this.host.credentials.modify(providerId, async () => structuredClone(credential), { signal });
+			const saved = hostOptions.transformCredential
+				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, write)
+				: await write();
+			await this.synchronizeCredentialState(providerId, "importCredential", saved, signal);
 		});
 	}
 }

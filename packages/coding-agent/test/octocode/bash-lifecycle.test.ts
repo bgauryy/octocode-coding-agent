@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { registerBashTool } from "../../src/octocode/files/bash.ts";
-import { BashJobs, jobReport, reapOrphanJobs } from "../../src/octocode/files/bash-jobs.ts";
+import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import {
 	groupAlive,
@@ -17,6 +17,8 @@ import {
 } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { jobReport } from "../../src/octocode/files/bash-jobs/report.ts";
+import { reapOrphanJobs } from "../../src/octocode/files/bash-jobs/records.ts";
 
 const until = async (check: () => boolean, ms = 5_000) => {
 	const end = Date.now() + ms;

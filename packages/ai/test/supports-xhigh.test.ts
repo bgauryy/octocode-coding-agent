@@ -1,30 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { getModel, getSupportedThinkingLevels } from "../src/compat.ts";
+import { getSupportedThinkingLevels } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 
 describe("getSupportedThinkingLevels", () => {
 	it("includes max but not xhigh for Anthropic Opus 4.6 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-4-6");
+		const model = getBuiltinModel("anthropic", "claude-opus-4-6");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 	});
 
 	it("includes xhigh and max for Anthropic Opus 4.8 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-4-8");
+		const model = getBuiltinModel("anthropic", "claude-opus-4-8");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 	});
 
 	it("includes xhigh and max for Anthropic Opus 5 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-opus-5");
+		const model = getBuiltinModel("anthropic", "claude-opus-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 	});
 
 	it("includes Claude Opus 5.5 with its always-on effort levels and official pricing", () => {
-		const model = getModel("anthropic", "claude-opus-5-5");
+		const model = getBuiltinModel("anthropic", "claude-opus-5-5");
 		expect(model).toMatchObject({
 			cost: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
 			contextWindow: 1_000_000,
@@ -40,7 +41,7 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it("includes Claude Sonnet 5.5 with managed effort levels and official pricing", () => {
-		const model = getModel("anthropic", "claude-sonnet-5-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-5-5");
 		expect(model).toMatchObject({
 			cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
 			contextWindow: 1_000_000,
@@ -57,21 +58,21 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it("includes max but not xhigh for Anthropic Sonnet 4.6 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-sonnet-4-6");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-6");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 	});
 
 	it("includes xhigh and max for Anthropic Sonnet 5 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-sonnet-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 	});
 
 	it("includes xhigh and max but not off for Anthropic Claude Fable 5 on anthropic-messages API", () => {
-		const model = getModel("anthropic", "claude-fable-5");
+		const model = getBuiltinModel("anthropic", "claude-fable-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");
@@ -79,7 +80,7 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it("does not include xhigh or max for Claude Sonnet 4.5", () => {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).not.toContain("max");
@@ -95,7 +96,7 @@ describe("getSupportedThinkingLevels", () => {
 		"gpt-6-luna",
 		"gpt-6.1-sol",
 	] as const)("includes xhigh for openai-codex %s models", (modelId) => {
-		const model = getModel("openai-codex", modelId);
+		const model = getBuiltinModel("openai-codex", modelId);
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 	});
@@ -103,7 +104,7 @@ describe("getSupportedThinkingLevels", () => {
 	it.each(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-sol", "gpt-6-luna"] as const)(
 		"includes xhigh and max for OpenAI %s models",
 		(modelId) => {
-			const model = getModel("openai", modelId);
+			const model = getBuiltinModel("openai", modelId);
 			expect(model).toBeDefined();
 			expect(getSupportedThinkingLevels(model)).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
 		},
@@ -117,7 +118,7 @@ describe("getSupportedThinkingLevels", () => {
 			"openai-codex": ["minimal", "low", "medium", "high", "xhigh", "max"],
 		} as const;
 		for (const [provider, levels] of Object.entries(expected)) {
-			const model = getModel(provider as keyof typeof expected, "gpt-6.1-sol");
+			const model = getBuiltinModel(provider as keyof typeof expected, "gpt-6.1-sol");
 			expect(model).toBeDefined();
 			expect(getSupportedThinkingLevels(model)).toEqual(levels);
 			expect(model.thinkingLevelMap?.off).toBeNull();
@@ -131,7 +132,7 @@ describe("getSupportedThinkingLevels", () => {
 		["gpt-6.1-sol", { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 }, 500000],
 	] as const)("includes official metadata for OpenAI and Codex %s", (modelId, cost, codexContextWindow) => {
 		for (const provider of ["openai", "openai-codex"] as const) {
-			const model = getModel(provider, modelId);
+			const model = getBuiltinModel(provider, modelId);
 			expect(model).toMatchObject({
 				input: ["text", "image"],
 				cost: {
@@ -159,37 +160,37 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it("includes only medium/high/xhigh for OpenAI GPT-5.5 Pro", () => {
-		const model = getModel("openai", "gpt-5.5-pro");
+		const model = getBuiltinModel("openai", "gpt-5.5-pro");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["medium", "high", "xhigh"]);
 	});
 
 	it("includes only medium/high/xhigh for OpenRouter GPT-5.5 Pro", () => {
-		const model = getModel("openrouter", "openai/gpt-5.5-pro");
+		const model = getBuiltinModel("openrouter", "openai/gpt-5.5-pro");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["medium", "high", "xhigh"]);
 	});
 
 	it("includes low/high/max plus off for DeepSeek V4.1 Flash on the DeepSeek provider", () => {
-		const model = getModel("deepseek", "deepseek-flash");
+		const model = getBuiltinModel("deepseek", "deepseek-flash");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["off", "low", "high", "max"]);
 	});
 
 	it("preserves low/high/max metadata for DeepSeek V4.1 Flash on OpenRouter", () => {
-		const model = getModel("openrouter", "deepseek/deepseek-v4.1-flash");
+		const model = getBuiltinModel("openrouter", "deepseek/deepseek-v4.1-flash");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["off", "low", "high", "max"]);
 	});
 
 	it("preserves low/high/max metadata for DeepSeek V4.1 Flash on opencode-go", () => {
-		const model = getModel("opencode-go", "deepseek-v4.1-flash");
+		const model = getBuiltinModel("opencode-go", "deepseek-v4.1-flash");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["low", "high", "max"]);
 	});
 
 	it("excludes thinking off for Moonshot Kimi K2.7 Code models", () => {
-		const cases = [getModel("moonshotai", "kimi-k2.7-code"), getModel("moonshotai-cn", "kimi-k2.7-code")];
+		const cases = [getBuiltinModel("moonshotai", "kimi-k2.7-code"), getBuiltinModel("moonshotai-cn", "kimi-k2.7-code")];
 
 		for (const model of cases) {
 			expect(model).toBeDefined();
@@ -198,57 +199,57 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it.each(["moonshotai", "moonshotai-cn"] as const)("uses the verified effort options for %s Kimi K3", (provider) => {
-		const model = getModel(provider, "kimi-k3");
+		const model = getBuiltinModel(provider, "kimi-k3");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["low", "high", "max"]);
 	});
 
 	it("includes only low, high, max for Kimi Coding K3", () => {
-		const model = getModel("kimi-coding", "k3");
+		const model = getBuiltinModel("kimi-coding", "k3");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["low", "high", "max"]);
 	});
 
 	it("excludes off for always-thinking Kimi Coding Highspeed", () => {
-		const model = getModel("kimi-coding", "kimi-for-coding-highspeed");
+		const model = getBuiltinModel("kimi-coding", "kimi-for-coding-highspeed");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).not.toContain("off");
 	});
 
 	it("includes only high for OpenCode Grok Build", () => {
-		const model = getModel("opencode", "grok-build-0.1");
+		const model = getBuiltinModel("opencode", "grok-build-0.1");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["high"]);
 	});
 
 	it("includes only high/xhigh plus off for DeepSeek V4 Flash on OpenRouter", () => {
-		const model = getModel("openrouter", "deepseek/deepseek-v4-flash");
+		const model = getBuiltinModel("openrouter", "deepseek/deepseek-v4-flash");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["off", "high", "xhigh"]);
 	});
 
 	it("includes max but not xhigh for OpenRouter Opus 4.6 (openai-completions API)", () => {
-		const model = getModel("openrouter", "anthropic/claude-opus-4.6");
+		const model = getBuiltinModel("openrouter", "anthropic/claude-opus-4.6");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 		expect(getSupportedThinkingLevels(model)).not.toContain("xhigh");
 	});
 
 	it("includes xhigh and max for Bedrock Claude Opus 5", () => {
-		const model = getModel("amazon-bedrock", "global.anthropic.claude-opus-5");
+		const model = getBuiltinModel("amazon-bedrock", "global.anthropic.claude-opus-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");
 	});
 
 	it("includes xhigh but not off or max for xAI Grok 4.6", () => {
-		const model = getModel("xai", "grok-4.6");
+		const model = getBuiltinModel("xai", "grok-4.6");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toEqual(["low", "medium", "high", "xhigh"]);
 	});
 
 	it("includes xhigh and max but not off for Bedrock Claude Fable 5", () => {
-		const model = getModel("amazon-bedrock", "global.anthropic.claude-fable-5");
+		const model = getBuiltinModel("amazon-bedrock", "global.anthropic.claude-fable-5");
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model)).toContain("xhigh");
 		expect(getSupportedThinkingLevels(model)).toContain("max");

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stream as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { stream as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import { stream as streamOpenAIResponses } from "../src/api/openai-responses.ts";
-import { getModel, normalizeContext, stream } from "../src/compat.ts";
+import { normalizeContext, stream } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import { MODELS } from "../src/models.generated.ts";
 import type { Model } from "../src/types.ts";
 
@@ -19,7 +20,7 @@ interface OpenAICompletionsCachePayload {
 }
 
 interface OpenAIResponsesCachePayload extends OpenAICompletionsCachePayload {
-	prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" };
+	prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" | "12h" };
 }
 
 function stopAfterPayload<TPayload>(capture: (payload: TPayload) => void): (payload: unknown) => never {
@@ -53,7 +54,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		it.skipIf(!process.env.ANTHROPIC_API_KEY)(
 			"should use default cache TTL (no ttl field) when OCTOCODE_CACHE_RETENTION is not set",
 			async () => {
-				const model = getModel("anthropic", "claude-haiku-4-5");
+				const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
 				let capturedPayload: any = null;
 
 				const s = stream(model, context, {
@@ -78,7 +79,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			"should use 1h cache TTL when OCTOCODE_CACHE_RETENTION=long",
 			async () => {
 				process.env.OCTOCODE_CACHE_RETENTION = "long";
-				const model = getModel("anthropic", "claude-haiku-4-5");
+				const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
 				let capturedPayload: any = null;
 
 				const s = stream(model, context, {
@@ -103,7 +104,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";
 
 			// Create a model with a different baseUrl (simulating a proxy)
-			const baseModel = getModel("anthropic", "claude-haiku-4-5");
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
 			const proxyModel = {
 				...baseModel,
 				baseUrl: "https://my-proxy.example.com/v1",
@@ -139,7 +140,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should omit ttl when supportsLongCacheRetention is false", async () => {
-			const baseModel = getModel("anthropic", "claude-haiku-4-5");
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
 			const proxyModel = {
 				...baseModel,
 				baseUrl: "https://my-proxy.example.com/v1",
@@ -168,7 +169,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should omit cache_control when cacheRetention is none", async () => {
-			const baseModel = getModel("anthropic", "claude-haiku-4-5");
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
 			let capturedPayload: any = null;
 
 			try {
@@ -192,7 +193,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should add cache_control to string user messages", async () => {
-			const baseModel = getModel("anthropic", "claude-haiku-4-5");
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
 			let capturedPayload: any = null;
 
 			try {
@@ -218,7 +219,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should set 1h cache TTL when cacheRetention is long", async () => {
-			const baseModel = getModel("anthropic", "claude-haiku-4-5");
+			const baseModel = getBuiltinModel("anthropic", "claude-haiku-4-5");
 			let capturedPayload: any = null;
 
 			try {
@@ -246,14 +247,14 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		it.each(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol"] as const)(
 			"does not enable cache warming from the documented TTL alone for %s",
 			(modelId) => {
-				expect(getModel("openai", modelId).promptCache).toBeUndefined();
+				expect(getBuiltinModel("openai", modelId).promptCache).toBeUndefined();
 			},
 		);
 
 		it.skipIf(!process.env.OPENAI_API_KEY)(
 			"should not set prompt_cache_retention when OCTOCODE_CACHE_RETENTION is not set",
 			async () => {
-				const model = getModel("openai", "gpt-4o-mini");
+				const model = getBuiltinModel("openai", "gpt-4o-mini");
 				let capturedPayload: any = null;
 
 				const s = stream(model, context, {
@@ -276,7 +277,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			"should set prompt_cache_retention to 24h when OCTOCODE_CACHE_RETENTION=long",
 			async () => {
 				process.env.OCTOCODE_CACHE_RETENTION = "long";
-				const model = getModel("openai", "gpt-4o-mini");
+				const model = getBuiltinModel("openai", "gpt-4o-mini");
 				let capturedPayload: any = null;
 
 				const s = stream(model, context, {
@@ -299,7 +300,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";
 
 			// Create a model with a different baseUrl (simulating a proxy)
-			const baseModel = getModel("openai", "gpt-4o-mini");
+			const baseModel = getBuiltinModel("openai", "gpt-4o-mini");
 			const proxyModel = {
 				...baseModel,
 				baseUrl: "https://my-proxy.example.com/v1",
@@ -329,7 +330,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 
 		it("should omit prompt_cache_retention when supportsLongCacheRetention is false", async () => {
 			const model = {
-				...getModel("openai", "gpt-4o-mini"),
+				...getBuiltinModel("openai", "gpt-4o-mini"),
 				compat: { supportsLongCacheRetention: false },
 			};
 			let capturedPayload: any = null;
@@ -356,7 +357,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should omit prompt_cache_key and disable implicit writes when cacheRetention is none", async () => {
-			const model = getModel("openai", "gpt-5.6-sol");
+			const model = getBuiltinModel("openai", "gpt-5.6-sol");
 			let capturedPayload: OpenAIResponsesCachePayload | undefined;
 
 			try {
@@ -383,7 +384,7 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		});
 
 		it("should omit prompt_cache_options for models that reject it", async () => {
-			const model = getModel("openai", "gpt-4o-mini");
+			const model = getBuiltinModel("openai", "gpt-4o-mini");
 			let capturedPayload: OpenAIResponsesCachePayload | undefined;
 
 			try {
@@ -410,11 +411,11 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 
 		it.each([
 			["gpt-4o-mini", "24h", undefined],
-			["gpt-6-astra", undefined, { ttl: "30m" }],
-			["gpt-6-sol", undefined, { ttl: "30m" }],
-			["gpt-6-luna", undefined, { ttl: "30m" }],
+			["gpt-6-astra", undefined, { ttl: "12h" }],
+			["gpt-6-sol", undefined, { ttl: "12h" }],
+			["gpt-6-luna", undefined, { ttl: "12h" }],
 		] as const)("should use the supported long cache field for %s", async (modelId, retention, cacheOptions) => {
-			const model = getModel("openai", modelId);
+			const model = getBuiltinModel("openai", modelId);
 			let capturedPayload: OpenAIResponsesCachePayload | undefined;
 
 			try {
@@ -457,11 +458,36 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			};
 		}
 
-		it("should set prompt_cache_retention for non-api.openai.com baseUrl by default", async () => {
+		it("should omit prompt_cache_retention for non-api.openai.com baseUrl unless compat declares support", async () => {
 			let capturedPayload: any = null;
 
 			try {
 				const s = streamOpenAICompletions(createCompletionsModel(), context, {
+					apiKey: "fake-key",
+					cacheRetention: "long",
+					sessionId: "session-completions",
+					onPayload: stopAfterPayload((payload) => {
+						capturedPayload = payload;
+					}),
+				});
+
+				for await (const event of s) {
+					if (event.type === "error") break;
+				}
+			} catch {
+				// Expected to fail
+			}
+
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.prompt_cache_key).toBe("session-completions");
+			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
+		});
+
+		it("should set prompt_cache_retention for non-api.openai.com baseUrl when compat declares support", async () => {
+			let capturedPayload: any = null;
+
+			try {
+				const s = streamOpenAICompletions(createCompletionsModel({ supportsLongCacheRetention: true }), context, {
 					apiKey: "fake-key",
 					cacheRetention: "long",
 					sessionId: "session-completions",

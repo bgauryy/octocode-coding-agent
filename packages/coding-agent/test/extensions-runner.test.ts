@@ -490,35 +490,28 @@ describe("ExtensionRunner", () => {
 	});
 
 	describe("command collection", () => {
-		it("resolves aliases to one canonical command and qualifies collisions", async () => {
+		it("registers one name per command and qualifies built-in collisions", async () => {
 			fs.writeFileSync(
-				path.join(extensionsDir, "aliases.ts"),
+				path.join(extensionsDir, "names.ts"),
 				`export default function(pi) {
-				pi.registerCommand("first", { aliases: ["shortcut", "shared", "second", "model"], handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
-				pi.registerCommand("second", { aliases: ["shared"], handler: async () => {} });
+				pi.registerCommand("first", { handler: async () => {}, getArgumentCompletions: () => [{value:"ok", label:"ok"}] });
 				pi.registerCommand("model", { handler: async () => {} });
 			}`,
 			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			expect(result.errors).toEqual([]);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
-			const commands = runner.getRegisteredCommands();
-			expect(commands).toHaveLength(3);
-			const first = runner.getCommand("first")!;
-			expect(runner.getCommand("shortcut")?.handler).toBe(first.handler);
-			expect(runner.getCommand("shortcut")?.getArgumentCompletions).toBe(first.getArgumentCompletions);
-			expect(first.aliases).toEqual(["shortcut", "shared:1", "second:1", "model:2"]);
-			expect(runner.getCommand("shared:2")?.name).toBe("second");
-			expect(runner.getCommand("second")?.name).toBe("second");
+			expect(runner.getRegisteredCommands().map((command) => command.invocationName)).toEqual(["first", "model:1"]);
+			expect(runner.getCommand("first")?.getArgumentCompletions).toBeTypeOf("function");
 			expect(runner.getCommand("model")).toBeUndefined();
 			expect(runner.getCommand("model:1")?.name).toBe("model");
-			expect(runner.getCommand("model:2")?.name).toBe("first");
 		});
 
 		it("keeps the native implementation of built-in commands unqualified", async () => {
 			fs.writeFileSync(
 				path.join(extensionsDir, "native.ts"),
 				`export default function(pi) {
-				pi.registerCommand("model", { aliases: ["native-model"], handler: async () => {} });
+				pi.registerCommand("model", { handler: async () => {} });
 			}`,
 			);
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
@@ -528,23 +521,7 @@ describe("ExtensionRunner", () => {
 			};
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
 			expect(runner.getCommand("model")?.invocationName).toBe("model");
-			expect(runner.getCommand("native-model")?.invocationName).toBe("model");
 		});
-
-		it.each(["", "two words", "/shortcut", "shortcut/path", "tab\tname", "trailing\n"])(
-			"rejects invalid alias %j",
-			async (alias) => {
-				fs.writeFileSync(
-					path.join(extensionsDir, "invalid.ts"),
-					`export default function(pi) {
-				pi.registerCommand("valid", { aliases: [${JSON.stringify(alias)}], handler: async () => {} });
-			}`,
-				);
-				const result = await discoverAndLoadExtensions([], tempDir, tempDir);
-				expect(result.errors).toHaveLength(1);
-				expect(result.errors[0]?.error).toContain("aliases must be non-empty single tokens");
-			},
-		);
 
 		it("collects commands from multiple extensions", async () => {
 			const cmdCode = (name: string) => `
@@ -612,7 +589,13 @@ describe("ExtensionRunner", () => {
 			expect(commands.map((command) => command.name)).toEqual(["shared-cmd", "shared-cmd"]);
 			expect(commands.map((command) => command.invocationName)).toEqual(["shared-cmd:1", "shared-cmd:2"]);
 			expect(commands.map((command) => command.description)).toEqual(["First command", "Second command"]);
-			expect(diagnostics).toEqual([]);
+			expect(diagnostics).toEqual(
+				commands.map((command) => ({
+					type: "warning",
+					path: command.sourceInfo.path,
+					message: `Command /shared-cmd conflicts with another command; available as /${command.invocationName}.`,
+				})),
+			);
 			expect(runner.getCommand("shared-cmd:1")?.description).toBe("First command");
 			expect(runner.getCommand("shared-cmd:2")?.description).toBe("Second command");
 		});

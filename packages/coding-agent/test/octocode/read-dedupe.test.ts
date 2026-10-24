@@ -74,6 +74,12 @@ function setup(earlier: Array<{ messages: unknown[] }>, cleared: string[] = []) 
 }
 
 describe("a repeated read of an unchanged file", () => {
+	it("matches equivalent arguments regardless of nested property order", async () => {
+		const first = exchange("read", { path: "a.ts", options: { z: 1, a: 2 } }, CONTENT);
+		const result = await setup([first]).run(event("read", { options: { a: 2, z: 1 }, path: "a.ts" }, CONTENT));
+		expect(result?.details).toMatchObject({ unchangedOf: first.id });
+	});
+
 	it("answers with a one-line note naming the file instead of the content again", async () => {
 		const first = exchange("read", { path: "src/a.ts" }, CONTENT);
 		const result = await setup([first]).run(event("read", { path: "src/a.ts" }, CONTENT));

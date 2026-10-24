@@ -1,11 +1,12 @@
 import { rewriteClaudeBash } from "../../shared/claude-bash.ts";
 import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { validateFileInput } from "../../shared/file-input.ts";
-import { rewriteFileQuery, rewriteCodexCommand } from "../rewrite.ts";
+import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
-import { errorMessage } from "../../shared/util.ts";
-import { commandsFor, hookCalls } from "../config.ts";
+import { rewriteFileQuery } from "../../shared/claude-file.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import { commandsFor, hookCalls } from "../config/calls.ts";
 import { CODEX_PATCH_NAMES, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../profiles.ts";
 import { capContext } from "../runner.ts";
@@ -97,7 +98,7 @@ export const preToolUseGate =
 		let rewritten = false;
 		if (rewrites.length) {
 			if (
-				event.toolCallId === "user-bash" ||
+				event.origin === "user" ||
 				["read", "edit", "write"].includes(event.toolName) ||
 				(event.toolName !== "file" && calls.length !== 1)
 			)

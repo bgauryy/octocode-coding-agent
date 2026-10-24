@@ -19,8 +19,8 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
 import { getMcpSessionStatus } from "../../src/extensions/mcp/status.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
 
@@ -207,7 +207,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				expect(servers[0].source).toBe(owner === "native" ? "built-in Octocode" : path.join(agentDir, "mcp.json"));
 				const infoOutput = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 				try {
-					await session.prompt("/info");
+					await session.prompt("/status");
 					const info = infoOutput.mock.calls.map(([value]) => String(value)).join("");
 					expect(info).toContain("integration-skill");
 					expect(info).toContain("octocode: connected");

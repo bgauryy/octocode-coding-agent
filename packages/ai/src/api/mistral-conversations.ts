@@ -23,7 +23,12 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 	options?: MistralOptions,
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
-	const normalizedContext = resolveTranscript(context, model.compat?.supportsMidConvoSystemMessages);
+	// Mistral rejects a user message after a tool result ("Unexpected role 'user' after role 'tool'"). A later
+	// system update therefore never rewrites the leading prompt: it follows an assistant turn or merges into the
+	// next user message.
+	const normalizedContext = resolveTranscript(context, model.compat?.supportsMidConvoSystemMessages, {
+		holdAfterToolResult: true,
+	});
 
 	(async () => {
 		const output = createPendingAssistantMessage(model);

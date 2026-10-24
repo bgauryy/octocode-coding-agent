@@ -1,3 +1,9 @@
+import { readPlan, planConstraintActive, clearPlanConstraint, type PlanOptions } from "../octocode/plan/state.ts";
+import { NATIVE_FEATURE_PATH } from "./native-tools.ts";
+import { contextReport } from "./agent-session/context-report.ts";
+import { sideQuestionsFor, clearSideQuestions } from "./agent-session/side-questions.ts";
+import { readRepositoryDiff, readUntrackedDiff } from "../octocode/files/repository-diff.ts";
+import type { ManualCompactionOptions } from "./compaction/manual-options.ts";
 /**
  * AgentSession - Core abstraction for agent lifecycle and session management.
  *
@@ -51,6 +57,7 @@ import type {
 	ModelMutationOptions,
 	PendingUserInput,
 	PromptOptions,
+	QueuedInput,
 	QueuedInputDisposition,
 } from "./agent-session/types.ts";
 import type { BashResult } from "./bash-executor.ts";
@@ -79,17 +86,15 @@ import type { CacheWarmingMode, SettingsManager } from "./settings-manager.ts";
 import type { BashOperations } from "./tools/bash.ts";
 import { getApplicationPort } from "./application/index.ts";
 
-export type { AgentSessionApi } from "./agent-session/api.ts";
 export { type ParsedSkillBlock, parseSkillBlock } from "./agent-session/prompt-expansion.ts";
 export type {
 	AgentSessionConfig,
 	AgentSessionEvent,
 	AgentSessionEventListener,
-	ExtensionBindings,
 	ModelCycleResult,
-	ModelMutationOptions,
 	PromptDisposition,
 	PromptOptions,
+	QueuedInput,
 	QueuedInputDisposition,
 } from "./agent-session/types.ts";
 export type { SessionStats } from "./session-stats.ts";
@@ -163,6 +168,13 @@ export class AgentSession implements AgentSessionApi {
 			includeAllExtensionTools: true,
 		});
 		if (c.runtime.usesDefaultTools) c.tools.restoreFromTranscript(c.runtime.defaultToolModifiers);
+		else if (config.allowedToolNames) {
+			// An explicit `--tools` allowlist still restores the loaded tools it and the tool policy permit; the
+			// allowlist's own tools stay active. `--no-tools` sets no allowlist, so it restores nothing.
+			const named = this.getActiveToolNames();
+			c.tools.restoreFromTranscript();
+			c.tools.setActiveTools([...new Set([...named, ...this.getActiveToolNames()])]);
+		}
 		getApplicationPort(this);
 	}
 
@@ -205,6 +217,7 @@ export class AgentSession implements AgentSessionApi {
 		model: Model<any>,
 		signal: AbortSignal,
 		reason: CompactionReason,
+		customInstructions?: string,
 	): Promise<CompactionResult> {
 		return runDefaultCompaction(
 			{
@@ -218,6 +231,7 @@ export class AgentSession implements AgentSessionApi {
 			model,
 			signal,
 			reason,
+			customInstructions,
 		);
 	}
 
@@ -226,8 +240,9 @@ export class AgentSession implements AgentSessionApi {
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck = true,
 		toolResults: AgentMessage[] = [],
+		incoming: readonly AgentMessage[] = [],
 	): Promise<boolean> {
-		return checkCompaction(this._c.compactionCheck, assistantMessage, skipAbortedCheck, toolResults);
+		return checkCompaction(this._c.compactionCheck, assistantMessage, skipAbortedCheck, toolResults, incoming);
 	}
 
 	/** Execute threshold or overflow compaction (see `SessionCompaction.runAuto`). */
@@ -248,6 +263,8 @@ export class AgentSession implements AgentSessionApi {
 		return this._listeners.subscribe(listener);
 	}
 	dispose(): void {
+		clearSideQuestions(this);
+		clearPlanConstraint(this.sessionId);
 		getApplicationPort(this).dispose();
 		try {
 			this.abortRetry();
@@ -440,8 +457,23 @@ export class AgentSession implements AgentSessionApi {
 	getFollowUpMessages(): readonly string[] {
 		return this._c.inputs.followUpMessages;
 	}
+	getQueuedInputs(): readonly QueuedInput[] {
+		return this._c.inputs.queuedInputs;
+	}
+	replaceQueuedInput(id: string, text: string): "replaced" | "removed" | "missing" {
+		return this._c.inputs.replace(id, text);
+	}
+	removeQueuedInput(id: string): QueuedInput | undefined {
+		return this._c.inputs.remove(id);
+	}
+	moveQueuedInput(id: string, direction: "up" | "down"): boolean {
+		return this._c.inputs.move(id, direction);
+	}
 	async abort(reason: "interrupted" | "replacement" | "shutdown" | "internal" = "interrupted"): Promise<void> {
 		await this._c.runLoop.abort(reason);
+	}
+	async stopActiveWork(): Promise<void> {
+		await Promise.all([this.abort(), this._c.bash.abortAndWait()]);
 	}
 	async waitForIdle(): Promise<void> {
 		if (this.isIdle) {
@@ -452,8 +484,8 @@ export class AgentSession implements AgentSessionApi {
 
 	// Compaction, auto-retry and bash execution
 
-	async compact(): Promise<CompactionResult> {
-		return this._c.compaction.compact();
+	async compact(options?: ManualCompactionOptions): Promise<CompactionResult> {
+		return this._c.compaction.compact(options);
 	}
 	abortCompaction(): void {
 		this._c.compaction.abort();
@@ -481,6 +513,8 @@ export class AgentSession implements AgentSessionApi {
 		onChunk?: (chunk: string) => void,
 		options?: { excludeFromContext?: boolean; id?: string; operations?: BashOperations },
 	): Promise<BashResult> {
+		if (planConstraintActive(this.sessionManager))
+			throw new Error("Shell execution is blocked during planning. Leave with /plan --off.");
 		return this._c.bash.execute(command, onChunk, options);
 	}
 	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
@@ -508,6 +542,7 @@ export class AgentSession implements AgentSessionApi {
 		void this._extensionRunner.emit(event);
 	}
 	async navigateTree(targetId: string, options: NavigateTreeOptions = {}): Promise<NavigateTreeResult> {
+		clearSideQuestions(this);
 		return this._c.tree.navigate(targetId, options);
 	}
 	getUserMessagesForForking(): Array<{ entryId: string; text: string }> {
@@ -519,6 +554,44 @@ export class AgentSession implements AgentSessionApi {
 			sessionId: this.sessionId,
 			contextUsage: this.getContextUsage(),
 		});
+	}
+	async controlPlan(options: PlanOptions) {
+		getApplicationPort(this);
+		const command = this.extensionRunner
+			.getRegisteredCommands()
+			.find((command) => command.name === "plan" && command.sourceInfo.path === NATIVE_FEATURE_PATH);
+		if (!command) throw new Error("Planning controls require native features.");
+		if (!["show", "enter", "leave", "approve"].includes(options.action)) throw new Error("Invalid planning action.");
+		if (options.action === "approve" && (!Number.isSafeInteger(options.revision) || Number(options.revision) < 1))
+			throw new Error("A positive plan revision is required.");
+		const args =
+			options.action === "show"
+				? "--show"
+				: options.action === "leave"
+					? "--off"
+					: options.action === "approve"
+						? `--approve ${options.revision}`
+						: "";
+		await command.handler(args, this.extensionRunner.createCommandContext());
+		return readPlan(this.sessionManager.getBranch());
+	}
+	getContextReport() {
+		return contextReport(this);
+	}
+	getContextWindowLimit(): number | undefined {
+		return this._c.models.getContextWindowLimit();
+	}
+	setContextWindow(tokens?: number): number {
+		return this._c.models.setContextWindow(tokens);
+	}
+	askSideQuestion(question: string): Promise<string> {
+		return sideQuestionsFor(this).ask(question);
+	}
+	getRepositoryDiff(selection?: string, signal?: AbortSignal) {
+		return readRepositoryDiff(this.sessionManager.getCwd(), selection, signal);
+	}
+	getUntrackedDiff(root: string, file: string) {
+		return readUntrackedDiff(root, file);
 	}
 	getContextUsage(): ContextUsage | undefined {
 		return computeContextUsage(this.sessionManager, this._c.models.limitsModel());
@@ -557,6 +630,7 @@ export class AgentSession implements AgentSessionApi {
 		);
 	}
 	async reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void> {
+		clearSideQuestions(this);
 		await reloadExtensionRuntime(this._c.runtime, options);
 	}
 	createReplacedSessionContext(): ReplacedSessionContext {

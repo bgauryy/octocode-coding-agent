@@ -1,6 +1,6 @@
 import { wholeSeconds, withTimeout } from "../../shared/util.ts";
 import { abortError } from "../abort.ts";
-import type { BrowserSession } from "../cdp.ts";
+import type { BrowserSession } from "../cdp/browser-session.ts";
 
 type Page = BrowserSession["page"];
 /** How long an action waits to see whether it started a navigation. */

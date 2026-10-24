@@ -7,7 +7,6 @@ import {
 	ImageSettingsSchema,
 	MarkdownSettingsSchema,
 	PackageSourceSchema,
-	type ProviderRetrySettingsSchema,
 	RetrySettingsSchema,
 	SkillsInputSchema,
 	TerminalSettingsSchema,
@@ -78,6 +77,14 @@ export const SettingsSchema = Type.Object(
 		),
 		shellCommandPrefix: Type.Optional(
 			Type.String({ description: "Prefix prepended to every bash command, for example to enable shell aliases." }),
+		),
+		bashBackgroundAfterSeconds: Type.Optional(
+			Type.Number({
+				description:
+					"Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it.",
+				minimum: 0,
+				default: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds,
+			}),
 		),
 		npmCommand: Type.Optional(
 			Type.Array(Type.String(), {
@@ -287,14 +294,10 @@ export const SettingsSchema = Type.Object(
 
 type SettingsInput = Static<typeof SettingsSchema>;
 
-export interface BranchSummarySettings extends Static<typeof BranchSummarySettingsSchema> {}
-export interface ProviderRetrySettings extends Static<typeof ProviderRetrySettingsSchema> {}
 export interface RetrySettings extends Omit<Static<typeof RetrySettingsSchema>, "maxDelayMs"> {}
-export interface TerminalSettings extends Static<typeof TerminalSettingsSchema> {}
 export interface ImageSettings extends Static<typeof ImageSettingsSchema> {}
 export interface ThinkingBudgetsSettings extends Static<typeof ThinkingBudgetsSettingsSchema> {}
 export type MermaidRenderingMode = NonNullable<Static<typeof MarkdownSettingsSchema>["mermaid"]>;
-export interface MarkdownSettings extends Static<typeof MarkdownSettingsSchema> {}
 export interface WarningSettings extends Static<typeof WarningSettingsSchema> {}
 export type DefaultProjectTrust = NonNullable<SettingsInput["defaultProjectTrust"]>;
 export type QuietStartup = NonNullable<SettingsInput["quietStartup"]>;

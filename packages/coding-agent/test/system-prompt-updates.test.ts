@@ -10,7 +10,7 @@ import {
 	getSystemMessageText,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
 import { createAgentSession } from "../src/core/sdk.ts";
@@ -61,7 +61,7 @@ describe("system prompt updates", () => {
 			const created = await createAgentSession({
 				cwd: tempDir,
 				agentDir: join(tempDir, "agent"),
-				model: getModel("anthropic", "claude-sonnet-4-5"),
+				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 				settingsManager: SettingsManager.inMemory(),
 				sessionManager,
 				noTools: "all",

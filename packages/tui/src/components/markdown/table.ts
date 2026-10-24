@@ -1,5 +1,6 @@
 import type { Tokens } from "marked";
-import { visibleWidth, wrapTextWithAnsi } from "../../utils.ts";
+import { wrapTextWithAnsi } from "../../utils/wrap.ts";
+import { visibleWidth } from "../../utils/width.ts";
 import { renderInlineTokens } from "./inline.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
 

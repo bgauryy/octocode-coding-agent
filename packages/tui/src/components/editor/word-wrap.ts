@@ -1,11 +1,13 @@
-import { cjkBreakRegex, isWhitespaceChar, splitWideGrapheme, visibleWidth } from "../../utils.ts";
+import { visibleWidth } from "../../utils/width.ts";
+import { splitWideGrapheme } from "../../utils/wrap.ts";
+import { cjkBreakRegex, isWhitespaceChar } from "../../utils/chars.ts";
 import { graphemeSegmenter, isPasteMarker } from "./segmentation.ts";
 
 /**
  * Represents a chunk of text for word-wrap layout.
  * Tracks both the text content and its position in the original line.
  */
-export interface TextChunk {
+interface TextChunk {
 	text: string;
 	startIndex: number;
 	endIndex: number;

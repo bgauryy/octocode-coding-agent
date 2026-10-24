@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModel as getCompatModel } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import {
 	createModels,
 	createProvider,
@@ -10,7 +10,6 @@ import {
 	type Provider,
 } from "../src/models.ts";
 import { InMemoryModelsStore, type ModelsStoreEntry } from "../src/models-store.ts";
-import { getBuiltinModel } from "../src/providers/all.ts";
 import { fauxAssistantMessage, fauxProvider } from "../src/providers/faux.ts";
 import type { Api, ImageApi, ImageModel, Model } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
@@ -93,11 +92,8 @@ describe("built-in catalog getters", () => {
 		// Compile-time regression check: the return type must not carry literal model ids.
 		let model = getBuiltinModel("openai", "gpt-4o-mini");
 		model = getBuiltinModel("openai", "gpt-4o");
-		let compat = getCompatModel("openai", "gpt-4o-mini");
-		compat = getCompatModel("openai", "gpt-4o");
 
 		expect(model.id).toBe("gpt-4o");
-		expect(compat.id).toBe("gpt-4o");
 	});
 });
 

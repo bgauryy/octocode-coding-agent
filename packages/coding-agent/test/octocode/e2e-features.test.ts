@@ -239,8 +239,8 @@ describe("Native features through the SDK", () => {
 		await session.prompt("/hooks");
 		expect(note(/^Hooks: /)).toMatch(/Hook files[\s\S]*settings\.json/);
 		const beforeRequests = turns.length;
-		await session.prompt("/octocode permission manual");
-		expect(note(/^\/octocode permission moved/)).toContain("/permissions manual");
+		await session.prompt("/octocode permissions manual");
+		expect(note(/^\/octocode permissions moved/)).toContain("/permissions manual");
 		await session.prompt("/octocode help");
 		expect(note(/^Commands now have direct names/)).toContain("/agents");
 		expect(turns).toHaveLength(beforeRequests);

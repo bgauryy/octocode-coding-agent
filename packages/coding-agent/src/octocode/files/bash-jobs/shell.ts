@@ -8,15 +8,21 @@ export interface ShellSettings {
 	type?: "bash" | "powershell";
 	shellPath?: string;
 	commandPrefix?: string;
+	/** `bashBackgroundAfterSeconds`: when a foreground command moves to the background. */
+	backgroundAfterSeconds?: number;
 }
 
-/** `shellPath` and `shellCommandPrefix` from Octocode's settings for `cwd` (project settings only in a trusted project). */
+/** `shellPath`, `shellCommandPrefix` and `bashBackgroundAfterSeconds` from Octocode's settings for `cwd` (project settings only in a trusted project). */
 export function shellSettings(cwd: string, projectTrusted: boolean): ShellSettings {
 	try {
 		const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
 		const shellPath = settings.getShellPath();
 		const commandPrefix = settings.getShellCommandPrefix();
-		return { ...(shellPath ? { shellPath } : {}), ...(commandPrefix ? { commandPrefix } : {}) };
+		return {
+			...(shellPath ? { shellPath } : {}),
+			...(commandPrefix ? { commandPrefix } : {}),
+			backgroundAfterSeconds: settings.getBashBackgroundAfterSeconds(),
+		};
 	} catch {
 		return {};
 	}

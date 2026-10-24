@@ -1,7 +1,7 @@
 import type { ModelCost, ModelCostRates, ModelCostTier } from "../src/types.ts";
 
 /** A prompt-length bracket. `min` is inclusive and `max` exclusive, both in prompt tokens. */
-export interface AiGatewayPriceTier {
+interface AiGatewayPriceTier {
 	cost?: string | number;
 	min?: number;
 	max?: number;

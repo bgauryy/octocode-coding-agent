@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "./atomic.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 import { PARENT_SESSION_ENV } from "./env.ts";
 import { formatTokens } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionFolder, sessionOutputDir } from "./home.ts";
@@ -8,16 +8,6 @@ import { visibleControls } from "./sanitize.ts";
 import { escapeRegExp, stringList } from "./util.ts";
 import { RECORD_FILE } from "./archive/record.ts";
 import { MESSAGES_HEADING, oneLine, readHeader } from "./archive/text.ts";
-
-export {
-	RECORD_FILE,
-	readRecordHeader,
-	type RecordHeader,
-	type RecordMessage,
-	type SessionRecord,
-	writeSessionRecord,
-} from "./archive/record.ts";
-export { fence, headingText, inlineCode } from "./archive/text.ts";
 
 /**
  * The archive of a session's compacted history: one Markdown file per compaction, `<n>-<compaction entry id>.md`, in the

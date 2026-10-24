@@ -119,7 +119,10 @@ describe("ACP persistent sessions", () => {
 		expect(h.updates).toEqual([]);
 	});
 
-	it("replays stored tool lifecycle updates in transcript order", async () => {
+	it.each([
+		["complete", "changed one file", "changed one file"],
+		["truncated", "x".repeat(30_000), "x".repeat(16_000 - 33) + "\n[Tool output truncated for ACP.]"],
+	])("replays %s stored tool results with explicit truncation in transcript order", async (_name, text, expected) => {
 		const manager = SessionManager.create(cwd);
 		manager.appendMessage({
 			...assistant(""),
@@ -129,7 +132,7 @@ describe("ACP persistent sessions", () => {
 			role: "toolResult",
 			toolCallId: "call-one",
 			toolName: "file",
-			content: [{ type: "text", text: "changed one file" }],
+			content: [{ type: "text", text }],
 			isError: false,
 			timestamp: 2,
 		});
@@ -156,7 +159,7 @@ describe("ACP persistent sessions", () => {
 				sessionUpdate: "tool_call_update",
 				toolCallId: "call-one",
 				status: "completed",
-				content: [{ content: { text: "changed one file" } }],
+				content: [{ content: { text: expected } }],
 			},
 		]);
 	});

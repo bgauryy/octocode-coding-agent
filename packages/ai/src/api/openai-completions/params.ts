@@ -7,8 +7,15 @@ import type {
 	OpenAICompletionsCompat,
 	ThinkingTokenBudgetField,
 } from "../../types.ts";
-import { resolveCacheRetention } from "../../utils/cache-policy.ts";
-import { getDeclaredTools, resolveTranscriptTools, type TranscriptContext } from "../../utils/transcript.ts";
+import { resolveCacheRetention, resolveInstructionCacheRetention } from "../../utils/cache-policy.ts";
+import { splitSystemMessageAtBoundary } from "../../utils/instruction-split.ts";
+import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
+import {
+	getDeclaredTools,
+	getInitialSystemMessage,
+	resolveTranscriptTools,
+	type TranscriptContext,
+} from "../../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
 import { clampThinkingBudgetToAnswerRoom, resolveSamplingParams, thinkingBudgetForLevel } from "../simple-options.ts";
@@ -27,6 +34,14 @@ import type {
  * This is needed because Anthropic (via proxy) requires the tools param
  * to be present when messages include tool_calls or tool role messages.
  */
+/**
+ * `prompt_cache_retention` is an OpenAI field: send it to api.openai.com, or to an endpoint whose model compat
+ * declares `supportsLongCacheRetention: true`. Other endpoints may reject the unknown field.
+ */
+function acceptsPromptCacheRetention(model: Model<"openai-completions">): boolean {
+	return model.baseUrl.includes("api.openai.com") || model.compat?.supportsLongCacheRetention === true;
+}
+
 function hasToolHistory(messages: Message[]): boolean {
 	for (const msg of messages) {
 		if (msg.role === "toolResult") {
@@ -54,14 +69,17 @@ export function buildParams(
 ) {
 	const transcriptTools = resolveTranscriptTools(
 		context.messages,
-		compat.supportsMidConvoSystemMessages === true && compat.supportsMidConvoToolAdditions === true
-			? "additions"
-			: "none",
+		resolveToolLoadingMode("openai-completions", compat),
 	);
 	const messages = convertMessages(model, context, compat, {
 		grammarToolInputProperties,
 	});
-	const cacheControl = getCompatCacheControl(compat, cacheRetention);
+	// Instructions and tools keep their own retention; a longer-lived breakpoint cannot follow a shorter one.
+	const instructionRetention =
+		cacheRetention === "none" ? "none" : (resolveInstructionCacheRetention(options) ?? cacheRetention);
+	const historyRetention = instructionRetention === "short" && cacheRetention === "long" ? "short" : cacheRetention;
+	const cacheControl = getCompatCacheControl(compat, historyRetention);
+	const instructionCacheControl = getCompatCacheControl(compat, instructionRetention);
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: model.id,
@@ -72,7 +90,10 @@ export function buildParams(
 			(cacheRetention === "long" && compat.supportsLongCacheRetention)
 				? clampOpenAIPromptCacheKey(options?.sessionId)
 				: undefined,
-		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
+		prompt_cache_retention:
+			cacheRetention === "long" && compat.supportsLongCacheRetention && acceptsPromptCacheRetention(model)
+				? "24h"
+				: undefined,
 	};
 
 	if (compat.supportsUsageInStreaming) {
@@ -106,8 +127,12 @@ export function buildParams(
 		params.tools = [];
 	}
 
-	if (cacheControl) {
-		applyAnthropicCacheControl(messages, params.tools, cacheControl);
+	if (cacheControl || instructionCacheControl) {
+		const initialSystemMessage = getInitialSystemMessage(context.messages);
+		const splitSystem = initialSystemMessage
+			? splitSystemMessageAtBoundary(initialSystemMessage, options?.instructionCacheBoundary)
+			: undefined;
+		applyAnthropicCacheControl(messages, params.tools, cacheControl, instructionCacheControl, splitSystem);
 	}
 
 	if (options?.toolChoice) {

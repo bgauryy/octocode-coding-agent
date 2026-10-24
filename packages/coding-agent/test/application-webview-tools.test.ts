@@ -84,5 +84,10 @@ it("renders every built-in tool call with its argument label, status and output"
 	const cards = events.filter((event) => event.type.startsWith("tool.")).map(activityCard);
 	expect(cards.map((card) => card.title)).toContain("bash printf 'one\\ntwo\\n'");
 	expect(cards.filter((card) => card.failed)).toHaveLength(2);
-	expect(events.find((event) => event.type === "message")?.text).toBe("All tools ran.");
+	expect(events.find((event) => event.type === "message" && event.message?.role === "user")?.text).toBe(
+		"Exercise each tool",
+	);
+	expect(events.findLast((event) => event.type === "message" && event.message?.role === "assistant")?.text).toBe(
+		"All tools ran.",
+	);
 });

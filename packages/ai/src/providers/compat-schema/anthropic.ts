@@ -76,7 +76,7 @@ export const AnthropicMessagesCompatSchema = Type.Object(
 		),
 		supportsMidConvoSystemMessages: optionalCompatBoolean({
 			description:
-				"Whether the exact model accepts system-role messages inside the conversation. When false, later system messages are folded into the top-level system prompt.",
+				"Whether the exact model accepts system-role messages inside the conversation. When false, the top-level system prompt stays unchanged and later system messages are sent as marked user messages.",
 			default: false,
 		}),
 		supportsMidConvoToolChanges: Type.Optional(

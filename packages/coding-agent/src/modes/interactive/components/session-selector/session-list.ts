@@ -12,7 +12,8 @@ import { theme } from "../../theme/theme.ts";
 import { keyText } from "../keybinding-hints.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";
-import { canonicalizePath, formatSessionDate, shortenPath } from "./utils.ts";
+import { canonicalizePath } from "../../../../utils/paths.ts";
+import { formatSessionDate, shortenPath } from "./utils.ts";
 
 /**
  * Custom session list component with multi-line items and search
@@ -72,7 +73,7 @@ export class SessionList implements Component, Focusable {
 		this.sortMode = sortMode;
 		this.nameFilter = nameFilter;
 		this.keybindings = keybindings;
-		this.currentSessionCanonicalPath = canonicalizePath(currentSessionFilePath);
+		this.currentSessionCanonicalPath = currentSessionFilePath && canonicalizePath(currentSessionFilePath);
 		this.filterSessions("");
 
 		// Handle Enter in search input - select current item
@@ -151,7 +152,7 @@ export class SessionList implements Component, Focusable {
 
 	private isCurrentSessionPath(path: string): boolean {
 		if (!this.currentSessionCanonicalPath) return false;
-		return (canonicalizePath(path) ?? path) === this.currentSessionCanonicalPath;
+		return canonicalizePath(path) === this.currentSessionCanonicalPath;
 	}
 
 	invalidate(): void {}

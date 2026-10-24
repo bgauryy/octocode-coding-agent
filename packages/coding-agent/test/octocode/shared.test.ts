@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { atomicWriteFile, atomicWriteFileSync } from "../../src/octocode/shared/atomic.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "../../src/utils/atomic-file.ts";
+import { dirsToRepoRoot, repoKey, workspaceRoot } from "../../src/octocode/shared/home/repo.ts";
 import { Subcommands, say, wordCompletions, legacyNativeCommandGuidance } from "../../src/octocode/shared/commands.ts";
 import {
 	envFlag,
@@ -13,8 +14,9 @@ import {
 	takeNonce,
 } from "../../src/octocode/shared/env.ts";
 import { formatCost, formatTokens, formatTokenUsage } from "../../src/octocode/shared/format.ts";
-import { dirsToRepoRoot, repoKey, workspaceRoot, workspaceScratchDir } from "../../src/octocode/shared/home.ts";
-import { findManifest, packageRoot } from "../../src/octocode/shared/package.ts";
+import { workspaceScratchDir } from "../../src/octocode/shared/home.ts";
+import { getPackageDir } from "../../src/config.ts";
+import { findManifest } from "../../src/octocode/shared/package.ts";
 import { killTree, processAlive, stopTree } from "../../src/octocode/shared/process.ts";
 import { sweepStaleOutputs } from "../../src/octocode/shared/sweep.ts";
 import {
@@ -243,7 +245,7 @@ describe("workspace scratch", () => {
 
 describe("package", () => {
 	it("finds manifests by name", () => {
-		const root = packageRoot();
+		const root = getPackageDir();
 		expect(fs.existsSync(path.join(root, "package.json"))).toBe(true);
 		expect(findManifest(path.join(root, "src", "shared"), "@octocodeai/octocodecode")?.dir).toBe(root);
 		expect(findManifest(root, "no-such-package", 2)).toBeUndefined();
@@ -400,11 +402,10 @@ describe("process", () => {
 });
 
 describe("native commands", () => {
-	it("registers canonical commands and alias metadata once, with direct completions", async () => {
+	it("registers canonical commands once, with direct completions", async () => {
 		const commands = new Subcommands();
 		const handler = vi.fn(async () => {});
 		commands.add("permissions", {
-			aliases: ["permission"],
 			description: "Permissions",
 			handler,
 			complete: (prefix) => wordCompletions(["manual", "workspace"], prefix),
@@ -413,31 +414,33 @@ describe("native commands", () => {
 		commands.register(fake.pi);
 		expect([...fake.commands.keys()]).toEqual(["permissions"]);
 		const command = fake.commands.get("permissions")!;
-		expect(command.aliases).toEqual(["permission"]);
 		expect(command.getArgumentCompletions(" ma")).toEqual([{ value: "manual", label: "manual" }]);
 		const ctx = fakeCtx({ cwd: "." });
 		await command.handler(" manual ", ctx);
 		expect(handler).toHaveBeenCalledWith("manual", ctx);
-		expect(commands.get("permission")).toBe(commands.get("permissions"));
+		expect(commands.get("permission")).toBeUndefined();
 	});
-	it("keeps status aliases on one registry entry", () => {
+	it("registers status as one registry entry", () => {
 		const fake = fakePi();
 		new Subcommands().register(fake.pi, () => "status");
 		expect([...fake.commands.keys()]).toEqual(["status"]);
-		expect(fake.commands.get("status")!.aliases).toEqual(["info", "session"]);
 	});
 	it("handles retired namespace input before model execution and leaves ordinary text alone", async () => {
 		const fake = fakePi();
-		new Subcommands().register(fake.pi);
+		new Subcommands().register(fake.pi, () => "status");
 		const ctx = fakeCtx({ cwd: ".", hasUI: true });
-		expect(await fake.fire("input", { text: "/octocode permission manual" }, ctx)).toEqual({ action: "handled" });
-		expect(ctx.ui.notes.at(-1)?.message).toContain("/permissions manual");
+		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
+		expect(ctx.ui.notes.at(-1)?.message).toBe(
+			"/octocode status moved to /status now. Run the new command to continue.",
+		);
 		expect(await fake.fire("input", { text: "/octocode-example" }, ctx)).toEqual({ action: "continue" });
 		expect(fake.commands.has("octocode")).toBe(false);
 	});
 	it("maps retired namespace inputs to precise migration guidance", () => {
-		expect(legacyNativeCommandGuidance("permission workspace")).toContain("/permissions workspace");
-		expect(legacyNativeCommandGuidance("sessions")).toContain("/resume");
+		expect(legacyNativeCommandGuidance("permissions workspace", ["permissions"])).toContain("/permissions workspace");
+		expect(legacyNativeCommandGuidance("sessions", ["resume"])).toBe(
+			"Commands now have direct names: /mcp and /resume.",
+		);
 		expect(legacyNativeCommandGuidance("mcp restart")).toContain("/mcp reconnect octocode");
 		expect(legacyNativeCommandGuidance("external list")).toContain("/agents external list");
 	});

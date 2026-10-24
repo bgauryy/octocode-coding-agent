@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Context } from "../src/types.ts";
 
 const enabled = Boolean(process.env.ANTHROPIC_API_KEY);
-const model = getModel("anthropic", "claude-fable-5-1");
+const model = getBuiltinModel("anthropic", "claude-fable-5-1");
 const user = (content: string, timestamp: number) => ({ role: "user" as const, content, timestamp });
 
 function strictBinding(payload: unknown): unknown {

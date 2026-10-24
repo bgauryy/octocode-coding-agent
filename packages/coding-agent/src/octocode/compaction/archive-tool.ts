@@ -12,9 +12,12 @@ import {
 	readHistory,
 	searchHistory,
 } from "../shared/history.ts";
-import { canonicalPath } from "../shared/home.ts";
-import { clip, plural, resultBlock, timedTool, timingOf, toolHeader } from "../shared/render.ts";
-import { contentText, errorMessage, textResult } from "../shared/util.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { clip, plural } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { errorMessage } from "../../utils/guards.ts";
+import { resultBlock, toolHeader } from "../shared/render.ts";
+import { contentText, textResult } from "../shared/util.ts";
 
 /**
  * The `archive` tool: the one way a model searches and reads earlier history (`shared/history.ts` owns which, and how).
@@ -94,7 +97,7 @@ export function registerArchiveTool(pi: ExtensionAPI): void {
 					target = canonicalPath(path.resolve(archiveFolder(), params.file.trim()));
 					if (!readableHistory(target, ctx.cwd)) {
 						throw new Error(
-							`${params.file} is not in the history this session may read: its own, its forks' sources, its parent's, and this repository's sessions (list them with no query). Another repository's history needs \`read\`, which asks the user.`,
+							`${params.file} is not in the history this session may read: its own, its forks' sources, its parent's, and this repository's sessions (list them with no query). Access another repository's history only through an available file reader with the required permission.`,
 						);
 					}
 				}

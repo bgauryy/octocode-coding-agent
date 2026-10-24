@@ -9,7 +9,7 @@ import type { LineRange } from "./coverage.ts";
  */
 
 /** What one command showed of one file. */
-export interface BashRead {
+interface BashRead {
 	file: string;
 	/** The whole file. */
 	whole: boolean;

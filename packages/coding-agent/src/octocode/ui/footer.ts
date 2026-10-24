@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
 import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
-import { livePaint } from "../shared/render.ts";
+import { livePaint } from "../shared/render/status.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
@@ -20,8 +20,6 @@ import {
 	unpricedModel,
 } from "../shared/util.ts";
 import { registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
-
-export { reasoningTwin } from "./footer/notices.ts";
 
 /**
  * Octocode's two-line footer, in the order other coding agents converged on: line 1 is what the agent is and is doing
@@ -229,7 +227,8 @@ export function footerLines(
 						: "",
 				priority: 75,
 			},
-			{ text: status(OWN.backlog), priority: 20 },
+			// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
+			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/web") },
 			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks octocode-tui's row tracking.
 			...others.map(([, text]) => ({ text: singleLine(livePaint(text, theme)), priority: 20 })),
 		],

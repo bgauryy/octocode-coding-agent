@@ -3,11 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { Team } from "../../src/octocode/team/session.ts";
-import { AGENT_ID_ENV, TeamStore } from "../../src/octocode/team/store.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 
 const posix = process.platform !== "win32";
 const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "src", "experimental", "source-resolver.ts");

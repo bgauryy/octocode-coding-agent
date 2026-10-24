@@ -5,7 +5,7 @@ import type { AgentScope } from "./agents.ts";
 
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
-export interface UsageStats {
+interface UsageStats {
 	input: number;
 	output: number;
 	cacheRead: number;

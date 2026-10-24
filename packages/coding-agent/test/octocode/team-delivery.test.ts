@@ -4,14 +4,17 @@ import * as importedModule1 from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { LEASE_IDLE_MS } from "../../src/octocode/team/held.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { leaseAge, resolveTarget, sessionTree } from "../../src/octocode/team/routing.ts";
-import { parentProcessGone, Team } from "../../src/octocode/team/session.ts";
-import { LEASE_MS, TeamStore } from "../../src/octocode/team/store.ts";
+import { Team } from "../../src/octocode/team/session.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { Delivery as UiDelivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx, fakePi, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { parentProcessGone } from "../../src/octocode/team/session/parent.ts";
+import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 
 const row = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
@@ -164,6 +167,92 @@ const seen = (who: ReturnType<typeof agent>, entry: { message: any }) =>
 	);
 
 describe("delivery acknowledgement", () => {
+	it("retries a waking handoff rejected through the installed delivery wrapper", async () => {
+		const cwd = repo();
+		const db = path.join(tmp(), "team.sqlite");
+		const sender = agent(db, cwd);
+		sender.team.join();
+		const fake = fakePi();
+		let rejectHandoff!: (error: Error) => void;
+		const handoff = new Promise<void>((_resolve, reject) => {
+			rejectHandoff = reject;
+		});
+		const hostSend = vi.spyOn(fake.pi, "sendMessage").mockReturnValueOnce(handoff);
+		UiDelivery.install(fake.pi);
+		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
+		registerCollab(fake.pi, team);
+		const ctx = fakeCtx({ cwd });
+		await fake.emit("session_start", {}, ctx);
+		teams.push({ team, ctx });
+		team.join();
+		const receiver = { ...fake, team, ctx };
+		const { id } = (await sender.team.send(team.id, "please answer", { replyRequired: true })) as { id: number };
+		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		expect(teamMail(fake.sent)).toHaveLength(0);
+		rejectHandoff(new Error("turn refused"));
+		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		const delivered = teamMail(fake.sent);
+		expect(delivered).toHaveLength(1);
+		const store = open(cwd, db);
+		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("queued");
+		await seen(receiver, delivered[0]);
+		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("awaiting reply");
+		await new Promise((resolve) => setTimeout(resolve, 1_200));
+		expect(hostSend).toHaveBeenCalledTimes(2);
+	});
+
+	it("retries mail when Octocode rejects an asynchronous handoff", async () => {
+		const cwd = repo();
+		const db = path.join(tmp(), "team.sqlite");
+		const sender = agent(db, cwd);
+		const receiver = agent(db, cwd);
+		sender.team.join();
+		receiver.team.join();
+		const send = vi.spyOn(receiver.pi, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		const { id } = (await sender.team.send(receiver.team.id, "please answer", { replyRequired: true })) as {
+			id: number;
+		};
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		const delivered = teamMail(receiver.sent);
+		expect(delivered).toHaveLength(1);
+		const store = open(cwd, db);
+		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("queued");
+		await seen(receiver, delivered[0]);
+		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("awaiting reply");
+	});
+
+	it("does not resend a rejected handoff the model already saw", async () => {
+		const cwd = repo();
+		const db = path.join(tmp(), "team.sqlite");
+		const sender = agent(db, cwd);
+		const receiver = agent(db, cwd);
+		sender.team.join();
+		receiver.team.join();
+		let reject!: (error: Error) => void;
+		const deferred = new Promise<void>((_, fail) => {
+			reject = fail;
+		});
+		const original = receiver.pi.sendMessage.bind(receiver.pi);
+		const send = vi.spyOn(receiver.pi, "sendMessage").mockImplementationOnce((message, options) => {
+			original(message, options);
+			return deferred;
+		});
+		const { id } = (await sender.team.send(receiver.team.id, "status?", { replyRequired: true })) as {
+			id: number;
+		};
+		await vi.waitFor(() => expect(teamMail(receiver.sent)).toHaveLength(1), { timeout: 3_000 });
+		await seen(receiver, teamMail(receiver.sent)[0]);
+		reject(new Error("late refusal"));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise((resolve) => setTimeout(resolve, 1_200));
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(
+			open(cwd, db)
+				.recent()
+				.find((entry) => entry.id === id)?.state,
+		).toBe("awaiting reply");
+	});
+
 	it("records a message delivered only once the model sees it", async () => {
 		fakeClock();
 		const cwd = repo();
@@ -373,6 +462,24 @@ describe("batched delivery", () => {
 });
 
 describe("dead letters", () => {
+	it("retries a dead-letter notice when its asynchronous handoff is rejected", async () => {
+		const cwd = repo();
+		const db = path.join(tmp(), "team.sqlite");
+		const sender = agent(db, cwd);
+		const recipient = agent(db, cwd);
+		sender.team.join();
+		recipient.team.join();
+		const store = open(cwd, db);
+		const { id } = (await sender.team.send(recipient.team.id, "unread")) as { id: number };
+		const send = vi.spyOn(sender.pi, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
+		recipient.team.leave();
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1), { timeout: 8_000 });
+		expect(store.deadLetters(sender.team.id!).map((letter) => letter.id)).toEqual([id]);
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 8_000 });
+		await vi.waitFor(() => expect(store.deadLetters(sender.team.id!)).toEqual([]), { timeout: 2_000 });
+		expect(sender.sent.filter((entry) => String(entry.message.content).includes(`Message #${id}`))).toHaveLength(1);
+	}, 16_000);
+
 	it("tells the sender once, without waking it, that a recipient left before reading", async () => {
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");

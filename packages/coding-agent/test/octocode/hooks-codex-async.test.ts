@@ -3,7 +3,8 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import * as runner from "../../src/octocode/hooks/runner.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
-import { commandsFor, parseHooks } from "../../src/octocode/hooks/config.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

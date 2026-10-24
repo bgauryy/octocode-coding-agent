@@ -67,6 +67,34 @@ afterEach(async () => {
 });
 
 describe("external ACP backend over SDK stdio", () => {
+	it("spills oversized streamed updates while retaining the answer and stop reason", async () => {
+		const { backend } = await connect("overflow");
+		const reply = await backend.prompt("work", { timeoutMs: WORK_MS });
+		expect(reply.text).toContain("first\nfinal answer");
+		expect(reply.text).toContain("ACP output truncated");
+		expect(reply.stopReason).toBe("max_tokens");
+		expect(reply.updates).toContainEqual(
+			expect.objectContaining({ type: "output_truncated", archiveComplete: true, file: expect.any(String) }),
+		);
+		expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(100_000);
+	});
+
+	it("retains explicit partial evidence and final diagnostics when an oversized stream fails", async () => {
+		const { backend } = await connect("overflow-fail");
+		const error = (await backend.prompt("work", { timeoutMs: WORK_MS }).catch((error: unknown) => error)) as AcpError;
+		expect(error).toBeInstanceOf(AcpError);
+		expect(error.execution).toBe("uncertain");
+		expect(error.message).toContain("fixture failure after overflow");
+		expect(error.partial.text).toContain("final answer");
+		expect(error.partial.text).toContain("ACP output truncated");
+		expect(error.stderr).toContain("ACP output truncated");
+		expect(error.stderr).toMatch(/final diagnostic\n$/);
+		expect(Buffer.byteLength(error.stderr)).toBeLessThan(67_000);
+		await expect(backend.prompt("must not replay", { timeoutMs: WORK_MS })).rejects.toMatchObject({
+			execution: "not-sent",
+		});
+	});
+
 	it("negotiates ACP, canonicalizes cwd, preserves every non-thought update and supports multiple prompts", async () => {
 		const { input, root, journal } = setup();
 		const alias = `${root}-alias`;
@@ -211,7 +239,7 @@ describe("external ACP backend over SDK stdio", () => {
 		});
 	});
 
-	it("timeouts preserve partial evidence, report uncertainty, and kill owned descendants without replay", async () => {
+	it("timeouts preserve partial evidence and the live connection until explicit cancellation", async () => {
 		const { backend, journal } = await connect("descendant");
 		// The timer starts at the call and must outlast the agent's first streamed chunk (the partial evidence asserted below).
 		const error = await backend.prompt("first", { timeoutMs: 2_000 }).catch((error: unknown) => error);
@@ -223,8 +251,30 @@ describe("external ACP backend over SDK stdio", () => {
 			.filter((entry) => entry.event === "start" || entry.event === "descendant")
 			.map((entry) => entry.pid);
 		expect(pids).toHaveLength(2);
+		expect(pids.every((pid) => processAlive(pid))).toBe(true);
+		expect(backend.isClosed).toBe(false);
+		await expect(backend.prompt("no overlap", { timeoutMs: WORK_MS })).rejects.toMatchObject({ execution: "not-sent" });
+		await backend.cancel();
+		expect(backend.isClosed).toBe(true);
 		expect(pids.every((pid) => !processAlive(pid))).toBe(true);
 		expect(entries(journal).filter((entry) => entry.event === "prompt")).toHaveLength(1);
+	});
+
+	it("allows a new prompt after a timed-out peer finishes without mixing late updates", async () => {
+		const { backend, journal } = await connect("delayed");
+		await expect(backend.prompt("old output", { timeoutMs: 100 })).rejects.toMatchObject({ execution: "uncertain" });
+		expect(backend.isClosed).toBe(false);
+		await vi.waitFor(
+			async () => {
+				expect((await backend.prompt("new output", { timeoutMs: WORK_MS })).text).toBe("first\nnew output");
+			},
+			{ timeout: 3000 },
+		);
+		expect(
+			entries(journal)
+				.filter((entry) => entry.event === "prompt")
+				.map((entry) => entry.text),
+		).toEqual(["old output", "new output"]);
 	});
 
 	it("cancels a stalled permission handler and never sends its later approval", async () => {

@@ -1,4 +1,5 @@
 import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
+import { withGoogleVertexPricing } from "../../src/utils/google-vertex-pricing.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import {
 	FIREWORKS_ADAPTIVE_THINKING_FALLBACK_MODELS,
@@ -41,7 +42,7 @@ export function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 				thinkingLevelMap.off = "none";
 			}
 			const supportsReasoningEffort = thinkingLevelMap !== undefined;
-			const referenceCost = data.zai?.models[modelId]?.cost ?? m.cost;
+			const referenceCost = data.zai?.models?.[modelId]?.cost ?? m.cost;
 
 			models.push({
 				id: modelId,
@@ -209,28 +210,31 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 						: model;
 			const thinkingLevelMap = getGoogleThinkingLevelMap(modelId, source.reasoning_options ?? []);
 			// models.dev reports Vertex cache_read/cache_write values for Gemini 2.5 Flash that
-			// do not match the official Gemini API standard pricing table. pi only accounts
+			// do not match the official Gemini API standard pricing table. Usage only accounts
 			// cachedContentTokenCount as cacheRead.
 			const cacheRead = modelId === "gemini-2.5-flash" ? 0.03 : source.cost?.cache_read || 0;
+			const cost = getModelsDevCost(source.cost);
 
-			models.push({
-				id: modelId,
-				name: model.name || modelId,
-				api: "google-vertex",
-				provider: "google-vertex",
-				baseUrl: VERTEX_BASE_URL,
-				reasoning: source.reasoning === true,
-				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
-				cost: {
-					input: source.cost?.input || 0,
-					output: source.cost?.output || 0,
-					cacheRead,
-					cacheWrite: 0,
-				},
-				contextWindow: source.limit?.context || 4096,
-				maxTokens: source.limit?.output || 4096,
-			});
+			models.push(
+				withGoogleVertexPricing({
+					id: modelId,
+					name: model.name || modelId,
+					api: "google-vertex",
+					provider: "google-vertex",
+					baseUrl: VERTEX_BASE_URL,
+					reasoning: source.reasoning === true,
+					...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+					input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					cost: {
+						...cost,
+						cacheRead,
+						cacheWrite: 0,
+						...(cost.tiers ? { tiers: cost.tiers.map((tier) => ({ ...tier, cacheWrite: 0 })) } : {}),
+					},
+					contextWindow: source.limit?.context || 4096,
+					maxTokens: source.limit?.output || 4096,
+				}),
+			);
 		}
 	}
 

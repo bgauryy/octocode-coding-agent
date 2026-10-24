@@ -5,7 +5,8 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import { notify } from "../shared/commands.ts";
 import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "../shared/env.ts";
 import { interactive } from "../shared/interactive.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
+import type { SourceDecision } from "./source-policy/rules.ts";
 import type { AuditEntry } from "./audit.ts";
 import {
 	ACTION_CLASSES,
@@ -21,24 +22,11 @@ import {
 	reasonAsks,
 	startMode,
 } from "./mode.ts";
-import type { SourceDecision } from "./source-policy.ts";
 import type { PermissionRequest } from "./request.ts";
 import { type CheckHost, checkPermission } from "./ask/check.ts";
 import { modeSummary, selectAnswer } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
 import type { ActionEvent, Asker, Dialog, PermissionResolver, PrepareReplacement, Verdict } from "./ask/types.ts";
-
-export type { Answer } from "./ask/types.ts";
-export {
-	ALLOW_ONCE,
-	DENY,
-	DENY_NOTE,
-	kindOption,
-	modeSummary,
-	NEEDS_APPROVAL,
-	NOTE_TITLE,
-	sessionOption,
-} from "./ask/text.ts";
 
 /**
  * The permission state of one session and the only way anything asks the user about an agent action. A check runs

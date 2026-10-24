@@ -13,33 +13,20 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
 
-/** What this component needs from a tool: how to draw it, without executing it. */
-export type { ToolRenderers };
-
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { createResultFallback, formatToolExecution } from "./tool-execution/fallback.ts";
-
-export interface ToolExecutionOptions {
-	showImages?: boolean;
-	imageWidthCells?: number;
-	outputPad?: number;
-}
-
-type ToolExecutionResult = Pick<AgentToolResult, "structuredContent" | "usage" | "terminate"> & {
-	content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
-	isError: boolean;
-	details?: any;
-	durationMs?: number;
-};
+import { GenericToolContent } from "./tool-execution/content.ts";
+import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
+export type { ToolExecutionOptions } from "./tool-execution/types.ts";
 
 /** The SGR a theme token resolves to when it sets no background. */
 const DEFAULT_BG = "\x1b[49m";
 
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
-	private contentText: Text;
+	private contentText: GenericToolContent;
 	private contentTextRegion: MouseRegion;
 	private selfRenderContainer: Container;
 	private selfRenderHeight = 0;
@@ -92,7 +79,7 @@ export class ToolExecutionComponent extends Container {
 		// selfRenderContainer is used when the tool renders its own framing.
 		// contentText is reserved for generic fallback rendering when no tool definition exists.
 		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
-		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
+		this.contentText = new GenericToolContent(() => this.ui.requestRender());
 		this.contentTextRegion = this.createResultRegion(this.contentText);
 		this.selfRenderContainer = new Container();
 
@@ -114,7 +101,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private hasRendererDefinition(): boolean {
-		return this.toolDefinition !== undefined;
+		return Boolean(this.toolDefinition?.renderCall || this.toolDefinition?.renderResult);
 	}
 
 	private getRenderShell(): "default" | "self" {
@@ -208,6 +195,18 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override render(width: number): string[] {
+		try {
+			return this.renderContent(width);
+		} catch {
+			return new Text(
+				`Tool renderer failed; showing plain output.\n${this.formatToolExecution()}`,
+				this.outputPad,
+				0,
+			).render(width);
+		}
+	}
+
+	private renderContent(width: number): string[] {
 		if (this.hideComponent) {
 			return [];
 		}
@@ -320,10 +319,18 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 		} else {
-			this.contentText.setCustomBgFn(bgFn);
-			this.contentText.setPaddingX(this.outputPad);
-			this.contentText.setText(this.formatToolExecution());
-			hasContent = true;
+			this.contentText.update({
+				toolName: this.toolName,
+				toolCallId: this.toolCallId,
+				args: this.args,
+				content: this.result?.content ?? [],
+				expanded: this.expanded,
+				showImages: this.showImages,
+				imageWidthCells: this.imageWidthCells,
+				outputPad: this.outputPad,
+				background: bgFn,
+			});
+			return;
 		}
 
 		const previousImages = this.imageComponents;
@@ -383,6 +390,6 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private formatToolExecution(): string {
-		return formatToolExecution(this.toolName, this.args, this.getTextOutput());
+		return formatToolExecution(this.toolName, this.args, this.getTextOutput(), this.expanded);
 	}
 }

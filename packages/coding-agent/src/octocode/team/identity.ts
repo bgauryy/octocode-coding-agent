@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText, storedText } from "../shared/sanitize.ts";
-import type { Member } from "./model.ts";
-import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
+import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store/env.ts";
 
 /** Who an agent is on the team: its name (the id), its goal, and the row it joins with. */
 

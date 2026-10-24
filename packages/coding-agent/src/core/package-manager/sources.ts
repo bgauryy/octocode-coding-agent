@@ -76,14 +76,15 @@ export function getPackageIdentity(host: PackageManagerHost, source: string, sco
 }
 
 /**
- * Dedupe packages: if same package identity appears in both global and project,
- * keep only the project one (project wins). A project entry with autoload=false
- * is a delta over the global entry, so both are kept (delta first).
+ * The packages in project and global settings, project first so cwd resources win collisions. When a package identity
+ * appears in both, the project entry wins; a project entry with autoload=false is a delta over the global entry, so
+ * both are kept (delta first).
  */
-export function dedupePackages(
-	host: PackageManagerHost,
-	packages: Array<{ pkg: PackageSource; scope: SourceScope }>,
-): Array<{ pkg: PackageSource; scope: SourceScope }> {
+export function configuredPackages(host: PackageManagerHost): Array<{ pkg: PackageSource; scope: SourceScope }> {
+	const packages: Array<{ pkg: PackageSource; scope: SourceScope }> = [
+		...(host.settingsManager.getProjectSettings().packages ?? []).map((pkg) => ({ pkg, scope: "project" as const })),
+		...(host.settingsManager.getGlobalSettings().packages ?? []).map((pkg) => ({ pkg, scope: "user" as const })),
+	];
 	const result: Array<{ pkg: PackageSource; scope: SourceScope }> = [];
 	const seen = new Map<string, number>();
 	for (const entry of packages) {

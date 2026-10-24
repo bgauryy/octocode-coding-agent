@@ -1,14 +1,12 @@
 import type { TerminalColors } from "@octocodeai/octocode-tui";
 import { terminalAppearance } from "./system-theme.ts";
 
-export type TerminalTheme = "dark" | "light";
+/** Whether a terminal, or the background a theme is designed for, is dark or light. */
+export type ThemeAppearance = "dark" | "light";
 
 // ============================================================================
 // Appearance & Terminal Default Colors
 // ============================================================================
-
-/** The background a theme is designed for. */
-export type ThemeAppearance = TerminalTheme;
 
 // The terminal's reported colors. Replaced (never mutated) on update, so themes can cache resolved colors
 // by identity.
@@ -16,7 +14,7 @@ let terminalColors: TerminalColors = {};
 // While the terminal color query is in flight, the system theme renders in grayscale.
 let terminalColorsPending = false;
 // The terminal's last light/dark report (mode 2031). Only used while it has not reported a background.
-let terminalColorScheme: TerminalTheme | undefined;
+let terminalColorScheme: ThemeAppearance | undefined;
 
 /**
  * Record the terminal's reported colors. Themes use the default colors for tokens set to "" (terminal
@@ -28,7 +26,7 @@ export function setTerminalColors(colors: TerminalColors): void {
 }
 
 /** Record the terminal's light/dark report, the fallback for terminals that do not report their background. */
-export function setTerminalColorScheme(scheme: TerminalTheme | undefined): void {
+export function setTerminalColorScheme(scheme: ThemeAppearance | undefined): void {
 	terminalColorScheme = scheme;
 }
 
@@ -66,7 +64,7 @@ export function parseAutoThemeSetting(
 
 export function resolveThemeSetting(
 	themeSetting: string | undefined,
-	terminalTheme: TerminalTheme,
+	terminalTheme: ThemeAppearance,
 ): string | undefined {
 	const autoTheme = parseAutoThemeSetting(themeSetting);
 	if (autoTheme) {
@@ -84,7 +82,7 @@ export function resolveThemeSetting(
  * whose colors are unknown here, so it is classified by index like Vim does: 0-6 and 8 (bright black, e.g.
  * Solarized Dark's background) are dark, 7 and 9-15 are light.
  */
-export function detectColorFgBgTheme(env: NodeJS.ProcessEnv = process.env): TerminalTheme | undefined {
+export function detectColorFgBgTheme(env: NodeJS.ProcessEnv = process.env): ThemeAppearance | undefined {
 	const bg = env.COLORFGBG?.split(";").at(-1)?.trim();
 	if (!bg || !/^\d{1,2}$/.test(bg)) return undefined;
 	const index = Number(bg);
@@ -99,15 +97,15 @@ export function detectColorFgBgTheme(env: NodeJS.ProcessEnv = process.env): Term
  */
 export function detectTerminalTheme(
 	colors: TerminalColors = {},
-	reportedScheme?: TerminalTheme,
+	reportedScheme?: ThemeAppearance,
 	env: NodeJS.ProcessEnv = process.env,
-): TerminalTheme {
+): ThemeAppearance {
 	const { background, foreground } = colors;
 	if (background) return terminalAppearance(background, foreground);
 	return reportedScheme ?? detectColorFgBgTheme(env) ?? "dark";
 }
 
 /** Whether the terminal is dark or light, from everything it reported so far. See `detectTerminalTheme()`. */
-export function getTerminalTheme(): TerminalTheme {
+export function getTerminalTheme(): ThemeAppearance {
 	return detectTerminalTheme(terminalColors, terminalColorScheme);
 }

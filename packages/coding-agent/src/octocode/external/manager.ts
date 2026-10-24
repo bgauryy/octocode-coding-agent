@@ -5,10 +5,12 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { AcpBackend, type AcpPermission } from "./acp.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { type ExternalBackend, type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
+
+export const MAX_EXTERNAL_CONNECTIONS = 8;
 
 export interface ExternalPolicy {
 	authorize(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<void>;
@@ -50,6 +52,9 @@ export class ExternalAgents {
 
 	async call(value: unknown, ctx: ExtensionContext, callerSignal?: AbortSignal): Promise<unknown> {
 		const input = parseExternalParams(value);
+		for (const [id, entry] of this.connections) {
+			if (entry.backend?.isClosed) this.connections.delete(id);
+		}
 		const signal = AbortSignal.any([
 			this.lifetime.signal,
 			...(ctx.signal ? [ctx.signal] : []),
@@ -117,7 +122,11 @@ export class ExternalAgents {
 					key: id,
 				});
 			} catch (error) {
-				if (entry.info.transport === "acp" && this.connections.get(entry.info.id) === entry) {
+				if (
+					entry.info.transport === "acp" &&
+					entry.backend.isClosed !== false &&
+					this.connections.get(entry.info.id) === entry
+				) {
 					this.connections.delete(entry.info.id);
 					await entry.backend.close();
 				}
@@ -150,6 +159,10 @@ export class ExternalAgents {
 	private async connect(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<ExternalInfo> {
 		const id = input.id ?? randomUUID();
 		if (this.connections.has(id)) throw new Error(`External connection ${id} already exists.`);
+		if (this.connections.size >= MAX_EXTERNAL_CONNECTIONS)
+			throw new Error(
+				`External connection limit (${MAX_EXTERNAL_CONNECTIONS}) reached. Disconnect one before connecting another.`,
+			);
 		const cwd = realpathSync(path.resolve(ctx.cwd, input.cwd ?? "."));
 		if (!statSync(cwd).isDirectory()) throw new Error("External cwd must be a directory.");
 		const entry: Connection = {

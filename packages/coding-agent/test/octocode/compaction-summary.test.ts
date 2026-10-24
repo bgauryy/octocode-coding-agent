@@ -153,8 +153,9 @@ describe("compaction summary", () => {
 		const note = transcriptNote("/s/a.jsonl", true);
 		const section = userMessagesSection([], 2, ["first ask", "then this"]);
 		const split = splitSummary(`## Goal\nx\n\n<read-files>\na\n</read-files>${section}${note}`);
+		// Code re-appends the file lists from the compaction's details, so the model never sees the stale ones.
 		expect(split).toEqual({
-			body: "## Goal\nx\n\n<read-files>\na\n</read-files>",
+			body: "## Goal\nx",
 			messages: ["first ask", "then this"],
 			omitted: 2,
 		});

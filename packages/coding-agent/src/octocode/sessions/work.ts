@@ -1,7 +1,8 @@
 import fs from "node:fs";
-import { JOB_TYPE } from "../files/bash-jobs.ts";
+import { JOB_TYPE } from "../shared/messages.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { tildePath } from "../shared/home.ts";
-import { isRecord, stringOrEmpty } from "../shared/util.ts";
+import { stringOrEmpty } from "../shared/util.ts";
 import { RESULT_TYPE } from "../subagents/handoff.ts";
 import { flatLine } from "./store.ts";
 

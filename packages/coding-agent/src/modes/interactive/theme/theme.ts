@@ -7,17 +7,13 @@ import { SYSTEM_THEME_NAME } from "./system-theme.ts";
 import { resolveVarRefs, type Theme } from "./theme-class.ts";
 import { setGlobalTheme } from "./theme-global.ts";
 import { getBuiltinThemes, loadTheme, loadThemeFromPath, loadThemeJson, registeredThemes } from "./theme-loader.ts";
-/** The schema that validates this shape lives in `theme-schema.ts`; importing the type is free. */
-import type { ThemeColorValue as ColorValue } from "./theme-schema.ts";
+import type { ThemeColorValue } from "./theme-schema.ts";
 import { errorMessage } from "../../../utils/guards.ts";
-
-export { SYSTEM_THEME_NAME } from "./system-theme.ts";
 
 // ============================================================================
 // Types & Schema
 // ============================================================================
 
-export type { ValidatedThemeJson as ThemeJson } from "./theme-schema.ts";
 export type { ThemeBg, ThemeColor, ThemeToken } from "./theme-tokens.ts";
 export { Theme, type ThemeStyle } from "./theme-class.ts";
 export { theme } from "./theme-global.ts";
@@ -28,8 +24,6 @@ export {
 	loadThemeFromPath,
 	setRegisteredThemes,
 	setThemeJsonValidator,
-	type ThemeInfo,
-	type ThemeJsonValidator,
 } from "./theme-loader.ts";
 export {
 	detectColorFgBgTheme,
@@ -40,7 +34,6 @@ export {
 	resolveThemeSetting,
 	setTerminalColorScheme,
 	setTerminalColors,
-	type TerminalTheme,
 	type ThemeAppearance,
 } from "./theme-terminal.ts";
 export {
@@ -213,13 +206,6 @@ export function getResolvedThemeColors(themeName?: string): Record<string, strin
 }
 
 /**
- * Check if a theme is a "light" theme (for CSS that needs light/dark variants).
- */
-export function isLightTheme(themeName?: string): boolean {
-	return loadTheme(themeName ?? currentThemeName ?? SYSTEM_THEME_NAME).appearance === "light";
-}
-
-/**
  * Get explicit export colors from theme JSON, if specified.
  * Returns undefined for each color that isn't explicitly set.
  */
@@ -237,7 +223,7 @@ export function getThemeExportColors(themeName?: string): {
 
 		const vars = themeJson.vars ?? {};
 		// Export colors end up in CSS, which understands hex and oklch() values directly but not okhsl().
-		const resolve = (value: ColorValue | undefined): string | undefined => {
+		const resolve = (value: ThemeColorValue | undefined): string | undefined => {
 			if (value === undefined) return undefined;
 			const resolved = resolveVarRefs(value, vars);
 			if (typeof resolved === "number") return colorToHex(indexedColor(resolved));

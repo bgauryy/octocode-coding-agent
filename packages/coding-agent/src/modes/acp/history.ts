@@ -1,14 +1,16 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { RequestError, methods, type AgentContext } from "@agentclientprotocol/sdk";
-import { ENV_SESSION_DIR, expandTildePath } from "../../config.ts";
+import { ENV_SESSION_DIR } from "../../config.ts";
 import { SessionManager, type SessionInfo } from "../../core/session-manager.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
+import { normalizePath } from "../../utils/paths.ts";
+import { toolContent } from "./events.ts";
 
 function sessionDir(cwd: string, override?: string): string | undefined {
 	const fromEnvironment = process.env[ENV_SESSION_DIR];
 	const chosen = override ?? fromEnvironment ?? SettingsManager.createForStartup(cwd).getSessionDir();
-	return chosen ? resolve(cwd, expandTildePath(chosen)) : undefined;
+	return chosen ? resolve(cwd, normalizePath(chosen)) : undefined;
 }
 
 /** Resolve an ACP identity through the owning transcript index, never a client path. */
@@ -41,11 +43,6 @@ export async function replayHistory(path: string, id: string, client: AgentConte
 		if (entry.type !== "message") continue;
 		const message = entry.message;
 		if (message.role === "toolResult") {
-			const resultText = message.content
-				.filter((block) => block.type === "text")
-				.map((block) => block.text)
-				.join("\n")
-				.slice(0, 16_000);
 			if (!tools.has(message.toolCallId)) {
 				await client.notify(methods.client.session.update, {
 					sessionId: id,
@@ -63,7 +60,7 @@ export async function replayHistory(path: string, id: string, client: AgentConte
 					sessionUpdate: "tool_call_update",
 					toolCallId: message.toolCallId,
 					status: message.isError ? "failed" : "completed",
-					content: resultText ? [{ type: "content", content: { type: "text", text: resultText } }] : [],
+					content: toolContent(message),
 				},
 			});
 			continue;

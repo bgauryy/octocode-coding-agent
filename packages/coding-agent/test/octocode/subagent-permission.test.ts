@@ -3,13 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { NEEDS_APPROVAL, Permission } from "../../src/octocode/permission/ask.ts";
+import { Permission } from "../../src/octocode/permission/ask.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { doneSummary } from "../../src/octocode/subagents/render.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCachePolicy, fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 
 const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-pi.cjs");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();

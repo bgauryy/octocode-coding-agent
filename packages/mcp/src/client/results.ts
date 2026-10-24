@@ -1,15 +1,15 @@
-import type { CallToolResult } from "../protocol/content.ts";
+import type { CallToolResult, Resource } from "../protocol/content.ts";
 import { isObject, JSON_RPC_ERROR_CODES, McpError } from "../protocol/jsonrpc.ts";
-import type { InitializeResult, ReadResourceResult, Resource, ResourceTemplate } from "../protocol/types.ts";
+import type { InitializeResult, ReadResourceResult, ResourceTemplate } from "../protocol/types.ts";
 import type { McpRequestOptions } from "./types.ts";
 
 const MAX_LIST_PAGES = 1_000;
 
 /** A list item check, applied to each entry of a paginated result. */
-export type ListItemCheck = (item: Record<string, unknown>) => boolean;
+type ListItemCheck = (item: Record<string, unknown>) => boolean;
 
 /** One page of a paginated list, already validated. */
-export type ListPage = { items: Record<string, unknown>[]; nextCursor?: string };
+type ListPage = { items: Record<string, unknown>[]; nextCursor?: string };
 
 /** Sends one list request; `McpClient.request` bound to the client. */
 export type ListRequest = (

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import { isLoopbackHostname } from "../shared/net.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import type { EventLog } from "./events.ts";
 import {
 	type ApiEvent,

@@ -1,8 +1,12 @@
 import type { AltScreenSearchMatch } from "../alt-screen-search.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollbarGeometry, getScrollViewBox, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getScrollbarGeometry } from "../layout/scrollbar.ts";
+import { getScrollViewBox } from "../layout.ts";
 import { isImageLine } from "../terminal-image.ts";
-import { extractAnsiCode, sliceByColumn, visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { sliceByColumn } from "../utils/columns.ts";
+import { extractAnsiCode } from "../utils/ansi-codes.ts";
 import type { ActiveSearch, SearchHighlightRange } from "./types.ts";
 
 /** Wrap the visible text of `text` in `style`, keeping its ANSI codes outside the styled runs. */

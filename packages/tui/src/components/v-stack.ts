@@ -29,5 +29,3 @@ export class VStack extends Stack {
 		return lines;
 	}
 }
-
-export type { StackChild, StackEntry, StackEntryOptions, StackOptions } from "./stack.ts";

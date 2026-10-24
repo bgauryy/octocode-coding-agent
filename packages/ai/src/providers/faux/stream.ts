@@ -96,6 +96,11 @@ export async function streamWithDeltas(
 			continue;
 		}
 
+		if (block.type !== "toolCall") {
+			partial.content = [...partial.content, block];
+			stream.push({ type: "content_update", contentIndex: index, partial: { ...partial } });
+			continue;
+		}
 		partial.content = [...partial.content, { type: "toolCall", id: block.id, name: block.name, arguments: {} }];
 		stream.push({ type: "toolcall_start", contentIndex: index, partial: { ...partial } });
 		for (const chunk of splitStringByTokenSize(JSON.stringify(block.arguments), minTokenSize, maxTokenSize)) {

@@ -1,5 +1,5 @@
-import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "../../autocomplete.ts";
-import { isWhitespaceChar } from "../../utils.ts";
+import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "../../autocomplete/types.ts";
+import { isWhitespaceChar } from "../../utils/chars.ts";
 import { SelectList } from "../select-list.ts";
 import {
 	ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS,

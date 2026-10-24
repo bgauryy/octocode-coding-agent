@@ -13,16 +13,13 @@ import { SelectList } from "../src/components/select-list.ts";
 import { Text } from "../src/components/text.ts";
 import { VStack } from "../src/components/v-stack.ts";
 import { getKeybindings, KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
-import {
-	encodeKitty,
-	hyperlink,
-	registerKittyImageMetadata,
-	resetCapabilitiesCache,
-	setCapabilities,
-} from "../src/terminal-image.ts";
+import { resetCapabilitiesCache, setCapabilities } from "../src/terminal-image/capabilities.ts";
+import { registerKittyImageMetadata } from "../src/terminal-image/kitty-metadata.ts";
+import { encodeKitty, hyperlink } from "../src/terminal-image.ts";
 import { renderFakeCursor, type TuiMouseEvent } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
-import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
+import { stripTerminalSequences } from "../src/utils.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";

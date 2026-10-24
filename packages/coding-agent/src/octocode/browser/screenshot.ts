@@ -1,6 +1,6 @@
 import { imageBudget, saveImageFile } from "../shared/spill.ts";
 import type { ImageLimits } from "../shared/vision.ts";
-import type { BrowserSession } from "./cdp.ts";
+import type { BrowserSession } from "./cdp/browser-session.ts";
 
 type ShotResult = {
 	content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;

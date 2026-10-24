@@ -13,11 +13,14 @@ export class Inbox {
 	private handed = 0;
 	/** Handed to Octocode, not yet seen by the model. */
 	private readonly unseen = new Set<number>();
+	/** A handoff rejected asynchronously: these rows remain in SQLite and get another attempt next tick. */
+	private readonly failed = new Set<number>();
 	private urgent: number | undefined;
 	/** Seen by the model, not yet recorded (the database was busy): recorded on the next tick. */
 	private readonly seenIds = new Set<number>();
 	/** The recipient, hand-off point and database stamp at which a read found nothing waiting. */
 	private idleAt: string | undefined;
+	private generation = 0;
 
 	/** Only newly handed mail needs a context scan; earlier conversation mail is already accounted for. */
 	get awaitingContext(): boolean {
@@ -26,6 +29,7 @@ export class Inbox {
 
 	/** Forgets everything (the agent left); with the database, first records what the model saw, if it can. */
 	reset(db?: TeamStore, id?: string): void {
+		this.generation++;
 		try {
 			if (db && id) this.record(db, id);
 		} catch {
@@ -33,18 +37,40 @@ export class Inbox {
 		}
 		this.handed = 0;
 		this.unseen.clear();
+		this.failed.clear();
 		this.urgent = undefined;
 		this.seenIds.clear();
 		this.idleAt = undefined;
 	}
 
 	/** Records what the model saw, then hands the next batch to `send`; a refused batch is offered again next tick. */
-	deliver(db: TeamStore, id: string, send: (batch: Message[]) => boolean, idle = false): void {
+	deliver(db: TeamStore, id: string, send: (batch: Message[], onRejected: () => void) => boolean, idle = false): void {
 		this.record(db, id);
 		// Taken before the reads: a write that lands after it moves the stamp, so the next tick reads.
 		const stamp = db.stamp();
 		const state = () => `${id}|${this.handed}|${stamp}`;
 		if (state() === this.idleAt) return;
+		if (this.failed.size > 0) {
+			const first = Math.min(...this.failed);
+			const batch = db.pending(id, first - 1).filter((message) => this.failed.has(message.id));
+			if (batch.length === 0) {
+				// The first rejected row is no longer pending. Later failed rows may be beyond the bounded read.
+				this.failed.delete(first);
+				return;
+			} else {
+				for (const message of batch) {
+					this.failed.delete(message.id);
+					this.unseen.add(message.id);
+				}
+				if (!send(batch, this.onRejected(batch))) {
+					for (const message of batch) {
+						this.unseen.delete(message.id);
+						this.failed.add(message.id);
+					}
+				}
+				return;
+			}
+		}
 		if (this.handed > 0 && db.waitingThrough(id, this.handed).some((message) => !this.unseen.has(message))) {
 			this.handed = 0;
 			this.unseen.clear();
@@ -60,7 +86,7 @@ export class Inbox {
 			if (!urgent || this.unseen.has(urgent.id)) return;
 			this.urgent = urgent.id;
 			this.unseen.add(urgent.id);
-			if (!send([urgent])) {
+			if (!send([urgent], this.onRejected([urgent]))) {
 				this.unseen.delete(urgent.id);
 				this.urgent = undefined;
 			}
@@ -79,9 +105,21 @@ export class Inbox {
 		// Marked first: Octocode may call the model with the batch, and report it seen, before `send` returns.
 		this.handed = batch.at(-1)!.id;
 		for (const message of batch) this.unseen.add(message.id);
-		if (send(batch)) return;
+		if (send(batch, this.onRejected(batch))) return;
 		this.handed = before;
 		for (const message of batch) this.unseen.delete(message.id);
+	}
+
+	private onRejected(batch: Message[]): () => void {
+		const generation = this.generation;
+		return () => {
+			if (generation !== this.generation) return;
+			for (const message of batch) {
+				if (this.unseen.delete(message.id)) this.failed.add(message.id);
+				if (this.urgent === message.id) this.urgent = undefined;
+			}
+			this.idleAt = undefined;
+		};
 	}
 
 	/**

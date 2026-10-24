@@ -1,17 +1,17 @@
 import type { RgbColor, TerminalColors, TUI } from "@octocodeai/octocode-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
+import { SYSTEM_THEME_NAME } from "./system-theme.ts";
 import {
 	getTerminalTheme,
 	initTheme,
 	markTerminalColorsPending,
 	parseAutoThemeSetting,
 	resolveThemeSetting,
-	SYSTEM_THEME_NAME,
 	setTerminalColorScheme,
 	setTerminalColors,
 	setTheme,
 	setThemeInstance,
-	type TerminalTheme,
+	type ThemeAppearance,
 	type Theme,
 } from "./theme.ts";
 
@@ -162,7 +162,7 @@ export class InteractiveThemeController {
 		this.terminalColorSchemeUnsubscribe = undefined;
 	}
 
-	getTerminalTheme(): TerminalTheme {
+	getTerminalTheme(): ThemeAppearance {
 		return getTerminalTheme();
 	}
 
@@ -238,7 +238,7 @@ export class InteractiveThemeController {
 	 * The terminal reported a light/dark switch. Its colors changed too, so query them again: they decide
 	 * the appearance. The reported scheme only matters for terminals that do not report their background.
 	 */
-	private applyTerminalColorSchemeChange(terminalTheme: TerminalTheme): void {
+	private applyTerminalColorSchemeChange(terminalTheme: ThemeAppearance): void {
 		if (!this.autoSyncEnabled) return;
 		const previous = getTerminalTheme();
 		setTerminalColorScheme(terminalTheme);

@@ -13,27 +13,7 @@ import { ItemActivity } from "../src/app/live/ItemPanels.tsx";
 import { LiveProvider } from "../src/app/live/session.tsx";
 import { indexBacklog } from "../src/app/model/backlog.ts";
 import { LongText, RichTextContext } from "../src/app/ui/LongText.tsx";
-
-class Socket {
-	static OPEN = 1;
-	static instances: Socket[] = [];
-	readyState = 1;
-	onmessage?: (event: { data: string }) => void;
-	onopen?: () => void;
-	onclose?: (event: { code: number }) => void;
-	onerror?: () => void;
-	constructor() {
-		Socket.instances.push(this);
-	}
-	send() {}
-	close(code = 1000) {
-		this.readyState = 3;
-		this.onclose?.({ code });
-	}
-	receive(type: string, data: unknown) {
-		this.onmessage?.({ data: JSON.stringify({ type, data }) });
-	}
-}
+import { FakeSocket, snapshotItem } from "./helpers.ts";
 
 const backlog: Snapshot = {
 	repo: "repo",
@@ -43,26 +23,13 @@ const backlog: Snapshot = {
 	items: [],
 };
 function item(ref: string, overrides: Partial<SnapshotItem> = {}): SnapshotItem {
-	return {
-		ref,
-		title: `Item ${ref}`,
-		goal: "",
-		body: "",
-		paths: [],
-		why: "",
-		evidence: [],
-		plan: "",
+	return snapshotItem(ref, {
 		state: "todo",
-		priority: "p2",
-		tags: [],
-		createdBy: "author",
-		createdAt: 0,
-		updatedAt: 0,
 		version: 3,
-		derived: [],
-		notes: [],
+		goal: "Fix the issue",
+		why: "Users are blocked",
 		...overrides,
-	};
+	});
 }
 function workspace(overrides: Partial<WorkspaceSnapshot> = {}): WorkspaceSnapshot {
 	return { sessionId: "s", agents: [], traffic: [], events: [], receipts: [], ...overrides };
@@ -90,10 +57,10 @@ let replies: Reply[] = [];
 const requests: { url: string; method: string; body: Record<string, unknown> | undefined }[] = [];
 
 beforeEach(() => {
-	Socket.instances = [];
+	FakeSocket.instances = [];
 	replies = [];
 	requests.length = 0;
-	vi.stubGlobal("WebSocket", Socket);
+	vi.stubGlobal("WebSocket", FakeSocket);
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -104,7 +71,21 @@ beforeEach(() => {
 			});
 			const reply = replies.shift() ?? { body: {} };
 			if (reply instanceof Error) throw reply;
-			return new Response(JSON.stringify(reply.body), { status: reply.status ?? 200 });
+			const payload = requests.at(-1)?.body;
+			const body =
+				reply.body && typeof reply.body === "object" && "receipt" in reply.body
+					? {
+							...reply.body,
+							receipt: {
+								...(reply.body.receipt as object),
+								id: payload?.id,
+								action: payload?.action,
+								backlogId: payload?.backlogId,
+								at: 0,
+							},
+						}
+					: reply.body;
+			return new Response(JSON.stringify(body), { status: reply.status ?? 200 });
 		}),
 	);
 });
@@ -116,9 +97,9 @@ function renderLive(children: ReactNode) {
 			{children}
 		</LiveProvider>,
 	);
-	return { ...result, socket: Socket.instances[0] };
+	return { ...result, socket: FakeSocket.instances[0] };
 }
-async function pushWorkspace(socket: Socket, snapshot: WorkspaceSnapshot) {
+async function pushWorkspace(socket: FakeSocket, snapshot: WorkspaceSnapshot) {
 	act(() => socket.receive("workspace", snapshot));
 	// The provider coalesces updates into one per frame (or 100 ms).
 	await act(() => new Promise((resolve) => setTimeout(resolve, 120)));
@@ -375,6 +356,15 @@ describe("ItemActivity comments", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Add comment" }));
 		expect(await screen.findByText("Version conflict. Your comment is still here.")).toBeInTheDocument();
 		expect(screen.getByRole("textbox", { name: "Comment" })).toHaveValue("Draft");
+	});
+
+	it("distinguishes a saved comment from a failed board refresh", async () => {
+		replies = [{ body: { item: item("B2") } }, new Error("Connection lost.")];
+		renderLive(<ItemActivity item={item("B2")} />);
+		await userEvent.type(screen.getByRole("textbox", { name: "Comment" }), "Saved context");
+		await userEvent.click(screen.getByRole("button", { name: "Add comment" }));
+		expect(await screen.findByText("Comment saved. Connection lost. Refresh the board to see it.")).toBeInTheDocument();
+		expect(screen.getByRole("textbox", { name: "Comment" })).toHaveValue("");
 	});
 
 	it("offers agent controls only once the session's workspace is connected", async () => {

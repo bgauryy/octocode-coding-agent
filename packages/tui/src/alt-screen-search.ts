@@ -1,7 +1,9 @@
 import { Input } from "./components/input.ts";
 import { getKeybindings } from "./keybindings.ts";
 import type { Component, Focusable } from "./tui.ts";
-import { getGraphemeSegmenter, stripTerminalSequences, truncateToWidth, visibleWidth } from "./utils.ts";
+import { truncateToWidth } from "./utils/truncate.ts";
+import { getGraphemeSegmenter, visibleWidth } from "./utils/width.ts";
+import { stripTerminalSequences } from "./utils.ts";
 
 const segmenter = getGraphemeSegmenter();
 

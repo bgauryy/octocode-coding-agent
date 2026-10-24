@@ -3,12 +3,10 @@ import { allocateStackSizes, visibleStackEntries } from "./components/stack.ts";
 import { getLayoutNode } from "./layout-node.ts";
 import { paintScrollbar } from "./layout/scrollbar.ts";
 import type { LayoutBox, LayoutFrame, LayoutRect } from "./layout/types.ts";
-import { cropKittyImageLine, getKittyImageMetadata, isImageLine } from "./terminal-image.ts";
+import { cropKittyImageLine, getKittyImageMetadata } from "./terminal-image/kitty-metadata.ts";
+import { isImageLine } from "./terminal-image.ts";
 import { type Component, CURSOR_MARKER, compositeTuiLine } from "./tui.ts";
-import { visibleWidth } from "./utils.ts";
-
-export { getScrollbarGeometry } from "./layout/scrollbar.ts";
-export type { LayoutFrame, ScrollbarGeometry } from "./layout/types.ts";
+import { visibleWidth } from "./utils/width.ts";
 
 const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
 

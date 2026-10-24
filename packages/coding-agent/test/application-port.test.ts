@@ -286,6 +286,8 @@ it("restores partial tools and compaction status on a fresh connection", async (
 			order: 0,
 			toolName: "read",
 			text: "Partial output",
+			arguments: { path: "src/a.ts", token: "[redacted]" },
+			content: [{ id: "tool:tool-A:0", type: "text", text: "Partial output" }],
 			status: "running",
 			hint: "src/a.ts",
 		},
@@ -334,7 +336,10 @@ it("represents unsupported attachments explicitly without exposing their bytes",
 		},
 	});
 	const frame = (await connection[Symbol.asyncIterator]().next()).value;
-	expect(frame.event.message.text).toContain("Image attachment");
+	expect(frame.event.message.text).toContain("Image");
+	expect(frame.event.message.content).toEqual([
+		expect.objectContaining({ type: "image", asset: expect.objectContaining({ mimeType: "image/png" }) }),
+	]);
 	expect(JSON.stringify(frame)).not.toContain("private-binary");
 	service.dispose();
 });

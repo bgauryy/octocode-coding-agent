@@ -1,5 +1,6 @@
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { StreamOptions } from "../../types.ts";
+import type { OpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
 
 // OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
@@ -11,5 +12,5 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 
 // Keep evolving cache fields independent of the SDK's release cadence. Other SDK imports are type-only.
 export type ResponsesRequest = Omit<ResponseCreateParamsStreaming, "prompt_cache_options"> & {
-	prompt_cache_options?: { mode?: "implicit" | "explicit"; ttl?: "30m" | "12h" };
+	prompt_cache_options?: OpenAIResponsesCacheFields["prompt_cache_options"];
 };

@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { Editor, type EditorTheme } from "../src/components/editor.ts";
+import type { EditorTheme } from "../src/components/editor/types.ts";
+import { Editor } from "../src/components/editor.ts";
 import { Input } from "../src/components/input.ts";
 import { SelectList, type SelectListTheme } from "../src/components/select-list.ts";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";

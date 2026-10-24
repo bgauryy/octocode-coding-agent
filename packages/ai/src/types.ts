@@ -54,7 +54,9 @@ export type {
 	ProviderId,
 } from "./types/ids.ts";
 export type { JsonObject, JsonRepresentation, JsonValue } from "./types/json.ts";
+export type { ContentAnnotation, MediaContent, ResourceContent, UnsupportedContent } from "./types/content.ts";
 export type {
+	AssistantContent,
 	AssistantMessage,
 	AssistantMessageEvent,
 	ConstrainedSamplingConfig,
@@ -221,6 +223,12 @@ export interface StreamOptions extends ProviderRequestOptions {
 	cacheRetention?: CacheRetention;
 	/** Separate retention for leading instructions and tools on APIs supporting explicit cache boundaries. */
 	instructionCacheRetention?: CacheRetention;
+	/**
+	 * Name of the first section of the leading system message that belongs to a second instruction cache block.
+	 * Adapters with a free breakpoint split the leading system prompt before this section and mark both blocks with the
+	 * instruction retention. Absent, unknown section, forced (opaque) prompt, or no free slot: one block, as before.
+	 */
+	instructionCacheBoundary?: string;
 	/**
 	 * Optional session identifier for providers that support session-based caching.
 	 * Providers can use this to enable prompt caching, request routing, or other

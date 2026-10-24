@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { findAllEditOccurrences, normalizeToLF } from "../../../core/tools/edit-diff.ts";
-import { sha256 } from "../../shared/atomic.ts";
-import { canonicalPath } from "../../shared/home.ts";
-import { isRecord } from "../../shared/util.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { canonicalPath } from "../../shared/home/repo.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import { describeRanges, firstGap, type LineRange, lineCount, mergeRanges, readView } from "../coverage.ts";
 
 interface Snapshot {
@@ -19,7 +19,7 @@ interface Snapshot {
 }
 
 /** Content known without reading the file again (e.g. what was just written). */
-export interface KnownContent {
+interface KnownContent {
 	sha256: string;
 	size: number;
 }
@@ -29,7 +29,7 @@ export interface WrittenContent extends KnownContent {
 	lines: number;
 }
 
-export interface Inspection {
+interface Inspection {
 	refusal?: string;
 	/** The file's stat now; undefined when it does not exist. */
 	current?: Snapshot;
@@ -70,12 +70,14 @@ export function lostAnchor(
 	content: string,
 	reader: Reader,
 ): string | undefined {
+	const normalized = normalizeToLF(content);
 	for (const [index, { oldText, replaceAll }] of edits.entries()) {
+		const anchor = normalizeToLF(oldText);
 		const count = replaceAll
-			? findAllEditOccurrences(normalizeToLF(content), normalizeToLF(oldText)).length
-			: oldText === ""
+			? findAllEditOccurrences(normalized, anchor).length
+			: anchor === ""
 				? 0
-				: content.split(oldText).length - 1;
+				: normalized.split(anchor).length - 1;
 		if (replaceAll ? count > 0 : count === 1) continue;
 		const shown = JSON.stringify(oldText.length > 60 ? `${oldText.slice(0, 60)}…` : oldText);
 		return `${display} changed on disk since you last read it and edits[${index}] (oldText ${shown}) ${count === 0 ? "is no longer in it" : `now matches ${count} times`}. Read it again with \`${reader.name}\` before editing it.`;

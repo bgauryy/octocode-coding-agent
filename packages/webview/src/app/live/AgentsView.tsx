@@ -1,12 +1,12 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contacts";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { useStore } from "zustand";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
 import { stamp } from "../model/format.ts";
 import { AgentIcon, StopIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx, EmptyState } from "../ui/primitives.tsx";
-import { CommandButton, MessageForm } from "./controls.tsx";
+import { CommandButton, ConnectionNotice, MessageForm } from "./controls.tsx";
 import { useLive } from "./session.tsx";
 
 const TRAFFIC_TONES: Record<Traffic["state"], BadgeTone> = {
@@ -29,6 +29,7 @@ export function AgentsView() {
 	const working = snapshot.agents.filter((agent) => agent.status === "working").length;
 	return (
 		<div className="view agents-view">
+			<ConnectionNotice />
 			<div className="view-heading">
 				<h2>Agents</h2>
 				<p className="muted">
@@ -74,6 +75,8 @@ export function AgentsView() {
 
 const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
 	const working = agent.status === "working";
+	const [stopCycle, setStopCycle] = useState({ working, generation: 0 });
+	if (stopCycle.working !== working) setStopCycle({ working, generation: stopCycle.generation + (working ? 1 : 0) });
 	return (
 		<article className={cx("agent-card", working && "is-working")}>
 			<header className="agent-card-header">
@@ -106,8 +109,17 @@ const AgentCard = memo(function AgentCard({ agent }: { agent: Member }) {
 				<summary>Message agent</summary>
 				<MessageForm agentId={agent.id} />
 			</details>
-			{agent.role !== "main" && (
-				<CommandButton label="Request stop" action="stop" to={agent.id} icon={<StopIcon />} variant="danger" />
+			{agent.role === "main" ? (
+				<a href="#activity">Open session controls</a>
+			) : (
+				<CommandButton
+					key={`${agent.joinedAt}:${agent.pid}:${agent.started ?? ""}:${stopCycle.generation}`}
+					label="Request stop"
+					action="stop"
+					to={agent.id}
+					icon={<StopIcon />}
+					variant="danger"
+				/>
 			)}
 		</article>
 	);

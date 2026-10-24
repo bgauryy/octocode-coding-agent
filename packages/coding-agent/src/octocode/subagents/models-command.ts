@@ -17,7 +17,7 @@ import { isModelTier, MODEL_TIERS, type ModelRef, resolveTier, routeModel } from
 import type { AgentProfile } from "./profiles.ts";
 
 /**
- * `/models`: the models this session can use, what each costs and can do, and which one each subagent
+ * `/modelsettings`: the models this session can use, what each costs and can do, and which one each subagent
  * purpose (`small`, `medium`) and profile runs on. Refreshes the models.dev index first unless it is turned off.
  */
 
@@ -55,12 +55,13 @@ export function describeModels(
 		const mark = parent && name(model) === name(parent) ? "● " : "  ";
 		const description = known?.description ? ` — ${describe(known.description)}` : "";
 		return {
+			provider: model.provider,
 			parent: mark !== "  ",
 			sort: cost ? 3 * cost.input + cost.output : Infinity,
 			line: `${mark}${name(model)} · ${price} per M in/out · ${contextSize(model.contextWindow || known?.context)} · ${caps}${description}`,
 		};
 	});
-	rows.sort((a, b) => a.sort - b.sort);
+	rows.sort((a, b) => a.provider.localeCompare(b.provider) || a.sort - b.sort);
 	const parentPriced =
 		rows.some((row) => row.parent && row.sort !== Infinity) ||
 		(parent !== undefined && resolveTier("small", [...available, parent], parent, catalog) !== undefined);
@@ -89,7 +90,9 @@ export function describeModels(
 	});
 	return [
 		"Models this session can use (● this session; price per million tokens in/out; context window):",
-		...rows.map((row) => row.line),
+		...rows.flatMap((row, index) =>
+			index === 0 || rows[index - 1].provider !== row.provider ? ["", `${row.provider}:`, row.line] : [row.line],
+		),
 		"",
 		"Subagent purposes:",
 		...tiers,
@@ -98,9 +101,9 @@ export function describeModels(
 }
 
 export function registerModelsCommand(commands: Subcommands, getProfiles: () => Map<string, AgentProfile>): void {
-	commands.add("models", {
+	commands.add("modelsettings", {
 		description:
-			"models — the models you can use, their price and abilities, and which one each subagent purpose runs on",
+			"modelsettings — the models you can use, their price and abilities, and which one each subagent purpose runs on",
 		handler: async (_args, ctx: ExtensionCommandContext) => {
 			const enabled = modelsDevEnabled();
 			if (enabled && !readCatalog(catalogFile())) say(ctx, "Fetching model data from models.dev…");

@@ -1,15 +1,9 @@
-import {
-	allocateImageId,
-	getCapabilities,
-	getCellDimensions,
-	getImageDimensions,
-	getPngDimensions,
-	type ImageDimensions,
-	imageFallback,
-	renderImage,
-} from "../terminal-image.ts";
+import type { ImageDimensions } from "../terminal-image/types.ts";
+import { getImageDimensions, getPngDimensions } from "../terminal-image/dimensions.ts";
+import { getCapabilities, getCellDimensions } from "../terminal-image/capabilities.ts";
+import { allocateImageId, imageFallback, renderImage } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
-import { truncateToWidth } from "../utils.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 
 /**
  * Converts base64 image data to base64 PNG data, or returns null if it cannot.

@@ -1,13 +1,11 @@
 import { bashSyntax } from "./bash-syntax.ts";
 import { needsBashTokens } from "./bash-wrappers.ts";
 import type { ToolInvocation } from "../../core/extensions/types.ts";
-import { canonicalPath, isWithin, resolveToolPath } from "../shared/home.ts";
+import { resolveToolPath } from "../shared/home.ts";
 import { runsLater, stateFolderRefusal } from "./file-access.ts";
 import { match, type Operation, operations, pathMatch } from "./source-policy/match.ts";
 import { names, type SourceDecision, type SourcePolicy, toolMatches } from "./source-policy/rules.ts";
-
-export { parseSourcePolicy } from "./source-policy/rules.ts";
-export type { PolicySource, SourceDecision, SourcePolicy } from "./source-policy/rules.ts";
+import { canonicalPath, isWithin } from "../shared/home/repo.ts";
 
 export function sourceToolDenied(policy: SourcePolicy, name: string): boolean {
 	return names(name).every((sourceName) =>

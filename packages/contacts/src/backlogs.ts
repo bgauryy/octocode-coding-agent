@@ -86,11 +86,11 @@ export const EntityFields = {
 	}),
 	version: Type.Optional(Type.Integer({ description: "Version from get." })),
 };
-export const EntityFieldsSchema = Type.Object(EntityFields);
+export const EntityFieldsSchema = Type.Object(EntityFields, { additionalProperties: false });
 export type EntityInput = Static<typeof EntityFieldsSchema>;
 export type BacklogRef = Static<typeof BacklogRefSchema>;
 export type WorkLink = Static<typeof LinkSchema>;
-export type CompletionInput = Static<typeof CompletionSchema>;
+type CompletionInput = Static<typeof CompletionSchema>;
 export type Completion = CompletionInput & {
 	id: number;
 	actor: string;

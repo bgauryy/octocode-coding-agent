@@ -598,6 +598,22 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("bashBackgroundAfterSeconds", () => {
+		it("defaults to 90 and reads a valid setting, including 0", () => {
+			const settingsPath = join(agentDir, "settings.json");
+			expect(SettingsManager.create(projectDir, agentDir).getBashBackgroundAfterSeconds()).toBe(90);
+			writeFileSync(settingsPath, JSON.stringify({ bashBackgroundAfterSeconds: 30 }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashBackgroundAfterSeconds()).toBe(30);
+			writeFileSync(settingsPath, JSON.stringify({ bashBackgroundAfterSeconds: 0 }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashBackgroundAfterSeconds()).toBe(0);
+		});
+
+		it("falls back to the default for a negative value", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ bashBackgroundAfterSeconds: -5 }));
+			expect(SettingsManager.create(projectDir, agentDir).getBashBackgroundAfterSeconds()).toBe(90);
+		});
+	});
+
 	describe("shellCommandPrefix", () => {
 		it("should load shellCommandPrefix from settings", () => {
 			const settingsPath = join(agentDir, "settings.json");

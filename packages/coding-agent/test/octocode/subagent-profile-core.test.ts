@@ -7,7 +7,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { CORE_TOOLS, MCP_ACCESS_TOOLS, loadProfiles, parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
 import { tmp } from "./helpers.ts";

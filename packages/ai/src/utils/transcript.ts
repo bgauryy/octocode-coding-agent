@@ -1,5 +1,5 @@
-import type { Context, Message, SystemMessage, Tool, ToolReference, TranscriptContext } from "../types.ts";
-import { contentText, getSystemMessageText } from "./text.ts";
+import type { Context, Message, SystemMessage, Tool, ToolReference, TranscriptContext, UserMessage } from "../types.ts";
+import { contentText, getSystemMessageText, renderSystemUpdateAsUserText } from "./text.ts";
 
 export type { TranscriptContext } from "../types.ts";
 
@@ -102,21 +102,104 @@ export function getCurrentSystemPrompt(messages: TranscriptMessages): string {
 }
 
 /**
- * Rebuild the transcript for APIs without mid-conversation system messages: the replayed
- * system message leads, and every later system message is dropped.
+ * Rebuild the transcript for APIs without mid-conversation system messages by replaying every
+ * system message into one leading message. Later `content` and `sections` rewrite the leading
+ * prompt, so the cached prompt prefix is lost once per patch. Prefer
+ * {@link collapseSystemMessages} whenever there is a leading system message to preserve.
  */
-export function collapseSystemMessages(context: TranscriptContext): TranscriptContext {
+export function foldSystemMessages(context: TranscriptContext): TranscriptContext {
 	const head = getCurrentSystemMessage(context.messages);
 	const messages = context.messages.filter((message) => message.role !== "system");
 	return { messages: head ? [head, ...messages] : messages } as TranscriptContext;
+}
+
+/**
+ * Rebuild the transcript for APIs without mid-conversation system messages while keeping the
+ * leading prompt byte-identical, so a section patch (MCP connect, tool loadout, Octocode
+ * section change) does not invalidate the provider's prompt prefix cache.
+ *
+ * The leading system message stays as written; it only takes the current tool state, because
+ * these APIs send tools in one top-level field. Each later system message becomes a marked
+ * user message (see {@link renderSystemUpdateAsUserText}), held back until just before the next
+ * assistant message or the end of the transcript. A user turn between a tool call and its
+ * result is rejected by every API this serves, and the deferral also keeps each update at a
+ * position that later requests do not change. The latest update still wins because updates
+ * stay in transcript order and name the sections they replace. A tool-only change produces no
+ * message. Without a leading system message there is no head to preserve, so the transcript is
+ * folded with {@link foldSystemMessages}.
+ *
+ * The transcript still replays through {@link getCurrentSystemMessage}; this projection is
+ * request-time only.
+ */
+export function collapseSystemMessages(context: TranscriptContext, options?: CollapseSystemOptions): TranscriptContext {
+	const first = getInitialSystemMessage(context.messages);
+	if (!first) return foldSystemMessages(context);
+	const rest = context.messages.slice(1);
+	if (!rest.some(isSystemMessage)) return context;
+	const holdAfterToolResult = options?.holdAfterToolResult === true;
+
+	const messages: Message[] = [];
+	let pending: UserMessage[] = [];
+	// A user message directly after a tool result is illegal on strict APIs; hold the update instead.
+	const canFlush = (): boolean => !holdAfterToolResult || messages.at(-1)?.role !== "toolResult";
+	const flush = (): void => {
+		// Strict APIs also dislike consecutive user messages, so held updates travel as one.
+		if (holdAfterToolResult && pending.length > 1) {
+			const text = pending.map((update) => contentText(update.content)).join("\n\n");
+			messages.push({ ...pending[0], content: text });
+		} else {
+			messages.push(...pending);
+		}
+		pending = [];
+	};
+	for (const message of rest) {
+		if (isSystemMessage(message)) {
+			const text = renderSystemUpdateAsUserText(message);
+			if (text.length > 0) pending.push({ role: "user", content: text, timestamp: message.timestamp });
+			continue;
+		}
+		if (holdAfterToolResult && message.role === "user" && pending.length > 0) {
+			messages.push(prependToUserMessage(message, pending));
+			pending = [];
+			continue;
+		}
+		if (message.role === "assistant" && canFlush()) flush();
+		messages.push(message);
+	}
+	if (canFlush()) flush();
+
+	const tools = getCurrentTools(context.messages);
+	const { toolsAdded: _initialTools, ...base } = first;
+	const head: SystemMessage = { ...base, ...(tools.length > 0 ? { toolsAdded: tools } : {}) };
+	return { messages: [head, ...messages] } as TranscriptContext;
+}
+
+export interface CollapseSystemOptions {
+	/**
+	 * For APIs that reject a user message directly after a tool result. An update that would land there is
+	 * held and merged into the next user message, so it reaches the model one turn later. The leading prompt
+	 * stays unchanged either way.
+	 */
+	holdAfterToolResult?: boolean;
+}
+
+/** Put held system updates in front of the user's own content. */
+function prependToUserMessage(message: UserMessage, updates: readonly UserMessage[]): UserMessage {
+	const prefix = updates.map((update) => contentText(update.content)).join("\n\n");
+	const content =
+		typeof message.content === "string"
+			? `${prefix}\n\n${message.content}`
+			: [{ type: "text" as const, text: prefix }, ...message.content];
+	return { ...message, content };
 }
 
 /** Keep later system messages in place when the model accepts them; otherwise collapse them. */
 export function resolveTranscript(
 	context: TranscriptContext,
 	supportsMidConvoSystemMessages: boolean | undefined,
+	options?: CollapseSystemOptions,
 ): TranscriptContext {
-	return supportsMidConvoSystemMessages ? context : collapseSystemMessages(context);
+	return supportsMidConvoSystemMessages ? context : collapseSystemMessages(context, options);
 }
 
 /** Strip executable and display-only fields from a tool before transcript comparison or persistence. */
@@ -174,26 +257,6 @@ export function getDeclaredTools(messages: TranscriptMessages): Tool[] {
 		for (const tool of message.toolsAdded ?? []) definitions.set(tool.name, tool);
 	}
 	return [...definitions.values()];
-}
-
-/**
- * Whether a tool name was declared twice with different definitions. A transport that can
- * only reference previously declared tools by name cannot replay such a history.
- *
- * @deprecated No built-in transport needs this anymore: Anthropic expresses redefinitions with
- * inline `tool_definition` blocks. Kept for API compatibility and will be removed in a future release.
- */
-export function hasToolRedefinitions(messages: TranscriptMessages): boolean {
-	const declared = new Map<string, Tool>();
-	for (const message of messages) {
-		if (!isSystemMessage(message)) continue;
-		for (const tool of message.toolsAdded ?? []) {
-			const previous = declared.get(tool.name);
-			if (previous !== undefined && !declarationsEqual(previous, tool)) return true;
-			declared.set(tool.name, tool);
-		}
-	}
-	return false;
 }
 
 /** Whether tool history contains a removal or same-name redeclaration that an addition-only transport cannot replay. */

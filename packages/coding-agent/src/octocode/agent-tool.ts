@@ -2,7 +2,7 @@ import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai"
 import { Text } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/extensions/index.ts";
-import { errorMessage, isRecord } from "./shared/util.ts";
+import { errorMessage, isRecord } from "../utils/guards.ts";
 
 const MODES = { agent: "task", externalAgent: "external", coordinate: "coordinate", sendMessage: "message" } as const;
 type Mode = (typeof MODES)[keyof typeof MODES];

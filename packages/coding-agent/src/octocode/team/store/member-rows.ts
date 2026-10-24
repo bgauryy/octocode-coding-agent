@@ -2,8 +2,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../../agentdb/rows.ts";
 import { sameProcess } from "../../shared/process.ts";
 import { optionalString } from "../../shared/util.ts";
-import { type Lease, type Member, toMember } from "../model.ts";
+import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export interface ProcessIdentity {
@@ -11,7 +12,7 @@ export interface ProcessIdentity {
 	started?: string | undefined;
 }
 
-export const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
+const sameIdentity = (a: ProcessIdentity, b: ProcessIdentity): boolean =>
 	a.pid === b.pid && (a.started ?? null) === (b.started ?? null);
 
 /** The heartbeat's `UPDATE`: matches the row only while it still names this process. */
@@ -78,7 +79,7 @@ export function processOf(db: DatabaseSync, id: string): ProcessIdentity | undef
 }
 
 /** Deletes the row, releases the leases and dead-letters the unread mail of `id`; the one place a member is dropped. */
-export function retire(db: DatabaseSync, id: string, now: number): void {
+function retire(db: DatabaseSync, id: string, now: number): void {
 	db.prepare("DELETE FROM agents WHERE id = ?").run(id);
 	db.prepare("DELETE FROM leases WHERE owner = ?").run(id);
 	db.prepare("UPDATE deliveries SET dead_at = ? WHERE recipient = ? AND delivered_at IS NULL AND dead_at IS NULL").run(

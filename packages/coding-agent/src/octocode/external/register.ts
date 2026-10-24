@@ -5,7 +5,7 @@ import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { ExternalAgents, type ExternalPolicy } from "./manager.ts";
 import { ExternalParamsSchema } from "./protocol.ts";
 

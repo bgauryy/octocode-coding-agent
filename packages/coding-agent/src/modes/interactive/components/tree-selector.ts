@@ -6,8 +6,6 @@ import { LabelInput, SearchLine, TreeHelp } from "./tree-selector/chrome.ts";
 import { TreeList } from "./tree-selector/tree-list.ts";
 import type { FilterMode } from "./tree-selector/types.ts";
 
-export type { FilterMode } from "./tree-selector/types.ts";
-
 /**
  * Component that renders a session tree selector for navigation
  */

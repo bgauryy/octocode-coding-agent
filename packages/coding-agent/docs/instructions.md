@@ -15,6 +15,16 @@ Octocode Code owns its agent policy and bundled subagent instructions in [`src/o
 
 The common policy does not copy tool schemas, skill bodies or project instructions. Their existing loaders remain authoritative. Bundled role files are package assets; use user or trusted project profiles for local customization rather than editing installed defaults.
 
+The policy groups overlapping principles into five concerns:
+
+- **Work and verification:** establish the goal and constraints, inspect owners and callers, make the smallest complete change, and run the deciding check.
+- **Context and research:** retain the next step's actionable evidence, decisions and exact recovery identifiers; retrieve large material by path or cursor and disclose coverage gaps. Cached input still occupies the context window.
+- **Delegation:** assign bounded tasks with ownership and observable completion checks; the parent owns integration and user communication.
+- **Safety:** preserve authorization, user changes and trust boundaries. An unavailable research tool can have a permitted fallback; a permission refusal cannot be bypassed by switching tools.
+- **Communication:** lead with the result and its evidence, distinguish verified facts from unknowns, and report checks actually run. Findings have no mandatory narrative template.
+
+Research and messaging guidance follows the selected tools. A session without web or agent tools receives no recommendation to call them. Hidden file readers preserve skill discovery without being advertised as directly callable. The machine-consumed child report outcomes remain `done`, `partial`, `blocked` and `failed`.
+
 Compaction instructions remain with the summarizer because they define its saved output and recovery format. They are task-specific instructions, separate from persistent main-agent and subagent policy.
 
 ## User instructions and subagent roles

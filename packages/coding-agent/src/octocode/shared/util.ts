@@ -6,9 +6,6 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { redactSecrets } from "./sanitize.ts";
 
-/** Shared type guard and error text; `utils/guards.ts` owns them. */
-export { errorMessage, isRecord } from "../../utils/guards.ts";
-
 /** node:sqlite prints an ExperimentalWarning on some Node versions; that would land in the terminal UI. */
 export function loadSqlite(): typeof Sqlite {
 	const emit = process.emitWarning;
@@ -273,25 +270,27 @@ export function emptyUsage(): Usage {
 	};
 }
 
-const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+/** `value` when it is a finite number, else 0. */
+export const finiteOrZero = (value: unknown): number =>
+	typeof value === "number" && Number.isFinite(value) ? value : 0;
 
 /** Add a model response's usage into `total`. Anything that is not a number counts as zero. */
 export function addUsage(total: Usage, usage: unknown): void {
 	if (!isRecord(usage)) return;
-	total.input += num(usage.input);
-	total.output += num(usage.output);
-	total.cacheRead += num(usage.cacheRead);
-	total.cacheWrite += num(usage.cacheWrite);
+	total.input += finiteOrZero(usage.input);
+	total.output += finiteOrZero(usage.output);
+	total.cacheRead += finiteOrZero(usage.cacheRead);
+	total.cacheWrite += finiteOrZero(usage.cacheWrite);
 	for (const key of ["cacheWrite1h", "cacheWrite12h", "reasoning"] as const) {
 		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) total[key] = (total[key] ?? 0) + usage[key];
 	}
-	total.totalTokens += num(usage.totalTokens);
+	total.totalTokens += finiteOrZero(usage.totalTokens);
 	const cost = isRecord(usage.cost) ? usage.cost : {};
-	total.cost.input += num(cost.input);
-	total.cost.output += num(cost.output);
-	total.cost.cacheRead += num(cost.cacheRead);
-	total.cost.cacheWrite += num(cost.cacheWrite);
-	total.cost.total += num(cost.total);
+	total.cost.input += finiteOrZero(cost.input);
+	total.cost.output += finiteOrZero(cost.output);
+	total.cost.cacheRead += finiteOrZero(cost.cacheRead);
+	total.cost.cacheWrite += finiteOrZero(cost.cacheWrite);
+	total.cost.total += finiteOrZero(cost.total);
 }
 
 /**
@@ -344,10 +343,10 @@ export function entryMessage(entry: unknown): unknown {
 /** Adds one reply's usage (anything that is not a number counts as zero); `unpriced` from `unpricedModel`. */
 export function addReply(totals: UsageTotals, usage: unknown, unpriced: boolean): void {
 	if (!isRecord(usage)) return;
-	totals.input += num(usage.input) + num(usage.cacheRead) + num(usage.cacheWrite);
-	totals.cacheRead += num(usage.cacheRead);
-	totals.output += num(usage.output);
-	totals.cost += num(isRecord(usage.cost) ? usage.cost.total : undefined);
+	totals.input += finiteOrZero(usage.input) + finiteOrZero(usage.cacheRead) + finiteOrZero(usage.cacheWrite);
+	totals.cacheRead += finiteOrZero(usage.cacheRead);
+	totals.output += finiteOrZero(usage.output);
+	totals.cost += finiteOrZero(isRecord(usage.cost) ? usage.cost.total : undefined);
 	if (unpriced) totals.unpriced = true;
 }
 
@@ -371,7 +370,14 @@ export const modelLookup =
 export function unpricedModel(message: unknown, find?: ModelLookup): string | undefined {
 	if (!isRecord(message) || !isRecord(message.usage)) return undefined;
 	const usage = message.usage;
-	if (num(usage.input) + num(usage.output) + num(usage.cacheRead) + num(usage.cacheWrite) === 0) return undefined;
+	if (
+		finiteOrZero(usage.input) +
+			finiteOrZero(usage.output) +
+			finiteOrZero(usage.cacheRead) +
+			finiteOrZero(usage.cacheWrite) ===
+		0
+	)
+		return undefined;
 	// A subagent's `agent` result names no model; its run already judged every reply (partly priced is still unpriced).
 	const details = isRecord(message.details) ? message.details : undefined;
 	if (typeof details?.unpriced === "boolean" && typeof message.model !== "string") {
@@ -382,7 +388,7 @@ export function unpricedModel(message: unknown, find?: ModelLookup): string | un
 	const rates = provider && model ? find?.(provider, model)?.cost : undefined;
 	const free = rates
 		? rates.input === 0 && rates.output === 0 && rates.cacheRead === 0 && rates.cacheWrite === 0
-		: num(isRecord(usage.cost) ? usage.cost.total : undefined) === 0;
+		: finiteOrZero(isRecord(usage.cost) ? usage.cost.total : undefined) === 0;
 	if (!free) return undefined;
 	return model ? (provider ? `${provider}/${model}` : model) : "unknown model";
 }

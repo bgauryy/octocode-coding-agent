@@ -1,23 +1,17 @@
 import { fileChanges } from "../shared/file-input.ts";
-import { Box, type Component } from "@octocodeai/octocode-tui";
+import { Box, type Component, Text } from "@octocodeai/octocode-tui";
 import type { BashToolDetails } from "../../core/tools/index.ts";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
-import {
-	SHOW_ALL_LINES,
-	clip,
-	expandKey,
-	plural,
-	type RenderContext,
-	resultBlock,
-	resultText,
-	timingOf,
-	toolHeader,
-} from "../shared/render.ts";
+import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { contentText, isRecord } from "../shared/util.ts";
-import type { VerificationReceipt } from "./bash/verification.ts";
+import { contentText } from "../shared/util.ts";
+import { clip, expandKey, plural } from "../shared/render/text.ts";
+import type { RenderContext } from "../shared/render/types.ts";
+import { timingOf } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
+import type { VerificationReceipt } from "./bash-jobs/types.ts";
 
 /**
  * How the files tools draw: `Bash(cmd)` / `⎿  exit 0 · 12 lines` and the last lines, `File(edit a.ts)` /
@@ -25,10 +19,8 @@ import type { VerificationReceipt } from "./bash/verification.ts";
  */
 
 /** What a bash result keeps: Octocode's truncation fields and the background job. */
-export interface BashDetails {
+export interface BashDetails extends BashToolDetails {
 	verification?: VerificationReceipt;
-	truncation?: NonNullable<BashToolDetails>["truncation"];
-	fullOutputPath?: string;
 	job?: string;
 	pid?: number;
 	log?: string;
@@ -53,14 +45,14 @@ const LINE_BREAK = /\r\n?|\n|[\u2028\u2029]/g;
  * Where the last `keep` output lines start: the cut a collapsed preview needs, so a streaming update sanitizes and
  * splits only its tail. Returns 0 when the part before the cut is blank (it would be trimmed, not counted).
  */
-function tailCut(text: string, keep: number): number {
+function tailCut(text: string, keep: number, structured = false): number {
 	let end = text.length;
 	let kept = 0;
 	while (end > 0 && kept < keep) {
 		const start = text.lastIndexOf("\n", end - 1) + 1;
 		for (const line of sanitizeTerminalText(text.slice(start, end)).split("\n")) {
 			const trimmed = line.trim();
-			if (trimmed && !noticeLine(trimmed)) kept += 1;
+			if (trimmed && (structured || !noticeLine(trimmed))) kept += 1;
 		}
 		end = start === 0 ? 0 : start - 1;
 		if (kept >= keep) return /\S/.test(text.slice(0, start)) ? start : 0;
@@ -79,12 +71,24 @@ function bashOutcome(
 	isError: boolean,
 	running = false,
 	keep?: number,
+	facts?: BashToolDetails,
 ): { summary: string; body: string; lines?: number; spill?: string } {
-	let status: string | undefined;
-	let total: number | undefined;
-	let spill: string | undefined;
+	const structured = typeof facts?.output === "string";
+	if (structured) text = facts.output!;
+	let status =
+		facts?.termination === "timeout"
+			? `timed out after ${formatDuration((facts.timeoutSeconds ?? 0) * 1000)}`
+			: facts?.termination === "aborted"
+				? "aborted"
+				: facts?.termination === "terminated"
+					? "terminated (no exit code)"
+					: facts?.exitCode !== undefined && facts.exitCode !== null
+						? `exit ${facts.exitCode}`
+						: undefined;
+	let total = facts?.truncation?.totalLines;
+	let spill = facts?.fullOutputPath;
 	// An error's message is its first line, so only a status-bearing result is read from its tail.
-	const cut = keep !== undefined && !isError ? tailCut(text, keep) : 0;
+	const cut = keep !== undefined && (!isError || structured) ? tailCut(text, keep, structured) : 0;
 	const head = text.slice(0, cut);
 	// Lines before the cut, less the leading blank ones the body trims (`tailCut` keeps a cut only after output).
 	const headLines =
@@ -92,7 +96,8 @@ function bashOutcome(
 	const body: string[] = [];
 	for (const line of sanitizeTerminalText(cut === 0 ? text : text.slice(cut)).split("\n")) {
 		const trimmed = line.trim();
-		const match = BASH_STATUS.exec(trimmed);
+		// Old session entries predate structured Bash facts; parse their host notices only.
+		const match = structured ? null : BASH_STATUS.exec(trimmed);
 		if (match) {
 			status =
 				match[1] !== undefined
@@ -104,18 +109,18 @@ function bashOutcome(
 							: "aborted";
 			continue;
 		}
-		if (TRUNCATION_NOTICE.test(trimmed)) {
+		if (!structured && TRUNCATION_NOTICE.test(trimmed)) {
 			const of = /\bof (\d+)\b/.exec(trimmed);
 			if (of) total = Number(of[1]);
 			spill = /Full output: (.+?)\]$/.exec(trimmed)?.[1];
 			continue;
 		}
-		if (trimmed.startsWith(RERUN_HINT)) continue;
+		if (!structured && trimmed.startsWith(RERUN_HINT)) continue;
 		body.push(line);
 	}
 	while (body.length > 0 && body.at(-1)!.trim() === "") body.pop();
 	while (cut === 0 && body.length > 0 && body[0].trim() === "") body.shift();
-	if (body.length === 1 && body[0] === "(no output)") body.length = 0;
+	if (!structured && body.length === 1 && body[0] === "(no output)") body.length = 0;
 	if (isError && !status) {
 		// Not a command status (a missing directory, a refused command): the message is the summary.
 		return { summary: body.shift() ?? "failed", body: body.join("\n"), ...(spill ? { spill } : {}) };
@@ -137,6 +142,31 @@ interface ToolResultView {
 	details?: unknown;
 }
 
+/** Keep host notices visible even when command output is collapsed. */
+function bashNotices(body: Component, details: BashDetails, theme: Theme): Component {
+	if (!details.notices?.length) return body;
+	const box = new Box(0, 0);
+	box.addChild(body);
+	box.addChild(
+		new Text(
+			details.notices
+				.map((notice) =>
+					theme.fg(
+						"toolOutput",
+						sanitizeTerminalText(notice)
+							.split("\n")
+							.map((line) => `    ${line}`)
+							.join("\n"),
+					),
+				)
+				.join("\n"),
+			0,
+			0,
+		),
+	);
+	return box;
+}
+
 export function renderBashResult(
 	result: ToolResultView,
 	options: { expanded: boolean; isPartial: boolean },
@@ -147,28 +177,42 @@ export function renderBashResult(
 	const text = contentText(result.content);
 	const timing = timingOf(details);
 	if (details.job && !context.isError) {
-		return resultBlock(theme, context, {
-			summary: `job ${details.job} ${details.moved ? "moved to the background" : "started"} (pid ${details.pid ?? "?"})`,
-			max: 0,
-			expanded: options.expanded,
-			...(details.log ? { spill: details.log, spillLabel: "log" } : {}),
-			...timing,
-		});
+		return bashNotices(
+			resultBlock(theme, context, {
+				summary: `job ${details.job} ${details.moved ? "moved to the background" : "started"} (pid ${details.pid ?? "?"})`,
+				max: 0,
+				expanded: options.expanded,
+				...(details.log ? { spill: details.log, spillLabel: "log" } : {}),
+				...timing,
+			}),
+			details,
+			theme,
+		);
 	}
 	// Collapsed, only the tail is sanitized and split: a streaming command redraws on every update. The tail is as long
 	// as the longest output shown whole, so a short output is not folded.
-	const outcome = bashOutcome(text, context.isError, options.isPartial, options.expanded ? undefined : SHOW_ALL_LINES);
+	const outcome = bashOutcome(
+		text,
+		context.isError,
+		options.isPartial,
+		options.expanded ? undefined : SHOW_ALL_LINES,
+		details,
+	);
 	const spill = details.fullOutputPath ?? outcome.spill;
 	const total = outcome.lines !== undefined ? { totalLines: outcome.lines } : {};
-	return resultBlock(theme, context, {
-		summary: outcome.summary,
-		body: outcome.body,
-		...total,
-		tail: true,
-		expanded: options.expanded,
-		...(spill ? { spill } : {}),
-		...timing,
-	});
+	return bashNotices(
+		resultBlock(theme, context, {
+			summary: outcome.summary,
+			body: outcome.body,
+			...total,
+			tail: true,
+			expanded: options.expanded,
+			...(spill ? { spill } : {}),
+			...timing,
+		}),
+		details,
+		theme,
+	);
 }
 
 /** A finished background job: `● Job(bash-1: yarn build)` / `⎿  finished after 3s` and its output tail. */

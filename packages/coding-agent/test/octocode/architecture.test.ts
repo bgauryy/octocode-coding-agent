@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import * as importedModule1 from "../../src/octocode/shared/package.ts";
+import { getPackageDir } from "../../src/config.ts";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const sourceRoot = path.join(packageRoot, "src", "octocode");
@@ -58,7 +58,8 @@ const ALLOWED: Record<string, string[]> = {
 	backlog: ["shared", "agentdb"],
 	workspace: ["shared", "agentdb", "backlog", "team", "subagents"],
 	memory: ["shared", "agentdb", "permission"],
-	permission: ["shared"],
+	plan: ["shared"],
+	permission: ["shared", "plan"],
 	debug: ["shared"],
 };
 
@@ -122,7 +123,7 @@ describe("source layout", () => {
 		const owners: Array<[RegExp, string]> = [
 			[/process\.kill\(/, "shared/process.ts"],
 			[/instanceof Error \? [^:]+: String\(/, "shared/util.ts"],
-			[/createHash\(['"]sha256['"]\)/, "shared/atomic.ts"],
+			[/createHash\(['"]sha256['"]\)/, "../utils/atomic-file.ts"],
 			[/env\[[^\]]+\](?:\?\.trim\(\))? === '1'/, "shared/env.ts"],
 			[/signal\.reason instanceof Error \?/, "browser/abort.ts"],
 		];
@@ -191,8 +192,7 @@ describe("source layout", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("locates its package root at any depth", async () => {
-		const { packageRoot: found } = await Promise.resolve(importedModule1);
-		expect(found()).toBe(packageRoot);
+	it("locates its package root at any depth", () => {
+		expect(getPackageDir()).toBe(packageRoot);
 	});
 });

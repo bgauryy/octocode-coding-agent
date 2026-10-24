@@ -8,7 +8,7 @@ import {
 	truncateTail,
 } from "../../core/tools/index.ts";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
-import { shortHash } from "./atomic.ts";
+import { shortHash } from "../../utils/atomic-file.ts";
 import { shortPath } from "./format.ts";
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "./home.ts";
 import { capOutput, cutText, trimmedCounts } from "./util.ts";

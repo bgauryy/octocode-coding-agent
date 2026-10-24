@@ -3,19 +3,19 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import * as importedModule1 from "vitest";
 import { describe, expect, it } from "vitest";
-import {
-	AGENT_APPLICATION_ID as TEAM_APPLICATION_ID,
-	AgentDbError as TeamSchemaError,
-} from "../../src/octocode/agentdb/db.ts";
+import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/schema.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
+import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
+import { pathKey } from "../../src/octocode/team/store/workspace.ts";
+import { TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
 import { visibleControls } from "../../src/octocode/shared/sanitize.ts";
 import { toolHint } from "../../src/octocode/shared/util.ts";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import type { Member } from "../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import * as importedModule5 from "../../src/octocode/team/routing.ts";
 import {
@@ -27,9 +27,10 @@ import {
 	resolveTarget,
 } from "../../src/octocode/team/routing.ts";
 import * as importedModule2 from "../../src/octocode/team/session.ts";
-import { LEASE_MS, pathKey, TEAM_WORKSPACE_ENV, TeamStore } from "../../src/octocode/team/store.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakePermission, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
@@ -476,7 +477,6 @@ describe("Team", () => {
 			expect(mutatedPaths("write", { path: "x" })).toEqual(["x"]);
 			expect(mutatedPaths("read", { path: "x" })).toEqual([]);
 			// The file tool applies this per query, so a held path fails only its own change.
-			const { FileGuard } = await Promise.resolve(importedModule4);
 			const guard = new FileGuard();
 			guard.reservedBy = (file) => child.reservation(file, file);
 			expect(guard.check(path.join(cwd, "src", "a.ts"), "edit", "src/a.ts")).toContain(`reserved by ${parent.id}`);
@@ -515,7 +515,7 @@ describe("team database schema", () => {
 	it("stamps a fresh database with the application id", () => {
 		const file = path.join(tmp(), "team.sqlite");
 		open(repo(), file).close();
-		expect(pragma(file, "application_id")).toBe(TEAM_APPLICATION_ID);
+		expect(pragma(file, "application_id")).toBe(AGENT_APPLICATION_ID);
 	});
 
 	it("opens an agent database whatever version number another build left on it, keeping its data", () => {
@@ -536,7 +536,7 @@ describe("team database schema", () => {
 	it("refuses a foreign database and leaves it untouched", () => {
 		const foreign = path.join(tmp(), "other.sqlite");
 		exec(foreign, "CREATE TABLE notes (id INTEGER);");
-		expect(() => open(repo(), foreign)).toThrow(TeamSchemaError);
+		expect(() => open(repo(), foreign)).toThrow(AgentDbError);
 		expect(pragma(foreign, "application_id")).toBe(0);
 		const stamped = path.join(tmp(), "stamped.sqlite");
 		exec(stamped, "PRAGMA application_id=1234;");
@@ -691,7 +691,7 @@ describe("Team safety", () => {
 			fs.writeFileSync(file, "one");
 			expect(main.reservation(file, "a.ts")).toBe("Team database unavailable (database is locked); retry the change.");
 			// The file tool reports it as the query's failure.
-			const { FileGuard, registerFileTool } = await Promise.resolve(importedModule4);
+			const { registerFileTool } = await Promise.resolve(importedModule4);
 			const guard = new FileGuard();
 			guard.reservedBy = (target) => main.reservation(target, target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
@@ -728,7 +728,7 @@ describe("Team safety", () => {
 	it("lets a solo session that never joined edit when the database is foreign or busy, but still honours peer leases", async () => {
 		const { vi } = await Promise.resolve(importedModule1);
 		const { Team } = await Promise.resolve(importedModule2);
-		const { FileGuard, registerFileTool } = await Promise.resolve(importedModule4);
+		const { registerFileTool } = await Promise.resolve(importedModule4);
 		const cwd = repo();
 		const target = path.join(cwd, "a.ts");
 		fs.writeFileSync(target, "one");
@@ -800,7 +800,7 @@ describe("Team safety", () => {
 	});
 
 	it("checks reservations again right before the file tool writes or deletes, after the change was prepared", async () => {
-		const { FileGuard, registerFileTool } = await Promise.resolve(importedModule4);
+		const { registerFileTool } = await Promise.resolve(importedModule4);
 		const cwd = repo();
 		const target = path.join(cwd, "a.ts");
 		fs.writeFileSync(target, "one");

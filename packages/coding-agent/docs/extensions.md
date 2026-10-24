@@ -26,7 +26,6 @@ import type { ExtensionAPI } from "@octocodeai/octocodecode";
 export default function (octocode: ExtensionAPI) {
   octocode.registerCommand("hello", {
     description: "Show a greeting",
-    aliases: ["hi"],
     handler: async (name, ctx) => {
       ctx.ui.notify(`Hello, ${name || "world"}!`, "info");
     },
@@ -42,13 +41,13 @@ octocode --extension ./hello.ts
 
 Octocode uses `jiti`, so local TypeScript extensions do not need a separate compilation step. Use [Octocode packages](packages.md) for distributed extensions and dependencies.
 
-## Command names and aliases
+## Command names
 
-Register one canonical command with an optional `aliases` array, as in the example above: `/hello` and `/hi` run the same handler. Arguments follow the command name and are passed to the handler. Command discovery and the terminal picker show the canonical name with its aliases.
+Each command has one canonical name and may declare compatibility `aliases`. Arguments follow the typed spelling and are passed to the same handler.
 
-Command resolution keeps collisions distinct instead of silently assigning an alias to a different owner. Use the invocation names returned by `octocode.getCommands()` when constructing a command; duplicate or conflicting extension names and aliases can receive numeric suffixes. Built-in terminal commands reserve their names and aliases.
+Command resolution keeps collisions distinct. Use the invocation names returned by `octocode.getCommands()` when constructing a command; duplicate extension names, and extension names that match a built-in terminal command, receive numeric suffixes such as `/model:1`.
 
-`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, optional `aliases`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
+`octocode.getCommands()` returns extension, prompt, and skill entries with `name`, optional resolved `aliases`, `description`, `source`, and `sourceInfo`. It does not list the terminal's core commands. RPC `get_commands` exposes the same naming and source metadata. Skills use their direct name when available and a `skill:` name when it conflicts; see [skill commands](skills.md). Keep `sourceInfo` with an entry when presenting it so users can distinguish resources with similar names.
 
 ## Active tool invocation
 
@@ -433,3 +432,10 @@ The checked [extension examples](../examples/extensions/README.md) are the imple
 Use [Custom Providers](custom-provider.md) for model-service integrations, [Terminal UI](tui.md) for custom components, and [Octocode Packages](packages.md) to install or distribute extensions with other resources. Use the exported declarations for exact signatures, payloads, and result schemas; this guide focuses on lifecycle choices, composition, and durable implementation patterns.
 
 `session_before_compact` is observational: returned values are ignored and the preparation is an isolated snapshot. Compaction summaries, budgets and cut points are managed by the built-in implementation. Use `ctx.compact()` to request that flow; custom compaction boundary entries are rejected.
+
+
+### Command aliases and manual summary focus
+
+`registerCommand(name, { aliases, description, handler })` can declare a list such as `aliases: ["list-agents"]`. Canonical native names stay single words; alias declarations accept lowercase words separated by hyphens. Duplicate/self aliases are rejected. Core and native spellings take priority, and collisions qualify the extension invocation. `getCommands()` and RPC discovery expose resolved aliases; all spellings invoke the same handler. See [compatibility aliases](native-features.md#compatibility-aliases).
+
+Use `ctx.compact({ customInstructions: "Preserve the outstanding regression.", onComplete, onError })` to supply optional manual summary focus, bounded to 16,000 characters. The observational `session_before_compact` event includes that invocation's `customInstructions`; returning a different focus does not replace it. Automatic compaction never inherits a previous manual focus.

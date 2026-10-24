@@ -9,9 +9,10 @@ import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
 import { getCwdRelativePath } from "../../../utils/paths.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import type { SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the resource path labels. */
-export type ResourcePathsHost = Pick<
+type ResourcePathsHost = Pick<
 	InteractiveModeHost,
 	| "formatDisplayPath"
 	| "getCompactDisplayPathSegments"
@@ -178,10 +179,7 @@ export function getCompactNonPackageExtensionLabel(
 	return segments.join("/");
 }
 
-export function getCompactExtensionLabels(
-	host: ResourcePathsHost,
-	extensions: Array<{ path: string; sourceInfo?: SourceInfo }>,
-): string[] {
+export function getCompactExtensionLabels(host: ResourcePathsHost, extensions: SourcedPath[]): string[] {
 	const nonPackageExtensions = extensions
 		.map((extension) => {
 			const segments = host.getCompactDisplayPathSegments(extension.path);

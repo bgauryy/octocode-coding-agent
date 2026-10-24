@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "../core/extensions/index.ts";
 import { agentOperation } from "./agent-tool.ts";
 import type { Permission } from "./permission/ask.ts";
@@ -9,15 +10,16 @@ import type { registerSourcePolicy } from "./permission/source-policy-loader.ts"
 import { registerHookMcpGate } from "./hooks/mcp-gate.ts";
 import { userBashGate } from "./permission/user-bash.ts";
 import type { registerHooks } from "./hooks/register.ts";
-import { envFlag, SUBAGENT_ENV } from "./shared/env.ts";
+import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "./shared/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
-import { TEAM_WORKSPACE_ENV } from "./team/store/env.ts";
+
 import type { registerCollab } from "./team/tools.ts";
 import type { registerActivity } from "./ui/activity.ts";
 
 /** What the tool-call pipeline needs from the features `index.ts` composed before it. */
 export interface ToolGatesOptions {
+	planning?: { gate(event: ToolCallEvent): GateVerdict | undefined };
 	permission: Permission;
 	provenance: ReturnType<typeof createProvenance>;
 	annotations: (name: string) => ReturnType<ExtensionAPI["getAllTools"]>[number]["annotations"];
@@ -34,7 +36,18 @@ export interface ToolGatesOptions {
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
 	pi: ExtensionAPI,
-	{ permission, provenance, annotations, collab, hooks, sourcePolicy, activity, localReads, env }: ToolGatesOptions,
+	{
+		permission,
+		provenance,
+		annotations,
+		collab,
+		hooks,
+		sourcePolicy,
+		activity,
+		localReads,
+		env,
+		planning,
+	}: ToolGatesOptions,
 ): void {
 	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
 	// tree leaves git state alone, then reservations) and user
@@ -63,19 +76,25 @@ export function registerToolGates(
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
 	});
 	// The invariants again for a command a hook rewrote.
-	const invariants: Gate = async (event, ctx) => (await gitState?.(event, ctx)) ?? collab.reservationGate(event, ctx);
+	const invariants: Gate = async (event, ctx) =>
+		planning?.gate(event) ?? (await gitState?.(event, ctx)) ?? collab.reservationGate(event, ctx);
 	const permissionStep: Gate = (event, ctx, prior) =>
-		permissionGate({
-			permission,
-			provenance,
-			annotations,
-			replacement: {
-				definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
-				refresh: (ctx) => sourcePolicy.refresh(ctx),
-				reserved: invariants,
-			},
-		})(agentOperation(event), ctx, prior, event);
+		Promise.resolve(planning?.gate(event)).then(
+			(refusal) =>
+				refusal ??
+				permissionGate({
+					permission,
+					provenance,
+					annotations,
+					replacement: {
+						definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
+						refresh: (ctx) => sourcePolicy.refresh(ctx),
+						reserved: invariants,
+					},
+				})(agentOperation(event), ctx, prior, event),
+		);
 	const gates: Gate[] = [
+		audited(async (event) => planning?.gate(event)),
 		...(gitState ? [audited(gitState)] : []),
 		audited(collab.reservationGate),
 		audited(hooks.preToolUse),
@@ -85,14 +104,14 @@ export function registerToolGates(
 	// refusals. The earlier gates are skipped: PreToolUse hooks would run for the hook's own call and recurse.
 	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
 	// call made while a hook call is being decided is refused.
-	let hookCalls = 0;
 	const deciding = new AsyncLocalStorage<true>();
 	registerHookMcpGate(pi.events, async (call, ctx) => {
 		if (deciding.getStore()) return "a hook MCP call made while another is being decided is refused";
 		await sourcePolicy.refresh(ctx);
 		const event: ToolCallEvent = {
 			type: "tool_call",
-			toolCallId: `hook-mcp-${++hookCalls}`,
+			toolCallId: randomUUID(),
+			origin: "hook",
 			toolName: call.toolName,
 			input: call.input,
 		};
@@ -127,6 +146,9 @@ export function registerToolGates(
 	// The user's own `!cmd`: the hooks and the permission check decide, as for an agent's `bash` call (`permission/user-bash`).
 	pi.on("user_bash", async (event, ctx) => {
 		await sourcePolicy.refresh(ctx);
-		return userBashGate({ permission, preToolUse: hooks.preToolUse })(event, ctx);
+		return userBashGate({
+			permission,
+			preToolUse: async (call, ctx) => planning?.gate(call) ?? hooks.preToolUse(call, ctx),
+		})(event, ctx);
 	});
 }

@@ -1,7 +1,8 @@
 import { initializeBashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
 beforeAll(initializeBashSyntax);
 import { beforeAll, describe, expect, it } from "vitest";
-import { evaluateSourcePolicy, parseSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
+import { evaluateSourcePolicy } from "../../src/octocode/permission/source-policy.ts";
+import { parseSourcePolicy } from "../../src/octocode/permission/source-policy/rules.ts";
 const source = {
 	path: "/home/test/.claude/settings.json",
 	anchor: "/home/test/.claude",

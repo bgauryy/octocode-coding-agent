@@ -1,6 +1,6 @@
 import { onSecond } from "../../shared/clock.ts";
 import { parentGone, sameProcess } from "../../shared/process.ts";
-import { PARENT_PID_ENV } from "../store.ts";
+import { PARENT_PID_ENV } from "../store/env.ts";
 
 /** Every this many parent checks (one a second, on the shared clock) the start time is compared too: a reused pid is noticed within that many seconds, and the event loop is not stalled by a `ps` every second. */
 const PARENT_START_EVERY = 15;

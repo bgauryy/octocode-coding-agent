@@ -1,7 +1,7 @@
 import path from "node:path";
-import { canonicalPath, repoKey } from "../../shared/home.ts";
+import { canonicalPath, repoKey } from "../../shared/home/repo.ts";
+import { TEAM_WORKSPACE_ENV } from "../../shared/env.ts";
 import { leaseKey } from "../lease-key.ts";
-import { TEAM_WORKSPACE_ENV } from "./env.ts";
 
 /**
  * The team workspace for `cwd`: one team per repository (`repoKey(cwd).root`, symlinks resolved), unless

@@ -4,11 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeContext } from "@octocodeai/octocode-ai";
 import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "@octocodeai/octocode-ai/compat";
-import { getApiProvider, getModels, getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
+import { getApiProvider, getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ModelsJsonProvider } from "../src/core/model-config.ts";
-import { clearApiKeyCache, type ModelRegistry, type ProviderConfigInput } from "../src/core/model-registry.ts";
+import type { ModelRegistry, ProviderConfigInput } from "../src/core/model-registry.ts";
+import { clearConfigValueCache } from "../src/core/resolve-config-value.ts";
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
 
 describe("ModelRegistry", () => {
@@ -27,7 +29,7 @@ describe("ModelRegistry", () => {
 		if (tempDir && existsSync(tempDir)) {
 			rmSync(tempDir, { recursive: true });
 		}
-		clearApiKeyCache();
+		clearConfigValueCache();
 		vi.restoreAllMocks();
 	});
 
@@ -2002,7 +2004,7 @@ describe("ModelRegistry", () => {
 			});
 
 			test("getAvailable filters GitHub Copilot OAuth models to account picker availability", async () => {
-				const copilotModel = getModels("github-copilot")[0];
+				const copilotModel = getBuiltinModels("github-copilot")[0];
 				if (!copilotModel) throw new Error("Expected at least one GitHub Copilot model");
 
 				await authStorage.modify("github-copilot", async () => ({

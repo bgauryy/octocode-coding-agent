@@ -155,7 +155,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		promptSections.preamble = customPrompt;
 	} else {
 		promptSections.preamble =
-			"You are an expert coding assistant operating inside Octocode, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
+			"You are an expert coding assistant operating inside Octocode, a coding agent harness. You help users understand and change code: you research the code and its dependencies, edit files, run commands and checks, and report what you verified.";
 		const visibleTools = declaredTools.filter((name) => !!toolSnippets[name]);
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
@@ -176,12 +176,13 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// Octocode ships no `read` tool, but an extension or SDK caller may register one under that name.
 	// A deferred Octocode reader counts like a declared one: tool_search loads it, as the rules above assume.
 	const readers = ["read", "bash"] as const;
-	const skillFileReadTool = [...selectedTools, ...deferredTools].some((tool) =>
-		/^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool),
-	)
+	const isOctocodeReader = (tool: string) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool);
+	const skillFileReadTool = [...declaredTools, ...deferredTools].some(isOctocodeReader)
 		? "octocode"
 		: (readers.find((tool) => declaredTools.includes(tool)) ??
-			(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined));
+			(readers.some((tool) => selectedTools.includes(tool)) || selectedTools.some(isOctocodeReader)
+				? "indirect"
+				: undefined));
 	if (skillFileReadTool && skills.length > 0) {
 		const skillsPrompt = formatSkillsForPrompt(skills, skillFileReadTool).trim();
 		if (skillsPrompt) promptSections.skills = skillsPrompt;

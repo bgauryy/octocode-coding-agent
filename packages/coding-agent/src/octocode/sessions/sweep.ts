@@ -3,7 +3,7 @@ import path from "node:path";
 import { SessionManager } from "../../core/session-manager.ts";
 import { runningPid } from "../agentdb/liveness.ts";
 import { readMeta, writeMeta } from "../agentdb/meta.ts";
-import { liveJobFiles } from "../files/bash-jobs.ts";
+import { liveJobFiles } from "../files/bash-jobs/records.ts";
 import { CLEANUP_DAYS_ENV, envInt } from "../shared/env.ts";
 import { PID_SESSION_PREFIX, sessionDirName, sessionsRoot } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";

@@ -127,6 +127,8 @@ export interface HarnessOptions {
 	modelsJson?: Record<string, unknown>;
 	/** Session to continue, for example to test a resume. Default: a new in-memory session. */
 	sessionManager?: SessionManager;
+	/** The session's working directory. Default: the harness's temporary directory. */
+	cwd?: string;
 }
 
 export interface Harness {
@@ -248,7 +250,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		agent,
 		sessionManager,
 		settingsManager,
-		cwd: tempDir,
+		cwd: options.cwd ?? tempDir,
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader,
 		baseToolsOverride: toolMap,

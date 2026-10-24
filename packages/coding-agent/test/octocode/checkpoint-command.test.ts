@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { registerCheckpoints } from "../../src/octocode/files/checkpoint-command.ts";
-import { sha256 } from "../../src/octocode/shared/atomic.ts";
+import { sha256 } from "../../src/utils/atomic-file.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";

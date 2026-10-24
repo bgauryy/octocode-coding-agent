@@ -22,7 +22,7 @@ import type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
 export { convertMessages } from "./openai-completions/messages.ts";
-export type { ConvertCompletionsMessagesOptions, OpenAICompletionsOptions } from "./openai-completions/types.ts";
+export type { OpenAICompletionsOptions } from "./openai-completions/types.ts";
 
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
 	model: Model<"openai-completions">,

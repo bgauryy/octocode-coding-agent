@@ -57,19 +57,10 @@ export class CommandSelectorComponent extends Container implements Focusable {
 		const commands = fuzzyFilter(
 			[...this.commands],
 			this.input.getValue(),
-			(command) => `${command.name} ${(command.aliases ?? []).join(" ")} ${command.description ?? ""}`,
+			(command) => `${command.name} ${command.description ?? ""}`,
 		);
 		this.list = new SelectList(
-			commands.map((command) => ({
-				value: command.name,
-				label: `/${command.name}`,
-				description: [
-					command.description,
-					command.aliases?.length ? `aliases: ${command.aliases.map((alias) => `/${alias}`).join(", ")}` : undefined,
-				]
-					.filter(Boolean)
-					.join(" · "),
-			})),
+			commands.map((command) => ({ value: command.name, label: `/${command.name}`, description: command.description })),
 			12,
 			getSelectListTheme(),
 			{ maxPrimaryColumnWidth: 36 },

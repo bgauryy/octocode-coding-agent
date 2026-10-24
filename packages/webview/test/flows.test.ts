@@ -54,10 +54,24 @@ function type(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
 
 async function page(fragment = "access=test") {
 	let socket!: { onmessage?: (event: { data: string }) => void; onopen?: () => void };
-	const fetch = vi.fn(async (_url?: string, _init?: RequestInit) => ({
-		ok: true,
-		json: async () => ({ receipt: { status: "accepted", message: "Queued" } }),
-	}));
+	const fetch = vi.fn(
+		async (_url?: string, init?: RequestInit): Promise<{ ok: boolean; json: () => Promise<unknown> }> => {
+			const command = JSON.parse(String(init?.body));
+			return {
+				ok: true,
+				json: async () => ({
+					receipt: {
+						id: command.id,
+						action: command.action,
+						backlogId: command.backlogId,
+						status: "accepted",
+						message: "Queued",
+						at: 0,
+					},
+				}),
+			};
+		},
+	);
 	const dom = new JSDOM(
 		renderBacklogHtml({ repo: "test", generatedAt: 0, states: STATES, idleMs: 1000, items: [] }, true),
 		{
@@ -145,21 +159,25 @@ it("restores message drafts across navigation and only clears them after accepta
 	expect(restored.value).toBe("Please check the tests");
 	expect(app.screen.getByLabelText<HTMLSelectElement>("Recipient").required).toBe(true);
 	// A definitive failure keeps the text; the retry is a new request, since the host keeps the failure under its id.
-	app.fetch.mockImplementationOnce(async () => ({
+	app.fetch.mockImplementationOnce(async (_url, init) => ({
 		ok: true,
-		json: async () => ({ receipt: { status: "failed", message: "Agent no longer available" } }),
+		json: async () => ({
+			receipt: { ...JSON.parse(String(init?.body)), at: 0, status: "failed", message: "Agent no longer available" },
+		}),
 	}));
 	restored.closest("form")!.requestSubmit();
 	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
 	await vi.waitFor(() => expect(app.document.body.textContent).toContain("Agent no longer available"));
 	expect(restored.value).toBe("Please check the tests");
 	const failedId = JSON.parse(String(app.fetch.mock.calls[0][1]?.body)).id;
-	app.fetch.mockImplementationOnce(async () => {
+	app.fetch.mockImplementationOnce(async (_url, init) => {
+		const command = JSON.parse(String(init?.body));
+		const receipt = { id: command.id, action: command.action, status: "accepted" as const, at: 1, message: "Queued" };
 		app.emit({
 			...workspace,
-			receipts: [{ id: "accepted", action: "message", status: "accepted", at: 1, message: "Queued" }],
+			receipts: [receipt],
 		});
-		return { ok: true, json: async () => ({ receipt: { status: "accepted", message: "Queued" } }) };
+		return { ok: true, json: async () => ({ receipt }) };
 	});
 	restored.closest("form")!.requestSubmit();
 	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledTimes(2));
@@ -249,17 +267,17 @@ it("renders assistant deltas before completion and exposes scoped session comman
 	await vi.waitFor(() => expect(document.body.textContent).toContain("Finished answer"));
 	expect(document.querySelectorAll(".markdown-body h2")).toHaveLength(2);
 	expect(document.body.textContent).not.toContain("Partial answer");
-	app.fetch.mockResolvedValueOnce({
+	app.fetch.mockImplementationOnce(async (_url, init) => ({
 		ok: true,
-		json: async () => ({ receipt: { id: "stop-request", status: "accepted", message: "Stopping" } }),
-	});
+		json: async () => ({ receipt: { id: JSON.parse(String(init?.body)).id, status: "accepted", message: "Stopping" } }),
+	}));
 	(await app.findButton("Stop current run")).click();
 	await vi.waitFor(() => expect(app.fetch).toHaveBeenCalledOnce());
 	const body = JSON.parse(String(app.fetch.mock.calls[0][1]?.body));
 	expect(body).toMatchObject({ action: "abort", sessionId: "session", runId: "run-live" });
 	emit(4, {
 		type: "event",
-		event: { type: "command.receipt", receipt: { id: "stop-request", status: "completed", message: "Run stopped" } },
+		event: { type: "command.receipt", receipt: { id: body.id, status: "completed", message: "Run stopped" } },
 	});
 	await vi.waitFor(() =>
 		expect(document.querySelector('[aria-label="Recent session requests"]')?.textContent).toContain(
@@ -269,10 +287,10 @@ it("renders assistant deltas before completion and exposes scoped session comman
 	// The next run gets a working Stop button with its own request id: an id belongs to one command.
 	emit(5, { type: "event", event: { type: "run.settled", runId: "run-live", aborted: true } });
 	emit(6, { type: "event", event: { type: "run.started", runId: "run-next" } });
-	app.fetch.mockResolvedValueOnce({
+	app.fetch.mockImplementationOnce(async (_url, init) => ({
 		ok: true,
-		json: async () => ({ receipt: { id: "stop-next", status: "accepted", message: "Stopping" } }),
-	});
+		json: async () => ({ receipt: { id: JSON.parse(String(init?.body)).id, status: "accepted", message: "Stopping" } }),
+	}));
 	const nextStop = await app.findButton("Stop current run");
 	await vi.waitFor(() => expect(nextStop.hasAttribute("disabled")).toBe(false));
 	nextStop.click();

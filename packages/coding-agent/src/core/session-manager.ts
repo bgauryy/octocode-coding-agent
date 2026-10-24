@@ -37,7 +37,7 @@ import type {
 	UsageEntry,
 } from "./session-manager/types.ts";
 
-export type { ReadonlySessionManager, SessionManagerApi } from "./session-manager/api.ts";
+export type { ReadonlySessionManager } from "./session-manager/api.ts";
 export {
 	buildContextEntries,
 	buildSessionContext,

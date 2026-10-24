@@ -84,47 +84,47 @@ export interface ExtensionShortcut {
 
 type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
-export type SendMessageHandler = <T = unknown>(
+type SendMessageHandler = <T = unknown>(
 	message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
 ) => void | Promise<void>;
 
-export type SendUserMessageHandler = (
+type SendUserMessageHandler = (
 	content: string | (TextContent | ImageContent)[],
 	options?: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean },
 ) => void;
 
-export type AppendEntryHandler = <T = unknown>(customType: string, data?: T) => void;
+type AppendEntryHandler = <T = unknown>(customType: string, data?: T) => void;
 
-export type SetSessionNameHandler = (name: string) => void;
+type SetSessionNameHandler = (name: string) => void;
 
-export type GetSessionNameHandler = () => string | undefined;
+type GetSessionNameHandler = () => string | undefined;
 
-export type GetActiveToolsHandler = () => string[];
+type GetActiveToolsHandler = () => string[];
 
-export type GetAllToolsHandler = () => ToolInfo[];
+type GetAllToolsHandler = () => ToolInfo[];
 
-export type GetSettingsHandler = () => Settings;
+type GetSettingsHandler = () => Settings;
 
-export type GetCommandsHandler = () => SlashCommandInfo[];
+type GetCommandsHandler = () => SlashCommandInfo[];
 
-export type SetActiveToolsHandler = (toolNames: string[]) => void;
+type SetActiveToolsHandler = (toolNames: string[]) => void;
 
-export type RefreshToolsHandler = () => void;
+type RefreshToolsHandler = () => void;
 
-export type SetModelHandler = (model: Model<any>) => Promise<boolean>;
+type SetModelHandler = (model: Model<any>) => Promise<boolean>;
 
-export type GetThinkingLevelHandler = () => ThinkingLevel;
+type GetThinkingLevelHandler = () => ThinkingLevel;
 
-export type SetThinkingLevelHandler = (level: ThinkingLevel) => void;
+type SetThinkingLevelHandler = (level: ThinkingLevel) => void;
 
-export type SetLabelHandler = (entryId: string, label: string | undefined) => void;
+type SetLabelHandler = (entryId: string, label: string | undefined) => void;
 
 /**
  * Shared state created by loader, used during registration and runtime.
  * Contains flag values (defaults set during registration, CLI values set after).
  */
-export interface ExtensionRuntimeState {
+interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;

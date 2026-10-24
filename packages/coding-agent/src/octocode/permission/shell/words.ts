@@ -257,6 +257,21 @@ export function shellScript(tokens: string[]): { script?: string; stdin: boolean
 	return { stdin: true };
 }
 
+/**
+ * The scripts one simple command runs in a nested shell: `eval`'s arguments, and a shell's `-c` script or, when it reads
+ * standard input, its heredoc, herestring and `fromPipe` (what the previous command in a pipe emitted).
+ */
+export function nestedScripts(name: string, tokens: string[], bodies: string[], fromPipe: string[]): string[] {
+	const scripts: string[] = [];
+	if (name === "eval") scripts.push(tokens.slice(1).map(unhide).join(" "));
+	if (SHELLS.has(name)) {
+		const shell = shellScript(tokens);
+		if (shell.script !== undefined) scripts.push(unhide(shell.script));
+		if (shell.stdin) scripts.push(...stdinOf(tokens, bodies).map(unhide), ...fromPipe);
+	}
+	return scripts;
+}
+
 /** Text a command feeds to the next one's standard input: `echo`/`printf` arguments, or its own heredoc or herestring. */
 export function stdinOf(tokens: string[], bodies: string[]): string[] {
 	const fed: string[] = [];

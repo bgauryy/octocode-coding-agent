@@ -61,6 +61,54 @@ it("stops at a sequence gap and requires a snapshot before applying more deltas"
 	).toBe("applied");
 	expect(stream.snapshot?.streaming).toBe(true);
 });
+it("accepts an explicit coalesced range only for an authoritative full-text delta", () => {
+	const stream = new ApplicationStream();
+	stream.accept(
+		frame(0, {
+			type: "snapshot",
+			snapshot: { ...snapshot, messages: [{ id: "message-a", role: "assistant", text: "", complete: false }] },
+		}),
+	);
+	expect(
+		stream.accept(
+			frame(3, {
+				type: "event",
+				fromSequence: 1,
+				event: { type: "message.delta", messageId: "message-a", delta: "", text: "whole text" },
+			}),
+		),
+	).toBe("applied");
+	expect(stream.snapshot?.messages[0].text).toBe("whole text");
+	expect(stream.accept(frame(5, { type: "event", fromSequence: 4, event: { type: "run.started", runId: "r" } }))).toBe(
+		"resync",
+	);
+});
+it("rejects missing, regressive, partial, cross-session and cross-epoch coalesced ranges", () => {
+	const initial = () => {
+		const stream = new ApplicationStream();
+		stream.accept(
+			frame(2, {
+				type: "snapshot",
+				snapshot: { ...snapshot, messages: [{ id: "m", role: "assistant", text: "", complete: false }] },
+			}),
+		);
+		return stream;
+	};
+	const event = { type: "message.delta", messageId: "m", delta: "", text: "whole" };
+	expect(initial().accept(frame(5, { type: "event", fromSequence: 4, event }))).toBe("resync");
+	expect(initial().accept(frame(5, { type: "event", fromSequence: 2, event }))).toBe("resync");
+	expect(initial().accept(frame(5, { type: "event", fromSequence: 3, event: { ...event, text: undefined } }))).toBe(
+		"resync",
+	);
+	expect(initial().accept(frame(5, { type: "event", fromSequence: 3, event }, "new-epoch"))).toBe("resync");
+	expect(
+		initial().accept({
+			...frame(5, { type: "event", fromSequence: 3, event }),
+			cursor: { sessionId: "old", epoch: "epoch-a", sequence: 5 },
+		}),
+	).toBe("ignored");
+	expect(initial().accept(frame(5, { type: "event", fromSequence: -1, event }))).toBe("invalid");
+});
 it("resynchronizes restarted epochs, ignores stale sessions, and rejects malformed input", () => {
 	const stream = new ApplicationStream();
 	stream.accept(frame(4, { type: "snapshot", snapshot }));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { retryGoogleRequest } from "../src/api/google-shared.ts";
+import { retryGoogleRequest } from "../src/api/google-shared/response.ts";
 
 /** Shaped like @google/genai's ApiError: has `status`, but no `headers`. */
 function googleApiError(status: number): Error {

@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
-import { createAssistantMessageEventStream, getModel, type AssistantMessage } from "@octocodeai/octocode-ai/compat";
+import { createAssistantMessageEventStream, type AssistantMessage } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contacts";
 import { expect, it } from "vitest";
 import { AgentSession, type AgentSessionEvent } from "../src/core/agent-session.ts";
@@ -55,7 +56,7 @@ it.each([false, true])("streams one engine run and preserves late attachment (he
 		const agent = new Agent({
 			getApiKey: () => "test-key",
 			initialState: {
-				model: getModel("anthropic", "claude-sonnet-4-5"),
+				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 				systemPrompt: "Test",
 				tools: [],
 			},

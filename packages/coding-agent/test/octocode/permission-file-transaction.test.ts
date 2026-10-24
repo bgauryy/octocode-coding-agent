@@ -2,11 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ToolInvocation } from "../../src/core/extensions/types.ts";
 import { expect, it, vi } from "vitest";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 function setup(queries: any[], replacements: any[]) {
 	const fake = fakePi();
 	const cwd = tmp();

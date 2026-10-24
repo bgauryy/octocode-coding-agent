@@ -1,7 +1,7 @@
-import type { Note } from "@octocodeai/octocode-contacts/snapshot";
+import type { Note, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
 import type { ReactNode } from "react";
 import { useCopy } from "../hooks.ts";
-import { type BacklogIndex, blocks, cycleTime, type Item, originChain, PRIORITY_TITLES } from "../model/backlog.ts";
+import { type BacklogIndex, blocks, cycleTime, originChain, PRIORITY_TITLES } from "../model/backlog.ts";
 import { VERIFICATION_LABELS } from "../model/editor.ts";
 import { ago, span, stamp } from "../model/format.ts";
 import { CheckIcon, CloseIcon, LinkIcon } from "../ui/icons.tsx";
@@ -36,7 +36,7 @@ export function ItemDetail({
 	actions,
 	activity,
 }: {
-	item: Item;
+	item: SnapshotItem;
 	index: BacklogIndex;
 	onClose: () => void;
 	actions?: ReactNode;
@@ -211,9 +211,25 @@ export function ItemDetail({
 					<LongText text={it.body} label="body" />
 				</Section>
 			)}
-			{activity ?? <Notes notes={it.notes} now={index.now} />}
+			{activity ?? <Notes notes={historyNotes(it)} now={index.now} />}
 		</div>
 	);
+}
+
+/** Canonical comments can exist without legacy notes in imported snapshots; show both without mirrored duplicates. */
+function historyNotes(item: SnapshotItem): Note[] {
+	if (!item.comments?.length) return item.notes;
+	const key = (note: { at: number; author: string; text: string }) => JSON.stringify([note.at, note.author, note.text]);
+	const comments = new Set(item.comments.map(key));
+	return [
+		...item.notes.filter((note) => note.kind === "change" || !comments.has(key(note))),
+		...item.comments.map((comment): Note => ({
+			at: comment.at,
+			author: comment.author,
+			text: comment.text,
+			kind: "note",
+		})),
+	].sort((a, b) => a.at - b.at);
 }
 
 function Property({ label, children }: { label: string; children: ReactNode }) {
@@ -237,7 +253,7 @@ function CopyLinkButton({ refName }: { refName: string }) {
 	);
 }
 
-function Results({ item: it }: { item: Item }) {
+function Results({ item: it }: { item: SnapshotItem }) {
 	if (!it.completions?.length)
 		return it.state === "done" ? (
 			<Section title="Results">

@@ -31,8 +31,6 @@ import type { McpExposure } from "./config.ts";
 import { limitMcpContent, type McpToolDetails, toModelContent, toToolExposure } from "./tools.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
-export { LIST_MCP_RESOURCE_TEMPLATES_TOOL, LIST_MCP_RESOURCES_TOOL, READ_MCP_RESOURCE_TOOL };
-
 /** A connected server that offers resources. */
 export interface McpResourceServer {
 	name: string;
@@ -53,7 +51,8 @@ function isMcpAppResource(item: { uri?: string; uriTemplate?: string; mimeType?:
 /** A listed resource or template without `_meta` and icons, tagged with its server. */
 function listed<T extends { _meta?: unknown }>(server: string, item: T): Record<string, unknown> {
 	const { _meta, icons: _icons, ...rest } = item as T & { icons?: unknown };
-	return { server, ...rest };
+	// Routing identity belongs to the connection, never to fields supplied by the server.
+	return { ...rest, server };
 }
 
 const stringProperty = (description: string) => ({ type: "string", description });
@@ -165,11 +164,11 @@ const READ_OUTPUT_SCHEMA = {
 	required: ["server", "uri", "contents"],
 };
 
-function stringArgument(params: unknown, key: string): string | undefined {
+function stringArgument(params: unknown, key: string, trim = true): string | undefined {
 	const value = (params as Record<string, unknown> | undefined)?.[key];
 	if (value === undefined || value === null) return undefined;
 	if (typeof value !== "string") throw new Error(`${key} must be a string`);
-	return value.trim() || undefined;
+	return trim ? value.trim() || undefined : value;
 }
 
 async function jsonResult(
@@ -220,7 +219,8 @@ export function createMcpResourceToolDefinitions(options: {
 		all: (server: McpResourceServer, options: McpRequestOptions) => Promise<T[]>,
 	): Promise<Record<string, unknown>> => {
 		const serverName = stringArgument(params, "server");
-		const cursor = stringArgument(params, "cursor");
+		// A continuation token is opaque, including any leading or trailing whitespace.
+		const cursor = stringArgument(params, "cursor", false);
 		const visible = (item: T) => !isMcpAppResource(item as { uri?: string; uriTemplate?: string; mimeType?: string });
 		if (serverName) {
 			const server = findServer(serverName);
@@ -231,7 +231,7 @@ export function createMcpResourceToolDefinitions(options: {
 				...(result.nextCursor === undefined ? {} : { nextCursor: result.nextCursor }),
 			};
 		}
-		if (cursor) throw new Error("cursor can only be used when a server is specified");
+		if (cursor !== undefined) throw new Error("cursor can only be used when a server is specified");
 		const servers = [...options.servers()].sort((a, b) => a.name.localeCompare(b.name));
 		const results = await Promise.allSettled(
 			servers.map((server) => all(server, { signal, timeoutMs: server.timeoutMs })),

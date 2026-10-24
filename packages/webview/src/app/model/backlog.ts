@@ -1,7 +1,6 @@
 import type { Snapshot, SnapshotItem, State } from "@octocodeai/octocode-contacts/snapshot";
 import { median } from "./format.ts";
 
-export type Item = SnapshotItem;
 export const PRIORITIES = ["p0", "p1", "p2", "p3"] as const;
 export const ITEM_TYPES = ["task", "epic", "bug", "research"] as const;
 export const STATE_TITLES: Record<State, string> = {
@@ -11,14 +10,16 @@ export const STATE_TITLES: Record<State, string> = {
 	done: "Done",
 };
 export const PRIORITY_TITLES: Record<string, string> = { p0: "Urgent", p1: "High", p2: "Medium", p3: "Low" };
+/** Priority choices for selects, labelled with the priority and its title. */
+export const PRIORITY_OPTIONS = PRIORITIES.map((value) => ({ value, label: `${value} · ${PRIORITY_TITLES[value]}` }));
 
 export interface BacklogIndex {
 	repo: string;
 	now: number;
 	idleMs: number;
 	states: readonly State[];
-	items: readonly Item[];
-	byRef: ReadonlyMap<string, Item>;
+	items: readonly SnapshotItem[];
+	byRef: ReadonlyMap<string, SnapshotItem>;
 }
 
 export function indexBacklog(snapshot: Snapshot): BacklogIndex {
@@ -32,22 +33,27 @@ export function indexBacklog(snapshot: Snapshot): BacklogIndex {
 	};
 }
 
-export function isStale(it: Item): boolean {
+export function isStale(it: SnapshotItem): boolean {
 	return it.state === "ongoing" && !it.assigneeLive;
 }
-function isIdle(index: BacklogIndex, it: Item): boolean {
+export function isReadyToStart(it: SnapshotItem): boolean {
+	return it.state === "todo" && !it.blockedBy?.length && Boolean(it.goal.trim() && it.why.trim());
+}
+function isIdle(index: BacklogIndex, it: SnapshotItem): boolean {
 	return it.state !== "done" && index.now - it.updatedAt > index.idleMs;
 }
-export function cycleTime(it: Item): number | undefined {
-	return it.startedAt && it.doneAt && it.doneAt >= it.startedAt ? it.doneAt - it.startedAt : undefined;
+export function cycleTime(it: SnapshotItem): number | undefined {
+	return it.startedAt !== undefined && it.doneAt !== undefined && it.doneAt >= it.startedAt
+		? it.doneAt - it.startedAt
+		: undefined;
 }
-function sequence(it: Item): number {
+function sequence(it: SnapshotItem): number {
 	return Number(it.ref.slice(1));
 }
 
-const haystacks = new WeakMap<Item, string>();
+const haystacks = new WeakMap<SnapshotItem, string>();
 /** Every searchable field and note, lower-cased once per item object. */
-function haystack(it: Item): string {
+function haystack(it: SnapshotItem): string {
 	let text = haystacks.get(it);
 	if (text === undefined) {
 		text = [
@@ -69,6 +75,7 @@ function haystack(it: Item): string {
 			it.evidence.join(" "),
 			it.tags.join(" "),
 			...it.notes.map((note) => `${note.author} ${note.text}`),
+			...(it.comments ?? []).map((comment) => `${comment.author} ${comment.text}`),
 		]
 			.join("\n")
 			.toLowerCase();
@@ -76,7 +83,7 @@ function haystack(it: Item): string {
 	}
 	return text;
 }
-function matchesQuery(it: Item, q = ""): boolean {
+function matchesQuery(it: SnapshotItem, q = ""): boolean {
 	const needle = q.trim().toLowerCase();
 	return !needle || haystack(it).includes(needle);
 }
@@ -86,22 +93,32 @@ interface BoardFilters {
 	p?: string;
 	type?: string;
 	ready?: string;
+	tag?: string;
+	assignee?: string;
+	sort?: string;
 }
-export function filterBoard(index: BacklogIndex, filters: BoardFilters): Item[] {
-	return index.items.filter(
-		(it) =>
-			matchesQuery(it, filters.q) &&
-			(!filters.p || it.priority === filters.p) &&
-			(!filters.type || (it.type ?? "task") === filters.type) &&
-			(!filters.ready || (it.state === "todo" && !it.blockedBy?.length)),
-	);
+export function filterBoard(index: BacklogIndex, filters: BoardFilters): SnapshotItem[] {
+	return index.items
+		.filter(
+			(it) =>
+				matchesQuery(it, filters.q) &&
+				(!filters.p || it.priority === filters.p) &&
+				(!filters.type || (it.type ?? "task") === filters.type) &&
+				(!filters.tag || it.tags.includes(filters.tag)) &&
+				(!filters.assignee || it.assignee === filters.assignee) &&
+				(!filters.ready || isReadyToStart(it)),
+		)
+		.sort((a, b) => {
+			const order = filters.sort === "updated" ? b.updatedAt - a.updatedAt : a.priority.localeCompare(b.priority);
+			return order || sequence(a) - sequence(b);
+		});
 }
 
 export interface TableColumn {
 	key: string;
 	label: string;
 	first: "asc" | "desc";
-	value: (it: Item, index: BacklogIndex) => string | number;
+	value: (it: SnapshotItem, index: BacklogIndex) => string | number;
 	numeric?: boolean;
 }
 export const TABLE_COLUMNS: readonly TableColumn[] = [
@@ -127,7 +144,7 @@ interface TableFilters {
 	sort?: string;
 	dir?: string;
 }
-export function filterTable(index: BacklogIndex, filters: TableFilters): Item[] {
+export function filterTable(index: BacklogIndex, filters: TableFilters): SnapshotItem[] {
 	const column = TABLE_COLUMNS.find((c) => c.key === filters.sort) ?? TABLE_COLUMNS[6];
 	const direction = (filters.dir ?? column.first) === "asc" ? 1 : -1;
 	return index.items
@@ -147,30 +164,42 @@ export function filterTable(index: BacklogIndex, filters: TableFilters): Item[] 
 		});
 }
 
-export function distinct(items: readonly Item[], pick: (it: Item) => readonly string[]): string[] {
+export function distinct(items: readonly SnapshotItem[], pick: (it: SnapshotItem) => readonly string[]): string[] {
 	return [...new Set(items.flatMap(pick))].sort();
 }
 
 export interface TreeNode {
-	item: Item;
+	item: SnapshotItem;
 	children: TreeNode[];
 }
-/** Parent/child links may contain cycles in imported data; each branch visits an item at most once. */
-export function buildTree(index: BacklogIndex): { roots: TreeNode[]; alone: Item[] } {
-	function node(it: Item, seen: ReadonlySet<string>): TreeNode {
-		const inner = new Set(seen).add(it.ref);
-		const children = (it.children ?? [])
-			.filter((ref) => index.byRef.has(ref) && !seen.has(ref) && ref !== it.ref)
-			.map((ref) => node(index.byRef.get(ref)!, inner));
-		return { item: it, children };
+/** Build a complete forest even if an imported parent is missing or a disconnected component contains a cycle. */
+export function buildTree(index: BacklogIndex): { roots: TreeNode[]; alone: SnapshotItem[] } {
+	const children = new Map(index.items.map((item) => [item.ref, new Set(item.children ?? [])]));
+	for (const item of index.items) {
+		if (item.parentId) children.get(item.parentId)?.add(item.ref);
 	}
-	const roots = index.items.filter((it) => !it.parentId);
+	const visited = new Set<string>();
+	function node(item: SnapshotItem): TreeNode {
+		visited.add(item.ref);
+		const branches: TreeNode[] = [];
+		for (const ref of children.get(item.ref) ?? []) {
+			const child = index.byRef.get(ref);
+			if (child && !visited.has(ref)) branches.push(node(child));
+		}
+		return { item, children: branches };
+	}
+	const forest: TreeNode[] = [];
+	const candidates = [
+		...index.items.filter((item) => !item.parentId || !index.byRef.has(item.parentId)),
+		...index.items,
+	];
+	for (const item of candidates) if (!visited.has(item.ref)) forest.push(node(item));
 	return {
-		roots: roots.filter((it) => it.children?.length).map((it) => node(it, new Set())),
-		alone: roots.filter((it) => !it.children?.length),
+		roots: forest.filter((entry) => entry.children.length),
+		alone: forest.filter((entry) => !entry.children.length).map((entry) => entry.item),
 	};
 }
-export function attention(index: BacklogIndex): { claims: Item[]; idle: Item[] } {
+export function attention(index: BacklogIndex): { claims: SnapshotItem[]; idle: SnapshotItem[] } {
 	return {
 		claims: index.items.filter(isStale),
 		idle: index.items.filter((it) => isIdle(index, it)).sort((a, b) => a.updatedAt - b.updatedAt),
@@ -178,7 +207,7 @@ export function attention(index: BacklogIndex): { claims: Item[]; idle: Item[] }
 }
 
 /** The `from` ancestry, oldest first, stopping at a missing item or a cycle. */
-export function originChain(index: BacklogIndex, it: Item): string[] {
+export function originChain(index: BacklogIndex, it: SnapshotItem): string[] {
 	const refs: string[] = [];
 	const seen = new Set<string>();
 	for (let at = it.from; at && index.byRef.has(at) && !seen.has(at); at = index.byRef.get(at)?.from) {

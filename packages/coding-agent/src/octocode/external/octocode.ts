@@ -4,7 +4,7 @@ import path from "node:path";
 import { ApiCallError, ApiClient } from "../api/client.ts";
 import { ERR, MESSAGE_KEY_MAX, PROTOCOL_VERSION } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { type ExternalBackend, type ExternalReply, PROMPT_TIMEOUT_MS, promptTimeoutValid } from "./protocol.ts";
 
 /** How long a status, initialize or abort call to the Octocode instance may take. */
@@ -123,7 +123,9 @@ export class OctocodeBackend implements ExternalBackend {
 		if (!key.trim() || key.length > MESSAGE_KEY_MAX)
 			throw new Error(`Octocode prompt key must have from 1 to ${MESSAGE_KEY_MAX} characters`);
 		if (this.owned && (this.owned.key !== key || this.owned.text !== text))
-			throw new Error("An earlier Octocode request may still be running; retry its unchanged key or cancel it");
+			throw new Error(
+				"An earlier Octocode request may still be running; cancel it before prompting again (a direct client may instead retry with the same key and text)",
+			);
 		if (options.signal?.aborted) throw new Error("Octocode prompt aborted");
 		this.inFlight = true;
 		const controller = new AbortController();

@@ -8,8 +8,9 @@ import {
 	type Model,
 	normalizeContext,
 	type SimpleStreamOptions,
+	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ExtensionFactory } from "../src/core/extensions/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
@@ -85,6 +86,7 @@ describe("createAgentSession stream options", () => {
 		requestOptions: SimpleStreamOptions = {},
 		extensionFactory?: ExtensionFactory,
 		providerEvent?: unknown,
+		context: TranscriptContext = normalizeContext({ messages: [] }),
 	): Promise<SimpleStreamOptions | undefined> {
 		const model = createModel(api);
 		const settingsManager = SettingsManager.inMemory(settings);
@@ -131,7 +133,7 @@ describe("createAgentSession stream options", () => {
 
 		try {
 			if (providerEvent === undefined) {
-				const stream = await session.agent.streamFunction(model, normalizeContext({ messages: [] }), requestOptions);
+				const stream = await session.agent.streamFunction(model, context, requestOptions);
 				await stream.result();
 			} else {
 				await session.prompt("test");
@@ -184,6 +186,55 @@ describe("createAgentSession stream options", () => {
 		};
 	}
 
+	describe("instruction cache boundary", () => {
+		const sections = { preamble: "p", tools: "t", rules: "r", docs: "d", project_context: "pc", cwd: "c" };
+		const context = (value: Record<string, string | null> | null = sections) =>
+			({
+				messages: [
+					{
+						role: "system",
+						content: value ? "" : "forced prompt",
+						...(value ? { sections: value } : {}),
+						timestamp: 0,
+					},
+				],
+			}) as unknown as TranscriptContext;
+
+		it("passes the first section after docs to model requests", async () => {
+			const options = await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context());
+			expect(options?.instructionCacheBoundary).toBe("project_context");
+		});
+
+		it("reaches the provider from a real session prompt", async () => {
+			const options = await captureStreamOptions("openai-responses", {}, {}, undefined, { type: "done" });
+			expect(options?.instructionCacheBoundary).toMatch(/^(addendum|project_context|skills|cwd)$/);
+		});
+
+		it("omits it for a forced prompt, a prompt without project sections, and the off switch", async () => {
+			expect(
+				(await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context(null)))
+					?.instructionCacheBoundary,
+			).toBeUndefined();
+			expect(
+				(
+					await captureStreamOptions(
+						"openai-responses",
+						{},
+						{},
+						undefined,
+						undefined,
+						context({ preamble: "p", docs: "d" }),
+					)
+				)?.instructionCacheBoundary,
+			).toBeUndefined();
+			vi.stubEnv("OCTOCODE_INSTRUCTION_CACHE_SPLIT", "off");
+			expect(
+				(await captureStreamOptions("openai-responses", {}, {}, undefined, undefined, context()))
+					?.instructionCacheBoundary,
+			).toBeUndefined();
+		});
+	});
+
 	it("schedules cache warming after a completed session request", async () => {
 		const fixture = await createCacheWarmingSession();
 		try {
@@ -201,10 +252,13 @@ describe("createAgentSession stream options", () => {
 		}
 	});
 
-	it("invalidates warming on model selection and cancels it before manual compaction", async () => {
+	it("keeps warming through a manual compaction with nothing to compact, and invalidates it on model selection", async () => {
 		const fixture = await createCacheWarmingSession();
 		try {
 			await fixture.session.prompt("test");
+			expect(fixture.session.cacheWarmingStatus?.state).toBe("scheduled");
+			// No compaction runs, so the cached prefix is unchanged and its warm entry is kept.
+			await expect(fixture.session.compact()).rejects.toThrow(/nothing to compact|already compacted/i);
 			expect(fixture.session.cacheWarmingStatus?.state).toBe("scheduled");
 			const previous = fixture.session.model!;
 			await fixture.session.setModel({ ...previous, id: "capture-model-switched" });
@@ -212,8 +266,6 @@ describe("createAgentSession stream options", () => {
 				state: "inactive",
 				reason: "conversation context changed",
 			});
-			await expect(fixture.session.compact()).rejects.toThrow(/nothing to compact|already compacted/i);
-			expect(fixture.session.cacheWarmingStatus).toMatchObject({ state: "inactive", reason: "inactive" });
 			expect(fixture.providerCalls()).toBe(1);
 		} finally {
 			fixture.dispose();

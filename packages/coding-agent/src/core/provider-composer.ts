@@ -24,24 +24,13 @@ import {
 } from "./provider-composer/models.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 import {
-	clearConfigValueCache,
 	getConfigValueEnvVarNames,
 	isCommandConfigValue,
 	isConfigValueConfigured,
 	resolveHeadersOrThrow,
 } from "./resolve-config-value.ts";
 
-export type {
-	AuthStatus,
-	ExtensionOAuthConfig,
-	ProviderChatModelConfig,
-	ProviderClassifierModelConfig,
-	ProviderConfigInput,
-	ProviderImageModelConfig,
-	ProviderModelConfig,
-} from "./provider-composer/types.ts";
-
-export const clearApiKeyCache = clearConfigValueCache;
+export type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 
 function rawModelHeaders(
 	model: AnyModel,

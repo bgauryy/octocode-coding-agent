@@ -34,12 +34,12 @@ export function TreeView({ index }: ViewProps) {
 						))}
 					</ul>
 				) : (
-					<EmptyState icon={<TreeIcon size={20} />} title="No derived items yet">
-						Items created from another item, or added as its children, appear here as a tree.
+					<EmptyState icon={<TreeIcon size={20} />} title="No parent and child groups yet">
+						Set an item's parent in Edit / change status to group related work here.
 					</EmptyState>
 				)}
 				{tree.alone.length > 0 && (
-					<details className="fold tree-alone">
+					<details className="fold tree-alone" open={expansion.mode === "all"}>
 						<summary>Items without a link ({tree.alone.length})</summary>
 						<ul>
 							{tree.alone.map((it) => (
@@ -68,7 +68,7 @@ function TreeBranch({ node, depth, mode }: { node: TreeNode; depth: number; mode
 				{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- named by ItemLine's ref and title text, which the rule cannot see through a component. */}
 				<summary>
 					<ItemLine item={node.item}>
-						<span className="count">{node.children.length} derived</span>
+						<span className="count">{node.children.length} children</span>
 					</ItemLine>
 				</summary>
 				<ul>

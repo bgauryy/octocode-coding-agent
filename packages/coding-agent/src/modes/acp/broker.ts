@@ -14,7 +14,7 @@ import { AcpSession, type AcpWorker } from "./session.ts";
 import { canonicalDirectory, findHistory, listHistory, replayHistory } from "./history.ts";
 
 export type { AcpWorker } from "./session.ts";
-export interface AcpBrokerOptions {
+interface AcpBrokerOptions {
 	createWorker: (cwd: string, mcpServers: McpServer[]) => Promise<AcpWorker>;
 	maxSessions?: number;
 	cancelTimeoutMs?: number;

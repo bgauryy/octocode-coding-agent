@@ -3,15 +3,15 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
+import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { fakePi } from "./fake-pi.ts";
+import { tmp } from "./helpers.ts";
 import {
 	type Report,
-	ReportQueue,
 	releasePendingReports,
 	savePendingReport,
 	takePendingReports,
-} from "../../src/octocode/subagents/handoff.ts";
-import { fakePi } from "./fake-pi.ts";
-import { tmp } from "./helpers.ts";
+} from "../../src/octocode/subagents/handoff/pending.ts";
 
 const report = (id: string, wake = true): Report => ({
 	content: `Background subagent ${id} finished`,

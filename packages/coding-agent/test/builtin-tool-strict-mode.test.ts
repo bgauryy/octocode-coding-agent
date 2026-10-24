@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
@@ -75,7 +75,7 @@ describe("strict built-in tools", () => {
 				const { session } = await createAgentSession({
 					cwd,
 					agentDir,
-					model: getModel("anthropic", "claude-sonnet-4-5"),
+					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 					settingsManager,
 					sessionManager: SessionManager.inMemory(cwd),
 					resourceLoader,

@@ -124,3 +124,8 @@ The pinned vendor replay exposes differences that remain explicit: interleaved r
 - Codex Starlark execution rules and sandbox profiles are not implemented by this Claude adapter.
 
 Keep source-specific settings separate. Consult [Claude permission rules](https://code.claude.com/docs/en/permissions) and [Codex execution rules](https://learn.chatgpt.com/docs/agent-configuration/rules) when porting policy, and validate actual allowed and denied effects against the target host before relying on a compatibility claim.
+
+
+## Native planning
+
+`/plan` adds an independent host constraint over the current permission mode, including `full`. `/permissions plan` enters it; `/permissions plan off` leaves it. This constraint uses explicit host-owned operations rather than trusting arbitrary MCP read-only annotations. It pauses executable hooks and blocks shell execution, mutation tools and delegation. Plan state follows the selected session branch. See [native planning](native-features.md#native-planning-constraint) for allowed operations, approval, transport support and the trusted-extension boundary.

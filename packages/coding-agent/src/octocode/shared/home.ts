@@ -6,8 +6,6 @@ import { getAgentDir, getOctocodeHome } from "../../config.ts";
 import { resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { dirsToRepoRoot, repoKey } from "./home/repo.ts";
 
-export { canonicalPath, dirsToRepoRoot, isWithin, repoKey, workspaceRoot } from "./home/repo.ts";
-
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
 export const OCTOCODE_DIR = ".octocode";
 

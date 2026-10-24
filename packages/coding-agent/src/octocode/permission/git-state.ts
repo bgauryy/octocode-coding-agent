@@ -5,7 +5,7 @@ import { SHELL_TOOLS } from "./shell.ts";
 import { gitStateMutation } from "./shell/git-state.ts";
 
 /** Why a subagent in the shared tree may not run `what` (`git add`, `git stash`…): its parent owns the git state. */
-export const gitStateRefusal = (what: string): string =>
+const gitStateRefusal = (what: string): string =>
 	`Refused: \`${what}\` changes git state (the index, stashes, commits or checked-out files) that every agent in this working tree shares. ` +
 	"Leave git state to your parent: do not stage, unstage, stash, commit, reset or restore; report the files you changed instead. " +
 	"A subagent started with isolate: true works in its own worktree and may run it.";

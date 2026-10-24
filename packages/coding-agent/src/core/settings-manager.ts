@@ -6,25 +6,19 @@ import { ProjectTrustStore } from "./trust-manager.ts";
 import type { Settings } from "./settings-schema.ts";
 
 export type {
-	BranchSummarySettings,
 	CacheWarmingMode,
 	DefaultProjectTrust,
 	FullscreenExitOutput,
 	ImageSettings,
-	MarkdownSettings,
 	MermaidRenderingMode,
 	PackageSource,
-	ProviderRetrySettings,
 	QuietStartup,
 	RetrySettings,
 	Settings,
-	TerminalSettings,
-	ThinkingBudgetsSettings,
-	TransportSetting,
 	TuiMode,
 	WarningSettings,
 } from "./settings-schema.ts";
-export { CACHE_WARMING_MODES, DEFAULT_THEME_SETTING } from "./settings-manager/constants.ts";
+export { CACHE_WARMING_MODES } from "./settings-manager/constants.ts";
 
 import { DisplaySettingsAccessors } from "./settings-manager/accessors/display.ts";
 import type { SettingsManagerApi } from "./settings-manager/api.ts";
@@ -42,21 +36,10 @@ import {
 	toSettingsError,
 } from "./settings-manager/storage.ts";
 
-export type {
-	DisplaySettingsApi,
-	EnvironmentSettingsApi,
-	ModelSettingsApi,
-	ResourceSettingsApi,
-	RuntimeSettingsApi,
-	SettingsCoreApi,
-	SettingsManagerApi,
-} from "./settings-manager/api.ts";
 export {
 	FileSettingsStorage,
 	InMemorySettingsStorage,
-	type SettingsError,
 	type SettingsManagerCreateOptions,
-	type SettingsScope,
 	type SettingsStorage,
 } from "./settings-manager/storage.ts";
 export {

@@ -3,12 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { formatSize } from "../../core/tools/index.ts";
-import { plural } from "../shared/render.ts";
+import { plural } from "../shared/render/text.ts";
+import { catastrophicCommand, expandHome } from "./shell/destructive.ts";
 import { redactSecrets, sanitizeTerminalText } from "../shared/sanitize.ts";
 import { clipText } from "../shared/util.ts";
 import { type ActionClass, actionWhy, decide, type PermissionMode } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import { catastrophicCommand, expandHome, removalTargets } from "./shell.ts";
+import { removalTargets } from "./shell.ts";
 import type { Snapshot } from "./snapshot.ts";
 
 /**

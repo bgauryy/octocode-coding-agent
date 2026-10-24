@@ -9,11 +9,12 @@ import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 import * as importedModule2 from "../../src/octocode/shared/home.ts";
 import { fakePermission } from "./fake-pi.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, startCdpStub } from "./fixtures/cdp-stub.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 const launch = vi.hoisted(() => vi.fn());
 vi.mock("chrome-launcher", () => ({ launch }));
 
-const { BrowserTool, registerBrowserTool } = await Promise.resolve(importedModule1);
+const { registerBrowserTool } = await Promise.resolve(importedModule1);
 const { sessionOutputDir } = await Promise.resolve(importedModule2);
 
 type Result = { content: Array<{ type: string; text?: string }> };

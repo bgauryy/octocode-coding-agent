@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { projectMcpConfigPaths } from "../../../core/mcp-config-paths.ts";
-import { sha256 } from "../atomic.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
 import { projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 
 /** The project MCP definition files the MCP loader reads from `cwd`; each can start a stdio command. */
@@ -38,7 +38,7 @@ export function fingerprint(
  * skill (that file, no recursion); otherwise the root's direct `.md` files and, at any depth, subdirectories' `SKILL.md`.
  * Dot entries and `node_modules` are skipped like Octocode does. Octocode's ignore files are not applied, so this is a superset.
  */
-export function skillFiles(dir: string, root: boolean, seen: Set<string>): string[] {
+function skillFiles(dir: string, root: boolean, seen: Set<string>): string[] {
 	const real = realPath(dir);
 	if (seen.has(real)) return [];
 	seen.add(real);
@@ -84,7 +84,7 @@ export function readForFingerprint(file: string): string {
 	}
 }
 
-export function listDir(dir: string): string[] {
+function listDir(dir: string): string[] {
 	try {
 		return fs.readdirSync(dir).map((name) => path.join(dir, name));
 	} catch {
@@ -92,7 +92,7 @@ export function listDir(dir: string): string[] {
 	}
 }
 
-export function isFile(file: string): boolean {
+function isFile(file: string): boolean {
 	try {
 		return fs.statSync(file).isFile();
 	} catch {

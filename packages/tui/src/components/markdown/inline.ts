@@ -1,6 +1,7 @@
 import type { Token } from "marked";
 import { renderLatex } from "../../latex.ts";
-import { getCapabilities, hyperlink } from "../../terminal-image.ts";
+import { getCapabilities } from "../../terminal-image/capabilities.ts";
+import { hyperlink } from "../../terminal-image.ts";
 import type { LatexToken } from "./parser.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
 

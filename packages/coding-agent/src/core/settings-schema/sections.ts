@@ -22,7 +22,7 @@ export const BranchSummarySettingsSchema = Type.Object({
 	),
 });
 
-export const ProviderRetrySettingsSchema = Type.Object({
+const ProviderRetrySettingsSchema = Type.Object({
 	timeoutMs: Type.Optional(Type.Number({ description: "SDK or provider request timeout in milliseconds." })),
 	maxRetries: Type.Optional(Type.Number({ description: "SDK or provider retry attempts." })),
 	maxRetryDelayMs: Type.Optional(

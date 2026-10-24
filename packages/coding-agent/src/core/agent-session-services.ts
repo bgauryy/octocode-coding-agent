@@ -11,10 +11,12 @@ import {
 	type ResourceLoader,
 	type ResourceLoaderReloadOptions,
 } from "./resource-loader.ts";
-import { type CreateAgentSessionOptions, type CreateAgentSessionResult, createAgentSession } from "./sdk.ts";
+import { createAgentSession } from "./sdk.ts";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/types.ts";
 import type { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
 import { errorMessage } from "../utils/guards.ts";
+import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -155,6 +157,11 @@ export async function createAgentSessionServices(
 	await resourceLoader.reload(options.resourceLoaderReloadOptions);
 
 	const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
+	if (!options.modelRuntime) {
+		diagnostics.push(
+			...checkAuthFileSafety(join(agentDir, "auth.json")).map((message) => ({ type: "warning" as const, message })),
+		);
+	}
 	const extensionsResult = resourceLoader.getExtensions();
 	for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {
 		try {

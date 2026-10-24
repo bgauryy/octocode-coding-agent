@@ -34,15 +34,6 @@ import type {
 	OAuthTokens,
 } from "./types.ts";
 
-export {
-	type AddClientAuthentication,
-	exchangeAuthorizationCode,
-	refreshAuthorization,
-	registerClient,
-	startAuthorization,
-	type TokenRequestOptions,
-} from "./endpoints.ts";
-
 /** A Client ID Metadata Document: an https URL used as `client_id`, and a redirect URI it lists. */
 export interface OAuthClientMetadataDocument {
 	url: string;

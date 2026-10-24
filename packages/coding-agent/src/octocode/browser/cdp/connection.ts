@@ -1,8 +1,9 @@
-import { errorMessage, withTimeout } from "../../shared/util.ts";
+import { withTimeout } from "../../shared/util.ts";
 import { abortError } from "../abort.ts";
 import { browserWebSocketUrl } from "../launch.ts";
 import { checkDevtoolsUrl } from "./devtools-url.ts";
 import type { CdpListener, PageTarget, Pending, Reply, TargetInfo } from "./protocol.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** A target the browser attached the session to by itself (see `Target.setAutoAttach`): a popup, a frame in another process, a worker. */
 export interface AttachedTarget {

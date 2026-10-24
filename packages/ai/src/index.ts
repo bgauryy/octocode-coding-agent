@@ -1,5 +1,6 @@
 export type { Static, TSchema } from "typebox";
 export { Type } from "typebox";
+export { StringEnum } from "@octocodeai/octocode-contacts/schema";
 
 // Core only, side-effect free: no generated catalogs, no provider factories,
 // no api-registry, no OAuth implementations, no compat. Provider factories
@@ -10,7 +11,7 @@ export type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from
 export type { AzureOpenAIResponsesOptions } from "./api/azure-openai-responses.ts";
 export type { BedrockOptions, BedrockThinkingDisplay } from "./api/bedrock-converse-stream.ts";
 export type { GoogleOptions } from "./api/google-generative-ai.ts";
-export type { GoogleApiThinkingLevel, ResolvedGoogleThinkingLevel } from "./api/google-shared.ts";
+export type { GoogleApiThinkingLevel, ResolvedGoogleThinkingLevel } from "./api/google-shared/thinking.ts";
 export type { GoogleVertexOptions } from "./api/google-vertex.ts";
 export * from "./api/lazy.ts";
 export type { MistralOptions } from "./api/mistral-conversations.ts";
@@ -41,6 +42,5 @@ export * from "./utils/overflow.ts";
 export * from "./utils/retry.ts";
 export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./utils/text.ts";
 export * from "./utils/transcript.ts";
-export * from "./utils/typebox-helpers.ts";
 export { uuidv7 } from "./utils/uuid.ts";
 export * from "./utils/validation.ts";

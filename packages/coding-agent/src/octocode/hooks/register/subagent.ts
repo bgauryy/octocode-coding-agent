@@ -1,10 +1,12 @@
-import { sha256 } from "../../shared/atomic.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { isRecord } from "../../../utils/guards.ts";
+import { commandsFor } from "../config/calls.ts";
+import type { HookVerdict } from "../contracts.ts";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "../../shared/env.ts";
-import { contentText, isRecord } from "../../shared/util.ts";
-import { commandsFor } from "../config.ts";
-import { capContext, type HookVerdict } from "../runner.ts";
+import { contentText } from "../../shared/util.ts";
+import { capContext } from "../runner.ts";
 import {
 	CONTEXT_TYPE,
 	type Dispatch,

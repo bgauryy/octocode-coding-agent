@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
-import { getModel, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, Context, Message, Model, SystemMessage, Tool } from "../src/types.ts";
 import { resolveTranscriptTools } from "../src/utils/transcript.ts";
 
@@ -244,7 +245,7 @@ describe("transcript system messages", () => {
 		expect(payload.messages.at(-1)?.content.map((block) => block.type)).toEqual(["text"]);
 	});
 
-	test("folds Anthropic updates into the system prompt without native support", async () => {
+	test("keeps the Anthropic system prompt and sends updates as a user message without native support", async () => {
 		const model: Model<"anthropic-messages"> = {
 			...modelBase,
 			id: "claude-sonnet-4-5",
@@ -256,15 +257,16 @@ describe("transcript system messages", () => {
 			betas?: string[];
 			system?: Array<{ text: string }>;
 			tools?: Array<{ name: string }>;
-			messages: Array<{ role: string }>;
+			messages: Array<{ role: string; content: unknown }>;
 		}>(model, context);
 
 		expect(payload.betas ?? []).not.toContain("inline-tools-2026-09-15");
 		expect(payload.system?.map((block) => block.text)).toEqual([
-			"base prompt\n\nupdated guidance\n\n<rules>\nnew rules\n</rules>",
+			"base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",
 		]);
 		expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
-		expect(payload.messages.map((message) => message.role)).toEqual(["user"]);
+		expect(payload.messages.map((message) => message.role)).toEqual(["user", "user"]);
+		expect(JSON.stringify(payload.messages[1]?.content)).toContain("updated guidance");
 	});
 
 	test("requires both Anthropic capabilities for native tool changes", async () => {
@@ -284,7 +286,7 @@ describe("transcript system messages", () => {
 
 		expect(payload.betas ?? []).not.toContain("inline-tools-2026-09-15");
 		expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
-		expect(payload.messages.map((message) => message.role)).toEqual(["user"]);
+		expect(payload.messages.map((message) => message.role)).toEqual(["user", "user"]);
 	});
 
 	test("declares every OpenAI tool in additional_tools at its developer message", async () => {
@@ -327,7 +329,7 @@ describe("transcript system messages", () => {
 		);
 	});
 
-	test("folds OpenAI updates into the leading developer message without native support", async () => {
+	test("keeps the OpenAI developer message and sends updates as a user message without native support", async () => {
 		const model: Model<"openai-responses"> = {
 			...modelBase,
 			id: "gpt-4.1",
@@ -342,8 +344,9 @@ describe("transcript system messages", () => {
 		}>(model, context);
 
 		expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
-		expect(payload.input.map((item) => item.type ?? item.role)).toEqual(["developer", "user"]);
-		expect(payload.input[0]?.content).toBe("base prompt\n\nupdated guidance\n\n<rules>\nnew rules\n</rules>");
+		expect(payload.input.map((item) => item.type ?? item.role)).toEqual(["developer", "user", "user"]);
+		expect(payload.input[0]?.content).toBe("base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>");
+		expect(JSON.stringify(payload.input[2])).toContain("updated guidance");
 	});
 
 	test("announces OpenAI removals as text", async () => {
@@ -531,7 +534,9 @@ describe("transcript system messages", () => {
 
 	// #10940: Kimi tool messages cannot remove tools, so a removal rewrites the prefix once.
 	test("keeps the Kimi prefix across loads after a removal", async () => {
-		const [beforeRemoval, ...afterRemoval] = await captureToolHistory<KimiPayload>(getModel("kimi-coding", "k3"));
+		const [beforeRemoval, ...afterRemoval] = await captureToolHistory<KimiPayload>(
+			getBuiltinModel("kimi-coding", "k3"),
+		);
 
 		expect(beforeRemoval?.tools?.map((value) => value.function?.name)).toEqual(["base_tool", "drop_tool"]);
 		for (const payload of afterRemoval) {
@@ -548,7 +553,7 @@ describe("transcript system messages", () => {
 
 	// #10720: Kimi Coding uses Chat Completions so K3-style models keep added tools out of the top-level list.
 	test.each(["k3", "k3-256k", "kimi-for-coding"] as const)("anchors additions for Kimi Coding %s", async (modelId) => {
-		const payload = await capturePayload<KimiPayload>(getModel("kimi-coding", modelId), additionContext);
+		const payload = await capturePayload<KimiPayload>(getBuiltinModel("kimi-coding", modelId), additionContext);
 
 		expect(payload.tools?.map((value) => value.function?.name)).toEqual(["base_tool"]);
 		expect(payload.messages.find((message) => message.tools)?.tools?.map((value) => value.function?.name)).toEqual([
@@ -559,7 +564,7 @@ describe("transcript system messages", () => {
 	// #10720: Kimi Code Highspeed rejects tool-bearing system messages.
 	test("keeps Kimi Coding Highspeed additions in top-level tools", async () => {
 		const payload = await capturePayload<KimiPayload>(
-			getModel("kimi-coding", "kimi-for-coding-highspeed"),
+			getBuiltinModel("kimi-coding", "kimi-for-coding-highspeed"),
 			additionContext,
 		);
 
@@ -589,7 +594,7 @@ describe("transcript system messages", () => {
 		]);
 	});
 
-	test("folds OpenAI-compatible updates into the system prompt without native support", async () => {
+	test("keeps the OpenAI-compatible system prompt and sends updates as a user message without native support", async () => {
 		const model: Model<"openai-completions"> = {
 			...modelBase,
 			id: "custom-model",
@@ -604,7 +609,10 @@ describe("transcript system messages", () => {
 		}>(model, context);
 
 		expect(payload.tools?.map((value) => value.function?.name)).toEqual(["late_tool"]);
-		expect(payload.messages.map((message) => message.role)).toEqual(["system", "user"]);
-		expect(payload.messages[0]?.content).toBe("base prompt\n\nupdated guidance\n\n<rules>\nnew rules\n</rules>");
+		expect(payload.messages.map((message) => message.role)).toEqual(["system", "user", "user"]);
+		expect(payload.messages[0]?.content).toBe(
+			"base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",
+		);
+		expect(payload.messages[2]?.content).toContain("updated guidance");
 	});
 });

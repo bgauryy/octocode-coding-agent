@@ -3,14 +3,14 @@ import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
 import { LINE_MAX } from "../identity.ts";
 import type { Mail } from "../mail.ts";
-import type { Member } from "../model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import type { TeamStore } from "../store.ts";
 
 /** Refresh the agent's row at least this often so peers can tell it is alive (and its leases stay valid). */
 export const HEARTBEAT_MS = 5_000;
 
 /** What activity accounting reads of the team (`Team`, `session.ts`): the current values each time. */
-export interface ActivityHost {
+interface ActivityHost {
 	me(): Member | undefined;
 	/** The open database, which `flush` writes to unless given another. */
 	db(): TeamStore | undefined;

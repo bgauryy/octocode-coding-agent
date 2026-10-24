@@ -8,14 +8,13 @@ import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by shutdown and signal handling. */
-export type LifecycleHost = Pick<
+type LifecycleHost = Pick<
 	InteractiveModeHost,
 	| "clearEditor"
 	| "clearExtensionTerminalInputListeners"
 	| "clearStatusIndicator"
 	| "disposeActiveSelector"
 	| "emergencyTerminalExit"
-	| "footer"
 	| "footerDataProvider"
 	| "isInitialized"
 	| "isShuttingDown"
@@ -201,7 +200,6 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 	host.clearStatusIndicator();
 	host.themeController.disableAutoSync();
 	host.clearExtensionTerminalInputListeners();
-	host.footer.dispose();
 	host.footerDataProvider.dispose();
 	host.unsubscribeMcpStatus?.();
 	host.unsubscribeMcpStatus = undefined;

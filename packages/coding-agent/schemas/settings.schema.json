@@ -225,6 +225,12 @@
       "type": "string",
       "description": "Prefix prepended to every bash command, for example to enable shell aliases."
     },
+    "bashBackgroundAfterSeconds": {
+      "type": "number",
+      "description": "Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it.",
+      "minimum": 0,
+      "default": 90
+    },
     "npmCommand": {
       "type": "array",
       "items": {

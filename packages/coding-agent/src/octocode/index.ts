@@ -1,4 +1,12 @@
-import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store.ts";
+import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
+import { registerPlanning } from "./plan/register.ts";
+import { withNativePermissionOwners } from "./permission/native-tools.ts";
+import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
+import { BrowserTool } from "./browser/tool/browser-tool.ts";
+import { BASH_READER, FileGuard, LOCAL_FETCH_READER } from "./files/tool/guard.ts";
+import { plural } from "./shared/render/text.ts";
+import { errorMessage } from "../utils/guards.ts";
+import { spilledMessage } from "./team/session/spilled-message.ts";
 import { webCommand } from "./workspace/command.ts";
 import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
@@ -6,11 +14,10 @@ import { WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/extensions/index.ts";
 import { registerMcpReconnect } from "../extensions/mcp/status.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
-import { closeSharedAgentDb } from "./agentdb/db.ts";
 import { registerApi } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
 import { registerBacklog } from "./backlog/index.ts";
-import { BrowserTool, registerBrowserTool } from "./browser/tool.ts";
+import { registerBrowserTool } from "./browser/tool.ts";
 import { registerArchiveCommand } from "./compaction/archive-command.ts";
 import { registerArchiveTool } from "./compaction/archive-tool.ts";
 import { registerCompaction } from "./compaction/register.ts";
@@ -24,7 +31,7 @@ import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadDedupe } from "./files/dedupe.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
-import { BASH_READER, FileGuard, LOCAL_FETCH_READER, registerFileTool } from "./files/tool.ts";
+import { registerFileTool } from "./files/tool.ts";
 import { registerHooks, registerHooksCommand } from "./hooks/register.ts";
 import { reconnectOctocodeMcp, registerOctocodeMcp } from "./mcp/octocode.ts";
 import { registerMemory } from "./memory/register.ts";
@@ -43,10 +50,8 @@ import { setCurrentSession } from "./shared/home.ts";
 import { interactive } from "./shared/interactive.ts";
 import { withDialog } from "./shared/locks.ts";
 import { EXTERNAL_SENDER, type MessageEnvelope } from "./shared/messages.ts";
-import { plural, stopRowTimers } from "./shared/render.ts";
 import { projectTrust, registerTrustCommand } from "./shared/trust.ts";
-import { errorMessage, firstLine, MINUTE_MS, settleWithin } from "./shared/util.ts";
-import { windowsTree } from "./shared/winhelper.ts";
+import { firstLine } from "./shared/util.ts";
 import { registerSkills } from "./skills.ts";
 import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
@@ -54,7 +59,7 @@ import { maxSubagents } from "./subagents/claim.ts";
 import { registerModelsCommand } from "./subagents/models-command.ts";
 import { type AgentProfile, loadProfiles, profileFileName } from "./subagents/profiles.ts";
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
-import { spilledMessage, Team } from "./team/session.ts";
+import { Team } from "./team/session.ts";
 import { registerCollab } from "./team/tools.ts";
 import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
@@ -66,9 +71,8 @@ import { registerNotify } from "./ui/notify.ts";
 import { registerWebTool } from "./web/web.ts";
 
 /**
- * Native Octocode features build on the core tools, skills, sessions, MCP
- * and compaction: guarded file edits, the Octocode MCP server (its own
- * MCP client), subagents, web and browser tools, askUser and a focused prompt.
+ * Native Octocode features build on the core tools, skills, sessions, MCP and compaction: guarded file edits, the
+ * Octocode MCP server (its own MCP client), subagents, web and browser tools, askUser and a focused prompt.
  *
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
  * (invariants, hooks, then the permission mode; every refusal and call is audited; no domain registers its own
@@ -84,6 +88,7 @@ import { registerWebTool } from "./web/web.ts";
  * Native features register direct commands; core merges shared status, model and trust views.
  */
 export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = {}): void {
+	pi = withNativePermissionOwners(pi);
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
 	// First, so every feature's pi.sendMessage goes through it and its agent_settled handler runs before theirs.
 	Delivery.install(pi);
@@ -97,9 +102,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		guard.reader = unavailable ? BASH_READER : LOCAL_FETCH_READER;
 	});
 	const unregisterMcpReconnect = registerMcpReconnect(pi.events, "octocode", reconnectOctocodeMcp(octocodeMcp));
-	pi.on("session_shutdown", async () => {
-		unregisterMcpReconnect();
-	});
+	pi.on("session_shutdown", async () => unregisterMcpReconnect());
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ pi, isSubagent, agent: () => team.id });
 	const annotations = (name: string) => pi.getAllTools().find((tool) => tool.name === name)?.annotations;
@@ -136,6 +139,9 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	const jobs = registerBashTool(pi, commands);
 	let agents: AgentControl | undefined;
 	let external: ExternalAgents | undefined;
+	const planning = registerPlanning(pi, commands, async () => {
+		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
+	});
 	// /new, /resume and /fork end this runtime, and with it its bash jobs and background subagents: ask before leaving
 	// them. Registered before the checkpoint handlers, so a fork is confirmed before its file-restore offer.
 	const confirmLeave = async (ctx: ExtensionContext, action: string) => {
@@ -194,7 +200,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		},
 	});
 	if (!isSubagent) {
-		registerPermissionCommand(commands, permission, () => provenance.size());
+		registerPermissionCommand(commands, permission, () => provenance.size(), planning);
 		registerEditor(pi, permission);
 		registerTrustCommand(commands);
 		registerAskUser(pi);
@@ -228,6 +234,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 			agentName: process.env[AGENT_ID_ENV],
 			agentType: process.env[AGENT_ROLE_ENV],
 		}),
+		planning.blocked,
 	);
 	const sourcePolicy = registerSourcePolicy(pi, process.env, undefined, () =>
 		permission.setSourcePolicy(sourcePolicy.evaluate, sourcePolicy.unprojected),
@@ -242,6 +249,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		return sourcePolicy.prepareUpdates(ctx as ExtensionContext, updates);
 	});
 	const beforeMessage = async (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => {
+		if (planning.blocked()) throw new Error("Agent message dispatch is blocked during planning.");
 		const verdict = await hooks.messageSend(message, signal ? { ...ctx, signal } : ctx);
 		if (verdict?.block) {
 			permission.refused([`${message.from} → ${message.to}`], verdict.block, "message");
@@ -269,6 +277,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 				beforeSend: beforeMessage,
 				afterReceive: (message, ctx) => hooks.messageReceive(message, ctx),
 				authorize: async (input, ctx, signal) => {
+					if (planning.blocked()) throw new Error("External agent dispatch is blocked during planning.");
 					const checked = await permission.check(ctx, {
 						action: "agent.spawn",
 						title: input.action === "connect" ? "Connect this external agent?" : "Send this external prompt?",
@@ -283,9 +292,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 			},
 			agentTool.collect,
 		);
-		permission.onRevoke(() => {
-			void external?.reset();
-		});
+		permission.onRevoke(() => void external?.reset());
 	}
 	agentTool.register(pi);
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
@@ -311,7 +318,10 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 				packageVersion,
 				{
 					messageSend: beforeMessage,
-					externalCall: (input, ctx) => external!.call(input, ctx),
+					externalCall: (input, ctx) => {
+						if (planning.blocked()) throw new Error("External agent calls are unavailable during planning.");
+						return external!.call(input, ctx);
+					},
 				},
 			);
 
@@ -352,42 +362,23 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	});
 
 	// The tool-call pipeline, its cleanup and the user's own `!cmd` (`tool-gates.ts`).
-	registerToolGates(pi, { permission, provenance, annotations, collab, hooks, sourcePolicy, activity, localReads });
-
-	// Headless runs (print, JSON, subagents) end with the agent's run, which would lose background work before it reports:
-	// hold the run until bash jobs and background subagents finish (their reports arrive as one more turn). An interactive
-	// session goes on; an aborted or failed run has no turn to hand the reports to.
-	pi.on("agent_before_settle", async (event, ctx) => {
-		if (interactive(ctx, isSubagent) || event.outcome !== "completed") return undefined;
-		// ctx.signal is unset once the model's run is over; an interrupt for this agent ends the wait too.
-		const stop = ctx.signal ? AbortSignal.any([ctx.signal, team.interrupted]) : team.interrupted;
-		// No time cap of its own: jobs without a timeout are stopped, timed jobs end at their timeout, and a subagent's
-		// watchdog bounds it by its calls' deadlines; an interrupt ends the wait. Job and child handles are unref'd, so a
-		// ref'd timer keeps the process alive until their reports arrive.
-		const keepAlive = setInterval(() => undefined, MINUTE_MS);
-		try {
-			await settleWithin(Promise.all([jobs.settle(), agents?.settle()]), undefined, stop);
-		} finally {
-			clearInterval(keepAlive);
-		}
-		return undefined;
+	registerToolGates(pi, {
+		permission,
+		provenance,
+		annotations,
+		collab,
+		hooks,
+		sourcePolicy,
+		activity,
+		localReads,
+		planning,
 	});
 
-	pi.on("session_shutdown", async (_event, ctx) => {
-		permission.shutdown(ctx);
-		// Rows of the old session that were still running would otherwise tick every second for the life of the process.
-		stopRowTimers();
-		await api?.stop();
-		await external?.reset();
-		// Every reason: a new, resumed, forked or reloaded session imports this module again, so this connection would never be reused.
-		closeSharedAgentDb();
-		// After the subagents and bash jobs (their own shutdown handlers ran first): the helper that holds their Windows job objects can end.
-		await windowsTree.stopAll();
-	});
+	registerNativeSessionLifecycle(pi, { isSubagent, team, permission, jobs, agents, external, api });
 
 	// Register each native command once, after every feature has supplied its handler.
-	commands.register(pi, () => {
-		return [
+	commands.register(pi, () =>
+		[
 			`Octocode ${packageVersion() ?? ""}`.trim(),
 			firstLine(octocodeMcp.describe()),
 			`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
@@ -395,6 +386,6 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 			`Hooks: ${hooks.summary()}`,
 			// The registered commands, so a child session lists only its own; `/mcp` belongs to the MCP extension.
 			`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,
-		].join("\n");
-	});
+		].join("\n"),
+	);
 }

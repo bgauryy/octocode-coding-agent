@@ -2,8 +2,9 @@ import { parsePatch } from "../../shared/codex-patch/patch.ts";
 import { fileChanges } from "../../shared/file-input.ts";
 import type { HookHandler, HookConfig, HookEvent } from "../contracts.ts";
 import { resolveToolPath } from "../../shared/home.ts";
-import { isRecord, stringOrEmpty } from "../../shared/util.ts";
+import { stringOrEmpty } from "../../shared/util.ts";
 import { matchesHook } from "../profiles.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
 /** Claude Code tool names for Octocode's tools, so `"matcher": "Bash"` or `"Edit|Write"` work unchanged. */
 const CLAUDE_NAMES: Record<string, string[]> = {
@@ -74,11 +75,6 @@ export function hookCalls(tool: string, input: Record<string, unknown>, cwd: str
 		];
 	}
 	return [{ names: toolAliases(tool), tool_name: tool, tool_input: input }];
-}
-
-/** Native whole-name matching remains available to callers of the legacy contract. */
-export function matches(matcher: string, names: string[]): boolean {
-	return matchesHook("octocode", "PreToolUse", matcher, names);
 }
 
 export function hookIdentity(hook: HookHandler): string {

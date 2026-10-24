@@ -4,15 +4,15 @@ The application host owns execution. Terminal and web consume an application por
 
 ## Owners
 
-| Owner | Responsibility |
-| --- | --- |
-| `packages/contacts` | Serializable application commands, event/frame schemas, cursors, snapshots, receipts, and connection interfaces; existing backlog and workspace contracts. |
-| `coding-agent/src/core/application` | One session-event subscription, semantic projection, replay, view lifetimes, and dispatch to existing session operations. |
-| `coding-agent/src/octocode/workspace` | Authenticated local transport, team/backlog integration, redaction, and durable command receipts. |
-| `coding-agent/src/modes/interactive` | Terminal input, local extension components, and rendering; consumes the application's native event capability. |
-| `packages/webview` | Browser transport, validated stream reduction, UI state, and safe rendering. |
-| `packages/agent`, `packages/ai` | Execution loop and provider integration. They do not own backlog or interface policy. |
-| `packages/tui` | Terminal layout, input, and reusable widgets. It has no application dependency. |
+| Owner                                 | Responsibility                                                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contacts`                   | Serializable application commands, event/frame schemas, cursors, snapshots, receipts, and connection interfaces; existing backlog and workspace contracts.          |
+| `coding-agent/src/core/application`   | One session-event subscription, ordered conversation state, asset storage, history, replay, view lifetimes, and dispatch to existing session operations.            |
+| `coding-agent/src/octocode/workspace` | Authenticated local transport, team/backlog integration, redaction, and durable command receipts.                                                                   |
+| `coding-agent/src/modes/interactive`  | Terminal input, local extension components, and rendering; consumes shared content events and retains native capabilities for local controls and extension notices. |
+| `packages/webview`                    | Browser transport, validated stream reduction, UI state, and safe rendering.                                                                                        |
+| `packages/agent`, `packages/ai`       | Execution loop and provider integration. They do not own backlog or interface policy.                                                                               |
+| `packages/tui`                        | Terminal layout, input, and reusable widgets. It has no application dependency.                                                                                     |
 
 ```mermaid
 flowchart LR
@@ -27,11 +27,39 @@ flowchart LR
 
 Commands flow back through the adapters. Receiving or rendering an event never starts another engine run. Backlog lifecycle validation, ownership, and transactional audit remain in the existing backlog store.
 
+## Runtime state and database ownership
+
+`core/application/state.ts` creates one Zustand vanilla store per application service. Transcript messages, tools, activities, run status, queue previews, display errors, and command receipts live there. The transcript and activity projectors update that same store; lifecycle translation has no separate mutable state. Workspace activity uses the extension-scoped vanilla store in `core/application/workspace-state.ts`, including standalone extension hosts without an attached application service.
+
+Local interfaces can consume `ApplicationStateSource`: `getSnapshot()` returns a copied, bounded snapshot, and `subscribeState(listener)` returns an unsubscribe function. Notifications follow completed domain updates; subscribing does not emit an initial snapshot. Read the initial value with `getSnapshot()`. Listener failures are isolated, and service disposal removes subscriptions. `subscribe` remains the semantic-event path for incremental terminal rendering. Serialized connections retain their redaction, replay, and backpressure rules.
+
+The delivery owner serializes nested application events, native events, command acceptance, and projector changes requested by subscribers. Each event enters replay and existing connection queues before local callbacks run. A connection opened inside a callback starts at that committed cursor; a subscription added there starts with the next notification. Reads during a callback observe the current committed update; queued mutations are processed after its delivery finishes. Disposal stops later notifications and prevents queued work from restoring closed state.
+
+Transcript and activity collaborators require the application store explicitly. History hydration and output reprojection batch map updates, copying each affected map once and committing it after the batch. Completed snapshots and earlier store values remain independent. Individual live updates still copy their affected map; the bounded snapshot window does not bound the retained history index.
+
+The store contains display data, not engine context, permission grants, credentials, process handles, or database rows. Raw normalization sources, asset files, and replay buffers retain their existing private owners and cleanup. Browser drafts, filters, connection cursors, and render state remain view-local. These projections and capabilities have different lifetimes; moving them into a process singleton would mix sessions and security boundaries.
+
+`octocode/agentdb/schema.ts` owns every native SQL table declaration. Session metadata, backlog entities and history, memories, team presence/messages/deliveries/leases/edits, command receipts, and metadata use its schema through their domain repositories. `agentdb/db.ts` owns opening, transactions, actor context, and process connection cleanup. Connections are shared by canonical database path; opening another configured database leaves existing borrowers usable. The external peer-communication database is read-only and keeps its own schema. See [configuration](../packages/coding-agent/docs/configuration.md#runtime-storage) for persistence boundaries.
+
 ## Local and serialized capabilities
 
-`contacts` defines `LocalApplicationPort<Event, Operations>` as the in-process extension of the serializable port. The terminal subscribes through `subscribeNative`, preserving complete `AgentSessionEvent` payloads, tool details, attachments, and extension behavior. It invokes session operations through the host's typed `invoke` capability. This capability is local: function callbacks, model instances, and custom renderers are not serialized or exposed to a browser.
+`contacts` defines `LocalApplicationPort<Event, Operations>` as the in-process extension of the serializable port. The terminal subscribes to semantic message and tool events through `ApplicationService.subscribe`; web receives the same events in frames. Both use the normalized content contract. `subscribeNative` remains for local controls, diagnostics and extension notices, and `invoke` preserves typed local operations. Function callbacks, model instances, and custom renderer functions remain local capabilities.
 
-The serializable application port exposes `connect`, `execute`, and connection `close`. Its shared command set is prompt, steer, follow-up, and run-scoped abort. The browser consumes semantic message, tool, run, queue, session-status, and receipt events. That projection is deliberately smaller than the native event union. Native parity means shared meaning and one execution authority; it does not mean identical payloads or UI features.
+The serializable application port exposes `connect`, `execute`, connection `close`, and optional asset upload/read and history operations. Its shared command set is prompt, steer, follow-up, and run-scoped abort. Prompt and queue commands can reference uploaded images, including image-only input. The browser consumes semantic message, tool, run, queue, session-status, activity, transcript-reset and receipt events. Native control events can still contain host-only capabilities; presentation data is defined by the shared contract.
+
+## Ordered content and assets
+
+`contacts/src/content.ts` owns display blocks for text, reasoning summaries, images, media, resources, tool calls and explicitly unsupported output. Text annotations preserve source references. Message metadata carries provider/model identity, usage, timing, completion status and error details; tool data includes arguments, structured output, parent relationships and execution status. Opaque provider continuation signatures stay in provider/session state. Context-only custom messages and system instructions remain hidden from the ordinary conversation views.
+
+Provider adapters normalize their supported output into the AI content union. The application normalizer assigns stable block IDs and replaces binary payloads with opaque session-scoped asset references. Large text and JSON have explicit full-content references instead of silent truncation. The TUI resolves these references locally, uses Kitty or iTerm2 images when supported, and renders descriptive fallbacks elsewhere. Web fetches authenticated assets and creates disposable Blob URLs; remote resource URLs are links rather than automatic fetches. Unknown vendor formats stay visible as unsupported-content descriptions.
+
+The loopback host exposes `/api/application/assets` for image uploads, `/api/application/assets/:id` for reads, and `/api/application/history` for paginated messages and tools. All require the existing bearer capability and session binding. Uploads accept PNG, JPEG, GIF and WebP up to 20 MiB. Asset storage has a 32 MiB per-asset limit and a 256 MiB session limit, and is removed on session reset/disposal. A mutable streaming asset has a revision; final assets are immutable. Asset IDs never grant arbitrary host path access. Text and JSON reads use the same credential redaction as frames.
+
+Projection and capacity failures produce a bounded `application.error` notice while later events continue. Restoring oversized content produces an explicit unavailable-content placeholder. These limits do not remove the original content from the session transcript.
+
+`session.activity` carries usage-only entries, model and thinking changes, session names, labels, compaction/retry details, turn outcomes, and cumulative shell progress. Each activity has an ID, kind, timestamp, text, and `source` (`session` or `live`). Public structured data is retained inline up to 4,000 characters, then referenced through a JSON asset containing that data; large shell text uses a text asset. The active branch rebuilds persisted activities on attach/reset. Live notifications remain available only for the current process and context. Private extension state, context-edit replacements, compaction system prompts and provider signatures are not exported as activity data. Their public entry metadata remains visible.
+
+Snapshots and resets retain at most 50 activities within 32,768 serialized characters. History accepts an independent `activityBefore` cursor (an activity ID) and returns `activities`, `activityBefore` and `hasMoreActivities`, so windowing does not discard older current-branch entries or current-process notices. Shell updates reuse one execution ID and revisioned asset. Bash messages preserve their command, exit/cancellation/truncation state and descriptive output path; summary messages retain branch/token provenance. The bash owner captures complete output from verified executor spill files up to 32 MiB into persisted display data, while the model still receives the shortened output. Unavailable or oversized full shell output has an explicit notice. Descriptive paths never authorize file reads, including after importing a session.
 
 The terminal's migrated operations include prompts and queues; cancellation; model/thinking settings; compaction and retry controls; tree navigation; exports; resource reload; bash execution; and bug-report summarization. The same host dispatcher backs serialized execution and local invocation. Local invocation retains the existing completion/return-value semantics; serialized commands use receipts and later completion events.
 
@@ -41,7 +69,7 @@ Read-only session queries remain local. Extension binding and `waitForIdle` reta
 
 Frames carry protocol version, session ID, epoch, sequence, and timestamp. A connection starts with a snapshot or a valid replay marker. The browser rejects malformed frames, ignores duplicate sequences, and requests a fresh snapshot after a gap or epoch change.
 
-Snapshots include recent messages, tool state, session status, queue previews, and recent receipts. Tool progress can therefore survive a reconnect without replaying the entire session. Queue previews and receipts are bounded separately from the authoritative session and durable receipt store.
+Snapshots include recent messages, tool state, activities, session status, queue previews, and recent receipts. Tool state is reconstructed from persisted calls and results when the service attaches, including calls whose large arguments require full assets. Older conversation data remains accessible through history pages. Context replacement, including navigation within the same session tree, resets the shared transcript and invalidates stale replay cursors. Queue previews and receipts are bounded separately from the authoritative session and durable receipt store. Message/tool snapshot windows reserve space for other sections so a fully populated initial snapshot fits the stream queue.
 
 The host bounds replay and each view's pending stream. A slow view receives a resynchronization requirement rather than blocking other views or silently losing output. Closing a view removes its delivery resources; it does not abort accepted work. Cancellation requires an explicit command with the current run ID. Session changes invalidate old connections and commands.
 
@@ -51,15 +79,31 @@ The browser receives redacted, bounded output. Durable failure receipts redact c
 
 ## Verification
 
+### Activity and recovery follow-up — 2026-10-24
+
+The regenerated browser passed 274 tests across 32 files; the full contacts suite passed 28 tests. The final engine/session run passed 88 tests across 10 files. Provider-native output fixtures passed 80 tests with one credential-gated Bedrock skip; terminal fallback/content regressions passed 47 tests. The output-file and direct HTTP-handler suites passed four tests. These runs overlap earlier focused suites and are not an aggregate total.
+
+Independent acceptance verified large tool arguments and structured results after restart, non-text full-content revisions, branch/activity resets, immediate model-change activity, and all 210,042 bytes of a completed shell command after reopening its actual JSONL session. Unregistered output paths were rejected with an explicit notice. Root lint, browser-import smoke, package boundaries, bundle freshness after package builds, and source CLI `--help` passed.
+
+The latest root typecheck and offline build are blocked by concurrent changes outside this implementation: constructor parameter properties in `core/auth-storage/keychain-login.ts` conflict with `erasableSyntaxOnly`, and `test/keychain-login.test.ts` passes a fifth argument to a four-argument login API. The format check also reports concurrent changes in `ai/test/cache-canary-e2e.test.ts`, `coding-agent/src/core/auth-storage.ts`, and `coding-agent/src/core/auth-storage/keychain.ts`. Those files were preserved. The initial successful integration check below predates these changes; it is historical evidence, not a claim that the latest checkout is globally green.
+
+### Initial shared content integration — 2026-10-24
+
+Verified with Node 24.19.0: root `yarn run check`, `yarn run build:offline`, 36 script tests and source CLI `--help` passed. The regenerated browser passed all 267 tests; contacts passed 27 tests; the TUI content integration passed 98 tests. Focused provider/agent fixtures exercised rich output and proxy/history preservation. Independent fixtures verified same-session tree navigation, stale-session rejection, active streaming during projector changes, hidden context, and nested full-asset expansion.
+
+Physical Kitty/iTerm2 terminals and live provider execution were not exercised. Two real HTTP integration tests could not bind a loopback listener in the sandbox (`EPERM`); direct request-handler, asset-store and session-boundary checks passed. The browser generator now resolves shared packages through the root source aliases, and bundle freshness was checked again after package builds.
+
+### Earlier application-port validation
+
 Tests were written before introducing the port and terminal integration. The first terminal-adapter run failed because the application module was absent; the implemented path then passed the same tests.
 
-| Acceptance | Test owner |
-| --- | --- |
-| One source subscription, rich event identity, detach without abort, stale-session suppression, prompt callback preservation | `coding-agent/test/interactive-application-port.test.ts` |
-| Two views, replay, epoch mismatch, duplicate command rejection, slow-view resync, disposal, stale connections, durable uncertain receipt | `coding-agent/test/application-port.test.ts` |
-| Durable restart deduplication, payload conflicts, session/repository isolation, persisted outcomes and credential rejection | `coding-agent/test/octocode/application-commands.test.ts` |
-| Browser validation, ordering, deduplication, resync and receipt reconciliation | `webview/test/application-stream.test.ts` |
-| Existing terminal rendering, navigation, startup, sharing and bug reports | Interactive-mode, TUI, session-share and bug-report tests |
+| Acceptance                                                                                                                               | Test owner                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| One source subscription, rich event identity, detach without abort, stale-session suppression, prompt callback preservation              | `coding-agent/test/interactive-application-port.test.ts`  |
+| Two views, replay, epoch mismatch, duplicate command rejection, slow-view resync, disposal, stale connections, durable uncertain receipt | `coding-agent/test/application-port.test.ts`              |
+| Durable restart deduplication, payload conflicts, session/repository isolation, persisted outcomes and credential rejection              | `coding-agent/test/octocode/application-commands.test.ts` |
+| Browser validation, ordering, deduplication, resync and receipt reconciliation                                                           | `webview/test/application-stream.test.ts`                 |
+| Existing terminal rendering, navigation, startup, sharing and bug reports                                                                | Interactive-mode, TUI, session-share and bug-report tests |
 
 The terminal regression run passed 105 tests across 14 files under Node 24.15.0. Nine durable-receipt tests also passed. Failing cases exposed session rebinding and application receipts leaking into workspace snapshots; adapters now bind to one session and each receipt view selects its own command family. Canonical fingerprints treat reordered JSON fields as the same command. A failure-output regression verifies redaction in both stored and returned receipts. This is deterministic adapter coverage, not a claim that paid provider execution or every interactive terminal/browser combination has been manually exercised. Final integration checks passed 103 native backlog/workspace tests, 40 application/session tests, 21 browser tests, four contacts tests, and four package-boundary tests. Ten live-provider tree-navigation tests were skipped because no test credentials were configured. Root `npm run check`, contacts/webview builds, browser imports, and bundle freshness passed. A real AgentSession with a deterministic fake provider verified one invocation feeding multiple views, including a browser attaching mid-run. An isolated browser preview verified command submission, streaming/final output, and persistent receipt display. The coding-agent package build and source CLI `--help` smoke check also passed after rebuilding stale TUI declarations. No paid provider was called.
 

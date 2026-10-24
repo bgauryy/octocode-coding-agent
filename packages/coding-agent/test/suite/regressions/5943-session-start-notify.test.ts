@@ -171,10 +171,7 @@ function getMessageText(event: MessageEvent): string {
 	if (typeof content === "string") {
 		return content;
 	}
-	return content
-		.filter((part): part is { type: "text"; text: string } => part.type === "text")
-		.map((part) => part.text)
-		.join("");
+	return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
 function createLoadedResourcesContext(): LoadedResourcesContext {

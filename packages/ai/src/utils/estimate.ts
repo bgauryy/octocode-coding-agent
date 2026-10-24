@@ -61,8 +61,14 @@ function estimateMessageTokens(message: Message): number {
 			chars += block.text.length;
 		} else if (block.type === "thinking") {
 			chars += block.thinking.length;
-		} else {
+		} else if (block.type === "toolCall") {
 			chars += block.name.length + safeJsonStringify(block.arguments).length;
+		} else if (block.type === "image" || block.type === "media") {
+			chars += ESTIMATED_IMAGE_CHARS;
+		} else if (block.type === "resource") {
+			chars += (block.text ?? block.uri).length;
+		} else {
+			chars += block.text.length;
 		}
 	}
 	return Math.ceil(chars / CHARS_PER_TOKEN);

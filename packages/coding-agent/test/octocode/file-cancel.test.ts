@@ -4,10 +4,11 @@ import lockfile from "proper-lockfile";
 import { describe, expect, it, vi } from "vitest";
 import { withFileMutationQueue } from "../../src/core/tools/index.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
 function setup() {
 	const cwd = fs.realpathSync(tmp());

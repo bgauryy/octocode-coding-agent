@@ -1,6 +1,7 @@
 import type { BoundMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
 import { type HookMcp, HOOK_OUTPUT_MAX_BYTES, type HookRun } from "./contracts.ts";
-import { errorMessage, isRecord, stringOrEmpty } from "../shared/util.ts";
+import { stringOrEmpty } from "../shared/util.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 function substitute(value: unknown, payload: Record<string, unknown>, codex: boolean): unknown {
 	const resolve = (path: string): unknown => {

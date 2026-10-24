@@ -28,8 +28,8 @@ import {
 	classifierErrorResult,
 	imageErrorResult,
 } from "../utils/model-operations.ts";
+import { mergeHeaders } from "../utils/headers.ts";
 import { normalizeContext } from "../utils/transcript.ts";
-import { mergeHeaders } from "./auth.ts";
 import type {
 	ModelsApiStreamOptions,
 	ModelsClassifierOptions,
@@ -42,7 +42,7 @@ import type {
 } from "./contracts.ts";
 
 /** What request dispatch reads from the `Models` collection that owns it. */
-export interface ModelRequestHost {
+interface ModelRequestHost {
 	getProvider(id: string): Provider | undefined;
 	getAuth(model: AnyModel, overrides?: AuthResolutionOverrides): Promise<AuthResult | undefined>;
 }

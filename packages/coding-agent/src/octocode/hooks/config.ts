@@ -1,15 +1,4 @@
 import { HOOK_EVENTS, type HookSource, type HookHandler, type HookConfig } from "./contracts.ts";
-export { HOOK_EVENTS } from "./contracts.ts";
-export type {
-	HookSource,
-	HookBase,
-	HookCommand,
-	HookHttp,
-	HookMcp,
-	HookHandler,
-	HookConfig,
-	HookEvent,
-} from "./contracts.ts";
 import { applyHttpPolicy } from "./http.ts";
 import fs from "node:fs";
 import { parseConfigDocument } from "../../utils/config-document.ts";
@@ -21,10 +10,8 @@ import type { Settings } from "../../core/settings-manager.ts";
 import os from "node:os";
 import path from "node:path";
 import { claudeSettingsSources, globalPaths, projectHookFiles } from "../shared/home.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { emptyHooks, parseHooks } from "./config/parse.ts";
-export { emptyHooks, parseHooks } from "./config/parse.ts";
-export { commandsFor, hookCalls, hookIdentity, matches, toolAliases } from "./config/calls.ts";
 
 /**
  * A command-hook subset read from Claude Code, Codex and Octocode configuration:

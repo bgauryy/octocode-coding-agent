@@ -14,7 +14,7 @@ import {
 	npmHasAvailableUpdate,
 	runNpmCommand,
 } from "./npm.ts";
-import { buildNoMatchingPackageMessage, dedupePackages, getPackageIdentity, parseSource } from "./sources.ts";
+import { buildNoMatchingPackageMessage, configuredPackages, getPackageIdentity, parseSource } from "./sources.ts";
 import {
 	type ConfiguredUpdateSource,
 	GIT_UPDATE_CONCURRENCY,
@@ -166,17 +166,7 @@ export async function checkForAvailableUpdates(host: PackageManagerHost): Promis
 		return [];
 	}
 
-	const globalSettings = host.settingsManager.getGlobalSettings();
-	const projectSettings = host.settingsManager.getProjectSettings();
-	const allPackages: Array<{ pkg: PackageSource; scope: SourceScope }> = [];
-	for (const pkg of projectSettings.packages ?? []) {
-		allPackages.push({ pkg, scope: "project" });
-	}
-	for (const pkg of globalSettings.packages ?? []) {
-		allPackages.push({ pkg, scope: "user" });
-	}
-
-	const packageSources = dedupePackages(host, allPackages);
+	const packageSources = configuredPackages(host);
 	const checks = packageSources
 		.filter(
 			(entry): entry is { pkg: PackageSource; scope: Exclude<SourceScope, "temporary"> } => entry.scope !== "temporary",

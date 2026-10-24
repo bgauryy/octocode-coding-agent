@@ -10,11 +10,12 @@ import { Mail } from "../../src/octocode/team/mail.ts";
 import type { Message } from "../../src/octocode/team/model.ts";
 import { userProof, userProofValid } from "../../src/octocode/team/proof.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
-import { spilledMessage, Team } from "../../src/octocode/team/session.ts";
+import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
+import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
 
 const message = (over: Partial<Message> = {}): Message => ({
 	id: 7,

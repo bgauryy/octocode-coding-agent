@@ -8,6 +8,7 @@ import type {
 	SessionEntry,
 	SessionProjection,
 } from "./types.ts";
+import { getSystemBaseDelta } from "./system-base.ts";
 
 export function getLatestCompactionEntry(entries: SessionEntry[]): CompactionEntry | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
@@ -98,7 +99,10 @@ export function sessionEntryToContextMessages(entry: SessionEntry): AgentMessage
 	}
 	if (entry.type === "compaction") {
 		const summary = createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp);
-		return entry.systemMessage ? [entry.systemMessage, summary] : [summary];
+		if (!entry.systemMessage) return [summary];
+		const delta = entry.systemBase ? getSystemBaseDelta(entry.systemBase, entry.systemMessage) : null;
+		if (!entry.systemBase || delta === null) return [entry.systemMessage, summary];
+		return delta ? [entry.systemBase, summary, delta] : [entry.systemBase, summary];
 	}
 	return [];
 }

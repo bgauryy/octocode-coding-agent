@@ -3,11 +3,7 @@ import type { Settings } from "../settings-schema.ts";
 import { isMergeableObject } from "./merge.ts";
 import type { SettingsScope, SettingsStorage } from "./storage.ts";
 
-export function loadSettingsFromStorage(
-	storage: SettingsStorage,
-	scope: SettingsScope,
-	projectTrusted = false,
-): Settings {
+function loadSettingsFromStorage(storage: SettingsStorage, scope: SettingsScope, projectTrusted = false): Settings {
 	if (scope === "project" && !projectTrusted) {
 		return {};
 	}

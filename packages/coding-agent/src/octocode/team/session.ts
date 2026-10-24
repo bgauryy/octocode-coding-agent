@@ -11,7 +11,7 @@ import type { EditLog } from "./edits.ts";
 import { HeldLeases } from "./held.ts";
 import { agentName, LINE_MAX } from "./identity.ts";
 import { Mail } from "./mail.ts";
-import type { Lease, Member, SendOptions } from "./model.ts";
+import type { Lease, SendOptions } from "./model.ts";
 import { PeerLeases } from "./peer-leases.ts";
 import { userProof } from "./proof.ts";
 import { Activity, HEARTBEAT_MS } from "./session/activity.ts";
@@ -20,12 +20,10 @@ import { claimName } from "./session/membership.ts";
 import { watchParentProcess } from "./session/parent.ts";
 import { lockPaths, type ReservationHost, reservationText, unlockPaths } from "./session/reservations.ts";
 import { type SendHost, sendMessage } from "./session/send.ts";
-import { AGENT_ID_ENV, PARENT_ID_ENV, type TeamStore } from "./store.ts";
+import { type TeamStore } from "./store.ts";
 import { TeamTicker, type TeamView } from "./ticker.ts";
-
-export type { TeamView } from "./ticker.ts";
-export { parentProcessGone } from "./session/parent.ts";
-export { spilledMessage } from "./session/spilled-message.ts";
+import { AGENT_ID_ENV, PARENT_ID_ENV } from "./store/env.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
 export class Team {

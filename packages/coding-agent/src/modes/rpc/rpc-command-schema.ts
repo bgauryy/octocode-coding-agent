@@ -1,3 +1,4 @@
+import { MAX_COMPACTION_INSTRUCTIONS } from "../../core/compaction/manual-options.ts";
 /**
  * The RPC command protocol (stdin) as one TypeBox schema. `RpcCommand` in `rpc-types.ts` is derived from it,
  * and `rpc-mode.ts` validates every parsed line against it before dispatch.
@@ -28,9 +29,20 @@ export const RpcCommandSchema = Type.Union([
 	command("follow_up", { message: Type.String(), images: ImagesSchema }),
 	command("abort"),
 	command("clear_queue"),
+	command("get_queue"),
+	command("edit_queued", { queueId: Type.String(), text: Type.String() }),
+	command("remove_queued", { queueId: Type.String() }),
+	command("move_queued", {
+		queueId: Type.String(),
+		direction: Type.Union([Type.Literal("up"), Type.Literal("down")]),
+	}),
 	command("new_session", { parentSession: Type.Optional(Type.String()) }),
 
 	// State
+	command("plan", {
+		action: Type.Union([Type.Literal("show"), Type.Literal("enter"), Type.Literal("leave"), Type.Literal("approve")]),
+		revision: Type.Optional(Type.Integer({ minimum: 1 })),
+	}),
 	command("get_state"),
 
 	// Model
@@ -48,7 +60,7 @@ export const RpcCommandSchema = Type.Union([
 	command("set_follow_up_mode", { mode: QueueModeSchema }),
 
 	// Compaction
-	command("compact"),
+	command("compact", { customInstructions: Type.Optional(Type.String({ maxLength: MAX_COMPACTION_INSTRUCTIONS })) }),
 
 	// Retry
 	command("set_auto_retry", { enabled: Type.Boolean() }),
@@ -103,7 +115,7 @@ export function validateRpcCommand(value: unknown): RpcCommandValidation {
 	}
 	const schema = commandSchemas.get(type);
 	if (!schema) {
-		return { ok: false, commandType: type, id: validId, message: `Invalid command: unknown type "${type}"` };
+		return { ok: false, commandType: type, id: validId, message: `Unknown command: ${type}` };
 	}
 	const errors = [...Value.Errors(schema, value)];
 	if (errors.length === 0) return { ok: true };

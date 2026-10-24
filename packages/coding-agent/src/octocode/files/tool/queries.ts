@@ -5,7 +5,7 @@ import type { QueryOutcome } from "../render.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 
-export const QuerySchema = Type.Object({
+const QuerySchema = Type.Object({
 	reasoning: Type.String({ description: "Why this change is needed" }),
 	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
 	type: Type.Unsafe<"edit" | "write" | "delete">({

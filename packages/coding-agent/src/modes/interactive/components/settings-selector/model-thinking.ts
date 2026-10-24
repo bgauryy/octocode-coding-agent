@@ -38,7 +38,7 @@ function modelItemLabel(model: Model<any>): string {
 }
 
 /** State the per-model thinking submenu reads and updates while the settings selector is open. */
-export interface ModelThinkingContext {
+interface ModelThinkingContext {
 	config: SettingsConfig;
 	callbacks: SettingsCallbacks;
 	currentModelThinkingLevels: Record<string, ThinkingLevel>;

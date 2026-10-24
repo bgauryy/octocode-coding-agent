@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { commandsFor, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 it("normalizes Codex Interrupt timeout, ignores matcher, and retains async and MCP handlers", () => {
 	const home = tmp();
 	fs.mkdirSync(path.join(home, ".codex"));

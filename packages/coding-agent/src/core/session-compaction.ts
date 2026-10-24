@@ -27,12 +27,14 @@ export interface CompactionHost {
 		model: Model<any>,
 		signal: AbortSignal,
 		reason: CompactionReason,
+		customInstructions?: string,
 	): Promise<CompactionResult>;
 	/** Rebuild the agent's context from the session after the compaction is saved. */
 	refreshContext(): void;
 }
 
 export interface CompactionRun {
+	customInstructions?: string;
 	reason: CompactionReason;
 	willRetry: boolean;
 	model: Model<any>;
@@ -48,7 +50,7 @@ export interface CompactionRun {
 	outcome: { fromExtension: boolean; cancelledByExtension: boolean };
 }
 
-export function estimateMessagesTokens(messages: AgentMessage[]): number {
+function estimateMessagesTokens(messages: AgentMessage[]): number {
 	let tokens = 0;
 	for (const message of messages) {
 		tokens += estimateTokens(message);
@@ -68,6 +70,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		const result = await host.extensionRunner.emit({
 			type: "session_before_compact",
 			preparation,
+			customInstructions: run.customInstructions,
 			branchEntries: run.branchEntries,
 			reason,
 			willRetry,
@@ -89,7 +92,8 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 	run.checkAbort("hook");
 
 	// Extension-provided content, or the shared default summary generator.
-	const produced = extensionCompaction ?? (await host.summarize(preparation, run.model, signal, reason));
+	const produced =
+		extensionCompaction ?? (await host.summarize(preparation, run.model, signal, reason, run.customInstructions));
 	const { firstKeptEntryId, tokensBefore } = produced;
 	const usage: Usage | undefined = produced.usage;
 	run.checkAbort("summary");

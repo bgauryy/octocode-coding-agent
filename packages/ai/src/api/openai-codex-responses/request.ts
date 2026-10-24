@@ -1,14 +1,12 @@
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import type { Model, ProviderHeaders, TranscriptContext, Usage } from "../../types.ts";
+import type { Model, ProviderHeaders, TranscriptContext } from "../../types.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { getDeclaredTools, getInitialSystemMessage, resolveTranscriptTools } from "../../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
-import {
-	convertResponsesMessages,
-	convertResponsesTools,
-	getResponsesToolSupport,
-} from "../openai-responses-shared.ts";
+import { convertResponsesMessages } from "../openai-responses-shared/messages.ts";
+import { convertResponsesTools, getResponsesToolSupport } from "../openai-responses-shared/tools.ts";
+export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
 import {
 	CODEX_TOOL_CALL_PROVIDERS,
 	DEFAULT_CODEX_BASE_URL,
@@ -103,40 +101,14 @@ export function buildRequestBody(
 	return body;
 }
 
-function getServiceTierCostMultiplier(
-	model: Pick<Model<"openai-codex-responses">, "id">,
-	serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): number {
-	switch (serviceTier) {
-		case "flex":
-			return 0.5;
-		case "priority":
-			return model.id === "gpt-5.5" ? 2.5 : 2;
-		default:
-			return 1;
-	}
-}
-
-export function applyServiceTierPricing(
-	usage: Usage,
-	serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	model: Pick<Model<"openai-codex-responses">, "id">,
-) {
-	const multiplier = getServiceTierCostMultiplier(model, serviceTier);
-	if (multiplier === 1) return;
-
-	usage.cost.input *= multiplier;
-	usage.cost.output *= multiplier;
-	usage.cost.cacheRead *= multiplier;
-	usage.cost.cacheWrite *= multiplier;
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
-}
-
 export function resolveCodexServiceTier(
 	responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
 	requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
 ): ResponseCreateParamsStreaming["service_tier"] | undefined {
-	if (responseServiceTier === "default" && (requestServiceTier === "flex" || requestServiceTier === "priority")) {
+	if (
+		responseServiceTier === "default" &&
+		(requestServiceTier === "flex" || requestServiceTier === "priority" || requestServiceTier === "fast")
+	) {
 		return requestServiceTier;
 	}
 	return responseServiceTier ?? requestServiceTier;

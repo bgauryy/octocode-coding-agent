@@ -8,11 +8,12 @@ import { ExternalAgents } from "../../src/octocode/external/manager.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { EXTERNAL_SENDER } from "../../src/octocode/shared/messages.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 const cleanup: Array<() => unknown> = [];
 beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp("octocode-message-integration-home-")));

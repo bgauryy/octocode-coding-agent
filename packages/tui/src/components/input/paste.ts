@@ -2,7 +2,7 @@ const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
 /** A bracketed paste chunk the buffer consumed; `content` is set once the end marker arrived. */
-export interface BracketedPasteChunk {
+interface BracketedPasteChunk {
 	content?: string;
 	/** Input after the end marker, to be handled as ordinary input. */
 	remaining: string;

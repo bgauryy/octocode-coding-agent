@@ -1,12 +1,6 @@
-import {
-	HOOK_EVENTS,
-	HOOK_MAX_TIMEOUT_S as MAX_TIMEOUT_S,
-	type HookSource,
-	type HookHandler,
-	type HookConfig,
-} from "../contracts.ts";
+import { HOOK_EVENTS, HOOK_MAX_TIMEOUT_S, type HookSource, type HookHandler, type HookConfig } from "../contracts.ts";
 import { parseHttpHook } from "../http.ts";
-import { isRecord } from "../../shared/util.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import { claudeSessionEndOverride, hookMatcher, supportsHookEvent, type HookProtocol } from "../profiles.ts";
 
 const DEFAULT_TIMEOUT_S = 60;
@@ -64,7 +58,8 @@ export function parseHooks(
 					: protocol === "claude" && event === "UserPromptSubmit"
 						? 30
 						: profileTimeout;
-		const maxTimeout = protocol === "codex" && (event === "SessionEnd" || event === "Interrupt") ? 3 : MAX_TIMEOUT_S;
+		const maxTimeout =
+			protocol === "codex" && (event === "SessionEnd" || event === "Interrupt") ? 3 : HOOK_MAX_TIMEOUT_S;
 		const groups = hooks[event];
 		if (groups === undefined) continue;
 		if (!supportsHookEvent(protocol, event)) {

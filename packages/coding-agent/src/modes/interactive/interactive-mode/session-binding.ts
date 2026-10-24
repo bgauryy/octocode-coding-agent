@@ -9,9 +9,10 @@ import { MCP_STATUS_EVENT } from "../../../extensions/mcp/status.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
 import { setRegisteredThemes } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { showTreeNavigationResult } from "./session-navigation.ts";
 
 /** Interactive-mode members used by session binding. */
-export type SessionBindingHost = Pick<
+type SessionBindingHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "applyFullscreenScrollbarSetting"
@@ -108,13 +109,7 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 					return { cancelled: true };
 				}
 
-				host.chatContainer.clear();
-				host.renderInitialMessages();
-				if (result.editorText && !host.editor.getText().trim()) {
-					host.editor.setText(result.editorText);
-				}
-				host.showStatus("Navigated to selected point");
-				void host.flushCompactionQueue({ willRetry: false });
+				showTreeNavigationResult(host, result.editorText);
 				return { cancelled: false };
 			},
 			switchSession: async (sessionPath, options) => {

@@ -1,12 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentSessionFromServices, createAgentSessionServices } from "../src/core/agent-session-services.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { type CreateAgentSessionOptions, createAgentSession, type InlineExtension } from "../src/core/sdk.ts";
+import type { InlineExtension } from "../src/core/extensions/index.ts";
+import { createAgentSession } from "../src/core/sdk.ts";
+import type { CreateAgentSessionOptions } from "../src/core/sdk/types.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -66,7 +68,7 @@ describe("defaultTools setting", () => {
 			await createAgentSession({
 				cwd: tempDir,
 				agentDir,
-				model: getModel("anthropic", "claude-sonnet-4-5"),
+				model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 				settingsManager,
 				sessionManager: SessionManager.inMemory(tempDir),
 				resourceLoader,
@@ -419,7 +421,7 @@ describe("defaultTools setting", () => {
 				await createAgentSession({
 					cwd: tempDir,
 					agentDir,
-					model: getModel("anthropic", "claude-sonnet-4-5"),
+					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 					settingsManager,
 					sessionManager: SessionManager.inMemory(tempDir),
 					resourceLoader,
@@ -526,7 +528,7 @@ describe("defaultTools setting", () => {
 				await createAgentSession({
 					cwd: tempDir,
 					agentDir,
-					model: getModel("anthropic", "claude-sonnet-4-5"),
+					model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 					settingsManager,
 					sessionManager,
 					resourceLoader,
@@ -590,7 +592,7 @@ describe("defaultTools setting", () => {
 		const { session } = await createAgentSessionFromServices({
 			services,
 			sessionManager: SessionManager.inMemory(tempDir),
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 		});
 
 		expect(

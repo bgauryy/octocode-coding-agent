@@ -1,3 +1,4 @@
+import type { PlanState } from "../../octocode/plan/state.ts";
 /**
  * RPC protocol types for headless operation.
  *
@@ -7,7 +8,7 @@
 
 import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai";
-import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
+import type { PromptDisposition, QueuedInput, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionUIPermissionRequest } from "../../core/extensions/types.ts";
@@ -83,9 +84,20 @@ export type RpcResponse =
 			success: true;
 			data: { steering: string[]; followUp: string[] };
 	  }
+	| { id?: string; type: "response"; command: "get_queue"; success: true; data: { items: QueuedInput[] } }
+	| {
+			id?: string;
+			type: "response";
+			command: "edit_queued";
+			success: true;
+			data: { outcome: "replaced" | "removed" | "missing" };
+	  }
+	| { id?: string; type: "response"; command: "remove_queued"; success: true; data: { removed: boolean } }
+	| { id?: string; type: "response"; command: "move_queued"; success: true; data: { moved: boolean } }
 	| { id?: string; type: "response"; command: "new_session"; success: true; data: { cancelled: boolean } }
 
 	// State
+	| { id?: string; type: "response"; command: "plan"; success: true; data: PlanState }
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
 
 	// Model
@@ -254,9 +266,3 @@ export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }
 	| { type: "extension_ui_response"; id: string; cancelled: true };
-
-// ============================================================================
-// Helper type for extracting command types
-// ============================================================================
-
-export type RpcCommandType = RpcCommand["type"];

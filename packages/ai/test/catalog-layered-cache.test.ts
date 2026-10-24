@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getModels, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModels } from "../src/providers/all.ts";
 import type { Api, Model } from "../src/types.ts";
 
 interface CachePayload {
@@ -14,7 +15,7 @@ const providers = ["openai", "anthropic", "xai", "opencode", "opencode-go"] as c
 afterEach(() => vi.unstubAllGlobals());
 
 describe.each(providers)("Pi catalog cache policy: %s", (provider) => {
-	const models: Model<Api>[] = getModels(provider);
+	const models: Model<Api>[] = getBuiltinModels(provider);
 	it("retains an available model catalog", () => {
 		expect(models.length).toBeGreaterThan(0);
 	});

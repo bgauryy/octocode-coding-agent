@@ -6,12 +6,13 @@ import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
 import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 type Command = { type: "command"; command: string; timeout?: number; failClosed?: boolean };
 const group = (command: string, matcher = "", extra: Partial<Command> = {}) => [

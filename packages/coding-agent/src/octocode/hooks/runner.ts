@@ -4,14 +4,12 @@ import { runPromptHook, type PromptEvaluator } from "./prompt.ts";
 import {
 	type HookRun,
 	type HookVerdict,
-	HOOK_OUTPUT_MAX_BYTES as OUTPUT_MAX_BYTES,
+	HOOK_OUTPUT_MAX_BYTES,
 	type HookBase,
 	type HookHandler,
 	type HookEvent,
 } from "./contracts.ts";
-export type { HookRun } from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
-export type { HookVerdict } from "./contracts.ts";
 import { runMcpHook } from "./mcp.ts";
 import type { BoundMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
 import { runHttpHook } from "./http.ts";
@@ -21,8 +19,9 @@ import { formatSize } from "../../core/tools/index.ts";
 import { KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { visibleControls } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
-import { errorMessage, firstLine, isRecord, parseJson } from "../shared/util.ts";
+import { firstLine, parseJson } from "../shared/util.ts";
 import { type HookProtocol, unsupportedOutput } from "./profiles.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 /** Context a hook may add to the conversation, as in the native host. */
 export const HOOK_CONTEXT_MAX_BYTES = 16 * 1024;
@@ -84,7 +83,7 @@ export function runHook(
 		let errBytes = 0;
 		let timedOut = false;
 		const collect = (chunks: Buffer[], size: number, chunk: Buffer): number => {
-			if (size < OUTPUT_MAX_BYTES) chunks.push(chunk.subarray(0, OUTPUT_MAX_BYTES - size));
+			if (size < HOOK_OUTPUT_MAX_BYTES) chunks.push(chunk.subarray(0, HOOK_OUTPUT_MAX_BYTES - size));
 			return size + chunk.length;
 		};
 		child.stdout.on("data", (chunk: Buffer) => {
@@ -123,8 +122,8 @@ export function runHook(
 			for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
 			signal?.removeEventListener("abort", stop);
 			const dropped = {
-				stdout: Math.max(0, outBytes - OUTPUT_MAX_BYTES),
-				stderr: Math.max(0, errBytes - OUTPUT_MAX_BYTES),
+				stdout: Math.max(0, outBytes - HOOK_OUTPUT_MAX_BYTES),
+				stderr: Math.max(0, errBytes - HOOK_OUTPUT_MAX_BYTES),
 			};
 			resolve({
 				code,
@@ -207,7 +206,7 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 	// Output past the kept bytes is counted, never dropped silently.
 	const notKept = (bytes = 0) =>
 		bytes > 0
-			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(OUTPUT_MAX_BYTES)}]`
+			? `\n[… ${formatSize(bytes)} more output not kept: a hook's output is read up to ${formatSize(HOOK_OUTPUT_MAX_BYTES)}]`
 			: "";
 	if (run.code === 2 && (event === "PostToolUseFailure" || event === "SubagentStart")) return {};
 	if (run.code === 2 && protocol === "codex" && event === "PreToolUse" && !run.stderr.trim())

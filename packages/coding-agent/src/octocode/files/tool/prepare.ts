@@ -3,9 +3,10 @@ import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tool
 import { splitBom } from "../../../utils/text.ts";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { runsLater, stateFolderRefusal } from "../../permission/gate.ts";
-import { sha256 } from "../../shared/atomic.ts";
-import { canonicalPath, isWithin, resolveToolPath, workspaceRoot } from "../../shared/home.ts";
+import { runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
+import { resolveToolPath } from "../../shared/home.ts";
 import { transformPatch, type ParsedPatch } from "../../shared/codex-patch/patch.ts";
 import { type FileGuard, judgeChange, lostAnchor, staleRefusal } from "./guard.ts";
 import { copiedElision, type FileQuery, type PreparedChange } from "./queries.ts";
@@ -103,6 +104,7 @@ export async function preparePatch(
 					reasoning,
 				};
 				const target = await inspect(destination);
+				const samePath = canonicalPath(resolveToolPath(ctx.cwd, hunk.move_path)) === key;
 				// A move removes the source, so require the source deletion guard too.
 				await inspect({ type: "delete", path: hunk.path, reasoning });
 				prepared.push(
@@ -110,7 +112,8 @@ export async function preparePatch(
 					{
 						query: { type: "delete", path: hunk.path, reasoning },
 						mode: "delete",
-						digest: checked.digest,
+						// A same-path Move writes first, then deletes those newly written bytes.
+						digest: samePath ? sha256(content) : checked.digest,
 					},
 				);
 			} else

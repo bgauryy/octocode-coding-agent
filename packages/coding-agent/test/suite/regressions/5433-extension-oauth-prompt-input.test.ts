@@ -116,10 +116,25 @@ describe("LoginDialogComponent OAuth prompts", () => {
 		const lines = renderDialog(dialog);
 		expect(lines.join("\n")).toContain("Paste callback URL:");
 		expect(lines.join("\n")).toContain("Second prompt:");
-		expect(countRenderedValue(lines, "callback-value")).toBe(1);
+		expect(countRenderedValue(lines, "callback-value")).toBe(0);
+		expect(lines.join("\n")).toContain("[hidden]");
 		expect(countRenderedValue(lines, "second-secret-demo")).toBe(1);
 
 		dialog.handleInput("\n");
 		await expect(prompt).resolves.toBe("second-secret-demo");
+	});
+
+	test("never renders a secret during input, after submission or in the next prompt", async () => {
+		const dialog = createDialog();
+		const prompt = dialog.showPrompt("API key", undefined, true);
+		dialog.handleInput("sk-private-secret");
+		expect(renderDialog(dialog).join("\n")).not.toContain("sk-private-secret");
+		expect(renderDialog(dialog).join("\n")).toContain("***");
+		dialog.handleInput("\n");
+		await expect(prompt).resolves.toBe("sk-private-secret");
+		expect(renderDialog(dialog).join("\n")).not.toContain("sk-private-secret");
+		dialog.showPrompt("Next prompt");
+		dialog.handleInput("\x1f");
+		expect(renderDialog(dialog).join("\n")).not.toContain("sk-private-secret");
 	});
 });

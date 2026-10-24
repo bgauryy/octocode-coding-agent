@@ -1,8 +1,7 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
-
-/** A feed event; tool events may carry a short argument label from the host. */
-export type FeedEvent = WorkspaceEvent & { hint?: string };
+import type { FeedEvent } from "./application-projection.ts";
+export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
 
 export type Tone = "success" | "danger" | "tool" | "agent" | "neutral";
 interface ActivityCard {
@@ -30,10 +29,12 @@ const LABELS: Record<string, string> = {
 	command: "Request",
 	message: "Message",
 	session: "Session",
+	"session.activity": "Session update",
 };
 const FAILED_STATUSES = ["failed", "error", "blocked"];
 
-function record(value: unknown): Record<string, unknown> {
+/** The value as a plain object, or an empty object when it is not one. */
+export function record(value: unknown): Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
@@ -71,7 +72,11 @@ export function activityCard(event: FeedEvent): ActivityCard {
 		status: scalarText(details.status),
 		title: prose
 			? event.type === "message"
-				? "Agent message"
+				? event.message?.role === "user"
+					? "You"
+					: event.message?.role && event.message.role !== "assistant"
+						? event.message.role
+						: "Agent message"
 				: "Progress update"
 			: structured
 				? scalarText(details.summary) || "Agent result"
@@ -85,105 +90,6 @@ export function activityCard(event: FeedEvent): ActivityCard {
 		// A subagent's report is the agent tool's output: Markdown, like any other answer.
 		markdown: !event.type.startsWith("tool.") || firstLine === "agent",
 	};
-}
-
-/**
- * Projects streamed assistant messages and tool calls into feed events. Ids are negative so they never collide with
- * stored workspace events, and each keeps the time it was first seen so streaming text does not reorder the feed.
- */
-export class ApplicationProjection {
-	/** The current run and when this view first saw it; undefined while the session is idle. */
-	run: { id: string; startedAt: number } | undefined;
-	private answered = false;
-	private sessionId: string | undefined;
-	private readonly messages = new Map<string, WorkspaceEvent>();
-	private readonly tools = new Map<string, WorkspaceEvent>();
-	private nextId = -1;
-
-	update(snapshot: ApplicationSnapshot | undefined, at: number): WorkspaceEvent[] {
-		if (snapshot?.sessionId !== this.sessionId) {
-			this.messages.clear();
-			this.tools.clear();
-			this.sessionId = snapshot?.sessionId;
-			this.run = undefined;
-		}
-		const runId = snapshot?.streaming ? snapshot.runId : undefined;
-		if (runId !== this.run?.id) {
-			this.run = runId ? { id: runId, startedAt: at } : undefined;
-			this.answered = false;
-		}
-		const messages = new Map<string, WorkspaceEvent>();
-		for (const message of snapshot?.messages ?? []) {
-			if (message.role !== "assistant") continue;
-			const text = visibleText(message.text);
-			// A turn that only called tools or only thought has nothing to read; its tools appear as their own events.
-			if (!text.trim()) continue;
-			const previous = this.messages.get(message.id);
-			const status = message.complete ? "completed" : "streaming";
-			const unchanged = previous && previous.text === text && statusOf(previous) === status;
-			// The first answer of a run records how long the run thought before it; later updates keep that figure.
-			let thoughtMs = record(previous?.details).thoughtMs as number | undefined;
-			if (!previous && this.run && !this.answered) {
-				thoughtMs = at - this.run.startedAt;
-				this.answered = true;
-			}
-			messages.set(
-				message.id,
-				unchanged
-					? previous
-					: {
-							id: previous?.id ?? this.nextId--,
-							at: previous?.at ?? at,
-							type: "message",
-							text,
-							details: { messageId: message.id, status, ...(thoughtMs !== undefined ? { thoughtMs } : {}) },
-						},
-			);
-		}
-		const tools = new Map<string, WorkspaceEvent>();
-		for (const tool of snapshot?.tools ?? []) {
-			const previous = this.tools.get(tool.toolCallId);
-			const text = `${tool.toolName}\n${tool.text}`;
-			const unchanged =
-				previous &&
-				previous.text === text &&
-				statusOf(previous) === tool.status &&
-				(previous as FeedEvent).hint === tool.hint;
-			tools.set(
-				tool.toolCallId,
-				unchanged
-					? previous
-					: {
-							id: previous?.id ?? this.nextId--,
-							at: previous?.at ?? at,
-							type: tool.status === "running" ? "tool.start" : "tool.result",
-							text,
-							...(tool.hint ? { hint: tool.hint } : {}),
-							outcome: tool.status === "failed" ? "failed" : undefined,
-							details: { toolCallId: tool.toolCallId, status: tool.status },
-						},
-			);
-		}
-		this.replace(this.messages, messages);
-		this.replace(this.tools, tools);
-		// Items new in one snapshot share its time, so the feed's time sort keeps this order: the host's, when it sent one.
-		const ordered = [
-			...(snapshot?.messages ?? []).map((message) => ({ event: messages.get(message.id), order: message.order })),
-			...(snapshot?.tools ?? []).map((tool) => ({ event: tools.get(tool.toolCallId), order: tool.order })),
-		];
-		return ordered
-			.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
-			.flatMap(({ event }) => (event ? [event] : []));
-	}
-
-	private replace(target: Map<string, WorkspaceEvent>, source: Map<string, WorkspaceEvent>): void {
-		target.clear();
-		for (const [key, value] of source) target.set(key, value);
-	}
-}
-
-function statusOf(event: WorkspaceEvent): unknown {
-	return record(event.details).status;
 }
 
 /**
@@ -219,7 +125,8 @@ interface ToolSummary {
 const isTool = (event: WorkspaceEvent) => event.type.startsWith("tool.");
 
 /** Runs of two or more consecutive tool events collapse into one group, keyed by its first event. */
-export function groupFeed(events: readonly WorkspaceEvent[]): FeedEntry[] {
+export function groupFeed(source: readonly FeedEvent[], showEmbedded = false): FeedEntry[] {
+	const events = showEmbedded ? source : source.filter((event) => !event.embedded);
 	const entries: FeedEntry[] = [];
 	for (let i = 0; i < events.length;) {
 		let end = i;
@@ -240,16 +147,6 @@ export function groupFeed(events: readonly WorkspaceEvent[]): FeedEntry[] {
 		}
 	}
 	return entries;
-}
-
-/**
- * The host writes `[Tool call: name]` for tool-call blocks and `[Content available in the session]` for other hidden
- * blocks such as thinking (core/application/service.ts). Tool calls already appear as tool events, so both placeholders
- * are removed; the image placeholder stays because it tells the reader something is missing.
- */
-const HIDDEN_PLACEHOLDERS = /\[Tool call: [^\]\n]*\]|\[Content available in the session\]/g;
-function visibleText(text: string): string {
-	return text.replace(HIDDEN_PLACEHOLDERS, "");
 }
 
 export const EVENT_LIMIT = 200;
@@ -376,7 +273,7 @@ export interface FileDiff {
 	type: string;
 	diff: string;
 }
-/** Unified diffs from the file tool's per-query outcomes (workspace path only: the application stream has no details). */
+/** Unified diffs from the file tool's per-query outcomes. */
 export function fileDiffs(details: unknown): FileDiff[] {
 	const outcomes = record(details).outcomes;
 	if (!Array.isArray(outcomes)) return [];

@@ -17,11 +17,10 @@ import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the model and thinking controls. */
-export type ModelControlsHost = Pick<
+type ModelControlsHost = Pick<
 	InteractiveModeHost,
 	| "anthropicSubscriptionWarningShown"
 	| "findExactModelMatch"
-	| "footer"
 	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "session"
 	| "settingsManager"
@@ -40,7 +39,6 @@ export function cycleThinkingLevel(host: ModelControlsHost): void {
 	if (newLevel === undefined) {
 		host.showStatus("Current model does not support thinking");
 	} else {
-		host.footer.invalidate();
 		host.updateEditorBorderColor();
 		host.showStatus(`Thinking level: ${newLevel}`);
 	}
@@ -53,7 +51,6 @@ export async function cycleModel(host: ModelControlsHost, direction: "forward" |
 			const msg = host.session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available";
 			host.showStatus(msg);
 		} else {
-			host.footer.invalidate();
 			host.updateEditorBorderColor();
 			const thinkingStr =
 				result.model.reasoning && result.thinkingLevel !== "off" ? ` (thinking: ${result.thinkingLevel})` : "";
@@ -82,10 +79,9 @@ export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: stri
 	selectThinkingLevel(host, level, false);
 }
 
-export function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLevel, persist: boolean): void {
+function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLevel, persist: boolean): void {
 	try {
 		getApplicationPort(host.session).invoke("setThinkingLevel", level, { persist });
-		host.footer.invalidate();
 		host.updateEditorBorderColor();
 		host.showStatus(persist ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
 	} catch (error) {
@@ -93,7 +89,7 @@ export function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLeve
 	}
 }
 
-export function showThinkingSelector(host: ModelControlsHost): void {
+function showThinkingSelector(host: ModelControlsHost): void {
 	host.showSelector((done) => {
 		const selectLevel = (level: ThinkingLevel, persist: boolean) => {
 			selectThinkingLevel(host, level, persist);
@@ -124,7 +120,6 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 	if (model) {
 		try {
 			await getApplicationPort(host.session).invoke("setModel", model, { persist: false });
-			host.footer.invalidate();
 			host.updateEditorBorderColor();
 			host.showStatus(`Model: ${model.id}`);
 			void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
@@ -211,7 +206,6 @@ export function showModelSelector(host: ModelControlsHost, initialSearchInput?: 
 			try {
 				await getApplicationPort(host.session).invoke("setModel", model, { persist });
 				host.updateAvailableProviderCount();
-				host.footer.invalidate();
 				host.updateEditorBorderColor();
 				done();
 				host.showStatus(persist ? `Default model: ${model.provider}/${model.id}` : `Model: ${model.id}`);

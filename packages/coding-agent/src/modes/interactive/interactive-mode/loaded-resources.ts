@@ -13,9 +13,10 @@ import { ThemedText } from "../components/themed-text.ts";
 import { type ThemeColor, theme } from "../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import type { SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the loaded-resources listing. */
-export type LoadedResourcesHost = Pick<
+type LoadedResourcesHost = Pick<
 	InteractiveModeHost,
 	| "buildScopeGroups"
 	| "formatContextPath"
@@ -35,7 +36,7 @@ export type LoadedResourcesHost = Pick<
 export function showLoadedResources(
 	host: LoadedResourcesHost,
 	options?: {
-		extensions?: Array<{ path: string; sourceInfo?: SourceInfo }>;
+		extensions?: SourcedPath[];
 		force?: boolean;
 		showDiagnosticsWhenQuiet?: boolean;
 	},

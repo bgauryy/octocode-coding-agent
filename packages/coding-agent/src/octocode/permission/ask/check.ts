@@ -2,11 +2,11 @@ import type { SourcePermissionUpdate, PermissionUpdateCommit } from "../../share
 import type { ToolInvocation } from "../../../core/extensions/types.ts";
 import { interactive } from "../../shared/interactive.ts";
 import { withDialog } from "../../shared/locks.ts";
-import { errorMessage } from "../../shared/util.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import type { SourceDecision } from "../source-policy/rules.ts";
 import { shellTargetAccess } from "../file-access.ts";
 import { computeCard } from "../effect.ts";
 import { type ActionClass, decide, kindOf, type PermissionMode, UNGRANTABLE } from "../mode.ts";
-import type { SourceDecision } from "../source-policy.ts";
 import type { PermissionRequest } from "../request.ts";
 import { type Snapshot, takeSnapshot } from "../snapshot.ts";
 import { deniedMessage, DISMISSED, forcingReasons, headlessMessage, withPurpose } from "./text.ts";

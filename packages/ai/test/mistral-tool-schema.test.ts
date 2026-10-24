@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { complete, getModel } from "../src/compat.ts";
+import { complete } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Context, Model } from "../src/types.ts";
 
 interface MistralToolPayload {
@@ -17,7 +18,7 @@ interface MistralToolPayload {
 describe("Mistral tool schema serialization", () => {
 	it("strips TypeBox symbol keys before the SDK validates tool schemas", async () => {
 		const model: Model<"mistral-conversations"> = {
-			...getModel("mistral", "devstral-medium-latest"),
+			...getBuiltinModel("mistral", "devstral-medium-latest"),
 			baseUrl: "http://127.0.0.1:9",
 		};
 		const parameters = Type.Object({

@@ -1,6 +1,7 @@
 import type { Token, Tokens } from "marked";
 import { renderLatex } from "../../latex.ts";
-import { visibleWidth, wrapTextWithAnsi } from "../../utils.ts";
+import { wrapTextWithAnsi } from "../../utils/wrap.ts";
+import { visibleWidth } from "../../utils/width.ts";
 import { renderInlineTokens } from "./inline.ts";
 import type { LatexToken } from "./parser.ts";
 import { renderTable } from "./table.ts";

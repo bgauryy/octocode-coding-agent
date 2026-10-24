@@ -222,7 +222,7 @@ async function configureCommand(
 	}
 }
 
-/** `/mcp reconnect [server|all]`, also spelled `restart`. */
+/** `/mcp reconnect [server|all]`. */
 async function reconnectCommand(state: McpExtensionState, name: string, ctx: ExtensionCommandContext): Promise<void> {
 	const { pi } = state;
 	if (name === "all") {
@@ -303,7 +303,7 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				}
 				return;
 			}
-			if (action === "list" || action === "status") {
+			if (action === "list") {
 				ctx.ui.notify(name ? MCP_USAGE : formatStatus(state), name ? "warning" : "info");
 				return;
 			}
@@ -342,7 +342,6 @@ export function registerMcpCommand(state: McpExtensionState): void {
 					);
 					return;
 				}
-				case "restart":
 				case "reconnect":
 					return reconnectCommand(state, name, ctx);
 				default:

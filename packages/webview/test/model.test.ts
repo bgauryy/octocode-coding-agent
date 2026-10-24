@@ -13,30 +13,9 @@ import {
 import { editorDefaults, toMutation } from "../src/app/model/editor.ts";
 import { ago, span, stamp } from "../src/app/model/format.ts";
 import { hashFor, parseHash, readLaunch, resolveRoute } from "../src/app/model/route.ts";
+import { snapshotItem } from "./helpers.ts";
 
 const DAY = 86_400_000;
-function item(ref: string, overrides: Partial<SnapshotItem> = {}): SnapshotItem {
-	return {
-		ref,
-		title: `Item ${ref}`,
-		goal: "",
-		body: "",
-		paths: [],
-		why: "",
-		evidence: [],
-		plan: "",
-		state: "backlog",
-		priority: "p2",
-		tags: [],
-		createdBy: "author",
-		createdAt: 0,
-		updatedAt: 0,
-		version: 1,
-		derived: [],
-		notes: [],
-		...overrides,
-	};
-}
 function snapshot(items: SnapshotItem[], generatedAt = 10 * DAY): Snapshot {
 	return { repo: "repo", generatedAt, states: ["backlog", "todo", "ongoing", "done"], idleMs: 7 * DAY, items };
 }
@@ -81,7 +60,7 @@ describe("route", () => {
 
 describe("backlog", () => {
 	const items = [
-		item("B1", {
+		snapshotItem("B1", {
 			state: "ongoing",
 			priority: "p0",
 			assignee: "ghost",
@@ -89,19 +68,28 @@ describe("backlog", () => {
 			tags: ["ui"],
 			updatedAt: 0,
 		}),
-		item("B2", {
+		snapshotItem("B2", {
 			state: "todo",
 			blockedBy: ["B1"],
 			dependsOn: [{ resource: "backlogs", repositoryKey: "r", id: "B1" }],
 		}),
-		item("B3", {
+		snapshotItem("B3", {
 			state: "todo",
 			type: "bug",
+			goal: "Resolve the issue",
+			why: "Unblock users",
 			notes: [{ at: 0, author: "kim", kind: "note", text: "needle in a note" }],
 		}),
-		item("B4", { state: "done", startedAt: DAY, doneAt: 3 * DAY, updatedAt: 9 * DAY, parentId: "B5", from: "B5" }),
-		item("B5", { state: "backlog", children: ["B4"], derived: ["B4"], updatedAt: 9 * DAY, from: "B6" }),
-		item("B6", { derived: ["B5"], updatedAt: 9 * DAY }),
+		snapshotItem("B4", {
+			state: "done",
+			startedAt: DAY,
+			doneAt: 3 * DAY,
+			updatedAt: 9 * DAY,
+			parentId: "B5",
+			from: "B5",
+		}),
+		snapshotItem("B5", { state: "backlog", children: ["B4"], derived: ["B4"], updatedAt: 9 * DAY, from: "B6" }),
+		snapshotItem("B6", { derived: ["B5"], updatedAt: 9 * DAY }),
 	];
 	const index = indexBacklog(snapshot(items));
 
@@ -129,7 +117,7 @@ describe("backlog", () => {
 	});
 	it("builds a cycle-safe derivation tree", () => {
 		const cyclic = indexBacklog(
-			snapshot([item("B1", { children: ["B2"] }), item("B2", { parentId: "B1", children: ["B1"] })]),
+			snapshot([snapshotItem("B1", { children: ["B2"] }), snapshotItem("B2", { parentId: "B1", children: ["B1"] })]),
 		);
 		const tree = buildTree(cyclic);
 		expect(tree.roots.map((node) => node.item.ref)).toEqual(["B1"]);
@@ -152,7 +140,7 @@ describe("backlog", () => {
 });
 
 describe("editor", () => {
-	const done = item("B9", {
+	const done = snapshotItem("B9", {
 		state: "done",
 		version: 4,
 		links: [
@@ -201,13 +189,13 @@ describe("editor", () => {
 	});
 	it("records a completion when an item moves to done", () => {
 		const values = {
-			...editorDefaults(item("B2", { state: "todo" })),
+			...editorDefaults(snapshotItem("B2", { state: "todo" })),
 			state: "done",
 			summary: "Done",
 			files: "x.ts\n",
 		};
 		const mutation = toMutation(values, {
-			item: item("B2", { state: "todo", version: 2 }),
+			item: snapshotItem("B2", { state: "todo", version: 2 }),
 			baseVersion: 2,
 			operationKey: "op",
 			states: ["backlog", "todo", "ongoing", "done"],

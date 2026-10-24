@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { base, mask, REMOVERS, SEPARATOR, SHELLS, shellScript, stdinOf, unhide, words } from "./words.ts";
+import { base, mask, nestedScripts, REMOVERS, SEPARATOR, stdinOf, unhide, words } from "./words.ts";
 
 const SYSTEM = /^(?:mkfs(?:\.[a-z0-9]+)?|newfs(?:_[a-z0-9]+)?|shutdown|reboot|halt|poweroff)$/i;
 /** `diskutil` verbs that erase a disk or volume. */
@@ -181,14 +181,7 @@ function destructiveIn(command: string, start: Place): string | undefined {
 		const device = writesDevice(tokens);
 		if (device) return `a write to ${device}`;
 		if (name === "cd" || name === "pushd") place = { ...place, cwd: afterCd(tokens, place) };
-		const scripts: string[] = [];
-		if (name === "eval") scripts.push(tokens.slice(1).map(unhide).join(" "));
-		if (SHELLS.has(name)) {
-			const shell = shellScript(tokens);
-			if (shell.script !== undefined) scripts.push(unhide(shell.script));
-			if (shell.stdin) scripts.push(...stdinOf(tokens, bodies).map(unhide), ...fromPipe);
-		}
-		for (const script of scripts) {
+		for (const script of nestedScripts(name, tokens, bodies, fromPipe)) {
 			const danger = destructiveIn(script, place);
 			if (danger) return danger;
 		}

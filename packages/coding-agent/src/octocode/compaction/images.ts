@@ -1,6 +1,7 @@
 import type { ContextEditEntryDraft } from "../../core/extensions/index.ts";
 import { imageExtension, saveContentCopy } from "../shared/spill.ts";
-import { isRecord, partText, stringOrEmpty } from "../shared/util.ts";
+import { partText, stringOrEmpty } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * Message parts and images for recovery from a request rejected as too large. Images cost few tokens but many request

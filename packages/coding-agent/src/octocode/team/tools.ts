@@ -8,20 +8,15 @@ import type {
 	ToolCallEventResult,
 } from "../../core/extensions/index.ts";
 import { resolveToolPath } from "../shared/home.ts";
-import { plural, resultBlock, timedTool, timingOf, toolHeader } from "../shared/render.ts";
+import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../shared/sanitize.ts";
-import {
-	contentText,
-	firstLine,
-	isRecord,
-	modelLookup,
-	optionalString,
-	textResult,
-	unpricedModel,
-} from "../shared/util.ts";
+import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
 import { EDIT_RETENTION_MINUTES } from "./edits.ts";
 import { lockAdvice } from "./lock-advice.ts";
-import { teamWorkspace } from "./store.ts";
+import { plural } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
+import { teamWorkspace } from "./store/workspace.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "./identity.ts";
 import { describeChanges, describeConflicts, describeMembers, mutatedPaths } from "./routing.ts";
 import type { Team } from "./session.ts";
@@ -108,7 +103,7 @@ function registerCoordinateTool(
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them.",
 			promptGuidelines: [
-				"Before overlapping work: list agents, lock your edit paths, then unlock when done. Resolve conflicts with the owner.",
+				"Before edits that may overlap another agent's, use coordinate: list agents, lock your edit paths, then unlock when done. Resolve conflicts with the owner.",
 			],
 			parameters: Type.Object({
 				action: StringEnum(actions, {
@@ -250,6 +245,18 @@ function registerTeamEvents(pi: ExtensionAPI, team: Team, beforeLeave?: (reason:
 	// a message entered the conversation (message_start reaches extensions only for steered and prompted messages).
 	pi.on("context", async (event) => {
 		team.onContext(event.messages);
+		return undefined;
+	});
+	// Mail that reached the transcript and was then compacted away is carried by the summary: no later `context` event
+	// lists it, so it would stay unseen and hold back newer mail. Mail in the kept range is still seen by the next call.
+	pi.on("session_compact", async (event, ctx) => {
+		const summarized: Array<{ role: "custom"; customType: string; details: unknown }> = [];
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.id === event.compactionEntry.firstKeptEntryId || entry.id === event.compactionEntry.id) break;
+			if (entry.type === "custom_message")
+				summarized.push({ role: "custom", customType: entry.customType, details: entry.details });
+		}
+		team.onContext(summarized);
 		return undefined;
 	});
 	// Who changed which file, for `coordinate changes`: Octocode's edit/write by their arguments, `file` by its outcomes (a

@@ -17,7 +17,7 @@ function objects(value: unknown): Record<string, unknown>[] {
 		: [];
 }
 
-export interface LaunchInput {
+interface LaunchInput {
 	adapter: string;
 	adapterArgs?: string[];
 	cwd: string;
@@ -112,22 +112,28 @@ export class DebugSession {
 			// Launch may remain outstanding until configurationDone; initiate it before awaiting initialized.
 			const launched = session.protocol.request("launch", { ...input.launch, noDebug: false }, signal);
 			void launched.catch(() => undefined);
-			await initialized;
-			const breakpoints: unknown[] = [];
-			for (const item of input.breakpoints ?? []) {
-				const result = await session.protocol.request(
-					"setBreakpoints",
-					{
-						source: { path: item.source },
-						breakpoints: item.lines.map((line) => ({ line })),
-						sourceModified: false,
-					},
-					signal,
-				);
-				breakpoints.push({ source: item.source, breakpoints: objects(body(result).breakpoints) });
-			}
-			if (session.capabilities.supportsConfigurationDoneRequest === true)
-				await session.protocol.request("configurationDone", {}, signal);
+			const configure = async (): Promise<unknown[]> => {
+				await initialized;
+				const breakpoints: unknown[] = [];
+				for (const item of input.breakpoints ?? []) {
+					const result = await session.protocol.request(
+						"setBreakpoints",
+						{
+							source: { path: item.source },
+							breakpoints: item.lines.map((line) => ({ line })),
+							sourceModified: false,
+						},
+						signal,
+					);
+					breakpoints.push({ source: item.source, breakpoints: objects(body(result).breakpoints) });
+				}
+				if (session.capabilities.supportsConfigurationDoneRequest === true)
+					await session.protocol.request("configurationDone", {}, signal);
+				return breakpoints;
+			};
+			// A failed launch can precede a secondary configuration error, while a successful launch may await configurationDone.
+			const launchFailure = launched.then(() => new Promise<never>(() => {}));
+			const breakpoints = await Promise.race([configure(), launchFailure]);
 			await launched;
 			if (session.#state === "starting") session.#state = "running";
 			return { session, breakpoints };

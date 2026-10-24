@@ -2,11 +2,11 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { uuidv7 } from "@octocodeai/octocode-ai";
-import { atomicWriteFile, atomicWriteFileSync } from "../../shared/atomic.ts";
+import { atomicWriteFile, atomicWriteFileSync } from "../../../utils/atomic-file.ts";
+import { isRecord } from "../../../utils/guards.ts";
+import type { ResultDetails } from "../run-types.ts";
 import { claimSuffix, releaseDeadClaims } from "../../shared/claims.ts";
 import { privateDir, sessionDir } from "../../shared/home.ts";
-import { isRecord } from "../../shared/util.ts";
-import type { ResultDetails } from "../render.ts";
 import { validateStoredStructuredResult } from "../result-schema.ts";
 
 export interface Report {

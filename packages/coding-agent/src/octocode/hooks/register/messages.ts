@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
-import { isRecord } from "../../shared/util.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
 
 function receivedMessages(value: unknown): MessageEnvelope[] {

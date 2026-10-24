@@ -1,10 +1,11 @@
 import { CURSOR_MARKER, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { type AskQuestion, type AskResult, showAskDialog } from "../../src/octocode/ask/dialog.ts";
+import { showAskDialog } from "../../src/octocode/ask/dialog.ts";
 import { formatAnswers, registerAskUser } from "../../src/octocode/ask/tool.ts";
 import { promptTitle, withDialog } from "../../src/octocode/shared/locks.ts";
 import { fakeCtx, fakePi, rendered, theme } from "./fake-pi.ts";
+import type { AskQuestion, AskResult } from "../../src/octocode/ask/dialog/answers.ts";
 
 const KEY = {
 	enter: "\r",
@@ -400,9 +401,19 @@ describe("askUser tool", () => {
 			params,
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["Write an answer"], inputs: ["   "] } }),
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["Write an answer", "2. Large", "Write an answer"], inputs: ["   ", "tests"] },
+			}),
 		);
-		expect(emptyTyped.details).toMatchObject({ cancelled: true, answers: [] });
+		expect(emptyTyped.details).toMatchObject({
+			cancelled: false,
+			answers: [
+				{ question: "Which scope?", answer: "Large", custom: false },
+				{ question: "Which extras?", answer: "tests", custom: true },
+			],
+		});
 		// Multi-select in RPC: one pick per round until Done, every option, or typed text.
 		const multi = { questions: [extras] };
 		const done = await tool.execute(

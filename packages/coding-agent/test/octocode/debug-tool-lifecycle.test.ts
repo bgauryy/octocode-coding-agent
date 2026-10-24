@@ -6,6 +6,29 @@ import { fakeCtx, fakePi } from "./fake-pi.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/dap-adapter.mjs", import.meta.url));
 
+it("does not launch an adapter for an already cancelled call", async () => {
+	const fake = fakePi();
+	registerDebugTool(fake.pi);
+	const launch = vi.spyOn(DebugSession, "launch").mockRejectedValue(new Error("unexpected adapter launch"));
+	const reason = new Error("cancelled before execution");
+	try {
+		await expect(
+			fake.tools
+				.get("debug")!
+				.execute(
+					"cancelled-launch",
+					{ action: "launch", adapter: "fake-adapter", launch: { program: "x" } },
+					AbortSignal.abort(reason),
+					undefined,
+					fakeCtx({ cwd: process.cwd() }),
+				),
+		).rejects.toThrow(reason);
+		expect(launch).not.toHaveBeenCalled();
+	} finally {
+		launch.mockRestore();
+	}
+});
+
 it("replaces a naturally ended session on the next launch", async () => {
 	const fake = fakePi();
 	registerDebugTool(fake.pi);

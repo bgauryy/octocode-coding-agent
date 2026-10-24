@@ -1,3 +1,5 @@
+import { planConstraintActive } from "../../octocode/plan/state.ts";
+import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
 /**
  * One agent run of a session, from its starting messages to `agent_settled`: preparation and
  * `before_agent_start`, the post-run loop of retries, compaction and boundaries, interruption and
@@ -40,8 +42,15 @@ export interface RunLoopHost extends Pick<
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck?: boolean,
 		toolResults?: AgentMessage[],
+		incoming?: readonly AgentMessage[],
 	): Promise<boolean>;
 	waitForIdle(): Promise<void>;
+}
+
+/** The message a run is about to append, as far as the pre-prompt compaction check can size it before extensions edit it. */
+function incomingMessages(trigger: BeforeAgentStartTrigger): AgentMessage[] {
+	if (trigger.messageType === "custom") return [trigger.message];
+	return [{ role: "user", content: [{ type: "text", text: trigger.prompt }, ...(trigger.images ?? [])], timestamp: 0 }];
 }
 
 export class SessionRunLoop {
@@ -63,6 +72,13 @@ export class SessionRunLoop {
 	 */
 	async startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void, input?: PendingUserInput): Promise<void> {
 		const { session, run, inputs, bash } = this.host;
+		if (
+			planConstraintActive(session.sessionManager) &&
+			!session.extensionRunner
+				.getRegisteredCommands()
+				.some((command) => command.name === "plan" && command.sourceInfo.path === NATIVE_FEATURE_PATH)
+		)
+			throw new Error("This session has an active planning constraint. Enable native features before continuing.");
 		run.logicalTurnId = randomUUID();
 		this._abortReason = undefined;
 		this._pendingInterruption = undefined;
@@ -133,7 +149,7 @@ export class SessionRunLoop {
 		// The starting message is sent below, so do not call agent.continue() here.
 		const lastAssistant = findLastAssistantMessage(session.agent.state.messages);
 		if (lastAssistant) {
-			await this.host.checkCompaction(lastAssistant, false);
+			await this.host.checkCompaction(lastAssistant, false, [], incomingMessages(trigger));
 		}
 
 		const selectedToolsBefore = tools.baseSystemPromptOptions.selectedTools;

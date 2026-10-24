@@ -9,6 +9,7 @@ import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "timers/promises";
 import { getAgentDir } from "../../config.ts";
+import { lockSyncWithRetry } from "../../utils/file-write-lock.ts";
 import { normalizePath } from "../../utils/paths.ts";
 
 export type AuthStorageData = Record<string, Credential>;
@@ -61,29 +62,15 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		}
 	}
 
-	private acquireLockSyncWithRetry(path: string): () => void {
-		const maxAttempts = 10;
-		const delayMs = 20;
-		for (let attempt = 1; ; attempt++) {
-			try {
-				return lockfile.lockSync(path, { realpath: false });
-			} catch (error) {
-				if (!getRetryableLockErrorCode(error) || attempt === maxAttempts) throw error;
-				const start = Date.now();
-				while (Date.now() - start < delayMs) {
-					// Sleep synchronously to avoid changing callers to async.
-				}
-			}
-		}
-	}
-
 	withLock<T>(fn: (current: string | undefined) => LockResult<T>): T {
 		this.ensureParentDir();
 		this.ensureFileExists();
 
 		let release: (() => void) | undefined;
 		try {
-			release = this.acquireLockSyncWithRetry(this.authPath);
+			release = lockSyncWithRetry(this.authPath, {
+				retryable: (error) => getRetryableLockErrorCode(error) !== undefined,
+			});
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
 			const { result, next } = fn(current);
 			if (next !== undefined) {

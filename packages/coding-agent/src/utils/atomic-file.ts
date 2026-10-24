@@ -37,8 +37,15 @@ export async function sha256File(file: string): Promise<string | undefined> {
 	}
 }
 
-export function changedOnDisk(display: string): Error {
-	return new Error(`${display} changed on disk since it was read. Read it again before modifying it.`);
+export class ChangedOnDiskError extends Error {
+	constructor(display: string) {
+		super(`${display} changed on disk since it was read. Read it again before modifying it.`);
+		this.name = "ChangedOnDiskError";
+	}
+}
+
+export function changedOnDisk(display: string): ChangedOnDiskError {
+	return new ChangedOnDiskError(display);
 }
 
 /** A unique hidden temp path next to `file` (same directory, so a rename is atomic). */

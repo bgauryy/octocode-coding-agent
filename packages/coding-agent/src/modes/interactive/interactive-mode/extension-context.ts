@@ -17,7 +17,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the extension UI context and shortcuts. */
-export type ExtensionContextHost = Pick<
+type ExtensionContextHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "addExtensionTerminalInputListener"
@@ -193,11 +193,7 @@ export function createExtensionUIContext(host: ExtensionContextHost): ExtensionU
 /**
  * Show a notification for extensions.
  */
-export function showExtensionNotify(
-	host: ExtensionContextHost,
-	message: string,
-	type?: "info" | "warning" | "error",
-): void {
+function showExtensionNotify(host: ExtensionContextHost, message: string, type?: "info" | "warning" | "error"): void {
 	if (type === "error") {
 		host.showError(message);
 	} else if (type === "warning") {

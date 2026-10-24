@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message } from "./model.ts";
@@ -88,15 +88,16 @@ export class Delivery {
 		// A settlement send can fail while Octocode changes state. An interactive session stays alive to retry held mail.
 		if (!this.host.headless() && ctx?.isIdle()) this.mail.settled();
 		// An idle subagent without a UI has had its last turn: mail waits, and becomes a dead letter when it leaves.
-		if (!headlessIdle) this.inbox.deliver(db, id, (batch) => this.handOver(batch), ctx?.isIdle() ?? false);
+		if (!headlessIdle)
+			this.inbox.deliver(db, id, (batch, onRejected) => this.handOver(batch, onRejected), ctx?.isIdle() ?? false);
 		this.checkWake();
 		if (this.host.heartbeat(db)) this.mail.reportDeadLetters(db, id);
 	}
 
 	/** Hands a batch to Octocode; notes when it should wake an idle agent, to tell whether Octocode started that turn (`checkWake`). */
-	private handOver(batch: Message[]): boolean {
+	private handOver(batch: Message[], onRejected: () => void): boolean {
 		const ctx = this.host.ctx();
-		const handed = this.mail.deliver(batch, this.host.parentId(), ctx);
+		const handed = this.mail.deliver(batch, this.host.parentId(), ctx, onRejected);
 		if (handed && this.wakeHandedAt === undefined && ctx?.isIdle() && batch.some((message) => message.wake))
 			this.wakeHandedAt = Date.now();
 		return handed;
@@ -105,7 +106,7 @@ export class Delivery {
 	/**
 	 * Octocode swallows a refused turn start (no model selected, no sign-in): the message then stays handed but unseen until the
 	 * agent leaves, when it becomes a dead letter. An idle agent that still has not reached the model with a waking message
-	 * after `WAKE_STUCK_MS` is reported to its user once, so the cause (`/model`, `/login`) is not a silent wait.
+	 * after `WAKE_STUCK_MS` is reported to its user once, so the cause (`/model`, `/providers`) is not a silent wait.
 	 */
 	private checkWake(): void {
 		if (this.wakeHandedAt === undefined) return;
@@ -121,7 +122,7 @@ export class Delivery {
 		if (ctx.hasUI)
 			notify(
 				ctx.ui,
-				"A team message should have started a turn, but Octocode did not run one (select a model with /model and sign in with /login). The message stays queued; its sender is told it went unread if this session ends first.",
+				"A team message should have started a turn, but Octocode did not run one (select a model with /model and sign in with /providers). The message stays queued; its sender is told it went unread if this session ends first.",
 				"warning",
 			);
 	}

@@ -1,11 +1,4 @@
-import type {
-	TextContent,
-	ThinkingBudgets,
-	ThinkingContent,
-	ThinkingLevel,
-	ToolCall,
-	StreamOptions,
-} from "../../types.ts";
+import type { AssistantContent, ThinkingBudgets, ThinkingLevel, StreamOptions } from "../../types.ts";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
@@ -43,11 +36,13 @@ export interface BedrockOptions extends StreamOptions {
 	bearerToken?: string;
 }
 
-export type Block = (TextContent | ThinkingContent | ToolCall) & {
+export type Block = AssistantContent & {
 	index?: number;
 	partialJson?: string;
 	/** Scratch buffer for encrypted reasoning deltas, joined into `thinkingSignature`. */
 	redactedChunks?: Uint8Array[];
+	/** Incremental image bytes, removed before persistence. */
+	imageChunks?: Uint8Array[];
 };
 
 export const EMPTY_TEXT_PLACEHOLDER = "<empty>";

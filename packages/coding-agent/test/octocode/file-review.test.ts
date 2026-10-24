@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { askReview, describeChange } from "../../src/octocode/files/review.ts";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
 function ui(answers: {
 	selects?: Array<string | undefined>;

@@ -1,53 +1,21 @@
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import type {
-	CacheRetention,
-	Model,
-	OpenAIResponsesCompat,
-	ProviderEnv,
-	ProviderHeaders,
-	TranscriptContext,
-	Usage,
-} from "../../types.ts";
-import { resolveCacheRetention, resolveInstructionCacheRetention } from "../../utils/cache-policy.ts";
+import type { Model, OpenAIResponsesCompat, ProviderEnv, ProviderHeaders, TranscriptContext } from "../../types.ts";
 import { providerHeadersToRecord } from "../../utils/headers.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { resolveTranscriptTools } from "../../utils/transcript.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "../github-copilot-headers.ts";
-import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
-import {
-	convertResponsesMessages,
-	convertResponsesTools,
-	getResponsesToolSupport,
-} from "../openai-responses-shared.ts";
+import { resolveOpenAIResponsesCacheFields } from "../openai-prompt-cache.ts";
+import { convertResponsesMessages, RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
+export { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
+import { convertResponsesTools, getResponsesToolSupport } from "../openai-responses-shared/tools.ts";
 import { resolveSamplingParams } from "../simple-options.ts";
 import { getCompat, isChatGPTSignIn } from "./compat.ts";
 import type { OpenAIResponsesOptions, ResponsesRequest } from "./types.ts";
 
-const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 // OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 // Fixed reasoning.effort while configuration_update items carry the thinking level.
 const CONFIGURATION_UPDATE_REQUEST_EFFORT = "medium";
-
-function getPromptCacheRetention(
-	compat: Required<OpenAIResponsesCompat>,
-	cacheRetention: CacheRetention,
-): "24h" | undefined {
-	return cacheRetention === "long" && compat.supportsLongCacheRetention && !compat.supportsExplicitPromptCacheMode
-		? "24h"
-		: undefined;
-}
-
-function getPromptCacheOptions(
-	compat: Required<OpenAIResponsesCompat>,
-	cacheRetention: CacheRetention,
-): ResponsesRequest["prompt_cache_options"] {
-	if (!compat.supportsExplicitPromptCacheMode) return undefined;
-	if (cacheRetention === "none") return { mode: "explicit" };
-	if (cacheRetention === "long" && compat.supportsLongCacheRetention) return { ttl: "30m" };
-	return undefined;
-}
 
 export function createRequestHeaders(
 	model: Model<"openai-responses">,
@@ -98,6 +66,9 @@ export function createRequestHeaders(
 		}
 	}
 
+	// xAI recommends this header for cache routing (the completions client sends it too).
+	if (sessionId && model.provider === "xai") headers["x-grok-conv-id"] = sessionId;
+
 	return providerHeadersToRecord(headers, optionsHeaders) ?? {};
 }
 
@@ -109,21 +80,16 @@ export function buildParams(
 	grammarToolInputProperties: ReadonlyMap<string, string>,
 	configurationUpdateEffort: string | undefined,
 ) {
-	const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
 	const omitUnsupportedFields = isChatGPTSignIn(model, options?.apiKey);
-	const instructionRetention = resolveInstructionCacheRetention(options);
-	const instructionCacheTtl =
-		!omitUnsupportedFields &&
-		compat.supportsExplicitPromptCacheMode &&
-		instructionRetention !== undefined &&
-		instructionRetention !== "none"
-			? instructionRetention === "long" && compat.supportsLongCacheRetention
-				? "12h"
-				: "30m"
-			: undefined;
+	const { instructionCacheTtl, ...cacheFields } = resolveOpenAIResponsesCacheFields(
+		compat,
+		options,
+		omitUnsupportedFields,
+	);
 	const transcriptTools = resolveTranscriptTools(context.messages, getResponsesToolSupport(compat));
-	const messages = convertResponsesMessages(model, context, OPENAI_TOOL_CALL_PROVIDERS, {
+	const messages = convertResponsesMessages(model, context, RESPONSES_TOOL_CALL_PROVIDERS, {
 		instructionCacheTtl,
+		instructionCacheBoundary: options?.instructionCacheBoundary,
 		grammarToolInputProperties,
 		supportsMidConvoSystemMessages: compat.supportsMidConvoSystemMessages,
 		supportsAdditionalTools: compat.supportsAdditionalTools,
@@ -139,9 +105,7 @@ export function buildParams(
 		model: model.id,
 		input: messages,
 		stream: true,
-		prompt_cache_key: cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
-		prompt_cache_retention: omitUnsupportedFields ? undefined : getPromptCacheRetention(compat, cacheRetention),
-		prompt_cache_options: omitUnsupportedFields ? undefined : getPromptCacheOptions(compat, cacheRetention),
+		...cacheFields,
 		store: false,
 	};
 
@@ -195,34 +159,4 @@ export function buildParams(
 	}
 
 	return params;
-}
-
-function getServiceTierCostMultiplier(
-	model: Pick<Model<"openai-responses">, "id">,
-	serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): number {
-	switch (serviceTier) {
-		case "flex":
-			return 0.5;
-		case "priority":
-		case "fast":
-			return model.id === "gpt-5.5" ? 2.5 : 2;
-		default:
-			return 1;
-	}
-}
-
-export function applyServiceTierPricing(
-	usage: Usage,
-	serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	model: Pick<Model<"openai-responses">, "id">,
-) {
-	const multiplier = getServiceTierCostMultiplier(model, serviceTier);
-	if (multiplier === 1) return;
-
-	usage.cost.input *= multiplier;
-	usage.cost.output *= multiplier;
-	usage.cost.cacheRead *= multiplier;
-	usage.cost.cacheWrite *= multiplier;
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }

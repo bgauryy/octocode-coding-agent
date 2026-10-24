@@ -22,10 +22,7 @@ type OpenAIReasoningTextDetail = OpenAIReasoningDetailBase & {
 	signature?: string | null;
 };
 
-export type OpenAIReasoningDetail =
-	| OpenAIReasoningSummaryDetail
-	| OpenAIEncryptedReasoningDetail
-	| OpenAIReasoningTextDetail;
+type OpenAIReasoningDetail = OpenAIReasoningSummaryDetail | OpenAIEncryptedReasoningDetail | OpenAIReasoningTextDetail;
 
 /** `reasoning_details` collected while one response streams. */
 export interface StreamedReasoningDetails {

@@ -8,6 +8,7 @@ import type { EditorComponent, Terminal } from "@octocodeai/octocode-tui";
 import type { AgentSessionRuntimeDiagnostic } from "../../../core/agent-session-services.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import type { TuiMode } from "../../../core/settings-manager.ts";
+import type { SourceInfo } from "../../../core/source-info.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
 
@@ -40,6 +41,28 @@ export type RenderSessionItem =
 	| AgentMessage
 	| Extract<SessionEntry, { type: "custom" | "usage" }>
 	| CompactionCostNotice;
+
+/** A loaded resource path and the source it was loaded from. */
+export interface SourcedPath {
+	path: string;
+	sourceInfo?: SourceInfo;
+}
+
+/** The group a loaded resource is listed under in the startup resource listing. */
+export type ScopeGroupName = "user" | "project" | "path";
+
+/** Loaded resources of one scope; package resources are grouped by package source. */
+export interface ScopeGroup {
+	scope: ScopeGroupName;
+	paths: SourcedPath[];
+	packages: Map<string, SourcedPath[]>;
+}
+
+/** How a scope group renders its plain paths and its package paths. */
+export interface ScopeGroupFormatOptions {
+	formatPath: (item: SourcedPath) => string;
+	formatPackagePath: (item: SourcedPath, source: string) => string;
+}
 
 export type LoginProviderCompletionOption = {
 	id: string;

@@ -4,3 +4,4 @@ export * from "./team.ts";
 export * from "./workspace.ts";
 export * from "./protocol.ts";
 export * from "./application.ts";
+export * from "./content.ts";

@@ -16,13 +16,14 @@ import { collapseSystemMessages } from "../../utils/transcript.ts";
 import { failStreamTask } from "../lazy.ts";
 import { mapStopReason, normalizeGoogleUsage, retryGoogleRequest } from "./response.ts";
 import { isThinkingPart, retainThoughtSignature } from "./signatures.ts";
+import { applyGoogleAnnotations, googleArtifact } from "./rich-content.ts";
 import type { GoogleApiType } from "./thinking.ts";
 
 // Counter for generating unique tool call IDs
 let toolCallCounter = 0;
 
 /** What one Google adapter supplies to `streamGoogle`: its names in errors, and its client and request for a context. */
-export interface GoogleStreamAdapter {
+interface GoogleStreamAdapter {
 	/** Adapter name in the custom-fetch error, such as "Google Vertex". */
 	name: string;
 	/** Stream name in the missing-finish-reason error, such as "Google". */
@@ -62,6 +63,12 @@ export function streamGoogle<T extends GoogleApiType>(
 			let currentBlock: TextContent | ThinkingContent | null = null;
 			const blocks = output.content;
 			const blockIndex = () => blocks.length - 1;
+			const endBlock = (block: TextContent | ThinkingContent) =>
+				stream.push(
+					block.type === "text"
+						? { type: "text_end", contentIndex: blockIndex(), content: block.text, partial: output }
+						: { type: "thinking_end", contentIndex: blockIndex(), content: block.thinking, partial: output },
+				);
 			for await (const chunk of googleStream) {
 				await options?.onProviderStreamEvent?.(chunk, model);
 				// @google/genai documents GenerateContentResponse.responseId (the same type on Gemini and Vertex) as an
@@ -70,7 +77,10 @@ export function streamGoogle<T extends GoogleApiType>(
 				const candidate = chunk.candidates?.[0];
 				if (candidate?.content?.parts) {
 					for (const [partIndex, part] of candidate.content.parts.entries()) {
-						if (part.text !== undefined || (part.thoughtSignature && !part.functionCall && !part.inlineData)) {
+						if (
+							part.text !== undefined ||
+							(part.thoughtSignature && !part.functionCall && !part.inlineData && !part.fileData)
+						) {
 							const text = part.text ?? "";
 							const isThinking = isThinkingPart(part);
 							const existingSignature =
@@ -90,21 +100,7 @@ export function streamGoogle<T extends GoogleApiType>(
 								(!isThinking && currentBlock.type !== "text")
 							) {
 								if (currentBlock) {
-									if (currentBlock.type === "text") {
-										stream.push({
-											type: "text_end",
-											contentIndex: blocks.length - 1,
-											content: currentBlock.text,
-											partial: output,
-										});
-									} else {
-										stream.push({
-											type: "thinking_end",
-											contentIndex: blockIndex(),
-											content: currentBlock.thinking,
-											partial: output,
-										});
-									}
+									endBlock(currentBlock);
 								}
 								if (isThinking) {
 									currentBlock = { type: "thinking", thinking: "", thinkingSignature: undefined };
@@ -140,23 +136,16 @@ export function streamGoogle<T extends GoogleApiType>(
 							}
 						}
 
+						const artifact = googleArtifact(part);
+						if (artifact) {
+							if (currentBlock) endBlock(currentBlock);
+							currentBlock = null;
+							output.content.push(artifact);
+							stream.push({ type: "content_update", contentIndex: blockIndex(), partial: output });
+						}
 						if (part.functionCall) {
 							if (currentBlock) {
-								if (currentBlock.type === "text") {
-									stream.push({
-										type: "text_end",
-										contentIndex: blockIndex(),
-										content: currentBlock.text,
-										partial: output,
-									});
-								} else {
-									stream.push({
-										type: "thinking_end",
-										contentIndex: blockIndex(),
-										content: currentBlock.thinking,
-										partial: output,
-									});
-								}
+								endBlock(currentBlock);
 								currentBlock = null;
 							}
 
@@ -189,6 +178,7 @@ export function streamGoogle<T extends GoogleApiType>(
 					}
 				}
 
+				applyGoogleAnnotations(output, candidate, stream);
 				if (candidate?.finishReason) {
 					output.rawStopReason = candidate.finishReason;
 					output.stopReason = mapStopReason(candidate.finishReason);
@@ -204,21 +194,7 @@ export function streamGoogle<T extends GoogleApiType>(
 			}
 
 			if (currentBlock) {
-				if (currentBlock.type === "text") {
-					stream.push({
-						type: "text_end",
-						contentIndex: blockIndex(),
-						content: currentBlock.text,
-						partial: output,
-					});
-				} else {
-					stream.push({
-						type: "thinking_end",
-						contentIndex: blockIndex(),
-						content: currentBlock.thinking,
-						partial: output,
-					});
-				}
+				endBlock(currentBlock);
 			}
 
 			if (options?.signal?.aborted) {

@@ -1,20 +1,22 @@
-import type { BacklogAudit } from "@octocodeai/octocode-contacts/snapshot";
-import { type FormEvent, useState } from "react";
+import type { BacklogAudit, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
+import { type FormEvent, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { navigate } from "../hooks.ts";
-import type { Item } from "../model/backlog.ts";
 import { errorMessage, stamp } from "../model/format.ts";
 import { hashFor } from "../model/route.ts";
 import { Field } from "../ui/fields.tsx";
-import { AgentIcon, CheckIcon, CommentIcon, EditIcon, PlusIcon } from "../ui/icons.tsx";
+import { CheckIcon, CommentIcon, EditIcon, PlusIcon } from "../ui/icons.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, Button, Section } from "../ui/primitives.tsx";
 import { CommandButton, MessageForm, StatusLine } from "./controls.tsx";
+import { ItemImplementation } from "./ItemImplementation.tsx";
+import { record } from "./model.ts";
 import { useLive } from "./session.tsx";
 
-export function ItemActions({ item }: { item: Item }) {
+export function ItemActions({ item }: { item: SnapshotItem }) {
 	return (
 		<>
+			<ItemImplementation item={item} />
 			<Button icon={<EditIcon />} onClick={() => navigate(`#${item.ref}/edit`)}>
 				Edit / change status
 			</Button>
@@ -27,7 +29,7 @@ export function ItemActions({ item }: { item: Item }) {
 	);
 }
 
-export function ItemActivity({ item }: { item: Item }) {
+export function ItemActivity({ item }: { item: SnapshotItem }) {
 	const available = useStore(useLive().workspace, (state) => state.snapshot !== null);
 	return (
 		<>
@@ -46,24 +48,44 @@ export function ItemActivity({ item }: { item: Item }) {
 	);
 }
 
-function Comments({ item }: { item: Item }) {
+function Comments({ item }: { item: SnapshotItem }) {
+	const sessionId = useStore(useLive().workspace, (state) => state.snapshot?.sessionId ?? "");
+	return <CommentForm key={`${sessionId}:${item.ref}`} item={item} />;
+}
+
+function CommentForm({ item }: { item: SnapshotItem }) {
 	const { workspace, api, refresh } = useLive();
 	const draftKey = `comment:${item.ref}`;
-	const text = useStore(workspace, (state) => state.drafts[draftKey]?.text ?? "");
+	const draft = useStore(workspace, (state) => state.drafts[draftKey]);
+	const text = draft?.text ?? "";
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState("");
+	const sending = useRef(false);
 
 	async function submit(event: FormEvent) {
 		event.preventDefault();
+		if (sending.current || !text.trim()) return;
+		const sessionId = workspace.getState().snapshot?.sessionId;
+		const current = () => workspace.getState().snapshot?.sessionId === sessionId;
+		sending.current = true;
 		setPending(true);
 		setError("");
+		let saved = false;
 		try {
 			await api.mutate({ op: "comment", id: item.ref, version: item.version, note: text });
-			workspace.getState().setDraft(draftKey, null);
+			saved = true;
+			if (!current()) return;
+			if (workspace.getState().drafts[draftKey]?.id === draft?.id) workspace.getState().setDraft(draftKey, null);
 			await refresh();
 		} catch (failure) {
-			setError(`${errorMessage(failure)} Your comment is still here.`);
+			if (!current()) return;
+			setError(
+				saved
+					? `Comment saved. ${errorMessage(failure)} Refresh the board to see it.`
+					: `${errorMessage(failure)} Your comment is still here.`,
+			);
 		} finally {
+			sending.current = false;
 			setPending(false);
 		}
 	}
@@ -93,7 +115,9 @@ function Comments({ item }: { item: Item }) {
 							required
 							value={text}
 							disabled={pending}
-							onChange={(event) => workspace.getState().setDraft(draftKey, { text: event.target.value, id: draftKey })}
+							onChange={(event) =>
+								workspace.getState().setDraft(draftKey, { text: event.target.value, id: crypto.randomUUID() })
+							}
 						/>
 					)}
 				</Field>
@@ -108,14 +132,13 @@ function Comments({ item }: { item: Item }) {
 	);
 }
 
-function AgentControls({ item }: { item: Item }) {
+function AgentControls({ item }: { item: SnapshotItem }) {
 	const receipts = useStore(useLive().workspace, (state) => state.snapshot?.receipts);
 	const mine = (receipts ?? []).filter((receipt) => receipt.backlogId === item.ref).slice(-5);
 	return (
 		<Section title="Agents">
-			<p className="muted">Messages go to the selected agent. Approvals appear in the terminal.</p>
+			<p className="muted">Delegate this item or send a follow-up to an agent. Approvals appear in the terminal.</p>
 			<div className="command-grid">
-				<CommandButton label="Work with current agent" action="work" item={item} icon={<AgentIcon />} />
 				<CommandButton label="Request new agent" action="delegate" item={item} icon={<PlusIcon />} />
 			</div>
 			<MessageForm item={item} />
@@ -145,10 +168,6 @@ const ENTITIES: Record<string, string> = {
 	workspace_commands: "Agent request",
 };
 const ACTIONS: Record<string, string> = { insert: "created", update: "changed", delete: "removed" };
-function record(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
 /** Newest first; each entry lists only the fields that changed. */
 export function AuditRows({ events }: { events: readonly BacklogAudit[] }) {
 	return (

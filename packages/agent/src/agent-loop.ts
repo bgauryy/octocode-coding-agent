@@ -4,6 +4,7 @@
  */
 
 import { type AssistantMessage, EventStream, type ToolResultMessage } from "@octocodeai/octocode-ai";
+import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { streamAssistantResponse } from "./agent-loop/assistant-stream.ts";
 import type { AgentEventSink } from "./agent-loop/events.ts";
 import { inputCommitter } from "./agent-loop/input.ts";
@@ -33,14 +34,7 @@ export function runFailureMessage(
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: createEmptyUsage(),
 		stopReason: aborted ? "aborted" : "error",
 		errorMessage: error instanceof Error ? error.message : String(error),
 		timestamp: Date.now(),
@@ -172,7 +166,7 @@ export async function runAgentLoopContinue(
 	}
 
 	const newMessages: AgentMessage[] = [];
-	const currentContext: AgentContext = { ...context };
+	const currentContext: AgentContext = { ...context, messages: [...context.messages] };
 
 	await emit({ type: "agent_start" });
 	await emit({ type: "turn_start" });

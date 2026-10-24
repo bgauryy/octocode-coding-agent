@@ -243,7 +243,7 @@ export function registerNotify(pi: ExtensionAPI, options: NotifyOptions = {}): v
 		runStartedAt = undefined;
 	});
 	pi.on("ui_prompt_start", async (event) => {
-		// Only the agent's dialogs: one the user opened (a `/permission` or `/octocode` picker) needs no call back.
+		// Only the agent's dialogs: one the user opened (a `/permissions` or `/octocode` picker) needs no call back.
 		if (runStartedAt === undefined) return;
 		const type: NoticeType = event.kind === "confirm" ? "permission_prompt" : "elicitation_dialog";
 		fire(

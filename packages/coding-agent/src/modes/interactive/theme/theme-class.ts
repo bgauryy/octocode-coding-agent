@@ -15,7 +15,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import chalk from "chalk";
 import type { SourceInfo } from "../../../core/source-info.ts";
-import type { ThemeColorValue as ColorValue } from "./theme-schema.ts";
+import type { ThemeColorValue } from "./theme-schema.ts";
 import { getTerminalColors, getTerminalTheme, type ThemeAppearance } from "./theme-terminal.ts";
 import {
 	type ResolvedThemeColorValues,
@@ -40,8 +40,8 @@ export interface ThemeStyle extends TextAttributes {
 // ============================================================================
 
 export function resolveVarRefs(
-	value: ColorValue,
-	vars: Record<string, ColorValue>,
+	value: ThemeColorValue,
+	vars: Record<string, ThemeColorValue>,
 	visited = new Set<string>(),
 ): string | number {
 	if (typeof value === "number" || value === "" || value.startsWith("#") || /^ok(lch|hsl)\(/i.test(value)) {
@@ -57,9 +57,9 @@ export function resolveVarRefs(
 	return resolveVarRefs(vars[value], vars, visited);
 }
 
-export function resolveThemeColors<T extends Record<string, ColorValue>>(
+export function resolveThemeColors<T extends Record<string, ThemeColorValue>>(
 	colors: T,
-	vars: Record<string, ColorValue> = {},
+	vars: Record<string, ThemeColorValue> = {},
 ): Record<keyof T, string | number> {
 	const resolved: Record<string, string | number> = {};
 	for (const [key, value] of Object.entries(colors)) {

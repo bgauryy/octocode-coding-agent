@@ -44,7 +44,7 @@ describe("Coding Agent Tools", () => {
 			const result = await bashTool.execute("test-call-8", { command: "echo 'test output'" });
 
 			expect(getTextOutput(result)).toContain("test output");
-			expect(result.details).toBeUndefined();
+			expect(result.details).toMatchObject({ output: "test output\n", exitCode: 0 });
 		});
 
 		it("should report non-zero exit codes as error results with structured content", async () => {

@@ -1,7 +1,7 @@
 import http from "node:http";
 import net from "node:net";
 import { isLoopbackHostname } from "../shared/net.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { type ApiEvent, CLIENT_MARGIN_MS, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
 import type { InstanceRecord } from "./registry.ts";
 

@@ -1,5 +1,6 @@
 import {
 	type ApplicationCursor,
+	type ApplicationActivity,
 	type ApplicationReceipt,
 	type ApplicationSnapshot,
 	parseApplicationFrame,
@@ -22,6 +23,10 @@ export class ApplicationStream {
 				...frame.snapshot,
 				messages: [...frame.snapshot.messages],
 				receipts: [...frame.snapshot.receipts],
+				...(frame.snapshot.activities
+					? retainActivities(frame.snapshot.activities, frame.snapshot.hasMoreActivities)
+					: {}),
+				...(frame.snapshot.errors ? { errors: frame.snapshot.errors.slice(-10) } : {}),
 			};
 			this.cursor = frame.cursor;
 			this.at = frame.at;
@@ -32,7 +37,16 @@ export class ApplicationStream {
 		if (!this.cursor || !this.snapshot || frame.cursor.epoch !== this.cursor.epoch) return this.resync();
 		if (frame.type === "resumed") return frame.cursor.sequence === this.cursor.sequence ? "ignored" : this.resync();
 		if (frame.cursor.sequence <= this.cursor.sequence) return "ignored";
-		if (frame.cursor.sequence !== this.cursor.sequence + 1) return this.resync();
+		if (frame.cursor.sequence !== this.cursor.sequence + 1) {
+			if (
+				frame.type !== "event" ||
+				frame.event.type !== "message.delta" ||
+				frame.event.text === undefined ||
+				frame.fromSequence !== this.cursor.sequence + 1 ||
+				frame.fromSequence >= frame.cursor.sequence
+			)
+				return this.resync();
+		}
 		const event = frame.event;
 		let next = this.snapshot;
 		switch (event.type) {
@@ -53,7 +67,14 @@ export class ApplicationStream {
 				next = {
 					...next,
 					messages: next.messages.map((message) =>
-						message.id === event.messageId ? { ...message, text: event.text ?? message.text + event.delta } : message,
+						message.id === event.messageId
+							? {
+									...message,
+									text: event.text ?? message.text + event.delta,
+									...(event.content === undefined ? {} : { content: event.content }),
+									...(event.full === undefined ? {} : { full: event.full }),
+								}
+							: message,
 					),
 				};
 				break;
@@ -85,7 +106,10 @@ export class ApplicationStream {
 						next.messages.reduce((last, message) => Math.max(last, message.order ?? -1), -1),
 						tools.reduce((last, tool) => Math.max(last, tool.order ?? -1), -1),
 					) + 1;
+				const { type: _type, failed: _failed, ...data } = event;
 				const tool = {
+					...previous,
+					...data,
 					toolCallId: event.toolCallId,
 					order,
 					toolName: event.toolName,
@@ -104,6 +128,23 @@ export class ApplicationStream {
 				};
 				break;
 			}
+			case "application.error":
+				next = { ...next, errors: [...(next.errors ?? []).filter((error) => error.id !== event.id), event].slice(-10) };
+				break;
+			case "session.activity": {
+				const activities = [...(next.activities ?? []).filter((item) => item.id !== event.activity.id), event.activity];
+				next = { ...next, ...retainActivities(activities, next.hasMoreActivities) };
+				break;
+			}
+			case "session.reset":
+				next = {
+					...next,
+					messages: event.messages,
+					tools: event.tools,
+					errors: (event.errors ?? []).slice(-10),
+					...retainActivities(event.activities ?? [], event.hasMoreActivities),
+				};
+				break;
 			case "session.status":
 				next = { ...next, status: event.status };
 				break;
@@ -128,4 +169,15 @@ export class ApplicationStream {
 		this.cursor = undefined;
 		return "resync";
 	}
+}
+
+/** Match the host's retained window so a reconnect does not change which notices need paging. */
+function retainActivities(source: ApplicationActivity[], hasMoreActivities?: boolean) {
+	const activities = source.slice(-50);
+	while (activities.length > 1 && JSON.stringify(activities).length > 32768) activities.shift();
+	return {
+		activities,
+		activityBefore: activities[0]?.id,
+		hasMoreActivities: activities.length < source.length ? true : hasMoreActivities,
+	};
 }

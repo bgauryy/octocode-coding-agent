@@ -1,6 +1,7 @@
 import { type Component, Text } from "@octocodeai/octocode-tui";
 import { theme } from "../../theme/theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
+import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
@@ -10,7 +11,7 @@ export function createResultFallback(output: string, expanded: boolean): Compone
 		return undefined;
 	}
 
-	const lines = output.split("\n");
+	const lines = sanitizeTerminalText(output).split("\n");
 	const displayLines = expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
 	const remaining = lines.length - displayLines.length;
 	let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
@@ -21,14 +22,18 @@ export function createResultFallback(output: string, expanded: boolean): Compone
 }
 
 /** Generic display for a tool with no renderer definition: title, JSON arguments and text output. */
-export function formatToolExecution(toolName: string, args: any, output: string): string {
-	let text = theme.fg("toolTitle", theme.bold(toolName));
+export function formatToolExecution(toolName: string, args: any, output: string, expanded = false): string {
+	let text = theme.fg("toolTitle", theme.bold(sanitizeTerminalText(toolName)));
 	const content = JSON.stringify(args, null, 2);
 	if (content) {
-		text += `\n\n${content}`;
+		text += `\n\n${sanitizeTerminalText(content)}`;
 	}
 	if (output) {
-		text += `\n${output}`;
+		const lines = sanitizeTerminalText(output).split("\n");
+		text += `\n${(expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES)).join("\n")}`;
+		if (!expanded && lines.length > FALLBACK_PREVIEW_LINES) {
+			text += `\n${theme.fg("muted", `... (${lines.length - FALLBACK_PREVIEW_LINES} more lines)`)} ${keyHint("app.tools.expand", "to expand")}`;
+		}
 	}
 	return text;
 }

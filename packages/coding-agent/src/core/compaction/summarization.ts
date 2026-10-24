@@ -18,7 +18,7 @@ import type {
 	TranscriptContext,
 	Usage,
 } from "@octocodeai/octocode-ai/compat";
-import { completeSimple } from "@octocodeai/octocode-ai/compat";
+import { completeSimple, isContextOverflow } from "@octocodeai/octocode-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeConversation } from "./utils.ts";
 
@@ -110,7 +110,7 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
 	return undefined;
 }
 
-export function createSummarizationOptions(
+function createSummarizationOptions(
 	model: Model<any>,
 	apiKey: string | undefined,
 	headers: Record<string, string> | undefined,
@@ -177,6 +177,52 @@ function buildSummarizationContext(promptText: string): TranscriptContext {
 	});
 }
 
+/** Share of the remaining messages each overflow retry drops from the oldest end; its length bounds the retries. */
+const OVERFLOW_TRIM_SHARES = [0.25, 0.4, 0.6];
+
+/**
+ * Drop the oldest `share` of `messages`, at least one, and never the last. A tool result whose call was dropped goes
+ * too, so no result is left without its call. Returns undefined when nothing can be dropped.
+ */
+function dropOldestMessages(messages: AgentMessage[], share: number): AgentMessage[] | undefined {
+	if (messages.length <= 1) return undefined;
+	let cut = Math.min(messages.length - 1, Math.max(1, Math.ceil(messages.length * share)));
+	while (cut < messages.length - 1 && messages[cut].role === "toolResult") cut++;
+	return messages.slice(cut);
+}
+
+/**
+ * Run a summary request over `messages`. When the provider rejects it as a context overflow, drop the oldest
+ * messages and retry, up to {@link OVERFLOW_TRIM_SHARES} times (Codex compacts the same way); then return the failed
+ * response for the caller to report. `buildPrompt` receives the messages that remain.
+ */
+async function completeWithOverflowTrim(
+	messages: AgentMessage[],
+	buildPrompt: (messages: AgentMessage[]) => string,
+	model: Model<any>,
+	options: SimpleStreamOptions,
+	streamFn?: StreamFn,
+	retry?: RetryPolicy,
+	callbacks?: RetryCallbacks,
+): Promise<AssistantMessage> {
+	let remaining = messages;
+	for (let trims = 0; ; trims++) {
+		const response = await completeSummarization(
+			model,
+			buildSummarizationContext(buildPrompt(remaining)),
+			options,
+			streamFn,
+			retry,
+			callbacks,
+		);
+		if (response.stopReason !== "error" || !isContextOverflow(response) || options.signal?.aborted) return response;
+		const share = OVERFLOW_TRIM_SHARES[trims];
+		const trimmed = share === undefined ? undefined : dropOldestMessages(remaining, share);
+		if (!trimmed) return response;
+		remaining = trimmed;
+	}
+}
+
 /** Generate or update a conversation summary and return its provider usage. */
 export async function generateSummaryWithUsage(
 	currentMessages: AgentMessage[],
@@ -201,24 +247,22 @@ export async function generateSummaryWithUsage(
 		basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
 	}
 
-	// Serialize conversation to text so model doesn't try to continue it
-	// Convert to LLM messages first (handles custom types like bashExecution, custom, etc.)
-	const llmMessages = convertToLlm(currentMessages);
-	const conversationText = serializeConversation(llmMessages);
+	const buildPrompt = (messages: AgentMessage[]): string => {
+		// Serialize conversation to text so model doesn't try to continue it.
+		// Convert to LLM messages first (handles custom types like bashExecution, custom, etc.)
+		const conversationText = serializeConversation(convertToLlm(messages));
+		let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
+		if (previousSummary) {
+			promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
+		}
+		return promptText + basePrompt;
+	};
 
-	// Build the prompt with conversation wrapped in tags
-	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
-	if (previousSummary) {
-		promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
-	}
-	promptText += basePrompt;
-
-	const completionOptions = createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId);
-
-	const response = await completeSummarization(
+	const response = await completeWithOverflowTrim(
+		currentMessages,
+		buildPrompt,
 		model,
-		buildSummarizationContext(promptText),
-		completionOptions,
+		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId),
 		streamFn,
 		retry,
 		callbacks,
@@ -267,14 +311,13 @@ export async function generateTurnPrefixSummary(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
+	customInstructions?: string,
 ): Promise<{ text: string; usage: Usage }> {
-	const llmMessages = convertToLlm(messages);
-	const conversationText = serializeConversation(llmMessages);
-	const promptText = `# Conversation\n${conversationText}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
-
-	const response = await completeSummarization(
+	const response = await completeWithOverflowTrim(
+		messages,
+		(remaining) =>
+			`# Conversation\n${serializeConversation(convertToLlm(remaining))}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
 		model,
-		buildSummarizationContext(promptText),
 		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId),
 		streamFn,
 		retry,

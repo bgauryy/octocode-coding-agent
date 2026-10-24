@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { timedTool } from "../shared/render.ts";
+import { timedTool } from "../shared/render/rows.ts";
 import { DebugSession } from "./session.ts";
 
 function resultText(value: unknown): string {
@@ -97,6 +97,7 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 					variablesReference: Type.Optional(Type.Integer()),
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
+					signal?.throwIfAborted();
 					checkDebugInput(params);
 					if (params.action === "terminate") {
 						if (pending) {

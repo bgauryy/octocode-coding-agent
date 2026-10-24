@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-export type HttpHandler = (request: IncomingMessage, response: ServerResponse, origin: string) => Promise<void>;
+type HttpHandler = (request: IncomingMessage, response: ServerResponse, origin: string) => Promise<void>;
 
 const servers: Server[] = [];
 

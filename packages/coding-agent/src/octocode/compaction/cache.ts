@@ -8,7 +8,7 @@ import type {
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "../shared/env.ts";
 import { interactive } from "../shared/interactive.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * Prompt-cache lifetimes, in seconds, for a model that declares no `promptCache` (a custom-provider model in models.json)
@@ -39,9 +39,10 @@ export function inferredPromptCache(model: Pick<Model<Api>, "compat">, grantedLo
 }
 
 /**
- * The lifetime, in ms, of the cache entry a session request writes: the `promptCache` tier for the retention in use
- * (`OCTOCODE_CACHE_RETENTION=long`, else short), the rule Octocode's cache warmer applies (cache-warmer.js `getPromptCacheTtlMs`;
- * Octocode sets no per-request retention for session requests), so idle-warming decisions and the warmer agree. Undefined without that tier.
+ * The lifetime, in ms, of the history cache entry a session request writes: the `promptCache` tier for the history
+ * retention in `env` (`long`, else short; the caller passes the retention its cache policy resolved), the tier the
+ * cache warmer's `getPromptCacheTtlMs` uses, so clearing, idle-warming decisions and the warmer agree. Instructions may
+ * live longer; the history entry is the first one a request loses. Undefined without that tier.
  */
 export function promptCacheTtlMs(
 	promptCache: PromptCache | undefined,

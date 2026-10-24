@@ -5,10 +5,11 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { globalPaths, HOME_NAMES, sessionDir, sessionDirName, workspacePaths } from "../../src/octocode/shared/home.ts";
-import { fingerprint, projectConfigFiles, projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { extraSkillDirs } from "../../src/octocode/skills.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 /** A git repo with `files` written under it, and a nested `pkg/src` folder to start sessions from. */
 function repo(files: Record<string, string> = {}): { root: string; sub: string } {

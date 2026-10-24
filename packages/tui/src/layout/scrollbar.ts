@@ -1,11 +1,8 @@
 import { isImageLine } from "../terminal-image.ts";
-import {
-	extractAnsiCode,
-	getActiveBackgroundAnsi,
-	getGraphemeCellRange,
-	sliceByColumn,
-	visibleWidth,
-} from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { getGraphemeCellRange, sliceByColumn } from "../utils/columns.ts";
+import { getActiveBackgroundAnsi } from "../utils/ansi-tracker.ts";
+import { extractAnsiCode } from "../utils/ansi-codes.ts";
 import type { LayoutBox, ScrollbarGeometry } from "./types.ts";
 
 function replaceScrollbarCell(

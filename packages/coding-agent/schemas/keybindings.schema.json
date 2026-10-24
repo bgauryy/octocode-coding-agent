@@ -301,7 +301,7 @@
     },
     "app.message.dequeue": {
       "$ref": "#/$defs/KeybindingValue",
-      "description": "Restore queued messages"
+      "description": "Restore the last queued message"
     },
     "app.clipboard.pasteImage": {
       "$ref": "#/$defs/KeybindingValue",

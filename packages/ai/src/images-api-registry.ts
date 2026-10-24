@@ -1,12 +1,12 @@
 import type { AssistantImages, ImageApi, ImageModel, ImagesContext, ImagesFunction, ImagesOptions } from "./types.ts";
 
-export type ImagesApiFunction = (
+type ImagesApiFunction = (
 	model: ImageModel<ImageApi>,
 	context: ImagesContext,
 	options?: ImagesOptions,
 ) => Promise<AssistantImages>;
 
-export interface ImagesApiProvider<TApi extends ImageApi = ImageApi, TOptions extends ImagesOptions = ImagesOptions> {
+interface ImagesApiProvider<TApi extends ImageApi = ImageApi, TOptions extends ImagesOptions = ImagesOptions> {
 	api: TApi;
 	generateImages: ImagesFunction<TOptions>;
 }

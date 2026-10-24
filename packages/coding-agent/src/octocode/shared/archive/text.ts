@@ -36,9 +36,6 @@ export function inlineCode(text: string): string {
 	return `${ticks}${pad}${line}${pad}${ticks}`;
 }
 
-/** A message heading's parts (role, custom type, entry id) on one line: the heading cannot be split or forged. */
-export const headingText = oneLine;
-
 /** The header of `file` (up to the line `end`), read in chunks so a large file is never loaded whole; undefined when unreadable. */
 export function readHeader(file: string, end = `\n${MESSAGES_HEADING}\n`): string | undefined {
 	let fd: number | undefined;

@@ -1,8 +1,9 @@
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
 	CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS,
+	estimateInstructionPrefixTokens,
 	getCacheWarmingDelayMs,
-	getPromptCacheTtlMs,
+	getPromptCacheLifetime,
 	IDLE_CONTINUATION_PROBABILITY,
 	isReplayable,
 	lastPromptTokens,
@@ -22,7 +23,12 @@ import type { ModelRuntime } from "./model-runtime.ts";
 import type { SessionManager, UsageEntry } from "./session-manager.ts";
 import type { CacheWarmingMode } from "./settings-manager.ts";
 
-export { getCacheWarmingDelayMs, getPromptCacheTtlMs, isReplayable } from "./cache-warmer/economics.ts";
+export {
+	getCacheWarmingDelayMs,
+	getPromptCacheLifetime,
+	getPromptCacheTtlMs,
+	isReplayable,
+} from "./cache-warmer/economics.ts";
 export { formatCacheWarmingStatus, formatCacheWarmingUsage } from "./cache-warmer/format.ts";
 export type {
 	CacheWarmingAction,
@@ -97,13 +103,14 @@ export class CacheWarmer {
 			cacheRetention: resolveCacheRetention(request.options.cacheRetention, request.options.env),
 			instructionCacheRetention: resolveInstructionCacheRetention(request.options),
 		};
-		const ttlMs = getPromptCacheTtlMs(request.model, options);
-		if (ttlMs === undefined) {
+		const lifetime = getPromptCacheLifetime(request.model, options);
+		if (lifetime === undefined) {
 			this.stop(
 				request.options.cacheRetention === "none" ? "request disabled prompt caching" : "cache lifetime unavailable",
 			);
 			return;
 		}
+		const { ttlMs, layered } = lifetime;
 		const delayMs = getCacheWarmingDelayMs(ttlMs);
 		if (delayMs === undefined) {
 			this.stop("cache lifetime unavailable");
@@ -114,6 +121,7 @@ export class CacheWarmer {
 			options,
 			isCurrent,
 			ttlMs,
+			instructionTokens: layered ? estimateInstructionPrefixTokens(request.context) : 0,
 			delayMs,
 			refreshDeadlineAt: 0,
 			startedAt: Date.now(),
@@ -295,10 +303,12 @@ export class CacheWarmer {
 	private evaluate(run: ActiveRun): CacheWarmingDecision {
 		const model = run.model;
 		const { cached: promptTokens, input } = lastPromptTokens(this.sessionManager.getBranch());
-		const cacheHitCost = price(model, { cacheRead: promptTokens });
+		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
+		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
+		const cacheHitCost = price(model, { cacheRead: expiringTokens });
 		const cacheMissCost = price(
 			model,
-			model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens },
+			model.cost.cacheWrite > 0 ? { cacheWrite: expiringTokens } : { input: expiringTokens },
 		);
 		const warmCost = price(model, {
 			cacheRead: promptTokens,
@@ -307,7 +317,11 @@ export class CacheWarmer {
 		});
 		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
 		const continuationProbability = run.phase === "idle" ? IDLE_CONTINUATION_PROBABILITY : 1;
-		const economicsAvailable = promptTokens > 0 && (cacheHitCost > 0 || cacheMissCost > 0);
+		// Pricing is known when either rate applies; a layered prompt with no expiring history still has known economics.
+		const economicsAvailable =
+			promptTokens > 0 &&
+			(price(model, { cacheRead: promptTokens }) > 0 ||
+				price(model, model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens }) > 0);
 		const expectedSavings = continuationProbability * missCost - warmCost;
 		return {
 			phase: run.phase,

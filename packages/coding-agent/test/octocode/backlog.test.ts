@@ -596,13 +596,13 @@ describe("backlog tool", () => {
 		const t = setup();
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("backlog 1 todo · /backlog");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 todo");
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("backlog 1 ongoing · /backlog");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
 		// Items live on the board (`/backlog`), not in a widget under the editor.
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "update", id: "B1", state: "done", completion: completed(), note: "ok" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBeUndefined();
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
 			"○ Backlog(update B1 → done)",
 		);
@@ -634,11 +634,18 @@ describe("backlog tool", () => {
 });
 
 describe("backlog status", () => {
-	it("names every open state in words and ends with the command that opens the board", () => {
+	it("names every open state and keeps the web hint when there are no open items", () => {
 		expect(countsText({ ongoing: 2, todo: 4, backlog: 1, done: 9 })).toBe(
-			"backlog 2 ongoing · 4 todo · 1 to triage · /backlog",
+			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
 		);
-		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("");
+		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/web · backlogs & activity");
+	});
+
+	it("shows the web workspace hint at session start before any item exists", async () => {
+		const t = setup();
+		const ctx = fakeCtx({ cwd: t.cwd });
+		await t.emit("session_start", {}, ctx);
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
 	});
 
 	it("gives RPC clients the same status text and clears it when the database becomes unreadable", async () => {
@@ -646,7 +653,7 @@ describe("backlog status", () => {
 		const rpc = fakeCtx({ cwd: t.cwd, mode: "rpc" });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, rpc);
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, rpc);
-		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("backlog 1 ongoing · /backlog");
+		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
 		expect(rpc.ui.widgets.has("octocode-backlog")).toBe(false);
 		const db = path.join(t.cwd, "foreign.sqlite");
 		fs.writeFileSync(db, "not sqlite at all, not even close to a header of one".repeat(20));
@@ -758,7 +765,8 @@ describe("/backlog", () => {
 		await t.command.handler("do B1", fakeCtx({ cwd: t.cwd, hasUI: false }));
 		const sent = t.sent.at(-1)!;
 		expect(sent.options).toBeUndefined();
-		expect(sent.message).toContain("Work on backlog item B1: Fix login");
+		expect(sent.message).toMatch(/^Implement backlog item B1\n/);
+		expect(sent.message).toContain("B1 [ongoing p2] Fix login");
 		expect(sent.message).toContain("Goal: Login submits without freezing; focused tests pass.");
 		expect(sent.message).toContain("The form hangs.");
 		expect(sent.message).toContain("from: B1");
@@ -791,7 +799,8 @@ describe("/backlog", () => {
 		expect(store.get("B1")!.priority).toBe(0);
 		await t.command.handler("tui", rpc(["+ Add an item", undefined]));
 		await t.command.handler("B1", rpc(["Delegate to a subagent"]));
-		expect(t.sent.at(-1)!.message).toMatch(/^Delegate backlog item B1 to a subagent with the agent tool: first/);
+		expect(t.sent.at(-1)!.message).toMatch(/^Delegate backlog item B1 to a subagent with the agent tool\./);
+		expect(t.sent.at(-1)!.message).toContain("B1 [ongoing p0] first");
 		expect(t.sent.at(-1)!.message).toContain("Goal: The selected action changes the item and repaints the board.");
 		expect(t.sent.at(-1)!.message).toContain("in the subagent's task");
 		expect(t.sent.at(-1)!.message).toContain("Mark it done only after verifying its goal");
@@ -923,7 +932,8 @@ describe("/backlog", () => {
 		expect(frames[2]).toMatch(/› B1 p2 alpha/);
 		expect(frames[2]).toContain("Left/Right move state");
 		expect(store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
-		expect(t.sent.at(-1)!.message).toMatch(/^Work on backlog item B1: alpha/);
+		expect(t.sent.at(-1)!.message).toMatch(/^Implement backlog item B1\n/);
+		expect(t.sent.at(-1)!.message).toContain("B1 [ongoing p2] alpha");
 	});
 
 	it("orders board rows by state and keeps only the latest done items", async () => {

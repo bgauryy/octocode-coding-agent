@@ -126,7 +126,7 @@ describe("registerNotify", () => {
 		await s.fake.fire("agent_end", answer("", "error", "rate limited"), s.ctx);
 		await s.fake.fire("agent_settled", {}, s.ctx);
 		expect(s.writes.at(-1)).toBe("\x07");
-		// A dialog the user opened between runs (a `/permission` picker) signals nothing.
+		// A dialog the user opened between runs (a `/permissions` picker) signals nothing.
 		vi.advanceTimersByTime(3_000);
 		await s.fake.fire("ui_prompt_start", { kind: "select", title: "Permission mode" }, s.ctx);
 		expect(s.writes).toHaveLength(2);

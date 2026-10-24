@@ -9,11 +9,14 @@ import type { TeamStore } from "./store.ts";
 /** Puts team mail and team notices in front of this agent's model, one Octocode custom message each (`MailDetails`). */
 export class Mail {
 	/** Mail held by an interrupt until the stopped run settles. */
-	private held: { batch: Message[]; parentId: string | undefined } | undefined;
+	private held: { batch: Message[]; parentId: string | undefined; onRejected?: () => void } | undefined;
 	/** Aborted while mail is held: a wait at the end of the run (background work) stops for it. */
 	private holding = new AbortController();
 	/** Notices already handed to Octocode whose database acknowledgement still needs retrying. */
 	private notified: DeadLetter[] = [];
+	/** A dead-letter notice awaiting the host's asynchronous acceptance; do not hand it over twice. */
+	private noticePending = false;
+	private generation = 0;
 	/** Exact messages this process created for the user; shared database ids and sender columns alone are forgeable. */
 	private readonly forUser = new Map<number, { text: string; recipients: ReadonlySet<string> }>();
 
@@ -46,11 +49,13 @@ export class Mail {
 	}
 
 	/** A team notice for this agent, read at its next step; never starts a turn. False when the session cannot take it. */
-	notice(text: string): boolean {
+	notice(text: string, onRejected?: () => void, onAccepted?: () => void): boolean {
 		return this.inject(
 			text,
 			{ messages: [{ from: "team", text, at: Date.now() }] },
 			{ triggerTurn: false, deliverAs: "steer" },
+			onRejected,
+			onAccepted,
 		);
 	}
 
@@ -58,7 +63,12 @@ export class Mail {
 	 * One Octocode message for the whole batch, so a busy agent reads all of it at its next step (steer); only a batch with a
 	 * message that wants action wakes an idle one. False when the session cannot take it: the messages stay pending.
 	 */
-	deliver(batch: Message[], parentId: string | undefined, ctx?: Pick<ExtensionContext, "isIdle" | "abort">): boolean {
+	deliver(
+		batch: Message[],
+		parentId: string | undefined,
+		ctx?: Pick<ExtensionContext, "isIdle" | "abort">,
+		onRejected?: () => void,
+	): boolean {
 		// A steer is read only after the running tool returns: an interrupt stops the run instead (Octocode cancels the tool),
 		// and the batch starts the next turn once the run has settled (`settled`).
 		// The interrupt is not tied to `verified`, on purpose: the agent that started this one is legitimately not "the user"
@@ -69,14 +79,22 @@ export class Mail {
 		if (ctx && !ctx.isIdle() && batch.some((message) => message.interrupt)) {
 			try {
 				ctx.abort();
-				this.held = { batch: [...(this.held?.batch ?? []), ...batch], parentId };
+				const previous = this.held?.onRejected;
+				this.held = {
+					batch: [...(this.held?.batch ?? []), ...batch],
+					parentId,
+					onRejected: () => {
+						previous?.();
+						onRejected?.();
+					},
+				};
 				this.holding.abort();
 				return true;
 			} catch {
 				// The run cannot be stopped: deliver it as a waking message instead.
 			}
 		}
-		return this.send(batch, parentId, false);
+		return this.send(batch, parentId, false, onRejected);
 	}
 
 	/** Aborted while an interrupt holds mail for the stopped run. */
@@ -84,7 +102,7 @@ export class Mail {
 		return this.holding.signal;
 	}
 
-	private send(batch: Message[], parentId: string | undefined, stopped: boolean): boolean {
+	private send(batch: Message[], parentId: string | undefined, stopped: boolean, onRejected?: () => void): boolean {
 		const content = batch
 			.map((message) => messageText(message, { parentId, stopped, fromUser: this.verified(message) }))
 			.join("\n\n");
@@ -92,6 +110,7 @@ export class Mail {
 			content,
 			{ messages: batch },
 			{ triggerTurn: batch.some((message) => message.wake), deliverAs: "steer" },
+			onRejected,
 		);
 	}
 
@@ -101,14 +120,16 @@ export class Mail {
 	 */
 	settled(): boolean {
 		const held = this.held;
-		if (!held || !this.send(held.batch, held.parentId, true)) return false;
+		if (!held || !this.send(held.batch, held.parentId, true, held.onRejected)) return false;
 		this.releaseInterrupt();
 		return true;
 	}
 
 	/** Forgets held mail (the agent left): never started, it stays undelivered. */
 	reset(): void {
+		this.generation++;
 		this.notified = [];
+		this.noticePending = false;
 		this.forUser.clear();
 		this.releaseInterrupt();
 	}
@@ -121,11 +142,27 @@ export class Mail {
 	/** Tells this agent, once and without waking it, about messages it sent that their recipients left without reading. */
 	reportDeadLetters(db: TeamStore, id: string): void {
 		this.recordNotices(db);
+		if (this.noticePending) return;
 		const letters = db.deadLetters(id);
 		if (letters.length === 0) return;
-		if (!this.notice(letters.map(deadLetterText).join("\n\n"))) return;
-		this.notified = letters;
-		this.recordNotices(db);
+		const generation = this.generation;
+		this.noticePending = true;
+		const current = () => generation === this.generation;
+		if (
+			!this.notice(
+				letters.map(deadLetterText).join("\n\n"),
+				() => {
+					if (current()) this.noticePending = false;
+				},
+				() => {
+					if (!current()) return;
+					this.noticePending = false;
+					this.notified = letters;
+					this.recordNotices(db);
+				},
+			)
+		)
+			this.noticePending = false;
 	}
 
 	private recordNotices(db: TeamStore): void {
@@ -138,13 +175,28 @@ export class Mail {
 		content: string,
 		details: MailDetails,
 		options: { triggerTurn?: boolean; deliverAs: "steer" },
+		onRejected?: () => void,
+		onAccepted?: () => void,
 	): boolean {
+		let sending: void | Promise<void>;
 		try {
-			void this.pi.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
-			return true;
+			sending = this.pi.sendMessage({ customType: INTERNAL_MESSAGE_TYPE, content, display: true, details }, options);
 		} catch {
 			return false; // The session ended or is not ready.
 		}
+		if (sending && typeof sending.then === "function")
+			void Promise.resolve(sending).then(
+				() => {
+					try {
+						onAccepted?.();
+					} catch {
+						// Database acknowledgement is retained and retried on the next heartbeat.
+					}
+				},
+				() => onRejected?.(),
+			);
+		else onAccepted?.();
+		return true;
 	}
 }
 

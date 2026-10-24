@@ -28,6 +28,7 @@ export interface ContextUsage {
 }
 
 export interface CompactOptions {
+	customInstructions?: string;
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
 }
@@ -54,7 +55,7 @@ export interface ExtensionContext {
 	model: Model<any> | undefined;
 	/** Models scoped to this session (resolved from `--models` /
 	 *  `enabledModels` settings against the available catalogue). Same set
-	 *  the `/scoped-models` command shows. Empty when no scoping is
+	 *  the `/modelsettings` catalog shows. Empty when no scoping is
 	 *  configured (all available models are usable). Read-only snapshot. */
 	scopedModels: readonly ScopedModel[];
 	/** Current thinking level, when provided by the session runtime. */

@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
-import { errorMessage } from "../shared/util.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 export function webCommand(
 	open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void>,

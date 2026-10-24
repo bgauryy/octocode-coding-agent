@@ -2,14 +2,14 @@ import { type Static, type TSchemaOptions, Type } from "typebox";
 
 export const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export const MODEL_THINKING_LEVELS = ["off", ...THINKING_LEVELS] as const;
-export const MODEL_INPUT_MODALITIES = ["text", "image"] as const;
+const MODEL_INPUT_MODALITIES = ["text", "image"] as const;
 export const CACHE_RETENTIONS = ["none", "short", "long"] as const;
-export const MODEL_PROMPT_CACHE_RETENTIONS = ["short", "long"] as const;
+const MODEL_PROMPT_CACHE_RETENTIONS = ["short", "long"] as const;
 
-export const ThinkingLevelSchema = Type.Enum(THINKING_LEVELS);
+const ThinkingLevelSchema = Type.Enum(THINKING_LEVELS);
 export const ModelThinkingLevelSchema = Type.Enum(MODEL_THINKING_LEVELS);
 export const ModelInputModalitySchema = Type.Enum(MODEL_INPUT_MODALITIES);
-export const CacheRetentionSchema = Type.Enum(CACHE_RETENTIONS);
+const CacheRetentionSchema = Type.Enum(CACHE_RETENTIONS);
 
 const ThinkingLevelMapValueSchema = Type.Union([Type.String(), Type.Null()]);
 export const ThinkingLevelMapSchema = Type.Partial(Type.Record(ModelThinkingLevelSchema, ThinkingLevelMapValueSchema), {
@@ -32,8 +32,8 @@ const ModelCostRatesProperties = {
 	cacheWrite: Type.Number({ description: "Cache-write cost in USD per million tokens." }),
 };
 
-export const ModelCostRatesSchema = Type.Object(ModelCostRatesProperties);
-export const ModelCostTierSchema = Type.Object({
+const ModelCostRatesSchema = Type.Object(ModelCostRatesProperties);
+const ModelCostTierSchema = Type.Object({
 	inputTokensAbove: Type.Number({
 		description: "Use this tier when total request input exceeds this token count.",
 	}),
@@ -62,9 +62,9 @@ function modelImageResizeOptions(options?: TSchemaOptions) {
 	);
 }
 
-export const ModelImageResizeOptionsSchema = modelImageResizeOptions();
+const ModelImageResizeOptionsSchema = modelImageResizeOptions();
 
-export const ModelImageInputLimitsSchema = Type.Object({
+const ModelImageInputLimitsSchema = Type.Object({
 	resize: Type.Optional(
 		modelImageResizeOptions({
 			description: "Cache-safe resize profile applied before a new image enters conversation history.",

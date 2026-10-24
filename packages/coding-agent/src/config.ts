@@ -7,19 +7,12 @@ import { getPackageDir, isBunBinary } from "./config/package-detection.ts";
 import { normalizePath } from "./utils/paths.ts";
 import { stripBom } from "./utils/text.ts";
 
-export {
-	findNodePackageDir,
-	getPackageDir,
-	isBundledNode,
-	isBunBinary,
-	isBunRuntime,
-} from "./config/package-detection.ts";
+export { findNodePackageDir, getPackageDir, isBundledNode, isBunBinary } from "./config/package-detection.ts";
 export {
 	detectInstallMethod,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
 	getUpdateInstruction,
-	type InstallMethod,
 	type SelfUpdateCommand,
 	type SelfUpdatePackageTarget,
 } from "./config/self-update.ts";
@@ -27,6 +20,12 @@ export {
 // =============================================================================
 // Package Asset Paths (shipped with executable)
 // =============================================================================
+
+/** `src/` when running from a source checkout, otherwise `dist/`. */
+function getSourceOrDistDir(): string {
+	const packageDir = getPackageDir();
+	return join(packageDir, existsSync(join(packageDir, "src")) ? "src" : "dist");
+}
 
 /**
  * Get path to built-in themes directory (shipped with package)
@@ -38,10 +37,7 @@ export function getThemesDir(): string {
 	if (isBunBinary) {
 		return join(getPackageDir(), "theme");
 	}
-	// Theme is in modes/interactive/theme/ relative to src/ or dist/
-	const packageDir = getPackageDir();
-	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-	return join(packageDir, srcOrDist, "modes", "interactive", "theme");
+	return join(getSourceOrDistDir(), "modes", "interactive", "theme");
 }
 
 /**
@@ -54,13 +50,11 @@ export function getExportTemplateDir(): string {
 	if (isBunBinary) {
 		return join(getPackageDir(), "export-html");
 	}
-	const packageDir = getPackageDir();
-	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-	return join(packageDir, srcOrDist, "core", "export-html");
+	return join(getSourceOrDistDir(), "core", "export-html");
 }
 
 /** Get path to package.json */
-export function getPackageJsonPath(): string {
+function getPackageJsonPath(): string {
 	return join(getPackageDir(), "package.json");
 }
 
@@ -81,9 +75,7 @@ export function getExamplesPath(): string {
 
 export function getSubagentsDir(): string {
 	if (isBunBinary) return join(getPackageDir(), "roles");
-	const packageDir = getPackageDir();
-	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-	return join(packageDir, srcOrDist, "octocode", "instructions", "roles");
+	return join(getSourceOrDistDir(), "octocode", "instructions", "roles");
 }
 
 /** Public skills come from the installed research CLI; standalone releases stage the same payload. */
@@ -130,26 +122,6 @@ export function getResearchCliInvocation(kind: "research" | "native"): { command
 /** Get path to CHANGELOG.md */
 export function getChangelogPath(): string {
 	return resolve(join(getPackageDir(), "CHANGELOG.md"));
-}
-
-/**
- * Get path to built-in interactive assets directory.
- * - For Bun binary: assets/ next to executable
- * - For Node.js (dist/): dist/modes/interactive/assets/
- * - For source (src/): src/modes/interactive/assets/
- */
-export function getInteractiveAssetsDir(): string {
-	if (isBunBinary) {
-		return join(getPackageDir(), "assets");
-	}
-	const packageDir = getPackageDir();
-	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-	return join(packageDir, srcOrDist, "modes", "interactive", "assets");
-}
-
-/** Get path to a bundled interactive asset */
-export function getBundledInteractiveAssetPath(name: string): string {
-	return join(getInteractiveAssetsDir(), name);
 }
 
 export type InstallChange = { kind: "updated"; version: string } | { kind: "removed" };
@@ -211,10 +183,6 @@ export const VERSION: string = pkg.version || "0.0.0";
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
 
-export function expandTildePath(path: string): string {
-	return normalizePath(path);
-}
-
 /** Get the share viewer URL for a gist ID. */
 export function getShareViewerUrl(gistId: string): string {
 	const baseUrl = process.env.OCTOCODE_SHARE_VIEWER_URL;
@@ -235,7 +203,7 @@ export function getOctocodeHome(env: NodeJS.ProcessEnv = process.env, home = hom
 export function getAgentDir(): string {
 	const envDir = process.env[ENV_AGENT_DIR];
 	if (envDir) {
-		return expandTildePath(envDir);
+		return normalizePath(envDir);
 	}
 	return getOctocodeHome();
 }
@@ -267,19 +235,9 @@ export function getSettingsPath(): string {
 	return join(getAgentDir(), "settings.json");
 }
 
-/** Get path to tools directory */
-export function getToolsDir(): string {
-	return join(getAgentDir(), "tools");
-}
-
 /** Get path to managed binaries directory (fd, rg) */
 export function getBinDir(): string {
 	return join(getAgentDir(), "bin");
-}
-
-/** Get path to prompt templates directory */
-export function getPromptsDir(): string {
-	return join(getAgentDir(), "prompts");
 }
 
 /** Get path to sessions directory */

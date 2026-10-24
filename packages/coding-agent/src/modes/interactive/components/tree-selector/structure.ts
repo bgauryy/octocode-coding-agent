@@ -2,7 +2,7 @@ import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import type { FlatNode, GutterInfo, ToolCallInfo } from "./types.ts";
 
 /** Visible tree maps recomputed after filtering, used for ancestor/descendant navigation. */
-export interface VisibleStructure {
+interface VisibleStructure {
 	multipleRoots: boolean;
 	visibleParent: Map<string, string | null>;
 	visibleChildren: Map<string | null, string[]>;

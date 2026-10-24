@@ -1,5 +1,12 @@
 import { Value } from "typebox/value";
 import { Type, type Static } from "typebox";
+import {
+	ApplicationAssetSchema,
+	ApplicationContentBlockSchema,
+	type ApplicationAsset,
+	type ApplicationAssetInput,
+	type ApplicationAssetPayload,
+} from "./content.ts";
 
 export const APPLICATION_PROTOCOL_VERSION = 1 as const;
 const identity = {
@@ -11,9 +18,16 @@ export const ApplicationCommandSchema = Type.Union([
 		{
 			...identity,
 			action: Type.Union([Type.Literal("prompt"), Type.Literal("steer"), Type.Literal("followUp")]),
-			text: Type.String({ minLength: 1, maxLength: 64000 }),
+			text: Type.String({ maxLength: 64000 }),
+			attachments: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 20 })),
 		},
-		{ additionalProperties: false },
+		{
+			additionalProperties: false,
+			anyOf: [
+				{ properties: { text: { minLength: 1 } } },
+				{ required: ["attachments"], properties: { attachments: { minItems: 1 } } },
+			],
+		},
 	),
 	Type.Object(
 		{
@@ -39,6 +53,17 @@ export interface ApplicationConnection extends AsyncIterable<ApplicationFrame> {
 export interface ApplicationPort {
 	connect(options?: { sessionId?: string; cursor?: ApplicationCursor }): ApplicationConnection;
 	execute(command: ApplicationCommand): Promise<ApplicationReceipt>;
+	readAsset?(
+		id: string,
+		sessionId?: string,
+	): ApplicationAssetPayload | undefined | Promise<ApplicationAssetPayload | undefined>;
+	uploadAsset?(input: ApplicationAssetInput, sessionId?: string): ApplicationAsset | Promise<ApplicationAsset>;
+	history?(options?: {
+		before?: string;
+		activityBefore?: string;
+		limit?: number;
+		sessionId?: string;
+	}): ApplicationHistory | Promise<ApplicationHistory>;
 }
 
 /** Where an item first appeared among the session's messages and tools, so a snapshot keeps their interleaving. */
@@ -50,13 +75,90 @@ const MessageSchema = Type.Object({
 	text: Type.String(),
 	complete: Type.Boolean(),
 	order: OrderSchema,
+	content: Type.Optional(Type.Array(ApplicationContentBlockSchema)),
+	full: Type.Optional(ApplicationAssetSchema),
+	status: Type.Optional(
+		Type.Union([
+			Type.Literal("streaming"),
+			Type.Literal("completed"),
+			Type.Literal("failed"),
+			Type.Literal("aborted"),
+			Type.Literal("interrupted"),
+		]),
+	),
+	timestamp: Type.Optional(Type.Number()),
+	durationMs: Type.Optional(Type.Number()),
+	provider: Type.Optional(Type.String()),
+	model: Type.Optional(Type.String()),
+	responseId: Type.Optional(Type.String()),
+	stopReason: Type.Optional(Type.String()),
+	errorMessage: Type.Optional(Type.String()),
+	usage: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+	toolCallId: Type.Optional(Type.String()),
+	customType: Type.Optional(Type.String()),
+	/** Host policy for context-only custom messages; consumers must not display false. */
+	display: Type.Optional(Type.Boolean()),
+	details: Type.Optional(Type.Unknown()),
 });
+const toolData = {
+	content: Type.Optional(Type.Array(ApplicationContentBlockSchema)),
+	arguments: Type.Optional(Type.Unknown()),
+	parentToolCallId: Type.Optional(Type.String()),
+	messageId: Type.Optional(Type.String()),
+	durationMs: Type.Optional(Type.Number()),
+	structuredContent: Type.Optional(Type.Unknown()),
+	details: Type.Optional(Type.Unknown()),
+	usage: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+	full: Type.Optional(ApplicationAssetSchema),
+};
 const ReceiptSchema = Type.Object({
 	id: Type.String(),
 	status: Type.Union([Type.Literal("accepted"), Type.Literal("completed"), Type.Literal("failed")]),
 	message: Type.Optional(Type.String()),
 });
+export const ApplicationToolSchema = Type.Object({
+	toolCallId: Type.String(),
+	order: OrderSchema,
+	toolName: Type.String(),
+	hint: Type.Optional(Type.String({ maxLength: 200 })),
+	text: Type.String(),
+	status: Type.Union([Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed")]),
+	...toolData,
+});
+export const ApplicationErrorSchema = Type.Object({
+	type: Type.Literal("application.error"),
+	id: Type.String(),
+	code: Type.Literal("content-unavailable"),
+	message: Type.String({ maxLength: 1000 }),
+});
+export type ApplicationError = Static<typeof ApplicationErrorSchema>;
+/** Portable session notices. Persisted entries and live-only notifications have distinct provenance. */
+export const ApplicationActivitySchema = Type.Object({
+	id: Type.String(),
+	kind: Type.String(),
+	at: Type.Number(),
+	text: Type.String({ maxLength: 4000 }),
+	source: Type.Union([Type.Literal("session"), Type.Literal("live")]),
+	entryId: Type.Optional(Type.String()),
+	data: Type.Optional(Type.Unknown()),
+	full: Type.Optional(ApplicationAssetSchema),
+});
+export type ApplicationActivity = Static<typeof ApplicationActivitySchema>;
+const activityState = {
+	activities: Type.Optional(Type.Array(ApplicationActivitySchema)),
+	activityBefore: Type.Optional(Type.String()),
+	hasMoreActivities: Type.Optional(Type.Boolean()),
+};
 export const ApplicationEventSchema = Type.Union([
+	ApplicationErrorSchema,
+	Type.Object({ type: Type.Literal("session.activity"), activity: ApplicationActivitySchema }),
+	Type.Object({
+		type: Type.Literal("session.reset"),
+		messages: Type.Array(MessageSchema),
+		tools: Type.Array(ApplicationToolSchema),
+		errors: Type.Optional(Type.Array(ApplicationErrorSchema)),
+		...activityState,
+	}),
 	Type.Object({
 		type: Type.Union([Type.Literal("message.started"), Type.Literal("message.completed")]),
 		message: MessageSchema,
@@ -66,6 +168,9 @@ export const ApplicationEventSchema = Type.Union([
 		messageId: Type.String(),
 		delta: Type.String(),
 		text: Type.Optional(Type.String()),
+		/** Authoritative ordered blocks, including reasoning and non-text updates. */
+		content: Type.Optional(Type.Array(ApplicationContentBlockSchema)),
+		full: Type.Optional(ApplicationAssetSchema),
 	}),
 	Type.Object({
 		type: Type.Union([Type.Literal("tool.started"), Type.Literal("tool.progress"), Type.Literal("tool.completed")]),
@@ -76,6 +181,7 @@ export const ApplicationEventSchema = Type.Union([
 		hint: Type.Optional(Type.String({ maxLength: 200 })),
 		text: Type.Optional(Type.String()),
 		failed: Type.Optional(Type.Boolean()),
+		...toolData,
 	}),
 	Type.Object({ type: Type.Literal("run.started"), runId: Type.String() }),
 	Type.Object({
@@ -98,20 +204,14 @@ export const ApplicationEventSchema = Type.Union([
 	}),
 ]);
 const SessionStatusSchema = Type.Union([Type.Literal("idle"), Type.Literal("compacting"), Type.Literal("retrying")]);
-export const ApplicationToolSchema = Type.Object({
-	toolCallId: Type.String(),
-	order: OrderSchema,
-	toolName: Type.String(),
-	hint: Type.Optional(Type.String({ maxLength: 200 })),
-	text: Type.String(),
-	status: Type.Union([Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed")]),
-});
 export const ApplicationCursorSchema = Type.Object({
 	sessionId: Type.String(),
 	epoch: Type.String(),
 	sequence: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 });
 export const ApplicationSnapshotSchema = Type.Object({
+	...activityState,
+	errors: Type.Optional(Type.Array(ApplicationErrorSchema)),
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),
 	sessionId: Type.String(),
@@ -130,6 +230,16 @@ const frameFields = {
 	cursor: ApplicationCursorSchema,
 	at: Type.Number(),
 };
+
+export interface ApplicationHistory {
+	messages: ApplicationMessage[];
+	tools: ApplicationTool[];
+	before?: string;
+	hasMore: boolean;
+	activities?: ApplicationActivity[];
+	activityBefore?: string;
+	hasMoreActivities?: boolean;
+}
 export const ApplicationFrameSchema = Type.Union([
 	Type.Object({
 		...frameFields,
@@ -139,6 +249,8 @@ export const ApplicationFrameSchema = Type.Union([
 	Type.Object({
 		...frameFields,
 		type: Type.Literal("event"),
+		/** Inclusive first sequence represented by a coalesced full-text delta; omitted for ordinary events. */
+		fromSequence: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
 		event: ApplicationEventSchema,
 	}),
 	Type.Object({ ...frameFields, type: Type.Literal("resumed") }),
@@ -151,6 +263,14 @@ export const ApplicationFrameSchema = Type.Union([
 
 export function parseApplicationFrame(value: unknown): ApplicationFrame | undefined {
 	return Value.Check(ApplicationFrameSchema, value) ? value : undefined;
+}
+
+export function parseApplicationMessage(value: unknown): ApplicationMessage | undefined {
+	return Value.Check(MessageSchema, value) ? value : undefined;
+}
+
+export function parseApplicationTool(value: unknown): ApplicationTool | undefined {
+	return Value.Check(ApplicationToolSchema, value) ? value : undefined;
 }
 
 export type ApplicationOperation<Operations> = {
@@ -167,7 +287,13 @@ export type ApplicationOperationResult<Operations, K extends ApplicationOperatio
 	? Result
 	: never;
 
-export interface LocalApplicationPort<Event, Operations> extends ApplicationPort {
+/** Copied host snapshots; subscribing does not start work or transfer mutation authority to a view. */
+export interface ApplicationStateSource {
+	getSnapshot(): ApplicationSnapshot;
+	subscribeState(listener: (snapshot: ApplicationSnapshot) => void): () => void;
+}
+
+export interface LocalApplicationPort<Event, Operations> extends ApplicationPort, ApplicationStateSource {
 	subscribeNative(listener: (event: Event) => void): () => void;
 	invoke<K extends ApplicationOperation<Operations>>(
 		operation: K,
@@ -180,6 +306,8 @@ export function applicationCommandFingerprint(command: ApplicationCommand): stri
 		id: command.id,
 		sessionId: command.sessionId,
 		action: command.action,
-		...(command.action === "abort" ? { runId: command.runId } : { text: command.text }),
+		...(command.action === "abort"
+			? { runId: command.runId }
+			: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
 	});
 }

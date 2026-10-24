@@ -5,10 +5,11 @@ import type { Static } from "typebox";
 import type { ExtensionAPI, ExtensionToolContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { systemLines } from "../permission/effect.ts";
-import { changedOnDisk, sha256 } from "../shared/atomic.ts";
-import { canonicalPath, readPaths, resolveToolPath } from "../shared/home.ts";
-import { timedTool } from "../shared/render.ts";
-import { isRecord } from "../shared/util.ts";
+import { changedOnDisk } from "../../utils/atomic-file.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { timedTool } from "../shared/render/rows.ts";
+import { isRecord } from "../../utils/guards.ts";
+import { readPaths, resolveToolPath } from "../shared/home.ts";
 import type { Checkpoints } from "./checkpoint.ts";
 import { readView } from "./coverage.ts";
 import { type QueryOutcome, renderFileCall, renderFileResult } from "./render.ts";
@@ -31,13 +32,10 @@ import { runQuery } from "./tool/run.ts";
 import { formatFeedback, inspectMutations } from "./feedback/diagnostics.ts";
 import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./feedback/parse.ts";
 
-export { BASH_READER, FileGuard, LOCAL_FETCH_READER, type Reader, returnedContent } from "./tool/guard.ts";
-export { copiedElision, formatOutcomes } from "./tool/queries.ts";
-
 /**
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
- * reasoning line. Edits and writes run through the engines of `tool/apply.ts` (exact-match
- * replacement, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
+ * reasoning line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
+ * whitespace/punctuation fallback, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
  * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (while that server is unavailable: printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
  * tool, that changed on disk since then must be read again before a write or delete; an edit re-validates each oldText
  * against the current content and applies when each still matches exactly once. A file whose earlier read left the
@@ -69,7 +67,7 @@ export function registerFileTool(
 				label: "File",
 				description:
 					"Create, edit or delete files; outside paths need approval in manual/workspace modes. Batch each file’s replacements in one query. Queries continue after failures; patch validates all operations first and stops on execution failure. Neither mode rolls back earlier changes. " +
-					"Read existing files first. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll). Inspect every outcome.",
+					"Read existing files first. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll), with a whitespace/punctuation fallback when exact matching fails. Stale single-match edits require an exact LF-normalized anchor. Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
 					"Use file for authored changes; batch related files when useful. After a formatter or generator rewrites files, inspect its changes.",
@@ -284,12 +282,6 @@ export function registerFileTool(
 								)),
 						);
 						if (canonical && !outcomes.at(-1)!.ok) break;
-						if (prepared) {
-							const target = canonicalPath(resolveToolPath(ctx.cwd, query.path));
-							const digest = query.type === "delete" ? null : sha256(Buffer.from(query.content ?? ""));
-							for (const next of prepared.slice(index + 1))
-								if (canonicalPath(resolveToolPath(ctx.cwd, next.query.path)) === target) next.digest = digest;
-						}
 					}
 					const receipts = outcomes.flatMap((outcome) => (outcome.receipt ? [outcome.receipt] : []));
 					const diagnostics = feedback?.enabled && receipts.length ? await inspectMutations(receipts, ctx, signal) : [];

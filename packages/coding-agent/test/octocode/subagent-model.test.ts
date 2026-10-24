@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { closeModels, type ModelRef, resolveModel, routeModel } from "../../src/octocode/subagents/model.ts";
-import { buildAgentArgs } from "../../src/octocode/subagents/process.ts";
+import {
+	closeModels,
+	type ModelRef,
+	resolveModel,
+	routedModel,
+	routeModel,
+} from "../../src/octocode/subagents/model.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 
 const SESSION = { dir: "/s/session", id: "inky-kraken" };
 
@@ -105,5 +111,19 @@ describe("buildAgentArgs model", () => {
 			"anthropic/claude-haiku-5-5:low",
 		);
 		expect(buildAgentArgs(profile, undefined, SESSION)).not.toContain("--model");
+	});
+});
+
+describe("routedModel", () => {
+	it("finds the model a route names, with or without a thinking suffix", () => {
+		expect(routedModel("anthropic/claude-sonnet-5-5", available)).toBe(available[1]);
+		expect(routedModel("openrouter/anthropic/claude-haiku-5-5:high", available)).toBe(available[3]);
+		// A colon that is not a thinking level belongs to the id.
+		expect(routedModel("openrouter/qwen/qwen3:free", available)).toBe(available[4]);
+	});
+
+	it("is undefined for no route or a model the registry does not list", () => {
+		expect(routedModel(undefined, available)).toBeUndefined();
+		expect(routedModel("anthropic/claude-opus-5-5", available)).toBeUndefined();
 	});
 });

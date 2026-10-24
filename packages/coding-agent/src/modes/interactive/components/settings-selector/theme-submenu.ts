@@ -7,13 +7,8 @@ import {
 	Spacer,
 	Text,
 } from "@octocodeai/octocode-tui";
-import {
-	getSettingsListTheme,
-	parseAutoThemeSetting,
-	SYSTEM_THEME_NAME,
-	type TerminalTheme,
-	theme,
-} from "../../theme/theme.ts";
+import { SYSTEM_THEME_NAME } from "../../theme/system-theme.ts";
+import { getSettingsListTheme, parseAutoThemeSetting, type ThemeAppearance, theme } from "../../theme/theme.ts";
 import { SelectSubmenu } from "../settings-submenu.ts";
 import type { SettingsCallbacks } from "./types.ts";
 
@@ -65,7 +60,7 @@ export class ThemeSubmenu extends Container {
 	private inputComponent: Component | undefined;
 	private readonly callbacks: SettingsCallbacks;
 	private readonly availableThemes: string[];
-	private readonly terminalTheme: TerminalTheme;
+	private readonly terminalTheme: ThemeAppearance;
 	private readonly onDone: (selectedValue?: string) => void;
 	private readonly originalThemeSetting: string;
 	private mode: "single" | "automatic";
@@ -75,7 +70,7 @@ export class ThemeSubmenu extends Container {
 
 	constructor(
 		currentThemeSetting: string,
-		terminalTheme: TerminalTheme,
+		terminalTheme: ThemeAppearance,
 		availableThemes: string[],
 		callbacks: SettingsCallbacks,
 		onDone: (selectedValue?: string) => void,

@@ -23,7 +23,10 @@ import {
 	type ModelScope,
 	type ScopedModelItem,
 	sortModelItems,
+	groupModelItems,
 } from "./model-selector/model-items.ts";
+import { errorMessage } from "../../../utils/guards.ts";
+import { modelDetails } from "./model-selector/details.ts";
 
 /**
  * Component that renders a model selector with search
@@ -82,7 +85,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.modelRuntime = modelRuntime;
 		this.scopedModels = scopedModels;
 		this.defaultModel = defaultModel;
-		this.scope = scopedModels.length > 0 ? "scoped" : "all";
+		this.scope = scopedModels.length > 0 && !initialSearchInput?.endsWith("/") ? "scoped" : "all";
 		this.onSelectCallback = onSelect;
 		this.onSelectAsDefaultCallback = onSelectAsDefault;
 		this.onCancelCallback = onCancel;
@@ -91,14 +94,15 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 
-		// Add hint about model filtering
+		this.addChild(new Text(theme.fg("accent", theme.bold("Choose a model for this chat")), 0, 0));
 		if (scopedModels.length > 0) {
 			this.scopeText = new Text(this.getScopeText(), 0, 0);
 			this.addChild(this.scopeText);
 			this.scopeHintText = new Text(this.getScopeHintText(), 0, 0);
 			this.addChild(this.scopeHintText);
 		} else {
-			const hintText = "Only showing models from configured providers. Use /login to add providers.";
+			const hintText =
+				"Models from configured providers. /providers manages access; /modelsettings configures shortcuts.";
 			this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
 		}
 		this.addChild(new Spacer(1));
@@ -204,7 +208,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.refreshStatusMessage = "";
 			this.errorMessage = timedOut
 				? "Model refresh timed out; showing cached models."
-				: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`;
+				: `Could not refresh model catalogs: ${errorMessage(error)}`;
 			this.updateList();
 			this.tui.requestRender();
 		} finally {
@@ -247,7 +251,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private filterModels(query: string): void {
 		if (query) {
-			const filtered = fuzzyFilter(this.activeModels, query, (item) => {
+			const candidates = query.endsWith("/")
+				? this.activeModels.filter((item) => item.provider === query.slice(0, -1))
+				: this.activeModels;
+			const filtered = fuzzyFilter(candidates, query, (item) => {
 				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
 				return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
 			});
@@ -259,7 +266,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					...filtered.filter((item) => !defaultKeys.has(`${item.provider}\0${item.id}`)),
 				];
 			} else {
-				this.filteredModels = filtered;
+				this.filteredModels = this.scope === "all" ? groupModelItems(filtered) : filtered;
 			}
 		} else {
 			this.filteredModels = this.activeModels;
@@ -274,7 +281,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private updateList(): void {
 		this.listContainer.clear();
 
-		const maxVisible = 10;
+		const maxVisible = 6;
 		const startIndex = Math.max(
 			0,
 			Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.filteredModels.length - maxVisible),
@@ -285,6 +292,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredModels[i];
 			if (!item) continue;
+			if (i === startIndex || this.filteredModels[i - 1].provider !== item.provider) {
+				this.listContainer.addChild(new Text(theme.fg("accent", theme.bold(item.provider)), 0, 0));
+			}
 
 			const isSelected = i === this.selectedIndex;
 			const isCurrent = modelsAreEqual(this.currentModel, item.model);
@@ -318,7 +328,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		} else {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(new Text(theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
+			this.listContainer.addChild(new Text(theme.fg("muted", modelDetails(selected.model)), 0, 0));
 		}
 		if (this.refreshStatusMessage) {
 			this.listContainer.addChild(new Spacer(1));

@@ -1,4 +1,4 @@
-import { visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
 
 interface FractionNode {
 	type: "fraction";

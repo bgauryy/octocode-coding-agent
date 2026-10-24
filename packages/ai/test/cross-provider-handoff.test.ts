@@ -25,7 +25,8 @@
 import { writeFileSync } from "fs";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
-import { completeSimple, getEnvApiKey, getModel } from "../src/compat.ts";
+import { completeSimple, getEnvApiKey } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, AssistantMessage, Message, Model, Tool, ToolResultMessage } from "../src/types.ts";
 import { hasAzureOpenAICredentials } from "./azure-utils.ts";
 import { hasCloudflareAiGatewayCredentials, hasCloudflareWorkersAICredentials } from "./cloudflare-utils.ts";
@@ -223,7 +224,7 @@ async function generateContext(
 	pair: ProviderModelPair,
 	apiKey: string,
 ): Promise<{ messages: Message[]; api: Api } | null> {
-	const baseModel = (getModel as (p: string, m: string) => Model<Api> | undefined)(pair.provider, pair.model);
+	const baseModel = (getBuiltinModel as (p: string, m: string) => Model<Api> | undefined)(pair.provider, pair.model);
 	if (!baseModel) {
 		console.log(`  Model not found: ${pair.provider}/${pair.model}`);
 		return null;
@@ -436,7 +437,7 @@ describe.skipIf(!hasAnyApiKey())("Cross-Provider Handoff", () => {
 					},
 				];
 
-				const baseModel = (getModel as (p: string, m: string) => Model<Api> | undefined)(
+				const baseModel = (getBuiltinModel as (p: string, m: string) => Model<Api> | undefined)(
 					targetPair.provider,
 					targetPair.model,
 				);

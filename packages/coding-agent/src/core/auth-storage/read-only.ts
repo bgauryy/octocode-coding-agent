@@ -63,13 +63,19 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 		return this.data;
 	}
 
-	async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+	/** Read a validated credential without evaluating key references or commands. */
+	async readRaw(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
 		options?.signal?.throwIfAborted();
 		const credential = this.load()[providerId];
 		options?.signal?.throwIfAborted();
+		return credential ? structuredClone(credential) : undefined;
+	}
+
+	async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+		const credential = await this.readRaw(providerId, options);
 		if (!credential) return undefined;
 		if (credential.type !== "api_key" || !credential.key || isCommandConfigValue(credential.key)) {
-			return structuredClone(credential);
+			return credential;
 		}
 		return { ...credential, key: resolveConfigValue(credential.key, credential.env) };
 	}

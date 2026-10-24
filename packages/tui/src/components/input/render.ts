@@ -1,10 +1,12 @@
 import { CURSOR_MARKER, renderFakeCursor } from "../../tui.ts";
-import { getGraphemeSegmenter, sliceByColumn, truncateToWidth, visibleWidth } from "../../utils.ts";
+import { truncateToWidth } from "../../utils/truncate.ts";
+import { sliceByColumn } from "../../utils/columns.ts";
+import { getGraphemeSegmenter, visibleWidth } from "../../utils/width.ts";
 
 const segmenter = getGraphemeSegmenter();
 
 /** What the single-line input needs to draw itself. */
-export interface InputRenderState {
+interface InputRenderState {
 	prompt: string;
 	placeholder: string;
 	placeholderStyle: (text: string) => string;
@@ -13,7 +15,7 @@ export interface InputRenderState {
 	focused: boolean;
 }
 
-export interface InputRenderResult {
+interface InputRenderResult {
 	lines: string[];
 	/** First visible value column; absent when the prompt or placeholder was drawn instead. */
 	renderedStartColumn?: number;

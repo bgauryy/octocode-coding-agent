@@ -1,5 +1,6 @@
 import type { Component } from "../tui.ts";
-import { truncateToWidth, visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 
 /**
  * Text component that truncates to fit viewport width

@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
-import { atomicWriteFile, sha256, sha256File } from "../../src/octocode/shared/atomic.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { atomicWriteFile, sha256, sha256File } from "../../src/utils/atomic-file.ts";
 import { fakePermission } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 

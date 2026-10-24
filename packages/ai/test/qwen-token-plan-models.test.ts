@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { getModels, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModels } from "../src/providers/all.ts";
 import { findEnvKeys } from "../src/env-api-keys.ts";
 
 vi.mock("openai", () => {
@@ -120,7 +121,7 @@ const QWEN38_MODEL_CASES: QwenTokenPlanModelCase[] = (
 describe("Qwen Token Plan models", () => {
 	// #9021
 	it("exposes exactly the documented Individual text models", () => {
-		const modelIds = getModels("qwen-token-plan-individual")
+		const modelIds = getBuiltinModels("qwen-token-plan-individual")
 			.map((model) => model.id)
 			.sort();
 
@@ -134,14 +135,14 @@ describe("Qwen Token Plan models", () => {
 	});
 
 	it.each(["qwen-token-plan", "qwen-token-plan-cn"] as const)("exposes all text models on %s", (provider) => {
-		const modelIds = getModels(provider).map((model) => model.id);
+		const modelIds = getBuiltinModels(provider).map((model) => model.id);
 		for (const expected of TEXT_MODELS) {
 			expect(modelIds, `${provider} should include ${expected}`).toContain(expected);
 		}
 	});
 
 	it.each(["qwen-token-plan", "qwen-token-plan-cn"] as const)("omits image models from %s", (provider) => {
-		const modelIds = getModels(provider).map((model) => model.id);
+		const modelIds = getBuiltinModels(provider).map((model) => model.id);
 		for (const excluded of IMAGE_MODELS) {
 			expect(modelIds, `${provider} should not include ${excluded}`).not.toContain(excluded);
 		}
@@ -151,7 +152,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(QWEN_THINKING_MODEL_CASES)(
 		"sends Qwen thinking fields for $provider/$modelId",
 		async ({ provider, modelId }) => {
-			const model = getModels(provider).find((candidate) => candidate.id === modelId);
+			const model = getBuiltinModels(provider).find((candidate) => candidate.id === modelId);
 			expect(model).toBeDefined();
 			if (!model) throw new Error(`Missing model: ${provider}/${modelId}`);
 
@@ -184,7 +185,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(QWEN_REASONING_EFFORT_MODEL_CASES)(
 		"exposes Qwen reasoning_effort levels for $provider/$modelId",
 		({ provider, modelId }) => {
-			const model = getModels(provider).find((candidate) => candidate.id === modelId);
+			const model = getBuiltinModels(provider).find((candidate) => candidate.id === modelId);
 			expect(model).toBeDefined();
 			if (!model) throw new Error(`Missing model: ${provider}/${modelId}`);
 
@@ -202,7 +203,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(QWEN38_MODEL_CASES)(
 		"exposes qwen3.8 reasoning_effort levels for $provider/$modelId",
 		({ provider, modelId }) => {
-			const model = getModels(provider).find((candidate) => candidate.id === modelId);
+			const model = getBuiltinModels(provider).find((candidate) => candidate.id === modelId);
 			expect(model).toBeDefined();
 			if (!model) throw new Error(`Missing model: ${provider}/${modelId}`);
 
@@ -220,7 +221,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(["qwen-token-plan", "qwen-token-plan-cn", "qwen-token-plan-individual"] as const)(
 		"omits retired qwen3.8-max-preview on %s",
 		(provider) => {
-			const modelIds = getModels(provider).map((model) => model.id);
+			const modelIds = getBuiltinModels(provider).map((model) => model.id);
 			expect(modelIds).not.toContain("qwen3.8-max-preview");
 		},
 	);
@@ -228,7 +229,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(QWEN_REASONING_EFFORT_MODEL_CASES)(
 		"sends Qwen reasoning_effort for $provider/$modelId",
 		async ({ provider, modelId }) => {
-			const model = getModels(provider).find((candidate) => candidate.id === modelId);
+			const model = getBuiltinModels(provider).find((candidate) => candidate.id === modelId);
 			expect(model).toBeDefined();
 			if (!model) throw new Error(`Missing model: ${provider}/${modelId}`);
 
@@ -260,7 +261,7 @@ describe("Qwen Token Plan models", () => {
 	it.each(QWEN38_MODEL_CASES)(
 		"sends qwen3.8 xhigh reasoning_effort for $provider/$modelId",
 		async ({ provider, modelId }) => {
-			const model = getModels(provider).find((candidate) => candidate.id === modelId);
+			const model = getBuiltinModels(provider).find((candidate) => candidate.id === modelId);
 			expect(model).toBeDefined();
 			if (!model) throw new Error(`Missing model: ${provider}/${modelId}`);
 

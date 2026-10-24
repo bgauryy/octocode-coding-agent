@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ALLOW_ONCE, DENY, DENY_NOTE, NEEDS_APPROVAL, Permission } from "../../src/octocode/permission/ask.ts";
+import { Permission } from "../../src/octocode/permission/ask.ts";
 import { AUDIT_NOTIFY_PREFIX, childAuditEntry, childAuditMessage } from "../../src/octocode/permission/audit.ts";
 import { auditLines, foldLines } from "../../src/octocode/permission/effect.ts";
 import {
@@ -20,6 +20,7 @@ import {
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 import { nonceFile } from "./nonce-file.ts";
+import { ALLOW_ONCE, DENY, DENY_NOTE, NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 
 const shell: PermissionRequest = {
 	action: "shell",

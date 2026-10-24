@@ -7,11 +7,12 @@ import type {
 	WorkspaceReceipt,
 	WorkspaceSnapshot,
 } from "@octocodeai/octocode-contacts/workspace";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
 import { BrowserConnection } from "../../transport.ts";
+import { createApplicationApi } from "./application-api.ts";
 import type { BacklogStore } from "../extension.ts";
 import { stamp } from "../model/format.ts";
 import { Spinner } from "../ui/primitives.tsx";
@@ -26,6 +27,7 @@ import {
 } from "./model.ts";
 
 interface SessionState {
+	historyRevision: number;
 	status: { tone: ConnectionTone; text: string };
 	application: ApplicationSnapshot | undefined;
 	/** The active run and when this view first saw it, for elapsed and "thought for" times. */
@@ -42,20 +44,33 @@ function createApi(access: string) {
 		return result as T;
 	}
 	return {
+		...createApplicationApi(access),
 		backlogs: async () =>
 			read<Snapshot>(await fetch(WORKSPACE_ROUTES.backlogs, { headers }), "Could not load the board"),
 		mutate: async (payload: BacklogMutation) =>
-			read<{ item: SnapshotItem }>(
+			read<{ item: Pick<SnapshotItem, "ref" | "version"> }>(
 				await fetch(WORKSPACE_ROUTES.backlogs, { method: "POST", headers, body: JSON.stringify(payload) }),
 				"Could not save",
 			),
-		command: async (payload: WorkspaceCommand) =>
-			(
-				await read<{ receipt: WorkspaceReceipt }>(
-					await fetch(WORKSPACE_ROUTES.workspace, { method: "POST", headers, body: JSON.stringify(payload) }),
-					"Request failed",
-				)
-			).receipt,
+		command: async (payload: WorkspaceCommand): Promise<WorkspaceReceipt> => {
+			const result = await read<{ receipt?: unknown }>(
+				await fetch(WORKSPACE_ROUTES.workspace, { method: "POST", headers, body: JSON.stringify(payload) }),
+				"Request failed",
+			);
+			const receipt = result?.receipt as Partial<WorkspaceReceipt> | undefined;
+			if (
+				!receipt ||
+				receipt.id !== payload.id ||
+				receipt.action !== payload.action ||
+				receipt.backlogId !== payload.backlogId ||
+				!["pending", "accepted", "failed"].includes(receipt.status ?? "") ||
+				typeof receipt.at !== "number" ||
+				!Number.isFinite(receipt.at) ||
+				typeof receipt.message !== "string"
+			)
+				throw new Error("Invalid workspace command receipt");
+			return receipt as WorkspaceReceipt;
+		},
 		audit: async (params: { before?: number; backlogId?: string }, signal?: AbortSignal) =>
 			read<{ events: BacklogAudit[]; before?: number }>(
 				await fetch(
@@ -126,21 +141,33 @@ export function LiveProvider({
 	backlog: BacklogStore;
 	children: ReactNode;
 }) {
-	const [live] = useState<LiveSession>(() => {
+	const live = useMemo<LiveSession>(() => {
 		const api = createApi(access);
+		const session = createStore<SessionState>()(() => ({
+			status: { tone: "connecting", text: "Connecting…" },
+			historyRevision: 0,
+			application: undefined,
+			run: undefined,
+			connection: undefined,
+		}));
 		return {
 			backlog,
 			api,
 			workspace: createWorkspaceStore(),
-			session: createStore<SessionState>()(() => ({
-				status: { tone: "connecting", text: "Connecting…" },
-				application: undefined,
-				run: undefined,
-				connection: undefined,
-			})),
-			refresh: async () => backlog.getState().setSnapshot(await api.backlogs()),
+			session,
+			refresh: async () => {
+				const connection = session.getState().connection;
+				const previous = backlog.getState().snapshot;
+				const snapshot = await api.backlogs();
+				if (!connection || session.getState().connection !== connection)
+					throw new Error("Workspace changed while refreshing. Reopen the board to see its current state.");
+				const current = backlog.getState().snapshot;
+				// A slower HTTP read must not rewind a newer push or a later refresh.
+				if (current === previous || snapshot.generatedAt > current.generatedAt)
+					backlog.getState().setSnapshot(snapshot);
+			},
 		};
-	});
+	}, [access, backlog]);
 
 	useEffect(() => {
 		const projection = new ApplicationProjection();
@@ -148,12 +175,13 @@ export function LiveProvider({
 		let domain: WorkspaceSnapshot = { sessionId: "", agents: [], traffic: [], events: [], receipts: [] };
 		let pendingDomain: WorkspaceSnapshot | undefined;
 		let projected: WorkspaceEvent[] = [];
-		const publish = frameScheduler(() => {
-			const merged = mergeEvents(domain, projected, live.session.getState().application?.sessionId);
+		const publishNow = (sessionId: string | undefined) => {
+			const merged = mergeEvents(domain, projected, sessionId);
 			live.workspace
 				.getState()
 				.accept({ ...merged, events: interner.intern(latestProgress(settleToolStarts(merged.events))) });
-		});
+		};
+		const publish = frameScheduler(() => publishNow(live.session.getState().application?.sessionId));
 		const connection = new BrowserConnection(access, {
 			workspace: (snapshot) => {
 				const applicationSessionId = live.session.getState().application?.sessionId;
@@ -174,20 +202,23 @@ export function LiveProvider({
 				});
 			},
 			status: (text) => live.session.setState({ status: { tone: connectionTone(text), text } }),
-			application: (stream) => {
+			application: (stream, frame) => {
+				if (frame.type === "snapshot" || (frame.type === "event" && frame.event.type === "session.reset"))
+					live.session.setState((state) => ({ historyRevision: state.historyRevision + 1 }));
 				const application = stream.snapshot;
-				const previousSessionId = live.session.getState().application?.sessionId;
 				projected = projection.update(application, stream.at);
-				if (
-					application &&
-					domain.sessionId !== application.sessionId &&
-					(!domain.sessionId || (previousSessionId && previousSessionId !== application.sessionId))
-				) {
+				if (application && domain.sessionId !== application.sessionId) {
 					domain =
 						pendingDomain?.sessionId === application.sessionId
 							? pendingDomain
 							: { sessionId: application.sessionId, agents: [], traffic: [], events: [], receipts: [] };
 					pendingDomain = undefined;
+				}
+				if (application && live.workspace.getState().snapshot?.sessionId !== application.sessionId) {
+					// Clear the previous session's drafts before its replacement composer becomes available.
+					// Delaying this reset until the next frame can erase text typed into that new composer.
+					publish.cancel();
+					publishNow(application.sessionId);
 				}
 				live.session.setState({ application, run: projection.run });
 				publish.schedule();

@@ -1,11 +1,12 @@
 import path from "node:path";
 import { AGENT_SCRATCH_ENV, READ_ONLY_ENV, SUBAGENT_ENV, envFlag } from "../shared/env.ts";
 import { mutatedPaths } from "../shared/file-input.ts";
-import { canonicalPath, isWithin, resolveToolPath, workspacePaths, workspaceRoot } from "../shared/home.ts";
+import { resolveToolPath, workspacePaths } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
+import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to

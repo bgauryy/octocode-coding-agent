@@ -45,5 +45,16 @@ export function sortModelItems(
 		if (!aIsDefault && bIsDefault) return 1;
 		return a.provider.localeCompare(b.provider);
 	});
-	return sorted;
+	return groupModelItems(sorted);
+}
+
+/** Keep provider sections together while preserving ranking within each section. */
+export function groupModelItems(items: ModelItem[]): ModelItem[] {
+	const groups = new Map<string, ModelItem[]>();
+	for (const item of items) {
+		const group = groups.get(item.provider) ?? [];
+		group.push(item);
+		groups.set(item.provider, group);
+	}
+	return [...groups.values()].flat();
 }

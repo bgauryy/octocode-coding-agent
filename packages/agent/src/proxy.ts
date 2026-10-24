@@ -11,6 +11,7 @@ import {
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
+import { createPendingAssistantMessage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { type ProxyAssistantMessageEvent, processProxyEvent } from "./proxy/events.ts";
 
 export type { ProxyAssistantMessageEvent } from "./proxy/events.ts";
@@ -23,6 +24,7 @@ type ProxySerializableStreamOptions = Pick<
 	| "reasoning"
 	| "cacheRetention"
 	| "instructionCacheRetention"
+	| "instructionCacheBoundary"
 	| "sessionId"
 	| "headers"
 	| "metadata"
@@ -67,6 +69,7 @@ function buildProxyRequestOptions(options: ProxyStreamOptions): ProxySerializabl
 		reasoning: options.reasoning,
 		cacheRetention: options.cacheRetention,
 		instructionCacheRetention: options.instructionCacheRetention,
+		instructionCacheBoundary: options.instructionCacheBoundary,
 		sessionId: options.sessionId,
 		headers: options.headers,
 		metadata: options.metadata,
@@ -85,23 +88,7 @@ export function streamProxy(
 
 	void (async () => {
 		// Initialize the partial message that we'll build up from events
-		const partial: AssistantMessage = {
-			role: "assistant",
-			stopReason: "pending",
-			content: [],
-			api: model.api,
-			provider: model.provider,
-			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			timestamp: Date.now(),
-		};
+		const partial: AssistantMessage = createPendingAssistantMessage(model);
 
 		let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 

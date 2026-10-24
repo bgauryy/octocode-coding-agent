@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pendingReportsDir, type Report, savePendingReport } from "../../src/octocode/subagents/handoff.ts";
+import { pendingReportsDir, type Report, savePendingReport } from "../../src/octocode/subagents/handoff/pending.ts";
 import { LateReports } from "../../src/octocode/subagents/late.ts";
 
 const stops: Array<() => void> = [];

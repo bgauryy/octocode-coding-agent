@@ -1,6 +1,6 @@
 import type { getKeybindings } from "../../keybindings.ts";
-import { matchesKey } from "../../keys.ts";
-import { cjkBreakRegex, isWhitespaceChar } from "../../utils.ts";
+import { matchesKey } from "../../keys/match.ts";
+import { cjkBreakRegex, isWhitespaceChar } from "../../utils/chars.ts";
 import type { EditorModel } from "./model.ts";
 import { PASTE_MARKER_REGEX, PASTE_MARKER_SINGLE } from "./segmentation.ts";
 
@@ -92,16 +92,7 @@ export function insertCharacter(editor: EditorModel, char: string, skipUndoCoale
 		}
 		// Also auto-trigger when typing letters in a slash command or symbol completion context
 		else if (/[a-zA-Z0-9.\-_]/.test(char) || cjkBreakRegex.test(char)) {
-			const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-			const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
-			// Check if we're in a slash command (with or without space for arguments)
-			if (editor.isInSlashCommandContext(textBeforeCursor)) {
-				editor.autocomplete.tryTriggerAutocomplete();
-			}
-			// Check if we're in a symbol-based completion context like @, #, or provider triggers
-			else if (editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)) {
-				editor.autocomplete.tryTriggerAutocomplete();
-			}
+			triggerAutocompleteInCompletionContext(editor);
 		}
 	} else {
 		editor.autocomplete.updateAutocomplete();
@@ -280,36 +271,11 @@ export function handleBackspace(editor: EditorModel): void {
 		editor.setCursorCol(editor.state.cursorCol - graphemeLength);
 	} else if (editor.state.cursorLine > 0) {
 		editor.pushUndoSnapshot();
-
-		// Merge with previous line
-		const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-		const previousLine = editor.state.lines[editor.state.cursorLine - 1] || "";
-
-		editor.state.lines[editor.state.cursorLine - 1] = previousLine + currentLine;
-		editor.state.lines.splice(editor.state.cursorLine, 1);
-
-		editor.state.cursorLine--;
-		editor.setCursorCol(previousLine.length);
+		mergeWithPreviousLine(editor);
 	}
 
 	editor.notifyChange();
-
-	// Update or re-trigger autocomplete after backspace
-	if (editor.autocomplete.autocompleteState) {
-		editor.autocomplete.updateAutocomplete();
-	} else {
-		// If autocomplete was cancelled (no matches), re-trigger if we're in a completable context
-		const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-		const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
-		// Slash command context
-		if (editor.isInSlashCommandContext(textBeforeCursor)) {
-			editor.autocomplete.tryTriggerAutocomplete();
-		}
-		// Symbol-based completion context like @, #, or provider triggers
-		else if (editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)) {
-			editor.autocomplete.tryTriggerAutocomplete();
-		}
-	}
+	refreshAutocompleteAfterDelete(editor);
 }
 
 export function handleForwardDelete(editor: EditorModel): void {
@@ -334,28 +300,48 @@ export function handleForwardDelete(editor: EditorModel): void {
 		editor.state.lines[editor.state.cursorLine] = before + after;
 	} else if (editor.state.cursorLine < editor.state.lines.length - 1) {
 		editor.pushUndoSnapshot();
-
-		// At end of line - merge with next line
-		const nextLine = editor.state.lines[editor.state.cursorLine + 1] || "";
-		editor.state.lines[editor.state.cursorLine] = currentLine + nextLine;
-		editor.state.lines.splice(editor.state.cursorLine + 1, 1);
+		mergeWithNextLine(editor);
 	}
 
 	editor.notifyChange();
+	refreshAutocompleteAfterDelete(editor);
+}
 
-	// Update or re-trigger autocomplete after forward delete
+/** Join the cursor line onto the previous line and place the cursor at the join. */
+export function mergeWithPreviousLine(editor: EditorModel): void {
+	const currentLine = editor.state.lines[editor.state.cursorLine] || "";
+	const previousLine = editor.state.lines[editor.state.cursorLine - 1] || "";
+	editor.state.lines[editor.state.cursorLine - 1] = previousLine + currentLine;
+	editor.state.lines.splice(editor.state.cursorLine, 1);
+	editor.state.cursorLine--;
+	editor.setCursorCol(previousLine.length);
+}
+
+/** Join the next line onto the cursor line without moving the cursor. */
+export function mergeWithNextLine(editor: EditorModel): void {
+	const currentLine = editor.state.lines[editor.state.cursorLine] || "";
+	const nextLine = editor.state.lines[editor.state.cursorLine + 1] || "";
+	editor.state.lines[editor.state.cursorLine] = currentLine + nextLine;
+	editor.state.lines.splice(editor.state.cursorLine + 1, 1);
+}
+
+/** Update open autocomplete, or re-trigger it when a cancelled completion context is still active. */
+function refreshAutocompleteAfterDelete(editor: EditorModel): void {
 	if (editor.autocomplete.autocompleteState) {
 		editor.autocomplete.updateAutocomplete();
 	} else {
-		const currentLine = editor.state.lines[editor.state.cursorLine] || "";
-		const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
-		// Slash command context
-		if (editor.isInSlashCommandContext(textBeforeCursor)) {
-			editor.autocomplete.tryTriggerAutocomplete();
-		}
-		// Symbol-based completion context like @, #, or provider triggers
-		else if (editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)) {
-			editor.autocomplete.tryTriggerAutocomplete();
-		}
+		triggerAutocompleteInCompletionContext(editor);
+	}
+}
+
+/** Trigger autocomplete when the text before the cursor is a slash command or a symbol trigger such as @ or #. */
+function triggerAutocompleteInCompletionContext(editor: EditorModel): void {
+	const currentLine = editor.state.lines[editor.state.cursorLine] || "";
+	const textBeforeCursor = currentLine.slice(0, editor.state.cursorCol);
+	if (
+		editor.isInSlashCommandContext(textBeforeCursor) ||
+		editor.autocomplete.autocompleteTriggerPattern.test(textBeforeCursor)
+	) {
+		editor.autocomplete.tryTriggerAutocomplete();
 	}
 }

@@ -6,9 +6,11 @@ import { type BashOperations, createLocalBashOperations } from "./bash/local-ope
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "./truncate.ts";
+import { BashExecutionError, type BashToolDetails } from "./bash/outcome.ts";
 
-export { type BashOperations, createLocalBashOperations, createLocalShellOperations } from "./bash/local-operations.ts";
+export { type BashOperations, createLocalBashOperations } from "./bash/local-operations.ts";
+export { type BashToolDetails } from "./bash/outcome.ts";
 
 /** Output limit of `structuredContent.output`, which programmatic callers such as programmatic tool callers receive. */
 const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
@@ -37,12 +39,7 @@ const bashOutputSchema = Type.Object({
 	wall_time_seconds: Type.Number(),
 });
 
-export type BashToolOutput = Static<typeof bashOutputSchema>;
-
-export interface BashToolDetails {
-	truncation?: TruncationResult;
-	fullOutputPath?: string;
-}
+type BashToolOutput = Static<typeof bashOutputSchema>;
 
 export interface BashSpawnContext {
 	command: string;
@@ -106,7 +103,7 @@ export type BashRenderState = {
 	interval: NodeJS.Timeout | undefined;
 };
 
-export interface ShellToolConfig {
+interface ShellToolConfig {
 	name: string;
 	label: string;
 	shellName: string;
@@ -116,7 +113,7 @@ export interface ShellToolConfig {
 	tempFilePrefix: string;
 }
 
-export function createShellToolDefinition(
+function createShellToolDefinition(
 	cwd: string,
 	config: ShellToolConfig,
 	options?: BashToolOptions,
@@ -163,6 +160,7 @@ export function createShellToolDefinition(
 				onUpdate({
 					content: [{ type: "text", text: snapshot.content || "" }],
 					details: {
+						output: snapshot.content,
 						truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
 						fullOutputPath: snapshot.fullOutputPath,
 					},
@@ -214,9 +212,9 @@ export function createShellToolDefinition(
 			const formatOutput = (snapshot: Awaited<ReturnType<typeof finishOutput>>, emptyText = "(no output)") => {
 				const truncation = snapshot.truncation;
 				let text = snapshot.content || emptyText;
-				let details: BashToolDetails | undefined;
+				const details: BashToolDetails = { output: snapshot.content };
 				if (truncation.truncated) {
-					details = { truncation, fullOutputPath: snapshot.fullOutputPath };
+					Object.assign(details, { truncation, fullOutputPath: snapshot.fullOutputPath });
 					const headLines = truncation.headLines ?? 0;
 					const tailLines = truncation.outputLines - headLines;
 					const endLine = truncation.totalLines;
@@ -251,21 +249,41 @@ export function createShellToolDefinition(
 					exitCode = result.exitCode;
 				} catch (err) {
 					const snapshot = await finishOutput();
-					const { text } = formatOutput(snapshot, "");
+					const { text, details } = formatOutput(snapshot, "");
 					if (err instanceof Error && err.message === "aborted") {
-						throw new Error(appendStatus(text, "Command aborted"));
+						throw new BashExecutionError(
+							appendStatus(text, "Command aborted"),
+							{ ...details, termination: "aborted" },
+							text,
+						);
 					}
 					if (err instanceof Error && err.message.startsWith("timeout:")) {
 						const timeoutSecs = err.message.split(":")[1];
-						throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
+						throw new BashExecutionError(
+							appendStatus(text, `Command timed out after ${timeoutSecs} seconds`),
+							{
+								...details,
+								termination: "timeout",
+								timeoutSeconds: Number(timeoutSecs),
+							},
+							text,
+						);
 					}
 					throw err;
 				}
 
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
+				details.exitCode = exitCode;
 				if (exitCode === null) {
-					throw new Error(appendStatus(outputText, "Command terminated without an exit code"));
+					throw new BashExecutionError(
+						appendStatus(outputText, "Command terminated without an exit code"),
+						{
+							...details,
+							termination: "terminated",
+						},
+						outputText,
+					);
 				}
 				const wallTimeSeconds = Math.round((performance.now() - startedAt) / 100) / 10;
 				const fullOutput = await output.readFullOutput(STRUCTURED_OUTPUT_MAX_BYTES);

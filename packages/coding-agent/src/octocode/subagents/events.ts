@@ -1,10 +1,11 @@
 import type { Usage } from "@octocodeai/octocode-ai";
-import { NEEDS_APPROVAL } from "../permission/ask.ts";
+import { NEEDS_APPROVAL } from "../permission/ask/text.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { AUDIT_NOTIFY_PREFIX } from "../permission/audit.ts";
 import { JOB_TYPE } from "../shared/messages.ts";
 import { redactSecrets, visibleControls } from "../shared/sanitize.ts";
 import { Thought, thoughtGist } from "../shared/thought.ts";
-import { addUsage, contentText, emptyUsage, finiteNumber, isRecord, toolHint } from "../shared/util.ts";
+import { addUsage, contentText, emptyUsage, finiteNumber, toolHint } from "../shared/util.ts";
 import { imagesOf } from "./screenshots.ts";
 
 export interface WatchdogLimits {

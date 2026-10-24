@@ -1,17 +1,18 @@
+import { handleWorkflowCommand } from "./workflow-commands.ts";
 /**
  * What happens when the editor is submitted: startup input, bash and slash commands, native and built-in commands,
  * the command picker, and prompts sent to the session.
  */
 
-import { getApplicationPort } from "../../../core/application/index.ts";
 import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-commands.ts";
 import { NATIVE_FEATURE_PATH } from "../../../core/native-tools.ts";
 import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
-export type CommandDispatchHost = Pick<
+type CommandDispatchHost = Pick<
 	InteractiveModeHost,
 	| "defaultEditor"
 	| "editor"
@@ -26,6 +27,7 @@ export type CommandDispatchHost = Pick<
 	| "handleCopyCommand"
 	| "handleDebugCommand"
 	| "handleExportCommand"
+	| "handleGithubCommand"
 	| "handleHotkeysCommand"
 	| "handleImportCommand"
 	| "handleLoginCommand"
@@ -44,8 +46,10 @@ export type CommandDispatchHost = Pick<
 	| "session"
 	| "showError"
 	| "showExtensionSelector"
+	| "showExtensionCustom"
 	| "showModelsSelector"
 	| "showOAuthSelector"
+	| "showQueueManager"
 	| "showSelector"
 	| "showSessionSelector"
 	| "showSettingsSelector"
@@ -65,21 +69,28 @@ export function handleStartupSubmit(host: CommandDispatchHost, text: string): vo
 	host.showStatus("Startup is still in progress");
 }
 
-export function getNativeCommand(host: CommandDispatchHost, name: string) {
+function getNativeCommand(host: CommandDispatchHost, name: string) {
 	return host.session.extensionRunner
 		.getRegisteredCommands()
 		.find((command) => command.name === name && command.sourceInfo.path === NATIVE_FEATURE_PATH);
 }
 
-export async function runNativeCommand(host: CommandDispatchHost, name: string, args = ""): Promise<boolean> {
+async function runNativeCommand(host: CommandDispatchHost, name: string, args = ""): Promise<boolean> {
 	const command = getNativeCommand(host, name);
 	if (!command) return false;
 	await command.handler(args, host.session.extensionRunner.createCommandContext());
 	return true;
 }
 
-export function showCommandPicker(host: CommandDispatchHost, query = "", skillsOnly = false): void {
-	const commands = host.getSlashCommands(true).filter((command) => !skillsOnly || host.skillCommands.has(command.name));
+function showCommandPicker(host: CommandDispatchHost, query = "", skillsOnly = false): void {
+	const commands = host.getSlashCommands(true).filter((command) => {
+		if (skillsOnly) return host.skillCommands.has(command.name);
+		const core = getBuiltinCommand(command.name);
+		if (core) return core.name === command.name;
+		return !host.session.extensionRunner
+			.getRegisteredCommands()
+			.some((entry) => entry.invocationAliases?.includes(command.name));
+	});
 	host.showSelector((done) => {
 		const selector = new CommandSelectorComponent(
 			skillsOnly ? "Skills" : "Commands",
@@ -96,18 +107,22 @@ export function showCommandPicker(host: CommandDispatchHost, query = "", skillsO
 	});
 }
 
-export async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
-	const choices = ["Model cycling", ...(getNativeCommand(host, "models") ? ["Catalog and agent routing"] : [])];
+async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
+	const choices = [
+		"Model shortcuts — choose models for keyboard cycling",
+		...(getNativeCommand(host, "modelsettings") ? ["Model catalog — prices, capabilities and agent routing"] : []),
+	];
 	const llama = host.session.extensionRunner.getCommand("llama");
 	if (llama) choices.push("Local llama.cpp models");
-	const choice = await host.showExtensionSelector("Models", choices);
-	if (choice === "Model cycling") host.showModelsSelector();
-	else if (choice === "Catalog and agent routing") await runNativeCommand(host, "models");
+	const choice = await host.showExtensionSelector("Model settings — /model switches this chat's model", choices);
+	if (choice === choices[0]) host.showModelsSelector();
+	else if (choice === "Model catalog — prices, capabilities and agent routing")
+		await runNativeCommand(host, "modelsettings");
 	else if (choice === "Local llama.cpp models" && llama)
 		await llama.handler("", host.session.extensionRunner.createCommandContext());
 }
 
-export async function showTrustMenu(host: CommandDispatchHost): Promise<void> {
+async function showTrustMenu(host: CommandDispatchHost): Promise<void> {
 	if (!getNativeCommand(host, "trust")) {
 		host.showTrustSelector();
 		return;
@@ -122,12 +137,17 @@ export async function showTrustMenu(host: CommandDispatchHost): Promise<void> {
 	else if (choice === "Revoke native configuration trust") await runNativeCommand(host, "trust", "off");
 }
 
-export async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
+async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
 	if (args && !getBuiltinCommand(name)?.argumentHint) {
 		host.showWarning(`/${name} does not take arguments.`);
 		return;
 	}
 	switch (name) {
+		case "btw":
+		case "context":
+		case "diff":
+			await handleWorkflowCommand(host, name, args);
+			return;
 		case "help":
 			showCommandPicker(host, args);
 			return;
@@ -137,7 +157,7 @@ export async function runBuiltinCommand(host: CommandDispatchHost, name: string,
 		case "settings":
 			host.showSettingsSelector();
 			return;
-		case "models":
+		case "modelsettings":
 			await showModelsMenu(host);
 			return;
 		case "model":
@@ -183,6 +203,9 @@ export async function runBuiltinCommand(host: CommandDispatchHost, name: string,
 		case "tree":
 			host.showTreeSelector();
 			return;
+		case "queue":
+			await host.showQueueManager();
+			return;
 		case "trust":
 			if (!args) await showTrustMenu(host);
 			else if (args === "project") host.showTrustSelector();
@@ -191,17 +214,25 @@ export async function runBuiltinCommand(host: CommandDispatchHost, name: string,
 					host.showWarning("Native project configuration is unavailable.");
 			} else host.showWarning("Usage: /trust [project|config|off]");
 			return;
-		case "login":
+		case "providers":
 			await host.handleLoginCommand(args || undefined);
 			return;
 		case "logout":
 			await host.showOAuthSelector("logout");
 			return;
+		case "github":
+			await host.handleGithubCommand(args);
+			return;
+		case "permissions":
+		case "agents":
+		case "plan":
+			if (!(await runNativeCommand(host, name, args))) host.showWarning(`/${name} requires native features.`);
+			return;
 		case "new":
-			await host.handleClearCommand();
+			await host.handleClearCommand(args || undefined);
 			return;
 		case "compact":
-			await host.handleCompactCommand();
+			await host.handleCompactCommand(args || undefined);
 			return;
 		case "reload":
 			await host.handleReloadCommand();
@@ -253,17 +284,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			}
 		}
 
-		// Queue input during compaction (extension commands execute immediately)
-		if (host.session.isCompacting) {
-			if (host.isExtensionCommand(text)) {
-				host.editor.addToHistory?.(text);
-				host.editor.setText("");
-				await getApplicationPort(host.session).invoke("prompt", text);
-			} else {
-				host.queueCompactionMessage(text, "steer");
-			}
-			return;
-		}
+		if (await handleInputDuringCompaction(host, text, "steer")) return;
 
 		// If streaming, use prompt() with steer behavior
 		// This handles extension commands (execute immediately), prompt template expansion, and queueing

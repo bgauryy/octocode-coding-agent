@@ -10,9 +10,12 @@ import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
 import { addToolExecution } from "./session-render.ts";
+import { applicationRenderer } from "./application-events.ts";
+
+const applicationDriven = new WeakSet<object>();
 
 /** Interactive-mode members used by the agent event handler, including those its run-state events use. */
-export type AgentEventsHost = Pick<
+type AgentEventsHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
 	| "addCacheWarmingUsage"
@@ -23,7 +26,6 @@ export type AgentEventsHost = Pick<
 	| "clearStatusIndicator"
 	| "defaultEditor"
 	| "entriesRenderedByBoundaryCompaction"
-	| "footer"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "getRegisteredToolDefinition"
@@ -59,10 +61,21 @@ export type AgentEventsHost = Pick<
 
 export function subscribeToAgent(host: AgentEventsHost): void {
 	const session = host.session;
-	host.unsubscribe = getApplicationPort(session).subscribeNative(async (event) => {
+	const port = getApplicationPort(session);
+	const render = applicationRenderer(host, port);
+	applicationDriven.add(host);
+	const closeApplication = port.subscribe((event) => {
+		if (host.session === session) render(event);
+	});
+	const closeNative = port.subscribeNative(async (event) => {
 		if (host.session !== session) return;
 		await host.handleEvent(event);
 	});
+	host.unsubscribe = () => {
+		closeApplication();
+		closeNative();
+		applicationDriven.delete(host);
+	};
 }
 
 export async function handleEvent(host: AgentEventsHost, event: AgentSessionEvent): Promise<void> {
@@ -70,8 +83,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 		await host.init();
 	}
 
-	host.footer.invalidate();
 	host.programStatus.handleEvent(event);
+	if (applicationDriven.has(host) && handleNativeContentNotice(host, event)) return;
 
 	switch (event.type) {
 		case "agent_start":
@@ -143,19 +156,16 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				}
 				host.renderSessionEntries(retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)));
 				for (const entryId of entriesAfterCompaction) host.entriesRenderedByBoundaryCompaction.add(entryId);
-				host.footer.invalidate();
 				host.ui.requestRender();
 			}
 			break;
 
 		case "session_info_changed":
 			host.updateTerminalTitle();
-			host.footer.invalidate();
 			host.ui.requestRender();
 			break;
 
 		case "thinking_level_changed":
-			host.footer.invalidate();
 			host.updateEditorBorderColor();
 			break;
 
@@ -175,10 +185,19 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 					host.hiddenThinkingLabel,
 					host.outputPad,
 					host.getMarkdownTransformers(),
+					{
+						readAsset: (id) => getApplicationPort(host.session).readAsset(id),
+						showImages: host.settingsManager.getShowImages(),
+						imageWidthCells: host.settingsManager.getImageWidthCells(),
+						requestRender: () => host.ui.requestRender(),
+					},
 				);
 				host.streamingMessage = event.message;
 				host.chatContainer.addChild(host.streamingComponent);
-				host.streamingComponent.updateContent(host.streamingMessage, true);
+				host.streamingComponent.updateMessage(
+					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
+					true,
+				);
 				host.ui.requestRender();
 			}
 			break;
@@ -186,12 +205,21 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 		case "message_update":
 			if (host.streamingComponent && event.message.role === "assistant") {
 				host.streamingMessage = event.message;
-				host.streamingComponent.updateContent(host.streamingMessage, true);
+				host.streamingComponent.updateMessage(
+					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
+					true,
+				);
 
 				for (const content of host.streamingMessage.content) {
 					if (content.type === "toolCall") {
 						if (!host.pendingTools.has(content.id)) {
-							const component = addToolExecution(host, content.name, content.id, content.arguments);
+							const component = addToolExecution(
+								host,
+								content.name,
+								content.id,
+								content.arguments,
+								host.streamingComponent,
+							);
 							host.pendingTools.set(content.id, component);
 						} else {
 							const component = host.pendingTools.get(content.id);
@@ -218,7 +246,18 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 							: "Operation aborted";
 					host.streamingMessage.errorMessage = errorMessage;
 				}
-				host.streamingComponent.updateContent(host.streamingMessage, false);
+				host.streamingComponent.updateMessage(
+					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
+					false,
+				);
+				for (const content of host.streamingMessage.content) {
+					if (content.type !== "toolCall") continue;
+					const component =
+						host.pendingTools.get(content.id) ??
+						addToolExecution(host, content.name, content.id, content.arguments, host.streamingComponent);
+					component.updateArgs(content.arguments);
+					host.pendingTools.set(content.id, component);
+				}
 
 				if (host.streamingMessage.stopReason === "aborted" || host.streamingMessage.stopReason === "error") {
 					if (!errorMessage) {
@@ -242,7 +281,6 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				}
 				host.streamingComponent = undefined;
 				host.streamingMessage = undefined;
-				host.footer.invalidate();
 			}
 			host.ui.requestRender();
 			break;
@@ -259,6 +297,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				component = addToolExecution(host, event.toolName, event.toolCallId, event.args);
 				host.pendingTools.set(event.toolCallId, component);
 			}
+			component.updateArgs(event.args);
 			component.markExecutionStarted();
 			host.ui.requestRender();
 			break;
@@ -287,4 +326,31 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 		default:
 			await handleRunStateEvent(host, event);
 	}
+}
+
+/** Native-only notices have no second transcript renderer. Display data arrives through ApplicationEvent. */
+function handleNativeContentNotice(host: AgentEventsHost, event: AgentSessionEvent): boolean {
+	if (
+		event.type === "tool_execution_start" ||
+		event.type === "tool_execution_update" ||
+		event.type === "tool_execution_end"
+	) {
+		if (event.type === "tool_execution_end" && event.isError) host.maybeShowInstallChangeWarning();
+		return true;
+	}
+	if (event.type !== "message_start" && event.type !== "message_update" && event.type !== "message_end") return false;
+	if (event.message.role === "user" || event.message.role === "toolResult") return true;
+	if (event.message.role !== "assistant") return false;
+	if (event.type !== "message_end") {
+		host.streamingMessage = event.message;
+		return true;
+	}
+	if (event.message.stopReason === "error" || event.message.stopReason === "aborted")
+		host.maybeSuggestBugReport(event.message);
+	else {
+		host.maybeShowThinkingDropNotice(event.message);
+		host.maybeShowCacheMissNotice(event.message);
+	}
+	host.streamingMessage = undefined;
+	return true;
 }

@@ -19,7 +19,7 @@ function isExtensionFile(name: string): boolean {
  *
  * Returns resolved paths or null if no entry points found.
  */
-export function resolveExtensionEntries(dir: string): string[] | null {
+function resolveExtensionEntries(dir: string): string[] | null {
 	const packageJsonPath = path.join(dir, "package.json");
 	if (fs.existsSync(packageJsonPath)) {
 		const manifest = readExtensionManifest(packageJsonPath);

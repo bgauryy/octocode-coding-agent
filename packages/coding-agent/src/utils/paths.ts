@@ -106,6 +106,16 @@ export function resolvePath(input: string, baseDir: string = process.cwd(), opti
 	return isAbsolute(normalized) ? nodeResolvePath(normalized) : nodeResolvePath(normalizedBaseDir, normalized);
 }
 
+/** Whether the resolved path `target` is `root` or inside it. */
+export function isUnderPath(target: string, root: string): boolean {
+	const normalizedRoot = nodeResolvePath(root);
+	if (target === normalizedRoot) {
+		return true;
+	}
+	const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
+	return target.startsWith(prefix);
+}
+
 export function getCwdRelativePath(filePath: string, cwd: string): string | undefined {
 	const resolvedCwd = resolvePath(cwd);
 	const resolvedPath = resolvePath(filePath, resolvedCwd);
@@ -114,11 +124,6 @@ export function getCwdRelativePath(filePath: string, cwd: string): string | unde
 		relativePath === "" || (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath));
 
 	return isInsideCwd ? relativePath || "." : undefined;
-}
-
-export function formatPathRelativeToCwdOrAbsolute(filePath: string, cwd: string): string {
-	const absolutePath = resolvePath(filePath, cwd);
-	return (getCwdRelativePath(absolutePath, cwd) ?? absolutePath).split(sep).join("/");
 }
 
 export function markPathIgnoredByCloudSync(path: string): void {

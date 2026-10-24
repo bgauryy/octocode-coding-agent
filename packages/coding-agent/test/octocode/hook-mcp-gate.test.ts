@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEventBus } from "../../src/core/event-bus.ts";
-import type { ToolAnnotations } from "../../src/core/extensions/index.ts";
+import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { registerMcpHookCaller } from "../../src/extensions/mcp/hook-caller.ts";
 import { boundMcpHookCaller } from "../../src/octocode/hooks/mcp-gate.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
@@ -22,9 +22,15 @@ function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } 
 	const permission = new Permission({ pi: fake.pi, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
 	permission.start(ctx);
 	const preToolUse: string[] = [];
+	const gateCalls: ToolCallEvent[] = [];
 	registerToolGates(fake.pi, {
 		permission,
-		provenance: { check: () => (options.hit ? { why: options.hit } : undefined) },
+		provenance: {
+			check: (event: ToolCallEvent) => {
+				gateCalls.push(event);
+				return options.hit ? { why: options.hit } : undefined;
+			},
+		},
 		annotations: (name: string) => hints[name],
 		collab: { reservationGate: async () => undefined },
 		hooks: {
@@ -52,10 +58,17 @@ function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } 
 			signal: new AbortController().signal,
 			waitForConnection: true,
 		});
-	return { run, reached, preToolUse, ctx, fake };
+	return { run, reached, preToolUse, gateCalls, ctx, fake };
 }
 
 describe("hook-initiated MCP calls and the permission gate", () => {
+	it("records hook origin separately from unique invocation IDs", async () => {
+		const { run, gateCalls } = setup("full");
+		await run("list");
+		await run("list");
+		expect(gateCalls.map((call) => call.origin)).toEqual(["hook", "hook"]);
+		expect(gateCalls[0].toolCallId).not.toBe(gateCalls[1].toolCallId);
+	});
 	it("asks in manual mode for a destructive tool and refuses it when the user says no", async () => {
 		const { run, reached, ctx } = setup("manual");
 		ctx.ui.select = async () => "Deny";

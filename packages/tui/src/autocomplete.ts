@@ -23,13 +23,6 @@ import type {
 } from "./autocomplete/types.ts";
 import { fuzzyFilter } from "./fuzzy.ts";
 
-export type {
-	AutocompleteItem,
-	AutocompleteProvider,
-	AutocompleteSuggestions,
-	SlashCommand,
-} from "./autocomplete/types.ts";
-
 // Combined provider that handles both slash commands and file paths
 export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	private commands: (SlashCommand | AutocompleteItem)[];
@@ -76,17 +69,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					const name = "name" in cmd ? cmd.name : cmd.value;
 					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
 					const desc = cmd.description ?? "";
-					const aliases = "aliases" in cmd ? (cmd.aliases ?? []) : [];
 					const detail = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
-					const fullDesc = [detail, aliases.length ? `Aliases: ${aliases.map((alias) => `/${alias}`).join(", ")}` : ""]
-						.filter(Boolean)
-						.join(" — ");
-					return {
-						name,
-						aliases,
-						label: name,
-						description: fullDesc || undefined,
-					};
+					return { name, label: name, description: detail || undefined };
 				});
 
 				const bareNameMatches = fuzzyFilter(commandItems, prefix, (item) =>
@@ -98,12 +82,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					prefix,
 					(item) => item.name,
 				);
-				const nameMatches = [...bareNameMatches, ...fullNameOnlyMatches];
-				const matched = new Set(nameMatches);
-				const aliasMatches = commandItems.filter(
-					(item) => !matched.has(item) && fuzzyFilter([...item.aliases], prefix, (alias) => alias).length > 0,
-				);
-				const filtered = [...nameMatches, ...aliasMatches].map((item) => ({
+				const filtered = [...bareNameMatches, ...fullNameOnlyMatches].map((item) => ({
 					value: item.name,
 					label: item.label,
 					...(item.description && { description: item.description }),
@@ -120,11 +99,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			const commandName = commandText.slice(1, spaceIndex);
 			const argumentText = commandText.slice(spaceIndex + 1);
 
-			const command =
-				this.commands.find((cmd) => {
-					const name = "name" in cmd ? cmd.name : cmd.value;
-					return name === commandName;
-				}) ?? this.commands.find((cmd) => "aliases" in cmd && cmd.aliases?.includes(commandName));
+			const command = this.commands.find((cmd) => ("name" in cmd ? cmd.name : cmd.value) === commandName);
 			if (command && "argumentKind" in command && command.argumentKind === "path") {
 				const items = getFileSuggestions(this.basePath, argumentText);
 				return items.length ? { items, prefix: argumentText } : null;

@@ -167,9 +167,39 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const output = stripAnsi(footer.render(120).join("\n"));
+		expect(output).toContain("Coordinator · thinking high · test/auto");
+		expect(output).toContain("Latest route · gpt-5.6-luna · thinking medium");
+	});
 
-		expect(statsLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
+	it.each([24, 32, 40])("keeps coordinator model and thinking visible in a %s-column footer", (width) => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "gpt-5",
+			provider: "openai",
+			reasoning: true,
+			thinkingLevel: "high",
+			usage: {
+				input: 12345678,
+				output: 12345678,
+				cacheRead: 12345678,
+				cacheWrite: 12345678,
+				cost: { total: 12345.678 },
+			},
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+		const lines = footer.render(width);
+		const output = lines.map(stripAnsi).join("\n");
+		expect(output).toContain(width < 27 ? "Main · think high" : "Coordinator · thinking high");
+		expect(output).toContain("openai/gpt-5");
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+	});
+
+	it("explicitly labels models without thinking support", () => {
+		const session = createSession({ sessionName: "", reasoning: false });
+		expect(new FooterComponent(session, createFooterData(1)).render(100).map(stripAnsi).join("\n")).toContain(
+			"thinking unavailable",
+		);
 	});
 
 	it("includes summary and tool result usage in the total cost", () => {
@@ -278,5 +308,19 @@ describe("FooterComponent width handling", () => {
 
 		expect(stats).toContain("$1.234");
 		expect(stats).not.toContain("(sub)");
+	});
+});
+
+describe("GitHub footer status", () => {
+	it("renders the account and keeps narrow terminals within their width", () => {
+		initTheme("dark");
+		const footer = new FooterComponent(createSession({ sessionName: "test" }), {
+			...createFooterData(1),
+			getGithubStatusText: () => "GitHub ✓ @octo · /github status",
+		});
+		expect(footer.render(80).map(stripAnsi).join("\n")).toContain("GitHub ✓ @octo · /github status");
+		for (const width of [10, 20, 40]) {
+			for (const line of footer.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
 	});
 });

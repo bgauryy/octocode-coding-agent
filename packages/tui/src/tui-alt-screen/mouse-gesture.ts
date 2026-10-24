@@ -1,4 +1,5 @@
-import { getLayoutBoxesAt, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getLayoutBoxesAt } from "../layout.ts";
 import { getLayoutNode } from "../layout-node.ts";
 import type { Terminal } from "../terminal.ts";
 import {

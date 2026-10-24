@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -59,7 +59,7 @@ describe("regression #3592: no-builtin-tools keeps extension tools enabled", () 
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			settingsManager,
 			sessionManager,
 			resourceLoader,
@@ -111,7 +111,7 @@ describe("regression #3592: no-builtin-tools keeps extension tools enabled", () 
 		const { session } = await createAgentSessionFromServices({
 			services,
 			sessionManager,
-			model: getModel("anthropic", "claude-sonnet-4-5"),
+			model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
 			noTools: "builtin",
 		});
 

@@ -8,6 +8,7 @@ import type { ImageContent, Message, TextContent, Tool, ToolResultMessage } from
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { renderSystemMessageUpdate } from "../../utils/text.ts";
 import { splitErrorToolResultImages } from "../transform-messages.ts";
+import { isCacheableBlock } from "./cache-breakpoints.ts";
 import { toClaudeCodeName } from "./claude-code.ts";
 import { type AnthropicEffort, isAnthropicEffort } from "./types.ts";
 
@@ -81,7 +82,7 @@ function convertToolResult(msg: ToolResultMessage, content = msg.content): Conte
 	};
 }
 
-export interface ConvertedAnthropicMessages {
+interface ConvertedAnthropicMessages {
 	messages: MessageParam[];
 	assistantLevels: Map<number, AnthropicEffort>;
 }
@@ -116,7 +117,8 @@ export function convertMessages(
 			// otherwise the transcript was collapsed into the leading message before conversion.
 			const text = renderSystemMessageUpdate(msg);
 			const blocks: ContentBlockParam[] = [];
-			if (text.length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
+			// Whitespace-only text is rejected by the API and cannot carry a cache breakpoint.
+			if (text.trim().length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
 			if (convertToolDefinitions) {
 				const added = msg.toolsAdded ?? [];
 				const redefined = new Set(added.map((tool) => tool.name));
@@ -176,12 +178,10 @@ export function convertMessages(
 						text: sanitizeSurrogates(block.text),
 					});
 				} else if (block.type === "thinking") {
-					// Redacted thinking: pass the opaque payload back as redacted_thinking
+					// Redacted thinking: pass the opaque payload back as redacted_thinking. Without a payload there is
+					// nothing to replay, and the API would reject the block.
 					if (block.redacted) {
-						blocks.push({
-							type: "redacted_thinking",
-							data: block.thinkingSignature!,
-						});
+						if (block.thinkingSignature) blocks.push({ type: "redacted_thinking", data: block.thinkingSignature });
 						continue;
 					}
 					const thinkingSignature = block.thinkingSignature;
@@ -262,30 +262,15 @@ export function convertMessages(
 
 	flushPendingSystemMessages();
 
-	// Add cache_control to the last user or system message to cache conversation history
+	// Mark the last user or system message so the next request reads the conversation history from cache.
 	if (cacheControl && params.length > 0) {
 		const lastMessage = params[params.length - 1];
 		if (lastMessage.role === "user" || lastMessage.role === "system") {
 			if (Array.isArray(lastMessage.content)) {
 				const lastBlock = lastMessage.content[lastMessage.content.length - 1];
-				if (
-					lastBlock &&
-					(lastBlock.type === "text" ||
-						lastBlock.type === "image" ||
-						lastBlock.type === "tool_result" ||
-						lastBlock.type === "tool_addition" ||
-						lastBlock.type === "tool_removal")
-				) {
-					(lastBlock as any).cache_control = cacheControl;
-				}
-			} else if (typeof lastMessage.content === "string") {
-				lastMessage.content = [
-					{
-						type: "text",
-						text: lastMessage.content,
-						cache_control: cacheControl,
-					},
-				] as any;
+				if (isCacheableBlock(lastBlock)) lastBlock.cache_control = cacheControl;
+			} else if (lastMessage.content.trim().length > 0) {
+				lastMessage.content = [{ type: "text", text: lastMessage.content, cache_control: cacheControl }];
 			}
 		}
 	}

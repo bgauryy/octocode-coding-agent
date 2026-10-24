@@ -105,8 +105,8 @@ export async function consumeChatStream(
 		if (delta.content !== null && delta.content !== undefined) {
 			const contentItems = typeof delta.content === "string" ? [delta.content] : delta.content;
 			for (const item of contentItems) {
-				if (typeof item === "string") {
-					const textDelta = sanitizeSurrogates(item);
+				if (typeof item === "string" || item.type === "text") {
+					const textDelta = sanitizeSurrogates(typeof item === "string" ? item : (item.text ?? ""));
 					// GLM models on Mistral send empty content deltas around thinking and tool calls.
 					// Opening a block for them splits thinking into multiple blocks, which Mistral rejects on replay.
 					if (!textDelta) continue;
@@ -148,24 +148,18 @@ export async function consumeChatStream(
 					});
 					continue;
 				}
-
-				if (item.type === "text") {
-					const textDelta = sanitizeSurrogates(item.text ?? "");
-					if (!textDelta) continue;
-					if (!currentBlock || currentBlock.type !== "text") {
-						finishCurrentBlock(currentBlock);
-						currentBlock = { type: "text", text: "" };
-						output.content.push(currentBlock);
-						stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
-					}
-					currentBlock.text += textDelta;
-					stream.push({
-						type: "text_delta",
-						contentIndex: blockIndex(),
-						delta: textDelta,
-						partial: output,
-					});
-				}
+				finishCurrentBlock(currentBlock);
+				currentBlock = null;
+				const imageUrl = item.imageUrl ?? (typeof item.image_url === "string" ? item.image_url : item.image_url?.url);
+				const embedded = imageUrl?.match(/^data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+				output.content.push(
+					embedded
+						? { type: "image", mimeType: embedded[1], data: embedded[2] }
+						: imageUrl
+							? { type: "resource", uri: imageUrl, name: "Generated image" }
+							: { type: "unsupported", providerType: item.type, text: item.text ?? `Provider output: ${item.type}` },
+				);
+				stream.push({ type: "content_update", contentIndex: blockIndex(), partial: output });
 			}
 		}
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { privateDir, sessionOutputDir } from "../shared/home.ts";
 import { abortError } from "./abort.ts";
-import type { BrowserSession } from "./cdp.ts";
+import type { BrowserSession } from "./cdp/browser-session.ts";
 import { applyDownloads } from "./emulation.ts";
 
 type Page = BrowserSession["page"];

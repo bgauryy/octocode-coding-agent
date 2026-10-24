@@ -3,13 +3,14 @@ import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { readOnlyCommand } from "./read-only.ts";
+import { base } from "./words.ts";
 
 /**
  * What a shell command changes, as far as its parse shows: a policy for read-only roles and team reservations, not a
  * sandbox. It sees redirections, `tee`, in-place editors, file-moving programs, git and package-manager commands that
  * change the tree, and scripts passed to `sh -c`. It does not see what an interpreter (`node script.js`, `make`) does.
  */
-export interface ShellMutation {
+interface ShellMutation {
 	/** Paths the command writes, moves or removes, as written (relative to the command's cwd). */
 	writes: string[];
 	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
@@ -86,7 +87,6 @@ const FIND_ACTIONS = new Set([
 	"-fls",
 ]);
 
-const base = (name: string): string => name.split("/").at(-1) ?? name;
 type Word = string | undefined;
 
 /** The words that are not options (a `--` ends them); an unresolved word stays `undefined`. */

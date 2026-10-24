@@ -4,12 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	archiveFolder,
 	ownArchives,
-	RECORD_FILE,
 	type Segment,
-	type SessionRecord,
 	setSessionLineage,
 	writeSegment,
-	writeSessionRecord,
 } from "../../src/octocode/shared/archive.ts";
 import { PARENT_SESSION_ENV } from "../../src/octocode/shared/env.ts";
 import {
@@ -25,6 +22,7 @@ import {
 } from "../../src/octocode/shared/history.ts";
 import { sessionFolder, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { tmp } from "./helpers.ts";
+import { RECORD_FILE, type SessionRecord, writeSessionRecord } from "../../src/octocode/shared/archive/record.ts";
 
 function repo(): string {
 	const cwd = tmp();
@@ -138,6 +136,20 @@ describe("what reads without asking", () => {
 });
 
 describe("search and read", () => {
+	it("refuses a 64 MiB archive before allocating or reading its contents", () => {
+		const file = path.join(tmp(), "oversized.md");
+		const fd = fs.openSync(file, "w");
+		fs.ftruncateSync(fd, 64 * 1024 * 1024);
+		fs.closeSync(fd);
+		const read = vi.spyOn(fs, "readSync");
+		try {
+			expect(() => readHistory(file)).toThrow("Archive read exceeds 32 MiB");
+			expect(read).not.toHaveBeenCalled();
+		} finally {
+			read.mockRestore();
+		}
+	});
+
 	it("shows every hit with context, marks it, names the file and the session, shows a long hit line whole and points to a long context line", async () => {
 		const cwd = repo();
 		session("me", {

@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync } from "../../shared/atomic.ts";
+import { atomicWriteFileSync } from "../../../utils/atomic-file.ts";
 import { workspacePaths } from "../../shared/home.ts";
 import type { Backlog } from "../context.ts";
 import { exportMarkdown } from "../format.ts";
-import { renderBacklogHtml } from "../html.ts";
+import { renderBacklogHtml } from "@octocodeai/octocode-webview";
 import { backlogSnapshot } from "../snapshot.ts";
 
 /** Writes `content` atomically to `<repo>/.octocode/<name>` (the folder is made when missing) and returns the path. */

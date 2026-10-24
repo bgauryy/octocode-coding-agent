@@ -12,7 +12,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode.ts";
+import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());

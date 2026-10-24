@@ -51,6 +51,7 @@ export function buildBaseOptions(
 		transport: options?.transport,
 		cacheRetention: options?.cacheRetention,
 		instructionCacheRetention: options?.instructionCacheRetention,
+		instructionCacheBoundary: options?.instructionCacheBoundary,
 		sessionId: options?.sessionId,
 		headers: options?.headers,
 		onPayload: options?.onPayload,

@@ -1,7 +1,8 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import { newMember } from "../identity.ts";
-import type { Member } from "../model.ts";
-import { AGENT_ID_ENV, type TeamStore } from "../store.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
+import { type TeamStore } from "../store.ts";
+import { AGENT_ID_ENV } from "../store/env.ts";
 
 /** Names drawn in turn when other processes keep taking them. */
 const JOIN_ATTEMPTS = 8;

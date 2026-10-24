@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { commandsFor, parseHooks } from "../../src/octocode/hooks/config.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 
 const handlers = [
 	{ type: "command", command: "echo policy" },

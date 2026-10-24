@@ -41,7 +41,6 @@ export type ResolvedRequestAuth =
 			env?: Record<string, string>;
 	  }
 	| { ok: false; error: string };
-export { clearApiKeyCache } from "./provider-composer.ts";
 
 /**
  * Synchronous compatibility facade exposed to extensions.

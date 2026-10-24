@@ -15,7 +15,6 @@ import type { SlashCommandInfo } from "../../slash-commands.ts";
 import type * as AgentEvents from "./agent-events.ts";
 import type { ExtensionContext } from "./context.ts";
 import type {
-	AgentBeforeSettleEventResult,
 	BeforeAgentStartEventResult,
 	BeforeProviderRequestEventResult,
 	ContextEventResult,
@@ -25,7 +24,6 @@ import type {
 	SessionBeforeTreeResult,
 	ToolCallEventResult,
 	ToolResultEventResult,
-	TurnEndEventResult,
 	UserBashEventResult,
 } from "./events.ts";
 import type {
@@ -111,14 +109,14 @@ export interface ExtensionAPI {
 	on(event: "agent_end", handler: ExtensionHandler<AgentEvents.AgentEndEvent>): () => void;
 	on(
 		event: "agent_before_settle",
-		handler: ExtensionHandler<AgentEvents.AgentBeforeSettleEvent, AgentBeforeSettleEventResult>,
+		handler: ExtensionHandler<AgentEvents.AgentBeforeSettleEvent, AgentEvents.BoundaryResult>,
 	): () => void;
 	on(event: "agent_interrupted", handler: ExtensionHandler<AgentEvents.AgentInterruptedEvent>): () => void;
 	on(event: "agent_settled", handler: ExtensionHandler<AgentEvents.AgentSettledEvent>): () => void;
 	on(event: "ui_prompt_start", handler: ExtensionHandler<AgentEvents.UIPromptStartEvent>): () => void;
 	on(event: "ui_prompt_end", handler: ExtensionHandler<AgentEvents.UIPromptEndEvent>): () => void;
 	on(event: "turn_start", handler: ExtensionHandler<AgentEvents.TurnStartEvent>): () => void;
-	on(event: "turn_end", handler: ExtensionHandler<AgentEvents.TurnEndEvent, TurnEndEventResult>): () => void;
+	on(event: "turn_end", handler: ExtensionHandler<AgentEvents.TurnEndEvent, AgentEvents.BoundaryResult>): () => void;
 	on(event: "message_start", handler: ExtensionHandler<AgentEvents.MessageStartEvent>): () => void;
 	on(event: "message_update", handler: ExtensionHandler<AgentEvents.MessageUpdateEvent>): () => void;
 	on(event: "message_end", handler: ExtensionHandler<AgentEvents.MessageEndEvent, MessageEndEventResult>): () => void;
@@ -286,7 +284,7 @@ export interface ExtensionAPI {
 	 *
 	 * If `models` is provided: replaces all existing models for this provider.
 	 * If only `baseUrl` is provided: overrides the URL for existing models.
-	 * If `oauth` is provided: registers OAuth provider for /login support.
+	 * If `oauth` is provided: registers OAuth provider for /providers support.
 	 * If `streamSimple` is provided: registers a custom API stream handler.
 	 *
 	 * During initial extension load this call is queued and applied once the

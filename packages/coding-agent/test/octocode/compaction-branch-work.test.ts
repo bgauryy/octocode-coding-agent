@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cacheClock, idleContinuation, warmingDecision } from "../../src/octocode/compaction/cache.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, clearedResults, sessionCleared } from "../../src/octocode/files/reads.ts";
-import type { FileGuard } from "../../src/octocode/files/tool.ts";
+import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { CACHE_RETENTION_ENV } from "../../src/octocode/shared/env.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";

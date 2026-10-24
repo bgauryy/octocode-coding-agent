@@ -1,3 +1,23 @@
+/**
+ * Keyboard input handling for terminal applications.
+ *
+ * Supports both legacy terminal sequences and Kitty keyboard protocol.
+ * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+ * Reference: https://github.com/sst/opentui/blob/7da92b4088aebfe27b9f691c04163a48821e49fd/packages/core/src/lib/parse.keypress.ts
+ *
+ * Symbol keys are also supported, however some ctrl+symbol combos
+ * overlap with ASCII codes, e.g. ctrl+[ = ESC.
+ * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#legacy-ctrl-mapping-of-ascii-keys
+ * Those can still be * used for ctrl+shift combos
+ *
+ * Public API (exported by the package index from keys/*.ts):
+ * - matchesKey(data, keyId) - Check if input matches a key identifier
+ * - parseKey(data) - Parse input and return the key identifier
+ * - Key - Helper object for creating typed key identifiers
+ * - setKittyProtocolActive(active) - Set global Kitty protocol state
+ * - isKittyProtocolActive() - Query global Kitty protocol state
+ */
+
 import type { KeyId } from "./key-id.ts";
 import { matchesPrintableKey } from "./match-printable.ts";
 import {
@@ -9,7 +29,7 @@ import {
 	matchesRawBackspace,
 	parseKeyId,
 } from "./sequences.ts";
-import { _kittyProtocolActive } from "./state.ts";
+import { isKittyProtocolActive } from "./state.ts";
 import {
 	ARROW_CODEPOINTS,
 	CODEPOINTS,
@@ -62,7 +82,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			);
 
 		case "space":
-			if (!_kittyProtocolActive) {
+			if (!isKittyProtocolActive()) {
 				if (modifier === MODIFIERS.ctrl && data === "\x00") {
 					return true;
 				}
@@ -114,7 +134,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 				// When Kitty protocol is active, legacy sequences are custom terminal mappings
 				// \x1b\r = Kitty's "map shift+enter send_text all \e\r"
 				// \n = Ghostty's "keybind = shift+enter=text:\n"
-				if (_kittyProtocolActive) {
+				if (isKittyProtocolActive()) {
 					return data === "\x1b\r" || data === "\n";
 				}
 				return false;
@@ -133,7 +153,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 				}
 				// \x1b\r is alt+enter only in legacy mode (no Kitty protocol)
 				// When Kitty protocol is active, alt+enter comes as CSI u sequence
-				if (!_kittyProtocolActive) {
+				if (!isKittyProtocolActive()) {
 					return data === "\x1b\r";
 				}
 				return false;
@@ -141,7 +161,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			if (modifier === 0) {
 				return (
 					data === "\r" ||
-					(!_kittyProtocolActive && data === "\n") ||
+					(!isKittyProtocolActive() && data === "\n") ||
 					data === "\x1bOM" || // SS3 M (numpad enter in some terminals)
 					matchesKittySequence(data, CODEPOINTS.enter, 0) ||
 					matchesKittySequence(data, CODEPOINTS.kpEnter, 0)
@@ -295,7 +315,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			if (modifier === MODIFIERS.alt) {
 				return (
 					data === "\x1b[1;3D" ||
-					(!_kittyProtocolActive && data === "\x1bB") ||
+					(!isKittyProtocolActive() && data === "\x1bB") ||
 					data === "\x1bb" ||
 					matchesKittySequence(data, ARROW_CODEPOINTS.left, MODIFIERS.alt)
 				);
@@ -321,7 +341,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 			if (modifier === MODIFIERS.alt) {
 				return (
 					data === "\x1b[1;3C" ||
-					(!_kittyProtocolActive && data === "\x1bF") ||
+					(!isKittyProtocolActive() && data === "\x1bF") ||
 					data === "\x1bf" ||
 					matchesKittySequence(data, ARROW_CODEPOINTS.right, MODIFIERS.alt)
 				);

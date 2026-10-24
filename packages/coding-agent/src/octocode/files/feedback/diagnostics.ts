@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
-import { sha256 } from "../../shared/atomic.ts";
-import { isRecord } from "../../shared/util.ts";
+import { sha256 } from "../../../utils/atomic-file.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import type { MutationReceipt } from "../render.ts";
 import { matchesResponsePath } from "./path.ts";
 
-export type DiagnosticState =
+type DiagnosticState =
 	| "issues"
 	| "observed-empty"
 	| "unpublished"
@@ -15,7 +15,7 @@ export type DiagnosticState =
 	| "pending"
 	| "superseded";
 
-export interface DiagnosticFeedback {
+interface DiagnosticFeedback {
 	path: string;
 	state: DiagnosticState;
 	/** Short, bounded observations; the complete nested tool result stays with its own execution record. */
@@ -75,18 +75,20 @@ export async function inspectMutations(
 	const results: DiagnosticFeedback[] = [];
 	const sessionId = ctx.sessionManager.getSessionId();
 	const callable = ctx.tools.some((tool) => tool.name === TOOL);
+	/** Why `receipt` is no longer worth inspecting: the call was cancelled or the session changed, or the file changed again. */
+	const stale = async (receipt: MutationReceipt): Promise<"cancelled" | "superseded" | undefined> => {
+		if (signal?.aborted || ctx.sessionManager.getSessionId() !== sessionId) return "cancelled";
+		return (await stillCurrent(receipt)) ? undefined : "superseded";
+	};
 	for (const [index, receipt] of [...latest.values()].entries()) {
 		const path = receipt.canonicalPath;
 		if (index >= MAX_FILES) {
 			results.push({ path, state: "pending" });
 			continue;
 		}
-		if (signal?.aborted || ctx.sessionManager.getSessionId() !== sessionId) {
-			results.push({ path, state: "cancelled" });
-			continue;
-		}
-		if (!(await stillCurrent(receipt))) {
-			results.push({ path, state: "superseded" });
+		const before = await stale(receipt);
+		if (before) {
+			results.push({ path, state: before });
 			continue;
 		}
 		if (receipt.digest === null) {
@@ -128,12 +130,9 @@ export async function inspectMutations(
 				results.push({ path, state: signal?.aborted ? "cancelled" : "pending" });
 				continue;
 			}
-			if (signal?.aborted || ctx.sessionManager.getSessionId() !== sessionId) {
-				results.push({ path, state: "cancelled" });
-				continue;
-			}
-			if (!(await stillCurrent(receipt))) {
-				results.push({ path, state: "superseded" });
+			const after = await stale(receipt);
+			if (after) {
+				results.push({ path, state: after });
 				continue;
 			}
 			if (outcome.isError) {

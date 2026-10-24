@@ -11,9 +11,10 @@ import { ThemedText } from "../components/themed-text.ts";
 import { stopThemeWatcher, theme } from "../theme/theme.ts";
 import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by crash reporting. */
-export type CrashReportingHost = Pick<
+type CrashReportingHost = Pick<
 	InteractiveModeHost,
 	| "bugReportHintShown"
 	| "chatContainer"
@@ -40,7 +41,7 @@ export async function handleFatalRuntimeError(
 	prefix: string,
 	error: unknown,
 ): Promise<never> {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	host.showError(`${prefix}: ${message}`);
 	const extensionHint = host.getCrashExtensionHint(error);
 	if (extensionHint) {

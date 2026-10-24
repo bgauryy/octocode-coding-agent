@@ -3,12 +3,13 @@ import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/extens
 import { USER_AUTHOR } from "../../agentdb/author.ts";
 import { say } from "../../shared/commands.ts";
 import { sanitizeTerminalText } from "../../shared/sanitize.ts";
-import { errorMessage } from "../../shared/util.ts";
+import { errorMessage } from "../../../utils/guards.ts";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
 import type { Backlog, BacklogOptions } from "../context.ts";
 import { isState, itemDetail, itemLine } from "../format.ts";
 import { refText } from "../row.ts";
-import { type Item, PRIORITIES, STATES, type UpdateInput } from "../store.ts";
+import { type BacklogStore, type Item, PRIORITIES, type UpdateInput } from "../store.ts";
+import { STATES } from "@octocodeai/octocode-contacts/snapshot";
 
 /** The fields `Edit` changes, one per editor: the text shown for an item, and the store update for the text saved (a list has one entry per line). */
 const EDITABLE: Record<string, { text(item: Item): string; patch(text: string): UpdateInput }> = {
@@ -72,13 +73,13 @@ export function createItemActions(pi: ExtensionAPI, deps: CommandDeps) {
 		ctx: ExtensionCommandContext,
 		backlog: Backlog,
 		item: Item,
-		prompt: (item: Item) => string,
+		prompt: (item: Item, store: BacklogStore) => string,
 	): boolean => {
 		let claimed!: Item;
 		try {
 			backlog.store.dispatch(item.ref, item.version, { ...backlog.actor, kind: "human" }, (next) => {
 				claimed = next;
-				pi.sendUserMessage(prompt(next), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+				pi.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
 			});
 		} catch (error) {
 			say(ctx, errorMessage(error), "warning");

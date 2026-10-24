@@ -1,6 +1,6 @@
 # RFC: expose Octocode through ACP
 
-Date: 2026-10-23. Implemented locally; live editor/provider checks pending.
+Date: 2026-10-23. Implemented locally; actual source CLI session lifecycle checked. Live editor/provider turns remain pending; see [validation](FEATURE_VALIDATION.md).
 
 ## Decision and ownership
 

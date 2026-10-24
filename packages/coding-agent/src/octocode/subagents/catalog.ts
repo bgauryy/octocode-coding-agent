@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFile } from "../shared/atomic.ts";
+import { atomicWriteFile } from "../../utils/atomic-file.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { envFlag } from "../shared/env.ts";
 import { globalPaths, privateDir } from "../shared/home.ts";
-import { DAY_MS, finiteNumber, HOUR_MS, isRecord } from "../shared/util.ts";
+import { DAY_MS, finiteNumber, HOUR_MS } from "../shared/util.ts";
 
 /**
  * Model metadata from models.dev (https://models.dev, MIT), an open catalog of model capabilities, limits and

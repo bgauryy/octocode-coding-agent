@@ -1,8 +1,11 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollbarGeometry, getScrollViewBox, type LayoutFrame } from "../layout.ts";
+import type { LayoutFrame } from "../layout/types.ts";
+import { getScrollbarGeometry } from "../layout/scrollbar.ts";
+import { getScrollViewBox } from "../layout.ts";
 import { isImageLine } from "../terminal-image.ts";
 import { compositeTuiLine } from "../tui.ts";
-import { truncateToWidth, visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { truncateToWidth } from "../utils/truncate.ts";
 import type { ScrollToEndIndicatorRect } from "./types.ts";
 
 /**

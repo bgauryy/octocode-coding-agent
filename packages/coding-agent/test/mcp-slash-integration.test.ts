@@ -56,16 +56,16 @@ describe("unified MCP slash management", () => {
 		return { harness, api, command, notifications, select };
 	}
 
-	it("lists automatic status and dispatches both reconnect spellings to its owner", async () => {
+	it("lists automatic status and dispatches reconnect to its owner", async () => {
 		const { harness, api, command, notifications } = await setup();
 		const reconnect = vi.fn(async () => undefined);
 		registerMcpReconnect(api.events, "octocode", reconnect);
 		await harness.session.prompt("/mcp list");
 		expect(notifications.at(-1)).toContain("octocode: enabled · connected, 12 tools (direct, automatic)");
-		await harness.session.prompt("/mcp status");
+		await harness.session.prompt("/mcp list");
 		expect(notifications.at(-1)).toContain("/mcp reconnect octocode");
-		for (const action of ["reconnect", "restart"]) await harness.session.prompt(`/mcp ${action} octocode`);
-		expect(reconnect).toHaveBeenCalledTimes(2);
+		await harness.session.prompt("/mcp reconnect octocode");
+		expect(reconnect).toHaveBeenCalledTimes(1);
 		expect(notifications.at(-1)).toBe('Reconnected to MCP server "octocode".');
 		expect((await command.getArgumentCompletions?.(""))?.map((item) => item.label)).toEqual([
 			"list",

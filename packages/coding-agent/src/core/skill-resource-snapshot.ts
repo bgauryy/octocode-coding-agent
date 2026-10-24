@@ -244,10 +244,8 @@ function selectSkills(
 	);
 	const selected = new Set<Skill>();
 	for (const name of names) {
-		const actual = commands.filter(
-			(command) => command.source === "skill" && (command.name === name || command.aliases?.includes(name)),
-		);
-		const matches = skillCommands.filter((command) => command.name === name || command.aliases.includes(name));
+		const actual = commands.filter((command) => command.source === "skill" && command.name === name);
+		const matches = skillCommands.filter((command) => command.name === name);
 		if (actual.length !== 1 || matches.length !== 1 || actual[0].sourceInfo.path !== matches[0].skill.sourceInfo.path)
 			throw new Error(`Unknown or ambiguous skill "${name}". Use a skill command name from the current session.`);
 		// The child's model never lists such a skill, so selecting it would silently do nothing.

@@ -111,6 +111,11 @@ export class McpExtensionState {
 	#selectedModel: Model<any> | undefined;
 	/** Sticky `auto` decisions per server, with what they were decided for. See `automaticExposure`. */
 	private readonly automaticExposures = new Map<string, { key: string; exposure: Exclude<McpExposure, "auto"> }>();
+	/** Whether the startup wait ended, so `auto` decisions stick; until then they are provisional. */
+	#automaticSettled = false;
+	/** Revision of each connection's published tool list, so decision keys do not serialize the catalog. */
+	readonly #catalogRevisions = new WeakMap<readonly unknown[], number>();
+	#lastCatalogRevision = 0;
 
 	/** pi tool name to the `<server>\0<tool>` it was assigned to, so names stay unique and stable. */
 	readonly toolOwners = new Map<string, string>();
@@ -210,15 +215,16 @@ export class McpExtensionState {
 
 	/**
 	 * What `auto` exposure resolves to for a server. A server is decided against the combined catalog of all
-	 * enabled servers, so that small catalogs that together exceed the budget are deferred. The decision then
-	 * sticks for the session: another server connecting or leaving never moves this server's tools between
-	 * direct and deferred, which would change the cached tool declarations in the middle of a conversation.
-	 * It is decided again when the server's own tools change, when discovery becomes available or
+	 * enabled servers, so that small catalogs that together exceed the budget are deferred. Until the startup wait ends
+	 * (`settleAutomaticExposure`) the answer is provisional, since servers are still connecting and their order must
+	 * not decide the result. After that it sticks for the session: another server connecting or leaving never moves
+	 * this server's tools between direct and deferred, which would change the cached tool declarations in the middle
+	 * of a conversation. It is decided again when the server's own tools change, when discovery becomes available or
 	 * unavailable, and when the selected model changes, since the declarations change then anyway.
 	 */
 	automaticExposure(entry: McpServerEntry): Exclude<McpExposure, "auto"> {
 		const discovery = canDiscoverTools(this.pi);
-		const key = JSON.stringify([this.automaticCatalog(entry.name), discovery]);
+		const key = `${this.catalogKey(entry)}|${discovery}`;
 		const decided = this.automaticExposures.get(entry.name);
 		if (decided?.key === key) return decided.exposure;
 		const exposure = resolveMcpExposure(
@@ -228,14 +234,45 @@ export class McpExtensionState {
 			discovery,
 			prefersDeferred(entry.name, entry.config),
 		);
-		this.automaticExposures.set(entry.name, { key, exposure });
+		if (this.#automaticSettled) this.automaticExposures.set(entry.name, { key, exposure });
 		return exposure;
+	}
+
+	/**
+	 * What decides a server's contribution to automatic exposure: whether it is enabled, its exposure settings, and the
+	 * revision of its tool list (a new list is a new array, numbered once).
+	 */
+	private catalogKey(entry: McpServerEntry): string {
+		const server = this.findServer(entry.name);
+		const tools = server?.connection?.tools;
+		let revision = 0;
+		if (tools) {
+			revision = this.#catalogRevisions.get(tools) ?? ++this.#lastCatalogRevision;
+			this.#catalogRevisions.set(tools, revision);
+		}
+		return `${server && isEnabled(server)}|${revision}|${JSON.stringify([entry.config.exposure, entry.config.toolExposure])}`;
+	}
+
+	/**
+	 * End the startup wait for `auto` decisions: decide every enabled server now, in name order, against the catalog of
+	 * the servers connected by then, so the split does not depend on which server connected first. Later decisions stick.
+	 */
+	settleAutomaticExposure(): void {
+		if (this.#automaticSettled) return;
+		this.#automaticSettled = true;
+		this.automaticExposures.clear();
+		const enabled = this.servers.filter(isEnabled).sort((a, b) => (a.entry.name < b.entry.name ? -1 : 1));
+		for (const { entry } of enabled) this.automaticExposure(entry);
 	}
 
 	/** Forget the sticky automatic decisions, for a server that goes away or a session that starts. */
 	resetAutomaticExposure(server?: string): void {
-		if (server === undefined) this.automaticExposures.clear();
-		else this.automaticExposures.delete(server);
+		if (server !== undefined) {
+			this.automaticExposures.delete(server);
+			return;
+		}
+		this.automaticExposures.clear();
+		this.#automaticSettled = false;
 	}
 
 	effectiveExposure(entry: McpServerEntry, tool?: string): Exclude<McpExposure, "auto"> {

@@ -133,28 +133,16 @@ it("keeps explicit empty selection empty and refuses unknown selection", () => {
 		skills: [skill],
 		diagnostics: [],
 	});
-	const commands = [
-		{
-			name: "route",
-			aliases: ["skill:route"],
-			description: "fixture",
-			source: "skill" as const,
-			sourceInfo: skill.sourceInfo,
-		},
-	];
+	const commands = [{ name: "route", description: "fixture", source: "skill" as const, sourceInfo: skill.sourceInfo }];
 	expect(adoptSkillResourceSnapshot(selectSkillResourceSnapshot(snapshot, [], commands)).skills).toEqual([]);
-	expect(
-		adoptSkillResourceSnapshot(selectSkillResourceSnapshot(snapshot, ["skill:route"], commands)).skills,
-	).toHaveLength(1);
+	expect(adoptSkillResourceSnapshot(selectSkillResourceSnapshot(snapshot, ["route"], commands)).skills).toHaveLength(1);
 	expect(() => selectSkillResourceSnapshot(snapshot, ["unknown"], commands)).toThrow();
 });
 it("refuses to pass a user-only skill to a child, whose model could never see it", () => {
 	const { make } = fixture();
 	const skill = make("deploy");
 	skill.disableModelInvocation = true;
-	const commands = [
-		{ name: "deploy", aliases: [], description: "fixture", source: "skill" as const, sourceInfo: skill.sourceInfo },
-	];
+	const commands = [{ name: "deploy", description: "fixture", source: "skill" as const, sourceInfo: skill.sourceInfo }];
 	expect(() => captureSkillResourceSnapshot({ skills: [skill], diagnostics: [] }, ["deploy"], commands)).toThrow(
 		'Skill "deploy" sets disable-model-invocation',
 	);

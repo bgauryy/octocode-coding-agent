@@ -8,7 +8,7 @@ import { applyToolModifiers, SettingsManager } from "../../core/settings-manager
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
-import { shortHash } from "../shared/atomic.ts";
+import { shortHash } from "../../utils/atomic-file.ts";
 import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
 import { isMcpTool, LOCAL_RESEARCH_TOOLS } from "../shared/octocode-tools.ts";
 

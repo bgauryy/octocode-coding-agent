@@ -1,10 +1,11 @@
+import type { SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
 import type { ReactNode } from "react";
-import type { BacklogIndex, Item } from "../model/backlog.ts";
+import type { BacklogIndex } from "../model/backlog.ts";
 import { isStale } from "../model/backlog.ts";
 import type { Params } from "../model/route.ts";
 import { Badge, StatusIcon } from "../ui/primitives.tsx";
 
-export function StaleBadge({ item }: { item: Item }) {
+export function StaleBadge({ item }: { item: SnapshotItem }) {
 	if (!isStale(item)) return null;
 	return (
 		<Badge
@@ -17,7 +18,7 @@ export function StaleBadge({ item }: { item: Item }) {
 }
 
 /** One line per item: status, reference and title, with optional trailing detail. */
-export function ItemLine({ item, children }: { item: Item; children?: ReactNode }) {
+export function ItemLine({ item, children }: { item: SnapshotItem; children?: ReactNode }) {
 	return (
 		<span className={`item-line state-${item.state}`}>
 			<StatusIcon state={item.state} />

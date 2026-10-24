@@ -6,7 +6,11 @@ import {
 } from "../../src/octocode/subagents/result-schema.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import fs from "node:fs";
-import { savePendingReport, takePendingReports, releasePendingReports } from "../../src/octocode/subagents/handoff.ts";
+import {
+	savePendingReport,
+	takePendingReports,
+	releasePendingReports,
+} from "../../src/octocode/subagents/handoff/pending.ts";
 import { tmp } from "./helpers.ts";
 
 const schema = {

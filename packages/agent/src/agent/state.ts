@@ -109,6 +109,25 @@ export class PendingMessageQueue {
 	clear(): void {
 		this.messages = [];
 	}
+
+	contains(message: AgentMessage): boolean {
+		return this.messages.includes(message);
+	}
+
+	remove(message: AgentMessage): boolean {
+		const index = this.messages.indexOf(message);
+		if (index < 0) return false;
+		this.messages.splice(index, 1);
+		return true;
+	}
+
+	swap(first: AgentMessage, second: AgentMessage): boolean {
+		const a = this.messages.indexOf(first);
+		const b = this.messages.indexOf(second);
+		if (a < 0 || b < 0) return false;
+		[this.messages[a], this.messages[b]] = [this.messages[b], this.messages[a]];
+		return true;
+	}
 }
 
 /** Turn `prompt()` input into the messages that start a run. */

@@ -59,9 +59,10 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 });
 
 import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 
-const model = getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+const model = getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
 const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: Date.now() }] });
 
 describe("Bedrock 1h cache write cost", () => {

@@ -10,7 +10,7 @@ import {
 	shouldPollGitHead,
 } from "./footer-data-provider/git.ts";
 
-export { findGitPaths, type GitPaths } from "./footer-data-provider/git.ts";
+export { findGitPaths } from "./footer-data-provider/git.ts";
 
 /**
  * Provides git branch and extension statuses - data not otherwise accessible to extensions.
@@ -20,6 +20,7 @@ export class FooterDataProvider {
 	private cwd: string;
 	private static readonly WATCH_DEBOUNCE_MS = 500;
 
+	private githubStatusText: string | undefined;
 	private extensionStatuses = new Map<string, string>();
 	private cachedBranch: string | null | undefined = undefined;
 	private gitPaths: GitPaths | null | undefined = undefined;
@@ -29,6 +30,8 @@ export class FooterDataProvider {
 	private reftableWatcher: FSWatcher | null = null;
 	private reftableTablesListWatcher: FSWatcher | null = null;
 	private reftableTablesListPath: string | null = null;
+	private reftableTablesListListener: ((current: Stats, previous: Stats) => void) | null = null;
+	private gitWatcherGeneration = 0;
 	private branchChangeCallbacks = new Set<() => void>();
 	private availableProviderCount = 0;
 	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,6 +54,14 @@ export class FooterDataProvider {
 			this.cachedBranch = this.resolveGitBranchSync();
 		}
 		return this.cachedBranch;
+	}
+
+	getGithubStatusText(): string | undefined {
+		return this.githubStatusText;
+	}
+
+	setGithubStatusText(text: string): void {
+		if (!this.disposed) this.githubStatusText = text;
 	}
 
 	/** Extension status texts set via ctx.ui.setStatus() */
@@ -89,7 +100,7 @@ export class FooterDataProvider {
 	}
 
 	setCwd(cwd: string): void {
-		if (this.cwd === cwd) {
+		if (this.disposed || this.cwd === cwd) {
 			return;
 		}
 
@@ -143,13 +154,15 @@ export class FooterDataProvider {
 		// One change reaches us through several watchers (HEAD dir, reftable dir, tables.list watch and
 		// poll), and fs.watch can replay events from before the watcher started. Skip the git call when
 		// the files that determine the branch are unchanged since the last successful resolution.
-		const signature = readGitStateSignature(this.gitPaths);
+		const gitPaths = this.gitPaths;
+		const signature = readGitStateSignature(gitPaths);
 		if (signature !== null && signature === this.lastRefreshSignature) return;
 
 		this.refreshInFlight = true;
 		try {
 			const nextBranch = await this.resolveGitBranchAsync();
-			if (this.disposed) return;
+			// A repository switch can complete before the old git subprocess does.
+			if (this.disposed || this.gitPaths !== gitPaths) return;
 			this.lastRefreshSignature = nextBranch === null ? null : signature;
 			if (this.cachedBranch !== undefined && this.cachedBranch !== nextBranch) {
 				this.cachedBranch = nextBranch;
@@ -197,6 +210,8 @@ export class FooterDataProvider {
 	}
 
 	private clearGitWatchers(): void {
+		// A closed watcher can still deliver callbacks; invalidate those before closing any watcher.
+		this.gitWatcherGeneration++;
 		closeWatcher(this.headWatcher);
 		this.headWatcher = null;
 		if (this.headWatchFilePath && this.headWatchFileListener) {
@@ -208,10 +223,11 @@ export class FooterDataProvider {
 		this.reftableWatcher = null;
 		closeWatcher(this.reftableTablesListWatcher);
 		this.reftableTablesListWatcher = null;
-		if (this.reftableTablesListPath) {
-			unwatchFile(this.reftableTablesListPath);
-			this.reftableTablesListPath = null;
+		if (this.reftableTablesListPath && this.reftableTablesListListener) {
+			unwatchFile(this.reftableTablesListPath, this.reftableTablesListListener);
 		}
+		this.reftableTablesListPath = null;
+		this.reftableTablesListListener = null;
 		if (this.gitWatcherRetryTimer) {
 			clearTimeout(this.gitWatcherRetryTimer);
 			this.gitWatcherRetryTimer = null;
@@ -236,7 +252,12 @@ export class FooterDataProvider {
 
 	private setupGitWatcher(): void {
 		this.clearGitWatchers();
-		if (!this.gitPaths) return;
+		if (this.disposed || !this.gitPaths) return;
+		const generation = this.gitWatcherGeneration;
+		const current = () => !this.disposed && this.gitWatcherGeneration === generation;
+		const onError = () => {
+			if (current()) this.handleGitWatcherError();
+		};
 
 		const pollGitHead = shouldPollGitHead(this.gitPaths.repoDir);
 
@@ -246,25 +267,28 @@ export class FooterDataProvider {
 		this.headWatcher = watchWithErrorHandler(
 			dirname(this.gitPaths.headPath),
 			(_eventType, filename) => {
-				if (!filename || filename === "HEAD") {
+				if (current() && (!filename || filename === "HEAD")) {
 					this.scheduleRefresh();
 				}
 			},
-			() => this.handleGitWatcherError(),
+			onError,
 		);
 		if (pollGitHead) {
+			// WSL polling must still work if the native watcher failed synchronously and scheduled a retry.
+			const pollGeneration = this.gitWatcherGeneration;
 			this.headWatchFilePath = this.gitPaths.headPath;
-			this.headWatchFileListener = (current, previous) => {
+			this.headWatchFileListener = (next, previous) => {
 				if (
-					current.mtimeMs !== previous.mtimeMs ||
-					current.ctimeMs !== previous.ctimeMs ||
-					current.size !== previous.size
+					!this.disposed &&
+					this.gitWatcherGeneration === pollGeneration &&
+					(next.mtimeMs !== previous.mtimeMs || next.ctimeMs !== previous.ctimeMs || next.size !== previous.size)
 				) {
 					this.scheduleRefresh();
 				}
 			};
 			watchFile(this.headWatchFilePath, { interval: 1000 }, this.headWatchFileListener);
 		}
+		if (!current()) return;
 		if (!this.headWatcher && !pollGitHead) {
 			return;
 		}
@@ -276,9 +300,9 @@ export class FooterDataProvider {
 			this.reftableWatcher = watchWithErrorHandler(
 				reftableDir,
 				() => {
-					this.scheduleRefresh();
+					if (current()) this.scheduleRefresh();
 				},
-				() => this.handleGitWatcherError(),
+				onError,
 			);
 			if (!this.reftableWatcher) {
 				return;
@@ -290,22 +314,22 @@ export class FooterDataProvider {
 				this.reftableTablesListWatcher = watchWithErrorHandler(
 					tablesListPath,
 					() => {
-						this.scheduleRefresh();
+						if (current()) this.scheduleRefresh();
 					},
-					() => this.handleGitWatcherError(),
+					onError,
 				);
 				if (!this.reftableTablesListWatcher) {
 					return;
 				}
-				watchFile(tablesListPath, { interval: 250 }, (current, previous) => {
+				this.reftableTablesListListener = (next, previous) => {
 					if (
-						current.mtimeMs !== previous.mtimeMs ||
-						current.ctimeMs !== previous.ctimeMs ||
-						current.size !== previous.size
+						current() &&
+						(next.mtimeMs !== previous.mtimeMs || next.ctimeMs !== previous.ctimeMs || next.size !== previous.size)
 					) {
 						this.scheduleRefresh();
 					}
-				});
+				};
+				watchFile(tablesListPath, { interval: 250 }, this.reftableTablesListListener);
 			}
 		}
 	}
@@ -315,4 +339,5 @@ export class FooterDataProvider {
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
 	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
->;
+> &
+	Partial<Pick<FooterDataProvider, "getGithubStatusText">>;

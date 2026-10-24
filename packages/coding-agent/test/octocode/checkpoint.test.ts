@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { registerCheckpoints } from "../../src/octocode/files/checkpoint-command.ts";
 import { inheritCheckpoints, sessionIdOf } from "../../src/octocode/files/checkpoint-store.ts";
-import { FileGuard, registerFileTool } from "../../src/octocode/files/tool.ts";
-import * as importedModule1 from "../../src/octocode/shared/atomic.ts";
-import { sha256 } from "../../src/octocode/shared/atomic.ts";
+import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { sha256 } from "../../src/utils/atomic-file.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
 import { fakePermission } from "./fake-pi.ts";
@@ -285,11 +285,11 @@ describe("checkpoints", () => {
 		const line = (after: string) => `${JSON.stringify({ turn: 1, path: "/x", before: null, after, bytes: 0 })}\n`;
 		fs.writeFileSync(
 			path.join(store, "journal.jsonl"),
-			Array.from({ length: 20 }, (_, index) => line(`d${index}`)).join(""),
+			Array.from({ length: 20 }, (_, index) => line(sha256(`d${index}`))).join(""),
 		);
 		const checkpoints = new Checkpoints();
 		checkpoints.open(store);
-		expect(checkpoints.list()).toEqual([{ turn: 1, path: "/x", before: null, after: "d19", bytes: 0 }]);
+		expect(checkpoints.list()).toEqual([{ turn: 1, path: "/x", before: null, after: sha256("d19"), bytes: 0 }]);
 		expect(journalLines(store)).toHaveLength(1);
 	});
 
@@ -298,7 +298,6 @@ describe("checkpoints", () => {
 		const file = path.join(cwd, "a.txt");
 		fs.writeFileSync(file, "original content");
 		const store = path.join(tmp(), "cp");
-		const { sha256 } = await Promise.resolve(importedModule1);
 		const digest = sha256("original content");
 		// A crash mid-write left a truncated blob under the right name.
 		fs.mkdirSync(path.join(store, "blobs"), { recursive: true });

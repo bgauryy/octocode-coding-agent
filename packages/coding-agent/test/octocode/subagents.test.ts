@@ -12,7 +12,8 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
 import { assistantText } from "../../src/octocode/subagents/events.ts";
-import { buildAgentArgs, subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
+import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
@@ -207,8 +208,9 @@ describe("subagents", () => {
 		expect(subagentProcessEnv(undefined, {}, { id: "a-1" }).OCTOCODE_AGENT_COLLABORATE).toBeUndefined();
 		const child = (collaborate: boolean) =>
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate });
-		expect(child(true)).toMatch(/With teammates, send a delta/);
-		expect(child(false)).not.toMatch(/With teammates, send a delta/);
+		// Parent/child and teammate communication now share one policy: every child's task names its teammates.
+		expect(child(true)).toMatch(/your task names your role, goal, parent, teammates/);
+		expect(child(false)).toMatch(/your task names your role, goal, parent, teammates/);
 	});
 
 	it("parses profile frontmatter and builds child pi arguments", () => {

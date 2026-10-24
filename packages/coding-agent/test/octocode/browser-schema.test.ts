@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
-import { BrowserTool, registerBrowserTool } from "../../src/octocode/browser/tool.ts";
+import { registerBrowserTool } from "../../src/octocode/browser/tool.ts";
 import { fakePermission } from "./fake-pi.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
 
 type Schema = { properties: Record<string, { type?: string; description?: string; items?: Schema }> };
 

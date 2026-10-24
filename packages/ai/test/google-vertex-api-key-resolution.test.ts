@@ -47,11 +47,12 @@ vi.mock("@google/genai", () => {
 });
 
 import { stream as streamGoogleVertex } from "../src/api/google-vertex.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model } from "../src/types.ts";
 
 const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
-const model = getModel("google-vertex", "gemini-3-flash-preview");
+const model = getBuiltinModel("google-vertex", "gemini-3-flash-preview");
 const context = normalizeContext({
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
 });

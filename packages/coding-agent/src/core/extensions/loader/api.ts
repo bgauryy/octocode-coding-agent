@@ -1,3 +1,4 @@
+import { validateCommandAliases } from "../../slash-commands.ts";
 import type { Provider } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "../../event-bus.ts";
@@ -97,18 +98,11 @@ export function createExtensionAPI(
 			if (typeof options?.handler !== "function") {
 				throw new Error(`Command "/${name}" registered by extension "${extension.path}" must define handler().`);
 			}
-			if (
-				options.aliases !== undefined &&
-				(!Array.isArray(options.aliases) ||
-					options.aliases.some((alias) => typeof alias !== "string" || alias.length === 0 || /[\s/]/u.test(alias)))
-			) {
-				throw new Error(`Command "/${name}" aliases must be non-empty single tokens without slashes.`);
-			}
+			validateCommandAliases(name, options.aliases);
 			extension.commands.set(name, {
 				name,
 				sourceInfo: extension.sourceInfo,
 				...options,
-				...(options.aliases ? { aliases: [...new Set(options.aliases)].filter((alias) => alias !== name) } : {}),
 			});
 		},
 

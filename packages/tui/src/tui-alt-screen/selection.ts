@@ -1,14 +1,11 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollViewBox, type LayoutFrame, type ScrollbarGeometry } from "../layout.ts";
+import type { LayoutFrame, ScrollbarGeometry } from "../layout/types.ts";
+import { getScrollViewBox } from "../layout.ts";
 import { isImageLine } from "../terminal-image.ts";
-import {
-	extractAnsiCode,
-	getGraphemeCellRange,
-	getWordSegmenter,
-	sliceByColumn,
-	stripTerminalSequences,
-	visibleWidth,
-} from "../utils.ts";
+import { getWordSegmenter, visibleWidth } from "../utils/width.ts";
+import { getGraphemeCellRange, sliceByColumn } from "../utils/columns.ts";
+import { extractAnsiCode } from "../utils/ansi-codes.ts";
+import { stripTerminalSequences } from "../utils.ts";
 import type { SelectionPoint, SelectionRange } from "./types.ts";
 
 // Regular mode delegates double-click selection to the terminal emulator. Fullscreen owns mouse selection,
@@ -69,7 +66,7 @@ export function getSelectionBounds(
 		: { start: selectionFocus, end: selectionAnchor };
 }
 
-export function getSelectionColumns(
+function getSelectionColumns(
 	line: string,
 	row: number,
 	selection: { start: SelectionPoint; end: SelectionPoint },
@@ -90,7 +87,7 @@ export function getSelectionColumns(
 	return { start: Math.max(minColumn, start), end: Math.min(maxColumn, end) };
 }
 
-export function applySelectionHighlight(text: string): string {
+function applySelectionHighlight(text: string): string {
 	let result = "\x1b[7m";
 	let index = 0;
 	while (index < text.length) {

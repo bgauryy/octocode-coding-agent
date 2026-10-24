@@ -72,17 +72,13 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	}
 
 	override render(width: number): string[] {
-		const rows = this.workingMessage?.split("\n");
-		if (rows?.length !== 2 || !rows[0]?.startsWith("Main · ")) return super.render(width);
-		const [summary, detail] = rows;
-		const clip = (text: string) => truncateToWidth(text, Math.max(0, width), "…");
-		const [label, ...metrics] = summary.split(" · ");
-		let heading = ` ${this.getRenderedIndicator()} ${theme.fg("accent", theme.bold(label))}${theme.fg("muted", ` · ${metrics.join(" · ")}`)}`;
+		const detail = this.workingMessage.replace(/[\r\n]+/g, " ");
+		let line = ` ${this.getRenderedIndicator()} ${this.paintDetail(detail)}`;
 		const key = interruptKey();
 		const hint = key ? `${theme.fg("muted", key)}${theme.fg("dim", " to interrupt")}` : "";
-		const gap = width - visibleWidth(heading) - visibleWidth(hint) - 1;
-		if (hint && gap >= 4) heading += `${" ".repeat(gap)}${hint}`;
-		return ["", clip(heading), clip(`   ${theme.fg("dim", "└ ")}${this.paintDetail(detail ?? "")}`)];
+		const gap = width - visibleWidth(line) - visibleWidth(hint) - 1;
+		if (hint && gap >= 4) line += `${" ".repeat(gap)}${hint}`;
+		return ["", truncateToWidth(line, Math.max(0, width), "…")];
 	}
 
 	/**

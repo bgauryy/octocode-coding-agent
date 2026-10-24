@@ -1,27 +1,17 @@
-import type { WorkspaceEvent } from "@octocodeai/octocode-contacts/workspace";
 import { memo, useMemo } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { type ActivityFilter, selectEvents } from "../../state.ts";
 import type { ViewProps } from "../extension.ts";
 import { ListSkeleton } from "../features/ViewSkeleton.tsx";
-import { plural, stamp } from "../model/format.ts";
+import { plural } from "../model/format.ts";
 import { SegmentedControl } from "../ui/fields.tsx";
 import { AlertIcon, CheckIcon, FeedIcon, PauseIcon, PlayIcon, PulseIcon, TerminalIcon } from "../ui/icons.tsx";
-import { LongText } from "../ui/LongText.tsx";
-import { Badge, type BadgeTone, Button, cx, EmptyState } from "../ui/primitives.tsx";
-import { DiffView } from "./DiffView.tsx";
-import {
-	activityCard,
-	EVENT_LIMIT,
-	type FeedEntry,
-	fileDiffs,
-	groupFeed,
-	runPhase,
-	type Tone,
-	terminalEntries,
-} from "./model.ts";
-import { Elapsed, RunIndicator, ThoughtFor } from "./RunIndicator.tsx";
+import { Button, cx, EmptyState } from "../ui/primitives.tsx";
+import { EVENT_LIMIT, type FeedEntry, groupFeed, runPhase, terminalEntries } from "./model.ts";
+import { RunIndicator } from "./RunIndicator.tsx";
+import { HistoryPanel } from "./HistoryPanel.tsx";
+import { ResultCard } from "./ResultCard.tsx";
 import { SessionComposer } from "./SessionComposer.tsx";
 import { useLive } from "./session.tsx";
 import { TerminalTranscript } from "./TerminalView.tsx";
@@ -33,14 +23,6 @@ const FILTERS: readonly { value: ActivityFilter; label: string }[] = [
 	{ value: "agents", label: "Agents" },
 	{ value: "attention", label: "Needs attention" },
 ];
-const BADGE_TONES: Record<Tone, BadgeTone> = {
-	success: "success",
-	danger: "danger",
-	tool: "tool",
-	agent: "agent",
-	neutral: "neutral",
-};
-
 const LAYOUTS = [
 	{ value: "feed", label: "Feed", icon: <FeedIcon /> },
 	{ value: "terminal", label: "Terminal", icon: <TerminalIcon /> },
@@ -55,7 +37,7 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 	);
 	const layout = params.mode === "terminal" ? "terminal" : "feed";
 	const events = useMemo(() => selectEvents({ filter, displayedEvents }), [filter, displayedEvents]);
-	const feed = useMemo(() => groupFeed(events), [events]);
+	const feed = useMemo(() => groupFeed(events, filter === "tools"), [events, filter]);
 	const commands = useMemo(
 		() => (layout === "terminal" ? terminalEntries(displayedEvents) : []),
 		[layout, displayedEvents],
@@ -111,6 +93,7 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 							{paused ? "Paused" : "Live"} · {plural(events.length, "event")} · latest {EVENT_LIMIT} retained
 						</p>
 					</div>
+					<HistoryPanel />
 					{feed.length ? (
 						<ol className="activity-feed" role="log" aria-label="Activity feed" aria-live="off">
 							{feed.map((entry) => (
@@ -199,50 +182,5 @@ const ToolGroup = memo(function ToolGroup({ entry }: { entry: Extract<FeedEntry,
 				))}
 			</ol>
 		</details>
-	);
-});
-
-/** Memoized on the event object; the interner keeps unchanged events identical, so only changed rows render. */
-const ResultCard = memo(function ResultCard({ event, compact }: { event: WorkspaceEvent; compact?: boolean }) {
-	const card = activityCard(event);
-	const diffs = event.type === "tool.result" ? fileDiffs(event.details) : [];
-	const streaming = card.status === "streaming";
-	return (
-		<article className={cx("result-card", `tone-${card.tone}`, compact && "is-compact", streaming && "is-streaming")}>
-			<div className="result-meta">
-				<Badge tone={BADGE_TONES[card.tone]}>{card.label}</Badge>
-				{card.status === "running" && event.type.startsWith("tool.") ? (
-					<span className="muted">
-						<Elapsed since={event.at} prefix="running · " />
-					</span>
-				) : (
-					card.status && <span className={cx("muted", streaming && "streaming-label")}>{card.status}</span>
-				)}
-				{card.thoughtMs !== undefined && <ThoughtFor ms={card.thoughtMs} />}
-				<time dateTime={new Date(event.at).toISOString()}>{stamp(event.at)}</time>
-			</div>
-			<h3>{card.title}</h3>
-			{card.goal && <p className="muted">{card.goal}</p>}
-			{card.body && <LongText text={card.body} label="output" plain={!card.markdown} />}
-			{diffs.length > 0 && <DiffView diffs={diffs} />}
-			{card.files.length > 0 && (
-				<div className="result-files">
-					<strong>Related files</strong>
-					<ul>
-						{card.files.map((file) => (
-							<li key={file}>
-								<code>{file}</code>
-							</li>
-						))}
-					</ul>
-				</div>
-			)}
-			{event.details !== undefined && (
-				<details className="result-details">
-					<summary>Structured details</summary>
-					<pre>{JSON.stringify(event.details, null, 2)}</pre>
-				</details>
-			)}
-		</article>
 	);
 });

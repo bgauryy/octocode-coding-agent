@@ -36,6 +36,8 @@ Prompts and session selection arrive over the protocol. Positional prompt text, 
 
 The adapter does not replay a prompt after worker failure or timeout. Already streamed output can be partial; a failure does not imply that no tools ran. ACP owns disposable worker process trees. Shutdown allows ten seconds for native cleanup before forced termination; the existing tree helper also bounds its post-kill wait. Detached descendant discovery depends on platform process enumeration. Native transcript IDs identify sessions across connections; only active worker handles belong to the current connection. Load and resume require the transcript's original cwd and use the current client MCP definitions. Load replay projects textual user and assistant blocks and bounded textual tool lifecycle results; images, binary results and compaction markers are not reconstructed for old turns.
 
+Live and restored textual tool results use the same size limit and explicit truncation notice.
+
 The `--session-dir` and session-directory environment overrides are resolved once against the broker's launch directory and shared with workers. For workspace-specific settings that use a relative session directory, request `session/list` with that workspace's `cwd`: an unfiltered list cannot enumerate arbitrary relative directories in other workspaces. Load and resume resolve the configured directory against the requested workspace.
 
 ## Prompt content
@@ -71,6 +73,8 @@ The command and arguments execute without a shell. Client environment and HTTP h
 Registration is verified during session startup. A successfully registered server may still fail to connect; ordinary MCP connection diagnostics remain in effect. Host MCP configuration and its precedence remain documented in [MCP](mcp.md) and the [configuration map](../../../CONFIGURATIONS.md).
 
 ## Current limits
+
+For outbound calls (`agent` with `type: "external"` and `transport: "acp"`), each turn retains up to 1 MiB of update data plus a 64 KiB text tail; connection stderr keeps a 64 KiB tail. Overflow is saved through the existing private session artifact lifecycle with credential-pattern redaction, capped at 32 MiB per archive. Truncation records identify the archive, whether it is complete, omitted bytes and write failures. Final stop reasons and uncertain-execution errors remain available even when evidence cannot be archived. These are outbound capture limits, separate from the inbound client's rendering limits.
 
 The adapter does not expose session fork/delete, additional workspace roots, client filesystem or terminal delegation, protocol model/mode/configuration changes, steering, slash-command discovery, plans, usage updates or rich diffs. Nonempty `additionalDirectories` are rejected during session creation, load and resume. Close an individual session to free a slot, or disconnect to release all of the connection's sessions.
 

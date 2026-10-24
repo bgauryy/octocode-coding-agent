@@ -12,7 +12,7 @@ export type ScopedResolvedPaths = Record<ConfigWriteScope, ResolvedPaths>;
 
 export const RESOURCE_TYPES = ["extensions", "skills", "prompts", "themes"] as const satisfies readonly ResourceType[];
 
-export const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
+const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
 	extensions: "Extensions",
 	skills: "Skills",
 	prompts: "Prompts",
@@ -44,7 +44,7 @@ export interface ResourceGroup {
 	subgroups: ResourceSubgroup[];
 }
 
-export function formatBaseDir(baseDir: string): string {
+function formatBaseDir(baseDir: string): string {
 	const homeDir = homedir();
 	let displayPath: string;
 
@@ -61,7 +61,7 @@ export function formatBaseDir(baseDir: string): string {
 	return displayPath.endsWith("/") ? displayPath : `${displayPath}/`;
 }
 
-export function getGroupLabel(metadata: PathMetadata, agentDir: string): string {
+function getGroupLabel(metadata: PathMetadata, agentDir: string): string {
 	if (metadata.origin === "package") {
 		return `${metadata.source} (${metadata.scope})`;
 	}

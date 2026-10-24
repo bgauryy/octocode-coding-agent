@@ -1,10 +1,11 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
-import type { Message, TextContent } from "@octocodeai/octocode-ai";
+import type { Message } from "@octocodeai/octocode-ai";
 import { createReadStream, existsSync, readdirSync, type Stats } from "fs";
 import { readdir, stat } from "fs/promises";
 import { basename, join } from "path";
 import { createInterface } from "readline";
 import { getSessionsDir } from "../../config.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { normalizePath, resolvePath } from "../../utils/paths.ts";
 import {
 	getDefaultSessionDir,
@@ -17,7 +18,7 @@ import {
 import type { SessionHeader, SessionInfo, SessionListProgress, SessionMessageEntry } from "./types.ts";
 
 function isMessageWithContent(message: AgentMessage): message is Message {
-	return typeof (message as Message).role === "string" && "content" in message;
+	return isRecord(message) && typeof message.role === "string" && "content" in message;
 }
 
 function extractTextContent(message: Message): string {
@@ -25,9 +26,11 @@ function extractTextContent(message: Message): string {
 	if (typeof content === "string") {
 		return content;
 	}
+	if (!Array.isArray(content)) return "";
 	return content
-		.filter((block): block is TextContent => block.type === "text")
-		.map((block) => block.text)
+		.flatMap((block) =>
+			isRecord(block) && block.type === "text" && typeof block.text === "string" ? [block.text] : [],
+		)
 		.join(" ");
 }
 
@@ -69,7 +72,7 @@ async function buildSessionInfo(
 			if (!entry) continue;
 
 			if (!header) {
-				if (entry.type !== "session") return null;
+				if (entry.type !== "session" || typeof entry.id !== "string") return null;
 				header = entry;
 				continue;
 			}

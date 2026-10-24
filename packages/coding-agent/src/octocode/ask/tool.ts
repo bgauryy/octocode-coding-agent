@@ -1,9 +1,12 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { withDialog } from "../shared/locks.ts";
-import { clip, plural, resultBlock, timedTool, timingOf, toolHeader } from "../shared/render.ts";
+import { resultBlock, toolHeader } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, showAskDialog, TYPE_OWN } from "./dialog.ts";
+import { showAskDialog } from "./dialog.ts";
+import { clip, plural } from "../shared/render/text.ts";
+import { timedTool, timingOf } from "../shared/render/rows.ts";
+import { type AskQuestion, type AskResult, answerOf, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
 
 /** RPC hosts have dialogs but no custom TUI components: fall back to select/input per question. */
 async function askWithDialogs(
@@ -21,8 +24,11 @@ async function askWithDialogs(
 	for (const q of questions) {
 		if (signal?.aborted) return cancelled();
 		if (q.options.length === 0) {
-			const typed = (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))?.trim();
-			if (signal?.aborted || !typed) return cancelled();
+			let typed: string | undefined;
+			do {
+				typed = (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))?.trim();
+				if (signal?.aborted || typed === undefined) return cancelled();
+			} while (!typed);
 			answers.push(answerOf(q.question, [], typed));
 			continue;
 		}
@@ -45,7 +51,11 @@ async function askWithDialogs(
 			if (picked === TYPE_OWN) {
 				// An empty answer is no answer, as in the TUI dialog.
 				typed = (await ctx.ui.input(sanitizeTerminalText(q.question), undefined, options))?.trim();
-				if (signal?.aborted || !typed) return cancelled();
+				if (signal?.aborted) return cancelled();
+				if (!typed) {
+					typed = undefined;
+					continue;
+				}
 				break;
 			}
 			if (picked === SUBMIT_PICKS) break;

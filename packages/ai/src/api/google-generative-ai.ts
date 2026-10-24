@@ -3,12 +3,8 @@ import type { Model, ProviderHeaders, SimpleStreamOptions, StreamFunction, Trans
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
-import {
-	buildGoogleParams,
-	type GoogleBaseOptions,
-	resolveGoogleSimpleThinking,
-	streamGoogle,
-} from "./google-shared.ts";
+import { buildGoogleParams, type GoogleBaseOptions, resolveGoogleSimpleThinking } from "./google-shared/params.ts";
+import { streamGoogle } from "./google-shared/stream.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
 export type GoogleOptions = GoogleBaseOptions;

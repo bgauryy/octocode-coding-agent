@@ -141,7 +141,6 @@ describe("RPC unknown command responses (#5868)", () => {
 					data: {
 						commands: skills.map((skill, index) => ({
 							name: index === 0 ? "research" : "skill:model",
-							aliases: index === 0 ? ["skill:research"] : [],
 							description: skill.description,
 							source: "skill",
 							sourceInfo: skill.sourceInfo,

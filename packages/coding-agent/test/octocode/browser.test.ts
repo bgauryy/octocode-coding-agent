@@ -4,20 +4,21 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "../../src/core/extensions/index.ts";
 import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
-import * as importedModule3 from "../../src/octocode/browser/input.ts";
 import * as importedModule2 from "../../src/octocode/browser/render.ts";
 import * as importedModule4 from "../../src/octocode/browser/session.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
 import { type CdpHandler, type CdpStub, NO_REPLY, startCdpStub } from "./fixtures/cdp-stub.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
+import { pressKey } from "../../src/octocode/browser/input/keyboard.ts";
+import { settle, settleAfterLoad, waitForText } from "../../src/octocode/browser/input/settle.ts";
 
 const launch = vi.hoisted(() => vi.fn());
 vi.mock("chrome-launcher", () => ({ launch }));
 vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] })); // public: no network
 
-const { BrowserTool, registerBrowserTool } = await Promise.resolve(importedModule1);
+const { registerBrowserTool } = await Promise.resolve(importedModule1);
 const { browserSummary } = await Promise.resolve(importedModule2);
-const { pressKey, settle, settleAfterLoad, waitForText } = await Promise.resolve(importedModule3);
 const { openBrowser } = await Promise.resolve(importedModule4);
 
 type Result = { content: Array<{ type: string; text?: string; data?: string }> };

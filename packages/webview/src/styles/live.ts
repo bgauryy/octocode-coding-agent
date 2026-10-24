@@ -17,6 +17,10 @@ export const LIVE_CSS = `/* Command palette */
 .palette-footer span { display: inline-flex; align-items: center; gap: 4px; }
 
 /* Live: activity, session, agents */
+.item-implementation { display: grid; flex-basis: 100%; gap: 8px; padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
+.item-implementation .command { align-items: flex-start; }
+.item-implementation p { font-size: 12px; }
+
 .activity-view, .agents-view, .audit-view { max-width: 1040px; width: 100%; margin-inline: auto; }
 .overview { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
 .metric { display: grid; gap: 2px; min-width: 140px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); }
@@ -65,7 +69,7 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .tool-group-icon.is-running { border: 2px solid var(--accent-line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tool-group-list { display: grid; gap: 6px; padding: 0 10px 10px; }
-.agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
 .agent-card { display: grid; gap: 10px; align-content: start; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .agent-card.is-working { border-color: var(--accent-line); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent); }
 .agent-card-header { display: flex; align-items: flex-start; gap: 10px; }
@@ -87,6 +91,29 @@ a.metric:hover { border-color: var(--accent-line); text-decoration: none; }
 .diff dd { margin: 0; overflow-wrap: anywhere; }
 .diff-before { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 1px; }
 .diff-after { color: var(--success); }
+
+/* Shared conversation content */
+.content-blocks { display: grid; gap: 12px; min-width: 0; }
+.content-asset { display: grid; gap: 8px; margin: 0; padding: 10px; border: 1px solid var(--border-soft); border-radius: var(--radius); }
+.content-asset img, .content-asset video { display: block; max-width: 100%; max-height: 520px; object-fit: contain; border-radius: var(--radius-sm); }
+.content-asset audio { max-width: 100%; }
+.content-asset figcaption, .content-citations, .message-metadata { font-size: 12px; color: var(--text-2); }
+.content-citations { padding-left: 22px; list-style: decimal; }
+.message-metadata { display: flex; flex-wrap: wrap; gap: 10px; }
+.reasoning-block { padding: 10px 12px; border-left: 2px solid var(--accent-line); background: var(--surface-2); border-radius: var(--radius-sm); }
+.reasoning-block > summary { cursor: pointer; color: var(--text-2); font-size: 12px; }
+.reasoning-block[open] > summary { margin-bottom: 8px; }
+.content-tool { display: grid; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: var(--radius); background: var(--surface-2); }
+.content-tool.is-failed { border-color: var(--danger); }
+.content-tool > header { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; font-size: 12px; }
+.content-tool > header strong { font-family: var(--mono); }
+.content-tool > header span { color: var(--text-2); }
+.resource-reference, .unsupported-block { font-size: 13px; }
+.composer-attachments { display: grid; gap: 8px; }
+.attachment-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }
+.attachment-picker input { max-width: 100%; font-size: 12px; }
+.composer-attachments ul { display: flex; flex-wrap: wrap; gap: 6px; }
+.composer-attachments li { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; }
 
 /* Markdown and code */
 .markdown-view { display: grid; gap: 6px; min-width: 0; }

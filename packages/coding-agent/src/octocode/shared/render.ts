@@ -7,12 +7,6 @@ import { phaseOf, rowState, runStart, track } from "./render/rows.ts";
 import { bodyLines, clip, expandKey, GUTTER, INDENT, plural } from "./render/text.ts";
 import type { ColorToken, Phase, RenderContext } from "./render/types.ts";
 
-export { ReportView } from "./render/report.ts";
-export { stopRowTimers, timed, timedTool, timingOf } from "./render/rows.ts";
-export { livePaint, statusColor } from "./render/status.ts";
-export { appKey, bodyLines, clip, clipColumns, expandKey, plural, queryTarget } from "./render/text.ts";
-export type { RenderContext, ToolRow } from "./render/types.ts";
-
 /**
  * Shared tool presentation, in the shape Claude Code and Codex use:
  *
@@ -26,7 +20,7 @@ export type { RenderContext, ToolRow } from "./render/types.ts";
  */
 
 /** Result lines shown while collapsed. */
-export const COLLAPSED_LINES = 5;
+const COLLAPSED_LINES = 5;
 /** A body this short shows whole even when collapsed: folding it would hide a few lines behind a one-line hint. */
 export const SHOW_ALL_LINES = 12;
 /** Header summary budget in characters, before the width clip. */

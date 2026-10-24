@@ -3,16 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import {
-	describeProjectConfig,
-	fingerprint,
-	projectConfigFiles,
-	projectTrust,
-	projectTrustNow,
-	registerTrustCommand,
-	saveDecision,
-} from "../../src/octocode/shared/trust.ts";
+import { projectTrust, projectTrustNow, registerTrustCommand, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { tmp } from "./helpers.ts";
+import { describeProjectConfig } from "../../src/octocode/shared/trust/describe.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 function project(files: Record<string, string>): string {
 	const dir = tmp("octocode-trust-");

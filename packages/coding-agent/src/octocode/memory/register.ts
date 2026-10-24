@@ -1,9 +1,9 @@
 import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { sharedAgentDb } from "../agentdb/db.ts";
 import type { Permission } from "../permission/ask.ts";
-import type { Subcommands } from "../shared/commands.ts";
+import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "../shared/env.ts";
-import { repoKey } from "../shared/home.ts";
+import { repoKey } from "../shared/home/repo.ts";
 import { projectTrustNow } from "../shared/trust.ts";
 import { contentText } from "../shared/util.ts";
 import { registerMemoryCommand } from "./command.ts";
@@ -39,6 +39,7 @@ export function registerMemory(
 	const env = options.env ?? process.env;
 	const storeFor = (ctx: Pick<ExtensionContext, "cwd">) => memoryStore(ctx.cwd, env);
 	const autoEnv = () => envFlag(env, MEMORY_AUTO_ENV, true);
+	let failedSession: string | undefined;
 
 	registerMemoryTool(pi, storeFor, { isSubagent: options.isSubagent, permission: options.permission });
 
@@ -55,6 +56,7 @@ export function registerMemory(
 				// A subagent's parent already holds the pinned memories and briefs it through the task.
 				pinned: !options.isSubagent,
 			});
+			failedSession = undefined;
 			if (!injection) return undefined;
 			// Counted as used once the message is committed (`message_end`), not when it is offered: a prompt that never runs
 			// does not use its memories.
@@ -67,7 +69,16 @@ export function registerMemory(
 				},
 			};
 		} catch {
-			// A missing or foreign agent DB never blocks a prompt; the tool and command report the error.
+			// A broken store never blocks a prompt; notify once until retrieval recovers.
+			const session = ctx.sessionManager.getSessionId();
+			if (failedSession !== session) {
+				failedSession = session;
+				notify(
+					ctx.ui,
+					"Memory injection failed; saved memories were not loaded. Use /memory to inspect the error.",
+					"warning",
+				);
+			}
 			return undefined;
 		}
 	});

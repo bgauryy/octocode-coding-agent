@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../agentdb/rows.ts";
-import { canonicalPath } from "../shared/home.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
 import { DAY_MS, MINUTE_MS } from "../shared/util.ts";
 
 /** Who changed which file, kept a day in the team database, for `coordinate changes`. */

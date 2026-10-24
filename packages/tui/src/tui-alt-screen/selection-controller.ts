@@ -1,8 +1,10 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import { getScrollViewBox, getScrollViewsAt, type LayoutFrame } from "../layout.ts";
+import type { LayoutBox, LayoutFrame } from "../layout/types.ts";
+import { getScrollViewBox, getScrollViewsAt } from "../layout.ts";
 import type { Terminal } from "../terminal.ts";
 import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
-import { getOsc8LinkAtColumn, visibleWidth } from "../utils.ts";
+import { visibleWidth } from "../utils/width.ts";
+import { getOsc8LinkAtColumn } from "../utils/columns.ts";
 import { COPY_ERROR_FLASH_DURATION_MS, DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
 import { applySelectionToScreen, getSelectionBounds, getSelectionText, getWordSelection } from "./selection.ts";
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
@@ -73,7 +75,10 @@ export class AltScreenSelection {
 		this.selectionDragged = false;
 	}
 
-	private getScrollSelectionPoint(scrollView: ScrollView, x: number, y: number): SelectionPoint | undefined {
+	/** The laid-out box of a scroll view and its first and last terminal rows on screen. */
+	private getVisibleScrollViewRows(
+		scrollView: ScrollView,
+	): { box: LayoutBox; visibleTop: number; visibleBottom: number } | undefined {
 		const currentLayout = this.host.getCurrentLayout();
 		if (!currentLayout) return undefined;
 		const box = getScrollViewBox(currentLayout, scrollView);
@@ -84,7 +89,13 @@ export class AltScreenSelection {
 			box.rect.y + box.rect.height - 1,
 			box.clip.y + box.clip.height - 1,
 		);
-		if (visibleBottom < visibleTop) return undefined;
+		return { box, visibleTop, visibleBottom };
+	}
+
+	private getScrollSelectionPoint(scrollView: ScrollView, x: number, y: number): SelectionPoint | undefined {
+		const visible = this.getVisibleScrollViewRows(scrollView);
+		if (!visible || visible.visibleBottom < visible.visibleTop) return undefined;
+		const { box, visibleTop, visibleBottom } = visible;
 		const pointerRow = Math.max(visibleTop, Math.min(visibleBottom, y));
 		const maxContentRow = Math.max(0, (box.scrollContentLines?.length ?? 1) - 1);
 		return {
@@ -173,22 +184,12 @@ export class AltScreenSelection {
 
 	private updateSelectionAutoScroll(event: SgrMouseEvent): void {
 		const scrollView = this.selectionAnchor?.scrollView;
-		const currentLayout = this.host.getCurrentLayout();
-		if (!scrollView || !currentLayout) {
+		const visible = scrollView && this.getVisibleScrollViewRows(scrollView);
+		if (!visible) {
 			this.stopSelectionAutoScroll();
 			return;
 		}
-		const box = getScrollViewBox(currentLayout, scrollView);
-		if (!box || box.rect.height <= 0 || box.clip.height <= 0) {
-			this.stopSelectionAutoScroll();
-			return;
-		}
-		const visibleTop = Math.max(0, box.rect.y, box.clip.y);
-		const visibleBottom = Math.min(
-			this.host.getTerminal().rows - 1,
-			box.rect.y + box.rect.height - 1,
-			box.clip.y + box.clip.height - 1,
-		);
+		const { visibleTop, visibleBottom } = visible;
 		this.selectionDragPointer = { x: event.x, y: event.y };
 		this.selectionAutoScrollDirection = event.y <= visibleTop ? -1 : event.y >= visibleBottom ? 1 : 0;
 		if (this.selectionAutoScrollDirection === 0) {

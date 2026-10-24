@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask.ts";
+import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { type ChildEffect, newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 
 const LIMITS = { idleMs: 1_000, busyMs: 5_000 };

@@ -1,5 +1,6 @@
 import { getKeybindings } from "../../keybindings.ts";
-import { decodePrintableKey, matchesKey } from "../../keys.ts";
+import { matchesKey } from "../../keys/match.ts";
+import { decodePrintableKey } from "../../keys/parse.ts";
 import {
 	addNewLine,
 	handleBackspace,

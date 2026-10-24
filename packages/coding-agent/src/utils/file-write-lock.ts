@@ -14,6 +14,35 @@ export class FileLockReleaseError extends Error {
 	}
 }
 
+const SYNC_LOCK_ATTEMPTS = 10;
+const SYNC_LOCK_RETRY_DELAY_MS = 20;
+
+function isLockHeld(error: unknown): boolean {
+	return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ELOCKED";
+}
+
+/**
+ * Take a `proper-lockfile` lock synchronously, retrying briefly while another process holds it. Callers stay
+ * synchronous, so the wait between attempts blocks. `retryable` decides which errors are worth another attempt.
+ */
+export function lockSyncWithRetry(
+	file: string,
+	options: { lockfilePath?: string; retryable?: (error: unknown) => boolean } = {},
+): () => void {
+	const retryable = options.retryable ?? isLockHeld;
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return lockfile.lockSync(file, { realpath: false, lockfilePath: options.lockfilePath });
+		} catch (error) {
+			if (!retryable(error) || attempt === SYNC_LOCK_ATTEMPTS) throw error;
+			const start = Date.now();
+			while (Date.now() - start < SYNC_LOCK_RETRY_DELAY_MS) {
+				// Sleep synchronously to avoid changing callers to async.
+			}
+		}
+	}
+}
+
 async function writeTarget(file: string, hops = 40): Promise<string> {
 	try {
 		return await realpath(file);

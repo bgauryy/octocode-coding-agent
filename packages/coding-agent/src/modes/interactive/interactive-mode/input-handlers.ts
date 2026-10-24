@@ -15,7 +15,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the editor key handlers. */
-export type InputHandlersHost = Pick<
+type InputHandlersHost = Pick<
 	InteractiveModeHost,
 	| "cycleModel"
 	| "cycleThinkingLevel"
@@ -174,7 +174,7 @@ export async function handleClipboardPaste(host: InputHandlersHost): Promise<voi
 	}
 }
 
-export async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> {
+async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> {
 	const editorCmd = host.settingsManager.getExternalEditorCommand();
 	const content = host.editor.getExpandedText?.() ?? host.editor.getText();
 	host.ui.stop();

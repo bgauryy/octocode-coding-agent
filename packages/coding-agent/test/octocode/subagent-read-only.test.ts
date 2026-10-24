@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
@@ -66,7 +66,7 @@ describe("read-only subagent roles", () => {
 				systemPromptOptions: { sections: {} as Record<string, string>, selectedTools },
 			};
 			await fake.emit("before_agent_start", event, {});
-			const prompt = event.systemPromptOptions.sections.octocode;
+			const prompt = Object.values(event.systemPromptOptions.sections).join("\n\n");
 			expect(prompt).toContain("Make the smallest complete change");
 			expect(prompt).not.toContain("Investigate and report; do not modify repository source");
 			expect(prompt).not.toContain("Run only read-only commands");

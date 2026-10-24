@@ -2,9 +2,10 @@ import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
-import { STATE_TITLE as HEADINGS, BOARD_ORDER as ORDER } from "./format.ts";
+import { STATE_TITLE, BOARD_ORDER } from "./format.ts";
 import { refText } from "./row.ts";
-import { type Item as BacklogItem, type State as BacklogState, priorityName } from "./store.ts";
+import { type Item, priorityName } from "./store.ts";
+import type { State } from "@octocodeai/octocode-contacts/snapshot";
 
 /** What the user picked on the board; the command runs it and reopens the board unless it handed work to the agent. */
 type BoardChoice =
@@ -16,9 +17,9 @@ type BoardChoice =
 interface BoardSource {
 	title: string;
 	/** Fresh items (all states), re-read after every change. */
-	load(): BacklogItem[];
+	load(): Item[];
 	/** Move an item one column; returns a refusal to show, or undefined. */
-	move(item: BacklogItem, state: BacklogState): string | undefined;
+	move(item: Item, state: State): string | undefined;
 	/** Who "you" is, to mark items this session holds. */
 	self: string;
 }
@@ -26,8 +27,8 @@ interface BoardSource {
 const DONE_SHOWN = 5;
 
 /** Items in board order: grouped by state, Done cut to the most recent few. */
-export function boardRows(items: BacklogItem[]): BacklogItem[] {
-	return ORDER.flatMap((state) => {
+export function boardRows(items: Item[]): Item[] {
+	return BOARD_ORDER.flatMap((state) => {
 		const group = items.filter((item) => item.state === state);
 		return state === "done"
 			? group.sort((a, b) => (b.doneAt ?? b.updatedAt) - (a.doneAt ?? a.updatedAt)).slice(0, DONE_SHOWN)
@@ -84,7 +85,9 @@ export function showBoard(
 				if (!current) return;
 				// → steps toward done, ← back toward backlog: the same order the sections are drawn in.
 				const next =
-					ORDER[ORDER.indexOf(current.state) + (keybindings.matches(data, "app.backlog.nextState") ? 1 : -1)];
+					BOARD_ORDER[
+						BOARD_ORDER.indexOf(current.state) + (keybindings.matches(data, "app.backlog.nextState") ? 1 : -1)
+					];
 				if (!next) return;
 				flash = source.move(current, next);
 				reload(current.ref);
@@ -119,19 +122,19 @@ export function showBoard(
 			const helpLines = wrapTextWithAnsi(help, Math.max(1, w - 1)).slice(0, Math.max(1, Math.floor(height / 4)));
 			const lines: string[] = [];
 			const push = (text: string) => lines.push(truncateToWidth(text, w, "…"));
-			const count = (state: BacklogState) => items.filter((item) => item.state === state).length;
+			const count = (state: State) => items.filter((item) => item.state === state).length;
 			push(theme.fg("accent", "─".repeat(w)));
 			push(
 				` ${theme.bold(sanitizeTerminalText(source.title))}  ${theme.fg("muted", `▶${count("ongoing")} ☐${count("todo")} ⧗${count("backlog")} ✓${count("done")}`)}`,
 			);
 			const listed: string[] = [];
 			let selectedLine = 0;
-			for (const state of ORDER) {
+			for (const state of BOARD_ORDER) {
 				const group = rows.filter((item) => item.state === state);
 				const total = count(state);
 				listed.push("");
 				listed.push(
-					` ${theme.fg("accent", theme.bold(`${HEADINGS[state]} (${total})`))}${state === "done" && total > group.length ? theme.fg("dim", ` · latest ${group.length}`) : ""}`,
+					` ${theme.fg("accent", theme.bold(`${STATE_TITLE[state]} (${total})`))}${state === "done" && total > group.length ? theme.fg("dim", ` · latest ${group.length}`) : ""}`,
 				);
 				if (group.length === 0) listed.push(theme.fg("dim", "   (none)"));
 				for (const item of group) {

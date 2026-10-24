@@ -8,6 +8,7 @@ export type ModelsDevReasoningOption =
 	  }
 	| { type: "budget_tokens"; min?: number; max?: number };
 
+// Not imported from model-schema: this script must run from a package copy without node_modules.
 const THINKING_LEVELS: readonly ThinkingLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 /**

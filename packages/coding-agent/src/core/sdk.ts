@@ -22,42 +22,12 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
 import { applyToolModifiers, getToolListError, isToolModifier, SettingsManager } from "./settings-manager.ts";
 import { time } from "./timings.ts";
-import { createBashTool, withFileMutationQueue } from "./tools/index.ts";
 import { getBranchSelection } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
 // provider-agnostic and does not import octocode-ai/compat itself.
 setDefaultStreamFn(streamSimple);
-
-// Re-exports
-
-export type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/types.ts";
-export type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
-	ExtensionFactory,
-	InlineExtension,
-	SlashCommandInfo,
-	SlashCommandSource,
-	ToolDefinition,
-} from "./extensions/index.ts";
-export type { PromptTemplate } from "./prompt-templates.ts";
-export type { Skill } from "./skills.ts";
-export type { Tool } from "./tools/index.ts";
-
-export {
-	withFileMutationQueue,
-	// Tool factory (for custom cwd)
-	createBashTool,
-};
-
-// Helper Functions
-
-function getDefaultAgentDir(): string {
-	return getAgentDir();
-}
 
 /**
  * Create an AgentSession with the specified options.
@@ -68,9 +38,9 @@ function getDefaultAgentDir(): string {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@octocodeai/octocode-ai';
+ * import { getBuiltinModel } from '@octocodeai/octocode-ai/providers/all';
  * const { session } = await createAgentSession({
- *   model: getModel('anthropic', 'claude-opus-4-5'),
+ *   model: getBuiltinModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
  * });
  *
@@ -96,7 +66,7 @@ function getDefaultAgentDir(): string {
  */
 export async function createAgentSession(options: CreateAgentSessionOptions = {}): Promise<CreateAgentSessionResult> {
 	const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
-	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
+	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getAgentDir();
 	let resourceLoader = options.resourceLoader;
 
 	const authPath = options.agentDir ? join(agentDir, "auth.json") : undefined;

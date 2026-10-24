@@ -1,4 +1,4 @@
-import { autocompleteBoundaryRegex, autocompleteSeparatorRegex } from "../../utils.ts";
+import { autocompleteBoundaryRegex, autocompleteSeparatorRegex } from "../../utils/chars.ts";
 import type { SelectListLayoutOptions } from "../select-list.ts";
 
 export const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {

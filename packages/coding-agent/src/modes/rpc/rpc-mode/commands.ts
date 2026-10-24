@@ -64,6 +64,22 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			return success(id, "clear_queue", host.session.clearQueue());
 		}
 
+		case "get_queue": {
+			return success(id, "get_queue", { items: host.session.getQueuedInputs() });
+		}
+
+		case "edit_queued": {
+			return success(id, "edit_queued", { outcome: host.session.replaceQueuedInput(command.queueId, command.text) });
+		}
+
+		case "remove_queued": {
+			return success(id, "remove_queued", { removed: host.session.removeQueuedInput(command.queueId) !== undefined });
+		}
+
+		case "move_queued": {
+			return success(id, "move_queued", { moved: host.session.moveQueuedInput(command.queueId, command.direction) });
+		}
+
 		case "new_session": {
 			const options = command.parentSession ? { parentSession: command.parentSession } : undefined;
 			const result = await runtimeHost.newSession(options);
@@ -74,6 +90,8 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		// State
 		// =================================================================
 
+		case "plan":
+			return success(id, "plan", await host.session.controlPlan(command));
 		case "get_state": {
 			const state: RpcSessionState = {
 				model: host.session.model,
@@ -160,7 +178,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		// =================================================================
 
 		case "compact": {
-			const result = await host.session.compact();
+			const result = await host.session.compact({ customInstructions: command.customInstructions });
 			return success(id, "compact", result);
 		}
 
@@ -303,33 +321,31 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			for (const command of host.session.extensionRunner.getRegisteredCommands()) {
 				commands.push({
 					name: command.invocationName,
-					aliases: command.aliases,
+					aliases: command.invocationAliases,
 					description: command.description,
 					source: "extension",
 					sourceInfo: command.sourceInfo,
 				});
 			}
 
-			for (const { template, name, aliases } of getPromptCommands(
+			for (const { template, name } of getPromptCommands(
 				host.session.promptTemplates,
 				host.session.extensionRunner.getRegisteredCommands(),
 			)) {
 				commands.push({
 					name,
-					aliases,
 					description: template.description,
 					source: "prompt",
 					sourceInfo: template.sourceInfo,
 				});
 			}
 
-			for (const { skill, name, aliases } of getSkillCommands(host.session.resourceLoader.getSkills().skills, [
+			for (const { skill, name } of getSkillCommands(host.session.resourceLoader.getSkills().skills, [
 				...host.session.extensionRunner.getRegisteredCommands(),
 				...host.session.promptTemplates,
 			])) {
 				commands.push({
 					name,
-					aliases,
 					description: skill.description,
 					source: "skill",
 					sourceInfo: skill.sourceInfo,

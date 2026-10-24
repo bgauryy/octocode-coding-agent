@@ -94,3 +94,22 @@ export function buildToolDefinitionRegistry(
 	);
 	return { allCustomTools, definitions: definitionRegistry, promptSnippets, promptGuidelines };
 }
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The order tools are declared in: the given order, except that MCP tools (namespace `mcp__<server>`) come last,
+ * sorted by namespace and then name. Their registration and activation order follows connection timing, which
+ * would otherwise change the declared tools, and so the cached prompt prefix, between sessions of one configuration.
+ */
+export function orderToolNames(names: Iterable<string>, namespaceOf: (name: string) => string | undefined): string[] {
+	const others: string[] = [];
+	const mcp: Array<{ name: string; namespace: string }> = [];
+	for (const name of new Set(names)) {
+		const namespace = namespaceOf(name);
+		if (namespace?.startsWith("mcp__")) mcp.push({ name, namespace });
+		else others.push(name);
+	}
+	mcp.sort((a, b) => compareText(a.namespace, b.namespace) || compareText(a.name, b.name));
+	return [...others, ...mcp.map((tool) => tool.name)];
+}

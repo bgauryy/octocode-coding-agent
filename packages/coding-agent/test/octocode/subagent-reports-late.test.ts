@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagents/handoff.ts";
+import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagents/handoff/pending.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";

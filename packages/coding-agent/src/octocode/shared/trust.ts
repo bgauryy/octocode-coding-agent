@@ -3,17 +3,14 @@ import path from "node:path";
 import { getAgentDir } from "../../config.ts";
 import type { ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
-import { atomicWriteFileSync } from "./atomic.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { notify, type Subcommands, say, wordCompletions } from "./commands.ts";
 import { envFlag, SUBAGENT_ENV, TRUST_ROOT_ENV } from "./env.ts";
 import { projectHookFiles } from "./home.ts";
-import { isRecord } from "./util.ts";
 import { describeProjectConfig, startsCommands } from "./trust/describe.ts";
 import { fingerprint, projectConfigFiles, projectMcpFiles, readForFingerprint, realPath } from "./trust/files.ts";
 import { isWorktreeOf, readStore, storeKey, storePath, withFileLock } from "./trust/store.ts";
-
-export { describeProjectConfig } from "./trust/describe.ts";
-export { fingerprint, projectConfigFiles } from "./trust/files.ts";
 
 /**
  * Project files that start commands or steer the agent (Claude Code / Codex / Octocode hooks, project `mcp.json` files, `.pi/agents`, `.octocode/agents`, `.claude/skills`, `.octocode/skills`) load only after an explicit trust decision. `ctx.isProjectTrusted()` alone is not one: Octocode (checked

@@ -150,9 +150,9 @@ export function getHomeDir(): string {
 	return process.env.HOME || homedir();
 }
 
-export type GitUpdateTargetRef = { ref: string; head: string; fetchArgs: string[] };
+type GitUpdateTargetRef = { ref: string; head: string; fetchArgs: string[] };
 
-export type CommandCaptureOptions = { cwd?: string; timeoutMs?: number; env?: Record<string, string> };
+type CommandCaptureOptions = { cwd?: string; timeoutMs?: number; env?: Record<string, string> };
 
 export type SpawnCapture = (
 	command: string,

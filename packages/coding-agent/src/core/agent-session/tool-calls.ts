@@ -83,6 +83,7 @@ export class SessionToolCalls {
 			return await runner.emitToolCall(
 				{
 					type: "tool_call",
+					origin: parentToolCallId ? "tool" : "model",
 					toolName: toolCall.name,
 					toolCallId: toolCall.id,
 					...(parentToolCallId ? { parentToolCallId } : {}),

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
-import { subagentProcessEnv } from "../../src/octocode/subagents/process.ts";
+import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import {
 	createWorktree,
 	describePrune,

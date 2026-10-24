@@ -40,6 +40,7 @@ import {
 	type StreamOptions,
 } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
+import { mergeHeaders } from "@octocodeai/octocode-ai/utils/headers";
 import {
 	assertChatModel,
 	assertClassifierInputSupported,
@@ -51,8 +52,9 @@ import {
 import type { resolveConfiguredCache } from "../cache-configuration.ts";
 import { resolveConfiguredModelHeaders } from "../provider-composer.ts";
 import { isVirtualModel, type ModelRoute, type ModelRouteReason } from "../virtual-models.ts";
+import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
-import { mergeHeaders, type ModelRuntimeAuthOverrides } from "./types.ts";
+import type { ModelRuntimeAuthOverrides } from "./types.ts";
 
 /** Resolve a model's auth and merge the headers configured for it in models.json or by its extension. */
 export async function resolveModelAuth(
@@ -97,7 +99,7 @@ export interface ModelRequestHost {
 	streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream;
 }
 
-export async function prepareModelRequest<
+async function prepareModelRequest<
 	TModel extends AnyModel,
 	TOptions extends ProviderRequestOptions<TModel> & ModelsRequestTransforms,
 >(
@@ -152,6 +154,7 @@ export function streamChatModel<TApi extends Api>(
 		const prepared = await prepareModelRequest(host, model, {
 			...options,
 			...host.getCachePolicy(model, options).options,
+			...instructionCacheBoundaryOption(transcript.messages, options),
 		});
 		return prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>);
 	});
@@ -188,6 +191,7 @@ export function streamSimpleChatModel(
 		const prepared = await prepareModelRequest(host, model, {
 			...options,
 			...host.getCachePolicy(model, options).options,
+			...instructionCacheBoundaryOption(transcript.messages, options),
 		});
 		return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 	});

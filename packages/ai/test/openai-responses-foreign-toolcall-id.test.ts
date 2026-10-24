@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, ToolResultMessage, Usage } from "../src/types.ts";
 import { shortHash } from "../src/utils/hash.ts";
 
@@ -18,7 +19,7 @@ const usage: Usage = {
 
 describe("OpenAI Responses foreign tool call ID normalization", () => {
 	it("hashes foreign Copilot tool item IDs into a bounded Codex-safe fc_<hash> shape", () => {
-		const model = getModel("openai-codex", "gpt-5.5");
+		const model = getBuiltinModel("openai-codex", "gpt-5.5");
 		const assistant: AssistantMessage = {
 			role: "assistant",
 			content: [

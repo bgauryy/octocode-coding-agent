@@ -204,7 +204,7 @@ async function resolveApiKey(
 	}
 }
 
-async function readCredential(
+export async function readCredential(
 	credentials: CredentialStore,
 	providerId: string,
 	signal: AbortSignal,

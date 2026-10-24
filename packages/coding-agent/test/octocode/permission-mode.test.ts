@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modeSummary } from "../../src/octocode/permission/ask.ts";
+import { modeSummary } from "../../src/octocode/permission/ask/text.ts";
 import {
 	ACTION_CLASSES,
 	type ActionClass,

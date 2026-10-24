@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copiedElision } from "../../src/octocode/files/tool.ts";
+import { copiedElision } from "../../src/octocode/files/tool/queries.ts";
 import { capOutputToFile } from "../../src/octocode/shared/spill.ts";
 import { capChars, capOutput, elisionMarkers } from "../../src/octocode/shared/util.ts";
 

@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { inspectPluginHooks } from "../../src/core/plugin-hooks.ts";
-import { commandsFor, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 
 describe("plugin hooks through session registration", () => {
 	afterEach(() => vi.unstubAllEnvs());

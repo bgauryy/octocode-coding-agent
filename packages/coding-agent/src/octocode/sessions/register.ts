@@ -5,15 +5,16 @@ import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index
 import { sharedAgentDb } from "../agentdb/db.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
-import { currentSessionId, repoKey } from "../shared/home.ts";
-import { expandKey, plural } from "../shared/render.ts";
+import { currentSessionId } from "../shared/home.ts";
+import { repoKey } from "../shared/home/repo.ts";
+import { expandKey, plural } from "../shared/render/text.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import {
 	addUsage,
 	contentText,
 	emptyUsage,
 	entryMessage,
-	errorMessage,
 	type ModelLookup,
 	modelLookup,
 	spendOf,

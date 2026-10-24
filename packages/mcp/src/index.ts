@@ -1,5 +1,6 @@
 export type { AuthProvider, McpFetch, UnauthorizedContext } from "./auth-provider.ts";
-export { McpClient, type McpClientOptions, type McpRequestOptions } from "./client.ts";
+export type { McpClientOptions, McpRequestOptions } from "./client/types.ts";
+export { McpClient } from "./client.ts";
 export {
 	type AudioContent,
 	type BlobResourceContents,
@@ -9,6 +10,7 @@ export {
 	type EmbeddedResourceContent,
 	type ImageContent,
 	type LlmContent,
+	type Resource,
 	type ResourceLinkContent,
 	type TextContent,
 	type TextResourceContents,
@@ -45,7 +47,6 @@ export {
 	type ListToolsResult,
 	type ProgressNotification,
 	type ReadResourceResult,
-	type Resource,
 	type ResourceTemplate,
 	type Root,
 	type ServerCapabilities,
@@ -61,13 +62,8 @@ export {
 	StdioTransport,
 	type StdioTransportOptions,
 } from "./transports/stdio.ts";
-export {
-	McpAuthRequiredError,
-	McpHttpError,
-	McpSessionExpiredError,
-	StreamableHttpTransport,
-	type StreamableHttpTransportOptions,
-} from "./transports/streamable-http.ts";
+export { McpAuthRequiredError, McpHttpError, McpSessionExpiredError } from "./transports/streamable-http/http.ts";
+export { StreamableHttpTransport, type StreamableHttpTransportOptions } from "./transports/streamable-http.ts";
 export { LegacySseTransport, type LegacySseTransportOptions } from "./transports/legacy-sse.ts";
 export type {
 	McpTransport,

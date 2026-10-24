@@ -4,6 +4,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Native agent
 
+- [All commands and aliases](commands.md)
 - [Native features and migration from the Pi extension](native-features.md)
 - [Configuration locations and controls](../../../CONFIGURATIONS.md)
 - [Configuration and Pi compatibility](configuration.md)

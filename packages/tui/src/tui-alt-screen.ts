@@ -1,14 +1,11 @@
 import { AltScreenFlashContainer } from "./components/alt-screen-flash.ts";
 import { ScrollView } from "./components/scroll-view.ts";
-import { type LayoutFrame, renderLayoutFrame } from "./layout.ts";
+import type { LayoutFrame } from "./layout/types.ts";
+import { renderLayoutFrame } from "./layout.ts";
 import type { Terminal } from "./terminal.ts";
-import {
-	getCapabilities,
-	type ImageProtocol,
-	isImageLine,
-	setCapabilities,
-	type TerminalCapabilities,
-} from "./terminal-image.ts";
+import type { ImageProtocol, TerminalCapabilities } from "./terminal-image/types.ts";
+import { getCapabilities, setCapabilities } from "./terminal-image/capabilities.ts";
+import { isImageLine } from "./terminal-image.ts";
 import {
 	type Component,
 	Container,
@@ -41,10 +38,9 @@ import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-s
 import { AltScreenSelection, type AltScreenSelectionHost } from "./tui-alt-screen/selection-controller.ts";
 import type { CachedKittyImage, ScrollToEndIndicatorRect, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 import { type AltScreenViewportKeysHost, handleViewportKeys } from "./tui-alt-screen/viewport-keys.ts";
-import { sliceByColumn, visibleWidth } from "./utils.ts";
+import { visibleWidth } from "./utils/width.ts";
+import { sliceByColumn } from "./utils/columns.ts";
 import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
-
-export type { TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 
 /** Alternate-screen TUI with a scrollable, application-owned viewport. */
 export class TuiAltScreen extends TuiBase implements ViewportTUI {

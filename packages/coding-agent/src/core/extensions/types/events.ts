@@ -16,7 +16,6 @@ import type {
 	BeforeAgentStartEvent,
 	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
-	BoundaryResult,
 	ContextEvent,
 	ContextWithSystemEvent,
 	MessageEndEvent,
@@ -90,9 +89,6 @@ export type ExtensionEvent =
 export interface ContextEventResult {
 	messages?: AgentMessage[];
 }
-
-export type TurnEndEventResult = BoundaryResult;
-export type AgentBeforeSettleEventResult = BoundaryResult;
 
 export type BeforeProviderRequestEventResult = unknown;
 

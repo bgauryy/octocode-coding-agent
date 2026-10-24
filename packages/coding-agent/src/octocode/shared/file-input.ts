@@ -1,4 +1,4 @@
-import { isRecord } from "./util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {

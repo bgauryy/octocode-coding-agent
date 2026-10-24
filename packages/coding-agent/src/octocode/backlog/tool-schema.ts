@@ -1,10 +1,11 @@
 import { Type } from "typebox";
-import { EntityFields, type EntityInput } from "./model.ts";
+import { EntityFields, type EntityInput } from "@octocodeai/octocode-contacts/backlogs";
 
 /**
  * The entity fields as the model sees them. The store validates every field against the strict `EntityFieldsSchema`
- * (which names the failing path), so these declarations stay short: a link target is one flat object instead of four
- * variants, and nested objects drop `additionalProperties: false`.
+ * (which names the failing path), so these declarations stay lean: a link target is one flat object instead of four
+ * variants, and nested inventories (a link target's per-resource keys, a completion's file and verification rows) live
+ * in the field's description, not in property lists.
  */
 const LinkField = Type.Unsafe<NonNullable<EntityInput["links"]>>({
 	type: "array",
@@ -23,33 +24,26 @@ const LinkField = Type.Unsafe<NonNullable<EntityInput["links"]>>({
 						type: "string",
 						enum: ["backlogs", "files", "sessions", "messages", "reports", "memories", "artifacts", "external"],
 					},
-					repositoryKey: { type: "string" },
-					id: { type: "string" },
-					path: { type: "string" },
-					revision: { type: "string" },
-					namespace: { type: "string" },
-					url: { type: "string" },
 				},
 			},
 		},
 	},
 });
 
-/** Remove `additionalProperties: false` from a JSON schema, recursively. */
-function open<T>(schema: T): T {
-	if (Array.isArray(schema)) return schema.map(open) as T;
-	if (typeof schema !== "object" || schema === null) return schema;
-	return Object.fromEntries(
-		Object.entries(schema)
-			.filter(([key, value]) => !(key === "additionalProperties" && value === false))
-			.map(([key, value]) => [key, open(value)]),
-	) as T;
-}
-
 const completion = Type.Optional(
 	Type.Unsafe<NonNullable<EntityInput["completion"]>>({
-		...open(EntityFields.completion),
-		description: "Done result; operationKey deduplicates retries; replaces corrects history.",
+		type: "object",
+		required: ["summary", "files", "verification", "operationKey"],
+		properties: {
+			summary: { type: "string" },
+			files: { type: "array" },
+			verification: { type: "object" },
+			lesson: { type: "string" },
+			operationKey: { type: "string" },
+			replaces: { type: "number" },
+		},
+		description:
+			"Done result. files: [{path, role: changed|reviewed|produced, repositoryKey?, revision?}]; verification: {status: passed|failed|not_run|not_applicable, summary}; operationKey deduplicates retries; replaces corrects history.",
 	}),
 );
 

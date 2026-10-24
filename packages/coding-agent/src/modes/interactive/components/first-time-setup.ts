@@ -10,7 +10,7 @@ export interface FirstTimeSetupResult {
 	shareAnalytics: boolean;
 }
 
-export interface FirstTimeSetupOptions {
+interface FirstTimeSetupOptions {
 	onThemePreview: (themeName: string) => void;
 	onSubmit: (result: FirstTimeSetupResult) => void;
 	onCancel: () => void;

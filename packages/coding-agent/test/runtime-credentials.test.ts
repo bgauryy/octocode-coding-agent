@@ -1,4 +1,4 @@
-import type { CredentialStore } from "@octocodeai/octocode-ai";
+import type { Credential, CredentialStore } from "@octocodeai/octocode-ai";
 import { describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { RuntimeCredentials } from "../src/core/runtime-credentials.ts";
@@ -71,6 +71,56 @@ describe("RuntimeCredentials", () => {
 		await expect(credentials.delete("anthropic", { signal: new AbortController().signal })).rejects.toBe(aborted);
 		expect(deleteSpy).toHaveBeenCalledTimes(1);
 		expect(await credentials.read("anthropic")).toEqual({ type: "api_key", key: "runtime-key" });
+	});
+
+	test("cancellation while a transformed write is queued preserves the previous credential", async () => {
+		const storage = AuthStorage.inMemory({ anthropic: { type: "api_key", key: "old-key" } });
+		const credentials = new RuntimeCredentials(storage);
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const blockingWrite = storage.modify("anthropic", async () => {
+			started.resolve();
+			await release.promise;
+			return undefined;
+		});
+		await started.promise;
+		const transform = vi.fn(async (credential: Credential) => credential);
+		const controller = new AbortController();
+		const write = credentials.withWriteTransform("anthropic", transform, () =>
+			credentials.modify("anthropic", async () => ({ type: "api_key", key: "new-key" }), { signal: controller.signal }),
+		);
+		controller.abort();
+		await expect(write).rejects.toThrow();
+		release.resolve();
+		await blockingWrite;
+		expect(await storage.read("anthropic")).toEqual({ type: "api_key", key: "old-key" });
+		expect(transform).not.toHaveBeenCalled();
+	});
+
+	test("cancellation during credential preparation stops before the external secret write", async () => {
+		const storage = AuthStorage.inMemory({ anthropic: { type: "api_key", key: "old-key" } });
+		const credentials = new RuntimeCredentials(storage);
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const transform = vi.fn(async (credential: Credential) => credential);
+		const controller = new AbortController();
+		const write = credentials.withWriteTransform("anthropic", transform, () =>
+			credentials.modify(
+				"anthropic",
+				async () => {
+					started.resolve();
+					await release.promise;
+					return { type: "api_key", key: "new-key" };
+				},
+				{ signal: controller.signal },
+			),
+		);
+		await started.promise;
+		controller.abort();
+		release.resolve();
+		await expect(write).rejects.toThrow();
+		expect(await storage.read("anthropic")).toEqual({ type: "api_key", key: "old-key" });
+		expect(transform).not.toHaveBeenCalled();
 	});
 
 	test("delete clears both the override and persisted credential", async () => {

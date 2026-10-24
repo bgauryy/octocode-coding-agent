@@ -1,4 +1,4 @@
-import { base, BODY, mask, SEPARATOR, SHELLS, shellScript, stdinOf, unhide, words } from "./words.ts";
+import { base, BODY, mask, nestedScripts, SEPARATOR, stdinOf, unhide, words } from "./words.ts";
 
 /** `git` options before the subcommand that take the next word as their value (`git -C dir add`). */
 const GIT_OPTION_ARGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"]);
@@ -58,14 +58,7 @@ export function gitStateMutation(command: string): string | undefined {
 		if (!name || BODY.test(name)) continue;
 		const found = mutationOf(tokens.map(unhide));
 		if (found) return found;
-		const scripts: string[] = [];
-		if (name === "eval") scripts.push(tokens.slice(1).map(unhide).join(" "));
-		if (SHELLS.has(name)) {
-			const shell = shellScript(tokens);
-			if (shell.script !== undefined) scripts.push(unhide(shell.script));
-			if (shell.stdin) scripts.push(...stdinOf(tokens, bodies).map(unhide), ...fromPipe);
-		}
-		for (const script of scripts) {
+		for (const script of nestedScripts(name, tokens, bodies, fromPipe)) {
 			const nested = gitStateMutation(script);
 			if (nested) return nested;
 		}

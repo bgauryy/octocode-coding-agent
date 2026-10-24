@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readOnlyCommand } from "../../src/octocode/permission/shell.ts";
+import { readOnlyCommand } from "../../src/octocode/permission/shell/read-only.ts";
 
 describe("readOnlyCommand", () => {
 	it.each([

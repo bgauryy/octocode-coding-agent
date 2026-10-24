@@ -1,5 +1,5 @@
 import { processStartTime } from "../../../src/octocode/shared/process.ts";
-import type { Member } from "../../../src/octocode/team/model.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 import { TeamStore } from "../../../src/octocode/team/store.ts";
 
 /**

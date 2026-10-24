@@ -1,5 +1,5 @@
 import { projectClaudeBash } from "../shared/claude-bash.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { validateCodexOutput } from "./codex-output.ts";
 /** Source dialects remain distinct even when their handlers use identical command text. */
 export type HookProtocol = "octocode" | "claude" | "codex";

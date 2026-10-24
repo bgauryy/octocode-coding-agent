@@ -6,7 +6,7 @@ export interface SseEvent {
 	id?: string;
 }
 
-export interface ConsumeSseOptions {
+interface ConsumeSseOptions {
 	maxEventBytes?: number;
 	onEvent(event: SseEvent): void;
 	/** Called for every `id` field, including events without data (for example resumption priming events). */

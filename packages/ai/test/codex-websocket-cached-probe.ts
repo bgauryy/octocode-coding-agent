@@ -16,7 +16,8 @@ import {
 	resetOpenAICodexWebSocketDebugStats,
 	stream as streamOpenAICodexResponses,
 } from "../src/api/openai-codex-responses.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model, Tool, ToolResultMessage, Transport } from "../src/types.ts";
 
 type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -163,7 +164,7 @@ function percentile(values: number[], p: number): number {
 
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
-	const model = getModel("openai-codex", "gpt-5.5") as Model<"openai-codex-responses"> | undefined;
+	const model = getBuiltinModel("openai-codex", "gpt-5.5") as Model<"openai-codex-responses"> | undefined;
 	if (!model) throw new Error("Model openai-codex/gpt-5.5 not found");
 	const modelWithMaxTokens = { ...model, maxTokens: args.maxTokens };
 	const modelRuntime = await ModelRuntime.create();

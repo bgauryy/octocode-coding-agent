@@ -21,7 +21,7 @@
  * ```
  *
  * HTTP servers without an `Authorization` header use OAuth when they answer 401 (sign in with `/mcp`).
- * `"auth": { "provider": "<provider>" }` sends the token of a `/login` provider instead. Project files
+ * `"auth": { "provider": "<provider>" }` sends the token of a `/providers` provider instead. Project files
  * cannot use it, so a repository cannot pick where the credential goes.
  *
  */
@@ -46,13 +46,7 @@ import { stripBom } from "../../utils/text.ts";
 import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 
-export type {
-	McpExposure,
-	McpHttpServerConfig,
-	McpOAuthConfig,
-	McpServerConfig,
-	McpStdioServerConfig,
-} from "../../core/mcp-servers.ts";
+export type { McpExposure, McpHttpServerConfig, McpOAuthConfig, McpServerConfig } from "../../core/mcp-servers.ts";
 export { getMcpToolExposure } from "../../core/mcp-servers.ts";
 
 export interface McpServerEntry {

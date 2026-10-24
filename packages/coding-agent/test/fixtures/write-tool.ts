@@ -13,7 +13,7 @@ import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper
 
 const writeSchema = Type.Object({ path: Type.String(), content: Type.String() });
 
-export function createWriteToolDefinition(cwd: string): ToolDefinition<typeof writeSchema, undefined> {
+function createWriteToolDefinition(cwd: string): ToolDefinition<typeof writeSchema, undefined> {
 	return {
 		name: "write",
 		label: "write",

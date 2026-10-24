@@ -1,8 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
-import { plural, statusColor } from "../shared/render.ts";
+import { plural } from "../shared/render/text.ts";
+import { statusColor } from "../shared/render/status.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 import { STATUS } from "../shared/status.ts";
-import { errorMessage, isRecord } from "../shared/util.ts";
 
 type Send = ExtensionAPI["sendMessage"];
 type Message = Parameters<Send>[0];
@@ -24,9 +25,10 @@ type Options = Parameters<Send>[1];
  * through untracked.
  */
 export class Delivery {
-	private readonly waiting = new Map<object, Message>();
+	private readonly waiting = new Map<object, { message: Message; accepted?: Promise<void> }>();
 	private running = false;
 	private ctx: ExtensionContext | undefined;
+	private generation = 0;
 
 	private readonly send: Send;
 	constructor(send: Send) {
@@ -56,14 +58,29 @@ export class Delivery {
 		return this.waiting.size;
 	}
 
-	deliver(message: Message, options?: Options): void {
+	deliver(message: Message, options?: Options): ReturnType<Send> {
 		// Octocode queues once a run starts preparing, before `agent_start` (its `before_agent_start` handlers run in between).
 		const busy = this.running || this.preparing();
-		void this.send(message, options);
+		const sent = this.send(message, options);
 		const queued = busy && options?.triggerTurn !== false && options?.deliverAs !== "nextTurn";
-		if (!queued || !isRecord(message.details)) return;
-		this.waiting.set(message.details, message);
+		if (!queued || !isRecord(message.details)) return sent;
+		const details = message.details;
+		const accepted = sent && typeof sent.then === "function" ? Promise.resolve(sent) : undefined;
+		const entry = { message, accepted };
+		this.waiting.set(details, entry);
 		this.paint();
+		if (!accepted) return sent;
+		const generation = this.generation;
+		const result = accepted.catch((error: unknown) => {
+			if (generation === this.generation && this.waiting.get(details) === entry) {
+				this.waiting.delete(details);
+				this.paint();
+			}
+			throw error;
+		});
+		// Some extension notices intentionally fire and forget; keep their rejection observable to awaiting callers.
+		void result.catch(() => {});
+		return result;
 	}
 
 	/** A run is starting but has not reached `agent_start`. */
@@ -77,9 +94,10 @@ export class Delivery {
 	}
 
 	/** The run is over: Octocode starts queued messages before it settles, so any still waiting were cleared. */
-	private settle(ctx: ExtensionContext): void {
+	private async settle(ctx: ExtensionContext): Promise<void> {
 		this.running = false;
 		this.ctx = ctx;
+		const generation = this.generation;
 		const dropped = [...this.waiting.values()];
 		this.waiting.clear();
 		this.paint();
@@ -87,11 +105,20 @@ export class Delivery {
 		if (dropped.length === 0 || ctx.mode !== "tui") return;
 		let kept = 0;
 		const failures: string[] = [];
-		for (const message of dropped) {
+		for (const { message, accepted } of dropped) {
 			try {
-				void this.send(message, { triggerTurn: false });
+				await accepted;
+			} catch {
+				// The original handoff failed; its caller receives the rejection and owns recovery.
+				continue;
+			}
+			if (generation !== this.generation) return;
+			try {
+				await this.send(message, { triggerTurn: false });
+				if (generation !== this.generation) return;
 				kept += 1;
 			} catch (error) {
+				if (generation !== this.generation) return;
 				// The session ended meanwhile: this message is lost, and the notice says so.
 				failures.push(errorMessage(error));
 			}
@@ -116,6 +143,7 @@ export class Delivery {
 	}
 
 	private reset(ctx: ExtensionContext | undefined): void {
+		this.generation++;
 		this.waiting.clear();
 		this.running = false;
 		// The new session's UI is painted (a replaced session's status clears through it); a shutdown clears its own UI.

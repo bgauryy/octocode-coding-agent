@@ -23,7 +23,7 @@ import {
 	type McpServerEntry,
 	updateMcpServerConfig,
 } from "../src/extensions/mcp/config.ts";
-import { MAX_SERVERS_SECTION_CHARS, renderServersSection } from "../src/extensions/mcp/index.ts";
+import { MAX_SERVERS_SECTION_CHARS, reachesServer, renderServersSection } from "../src/extensions/mcp/section.ts";
 import { McpServerLog } from "../src/extensions/mcp/log.ts";
 import { McpOAuthCredentialStore } from "../src/extensions/mcp/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../src/extensions/mcp/runtime.ts";
@@ -981,7 +981,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 		try {
 			expect(connection.oauthUrl).toBeUndefined();
 			await expect(connection.getClient()).rejects.toThrow(
-				'MCP server "gateway" requires sign-in. Run /login gateway to sign in.',
+				'MCP server "gateway" requires sign-in. Run /providers gateway to sign in.',
 			);
 			expect(connection.state).toBe("needs-auth");
 			expect(authorizations).toEqual(["Bearer tok"]);
@@ -1102,7 +1102,7 @@ describe("MCP servers section", () => {
 			{
 				entry: server("docs", undefined, "deferred").entry,
 				connection: { instructions: "Docs search.\nSearch first, then\n  fetch a page." },
-				tools: { deferred: ["mcp__docs__search", "mcp__docs__fetch"], direct: 0 },
+				tools: { deferred: [{ name: "mcp__docs__search" }, { name: "mcp__docs__fetch" }], direct: 0 },
 			},
 			{
 				entry: server("api", "API calls.", "direct").entry,
@@ -1110,7 +1110,7 @@ describe("MCP servers section", () => {
 				tools: { deferred: [], direct: 2 },
 			},
 			// Its instructions and tools are in the `octocode` section.
-			{ entry: server("octocode").entry, tools: { deferred: ["mcp__octocode__ghSearchCode"], direct: 5 } },
+			{ entry: server("octocode").entry, tools: { deferred: [{ name: "mcp__octocode__ghSearchCode" }], direct: 5 } },
 			// Connected without tools: nothing to reach.
 			{ entry: server("empty", undefined, "deferred").entry, tools: { deferred: [], direct: 0 } },
 		]);
@@ -1119,7 +1119,7 @@ describe("MCP servers section", () => {
 			"- mcp__api (declared): API calls.",
 			"  instructions: Call get before put.",
 			"- mcp__docs (tool_search): Docs search.",
-			"  tool_search loads: search, fetch",
+			"  tool_search loads: fetch, search",
 			"  instructions: Search first, then fetch a page.",
 		]);
 	});
@@ -1128,7 +1128,7 @@ describe("MCP servers section", () => {
 		const servers = Array.from({ length: 12 }, (_, index) => ({
 			entry: server(`server${index}`, "s".repeat(200), "deferred").entry,
 			connection: { instructions: "i".repeat(2000) },
-			tools: { deferred: [`mcp__server${index}__find`], direct: 0 },
+			tools: { deferred: [{ name: `mcp__server${index}__find` }], direct: 0 },
 		}));
 		const section = renderServersSection(servers) ?? "";
 		expect(section.length).toBeLessThanOrEqual(MAX_SERVERS_SECTION_CHARS);
@@ -1160,8 +1160,7 @@ describe("MCP servers section", () => {
 });
 
 describe("tool_search reach", () => {
-	it("matches a plugin server whose name keeps '-' in its namespace, however the model spells it", async () => {
-		const { reachesServer } = await import("../src/extensions/mcp/index.ts");
+	it("matches a plugin server whose name keeps '-' in its namespace, however the model spells it", () => {
 		const server = "plugin:my-plug:srv";
 		for (const word of ["mcp__plugin_my_plug_srv", "mcp__plugin_my-plug_srv", "mcp__plugin_my_plug_srv__find"])
 			expect(reachesServer([word], server)).toBe(true);

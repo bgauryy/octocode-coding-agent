@@ -1,12 +1,13 @@
 import { fileChanges } from "../shared/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { formatDuration, formatTokens } from "../shared/format.ts";
+import { formatDuration } from "../shared/format.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
-import { clipColumns, queryTarget } from "../shared/render.ts";
+import { clipColumns, queryTarget } from "../shared/render/text.ts";
+import { isRecord } from "../../utils/guards.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { Thought } from "../shared/thought.ts";
-import { addReply, emptyTotals, firstLine, isRecord, spendOf, toolHint } from "../shared/util.ts";
+import { firstLine, toolHint } from "../shared/util.ts";
 
 /** What the model is doing between tool runs. */
 type Phase = "idle" | "model" | "thinking" | "writing" | "calling";
@@ -231,8 +232,8 @@ export class Activity {
 
 /**
  * Feed `Activity` from Octocode's events. `onChange` hears the line without elapsed time whenever it changes (the team panel
- * shows it to the parent and teammates). In the TUI, a run summary sits above the activity detail and updates once a
- * second. Reported streaming usage joins completed message usage until that message ends; settlement clears the display.
+ * shows it to the parent and teammates). The TUI shows the activity detail and updates elapsed time once a second;
+ * settlement clears the display.
  */
 interface ActivityControl {
 	activity: Activity;
@@ -251,10 +252,6 @@ export function registerActivity(
 	let shown: string | undefined;
 	let reported: string | undefined;
 	let timer: NodeJS.Timeout | undefined;
-	let runStartedAt: number | undefined;
-	let usage = emptyTotals();
-	let streamingTokens = 0;
-	let compactions = 0;
 	/** Repaints when interactions queue behind an open dialog; held per session. */
 	let unsubscribe: (() => void) | undefined;
 
@@ -269,11 +266,7 @@ export function registerActivity(
 		const now = Date.now();
 		// The working line has the terminal's width; its renderer clips, so the detail is not cut to the stored line's budget.
 		const detail = activity.describe(now, dialogsWaiting(), WORKING_LINE_MAX) ?? "Waiting for model";
-		const compacted = compactions > 0 ? ` · ${compactions} compaction${compactions === 1 ? "" : "s"}` : "";
-		const working =
-			activity.ticking() && runStartedAt !== undefined
-				? `Main · ${formatDuration(now - runStartedAt)} · ${formatTokens(usage.input + usage.output + streamingTokens)} tokens${compacted}\n${detail}`
-				: undefined;
+		const working = activity.ticking() ? detail : undefined;
 		if (working !== shown) {
 			shown = working;
 			try {
@@ -292,13 +285,11 @@ export function registerActivity(
 	};
 	const stop = () => {
 		activity.end();
-		runStartedAt = undefined;
 		paint();
 	};
 
 	pi.on("session_start", async (_event, next) => {
 		ctx = next;
-		compactions = next.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
 		shown = undefined;
 		unsubscribe?.();
 		unsubscribe = onDialogsChange(paint);
@@ -312,40 +303,18 @@ export function registerActivity(
 	});
 	pi.on("agent_start", async (_event, next) => {
 		ctx = next;
-		if (runStartedAt === undefined) {
-			runStartedAt = Date.now();
-			usage = emptyTotals();
-			streamingTokens = 0;
-		}
+
 		activity.start(Date.now());
 		paint();
 	});
 	pi.on("message_update", async (event) => {
-		if (event.message.role !== "assistant" || runStartedAt === undefined) return;
+		if (event.message.role !== "assistant" || !activity.ticking()) return;
 		const update = event.assistantMessageEvent;
-		const partial = emptyTotals();
-		addReply(partial, event.message.usage, false);
-		const tokens = partial.input + partial.output;
-		const changed = tokens !== streamingTokens;
-		streamingTokens = tokens;
-		if (
-			activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined) ||
-			changed
-		)
-			paint();
+		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined)) paint();
 	});
 	pi.on("message_end", async (event) => {
-		if (runStartedAt === undefined) return;
-		const spend = spendOf(event.message);
-		if (spend) addReply(usage, spend.usage, false);
-		if (event.message.role === "assistant") {
-			streamingTokens = 0;
-			activity.messageDone(Date.now());
-		}
-		paint();
-	});
-	pi.on("session_compact", async (_event, next) => {
-		compactions = next.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
+		if (!activity.ticking()) return;
+		if (event.message.role === "assistant") activity.messageDone(Date.now());
 		paint();
 	});
 	pi.on("tool_execution_start", async (event) => {

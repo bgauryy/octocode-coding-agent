@@ -4,8 +4,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { buildAgentArgs, childSessionFile, runSubagent, type Identity } from "../../src/octocode/subagents/process.ts";
+import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
+import { buildAgentArgs, childSessionFile } from "../../src/octocode/subagents/process/session.ts";
+import type { Identity } from "../../src/octocode/subagents/process/env.ts";
 afterEach(() => vi.unstubAllEnvs());
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 const allowed = {

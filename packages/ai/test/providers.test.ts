@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { lazyApi } from "../src/api/lazy.ts";
 import { envApiKeyAuth } from "../src/auth/helpers.ts";
 import type { AuthContext, AuthEvent } from "../src/auth/types.ts";
-import { getModel as getCompatModel, getModels as getCompatModels } from "../src/compat.ts";
 import { createModels, createProvider, getSupportedThinkingLevels } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import {
@@ -83,8 +82,6 @@ describe("builtin providers", () => {
 		expect(getBuiltinImageModels(unknownProvider)).toEqual([]);
 		expect(getBuiltinClassifierModels(unknownProvider)).toEqual([]);
 		expect(getAllBuiltinModels(unknownProvider)).toEqual([]);
-		expect(getCompatModel(unknownProvider, unknownModel)).toBeUndefined();
-		expect(getCompatModels(unknownProvider)).toEqual([]);
 	});
 
 	it("stores native constrained-sampling capabilities in model metadata", () => {

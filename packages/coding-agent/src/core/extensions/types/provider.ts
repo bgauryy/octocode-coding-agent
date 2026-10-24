@@ -68,7 +68,7 @@ export interface ProviderConfig {
 	 * Use context.publish({ persist: entry }) when the catalog should persist across sessions.
 	 */
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
-	/** OAuth provider for /login support. The `id` is set automatically from the provider name. */
+	/** OAuth provider for /providers support. The `id` is set automatically from the provider name. */
 	oauth?: {
 		/** Display name for the provider in login UI. */
 		name: string;
@@ -107,7 +107,7 @@ interface ProviderModelConfigBase {
 }
 
 /** Chat model configuration. Omitted `type` is normalized to `"chat"`. */
-export interface ProviderChatModelConfig extends ProviderModelConfigBase {
+interface ProviderChatModelConfig extends ProviderModelConfigBase {
 	type?: "chat";
 	api?: Api;
 	/** Whether the model supports extended thinking. */
@@ -126,14 +126,14 @@ export interface ProviderChatModelConfig extends ProviderModelConfigBase {
 }
 
 /** Image-generation model configuration. */
-export interface ProviderImageModelConfig extends ProviderModelConfigBase {
+interface ProviderImageModelConfig extends ProviderModelConfigBase {
 	type: "image";
 	api?: ImageApi;
 	output: ("text" | "image")[];
 }
 
 /** Structured classifier model configuration. */
-export interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
+interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
 	type: "classifier";
 	api?: ClassifierApi;
 	contextWindow: number;

@@ -1,10 +1,9 @@
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../../core/extensions/types.ts";
-import { type McpServerConfig, validateMcpServerConfig } from "../../core/mcp-servers.ts";
+import { MCP_MANAGE_TOOL_NAME, type McpServerConfig, validateMcpServerConfig } from "../../core/mcp-servers.ts";
+import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
-export const MCP_MANAGE_TOOL_NAME = "mcp";
-
-const INTENTS = ["list", "status", "connect", "restart", "stop", "add", "remove"] as const;
+const INTENTS = ["list", "status", "tools", "connect", "restart", "stop", "add", "remove"] as const;
 type Intent = (typeof INTENTS)[number];
 
 /** A session's MCP server as the `mcp` tool reports it. */
@@ -21,6 +20,8 @@ export interface ManagedMcpServer {
 /** What the `mcp` tool does to servers; the MCP extension owns the servers and supplies these. */
 export interface McpManageOperations {
 	servers(): ManagedMcpServer[];
+	/** Read the current catalog without connecting or executing a server. */
+	tools?(name: string): McpToolListing[];
 	/** Start a stopped or failed server, or restart a running one. Resolves with an error message on failure. */
 	restart(name: string, ctx: ExtensionContext): Promise<string | undefined>;
 	/** Stop a server for this session. Resolves with an error message when it cannot be stopped. */
@@ -53,6 +54,9 @@ const ConfigSchema = Type.Object(
 const ManageSchema = Type.Object({
 	intent: Type.Unsafe<Intent>({ type: "string", enum: [...INTENTS], description: "What to do" }),
 	server: Type.Optional(Type.String({ description: "Server name; every intent but list needs it" })),
+	tool: Type.Optional(
+		Type.String({ description: "For tools: one tool name to inspect its full description and schema" }),
+	),
 	config: Type.Optional(ConfigSchema),
 });
 
@@ -89,11 +93,12 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 		name: MCP_MANAGE_TOOL_NAME,
 		label: "MCP",
 		description:
-			"Manage this session's MCP servers. list or status: state, tool count and last error. connect or restart: start a server whose tools fail, time out or lost their connection. stop: end a server for this session. add: run a new server for this session (the user confirms). remove: drop a server this tool added. Configuration files are not changed.",
+			"Manage this session's MCP servers. list or status: state, tool count and last error. tools: inspect the current catalog; name a tool for its full description and input schema, without running it. connect or restart: start a server whose tools fail, time out or lost their connection. stop: end a server for this session. add: run a new server for this session (the user confirms). remove: drop a server this tool added. Configuration files are not changed.",
 		promptSnippet: "Check, restart, stop or add this session's MCP servers",
 		parameters: ManageSchema,
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			signal?.throwIfAborted();
 			const reply = (text: string, details: Record<string, unknown> = {}) => ({
 				content: [{ type: "text" as const, text }],
 				details: { intent: params.intent, ...details },
@@ -107,6 +112,24 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 				}
 				case "status":
 					return reply(describe(find(params.server)));
+				case "tools": {
+					const server = find(params.server);
+					const tools = server.connected ? (operations.tools?.(server.name) ?? []) : [];
+					if (params.tool) {
+						const tool = tools.find((candidate) => candidate.name === params.tool);
+						if (!tool) throw new Error(`No available tool named "${params.tool}" on MCP server "${server.name}".`);
+						return reply(formatMcpTool(tool, true), { server: server.name, tool });
+					}
+					return reply(
+						tools.length
+							? tools.map((tool) => formatMcpTool(tool)).join("\n")
+							: "No tools available in the current connection.",
+						{
+							server: server.name,
+							tools: tools.map(({ name, exposure }) => ({ name, exposure })),
+						},
+					);
+				}
 				case "connect":
 				case "restart": {
 					const server = find(params.server);
@@ -143,7 +166,9 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 					const confirmed = await ctx.ui.confirm(
 						"Add MCP server?",
 						`The agent wants to add "${name}" for this session: ${describeNewServer(config)}`,
+						{ signal },
 					);
+					signal?.throwIfAborted();
 					if (!confirmed) throw new Error(`The user declined adding MCP server "${name}".`);
 					operations.add(name, config);
 					return reply(`Added MCP server "${name}" for this session; its tools appear once it connects.`);

@@ -4,6 +4,8 @@ Use `~/.octocode/octocodecode/` for your global configuration and `.octocode/` f
 
 `OCTOCODE_HOME` changes the shared configuration and runtime home. `OCTOCODE_CODING_AGENT_DIR` changes only the core configuration directory; native runtime files keep their own home. Explicit home overrides and custom SDK agent directories disable automatic Pi configuration fallback. See [configuration and compatibility](packages/coding-agent/docs/configuration.md).
 
+`OCTOCODE_AGENT_DB` selects the native SQLite file. Shared connections are keyed by canonical path and remain open until process cleanup; selecting another file does not close existing borrowers. Interface runtime state stays in memory. See [runtime storage](packages/coding-agent/docs/configuration.md#runtime-storage) for the database and file boundaries.
+
 ## Where each configuration belongs
 
 In this table, **global** means `~/.octocode/octocodecode/` unless overridden. Core workspace files are relative to the session's working directory. Native agent profiles and hooks use the repository root, including when you start from a subdirectory.
@@ -12,9 +14,10 @@ In this table, **global** means `~/.octocode/octocodecode/` unless overridden. C
 | --- | --- | --- | --- |
 | General settings and default model selection | `settings.json` | `.octocode/settings.json` | `/settings`; `/reload` after file edits |
 | MCP servers and tool exposure | `mcp.json` | `.octocode/mcp.json` | `/mcp`, `/mcp config`, `/mcp tools` |
-| Providers, endpoints and model definitions | `models.json` | No automatically loaded workspace `models.json`; select a configured model in workspace settings | `/model` reloads model definitions; `/models` manages catalog and routing |
-| Provider sign-in and API keys | `auth.json` | No workspace credential file | `/login`, `/logout` |
+| Providers, endpoints and model definitions | `models.json` | No automatically loaded workspace `models.json`; select a configured model in workspace settings | `/model` reloads model definitions; `/modelsettings` manages catalog and routing |
+| Provider sign-in and API keys | `auth.json` | No workspace credential file | `/providers` (`/login`), `/logout` |
 | MCP OAuth tokens | `mcp-auth.json` | No workspace token file | `/mcp login <server>`, `/mcp logout <server>` |
+| GitHub sign-in for Octocode research | Saved by the native Octocode CLI in Octocode's home and the OS credential store | No workspace credential file | `/github`, `/github login`, `/github logout`; `octocode native auth status` in a shell |
 | Skills | `skills/<name>/SKILL.md`; also `~/.agents/skills/` | `.octocode/skills/<name>/SKILL.md`; also `.agents/skills/` | `/skills`, `/status`, `/reload` |
 | Prompt templates | `prompts/*.md` | `.octocode/prompts/*.md` | `/help`, `/reload` |
 | Extensions | `extensions/` | `.octocode/extensions/` | `/reload`; load diagnostics report conflicts |
@@ -97,10 +100,10 @@ Prompt templates are Markdown files in `prompts/`. Skills and prompts get direct
 
 ## Models and credentials
 
-Use `/login` for provider access, `/model` to select a model, `/effort` to choose reasoning effort, and `/models` for model cycling, catalog and routing. Put custom endpoints and model definitions in the global `models.json`; the [models guide](packages/coding-agent/docs/models.md) has examples and the [models configuration reference](packages/coding-agent/docs/models-configuration.md) describes each field.
+Use `/providers` (`/login`) for provider access, `/model` (`/models`) to select a model, `/thinking` (`/effort`) to choose reasoning effort, `/context size` for a session context budget, and `/modelsettings` for model shortcuts, catalog and routing. Put custom endpoints and model definitions in the global `models.json`; the [models guide](packages/coding-agent/docs/models.md) has examples and the [models configuration reference](packages/coding-agent/docs/models-configuration.md) describes each field.
 
 Default selection uses `defaultProvider` and `defaultModel` in settings. Authentication lives in global `auth.json` or environment variables; MCP OAuth uses the separate global `mcp-auth.json`. Keep credentials out of shared workspace files. Provider/model settings can select cache retention; paid cache warming is controlled by global settings. See [providers](packages/coding-agent/docs/providers.md), [environment variables](packages/coding-agent/docs/environment-variables.md), and [prompt caching](packages/coding-agent/docs/prompt-caching.md).
 
-Pi settings and provider definitions are fallback inputs when using the default home; native values take precedence and writes go to Octocode files. Pi authentication and trust decisions are not imported. Details and historical migrations remain in [configuration and compatibility](packages/coding-agent/docs/configuration.md).
+Pi settings and provider definitions are fallback inputs when using the default home; native values take precedence and writes go to Octocode files. Pi authentication is imported only through explicit confirmation in `/providers pi`; trust decisions are not imported. Details and historical migrations remain in [configuration and compatibility](packages/coding-agent/docs/configuration.md).
 
-Native workflow controls: `OCTOCODE_EDIT_DIAGNOSTICS=0` disables advisory edit diagnostics; `OCTOCODE_SUBAGENT_LINGER_SECONDS` retains finished workers for explicit follow-up within its bounded window. `debug` is an opt-in tool, and `bash` accepts `verify: true` per invocation. See [native features](packages/coding-agent/docs/native-features.md) and the [environment reference](packages/coding-agent/docs/environment-variables.md).
+Native workflow controls: `OCTOCODE_EDIT_DIAGNOSTICS=0` disables advisory edit diagnostics; `OCTOCODE_SUBAGENT_LINGER_SECONDS` retains finished workers for explicit follow-up within its bounded window; the `bashBackgroundAfterSeconds` setting (default 90, `0` off) or `OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS` sets when a foreground `bash` command moves to the background. `debug` is an opt-in tool, and `bash` accepts `verify: true` per invocation. See [native features](packages/coding-agent/docs/native-features.md) and the [environment reference](packages/coding-agent/docs/environment-variables.md).

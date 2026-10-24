@@ -34,7 +34,7 @@ function loadOpenRouterImagesProviderModule(): Promise<OpenRouterImagesProviderM
 	return openRouterImagesProviderModulePromise;
 }
 
-export const generateImagesOpenRouter: ImagesFunction = async (
+const generateImagesOpenRouter: ImagesFunction = async (
 	model: ImageModel<ImageApi>,
 	context: ImagesContext,
 	options?: ImagesOptions,
@@ -47,11 +47,7 @@ export const generateImagesOpenRouter: ImagesFunction = async (
 	}
 };
 
-export function registerBuiltInImagesApiProviders(): void {
-	registerImagesApiProvider({
-		api: "openrouter-images",
-		generateImages: generateImagesOpenRouter,
-	});
-}
-
-registerBuiltInImagesApiProviders();
+registerImagesApiProvider({
+	api: "openrouter-images",
+	generateImages: generateImagesOpenRouter,
+});

@@ -1,16 +1,25 @@
+import type { ApplicationAsset } from "@octocodeai/octocode-contacts";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contacts/workspace";
 import { createStore } from "zustand/vanilla";
 
 export type ActivityFilter = "all" | "results" | "tools" | "agents" | "attention";
 export interface WorkspaceDraft {
 	text: string;
+	attachments?: ApplicationAsset[];
 	to?: string;
 	id: string;
 	version?: number;
 }
+export interface WorkspaceRequest {
+	id: string;
+	status: "sending" | "pending" | "accepted" | "failed" | "uncertain";
+	message: string;
+}
 interface WorkspaceState {
 	drafts: Record<string, WorkspaceDraft>;
 	setDraft: (key: string, draft: WorkspaceDraft | null) => void;
+	requests: Record<string, WorkspaceRequest>;
+	setRequest: (key: string, request: WorkspaceRequest) => void;
 	snapshot: WorkspaceSnapshot | null;
 	filter: ActivityFilter;
 	paused: boolean;
@@ -24,6 +33,8 @@ interface WorkspaceState {
 export function createWorkspaceStore() {
 	return createStore<WorkspaceState>()((set) => ({
 		drafts: {},
+		requests: {},
+		setRequest: (key, request) => set((state) => ({ requests: { ...state.requests, [key]: request } })),
 		setDraft: (key, draft) =>
 			set((state) => {
 				const drafts = { ...state.drafts };
@@ -38,7 +49,8 @@ export function createWorkspaceStore() {
 		accept: (snapshot) =>
 			set((state) => {
 				const changedSession = state.snapshot !== null && state.snapshot.sessionId !== snapshot.sessionId;
-				if (changedSession) return { snapshot, drafts: {}, paused: false, displayedEvents: snapshot.events };
+				if (changedSession)
+					return { snapshot, drafts: {}, requests: {}, paused: false, displayedEvents: snapshot.events };
 				const sameEvents = JSON.stringify(state.displayedEvents) === JSON.stringify(snapshot.events);
 				return { snapshot, displayedEvents: state.paused || sameEvents ? state.displayedEvents : snapshot.events };
 			}),

@@ -62,8 +62,11 @@ describe("automatic compaction cancellation regressions", () => {
 		harness.setResponses([
 			fauxAssistantMessage("", { stopReason: "error", errorMessage: "Synthetic network failure" }),
 		]);
+		// The pre-prompt check counts the incoming prompt and may start (the hook cancels it); only post-run starts matter.
+		let startsBeforeAbort: number | undefined;
 		harness.session.subscribe((event) => {
 			if (event.type === "message_end" && event.message.role === "assistant") {
+				startsBeforeAbort = harness.eventsOfType("compaction_start").length;
 				harness.session.abortCompaction();
 				void harness.session.abort();
 			}
@@ -71,7 +74,8 @@ describe("automatic compaction cancellation regressions", () => {
 
 		await harness.session.prompt("z".repeat(1000));
 
-		expect(harness.eventsOfType("compaction_start")).toHaveLength(0);
+		expect(startsBeforeAbort).toBeDefined();
+		expect(harness.eventsOfType("compaction_start")).toHaveLength(startsBeforeAbort!);
 	});
 
 	// Regression test for #9777.

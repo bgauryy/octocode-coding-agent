@@ -27,8 +27,8 @@ export interface AudioContent {
 	_meta?: Record<string, unknown>;
 }
 
-export interface ResourceLinkContent {
-	type: "resource_link";
+/** A resource a server lists in `resources/list`. */
+export interface Resource {
 	uri: string;
 	name: string;
 	title?: string;
@@ -37,6 +37,11 @@ export interface ResourceLinkContent {
 	size?: number;
 	annotations?: ContentAnnotations;
 	_meta?: Record<string, unknown>;
+}
+
+/** A content block that links to a resource with the fields `resources/list` reports. */
+export interface ResourceLinkContent extends Resource {
+	type: "resource_link";
 }
 
 export interface TextResourceContents {

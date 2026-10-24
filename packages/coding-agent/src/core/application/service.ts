@@ -9,19 +9,32 @@ import {
 	type ApplicationEvent,
 	type ApplicationFrame,
 	type ApplicationMessage,
+	type ApplicationAsset,
+	type ApplicationAssetInput,
+	type ApplicationAssetPayload,
+	type ApplicationHistory,
 	type ApplicationReceipt,
 	type ApplicationSnapshot,
-	type ApplicationTool,
 	type LocalApplicationPort,
 	type ApplicationOperation,
 	type ApplicationOperationArgs,
 	type ApplicationOperationResult,
 } from "@octocodeai/octocode-contacts";
 import type { AgentSession, AgentSessionEvent, AgentSessionEventListener } from "../agent-session.ts";
-import { dispatchCommand } from "./service/commands.ts";
-import { type MessageProjectionHost, projectMessage, projectMessageUpdate, toolDomainEvent } from "./service/events.ts";
-import { appendReplayFrame, createFrameQueue } from "./service/frames.ts";
-import { keepEnds, OUTPUT_CHARS, queuePreview, toolResultText, trimOldest } from "./service/projection.ts";
+import { commandImages, dispatchCommand } from "./service/commands.ts";
+import { ApplicationTranscript } from "./transcript.ts";
+import { applicationSnapshot } from "./snapshot.ts";
+import { lifecycleEvent } from "./service/lifecycle.ts";
+import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
+import { ApplicationActivities } from "./service/activities.ts";
+import { ApplicationDelivery } from "./service/delivery.ts";
+import { cloneDisplay } from "./normalize.ts";
+import {
+	appendReplayFrame,
+	createApplicationFrame,
+	createFrameQueue,
+	type ApplicationFramePayload,
+} from "./service/frames.ts";
 import type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
 
 export type { ApplicationReceiptStore, ToolOutputProjector } from "./service/types.ts";
@@ -29,73 +42,37 @@ export type { ApplicationReceiptStore, ToolOutputProjector } from "./service/typ
 type Method = ApplicationOperation<AgentSession>;
 type Args<K extends Method> = ApplicationOperationArgs<AgentSession, K>;
 type Result<K extends Method> = ApplicationOperationResult<AgentSession, K>;
-const services = new WeakMap<AgentSession, ApplicationService>();
-const registered = new Set<ApplicationService>();
-export function getApplicationPort(session: AgentSession): ApplicationService {
-	let service = services.get(session);
-	if (!service) {
-		service = new ApplicationService(session);
-		services.set(session, service);
-		registered.add(service);
-		if (typeof session.subscribe === "function") service.start();
-	}
-	return service;
-}
-export function getApplicationPortForSession(sessionId: string): ApplicationService | undefined {
-	const matches = [...registered].filter((service) => service.sessionId === sessionId);
-	if (matches.length > 1) throw new Error("Multiple active application sessions share this session ID");
-	return matches[0];
-}
-
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, AgentSession> {
-	private outputProjector?: {
-		project: ToolOutputProjector;
-		active: boolean;
-		previous?: ApplicationService["outputProjector"];
-	};
-	/** Project display text only; native results remain unchanged. Owners include custom message types. */
+	private readonly state = createApplicationState();
+	private readonly transcript = new ApplicationTranscript(this.state);
+	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
+	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
 	setToolOutputProjector(project: ToolOutputProjector): () => void {
-		const registration = { project, active: true, previous: this.outputProjector };
-		this.outputProjector = registration;
-		this.refreshOutputProjection();
+		this.assertOpen();
+		let active = true;
+		let remove: (() => void) | undefined;
+		this.delivery.run(() => {
+			if (active && !this.disposed) remove = this.transcript.setProjector(project, () => this.invalidateReplay());
+		});
 		return () => {
-			registration.active = false;
-			if (this.outputProjector !== registration) return;
-			let previous = registration.previous;
-			while (previous && !previous.active) previous = previous.previous;
-			this.outputProjector = previous;
-			this.refreshOutputProjection();
+			active = false;
+			this.delivery.run(() => {
+				if (!this.disposed) remove?.();
+			});
 		};
 	}
-	private projectedOutput(owner: string, value: unknown): string | undefined {
-		try {
-			return this.outputProjector?.project(owner, value);
-		} catch {
-			return "Tool output unavailable";
-		}
-	}
-	private refreshOutputProjection(): void {
-		// Previous previews cannot be safely reinterpreted without the original metadata.
-		for (const [id, tool] of this.tools) this.tools.set(id, { ...tool, text: "Tool output unavailable" });
-		for (const [id, message] of this.messages) {
-			if (message.role !== "toolResult" && message.role !== "custom") continue;
-			this.messages.set(id, { ...message, text: "Tool output unavailable" });
-		}
-		for (const source of this.session.messages ?? []) {
-			const id = this.messageIds.get(source);
-			const message = id && this.messages.get(id);
-			if (!id || !message) continue;
-			const owner =
-				source.role === "toolResult" ? source.toolName : source.role === "custom" ? source.customType : undefined;
-			if (owner) this.messages.set(id, { ...message, text: this.outputText(owner, source) });
-		}
-		this.epoch = randomUUID();
-		this.sequence = 0;
+	private clearReplay(): void {
 		this.replay = [];
 		this.replaySizes = [];
 		this.replayChars = 0;
+	}
+	private invalidateReplay(): void {
+		this.epoch = randomUUID();
+		this.sequence = 0;
+		this.clearReplay();
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "overflow" }));
+		this.delivery.notify();
 	}
 
 	private receiptStore?: ApplicationReceiptStore;
@@ -104,42 +81,25 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	private epoch = randomUUID();
 	private sequence = 0;
-	private currentSession: string;
+	private get currentSession(): string {
+		return this.state.getState().sessionId;
+	}
+	private sourceMessages: readonly unknown[];
 	private unsubscribe?: () => void;
-	private native = new Set<AgentSessionEventListener>();
 	private closes = new Set<() => void>();
 	private sinks = new Set<(frame: ApplicationFrame) => void>();
 	private replay: ApplicationFrame[] = [];
 	private replaySizes: number[] = [];
 	private replayChars = 0;
-	private messages = new Map<string, ApplicationMessage>();
-	private messageIds = new WeakMap<object, string>();
-	private activeMessage?: string;
-	private runId?: string;
-	private tools = new Map<string, ApplicationTool>();
-	/** Next `order` for a message or tool seen for the first time, so snapshots keep their interleaving. */
-	private nextOrder = 0;
-	private status: "idle" | "compacting" | "retrying" = "idle";
-	private steering: string[] = [];
-	private followUp: string[] = [];
-	private receipts = new Map<string, { fingerprint: string; receipt: ApplicationReceipt }>();
 	private disposed = false;
-	private readonly messageHost: MessageProjectionHost = {
-		messages: this.messages,
-		messageIds: this.messageIds,
-		getActiveMessage: () => this.activeMessage,
-		setActiveMessage: (id) => {
-			this.activeMessage = id;
-		},
-		nextOrder: () => this.nextOrder++,
-		projectedOutput: (owner, value) => this.projectedOutput(owner, value),
-		publishDomain: (event) => this.publishDomain(event),
-	};
 
 	private readonly session: AgentSession;
-	constructor(session: AgentSession) {
+	private readonly onDispose?: (service: ApplicationService) => void;
+	constructor(session: AgentSession, onDispose?: (service: ApplicationService) => void) {
+		this.onDispose = onDispose;
 		this.session = session;
-		this.currentSession = session.sessionId;
+		this.state.setState({ sessionId: session.sessionId });
+		this.sourceMessages = session.messages;
 	}
 	get sessionId(): string {
 		return this.session.sessionId;
@@ -150,46 +110,79 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private attach(): void {
 		if (this.disposed) throw new Error("Application service is closed");
 		if (!this.unsubscribe) {
-			if (this.session.isStreaming && !this.runId) this.runId = randomUUID();
-			for (const message of this.session.messages ?? []) this.project({ type: "message_end", message });
+			this.delivery.run(() => {
+				this.seedActivities();
+				if (this.session.isStreaming && !this.state.getState().runId)
+					this.state.setState({ runId: randomUUID(), streaming: true });
+				this.hydrate(true);
+			});
 		}
-		this.unsubscribe ??= this.session.subscribe((event) => {
-			this.checkSession();
-			try {
-				this.project(event);
-			} catch (error) {
-				console.error("Application projection failed", error);
-				for (const sink of this.sinks) sink(this.frame({ type: "resync", reason: "overflow" }));
-			} finally {
-				// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners added during dispatch do not receive this event
-				for (const listener of [...this.native]) {
-					try {
-						Promise.resolve(listener(event)).catch((error) => console.error("Application listener failed", error));
-					} catch (error) {
-						console.error("Application listener failed", error);
-					}
-				}
+		this.unsubscribe ??= this.session.subscribe((event) =>
+			this.delivery.runForSession(this.session, () => {
+				if (this.disposed) return;
+				this.checkSession();
+				this.safely(() => this.project(event));
+				this.delivery.notifyNative(event);
+			}),
+		);
+	}
+	private hydrate(initial = false): void {
+		this.transcript.batch(() => {
+			for (const message of this.session.messages ?? []) {
+				if (this.disposed) break;
+				this.safely(() =>
+					initial
+						? this.project({ type: "message_end", message })
+						: this.transcript.message({ type: "message_end", message }, () => {}),
+				);
 			}
 		});
 	}
+	private seedActivities(): void {
+		this.activities.batch(() => {
+			for (const entry of this.session.sessionManager?.getBranch() ?? [])
+				this.safely(() => {
+					this.activities.entry(entry);
+				});
+		});
+	}
+	private safely(work: () => void): void {
+		try {
+			work();
+		} catch (error) {
+			this.publish({
+				type: "application.error",
+				id: randomUUID(),
+				code: "content-unavailable",
+				message: `Some content could not be displayed; the original remains in the session. ${error instanceof Error ? error.message.slice(0, 500) : "Projection failed"}`,
+			});
+		}
+	}
 	private checkSession(): void {
-		if (this.currentSession === this.session.sessionId) return;
-		this.currentSession = this.session.sessionId;
+		const changedSession = this.currentSession !== this.session.sessionId;
+		if (!changedSession && this.sourceMessages === this.session.messages) return;
+		this.state.setState({ sessionId: this.session.sessionId });
+		this.sourceMessages = this.session.messages;
 		this.epoch = randomUUID();
 		this.sequence = 0;
-		this.replay = [];
-		this.replaySizes = [];
-		this.replayChars = 0;
-		this.messages.clear();
-		this.tools.clear();
-		this.status = "idle";
-		this.receipts.clear();
-		this.runId = undefined;
-		this.activeMessage = undefined;
-		this.steering = [];
-		this.followUp = [];
+		this.clearReplay();
+		this.transcript.clear();
+		this.activities.clear();
+		this.state.setState(
+			changedSession
+				? { ...initialApplicationState(this.session.sessionId), revision: this.state.getState().revision }
+				: { errors: [] },
+		);
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(this.frame({ type: "resync", reason: "session-changed" }));
+		this.hydrate();
+		this.seedActivities();
+		this.publish({
+			type: "session.reset",
+			...this.transcript.window(),
+			...this.activities.window(),
+			errors: cloneDisplay(this.state.getState().errors),
+		});
 	}
 	private cursor(): ApplicationCursor {
 		return {
@@ -198,64 +191,47 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			sequence: this.sequence,
 		};
 	}
-	private frame(
-		payload:
-			| Omit<Extract<ApplicationFrame, { type: "snapshot" }>, "protocolVersion" | "cursor" | "at">
-			| Omit<Extract<ApplicationFrame, { type: "event" }>, "protocolVersion" | "cursor" | "at">
-			| { type: "resumed" }
-			| { type: "resync"; reason: "overflow" | "session-changed" },
-	): ApplicationFrame {
-		return {
-			protocolVersion: 1,
-			cursor: this.cursor(),
-			at: Date.now(),
-			...payload,
-		};
+	private frame(payload: ApplicationFramePayload): ApplicationFrame {
+		return createApplicationFrame(this.cursor(), payload);
 	}
 	publishDomain(event: ApplicationEvent): void {
+		if (this.disposed) throw new Error("Application service is closed");
+		const sessionId = this.sessionId;
+		this.delivery.run(() => {
+			if (sessionId === this.sessionId) this.publish(event);
+		});
+	}
+	private publish(event: ApplicationEvent): void {
+		if (this.disposed) return;
 		this.checkSession();
-		if (event.type === "session.status") this.status = event.status;
+		acceptApplicationEvent(this.state, event);
 		if (event.type === "tool.started" || event.type === "tool.progress" || event.type === "tool.completed") {
-			const previous = this.tools.get(event.toolCallId);
-			const hint = event.hint ?? previous?.hint;
-			const tool: ApplicationTool = {
-				toolCallId: event.toolCallId,
-				order: previous?.order ?? this.nextOrder++,
-				toolName: event.toolName,
-				...(hint ? { hint } : {}),
-				text: event.text ?? previous?.text ?? "",
-				status: event.type === "tool.completed" ? (event.failed ? "failed" : "completed") : "running",
-			};
-			this.tools.set(event.toolCallId, tool);
-			event = { ...event, order: tool.order };
-			trimOldest(this.tools, 50, 65536);
+			event = this.transcript.acceptTool(event);
 		}
 		this.sequence++;
 		const frame = this.frame({ type: "event", event });
 		this.replayChars = appendReplayFrame(this.replay, this.replaySizes, this.replayChars, frame);
 		// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so sinks added during dispatch do not receive this frame
 		for (const sink of [...this.sinks]) sink(frame);
+		this.delivery.notify(event);
 	}
 	private snapshot(): ApplicationSnapshot {
-		return {
-			sessionId: this.currentSession,
-			tools: [...this.tools.values()].map((tool) => ({ ...tool })),
-			status: this.status,
-			runId: this.runId,
-			messages: [...this.messages.values()].map((message) => ({ ...message })),
-			streaming: this.session.isStreaming,
-			steering: queuePreview(this.steering),
-			followUp: queuePreview(this.followUp),
-			receipts: [...this.receipts.values()].slice(-20).map((value) => ({
-				...value.receipt,
-				...(value.receipt.message ? { message: value.receipt.message.slice(0, 1000) } : {}),
-			})),
-			capabilities: ["prompt", "steer", "followUp", "abort"],
-		};
+		return applicationSnapshot(this.state.getState(), this.transcript, this.activities);
+	}
+
+	getSnapshot(): ApplicationSnapshot {
+		this.assertOpen();
+		this.attach();
+		return this.snapshot();
+	}
+	subscribeState(listener: (snapshot: ApplicationSnapshot) => void): () => void {
+		this.assertOpen();
+		this.attach();
+		return this.delivery.subscribeState(listener);
 	}
 	connect(options: { sessionId?: string; cursor?: ApplicationCursor } = {}): ApplicationConnection {
 		this.attach();
-		this.checkSession();
+		this.delivery.run(() => this.checkSession());
 		if (options.sessionId && options.sessionId !== this.currentSession) throw new Error("Session changed");
 		const boundSession = this.currentSession;
 		const connection = createFrameQueue(
@@ -289,10 +265,44 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			},
 		};
 	}
+	/** The same semantic events consumed by remote interfaces, delivered synchronously for terminal rendering. */
+	subscribe(listener: (event: ApplicationEvent) => void): () => void {
+		this.attach();
+		return this.delivery.subscribe(listener);
+	}
+	normalizeMessage(message: unknown, id?: string): ApplicationMessage {
+		this.assertOpen();
+		let normalized: ApplicationMessage | undefined;
+		this.safely(() => {
+			normalized = this.transcript.normalize(message, id);
+		});
+		return normalized ?? this.transcript.unavailable(message, id);
+	}
+	readAsset(id: string, sessionId?: string): ApplicationAssetPayload | undefined {
+		this.assertOpen(sessionId);
+		return this.transcript.assets.get(id);
+	}
+	uploadAsset(input: ApplicationAssetInput, sessionId?: string): ApplicationAsset {
+		this.assertOpen(sessionId);
+		return this.transcript.assets.upload(input);
+	}
+	history(
+		options: { before?: string; activityBefore?: string; limit?: number; sessionId?: string } = {},
+	): ApplicationHistory {
+		this.assertOpen(options.sessionId);
+		this.attach();
+		return { ...this.transcript.history(options), ...this.activities.history(options) };
+	}
+	private assertOpen(sessionId?: string): void {
+		if (this.disposed) throw new Error("Application service is closed");
+		if (sessionId !== undefined && sessionId !== this.session.sessionId) throw new Error("Session changed");
+		this.delivery.run(() => {
+			if (!this.disposed) this.checkSession();
+		});
+	}
 	subscribeNative(listener: AgentSessionEventListener): () => void {
 		this.attach();
-		this.native.add(listener);
-		return () => this.native.delete(listener);
+		return this.delivery.subscribeNative(listener);
 	}
 	invoke<K extends Method>(operation: K, ...args: Args<K>): Result<K> {
 		if (this.disposed) throw new Error("Application service is closed");
@@ -301,17 +311,23 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	async execute(command: ApplicationCommand): Promise<ApplicationReceipt> {
 		this.attach();
+		return this.delivery.request(() => this.acceptCommand(command));
+	}
+	private acceptCommand(command: ApplicationCommand): ApplicationReceipt {
+		this.attach();
 		this.checkSession();
 		if (!Value.Check(ApplicationCommandSchema, command)) throw new Error("Invalid application command");
 		if (command.sessionId !== this.currentSession) throw new Error("Session changed");
 		const fingerprint = applicationCommandFingerprint(command);
-		const previous = this.receipts.get(command.id);
+		const previous = this.state.getState().receipts.get(command.id);
 		if (previous) {
 			if (previous.fingerprint !== fingerprint) throw new Error("Request ID already used with another command");
 			return { ...previous.receipt };
 		}
-		if (command.action === "abort" && command.runId !== this.runId) throw new Error("Run changed");
-		if (this.receipts.size >= 1000) throw new Error("Command receipt capacity reached; start a new session");
+		if (command.action === "abort" && command.runId !== this.state.getState().runId) throw new Error("Run changed");
+		const images = commandImages(command, this.transcript.assets);
+		if (this.state.getState().receipts.size >= 1000)
+			throw new Error("Command receipt capacity reached; start a new session");
 		const receiptStore = this.receiptStore;
 		const recorded = receiptStore?.begin(command);
 		if (recorded && !recorded.fresh) return recorded.receipt;
@@ -319,81 +335,64 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			id: command.id,
 			status: "accepted",
 		};
-		this.receipts.set(command.id, { fingerprint, receipt });
-		this.publishDomain({ type: "command.receipt", receipt: { ...receipt } });
+		this.state.setState(({ receipts }) => ({
+			receipts: new Map(receipts).set(command.id, { fingerprint, receipt: { ...receipt } }),
+		}));
+		this.publish({ type: "command.receipt", receipt: { ...receipt } });
 		const sessionAtDispatch = this.currentSession;
 		dispatchCommand({
 			command,
 			receipt,
 			receiptStore,
 			isCurrent: () => !this.disposed && this.sessionId === sessionAtDispatch,
-			runId: () => this.runId,
-			invoke: () => (command.action === "abort" ? this.invoke("abort") : this.invoke(command.action, command.text)),
+			runId: () => this.state.getState().runId,
+			invoke: () =>
+				command.action === "abort"
+					? this.invoke("abort")
+					: command.action === "prompt"
+						? this.invoke("prompt", command.text, { images })
+						: this.invoke(command.action, command.text, images),
 			publishDomain: (event) => this.publishDomain(event),
 		});
 		return { ...receipt };
 	}
 	private project(event: AgentSessionEvent): void {
 		switch (event.type) {
-			case "agent_start":
-				this.runId = randomUUID();
-				this.publishDomain({ type: "run.started", runId: this.runId });
-				break;
-			case "agent_settled":
-				this.publishDomain({
-					type: "run.settled",
-					runId: this.runId ?? "unknown",
-					aborted: event.aborted,
-				});
-				this.runId = undefined;
-				break;
 			case "message_start":
 			case "message_end":
-				projectMessage(this.messageHost, event);
-				break;
 			case "message_update":
-				projectMessageUpdate(this.messageHost, event);
+				this.transcript.message(event, (value) => {
+					this.publish(value);
+					return !this.disposed;
+				});
 				break;
 			case "tool_execution_start":
 			case "tool_execution_update":
 			case "tool_execution_end":
-				this.publishDomain(toolDomainEvent(event, (owner, value) => this.outputText(owner, value)));
+				this.publish(this.transcript.tool(event));
 				break;
-			case "queue_update":
-				this.steering = [...event.steering];
-				this.followUp = [...event.followUp];
-				this.publishDomain({
-					type: "queue.changed",
-					steering: queuePreview(this.steering),
-					followUp: queuePreview(this.followUp),
-				});
-				break;
-			case "compaction_start":
-				this.publishDomain({ type: "session.status", status: "compacting" });
-				break;
-			case "auto_retry_start":
-				this.publishDomain({ type: "session.status", status: "retrying" });
-				break;
-			case "compaction_end":
-			case "auto_retry_end":
-				this.publishDomain({ type: "session.status", status: "idle" });
-				break;
+			default:
+				const lifecycle = lifecycleEvent(event, this.state.getState().runId);
+				if (lifecycle) this.publish(lifecycle);
 		}
-	}
-	private outputText(owner: string, value: unknown): string {
-		const projected = this.projectedOutput(owner, value);
-		if (projected !== undefined) return keepEnds(projected, OUTPUT_CHARS);
-		return toolResultText(value);
+		if (this.disposed) return;
+		const activity = this.activities.project(event);
+		if (activity) this.publish({ type: "session.activity", activity });
 	}
 	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.delivery.close();
 		for (const close of this.closes) close();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
-		this.native.clear();
-		for (const sink of this.sinks) sink(this.frame({ type: "resync", reason: "session-changed" }));
+		this.transcript.clear();
+		this.activities.clear();
+		this.state.setState(initialApplicationState(this.sessionId));
 		this.sinks.clear();
-		this.disposed = true;
-		registered.delete(this);
-		services.delete(this.session);
+		this.clearReplay();
+		this.sourceMessages = [];
+		this.receiptStore = undefined;
+		this.onDispose?.(this);
 	}
 }

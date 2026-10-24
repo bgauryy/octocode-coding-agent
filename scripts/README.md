@@ -35,6 +35,8 @@ Run these through the root `yarn run` scripts where one exists; the others are m
 | `generate-thinking-capabilities.mjs` | Generates thinking-capability data from a model catalog |
 | `profile-render-backpressure.mjs` | Compares TUI render schedulers against a slow terminal |
 
+The coding-agent package also includes [export-agent-prompts.ts](../packages/coding-agent/scripts/export-agent-prompts.ts), a manual fixture exporter for native role prompts and tool declarations. From the repository root, run `yarn exec node --import ./packages/coding-agent/src/experimental/source-resolver.ts packages/coding-agent/scripts/export-agent-prompts.ts <output-directory> [captured-mcp-catalog.json]`. It uses isolated configuration and makes no model calls; the optional catalog adds captured MCP declarations without executing their tools.
+
 ## Shared modules
 
 `coding-agent-smoke.mjs`, `local-package-install.mjs`, `local-dependencies.mjs`, `npm-command.mjs`, `package-artifacts.mjs`, `package-workspaces.mjs`, `registry-release.mjs`, `release-packages.mjs` and `yarn-command.mjs` are imported by the scripts above. `*.test.mjs` files run with `yarn run test:scripts`.

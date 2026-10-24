@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeGoogleUsage } from "../src/api/google-shared.ts";
+import { normalizeGoogleUsage } from "../src/api/google-shared/response.ts";
 
 describe("Google cache usage", () => {
 	it("splits cached input and counts thinking once in output", () => {

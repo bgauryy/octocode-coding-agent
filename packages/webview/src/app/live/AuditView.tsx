@@ -78,7 +78,7 @@ export function AuditView({ params }: ViewProps) {
 					{page.error}
 				</p>
 			)}
-			{page.before !== undefined && (
+			{(page.before !== undefined || page.error) && (
 				<Button
 					loading={page.loading}
 					onClick={() => {
@@ -86,7 +86,7 @@ export function AuditView({ params }: ViewProps) {
 						void load(page.before, filter.current?.signal);
 					}}
 				>
-					Load older events
+					{page.error ? "Retry loading history" : "Load older events"}
 				</Button>
 			)}
 		</div>

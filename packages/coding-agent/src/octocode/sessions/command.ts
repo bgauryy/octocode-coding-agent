@@ -5,10 +5,12 @@ import { type SessionInfo, SessionManager } from "../../core/session-manager.ts"
 import { runningPid } from "../agentdb/liveness.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
-import { isWithin, sessionDir, sessionsRoot } from "../shared/home.ts";
-import { contentText, errorMessage } from "../shared/util.ts";
+import { sessionDir, sessionsRoot } from "../shared/home.ts";
+import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
 import { type SessionExtra, type SessionIndex, shownLine } from "./store.ts";
+import { isWithin } from "../shared/home/repo.ts";
+import { errorMessage } from "../../utils/guards.ts";
 
 /** Most sessions listed. */
 const LIST_LIMIT = 30;
@@ -124,14 +126,13 @@ interface SessionsCommandOptions {
 	current: () => string | undefined;
 }
 
-/** `/resume [all|<query>]` (and `/sessions`): list, then resume, inspect, rename or forget one. */
+/** `/resume [all|<query>]`: list, then resume, inspect, rename or forget one. */
 export function registerSessionsCommand(
 	pi: ExtensionAPI,
 	commands: Subcommands,
 	options: SessionsCommandOptions,
 ): void {
 	commands.add("resume", {
-		aliases: ["sessions"],
 		description: "resume [all|<query>] — recent sessions of this directory: resume, details, rename, forget",
 		complete: (prefix) => wordCompletions(["all"], prefix),
 		handler: async (args, ctx) => {

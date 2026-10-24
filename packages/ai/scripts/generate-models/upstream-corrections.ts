@@ -1,4 +1,5 @@
 import type { Api, Model } from "../../src/types.ts";
+import { withClaudeThinkingCapabilities } from "../../src/utils/claude-thinking.ts";
 import {
 	COPILOT_STATIC_HEADERS,
 	GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS,
@@ -10,7 +11,6 @@ import {
 	OPENROUTER_KIMI_K3_MODEL_IDS,
 } from "./constants.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
-import { mergeThinkingLevelMap } from "./thinking-levels.ts";
 
 /** Copilot models models.dev does not list yet, and corrections to upstream metadata. */
 export function applyUpstreamCorrections(allModels: Model<any>[]): void {
@@ -65,25 +65,8 @@ export function applyUpstreamCorrections(allModels: Model<any>[]): void {
 			candidate.contextWindow = 1000000;
 		}
 
-		// models.dev may list Opus 5.5, Sonnet 5.5, and Haiku 5.5 before their effort metadata is complete.
-		if (
-			(candidate.provider === "anthropic" &&
-				(candidate.id === "claude-opus-5-5" ||
-					candidate.id === "claude-sonnet-5-5" ||
-					candidate.id === "claude-haiku-5-5")) ||
-			(candidate.provider === "github-copilot" && candidate.id === "claude-opus-5.5")
-		) {
-			mergeThinkingLevelMap(candidate, {
-				// Haiku 5.5 accepts disabled thinking; Opus 5.5 and Sonnet 5.5 reject it.
-				...(candidate.id === "claude-haiku-5-5" ? {} : { off: null }),
-				minimal: null,
-				low: "low",
-				medium: "medium",
-				high: "high",
-				xhigh: "xhigh",
-				max: "max",
-			});
-		}
+		// Share the correction with hydrated catalogs so CLI choices and generated requests agree.
+		candidate.thinkingLevelMap = withClaudeThinkingCapabilities(candidate).thinkingLevelMap;
 
 		if (
 			(candidate.provider === "anthropic" ||

@@ -1,4 +1,4 @@
-import { getGraphemeSegmenter, getWordSegmenter } from "../../utils.ts";
+import { getGraphemeSegmenter, getWordSegmenter } from "../../utils/width.ts";
 
 export const graphemeSegmenter = getGraphemeSegmenter();
 export const wordSegmenter = getWordSegmenter();

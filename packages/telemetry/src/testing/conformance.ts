@@ -1,6 +1,6 @@
 import { deepStrictEqual, fail, ok, strictEqual } from "node:assert/strict";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryCarrier, type TelemetryContext, type TelemetrySpan } from "../index.ts";
-import type { RecordedTelemetrySpan } from "../memory.ts";
+import type { RecordedTelemetrySpan } from "../memory/recording.ts";
 import type {
 	TelemetryAdapterConformanceCase,
 	TelemetryAdapterFixture,

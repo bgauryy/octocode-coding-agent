@@ -1,17 +1,12 @@
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import {
-	clip,
-	type RenderContext,
-	resultBlock,
-	resultText,
-	spillPath,
-	timingOf,
-	toolHeader,
-} from "../shared/render.ts";
+import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { clipText } from "../shared/util.ts";
 import { snapshotFileOf } from "./snapshot.ts";
+import { clip } from "../shared/render/text.ts";
+import type { RenderContext } from "../shared/render/types.ts";
+import { timingOf } from "../shared/render/rows.ts";
 
 /** The browser arguments the header shows. */
 interface BrowserCallArgs {

@@ -4,14 +4,10 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import {
-	decodeKittyPrintable,
-	decodePrintableKey,
-	Key,
-	matchesKey,
-	parseKey,
-	setKittyProtocolActive,
-} from "../src/keys.ts";
+import { setKittyProtocolActive } from "../src/keys/state.ts";
+import { matchesKey } from "../src/keys/match.ts";
+import { Key } from "../src/keys/key-id.ts";
+import { decodeKittyPrintable, decodePrintableKey, parseKey } from "../src/keys/parse.ts";
 
 function withEnv(name: string, value: string | undefined, fn: () => void): void {
 	const previous = process.env[name];

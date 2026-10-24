@@ -123,6 +123,8 @@ A call to a tool the request did not declare never reaches the hooks; it gets th
 
 Tools, blocked `beforeToolCall` results, and `afterToolCall` overrides can return `terminate: true` to hint that the automatic follow-up LLM call should be skipped. The loop only stops early when every finalized tool result in that batch sets `terminate: true`. Mixed batches continue normally.
 
+Throw `AgentToolExecutionError(message, result)` when a rejected tool execution must retain structured `details` or output. The loop preserves that result and marks it as an error. Ordinary exceptions expose their message with empty details.
+
 When you use the `Agent` class, assistant `message_end` processing is treated as a barrier before tool preflight begins. That means `beforeToolCall` sees agent state that already includes the assistant message that requested the tool call.
 
 ### Request preparation and turn finalization
@@ -338,7 +340,7 @@ await agent.continue();
 ### State Management
 
 ```typescript
-agent.state.model = getModel("openai", "gpt-4o");
+agent.state.model = getBuiltinModel("openai", "gpt-4o");
 agent.state.thinkingLevel = "medium";
 agent.state.tools = [myTool];
 agent.toolExecution = "sequential";
@@ -373,6 +375,8 @@ agent.thinkingBudgets = {
 agent.abort();           // Cancel current operation
 await agent.waitForIdle(); // Wait for completion
 ```
+
+An abort during a tool batch still lets the loop issue one more request, which returns at once as an assistant message with `stopReason: "aborted"` and marks the interruption in the transcript; steering queued before the abort is committed first. An abort that arrives after a batch finished ends the run at the next turn boundary without that extra message.
 
 ### Events
 
@@ -515,6 +519,8 @@ Return `terminate: true` from `execute()`, a blocked `beforeToolCall`, or `after
 
 For browser apps that proxy through a backend:
 
+Proxy servers send `content_update` with `{ contentIndex, content }`, where `content` is the complete normalized assistant block. This retains attachments and source annotations after stripping the provider event's `partial` field. A `text_end` frame can also carry authoritative `text` and `annotations` alongside `contentSignature`.
+
 ```typescript
 import { Agent, streamProxy } from "@octocodeai/octocode-agent-core";
 
@@ -530,6 +536,8 @@ const agent = new Agent({
 
 ## Low-Level API
 
+Tool results may provide `structuredContent` independently of model-facing `content`. The agent retains it in the persisted `ToolResultMessage` for replay and interface consumers; it is not sent to the model as an additional payload.
+
 For direct control without the Agent class:
 
 ```typescript
@@ -541,7 +549,7 @@ const context: AgentContext = {
 };
 
 const config: AgentLoopConfig = {
-  model: getModel("openai", "gpt-4o"),
+  model: getBuiltinModel("openai", "gpt-4o"),
   convertToLlm: (msgs) => msgs.filter(m => ["user", "assistant", "toolResult"].includes(m.role)),
   toolExecution: "parallel",  // overridden by per-tool executionMode if set
   beforeToolCall: async ({ toolCall, args, context }) => undefined,

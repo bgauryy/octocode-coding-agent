@@ -18,7 +18,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 input::placeholder, textarea::placeholder { color: var(--text-3); }
 input:disabled, select:disabled, textarea:disabled { opacity: .6; }
 select { min-height: 34px; padding: 4px 28px 4px 10px; font-size: 13px; cursor: pointer; }
-.filter-select { min-height: 30px; font-size: 12px; color: var(--text-2); }
+.filter-select { max-width: 100%; min-height: 30px; font-size: 12px; color: var(--text-2); }
 .filter-select.is-active { border-color: var(--accent-line); background-color: var(--accent-soft); color: var(--accent); font-weight: 500; }
 .search-field { position: relative; display: flex; align-items: center; flex: 1 1 220px; max-width: 360px; }
 .search-field > .icon { position: absolute; left: 10px; color: var(--text-3); pointer-events: none; }
@@ -94,7 +94,8 @@ nav.tabs { display: flex; gap: 2px; margin-top: 10px; overflow-x: auto; scrollba
 .tab.active { color: var(--text); }
 .tab.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
 .tab.active .icon { color: var(--accent); }
-.tab-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); font-size: 11px; font-weight: 700; }
+.tab-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: 11px; font-weight: 700; }
+.tab-badge.needs-attention { background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); }
 main { padding: 20px 28px 48px; }
 .view { display: grid; gap: 16px; min-width: 0; }
 .view-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }

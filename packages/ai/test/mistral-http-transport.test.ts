@@ -2,7 +2,8 @@ import { arch, platform, release } from "node:os";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream as streamMistral } from "../src/api/mistral-conversations.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Api, FetchFunction, Model, ProviderResponse } from "../src/types.ts";
 
 const OCTOCODE_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
@@ -38,7 +39,7 @@ function createTerminalEvent(finishReason = "stop") {
 
 describe("Mistral HTTP transport", () => {
 	it("serializes SDK-style payloads to the Mistral wire format", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			systemPrompt: "Be precise",
 			messages: [
@@ -159,7 +160,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("serializes assistant thinking, tool calls, and tool results for replay", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [
 				{
@@ -236,7 +237,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("parses native thinking, text, fragmented tool calls, and cached-token usage", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -325,7 +326,7 @@ describe("Mistral HTTP transport", () => {
 	// #9674: GLM models on Mistral send empty content deltas at the start, around tool calls,
 	// and sometimes mid-thinking. They must not open blocks or split thinking.
 	it("ignores empty content deltas", async () => {
-		const model = getModel("mistral", "zai-glm-5-3");
+		const model = getBuiltinModel("mistral", "zai-glm-5-3");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -365,7 +366,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("forwards each parsed SSE payload before normalizing it", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -400,7 +401,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("parses SSE and UTF-8 sequences split across transport chunks", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -420,7 +421,7 @@ describe("Mistral HTTP transport", () => {
 
 	it("honors case-insensitive header overrides and explicit affinity suppression", async () => {
 		const model = {
-			...getModel("mistral", "mistral-large-latest"),
+			...getBuiltinModel("mistral", "mistral-large-latest"),
 			headers: { Authorization: "Bearer model-key", "X-Affinity": "model-affinity" },
 		};
 		const context = normalizeContext({
@@ -445,7 +446,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("aborts while waiting for an SSE chunk", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -472,7 +473,7 @@ describe("Mistral HTTP transport", () => {
 	it.each([undefined, "short"] as const)(
 		"resolves cache retention from request env with explicit override %s",
 		async (cacheRetention) => {
-			const model = getModel("mistral", "mistral-large-latest");
+			const model = getBuiltinModel("mistral", "mistral-large-latest");
 			const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
 			let requestHeaders: Headers | undefined;
 			let payload: Record<string, unknown> | undefined;
@@ -494,7 +495,7 @@ describe("Mistral HTTP transport", () => {
 	);
 
 	it("applies the request timeout while waiting for response headers", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -515,7 +516,7 @@ describe("Mistral HTTP transport", () => {
 
 	// Regression test for #10609: an active stream must not be cut off after timeoutMs.
 	it("does not abort an active stream that lasts longer than the request timeout", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});
@@ -553,7 +554,7 @@ describe("Mistral HTTP transport", () => {
 	});
 
 	it("preserves HTTP status and response bodies in errors", async () => {
-		const model = getModel("mistral", "mistral-large-latest");
+		const model = getBuiltinModel("mistral", "mistral-large-latest");
 		const context = normalizeContext({
 			messages: [{ role: "user", content: "hello", timestamp: 1 }],
 		});

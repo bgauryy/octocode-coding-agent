@@ -156,6 +156,24 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		]);
 	});
 
+	it("names the previous session only after a successful fresh-session transition", async () => {
+		let cancel = true;
+		const { runtimeHost: runtime } = await createRuntimeHost((pi) => {
+			pi.on("session_before_switch", async () => (cancel ? { cancel: true } : undefined));
+		});
+		await runtime.session.prompt("persist previous session");
+		const previous = runtime.session.sessionFile!;
+		const id = runtime.session.sessionId;
+		await expect(runtime.newSession({ previousName: "   " })).rejects.toThrow("1–200");
+		expect(runtime.session.sessionId).toBe(id);
+		expect(await runtime.newSession({ previousName: "Release plan" })).toEqual({ cancelled: true });
+		expect(runtime.session.sessionManager.getSessionName()).toBeUndefined();
+		cancel = false;
+		expect(await runtime.newSession({ previousName: "Release plan" })).toEqual({ cancelled: false });
+		expect(SessionManager.open(previous).getSessionName()).toBe("Release plan");
+		expect(runtime.session.sessionName).toBeUndefined();
+	});
+
 	it("honors session_before_switch cancellation", async () => {
 		const events: RecordedSessionEvent[] = [];
 		const { runtimeHost } = await createRuntimeHost((pi) => {

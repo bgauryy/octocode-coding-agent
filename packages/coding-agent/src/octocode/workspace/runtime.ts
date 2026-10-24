@@ -1,4 +1,5 @@
 import type { ApplicationService } from "../../core/application/index.ts";
+import { appendWorkspaceEvent, createWorkspaceRuntimeState } from "../../core/application/workspace-state.ts";
 import { ApplicationCommands } from "./application-commands.ts";
 import { presentAgentReport } from "../subagents/presentation.ts";
 import { sharedAgentDb, type AgentDb } from "../agentdb/db.ts";
@@ -6,10 +7,11 @@ import { WorkspaceCommands } from "./commands.ts";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
-import type { Member, Traffic } from "../team/model.ts";
+import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
+import type { WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
-import { contentText, errorMessage, isRecord, toolHint } from "../shared/util.ts";
-import type { WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "./model.ts";
+import { contentText, toolHint } from "../shared/util.ts";
+import { errorMessage, isRecord } from "../../utils/guards.ts";
 
 interface Operations {
 	application?: (ctx: ExtensionContext) => ApplicationService | undefined;
@@ -22,10 +24,12 @@ interface Operations {
 
 /** Adapts the running session to interfaces; execution and permissions remain owned by the agent runtime. */
 export class WorkspaceRuntime {
-	private events: WorkspaceEvent[] = [];
-	private seq = 0;
-	private sessionId: string | undefined;
-	private readonly listeners = new Set<() => void>();
+	private readonly state = createWorkspaceRuntimeState();
+	private get sessionId(): string | undefined {
+		return this.state.getState().sessionId;
+	}
+	private sessionController = new AbortController();
+	private readonly subscriptions = new Set<() => void>();
 	private readonly projectedApplications = new WeakSet<ApplicationService>();
 
 	private readonly pi: ExtensionAPI;
@@ -34,9 +38,13 @@ export class WorkspaceRuntime {
 		this.pi = pi;
 		this.operations = operations;
 		pi.on("session_start", (_event, ctx) => {
+			const sessionId = ctx.sessionManager.getSessionId();
+			if (this.sessionId !== sessionId || this.sessionController.signal.aborted) {
+				this.sessionController.abort(new Error("Session changed before delivery finished."));
+				this.sessionController = new AbortController();
+			}
 			this.application(ctx);
-			this.sessionId = ctx.sessionManager.getSessionId();
-			this.events = [];
+			this.state.setState({ sessionId, events: [] });
 			this.publish("session", "Session started");
 		});
 		pi.on("agent_start", () => this.publish("agent.start", "Agent working"));
@@ -78,8 +86,10 @@ export class WorkspaceRuntime {
 			}
 		});
 		pi.on("session_shutdown", () => {
-			this.sessionId = undefined;
-			this.listeners.clear();
+			this.sessionController.abort(new Error("Session closed before delivery finished."));
+			for (const unsubscribe of this.subscriptions) unsubscribe();
+			this.subscriptions.clear();
+			this.state.setState({ sessionId: undefined, events: [] });
 		});
 	}
 
@@ -109,8 +119,7 @@ export class WorkspaceRuntime {
 		} catch {
 			safe = undefined;
 		}
-		this.events.push({
-			id: ++this.seq,
+		appendWorkspaceEvent(this.state, {
 			at: Date.now(),
 			type,
 			...(outcome ? { outcome } : {}),
@@ -119,15 +128,26 @@ export class WorkspaceRuntime {
 				(text.length > 16000 ? "\n[Long output shortened; the full result remains in the session transcript.]" : ""),
 			...(safe !== undefined && JSON.stringify(safe).length < 32000 ? { details: safe } : {}),
 		});
-		while (this.events.length > 200 || (this.events.length > 1 && JSON.stringify(this.events).length > 262144))
-			this.events.shift();
-		for (const listener of this.listeners) {
+	}
+
+	/** The application promise settles after queuing or running; acceptance is never a claim of task completion. */
+	private observeDelivery(
+		delivery: Promise<void>,
+		commands: WorkspaceCommands,
+		request: WorkspaceReceipt,
+		sessionId: string,
+		signal: AbortSignal,
+	): void {
+		void delivery.catch((error: unknown) => {
+			const message = `Agent request failed: ${redactSecrets(errorMessage(error)).slice(0, 1000)}. ${request.backlogId} remains claimed; inspect activity before retrying.`;
 			try {
-				listener();
+				const receipt = commands.finish(request.id, "failed", message);
+				if (!signal.aborted && this.sessionId === sessionId) this.publish("command", message, receipt, "failed");
 			} catch {
-				/* A closed view must not interrupt the session. */
+				if (!signal.aborted && this.sessionId === sessionId)
+					this.publish("command", `${message} The delivery outcome could not be saved.`, undefined, "failed");
 			}
-		}
+		});
 	}
 
 	bind(ctx: ExtensionCommandContext, backlog: Backlog): WorkspaceConnection {
@@ -141,12 +161,18 @@ export class WorkspaceRuntime {
 			backlog.store.repo,
 			sessionId,
 		);
-		this.sessionId ??= sessionId;
+		if (!this.sessionId) this.state.setState({ sessionId });
 		let closed = false;
-		const controller = new AbortController();
+		const signal = this.sessionController.signal;
 		const subscribed = new Set<() => void>();
 		const active = () => {
-			if (closed || this.sessionId !== sessionId) throw new Error("This session changed. Reopen /backlog.");
+			if (
+				closed ||
+				signal.aborted ||
+				this.sessionId !== sessionId ||
+				(application && application.sessionId !== sessionId)
+			)
+				throw new Error("This session changed. Reopen /web.");
 		};
 		return {
 			application,
@@ -156,22 +182,32 @@ export class WorkspaceRuntime {
 					sessionId,
 					agents: redactData(this.operations.members()),
 					traffic: redactData(this.operations.traffic()),
-					events: this.events,
+					events: redactData([...this.state.getState().events]),
 					receipts: commands.list(),
 				};
 			},
 			subscribe: (listener) => {
-				subscribed.add(listener);
-				this.listeners.add(listener);
-				return () => {
-					subscribed.delete(listener);
-					this.listeners.delete(listener);
+				active();
+				const stop = this.state.subscribe((state, previous) => {
+					if (state.events === previous.events) return;
+					try {
+						listener();
+					} catch {
+						/* A closed view must not interrupt the session. */
+					}
+				});
+				const unsubscribe = () => {
+					stop();
+					subscribed.delete(unsubscribe);
+					this.subscriptions.delete(unsubscribe);
 				};
+				subscribed.add(unsubscribe);
+				this.subscriptions.add(unsubscribe);
+				return unsubscribe;
 			},
 			close: () => {
 				closed = true;
-				for (const listener of subscribed) this.listeners.delete(listener);
-				subscribed.clear();
+				for (const unsubscribe of subscribed) unsubscribe();
 			},
 			execute: async (command) => {
 				active();
@@ -185,11 +221,21 @@ export class WorkspaceRuntime {
 					let message: string;
 					if (command.action === "work" || command.action === "delegate") {
 						if (!item) throw new Error("Choose a backlog item first.");
-						backlog.store.dispatch(item.ref, item.version, { ...backlog.actor, kind: "human" }, (claimed) =>
-							this.pi.sendUserMessage(command.action === "delegate" ? delegatePrompt(claimed) : doItPrompt(claimed), {
-								deliverAs: "followUp",
-							}),
-						);
+						backlog.store.dispatch(item.ref, item.version, { ...backlog.actor, kind: "human" }, (claimed) => {
+							const prompt =
+								command.action === "delegate"
+									? delegatePrompt(claimed, backlog.store)
+									: doItPrompt(claimed, backlog.store);
+							if (application)
+								this.observeDelivery(
+									application.invoke("sendUserMessage", prompt, { deliverAs: "followUp" }),
+									commands,
+									existing.receipt,
+									sessionId,
+									signal,
+								);
+							else this.pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+						});
 						message =
 							command.action === "delegate"
 								? "Delegation requested from the current agent. Launch permissions still apply; watch activity for the new agent."
@@ -201,7 +247,7 @@ export class WorkspaceRuntime {
 						const sent = await this.operations.tell(
 							command.to,
 							`${item ? `Backlog ${item.ref}: ${item.title}\n\n` : ""}${command.text}`,
-							controller.signal,
+							signal,
 						);
 						if (isRecord(sent) && sent.error)
 							throw new Error(typeof sent.error === "string" ? sent.error : JSON.stringify(sent.error));
@@ -216,7 +262,7 @@ export class WorkspaceRuntime {
 				} catch (error) {
 					receipt = commands.finish(command.id, "failed", redactSecrets(errorMessage(error)));
 				}
-				this.publish("command", receipt.message, receipt);
+				if (!signal.aborted && this.sessionId === sessionId) this.publish("command", receipt.message, receipt);
 				return receipt;
 			},
 		};

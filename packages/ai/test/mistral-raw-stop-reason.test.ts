@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { stream as streamMistral } from "../src/api/mistral-conversations.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { FetchFunction } from "../src/types.ts";
 import { isRetryableAssistantError } from "../src/utils/retry.ts";
 
-const model = getModel("mistral", "devstral-medium-latest");
+const model = getBuiltinModel("mistral", "devstral-medium-latest");
 const context = normalizeContext({
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
 });

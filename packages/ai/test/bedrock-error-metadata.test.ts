@@ -49,7 +49,8 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 });
 
 import { stream as streamBedrock } from "../src/api/bedrock-converse-stream.ts";
-import { getModel, normalizeContext } from "../src/compat.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model } from "../src/types.ts";
 import type { AssistantMessageDiagnostic } from "../src/utils/diagnostics.ts";
 
@@ -62,7 +63,7 @@ const context = normalizeContext({
 });
 
 function getModelFixture(): Model<"bedrock-converse-stream"> {
-	return getModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
+	return getBuiltinModel("amazon-bedrock", "us.anthropic.claude-opus-4-8");
 }
 
 /** What the SDK's `handleError` path throws for a non-2xx response; `name` is the modeled AWS error code. */

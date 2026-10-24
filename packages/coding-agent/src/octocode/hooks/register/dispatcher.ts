@@ -1,16 +1,19 @@
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
-import { repoKey } from "../../shared/home.ts";
+import { repoKey } from "../../shared/home/repo.ts";
+import { errorMessage, isRecord } from "../../../utils/guards.ts";
+import { commandsFor, hookIdentity } from "../config/calls.ts";
+import type { HookHandler, HookEvent, HookVerdict } from "../contracts.ts";
 import { redactSecrets, visibleControls } from "../../shared/sanitize.ts";
-import { clipText, errorMessage, firstLine, isRecord, optionalString, stringOrEmpty } from "../../shared/util.ts";
+import { clipText, firstLine, optionalString, stringOrEmpty } from "../../shared/util.ts";
 import type { registerBackgroundHooks } from "../background.ts";
 import { limitCodexContext } from "../context-limit.ts";
-import { commandsFor, type HookHandler, hookLabel, type HookEvent, hookIdentity } from "../config.ts";
+import { hookLabel } from "../config.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
-import { capContext, failureOf, type HookVerdict, interpret, runHook } from "../runner.ts";
+import { capContext, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
 	type HookFailureSink,
@@ -30,7 +33,10 @@ export function createDispatcher(
 	background: ReturnType<typeof registerBackgroundHooks> | undefined,
 	child: boolean,
 	metadata: (() => HookHostMetadata) | undefined,
-): { dispatch: Dispatch; reportFailure: ReportFailure } {
+	paused?: () => boolean,
+): { dispatch: Dispatch; reportFailure: ReportFailure; stop(): Promise<void> } {
+	let controller = new AbortController();
+	const active = new Set<Promise<HookVerdict>>();
 	/** Commands already reported as slow, so each is reported once per Octocode process. */
 	const slowWarned = new Set<string>();
 	const timeHook = async (
@@ -98,7 +104,7 @@ export function createDispatcher(
 	 * config order. Most tool calls match no hook, so the input (which may join a large tool result) is built only when
 	 * one does.
 	 */
-	const dispatch: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
+	const dispatchImpl: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
 		const hooks = commandsFor(session.config, event, names).filter(
 			(hook) =>
 				!protocol ||
@@ -327,5 +333,24 @@ export function createDispatcher(
 		}
 	};
 
-	return { dispatch, reportFailure };
+	const dispatch: Dispatch = async (ctx, event, names, input, signal = ctx.signal, protocol) => {
+		if (paused?.()) return {};
+		const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+		const work = dispatchImpl(ctx, event, names, input, combined, protocol);
+		active.add(work);
+		try {
+			return await work;
+		} finally {
+			active.delete(work);
+		}
+	};
+	return {
+		dispatch,
+		reportFailure,
+		async stop() {
+			controller.abort();
+			await Promise.allSettled(active);
+			controller = new AbortController();
+		},
+	};
 }

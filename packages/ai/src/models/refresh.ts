@@ -1,13 +1,13 @@
-import { ModelsError } from "../auth/resolve.ts";
+import { ModelsError, readCredential } from "../auth/resolve.ts";
 import type { AuthContext, Credential, CredentialStore } from "../auth/types.ts";
 import type { ModelsStore } from "../models-store.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
-import { readCredential, resolveRefreshCredential } from "./auth.ts";
+import { resolveRefreshCredential } from "./auth.ts";
 import type { ModelsPublication, ModelsRefreshOptions, ModelsRefreshResult, Provider } from "./contracts.ts";
 import { withKnownModelTypes } from "./create-provider.ts";
 
 /** What the provider refresh coordinator reads from the `Models` collection that owns it. */
-export interface ModelsRefreshHost {
+interface ModelsRefreshHost {
 	getProviders(): readonly Provider[];
 	readonly credentials: CredentialStore;
 	readonly modelsStore: ModelsStore;

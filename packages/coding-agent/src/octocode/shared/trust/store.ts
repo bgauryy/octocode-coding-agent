@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { globalPaths, workspacePaths } from "../home.ts";
-import { isRecord, parseJson } from "../util.ts";
+import { parseJson } from "../util.ts";
 import { readText, realPath } from "./files.ts";
+import { isRecord } from "../../../utils/guards.ts";
 
-export interface StoredDecision {
+interface StoredDecision {
 	sha: string;
 	trusted: boolean;
 }

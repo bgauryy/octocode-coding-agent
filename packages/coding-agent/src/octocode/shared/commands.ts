@@ -1,3 +1,4 @@
+import { getBuiltinCommand } from "../../core/slash-commands.ts";
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import type {
 	ExtensionAPI,
@@ -31,30 +32,28 @@ export function say(ctx: Pick<ExtensionContext, "hasUI" | "ui">, text: string, l
 
 /** A native command registered once under its canonical name. */
 export interface Subcommand {
-	description: string;
 	aliases?: readonly string[];
+	description: string;
 	dialog?: "handler" | "interaction";
 	handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 	complete?(prefix: string): AutocompleteItem[] | null;
 }
-
-const LEGACY_NAMES: Record<string, string> = { permission: "permissions", sessions: "resume", info: "status" };
 
 /** What to run instead of `/octocode <args>`; `commands` are the registered names, so the list cannot go stale. */
 export function legacyNativeCommandGuidance(args: string, commands: readonly string[] = []): string {
 	const line = args.trim();
 	const name = line.split(/\s+/, 1)[0] ?? "";
 	const rest = line.slice(name.length).trimStart();
-	if (!name || name === "help") {
-		// `/mcp` belongs to the MCP extension, not to these subcommands.
-		const names = [...new Set([...commands, "mcp"])].sort().map((command) => `/${command}`);
-		const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
-		return `Commands now have direct names: ${list}.`;
-	}
 	if (name === "mcp" && /^restart(?:\s|$)/.test(rest))
 		return "/octocode mcp restart moved to /mcp reconnect octocode. Run the new command to continue.";
-	const target = name === "external" ? "agents external" : (LEGACY_NAMES[name] ?? name);
-	return `/octocode ${name} moved to /${target}${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
+	if (name === "external")
+		return `/octocode external moved to /agents external${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
+	if (name === "mcp" || commands.includes(name))
+		return `/octocode ${name} moved to /${name}${rest ? ` ${rest}` : ""}. Run the new command to continue.`;
+	// `/mcp` belongs to the MCP extension, not to these subcommands.
+	const names = [...new Set([...commands, "mcp"])].sort().map((command) => `/${command}`);
+	const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+	return `Commands now have direct names: ${list}.`;
 }
 
 export class Subcommands {
@@ -63,7 +62,7 @@ export class Subcommands {
 		this.entries.set(name, command);
 	}
 	get(name: string): Subcommand | undefined {
-		return this.entries.get(name) ?? [...this.entries.values()].find((command) => command.aliases?.includes(name));
+		return this.entries.get(name);
 	}
 	has(name: string): boolean {
 		return this.get(name) !== undefined;
@@ -94,7 +93,6 @@ export class Subcommands {
 			const details = this.get("status");
 			this.add("status", {
 				description: "Session status, skills and MCP connections",
-				aliases: details?.aliases ?? ["info", "session"],
 				dialog: "interaction",
 				handler: async (args, ctx) => {
 					say(ctx, status());
@@ -104,8 +102,8 @@ export class Subcommands {
 		}
 		for (const [name, command] of this.list()) {
 			pi.registerCommand(name, {
+				aliases: command.aliases ?? getBuiltinCommand(name)?.aliases,
 				description: command.description,
-				aliases: command.aliases,
 				getArgumentCompletions: (prefix) => command.complete?.(prefix.trimStart()) ?? null,
 				handler: (args, ctx) =>
 					command.dialog === "interaction"

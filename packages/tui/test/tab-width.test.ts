@@ -2,7 +2,9 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import type { Component, TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
-import { extractSegments, normalizeTerminalOutput, sliceWithWidth, visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
+import { extractSegments, sliceWithWidth } from "../src/utils/columns.ts";
+import { normalizeTerminalOutput } from "../src/utils.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 class FullViewportContent implements Component {

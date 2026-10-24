@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
-import { getModel, streamSimple } from "@octocodeai/octocode-ai/compat";
+import { streamSimple } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -86,7 +87,7 @@ describe.skipIf(!API_KEY)("Built-in compaction lifecycle", () => {
 	}
 
 	async function createSession(extensions: Extension[]) {
-		const model = getModel("anthropic", "claude-sonnet-4-5");
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
 			getApiKey: () => API_KEY,
 			streamFn: streamSimple,

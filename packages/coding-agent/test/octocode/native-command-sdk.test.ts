@@ -1,0 +1,96 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
+import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
+import { createAgentSession } from "../../src/core/sdk.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
+import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { tmp } from "./helpers.ts";
+
+afterEach(() => vi.unstubAllEnvs());
+
+it("loads one native command per canonical name through the real SDK", async () => {
+	const cwd = tmp("native-command-");
+	const agentDir = path.join(cwd, "agent");
+	fs.mkdirSync(agentDir);
+	vi.stubEnv("HOME", cwd);
+	vi.stubEnv("OCTOCODE_HOME", path.join(cwd, ".octocode"));
+	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
+	vi.stubEnv("OCTOCODE_OFFLINE", "1");
+	vi.stubEnv("OCTOCODE_MCP", "0");
+	vi.stubEnv("OCTOCODE_API", "0");
+	vi.stubEnv("OCTOCODE_EXTRA_SKILLS", "0");
+	const settingsManager = SettingsManager.inMemory();
+	const resourceLoader = new DefaultResourceLoader({
+		cwd,
+		agentDir,
+		settingsManager,
+		additionalExtensionPaths: ["builtin:mcp", "builtin:llama.cpp"],
+		noExtensions: true,
+		noSkills: true,
+		noPromptTemplates: true,
+		noThemes: true,
+		noContextFiles: true,
+	});
+	await resourceLoader.reload();
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir,
+		resourceLoader,
+		settingsManager,
+		sessionManager: SessionManager.inMemory(cwd),
+	});
+	try {
+		const runner = session.extensionRunner;
+		const commands = runner.getRegisteredCommands();
+		for (const name of [
+			"agents",
+			"api",
+			"archive",
+			"backlog",
+			"hooks",
+			"jobs",
+			"memory",
+			"modelsettings",
+			"permissions",
+			"plan",
+			"resume",
+			"rewind",
+			"status",
+			"trust",
+			"web",
+		])
+			expect(commands.filter((command) => command.name === name)).toHaveLength(1);
+		for (const name of ["permission", "sessions", "info", "session"]) {
+			expect(commands.some((command) => command.name === name)).toBe(false);
+			expect(runner.getCommand(name)).toBeUndefined();
+		}
+		for (const [alias, canonical] of [
+			["continue", "resume"],
+			["usage", "status"],
+			["cost", "status"],
+			["stats", "status"],
+			["allowed-tools", "permissions"],
+			["list-agents", "agents"],
+			["peers", "agents"],
+		]) {
+			expect(runner.getCommand(alias)?.handler).toBe(runner.getCommand(canonical)?.handler);
+		}
+		await session.controlPlan({ action: "enter" });
+		for (const toolName of ["file", "bash", "agent", "execute", "browser", "debug", "mcp__unknown__read"]) {
+			expect(await runner.emitToolCall({ type: "tool_call", toolCallId: toolName, toolName, input: {} })).toMatchObject(
+				{ block: true },
+			);
+		}
+		expect(
+			await runner.emitUserBash({ type: "user_bash", command: "echo bypass", excludeFromContext: true, cwd }),
+		).toMatchObject({ result: { cancelled: true } });
+		await session.controlPlan({ action: "leave" });
+
+		expect(commands.filter((command) => command.name === "mcp")).toHaveLength(1);
+		expect(commands.filter((command) => command.name === "llama")).toHaveLength(1);
+		expect(commands.some((command) => command.name === "octocode")).toBe(false);
+	} finally {
+		await session.dispose();
+	}
+});

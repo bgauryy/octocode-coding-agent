@@ -9,7 +9,7 @@
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import { sleep } from "../../utils/sleep.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
-import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
+import { pollOAuthDeviceCodeFlow, readJson, trustedHttpUrl } from "./device-code.ts";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 const DEFAULT_OAUTH_HOST = "https://auth.kimi.com";
@@ -44,27 +44,6 @@ function requestSignal(signal: AbortSignal): AbortSignal {
 
 function formUrlEncode(fields: Record<string, string>): string {
 	return new URLSearchParams(fields).toString();
-}
-
-async function readJson(response: Response): Promise<Record<string, unknown> | null> {
-	try {
-		const json = await response.json();
-		return json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
-}
-
-/** The verification URI is opened in the user's browser; only http(s) URLs are trusted. */
-function trustedHttpUrl(value: unknown): string | null {
-	if (typeof value !== "string" || !value) return null;
-	try {
-		const url = new URL(value);
-		if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-		return url.href;
-	} catch {
-		return null;
-	}
 }
 
 async function startDeviceAuthorization(oauthHost: string, signal: AbortSignal): Promise<DeviceAuthorization> {

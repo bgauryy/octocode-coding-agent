@@ -3,8 +3,9 @@ import type { ExtensionAPI } from "../../../core/extensions/index.ts";
 import { fencedBody } from "../../shared/fence.ts";
 import { formatClock } from "../../shared/format.ts";
 import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
-import { clip, resultBlock } from "../../shared/render.ts";
+import { resultBlock } from "../../shared/render.ts";
 import { contentText } from "../../shared/util.ts";
+import { clip } from "../../shared/render/text.ts";
 
 /** `✉ from <client>`, then the client's text: untrusted, so resultBlock sanitizes and previews it instead of Markdown. */
 export function registerExternalMessageRenderer(pi: ExtensionAPI): void {

@@ -9,7 +9,7 @@ import { resolveReadPathAsync } from "../../src/core/tools/path-utils.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { chipText, shortChip } from "../../src/octocode/permission/mode.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
-import { appKey, expandKey } from "../../src/octocode/shared/render.ts";
+import { appKey, expandKey } from "../../src/octocode/shared/render/text.ts";
 import { hintText } from "../../src/octocode/ui/editor.ts";
 import { fakeCtx, theme } from "./fake-pi.ts";
 

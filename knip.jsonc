@@ -1,0 +1,61 @@
+{
+	"$schema": "https://unpkg.com/knip@6.42.1/schema.json",
+	"workspaces": {
+		".": {
+			// Build inputs and developer commands invoked by path rather than static imports.
+			"entry": [
+				"scripts/agent-treeshake-smoke-entry.ts",
+				"scripts/browser-smoke-entry.ts",
+				"scripts/generate-thinking-capabilities.mjs",
+				"scripts/profile-render-backpressure.mjs",
+				"scripts/stage-registry-release.mjs",
+				"scripts/use-local-packages.mjs",
+			],
+		},
+		"packages/ai": {
+			// Ollama is an optional live-test server, not an npm binary dependency.
+			"ignoreBinaries": ["ollama"],
+			// Tool search, transcript loading and system updates share one current model list,
+			// but their independently consumed capability contracts must remain separate.
+			"ignoreIssues": { "scripts/generate-models/constants.ts": ["duplicates"] },
+			// Public package subpaths, including adapters that applications load dynamically.
+			"entry": [
+				"src/index.ts",
+				"src/cli.ts",
+				"src/{models,compat,oauth,bedrock-provider,bun-oauth}.ts",
+				"src/providers/**/*.ts",
+				"src/api/**/*.ts",
+				"src/utils/**/*.ts",
+			],
+		},
+		"packages/coding-agent": {
+			// The native MCP launcher resolves this package name from package.json at runtime.
+			"ignoreDependencies": ["octocode-mcp"],
+			// Platform commands and optional test prerequisites, not npm packages.
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash"],
+			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
+			"entry": [
+				"src/index.ts",
+				"src/rpc-entry.ts",
+				"src/bun/cli.ts",
+				"src/utils/image-resize-worker.ts",
+				"src/octocode/api/cli.ts",
+				"scripts/generate-{schemas,references}.ts",
+				"scripts/generate-codex-hook-output-fixtures.mjs",
+				"scripts/export-agent-prompts.ts",
+				"examples/extensions/*.{ts,tsx}",
+				"examples/extensions/*/index.ts",
+			],
+			// Vendored scripts are copied into exports, not imported as application modules.
+			"ignore": ["src/core/export-html/vendor/**"],
+		},
+		"packages/tui": {
+			// Linux clipboard integration tests use a system compiler and X11 clipboard tool.
+			"ignoreBinaries": ["cc", "xclip"],
+		},
+		"packages/webview": {
+			// The offline bundle substitutes its own entry through a Rolldown resolver.
+			"entry": ["src/{state,markdown}.ts", "src/page.tsx", "src/app/live/offline.ts"],
+		},
+	},
+}

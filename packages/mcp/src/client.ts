@@ -23,7 +23,7 @@ import type {
 	NotificationListener,
 	RequestHandler,
 } from "./client/types.ts";
-import type { CallToolResult } from "./protocol/content.ts";
+import type { CallToolResult, Resource } from "./protocol/content.ts";
 import {
 	isJsonRpcNotification,
 	isJsonRpcRequest,
@@ -47,15 +47,12 @@ import {
 	type ListResourcesResult,
 	type ListResourceTemplatesResult,
 	type ReadResourceResult,
-	type Resource,
 	type ResourceTemplate,
 	type ServerCapabilities,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	type Tool,
 } from "./protocol/types.ts";
 import type { McpTransport } from "./transports/transport.ts";
-
-export type { McpClientOptions, McpRequestOptions } from "./client/types.ts";
 
 export class McpClient {
 	readonly options: Readonly<McpClientOptions>;

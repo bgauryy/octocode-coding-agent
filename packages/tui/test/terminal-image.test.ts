@@ -8,28 +8,32 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { Image, setImageTranscoder } from "../src/components/image.ts";
 import {
-	cropKittyImageLine,
-	deleteAllKittyImages,
-	deleteAllKittyPlacements,
-	deleteKittyImage,
 	detectCapabilities,
-	encodeITerm2,
-	encodeKitty,
 	getCapabilities,
-	getKittyImageMetadata,
-	getKittyImagePlacement,
-	getKittyImagePlacementRows,
-	hyperlink,
-	imageFallback,
-	isImageLine,
-	registerKittyImageMetadata,
-	renderImage,
 	resetCapabilitiesCache,
 	setCapabilities,
 	setCapabilityOverrides,
 	setCellDimensions,
+} from "../src/terminal-image/capabilities.ts";
+import {
+	cropKittyImageLine,
+	getKittyImageMetadata,
+	getKittyImagePlacement,
+	getKittyImagePlacementRows,
+	registerKittyImageMetadata,
+} from "../src/terminal-image/kitty-metadata.ts";
+import {
+	deleteAllKittyImages,
+	deleteAllKittyPlacements,
+	deleteKittyImage,
+	encodeITerm2,
+	encodeKitty,
+	hyperlink,
+	imageFallback,
+	isImageLine,
+	renderImage,
 } from "../src/terminal-image.ts";
-import { visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
 
 const ENV_KEYS = [
 	"TERM",

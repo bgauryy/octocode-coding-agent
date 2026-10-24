@@ -5,7 +5,6 @@ import { type Subcommand, say } from "./shared/commands.ts";
 /** `/status`: the loaded skills and each MCP server's connection status. */
 export function statusCommand(pi: ExtensionAPI): Subcommand {
 	return {
-		aliases: ["info", "session"],
 		description: "status — list loaded skills and MCP connection status",
 		dialog: "interaction",
 		handler: async (_args, ctx) => {

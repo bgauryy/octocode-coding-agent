@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode.ts";
+import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
 
 vi.mock("../../src/config.ts", async (original) => ({
 	...(await original<Record<string, unknown>>()),

@@ -17,6 +17,11 @@ export function hasApi<TApi extends Api>(model: AnyModel, api: TApi): model is M
 	return isModelType(model, "chat") && model.api === api;
 }
 
+/** `Usage.cacheWrite1h` price over the input rate: Anthropic (direct and Bedrock) 1-hour writes. */
+const CACHE_WRITE_1H_INPUT_MULTIPLIER = 2;
+/** `Usage.cacheWrite12h` price over the input rate: OpenAI explicit 12-hour writes. */
+const CACHE_WRITE_12H_INPUT_MULTIPLIER = 2.5;
+
 export function calculateCost(model: AnyModel, usage: Usage): Usage["cost"] {
 	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
 	let rates: ModelCostRates = model.cost;
@@ -28,7 +33,11 @@ export function calculateCost(model: AnyModel, usage: Usage): Usage["cost"] {
 		}
 	}
 
-	// Long writes are disjoint subsets of the aggregate, never additional tokens.
+	// Long writes are disjoint subsets of the aggregate, never additional tokens. A model without a cache-write rate
+	// charges no write premium (OpenAI before explicit caching), so its long writes cost what its short writes cost.
+	const premium = rates.cacheWrite > 0;
+	const longRate = premium ? rates.input * CACHE_WRITE_1H_INPUT_MULTIPLIER : rates.cacheWrite;
+	const extendedRate = premium ? rates.input * CACHE_WRITE_12H_INPUT_MULTIPLIER : rates.cacheWrite;
 	const longWrite = usage.cacheWrite1h ?? 0;
 	const extendedWrite = usage.cacheWrite12h ?? 0;
 	const shortWrite = usage.cacheWrite - longWrite - extendedWrite;
@@ -36,7 +45,7 @@ export function calculateCost(model: AnyModel, usage: Usage): Usage["cost"] {
 	usage.cost.output = (rates.output / 1000000) * usage.output;
 	usage.cost.cacheRead = (rates.cacheRead / 1000000) * usage.cacheRead;
 	usage.cost.cacheWrite =
-		(rates.cacheWrite * shortWrite + rates.input * 2 * longWrite + rates.input * 2.5 * extendedWrite) / 1000000;
+		(rates.cacheWrite * shortWrite + longRate * longWrite + extendedRate * extendedWrite) / 1000000;
 	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	return usage.cost;
 }

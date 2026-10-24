@@ -2,11 +2,12 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { EXTERNAL_SENDER, USER_SENDER } from "../../src/octocode/shared/messages.ts";
-import type { Member, Message } from "../../src/octocode/team/model.ts";
+import type { Message } from "../../src/octocode/team/model.ts";
 import { userProof, userProofValid } from "../../src/octocode/team/proof.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { tmp } from "./helpers.ts";
+import type { Member } from "@octocodeai/octocode-contacts/team";
 
 const message = (over: Partial<Message> = {}): Message => ({
 	id: 7,

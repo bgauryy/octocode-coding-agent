@@ -8,37 +8,8 @@ import type {
 	CredentialStore,
 	LoginOptions,
 } from "../auth/types.ts";
-import type { ProviderHeaders } from "../types.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import type { Provider } from "./contracts.ts";
-
-export function mergeHeaders(
-	base: ProviderHeaders | undefined,
-	override: ProviderHeaders | undefined,
-): ProviderHeaders | undefined {
-	if (!base && !override) return undefined;
-	const merged = { ...base };
-	for (const [name, value] of Object.entries(override ?? {})) {
-		const lowerName = name.toLowerCase();
-		for (const existingName of Object.keys(merged)) {
-			if (existingName.toLowerCase() === lowerName) delete merged[existingName];
-		}
-		merged[name] = value;
-	}
-	return merged;
-}
-
-export async function readCredential(
-	credentials: CredentialStore,
-	providerId: string,
-	signal: AbortSignal,
-): Promise<Credential | undefined> {
-	try {
-		return await credentials.read(providerId, { signal });
-	} catch (error) {
-		throw new ModelsError("auth", `Credential store read failed for ${providerId}`, { cause: error });
-	}
-}
 
 /** Resolves the credential a dynamic provider's network refresh phase uses, refreshing expired OAuth. */
 export async function resolveRefreshCredential(

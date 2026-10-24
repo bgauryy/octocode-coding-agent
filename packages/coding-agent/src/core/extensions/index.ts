@@ -4,26 +4,13 @@
 
 export type { SlashCommandInfo, SlashCommandSource } from "../slash-commands.ts";
 export type { SourceInfo } from "../source-info.ts";
-export {
-	createExtensionRuntime,
-	discoverAndLoadExtensions,
-	loadExtensionFromFactory,
-	loadExtensions,
-} from "./loader.ts";
-export type {
-	ExtensionErrorListener,
-	ForkHandler,
-	NavigateTreeHandler,
-	NewSessionHandler,
-	ShutdownHandler,
-	SwitchSessionHandler,
-} from "./runner.ts";
+export { createExtensionRuntime, discoverAndLoadExtensions } from "./loader.ts";
+export type { ExtensionErrorListener, ShutdownHandler } from "./runner.ts";
 export { ExtensionRunner } from "./runner.ts";
 export type {
 	AfterProviderResponseEvent,
 	AgentActivityOutcome,
 	AgentBeforeSettleEvent,
-	AgentBeforeSettleEventResult,
 	AgentEndEvent,
 	AgentSettledEvent,
 	AgentInterruptedEvent,
@@ -31,7 +18,6 @@ export type {
 	// Re-exports
 	AgentToolResult,
 	AgentToolUpdateCallback,
-	AppendEntryHandler,
 	// App keybindings (for custom editors)
 	AppKeybinding,
 	AutocompleteProviderFactory,
@@ -96,10 +82,6 @@ export type {
 	ExtensionUIPermissionRequest,
 	ExtensionVirtualModel,
 	ExtensionWidgetOptions,
-	GetActiveToolsHandler,
-	GetAllToolsHandler,
-	GetCommandsHandler,
-	GetThinkingLevelHandler,
 	InlineExtension,
 	// Events - Input
 	InputEvent,
@@ -139,8 +121,6 @@ export type {
 	// Events - Resources
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
-	SendMessageHandler,
-	SendUserMessageHandler,
 	SessionBeforeCompactEvent,
 	SessionBeforeForkEvent,
 	SessionBeforeForkResult,
@@ -157,10 +137,6 @@ export type {
 	// Events - Session
 	SessionStartEvent,
 	SessionTreeEvent,
-	SetActiveToolsHandler,
-	SetLabelHandler,
-	SetModelHandler,
-	SetThinkingLevelHandler,
 	TerminalInputHandler,
 	ThinkingLevelSelectEvent,
 	ToolAnnotations,
@@ -187,7 +163,6 @@ export type {
 	ToolResultEventResult,
 	TreePreparation,
 	TurnEndEvent,
-	TurnEndEventResult,
 	TurnStartEvent,
 	UIPromptEndEvent,
 	UIPromptKind,
@@ -201,5 +176,3 @@ export type {
 // Type guards
 export { defineTool, isBashToolResult, isToolCallEventType } from "./types.ts";
 export { wrapRegisteredTool, wrapRegisteredTools } from "./wrapper.ts";
-
-export type { SkillResourceSnapshot } from "../skill-resource-snapshot.ts";

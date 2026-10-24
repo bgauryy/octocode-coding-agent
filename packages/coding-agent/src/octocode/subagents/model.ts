@@ -188,6 +188,18 @@ interface RouteInput {
 	catalog?: Catalog | undefined;
 }
 
+/** The listed model a route's `provider/id[:thinking]` names, or undefined without a route or a listed match. */
+export function routedModel<T extends ModelRef>(route: string | undefined, models: readonly T[]): T | undefined {
+	if (!route) return undefined;
+	const colon = route.lastIndexOf(":");
+	const bases = colon > 0 && THINKING_LEVELS.has(route.slice(colon + 1)) ? [route, route.slice(0, colon)] : [route];
+	for (const base of bases) {
+		const found = models.find((model) => `${model.provider}/${model.id}` === base);
+		if (found) return found;
+	}
+	return undefined;
+}
+
 /** A purpose with an optional `:<thinking>` suffix (`small:high`), or undefined for a model id. */
 function tierOf(value: string): { tier: ModelTier; thinking: string } | undefined {
 	const at = value.lastIndexOf(":");

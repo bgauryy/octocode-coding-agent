@@ -10,10 +10,9 @@ import {
 	sessionLineage,
 	writeSegment,
 } from "../shared/archive.ts";
-import { isRecord, isStaleSessionError, stringList } from "../shared/util.ts";
+import { isStaleSessionError, stringList } from "../shared/util.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
-
-export { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * The archive of compacted history (`shared/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized

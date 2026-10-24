@@ -1,3 +1,7 @@
+export type { ContextReport, ContextContributor } from "./core/agent-session/context-report.ts";
+export type { ManualCompactionOptions } from "./core/compaction/manual-options.ts";
+export type { PlanOptions, PlanState } from "./octocode/plan/state.ts";
+export type { RepositoryDiff } from "./octocode/files/repository-diff.ts";
 // Core session management
 
 export { type Args, parseArgs } from "./cli/args.ts";
@@ -32,7 +36,6 @@ export {
 	type CollectEntriesResult,
 	type CompactionResult,
 	type CutPointResult,
-	calculateContextTokens,
 	collectEntriesForBranchSummary,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
@@ -81,6 +84,7 @@ export {
 	type CredentialSynchronizationOperation,
 	ModelRuntime,
 	type ModelRuntimeAuthOverrides,
+	type ModelRuntimeLoginOptions,
 } from "./core/model-runtime.ts";
 export type {
 	PackageManager,
@@ -106,15 +110,9 @@ export {
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "./core/agent-session-runtime.ts";
-export {
-	type CreateAgentSessionOptions,
-	type CreateAgentSessionResult,
-	// Factory
-	createAgentSession,
-	// Tool factory (for custom cwd)
-	createBashTool,
-	type PromptTemplate,
-} from "./core/sdk.ts";
+export type { PromptTemplate } from "./core/prompt-templates.ts";
+export { createAgentSession } from "./core/sdk.ts";
+export type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./core/sdk/types.ts";
 export {
 	type BranchSummaryEntry,
 	buildContextEntries,
@@ -179,6 +177,7 @@ export {
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createBashTool,
 	createBashToolDefinition,
 	createLocalBashOperations,
 	DEFAULT_MAX_BYTES,
@@ -295,3 +294,6 @@ export { detectSupportedImageMimeTypeFromFile } from "./utils/mime.ts";
 export { getPowerShellConfig, getShellConfig } from "./utils/shell.ts";
 
 export type { SkillResourceSnapshot } from "./core/skill-resource-snapshot.ts";
+
+export { ApplicationService, getApplicationPort, getApplicationPortForSession } from "./core/application/index.ts";
+export type { ApplicationStateSource } from "./core/application/index.ts";

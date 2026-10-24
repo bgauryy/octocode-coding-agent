@@ -5,8 +5,6 @@ import {
 	archiveFolder,
 	archiveSearch,
 	existingLibrary,
-	fence,
-	inlineCode,
 	LIBRARY_FILE,
 	libraryPath,
 	nextSegment,
@@ -19,6 +17,7 @@ import {
 } from "../../src/octocode/shared/archive.ts";
 import { sessionDir, sessionFolder, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { tmp } from "./helpers.ts";
+import { fence, inlineCode } from "../../src/octocode/shared/archive/text.ts";
 
 let saved: string | undefined;
 

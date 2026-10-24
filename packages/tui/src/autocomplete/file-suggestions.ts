@@ -5,7 +5,7 @@ import { buildCompletionValue, parsePathPrefix, toDisplayPath } from "./path-pre
 import type { AutocompleteItem } from "./types.ts";
 
 // Expand home directory (~/) to actual home path
-export function expandHomePath(path: string): string {
+function expandHomePath(path: string): string {
 	if (path.startsWith("~/")) {
 		const expandedPath = join(homedir(), path.slice(2));
 		// Preserve trailing slash if original path had one

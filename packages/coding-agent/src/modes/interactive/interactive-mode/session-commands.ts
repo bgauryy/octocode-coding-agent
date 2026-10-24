@@ -1,3 +1,4 @@
+import { validateCompactionInstructions } from "../../../core/compaction/manual-options.ts";
 /**
  * Slash commands that act on the current session: /reload, /export, /import, /share, /bug, /copy, /name, /clear and
  * /compact, plus project trust after a reload and the trust selector.
@@ -21,7 +22,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
 /** Interactive-mode members used by the session slash commands. */
-export type SessionCommandsHost = Pick<
+type SessionCommandsHost = Pick<
 	InteractiveModeHost,
 	| "applyRuntimeSettings"
 	| "autoTrustOnReloadCwd"
@@ -370,10 +371,10 @@ export function handleNameCommand(host: SessionCommandsHost, text: string): void
 	host.ui.requestRender();
 }
 
-export async function handleClearCommand(host: SessionCommandsHost): Promise<void> {
+export async function handleClearCommand(host: SessionCommandsHost, previousName?: string): Promise<void> {
 	host.clearStatusIndicator();
 	try {
-		const result = await host.runtimeHost.newSession();
+		const result = await host.runtimeHost.newSession(previousName ? { previousName } : undefined);
 		if (result.cancelled) {
 			return;
 		}
@@ -385,11 +386,12 @@ export async function handleClearCommand(host: SessionCommandsHost): Promise<voi
 	}
 }
 
-export async function handleCompactCommand(host: SessionCommandsHost): Promise<void> {
+export async function handleCompactCommand(host: SessionCommandsHost, customInstructions?: string): Promise<void> {
+	validateCompactionInstructions(customInstructions);
 	host.clearStatusIndicator();
 
 	try {
-		await getApplicationPort(host.session).invoke("compact");
+		await getApplicationPort(host.session).invoke("compact", { customInstructions });
 	} catch {
 		// Ignore, will be emitted as an event
 	}

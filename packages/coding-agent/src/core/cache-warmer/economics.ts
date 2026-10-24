@@ -1,5 +1,16 @@
-import { type Api, calculateCost, type Model, type SimpleStreamOptions, type Usage } from "@octocodeai/octocode-ai";
+import {
+	type Api,
+	calculateCost,
+	type Context,
+	getCurrentSystemMessage,
+	getSystemMessageText,
+	type Model,
+	normalizeContext,
+	type SimpleStreamOptions,
+	type Usage,
+} from "@octocodeai/octocode-ai";
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
+import { charsToTokens } from "../compaction/tokens.ts";
 import type { SessionEntry } from "../session-manager.ts";
 
 /** Streaming warming never continues past this long after the real request that started it. */
@@ -21,19 +32,63 @@ export function getCacheWarmingDelayMs(ttlMs: number): number | undefined {
 	return Math.max(1, Math.floor(Math.min(ttlMs * 0.9, ttlMs - 10_000)));
 }
 
+const validSeconds = (seconds: number | undefined): seconds is number =>
+	seconds !== undefined && Number.isFinite(seconds) && seconds > 0;
+
+interface PromptCacheLifetime {
+	/** Lifetime of the shortest-lived entry the request writes: the history entry. */
+	ttlMs: number;
+	/**
+	 * True when the instructions are written with a longer lifetime than the history. When the history entry
+	 * expires, the instruction prefix is still read from its own entry, so only the history is rewritten.
+	 */
+	layered: boolean;
+}
+
 /**
- * Lifetime of the prompt cache entry a request writes, from the model's
- * `promptCache` tier for the retention the request used. Undefined when the
- * model has no lifetime for that tier or caching is off.
+ * Lifetimes of the prompt cache entries a request writes, from the model's `promptCache` tiers for the
+ * retention pair the request used. Undefined when the model has no lifetime for that tier or caching is off.
  */
-export function getPromptCacheTtlMs(model: Model<Api>, options: SimpleStreamOptions | undefined): number | undefined {
+export function getPromptCacheLifetime(
+	model: Model<Api>,
+	options: SimpleStreamOptions | undefined,
+): PromptCacheLifetime | undefined {
 	const retention = resolveCacheRetention(options?.cacheRetention, options?.env);
 	if (retention === "none") return undefined;
 	const instructions = resolveInstructionCacheRetention(options);
-	// Whole-prompt warming economics cannot estimate a miss across separate lifetimes.
-	if (instructions !== undefined && instructions !== retention) return undefined;
-	const seconds = model.promptCache?.[retention];
-	return seconds === undefined || !Number.isFinite(seconds) || seconds <= 0 ? undefined : seconds * 1000;
+	// Adapters with Anthropic-style markers send long history behind short instructions at the short lifetime; that is
+	// the safe lifetime to plan with for any provider.
+	const history = instructions === "short" && retention === "long" ? "short" : retention;
+	const seconds = model.promptCache?.[history];
+	if (!validSeconds(seconds)) return undefined;
+	const longSeconds = model.promptCache?.long;
+	const longSupported = (model.compat as { supportsLongCacheRetention?: boolean } | undefined)
+		?.supportsLongCacheRetention;
+	const layered =
+		instructions === "long" &&
+		history === "short" &&
+		longSupported !== false &&
+		validSeconds(longSeconds) &&
+		longSeconds > seconds;
+	return { ttlMs: seconds * 1000, layered };
+}
+
+/** Lifetime of the history entry, the first one a request's cache loses. See {@link getPromptCacheLifetime}. */
+export function getPromptCacheTtlMs(model: Model<Api>, options: SimpleStreamOptions | undefined): number | undefined {
+	return getPromptCacheLifetime(model, options)?.ttlMs;
+}
+
+/**
+ * Upper-bound token estimate of the instruction prefix (current system prompt and tool declarations) that an
+ * instruction cache breakpoint covers. Over-estimating it under-estimates the history a miss would rewrite, so
+ * layered warming errs toward not refreshing.
+ */
+export function estimateInstructionPrefixTokens(context: Context): number {
+	const system = getCurrentSystemMessage(normalizeContext(context).messages);
+	if (!system) return 0;
+	return charsToTokens(
+		getSystemMessageText(system).length + (system.toolsAdded?.length ? JSON.stringify(system.toolsAdded).length : 0),
+	);
 }
 
 /**

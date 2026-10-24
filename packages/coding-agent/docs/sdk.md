@@ -140,6 +140,10 @@ MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Co
 
 The exported `RpcClient` controls an Octocode RPC subprocess. Its `invocation: { command, args }` option supplies an executable and argument prefix before RPC flags, taking precedence over `cliPath`. `onClose(listener)` reports unexpected exit and explicit stop, so hosts can settle pending work; remove listeners with the returned unsubscribe function. See the [RPC client types](../src/modes/rpc/rpc-client/types.ts).
 
+RPC mode validates every stdin line against `RpcCommandSchema` ([schema](../src/modes/rpc/rpc-command-schema.ts)), the TypeBox definition from which `RpcCommand` is derived, before dispatching it. An invalid line is answered with `{ id?, type: "response", command, success: false, error }` and never reaches the session. `command` is the supplied `type` (`"invalid"` when the line is not an object or has no string `type`), `id` is echoed when it is a string, and `error` is `Unknown command: <type>` for an unknown type or names the bad field, such as `Invalid "set_model" command: missing required field "modelId"`.
+
+Queued messages are owned by `AgentSession`: `getQueuedInputs()` lists them in delivery order with an `id`, kind (`steer` or `followUp`), text, attachment count and source; `replaceQueuedInput(id, text)` (empty text removes the message), `removeQueuedInput(id)` and `moveQueuedInput(id, "up" | "down")` change them without touching other queued messages, including extension custom messages. Each call reports `"missing"`, `undefined` or `false` once delivery has begun. Every change emits `queue_update`. Over RPC the same operations are `get_queue`, `edit_queued`, `remove_queued` and `move_queued` (`RpcClient.queue`); `clear_queue` still clears everything. The terminal `/queue` manager is the only interactive editor: the web view displays queue changes from `queue_update` but has no editing controls, and ACP does not expose the queue.
+
 `ownProcessTree: true` makes the client own the worker and its descendants, using the existing process-tree cleanup with a ten-second graceful shutdown period. Ordinary RPC clients retain their existing direct-process stop behavior. [Inbound ACP](acp.md) enables tree ownership and runs one RPC worker per ACP session; its broker is a CLI adapter, not an additional exported SDK session factory.
 
 <a id="exports"></a>
@@ -152,3 +156,37 @@ The exported `RpcClient` controls an Octocode RPC subprocess. Its `invocation: {
 - [Extensions](extensions.md), [Skills](skills.md), and [Prompt Templates](prompt-templates.md) document resources supplied through a `ResourceLoader`.
 - [Extension fixtures](../examples/extensions/README.md) demonstrate API behavior used in regression tests.
 - [`CreateAgentSessionOptions`](../src/core/sdk.ts) and [`AgentSession`](../src/core/agent-session.ts) define the current SDK surface.
+
+
+## Session workflow operations
+
+The session exposes the terminal workflows through host methods where no dialog is required:
+
+```typescript
+await session.compact({ customInstructions: "Preserve the migration checklist and failing tests." });
+const answer = await session.askSideQuestion("Which option did we choose?");
+const context = session.getContextReport();
+const modelCapacity = session.getContextWindowLimit();
+session.setContextWindow(32_000);
+session.setContextWindow(); // Reset to the selected model's full catalog capacity.
+const changes = await session.getRepositoryDiff("src/parser.ts");
+await session.controlPlan({ action: "enter" });
+const plan = await session.controlPlan({ action: "show" });
+await session.controlPlan({ action: "approve", revision: plan.revision });
+```
+
+`controlPlan` requires native features. Its actions are `show`, `enter`, `leave`, and `approve`; approval requires a current positive revision and submits an implementation request. A saved active planning constraint is enforced on direct shell execution and cannot start a model run without the native policy. `stopActiveWork()` aborts the current agent operation and waits for direct shell execution to drain; native planning additionally stops native background work.
+
+`askSideQuestion` uses the injected model stream function and an independent request ID and abort controller. It does not execute tools or persist question/answer text; session accounting includes its usage receipts. The current tool-free request may require a different provider cache prefix. SDK transports must support concurrent calls or reject them explicitly. The context report and repository diff are read-only snapshots; see the [native feature guide](native-features.md#session-workflow-commands) for bounds and interpretation.
+
+`setContextWindow(tokens?)` changes the selected physical model's working context budget for the current session. It requires an idle session and accepts integer token counts from the smaller of 8,192 or the catalog capacity up to that capacity. The budget affects request output clamping, context reporting and automatic compaction; it does not expand the provider's capacity or change catalog metadata. Budgets are remembered separately per model while switching models in the session, and are not persisted on restart or session replacement. Select a physical model before setting its budget; these budgets do not override routes chosen by a virtual model. `getContextReport()` distinguishes the effective `capacity` from `catalogCapacity`, which is `null` for virtual selections.
+
+RPC `compact` accepts optional `customInstructions` (maximum 16,000 characters); old calls remain valid. `RpcClient.compact(options?)` passes it through. Native planning has a structured command:
+
+```json
+{"id":"plan-1","type":"plan","action":"enter"}
+{"id":"plan-2","type":"plan","action":"show"}
+{"id":"plan-3","type":"plan","action":"approve","revision":1}
+```
+
+Successful responses carry `data: { active, revision, text }`; unsupported native features or stale revisions produce normal RPC errors. `RpcClient.plan(options)` implements these requests. The [RPC schema](../src/modes/rpc/rpc-command-schema.ts) and [response types](../src/modes/rpc/rpc-types.ts) own the wire contract. RPC `get_commands` includes resolved `aliases` for registered extension/native commands. Core terminal aliases do not create new machine operation names. Side-question, context and diff host methods are not browser or RPC operations.

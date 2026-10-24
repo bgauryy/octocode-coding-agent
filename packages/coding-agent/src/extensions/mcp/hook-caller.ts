@@ -6,7 +6,7 @@ import type { EventBus } from "../../core/event-bus.ts";
  * no longer offered tool, then awaits `authorize` before it reaches the server. `authorize` rejects to refuse the call;
  * the host decides what it enforces (Octocode runs the permission gate), so the owner never calls without asking it.
  */
-export interface McpHookRequest {
+interface McpHookRequest {
 	server: string;
 	tool: string;
 	input: Record<string, unknown>;

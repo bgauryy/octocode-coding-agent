@@ -52,7 +52,7 @@ The automatically managed Octocode MCP server allows reads inside each loaded sk
 
 Extension-discovered skills are included before the first model request; changed skill roots reconnect the affected server. This does not grant access to unrelated sibling directories or symlinks that escape the allowed roots. Configure explicit allowed paths when your server needs a different workspace or access policy.
 
-Use `/skills` in the terminal to find a loaded skill by name or description. Selecting it inserts its command in the editor. A skill named `pdf-tools` is available as `/pdf-tools` when that name does not conflict with a core command, an extension command or alias, a prompt template, or another skill. `/skill:pdf-tools` remains a supported fallback.
+Use `/skills` in the terminal to find a loaded skill by name or description. Selecting it inserts its command in the editor. A skill named `pdf-tools` is available as `/pdf-tools` when that name does not conflict with a core command, an extension command, a prompt template, or another skill. `/skill:pdf-tools` remains a supported fallback.
 
 A skill whose name conflicts with a command appears in discovery with the `skill:` prefix. When two discovered skills share a name, the first one found loads and the other is skipped with a collision warning (see [Write portable frontmatter](#write-portable-frontmatter)). Only an SDK `skillsOverride` that returns several skills with one name gives each a numbered command, such as `/skill:review:1` and `/skill:review:2`.
 

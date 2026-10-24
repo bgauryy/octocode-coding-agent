@@ -25,7 +25,7 @@ function fileExists(filePath: string): boolean {
 	}
 }
 
-export async function pathExists(filePath: string): Promise<boolean> {
+async function pathExists(filePath: string): Promise<boolean> {
 	try {
 		await access(filePath, constants.F_OK);
 		return true;

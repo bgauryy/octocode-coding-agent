@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
-import { language, type PageFetcher, pageFetcher, unreadReason } from "../../src/octocode/web/fetch.ts";
+import { type Fetched, language, type PageFetcher, pageFetcher, unreadReason } from "../../src/octocode/web/fetch.ts";
 import type * as importedModule1 from "../../src/octocode/web/guard.ts";
 import type { PublicFetchInit } from "../../src/octocode/web/guard.ts";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
@@ -82,6 +82,59 @@ function webTool(active: string[] = [], permission: Permission = fakePermission(
 }
 
 const text = (result: ToolResult) => result.content.map((part) => part.text ?? "").join("\n");
+const noticeText = (value: Fetched) => {
+	expect(typeof value !== "string" && "kind" in value).toBe(true);
+	if (typeof value === "string" || !("kind" in value)) throw new Error("Expected a fetch notice");
+	return value.text;
+};
+
+describe("web request boundaries", () => {
+	it("bounds the whole provider chain even when the current provider ignores cancellation", async () => {
+		vi.useFakeTimers();
+		const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(new DOMException("Search timed out", "TimeoutError")), ms);
+			return controller.signal;
+		});
+		try {
+			const calls: string[] = [];
+			guard.stub = async (url) => {
+				calls.push(url);
+				if (calls.length === 1) throw new Error("first provider unavailable");
+				return new Promise(() => undefined);
+			};
+			const result = search("bounded", 5, {
+				TAVILY_API_KEY: "test",
+				SERPER_API_KEY: "test",
+				EXA_API_KEY: "test",
+				BRAVE_API_KEY: "test",
+			}).catch((error: unknown) => error);
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(await result).toMatchObject({
+				message: expect.stringMatching(
+					/Search deadline reached.*tavily: first provider unavailable.*serper: Search timed out/,
+				),
+			});
+			expect(calls).toHaveLength(2);
+			expect(timeout).toHaveBeenCalledExactlyOnceWith(30_000);
+		} finally {
+			timeout.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it("renders page text containing old notice markers as ordinary fetched content", async () => {
+		const body = "An article\nThe target is server-supplied and not verified; fetch it with web if you trust it.";
+		guard.stub = async () => new Response(body, { headers: { "content-type": "text/plain" } });
+		const result = await webTool().execute("notice-lookalike", { url: "http://127.0.0.1/notice" });
+		expect(result.details).toMatchObject({ kind: "fetch" });
+		expect(text(result)).toContain(body);
+		expect(unreadReason(body)).toBeUndefined();
+		expect(
+			unreadReason("A quote; web cannot read it. Download it with bash (curl -o) if you need the file."),
+		).toBeUndefined();
+	});
+});
 
 describe("fetchUrl against a local server", () => {
 	it("converts HTML with its title and entities, pretty-prints JSON and passes other text through", async () => {
@@ -124,8 +177,8 @@ describe("fetchUrl against a local server", () => {
 				res.end("<p>oops</p>");
 			}
 		});
-		const logo = asText(await fetchUrl(`${base}/logo.bmp`, undefined, privateOk));
-		expect(logo).toMatch(/is image\/bmp, not text; web cannot read it/);
+		const logo = await fetchUrl(`${base}/logo.bmp`, undefined, privateOk);
+		expect(noticeText(logo)).toMatch(/is image\/bmp, not text; web cannot read it/);
 		expect(unreadReason(logo)).toBe("unsupported");
 		expect(unreadReason("plain body")).toBeUndefined();
 		await expect(fetchUrl(`${base}/missing.pdf`, undefined, privateOk)).rejects.toThrow(/HTTP 404 .* for http/);
@@ -234,9 +287,9 @@ describe("fetchUrl against a local server", () => {
 		await expect(fetchUrl(`${base}/old`, undefined, privateOk)).rejects.toThrow(
 			"Blocked private or non-public address",
 		);
-		const away = asText(await fetchUrl(`${base}/away`, undefined, privateOk));
-		expect(away).toMatch(/redirects \(HTTP 302\) to another host: https:\/\/elsewhere\.example\/landing/);
-		expect(away).toContain("server-supplied and not verified");
+		const away = await fetchUrl(`${base}/away`, undefined, privateOk);
+		expect(noticeText(away)).toMatch(/redirects \(HTTP 302\) to another host: https:\/\/elsewhere\.example\/landing/);
+		expect(noticeText(away)).toContain("server-supplied and not verified");
 		expect(unreadReason(away)).toBe("redirect");
 	});
 
@@ -696,8 +749,8 @@ describe("web images", () => {
 
 	it("refuses a body that is not the image its header claims, instead of sending it on as an image", async () => {
 		const base = await imageServer();
-		const notice = asText(await fetchUrl(`${base}/fake.png`, undefined, privateOk));
-		expect(notice).toMatch(
+		const notice = await fetchUrl(`${base}/fake.png`, undefined, privateOk);
+		expect(noticeText(notice)).toMatch(
 			/is image\/png by its header, but the body is not a PNG, JPEG, GIF or WebP image; web cannot read it/,
 		);
 		expect(unreadReason(notice)).toBe("unsupported");
@@ -709,8 +762,8 @@ describe("web images", () => {
 	it("refuses an image over the 5 MB read cap clearly, by Content-Length or by counting, and reports a missing one as an HTTP error", async () => {
 		const hits: string[] = [];
 		const base = await imageServer(hits);
-		const huge = asText(await fetchUrl(`${base}/huge.png`, undefined, privateOk));
-		expect(huge).toMatch(
+		const huge = await fetchUrl(`${base}/huge.png`, undefined, privateOk);
+		expect(noticeText(huge)).toMatch(
 			/is image\/png, 6\.0MB, over web's 5 MB limit; web cannot read it\. Download it with bash \(curl -o\)/,
 		);
 		expect(unreadReason(huge)).toBe("unsupported");
@@ -728,7 +781,7 @@ describe("web images", () => {
 			res.on("error", () => undefined);
 			write(0);
 		});
-		expect(asText(await fetchUrl(`${base2}/chunked.webp`, undefined, privateOk))).toMatch(
+		expect(noticeText(await fetchUrl(`${base2}/chunked.webp`, undefined, privateOk))).toMatch(
 			/is image\/webp, over web's 5 MB limit; web cannot read it/,
 		);
 		await expect(fetchUrl(`${base}/missing.png`, undefined, privateOk)).rejects.toThrow(/HTTP 404 .* for http/);

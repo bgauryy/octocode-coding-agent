@@ -4,27 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useStore } from "zustand";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { LiveProvider, useLive } from "../src/app/live/session.tsx";
-
-class Socket {
-	static OPEN = 1;
-	static instances: Socket[] = [];
-	readyState = 1;
-	onmessage?: (event: { data: string }) => void;
-	onopen?: () => void;
-	onclose?: (event: { code: number }) => void;
-	onerror?: () => void;
-	constructor() {
-		Socket.instances.push(this);
-	}
-	send() {}
-	close(code = 1000) {
-		this.readyState = 3;
-		this.onclose?.({ code });
-	}
-	receive(type: string, data: unknown) {
-		this.onmessage?.({ data: JSON.stringify({ type, data }) });
-	}
-}
+import { FakeSocket } from "./helpers.ts";
 
 function Probe() {
 	const live = useLive();
@@ -49,8 +29,8 @@ function frame(sessionId: string) {
 }
 
 beforeEach(() => {
-	Socket.instances = [];
-	vi.stubGlobal("WebSocket", Socket);
+	FakeSocket.instances = [];
+	vi.stubGlobal("WebSocket", FakeSocket);
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -69,7 +49,7 @@ it("drops old workspace agents and events as soon as the application switches se
 			<Probe />
 		</LiveProvider>,
 	);
-	const socket = Socket.instances[0];
+	const socket = FakeSocket.instances[0];
 	act(() => {
 		socket.receive("workspace", {
 			sessionId: "old",
@@ -123,7 +103,7 @@ it("resumes a sustained stream and keeps parallel tool and child-agent updates",
 			<Probe />
 		</LiveProvider>,
 	);
-	const socket = Socket.instances[0];
+	const socket = FakeSocket.instances[0];
 	const event = (sequence: number, value: object) => ({
 		protocolVersion: 1,
 		cursor: { sessionId: "s", epoch: "epoch-s", sequence },
@@ -165,8 +145,8 @@ it("resumes a sustained stream and keeps parallel tool and child-agent updates",
 	});
 	await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("progress 120"));
 	act(() => socket.close());
-	await waitFor(() => expect(Socket.instances).toHaveLength(2));
-	const resumed = Socket.instances[1];
+	await waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
+	const resumed = FakeSocket.instances[1];
 	act(() => {
 		resumed.receive("application", {
 			...frame("s"),
@@ -196,4 +176,33 @@ it("resumes a sustained stream and keeps parallel tool and child-agent updates",
 	await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Final answer,bash passed"));
 	expect(screen.getByRole("status")).not.toHaveTextContent("stale");
 	expect(screen.getByTestId("agents")).toHaveTextContent("settled");
+});
+
+it("discards a stale workspace when the first application snapshot names a different session", async () => {
+	render(
+		<LiveProvider
+			access="test"
+			backlog={createBacklogStore({
+				repo: "test",
+				generatedAt: 0,
+				states: ["backlog", "todo", "ongoing", "done"],
+				idleMs: 1,
+				items: [],
+			})}
+		>
+			<Probe />
+		</LiveProvider>,
+	);
+	act(() => {
+		FakeSocket.instances[0].receive("workspace", {
+			sessionId: "stale",
+			agents: [{ id: "stale-agent" }],
+			traffic: [],
+			receipts: [],
+			events: [{ id: 1, type: "message", at: 1, text: "old session" }],
+		});
+		FakeSocket.instances[0].receive("application", frame("current"));
+	});
+	await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("current/current/0/"));
+	expect(screen.getByRole("status")).not.toHaveTextContent("old session");
 });

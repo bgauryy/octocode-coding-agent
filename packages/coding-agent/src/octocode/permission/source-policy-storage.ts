@@ -2,15 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { atomicWriteFile, sha256 } from "../../utils/atomic-file.ts";
-import { canonicalPath } from "../shared/home.ts";
-import { isRecord } from "../shared/util.ts";
+import { canonicalPath } from "../shared/home/repo.ts";
+import { isRecord } from "../../utils/guards.ts";
+import type { PolicySource } from "./source-policy/rules.ts";
 import {
 	applyRuleUpdates,
 	type SourcePermissionDestination,
 	type SourcePermissionUpdate,
 	type SourceRuleArrays,
 } from "../shared/permission-updates.ts";
-import type { PolicySource } from "./source-policy.ts";
 
 export function localPermissionAllowances(file: string): boolean {
 	if (path.basename(file) !== "settings.local.json") return false;

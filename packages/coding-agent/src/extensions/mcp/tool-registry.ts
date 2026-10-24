@@ -169,8 +169,8 @@ export function ensureDiscoveryActive(state: McpExtensionState, ctx: ExtensionCo
 	);
 	if (!needsSearch) return;
 	if (hasSearch) {
-		const active = pi.getActiveTools();
-		if (!active.includes(TOOL_SEARCH_TOOL_NAME)) pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
+		// A deselection after tool_search was active stands (see `activateDiscovery`): warn instead of re-adding it.
+		activateDiscovery(pi);
 		if (pi.getActiveTools().includes(TOOL_SEARCH_TOOL_NAME)) return;
 	}
 	if (state.warnedUnreachable) return;

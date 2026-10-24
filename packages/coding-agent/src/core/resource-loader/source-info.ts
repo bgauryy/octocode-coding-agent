@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
+import { isUnderPath } from "../../utils/paths.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import { createSourceInfo, getSyntheticPathSource, isSyntheticPath, type SourceInfo } from "../source-info.ts";
 
@@ -27,11 +28,7 @@ export function findSourceInfoForPath(
 	const normalizedResourcePath = resolve(resourcePath);
 	if (extraSourceInfos) {
 		for (const [sourcePath, sourceInfo] of extraSourceInfos.entries()) {
-			const normalizedSourcePath = resolve(sourcePath);
-			if (
-				normalizedResourcePath === normalizedSourcePath ||
-				normalizedResourcePath.startsWith(`${normalizedSourcePath}${sep}`)
-			) {
+			if (isUnderPath(normalizedResourcePath, sourcePath)) {
 				return { ...sourceInfo, path: resourcePath };
 			}
 		}
@@ -44,11 +41,7 @@ export function findSourceInfoForPath(
 		}
 
 		for (const [sourcePath, metadata] of metadataByPath.entries()) {
-			const normalizedSourcePath = resolve(sourcePath);
-			if (
-				normalizedResourcePath === normalizedSourcePath ||
-				normalizedResourcePath.startsWith(`${normalizedSourcePath}${sep}`)
-			) {
+			if (isUnderPath(normalizedResourcePath, sourcePath)) {
 				return createSourceInfo(resourcePath, metadata);
 			}
 		}
@@ -113,13 +106,4 @@ export function getDefaultSourceInfoForPath(roots: ResourceRoots, filePath: stri
 		origin: "top-level",
 		baseDir: statSync(normalizedPath).isDirectory() ? normalizedPath : resolve(normalizedPath, ".."),
 	};
-}
-
-export function isUnderPath(target: string, root: string): boolean {
-	const normalizedRoot = resolve(root);
-	if (target === normalizedRoot) {
-		return true;
-	}
-	const prefix = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
-	return target.startsWith(prefix);
 }

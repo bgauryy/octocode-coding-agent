@@ -3,7 +3,8 @@ import { Image } from "../src/components/image.ts";
 import { Spacer } from "../src/components/spacer.ts";
 import { Text } from "../src/components/text.ts";
 import { ProcessTerminal } from "../src/terminal.ts";
-import { getCapabilities, getImageDimensions } from "../src/terminal-image.ts";
+import { getImageDimensions } from "../src/terminal-image/dimensions.ts";
+import { getCapabilities } from "../src/terminal-image/capabilities.ts";
 import type { TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 

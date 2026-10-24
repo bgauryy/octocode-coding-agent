@@ -1,13 +1,9 @@
-import { CACHE_RETENTION_VALUES } from "@octocodeai/octocode-ai/utils/cache-policy";
+import { CACHE_RETENTIONS } from "@octocodeai/octocode-ai/providers/model-schema";
 import { Type } from "typebox";
 
 const retention = (description: string) =>
 	Type.Union(
-		[
-			Type.Literal(CACHE_RETENTION_VALUES[0]),
-			Type.Literal(CACHE_RETENTION_VALUES[1]),
-			Type.Literal(CACHE_RETENTION_VALUES[2]),
-		],
+		[Type.Literal(CACHE_RETENTIONS[0]), Type.Literal(CACHE_RETENTIONS[1]), Type.Literal(CACHE_RETENTIONS[2])],
 		{ description },
 	);
 

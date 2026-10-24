@@ -18,11 +18,11 @@ import {
 	type AssistantMessage,
 	type AssistantMessageEventStream,
 	type Context,
-	getModel,
 	type Model,
 	type SimpleStreamOptions,
 	Type,
 } from "@octocodeai/octocode-ai/compat";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import {
 	getOpenAICodexWebSocketDebugStats,
 	streamSimple as streamSimpleOpenAICodexResponses,
@@ -281,7 +281,7 @@ async function main(): Promise<void> {
 	const authStorage = AuthStorage.create();
 	const modelRegistry = await createModelRegistry(authStorage);
 
-	const model = getModel("openai-codex", "gpt-5.5");
+	const model = getBuiltinModel("openai-codex", "gpt-5.5");
 	if (!model) {
 		throw new Error("Model openai-codex/gpt-5.5 not found");
 	}

@@ -14,7 +14,7 @@ import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the view controls. */
-export type ViewStateHost = Pick<
+type ViewStateHost = Pick<
 	InteractiveModeHost,
 	| "activeSelectorDispose"
 	| "activeSelectorToken"

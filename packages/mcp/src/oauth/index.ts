@@ -22,18 +22,20 @@ export {
 } from "./errors.ts";
 export {
 	type AddClientAuthentication,
+	exchangeAuthorizationCode,
+	refreshAuthorization,
+	registerClient,
+	startAuthorization,
+	type TokenRequestOptions,
+} from "./endpoints.ts";
+export {
 	adaptOAuthProvider,
 	authorizeMcp,
-	exchangeAuthorizationCode,
 	type OAuthClientMetadataDocument,
 	type OAuthClientProvider,
 	type OAuthFlowOptions,
 	type OAuthFlowResult,
-	refreshAuthorization,
-	registerClient,
-	startAuthorization,
 	stepUpScope,
-	type TokenRequestOptions,
 } from "./flow.ts";
 export {
 	McpOAuthProvider,

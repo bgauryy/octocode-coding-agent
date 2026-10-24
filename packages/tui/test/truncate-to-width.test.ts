@@ -1,6 +1,8 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { normalizeTerminalOutput, truncateToWidth, visibleWidth } from "../src/utils.ts";
+import { visibleWidth } from "../src/utils/width.ts";
+import { truncateToWidth } from "../src/utils/truncate.ts";
+import { normalizeTerminalOutput } from "../src/utils.ts";
 
 describe("truncateToWidth", () => {
 	it("keeps output within width for very large unicode input", () => {

@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { actionWhy, decide } from "../../permission/mode.ts";
-import { isWithin, workspaceRoot } from "../../shared/home.ts";
+import { isWithin, workspaceRoot } from "../../shared/home/repo.ts";
 import { classifyHost, type HostClass, type HostLookup, isHttpUrl } from "../../web/guard.ts";
 import { blockedHost, httpOnlyRefusal, keyOf, parseUrl, portOf } from "../network.ts";
 

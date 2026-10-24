@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel, streamSimple } from "../src/compat.ts";
+import { streamSimple } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
 
 // Empty tools arrays must NOT be serialized as `tools: []` — some OpenAI-compatible
 // backends (e.g. DashScope / Aliyun Qwen via compatible-mode) reject the request with
@@ -61,7 +62,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("omits tools field when context.tools is an empty array", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
 		await streamSimple(
@@ -78,7 +79,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("omits tools field when context.tools is undefined", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
 		await streamSimple(
@@ -94,7 +95,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("sends default maxTokens", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
 		await streamSimple(
@@ -111,7 +112,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("sends explicit maxTokens", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
 		await streamSimple(
@@ -128,7 +129,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("clamps default maxTokens to remaining context", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions", contextWindow: 10000, maxTokens: 8000 } as const;
 
 		await streamSimple(
@@ -145,7 +146,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("clamps explicit maxTokens to remaining context", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions", contextWindow: 10000, maxTokens: 8000 } as const;
 
 		await streamSimple(
@@ -165,7 +166,7 @@ describe("openai-completions empty tools handling", () => {
 		vi.stubEnv("CLOUDFLARE_API_KEY", "cf-token");
 		vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "account-id");
 		vi.stubEnv("CLOUDFLARE_GATEWAY_ID", "gateway-id");
-		const model = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+		const model = getBuiltinModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
 
 		await streamSimple(
 			model,
@@ -202,7 +203,7 @@ describe("openai-completions empty tools handling", () => {
 		vi.stubEnv("CLOUDFLARE_API_KEY", "cf-token");
 		vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "account-id");
 		vi.stubEnv("CLOUDFLARE_GATEWAY_ID", "gateway-id");
-		const model = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+		const model = getBuiltinModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
 
 		await streamSimple(model, {
 			messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
@@ -216,7 +217,7 @@ describe("openai-completions empty tools handling", () => {
 		vi.stubEnv("CLOUDFLARE_API_KEY", "cf-token");
 		vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "account-id");
 		vi.stubEnv("CLOUDFLARE_GATEWAY_ID", "gateway-id");
-		const model = getModel("cloudflare-ai-gateway", "gpt-5.1");
+		const model = getBuiltinModel("cloudflare-ai-gateway", "gpt-5.1");
 		const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
 			new Response('data: {"type":"response.completed","response":{"status":"completed","output":[]}}\n\n', {
 				status: 200,
@@ -245,7 +246,7 @@ describe("openai-completions empty tools handling", () => {
 		vi.stubEnv("CLOUDFLARE_API_KEY", "cf-token");
 		vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "account-id");
 		vi.stubEnv("CLOUDFLARE_GATEWAY_ID", "gateway-id");
-		const workersModel = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+		const workersModel = getBuiltinModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
 
 		await streamSimple(
 			workersModel,
@@ -262,7 +263,7 @@ describe("openai-completions empty tools handling", () => {
 	});
 
 	it("still emits tools: [] for Anthropic/LiteLLM proxy when conversation has tool history", async () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getBuiltinModel("openai", "gpt-4o-mini");
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
 		await streamSimple(

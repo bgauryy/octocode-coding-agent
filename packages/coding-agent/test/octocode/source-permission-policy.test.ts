@@ -4,11 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import {
-	parseSourcePolicy,
-	evaluateSourcePolicy,
-	sourceToolDenied,
-} from "../../src/octocode/permission/source-policy.ts";
+import { evaluateSourcePolicy, sourceToolDenied } from "../../src/octocode/permission/source-policy.ts";
+import { parseSourcePolicy } from "../../src/octocode/permission/source-policy/rules.ts";
 const source = {
 	path: "/home/test/.claude/settings.json",
 	anchor: "/home/test/.claude",

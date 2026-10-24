@@ -2,21 +2,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	commandsFor,
-	hookCalls,
-	hookFiles,
-	loadHooks,
-	matches,
-	parseHooks,
-	toolAliases,
-} from "../../src/octocode/hooks/config.ts";
+import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { fingerprint, projectConfigFiles, saveDecision } from "../../src/octocode/shared/trust.ts";
+import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { fakePi, rendered, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor, hookCalls, toolAliases } from "../../src/octocode/hooks/config/calls.ts";
+import { matchesHook } from "../../src/octocode/hooks/profiles.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 function project(hooks: unknown, file = path.join(".codex", "hooks.json")): string {
 	const dir = tmp("octocode-hooks-");
@@ -181,6 +177,7 @@ describe("hooks config", () => {
 	});
 
 	it("matches Claude tool names against Octocode tools", () => {
+		const matches = (matcher: string, names: string[]) => matchesHook("octocode", "PreToolUse", matcher, names);
 		expect(matches("Bash", toolAliases("bash"))).toBe(true);
 		expect(matches("Edit|Write", toolAliases("file"))).toBe(true);
 		expect(matches("", ["anything"])).toBe(true);
@@ -868,4 +865,20 @@ describe("Stop, Notification and hook timing", () => {
 			vi.useRealTimers();
 		}
 	}, 10_000);
+});
+
+it("pauses executable hooks during planning and permits them after leaving", async () => {
+	const cwd = project({ PreToolUse: command("touch ran", "Bash") });
+	const { pi, fire } = fakePi();
+	let paused = true;
+	const hooks = registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp(), undefined, undefined, () => paused);
+	const ctx = context(cwd);
+	await fire("session_start", { reason: "startup" }, ctx);
+	const event = { toolName: "bash", toolCallId: "test", input: { command: "true" } } as never;
+	await hooks.preToolUse(event, ctx as never);
+	expect(fs.existsSync(path.join(cwd, "ran"))).toBe(false);
+	await hooks.suspend?.();
+	paused = false;
+	await hooks.preToolUse(event, ctx as never);
+	expect(fs.existsSync(path.join(cwd, "ran"))).toBe(true);
 });

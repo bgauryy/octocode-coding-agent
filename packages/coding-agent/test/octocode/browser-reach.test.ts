@@ -2,13 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import {
-	BrowserTool,
-	checkBrowserUrl,
-	checkUploadPaths,
-	registerBrowserTool,
-} from "../../src/octocode/browser/tool.ts";
+import { registerBrowserTool } from "../../src/octocode/browser/tool.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
+import { BrowserTool } from "../../src/octocode/browser/tool/browser-tool.ts";
+import { checkBrowserUrl, checkUploadPaths } from "../../src/octocode/browser/tool/checks.ts";
 
 describe("browser reach", () => {
 	/** A UI whose permission dialog answers `answer` (the select's choice); true allows once, false denies. */

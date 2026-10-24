@@ -9,7 +9,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask.ts";
+import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { tmp } from "./helpers.ts";
 
 /**

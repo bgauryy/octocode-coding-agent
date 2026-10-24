@@ -1,7 +1,7 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { parsePatch } from "../shared/codex-patch/patch.ts";
 import { validatePatchPath } from "../shared/file-input.ts";
-import { isRecord } from "../shared/util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 export const CODEX_PATCH_NAMES = ["apply_patch", "Write", "Edit"];
 

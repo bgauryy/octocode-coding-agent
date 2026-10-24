@@ -1,9 +1,10 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
-import { isRecord, partText } from "../shared/util.ts";
+import { partText } from "../shared/util.ts";
 import { recordedLocalReads } from "../shared/local-reads.ts";
 import { type LineRange, mergeRanges, type ReadView, readView } from "./coverage.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 /**
  * Which files the model's context shows, read from session messages: the base of the file guard's memory across a

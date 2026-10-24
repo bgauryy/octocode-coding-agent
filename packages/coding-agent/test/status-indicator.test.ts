@@ -25,22 +25,22 @@ describe("status indicators", () => {
 		expect(lines).toEqual([" ".repeat(20), " ".repeat(20)]);
 	});
 
-	it("shows the run summary with an esc hint and sweeps a light band across the detail", () => {
+	it("shows activity with an esc hint and sweeps a light band across the detail", () => {
 		initTheme("octocode-dark");
 		const previousKeybindings = getKeybindings();
 		setKeybindings(new KeybindingsManager());
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
-		const indicator = new WorkingStatusIndicator(tui, "Main · 3s · 1.2k tokens\nWriting the summary");
+		const indicator = new WorkingStatusIndicator(tui, "Writing the summary");
 		const at = (now: number) => {
 			vi.useFakeTimers({ now });
 			const lines = indicator.render(80);
 			vi.useRealTimers();
 			return lines;
 		};
-		const [, heading, detail] = at(1000);
-		expect(stripAnsi(heading)).toMatch(/Main · 3s · 1\.2k tokens +esc to interrupt$/);
-		expect(stripAnsi(detail)).toBe("   └ Writing the summary");
-		expect(at(1000)[2]).not.toBe(at(1600)[2]);
+		const [, detail] = at(1000);
+		expect(stripAnsi(detail)).toMatch(/Writing the summary +esc to interrupt$/);
+		expect(stripAnsi(detail)).not.toContain("Main");
+		expect(at(1000)[1]).not.toBe(at(1600)[1]);
 		indicator.dispose();
 		setKeybindings(previousKeybindings);
 	});
@@ -48,12 +48,14 @@ describe("status indicators", () => {
 	it("draws the detail plain when the indicator does not animate", () => {
 		initTheme("octocode-dark");
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
-		const indicator = new WorkingStatusIndicator(tui, "Main · 3s\nWriting", { frames: ["●"] });
-		expect(indicator.render(80)[2]).toBe(`   ${theme.fg("dim", "└ ")}${theme.fg("text", "Writing")}`);
+		const indicator = new WorkingStatusIndicator(tui, "Writing", { frames: ["●"] });
+		expect(indicator.render(80)[1]).toContain(theme.fg("text", "Writing"));
 		indicator.dispose();
 	});
 
 	it("keeps the top border unchanged unless the editor opts in", () => {
+		// The base-color assertion needs a fixed shimmer phase, independent of wall-clock time.
+		vi.useFakeTimers({ now: 0 });
 		initTheme("dark");
 		const tui = {
 			requestRender: vi.fn(),
@@ -66,7 +68,7 @@ describe("status indicators", () => {
 		expect(stripAnsi(editor.render(20)[0])).toBe("─".repeat(20));
 		const standaloneLine = indicator.render(20)[1];
 		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
-		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
+		expect(standaloneLine).toContain(theme.getFgAnsi("text"));
 		indicator.dispose();
 	});
 
@@ -124,26 +126,23 @@ describe("status indicators", () => {
 		}
 	});
 
-	it.each(["dark", "light"])("keeps the %s main activity at two rows without wrapping commands", (name) => {
+	it.each(["dark", "light"])("keeps the %s activity at one row without wrapping commands", (name) => {
 		initTheme(name);
 		vi.useFakeTimers();
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
-		const indicator = new WorkingStatusIndicator(
-			tui,
-			`Main · 5m24s · 28.8k tokens · 2 compactions\nRunning bash ${"long command ".repeat(20)}`,
-		);
+		const indicator = new WorkingStatusIndicator(tui, `Running bash ${"long command ".repeat(20)}`);
 		try {
 			for (const width of [1, 20, 40, 80, 120, 200]) {
 				const rows = indicator.render(width);
-				expect(rows).toHaveLength(3);
+				expect(rows).toHaveLength(2);
 				expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
 			}
 			const rows = indicator.render(100);
-			expect(stripAnsi(rows[1])).toContain("Main · 5m24s · 28.8k tokens · 2 compactions");
-			expect(rows[1]).toContain(theme.fg("accent", theme.bold("Main")));
-			expect(stripAnsi(rows[2])).toContain("└ Running bash");
-			indicator.setMessage("Main · 5m25s · 29k tokens · 2 compactions\nWriting");
-			expect(stripAnsi(indicator.render(100)[2])).toContain("Writing");
+			expect(stripAnsi(rows[1])).not.toContain("Main");
+			expect(stripAnsi(rows[1])).toContain("Running bash");
+
+			indicator.setMessage("Writing");
+			expect(stripAnsi(indicator.render(100)[1])).toContain("Writing");
 		} finally {
 			indicator.dispose();
 		}

@@ -1,12 +1,13 @@
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import { isRecord } from "./util.ts";
+import { isRecord } from "../../utils/guards.ts";
 
 export interface FileInputReplacement {
 	index: number;
 	input: JsonObject;
 }
 
-function text(value: unknown, field: string): string {
+/** A hook's rewritten `field`, which must be a string. */
+export function rewrittenString(value: unknown, field: string): string {
 	if (typeof value !== "string") throw new Error(`Rewritten ${field} must be a string`);
 	return value;
 }
@@ -20,13 +21,13 @@ export function rewriteFileQuery(
 	if (!Array.isArray(input.queries) || !isRecord(input.queries[index]))
 		throw new Error("Missing file query for hook rewrite");
 	const previous = input.queries[index];
-	const file = text(updated.file_path, "file_path");
+	const file = rewrittenString(updated.file_path, "file_path");
 	let query: Record<string, unknown>;
 	if (previous.type === "write") {
 		query = {
 			type: "write",
 			path: file,
-			content: text(updated.content, "content"),
+			content: rewrittenString(updated.content, "content"),
 			reasoning: previous.reasoning,
 		};
 	} else if (previous.type === "delete") {
@@ -45,8 +46,8 @@ export function rewriteFileQuery(
 				if (edit.replace_all !== undefined && typeof edit.replace_all !== "boolean")
 					throw new Error("Rewritten replace_all must be a boolean");
 				return {
-					oldText: text(edit.old_string, "old_string"),
-					newText: text(edit.new_string, "new_string"),
+					oldText: rewrittenString(edit.old_string, "old_string"),
+					newText: rewrittenString(edit.new_string, "new_string"),
 					...(typeof edit.replace_all === "boolean" ? { replaceAll: edit.replace_all } : {}),
 				};
 			}),

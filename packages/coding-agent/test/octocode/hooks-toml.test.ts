@@ -1,15 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { commandsFor, hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
-import {
-	describeProjectConfig,
-	fingerprint,
-	projectConfigFiles,
-	projectTrustNow,
-	saveDecision,
-} from "../../src/octocode/shared/trust.ts";
+import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { projectTrustNow, saveDecision } from "../../src/octocode/shared/trust.ts";
 import { tmp } from "./helpers.ts";
+import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
+import { describeProjectConfig } from "../../src/octocode/shared/trust/describe.ts";
+import { fingerprint, projectConfigFiles } from "../../src/octocode/shared/trust/files.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 function fixture() {
