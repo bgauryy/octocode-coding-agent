@@ -22,6 +22,7 @@ import type {
 	Tool,
 	ToolResultMessage,
 } from "../../types.ts";
+import { liftRootComposition } from "../../utils/json-schema-shape.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { type TranscriptContext, withoutInitialSystemMessage } from "../../utils/transcript.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
@@ -280,7 +281,9 @@ export function convertToolConfig(
 	if (!tools?.length) return undefined;
 	if (toolChoice === "none") return undefined;
 
-	const bedrockTools: BedrockTool[] = tools.map((tool) => {
+	const bedrockTools: BedrockTool[] = tools.map((declared) => {
+		// Claude on Bedrock rejects anyOf/oneOf/allOf at the root of a tool schema.
+		const tool = { ...declared, parameters: liftRootComposition(declared.parameters) };
 		const strict = resolveJsonSchemaStrictSampling(tool, supportsStrictMode);
 		return {
 			toolSpec: {

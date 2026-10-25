@@ -31,6 +31,8 @@ export interface OAuthCredentials {
 /** Stored canonical OAuth credential. */
 export interface OAuthCredential extends OAuthCredentials {
 	type: "oauth";
+	/** Registration metadata retained after logout; access and refresh must be empty. */
+	signedOut?: boolean;
 }
 
 /** One type-tagged credential per provider — the shape of today's auth.json. */
@@ -200,6 +202,8 @@ export interface ApiKeyAuth {
 
 /** App-supplied context for `Models.login`. */
 export interface LoginOptions {
+	/** Existing provider record, supplied by Models.login for registration/account reuse. */
+	previousCredential?: Credential;
 	/**
 	 * Returns the stable ID of this app installation, e.g. sent to OpenAI as its
 	 * agent host ID. Called only by login flows that need it, so apps can create
@@ -208,7 +212,7 @@ export interface LoginOptions {
 	getDeviceId?: () => string;
 	/**
 	 * Name this app introduces itself with during login, e.g. OpenAI's agent name hint and
-	 * Codex originator. Defaults to pi's own name.
+	 * Codex originator. Each flow supplies its default when omitted.
 	 */
 	agentName?: string;
 }
@@ -235,6 +239,9 @@ export interface OAuthAuth {
 	 * (invalid_grant etc.). `Models` runs this under the store lock.
 	 */
 	refresh(credential: OAuthCredential, signal: AbortSignal): Promise<OAuthCredential>;
+
+	/** Revoke sessions and return signed-out registration metadata with no usable tokens. */
+	logout?(credential: OAuthCredential, signal: AbortSignal): Promise<OAuthCredential>;
 
 	/**
 	 * Side-effect-free derivation of request auth from a valid credential.

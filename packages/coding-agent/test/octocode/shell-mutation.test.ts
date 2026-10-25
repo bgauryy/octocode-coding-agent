@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
+import { reservationTargets, shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 
 beforeAll(shellParserReady);
 
@@ -24,7 +24,8 @@ describe("shellMutation", () => {
 		expect(shellMutation("yarn install").opaque).toEqual(["yarn install"]);
 		expect(shellMutation("sed -i s/a/b/ a.ts").opaque).toEqual(["sed -i"]);
 		expect(shellMutation("echo x > $FILE").uncertain).toBe(true);
-		expect(shellMutation("git status")).toEqual({ writes: [], opaque: [], uncertain: false });
+		expect(shellMutation("echo x > $FILE").unparsed).toBe(false);
+		expect(shellMutation("git status")).toEqual({ writes: [], opaque: [], uncertain: false, unparsed: false });
 	});
 
 	it("sees nothing in reads, redirects to /dev/null and test runs", () => {
@@ -35,6 +36,20 @@ describe("shellMutation", () => {
 			"yarn test",
 			"git stash list",
 		])
-			expect(shellMutation(command), command).toEqual({ writes: [], opaque: [], uncertain: false });
+			expect(shellMutation(command), command).toEqual({ writes: [], opaque: [], uncertain: false, unparsed: false });
+	});
+});
+
+describe("reservationTargets", () => {
+	it("is the parsed writes when the parse succeeded, unresolved targets and cd included", () => {
+		expect(reservationTargets("echo x >> src/a.ts")).toEqual(["src/a.ts"]);
+		expect(reservationTargets("echo x > $FILE; cat src/a.ts")).toEqual([]);
+		expect(reservationTargets("cd pkg && mv a.ts b.ts")).toEqual([]);
+	});
+
+	it("adds every literal word when the parse gave up, so a named path is still checked", () => {
+		const command = `echo x >> 'src/a.ts' 2>$LOG; ${"true; ".repeat(30_000)}`;
+		expect(shellMutation(command)).toMatchObject({ writes: [], unparsed: true });
+		expect(reservationTargets(command)).toEqual(["echo", "x", "src/a.ts", "2", "true"]);
 	});
 });

@@ -14,7 +14,6 @@ import { createWorktree, type Worktree } from "../../src/octocode/subagents/work
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness, type Harness } from "../suite/harness.ts";
 import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
-import { fakeOctocode } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -81,14 +80,12 @@ describe("isolated subagent session", () => {
 					const gate = permissionGate({
 						permission,
 						provenance: { check: () => undefined },
-						annotations: () => undefined,
 						env,
 					});
 					pi.on("tool_call", (event, ctx) => gate(event, ctx));
 					registerTurnSetup(pi, {
 						isSubagent: true,
 						profiles: () => new Map(),
-						octocode: fakeOctocode({ by: "off" }).mcp,
 					});
 				},
 			],
@@ -113,7 +110,7 @@ describe("isolated subagent session", () => {
 			(context) => {
 				record(context);
 				return fauxAssistantMessage(
-					[fauxToolCall("file", { queries: [{ type: "write", path: target, content: "x", reasoning: "test" }] })],
+					[fauxToolCall("file", { queries: [{ type: "write", path: target, content: "x", reason: "test" }] })],
 					{ stopReason: "toolUse" },
 				);
 			},

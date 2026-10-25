@@ -336,8 +336,8 @@ describe("file tool", () => {
 		});
 		const batch = {
 			queries: [
-				{ reasoning: "r", type: "write", path: "a.txt", content: "x" },
-				{ reasoning: "r", type: "delete", path: "b.txt" },
+				{ reason: "r", type: "write", path: "a.txt", content: "x" },
+				{ reason: "r", type: "delete", path: "b.txt" },
 			],
 		};
 		const result = await tool!.execute("c", batch, controller.signal, undefined, fakeCtx({ cwd, hasUI: false }));
@@ -371,7 +371,7 @@ describe("file tool", () => {
 		expect(tool!.parameters.properties.queries).not.toHaveProperty("maxItems");
 		expect(tool!.parameters.properties.queries).not.toHaveProperty("minItems");
 		const queries = Array.from({ length: 12 }, (_, index) => ({
-			reasoning: "r",
+			reason: "r",
 			type: "write",
 			path: `f${index}.txt`,
 			content: String(index),
@@ -405,14 +405,14 @@ describe("file tool", () => {
 		const ctx = { cwd, hasUI: false };
 		await tool!.execute(
 			"c",
-			{ queries: [{ reasoning: "r", type: "write", path: "b.txt", content: "new" }] },
+			{ queries: [{ reason: "r", type: "write", path: "b.txt", content: "new" }] },
 			undefined,
 			undefined,
 			ctx,
 		);
 		await tool!.execute(
 			"c",
-			{ queries: [{ reasoning: "r", type: "edit", path: "a.txt", edits: [{ oldText: "one", newText: "two" }] }] },
+			{ queries: [{ reason: "r", type: "edit", path: "a.txt", edits: [{ oldText: "one", newText: "two" }] }] },
 			undefined,
 			undefined,
 			ctx,
@@ -425,7 +425,7 @@ describe("file tool", () => {
 		await expect(
 			tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: "a.txt", content: "x" }] },
+				{ queries: [{ reason: "r", type: "write", path: "a.txt", content: "x" }] },
 				undefined,
 				undefined,
 				ctx,
@@ -459,7 +459,7 @@ describe("file tool", () => {
 			(
 				await tool!.execute(
 					"c",
-					{ queries: [{ reasoning: "r", type: "write", path: target, content }] },
+					{ queries: [{ reason: "r", type: "write", path: target, content }] },
 					undefined,
 					undefined,
 					ctx,
@@ -504,7 +504,7 @@ describe("file tool", () => {
 			tool!.execute(
 				"c",
 				{
-					queries: [{ reasoning: "r", type: "edit", path: "notes.txt", edits: [{ oldText: "one", newText: "two" }] }],
+					queries: [{ reason: "r", type: "edit", path: "notes.txt", edits: [{ oldText: "one", newText: "two" }] }],
 				},
 				undefined,
 				undefined,
@@ -544,7 +544,7 @@ describe("file tool", () => {
 				tool!.execute(
 					"c",
 					{
-						queries: [{ reasoning: "r", type, path: "a.ts", edits, ...(type === "write" ? { content: "x" } : {}) }],
+						queries: [{ reason: "r", type, path: "a.ts", edits, ...(type === "write" ? { content: "x" } : {}) }],
 					},
 					undefined,
 					undefined,
@@ -641,7 +641,7 @@ describe("file tool", () => {
 		await expect(
 			tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: "a.txt", content: "x" }] },
+				{ queries: [{ reason: "r", type: "write", path: "a.txt", content: "x" }] },
 				undefined,
 				undefined,
 				ctx,
@@ -703,7 +703,7 @@ describe("file tool", () => {
 		await tool!.execute(
 			"c",
 			{
-				queries: [{ reasoning: "r", type: "edit", path: "a.txt", edits: [{ oldText: "line 12", newText: "LINE 12" }] }],
+				queries: [{ reason: "r", type: "edit", path: "a.txt", edits: [{ oldText: "line 12", newText: "LINE 12" }] }],
 			},
 			undefined,
 			undefined,
@@ -797,19 +797,16 @@ describe("file tool", () => {
 			const run = (type: "write" | "delete", path = "big.txt") =>
 				tool!.execute(
 					"c",
-					{ queries: [{ reasoning: "r", type, path, ...(type === "write" ? { content: "new\n" } : {}) }] },
+					{ queries: [{ reason: "r", type, path, ...(type === "write" ? { content: "new\n" } : {}) }] },
 					undefined,
 					undefined,
 					{ cwd, hasUI: false },
 				);
 			const edit = (edits: Array<{ oldText: string; newText: string }>) =>
-				tool!.execute(
-					"c",
-					{ queries: [{ reasoning: "r", type: "edit", path: "big.txt", edits }] },
-					undefined,
-					undefined,
-					{ cwd, hasUI: false },
-				);
+				tool!.execute("c", { queries: [{ reason: "r", type: "edit", path: "big.txt", edits }] }, undefined, undefined, {
+					cwd,
+					hasUI: false,
+				});
 			return { cwd, file, guard, read, run, edit, handlers };
 		};
 		const cut = { truncation: { truncated: true, truncatedBy: "lines", outputLines: 2000, totalLines: 3001 } };
@@ -909,7 +906,7 @@ describe("file tool", () => {
 			);
 			await tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "edit", path: "big.txt", edits: [{ oldText: "two", newText: "2" }] }] },
+				{ queries: [{ reason: "r", type: "edit", path: "big.txt", edits: [{ oldText: "two", newText: "2" }] }] },
 				undefined,
 				undefined,
 				{ cwd: path.dirname(file), hasUI: false },
@@ -1170,7 +1167,7 @@ describe("file tool", () => {
 			await tool!.execute(
 				"c",
 				{
-					queries: [{ reasoning: "r", type: "edit", path: "~/.bashrc", edits: [{ oldText: "one", newText: "two" }] }],
+					queries: [{ reason: "r", type: "edit", path: "~/.bashrc", edits: [{ oldText: "one", newText: "two" }] }],
 				},
 				undefined,
 				undefined,
@@ -1178,14 +1175,14 @@ describe("file tool", () => {
 			);
 			await tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: "~/.bashrc", content: "three" }] },
+				{ queries: [{ reason: "r", type: "write", path: "~/.bashrc", content: "three" }] },
 				undefined,
 				undefined,
 				ctx,
 			);
 			await tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: "~/new.txt", content: "n" }] },
+				{ queries: [{ reason: "r", type: "write", path: "~/new.txt", content: "n" }] },
 				undefined,
 				undefined,
 				ctx,
@@ -1223,7 +1220,7 @@ describe("file tool", () => {
 		const write = (target: string, ctx: unknown) =>
 			tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: target, content: "x" }] },
+				{ queries: [{ reason: "r", type: "write", path: target, content: "x" }] },
 				undefined,
 				undefined,
 				ctx,
@@ -1257,7 +1254,7 @@ describe("file tool", () => {
 		await expect(
 			full!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "write", path: state, content: "x" }] },
+				{ queries: [{ reason: "r", type: "write", path: state, content: "x" }] },
 				undefined,
 				undefined,
 				{ cwd, hasUI: false },
@@ -1290,8 +1287,8 @@ describe("file tool", () => {
 			"c",
 			{
 				queries: [
-					{ reasoning: "r", type: "write", path: "a.txt", content: "a" },
-					{ reasoning: "r", type: "write", path: "b.txt", content: "b" },
+					{ reason: "r", type: "write", path: "a.txt", content: "a" },
+					{ reason: "r", type: "write", path: "b.txt", content: "b" },
 				],
 			},
 			undefined,
@@ -1310,8 +1307,8 @@ describe("file tool", () => {
 	it("reports each query independently", () => {
 		expect(
 			formatOutcomes([
-				{ type: "write", path: "a", reasoning: "r", ok: true, message: "Wrote a" },
-				{ type: "edit", path: "b", reasoning: "r", ok: false, message: "no match" },
+				{ type: "write", path: "a", reason: "r", ok: true, message: "Wrote a" },
+				{ type: "edit", path: "b", reason: "r", ok: false, message: "no match" },
 			]),
 		).toBe("1. OK write a: Wrote a\n2. FAILED edit b: no match");
 		expect(
@@ -1319,21 +1316,21 @@ describe("file tool", () => {
 				{
 					type: "edit",
 					path: "src/a.ts",
-					reasoning: "r",
+					reason: "r",
 					ok: true,
 					message: "Successfully replaced 2 block(s) in src/a.ts.",
 				},
 				{
 					type: "write",
 					path: "b(1).md",
-					reasoning: "r",
+					reason: "r",
 					ok: true,
 					message: "Successfully wrote 12 bytes to b(1).md",
 				},
 				{
 					type: "edit",
 					path: "c.ts",
-					reasoning: "r",
+					reason: "r",
 					ok: false,
 					message: "Could not find the exact text in c.ts.",
 				},
@@ -1345,7 +1342,7 @@ describe("file tool", () => {
 });
 
 describe("file change rendering", () => {
-	it("shows each file change with its reasoning, size, outcome and a capped diff", () => {
+	it("shows each file change with its reason, size, outcome and a capped diff", () => {
 		initTheme("dark");
 		let tool:
 			| {
@@ -1367,7 +1364,7 @@ describe("file change rendering", () => {
 		const args = {
 			queries: [
 				{
-					reasoning: "Fix the off-by-one in the loop",
+					reason: "Fix the off-by-one in the loop",
 					type: "edit",
 					path: "src/a.ts",
 					edits: [
@@ -1375,7 +1372,7 @@ describe("file change rendering", () => {
 						{ oldText: "c", newText: "d" },
 					],
 				},
-				{ reasoning: "Add the missing test", type: "write", path: "test/a.test.ts", content: "one\ntwo" },
+				{ reason: "Add the missing test", type: "write", path: "test/a.test.ts", content: "one\ntwo" },
 			],
 		};
 		const call = tool!
@@ -1408,8 +1405,8 @@ describe("file change rendering", () => {
 			content: [],
 			details: {
 				outcomes: [
-					{ type: "edit", path: "src/a.ts", reasoning: "", ok: true, message: "ok", diff },
-					{ type: "write", path: "test/a.test.ts", reasoning: "", ok: false, message: "has not been read" },
+					{ type: "edit", path: "src/a.ts", reason: "", ok: true, message: "ok", diff },
+					{ type: "write", path: "test/a.test.ts", reason: "", ok: false, message: "has not been read" },
 				],
 			},
 		};

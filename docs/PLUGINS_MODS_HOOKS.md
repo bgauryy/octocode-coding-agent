@@ -237,7 +237,7 @@ Portable exact compatibility is the target for each applicable row. Full host eq
 
 ### Canonical patch execution in the file owner
 
-The C11/C12 implementation adds `{patch: string, reasoning?: string}` as an alternative to native `{queries: [...]}` on the existing `file` tool. The two modes are mutually exclusive. Native queries keep their current failure behavior; canonical patches follow the pinned Codex preparation and execution order. A separate `apply_patch` tool or filesystem implementation inside hooks would duplicate ownership and is not selected.
+The C11/C12 implementation adds `{patch: string, reason?: string}` as an alternative to native `{queries: [...]}` on the existing `file` tool. The two modes are mutually exclusive. Native queries keep their current failure behavior; canonical patches follow the pinned Codex preparation and execution order. A separate `apply_patch` tool or filesystem implementation inside hooks would duplicate ownership and is not selected.
 
 The [pinned invocation verifier](https://github.com/openai/codex/blob/8eaf5fd115f036d207be236009938261758e30f2/codex-rs/apply-patch/src/invocation.rs#L180) prepares every operation and rejects duplicate resolved source paths before execution. A missing later Delete or invalid later Update therefore prevents an earlier Add. Runtime failure during mutation can still leave earlier effects; this is not a rollback transaction.
 

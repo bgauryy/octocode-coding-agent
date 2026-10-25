@@ -1,7 +1,7 @@
 import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import type { GithubAuthOptions, GithubStatus } from "../src/octocode/mcp/octocode/github-auth.ts";
+import type { GithubAuthOptions, GithubStatus } from "../../mcp/src/presets/octocode/github-auth.ts";
 import { handleGithubCommand } from "../src/modes/interactive/interactive-mode/github-command.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

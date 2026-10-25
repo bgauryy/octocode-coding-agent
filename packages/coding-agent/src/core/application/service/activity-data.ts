@@ -7,6 +7,7 @@ export const APPLICATION_EVENT_ROUTES = {
 	agent_start: "run",
 	agent_end: "activity",
 	agent_settled: "run",
+	session_dispatch: "dispatch",
 	turn_start: "activity",
 	turn_end: "activity",
 	message_start: "message",

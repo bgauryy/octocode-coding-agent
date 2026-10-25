@@ -105,7 +105,7 @@ export class ModelAvailability {
 				configuredProviders.delete(providerId);
 				authByProvider.delete(providerId);
 			}
-			if (credential) storedProviders.add(providerId);
+			if (credential && !(credential.type === "oauth" && credential.signedOut)) storedProviders.add(providerId);
 			else storedProviders.delete(providerId);
 			const all = [...this.models.getModels()];
 			const availableById = new Map(
@@ -185,7 +185,8 @@ export class ModelAvailability {
 	/** How a provider is configured: runtime key, stored credential, configured key, then the latest auth check. */
 	getProviderAuthStatus(providerId: string, credentials: RuntimeCredentials, layers: ProviderLayers): AuthStatus {
 		if (credentials.hasRuntimeApiKey(providerId)) return { configured: true, source: "runtime" };
-		if (this.snapshot.storedProviders.has(providerId)) return { configured: true, source: "stored" };
+		if (this.snapshot.storedProviders.has(providerId))
+			return { configured: this.snapshot.auth.get(providerId) !== undefined, source: "stored" };
 		const configured = configuredRequestAuthStatus(
 			layers.config.getProvider(providerId),
 			layers.extensionProviders.get(providerId),

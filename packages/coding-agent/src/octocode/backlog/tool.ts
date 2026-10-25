@@ -69,11 +69,11 @@ function backlogPrompt(subagent: boolean): {
 			: "Propose, claim and close repository tasks",
 		promptGuidelines: subagent
 			? [
-					"Record progress on assigned work. Propose follow-ups with goal and from; do not execute them. Verify the goal before done.",
+					"Record progress on assigned work. Propose follow-ups, and failures you leave unfixed (trigger, evidence, fix), with goal and from; do not execute them. Verify the goal before done.",
 				]
 			: [
 					"Track multi-step, delegated or research work in backlog: add it with a goal and claim it before starting or delegating; skip one-step tasks. Propose follow-ups with a goal and from their source item.",
-					"Close an item only after verifying its goal.",
+					"Close an item only after verifying its goal. If you stop with a failure unfixed, add an item with its trigger, evidence and proposed fix.",
 				],
 	};
 }

@@ -197,7 +197,7 @@ describe("backlog composition", () => {
 
 describe("live local backlog", () => {
 	it("pushes authenticated snapshots and changes from another database connection", async () => {
-		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo" });
+		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo", repoRoot: dir });
 		const url = new URL(web.url);
 		const address = url.origin.replace("http:", "ws:") + "/api/backlogs/live";
 		const bad = new WebSocket(address, { origin: url.origin });
@@ -223,7 +223,7 @@ describe("live local backlog", () => {
 		}
 	});
 	it("authenticates reads and writes, rejects other origins and preserves version conflicts", async () => {
-		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo" });
+		web = await startWorkspaceWeb({ store, actor, session: actor.id, repoName: "repo", repoRoot: dir });
 		const url = new URL(web.url);
 		const token = url.hash.slice(8);
 		const api = url.origin + "/api/backlogs";

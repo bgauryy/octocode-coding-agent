@@ -26,6 +26,8 @@ export function rewriteClaudeBash(original: Record<string, unknown>, input: Json
 		throw new Error("Claude Bash description must be a string");
 	return {
 		command: input.command,
+		// The hook rewrites the command, not the model's stated goal: the call still needs its `reason`.
+		...(typeof original.reason === "string" ? { reason: original.reason } : {}),
 		...(typeof input.description === "string" ? { description: input.description } : {}),
 		...(typeof input.timeout === "number" ? { timeout: input.timeout / 1000 } : {}),
 		...(typeof input.run_in_background === "boolean" ? { background: input.run_in_background } : {}),

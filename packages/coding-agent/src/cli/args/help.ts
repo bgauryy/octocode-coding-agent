@@ -29,6 +29,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
+  ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
   ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
   ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
   ${APP_NAME} migrate                   Convert historical configuration in the active Octocode home and project
@@ -213,8 +214,7 @@ ${chalk.bold("Built-in Tool Names:")}
   agent      - Task, external-agent, coordination and message modes
   askUser    - Ask structured questions
 
-Tool availability follows session mode and selection. MCP servers supply code search
-and local file retrieval. Optional integrations also provide tool_search
-and MCP resource tools.
+Tool availability follows session mode and selection. Enabled MCP servers provide
+additional tools; mcp manages servers and tool_search discovers deferred tools.
 `);
 }

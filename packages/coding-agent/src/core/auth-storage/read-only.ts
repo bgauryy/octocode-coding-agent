@@ -1,4 +1,10 @@
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
+import {
+	isActiveCredential,
+	type AuthOperationOptions,
+	type Credential,
+	type CredentialInfo,
+	type CredentialStore,
+} from "@octocodeai/octocode-ai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../../config.ts";
@@ -82,10 +88,12 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		options?.signal?.throwIfAborted();
-		const credentials = Object.entries(this.load()).map(([providerId, credential]) => ({
-			providerId,
-			type: credential.type,
-		}));
+		const credentials = Object.entries(this.load())
+			.filter(([, credential]) => isActiveCredential(credential))
+			.map(([providerId, credential]) => ({
+				providerId,
+				type: credential.type,
+			}));
 		options?.signal?.throwIfAborted();
 		return credentials;
 	}

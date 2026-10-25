@@ -8,6 +8,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { findLatestResponse, type ModelRoute, type ModelRouteReason } from "../virtual-models.ts";
 import type { RegisteredVirtualModel } from "./types.ts";
+import { assertPendingImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 
 /** What virtual-model routing needs of the runtime. */
 export interface VirtualRoutingHost {
@@ -47,5 +48,6 @@ export async function routeVirtualModel(
 	const routed = `${name} routed to ${route.model.provider}/${route.model.id}`;
 	if (!target) throw new Error(`${routed}, which is not a physical model.`);
 	if (!host.hasConfiguredAuth(target.provider)) throw new Error(`${routed}, which has no credentials.`);
+	assertPendingImageInputSupported(target, messages);
 	return { model: target, thinkingLevel: clampThinkingLevel(target, route.thinkingLevel), state: route.state };
 }

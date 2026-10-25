@@ -28,7 +28,7 @@ The two layers are *instructions* (tools plus the leading system prompt) and *hi
 | Older OpenAI models | Provider default; `24h` when `long` and the endpoint supports it | same | Implicit caching only: there is no separate instruction lifetime |
 | Azure OpenAI, Codex, Mistral | Provider-managed | same | A routing key is sent unless history is `none`; the retention preference is ignored |
 | xAI Grok | Automatic | same | No TTL is exposed; the routing key or `x-grok-conv-id` is sent |
-| Google Gemini | Implicit | same | No cache field is sent; explicit caches cannot hold request-time tools |
+| Google Gemini | Implicit | same | No cache field is sent; explicit caches cannot hold request-time tools. Through OpenCode, hits need the session header and come in blocks of about 4k tokens, so shorter prompts read nothing (measured October 2026) |
 | Other OpenAI-compatible endpoints | Provider-managed | same | The routing key goes out with `long` where the endpoint supports it |
 
 `/cache` reports the same mapping for the active model, including "no caching at all" for explicit OpenAI `none`, the 24h tier on older OpenAI models, and "provider-managed" for the providers above. It states what Octocode sends; the provider's cached-token usage fields remain the only proof of a hit.

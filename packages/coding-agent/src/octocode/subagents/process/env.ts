@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "../../../core/mcp-servers.ts";
+import type { McpServerConfig } from "../../../../../mcp/src/servers.ts";
 import type { SkillResourceSnapshot } from "../../../core/skill-resource-snapshot.ts";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";

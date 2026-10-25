@@ -8,15 +8,16 @@ import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import assert from "node:assert/strict";
 
-const USAGE = `Optional ACP reliability check for the built coding agent.
-  node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --fixture [--out DIR]
-  node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --live [--out DIR] [--max-prompts 20]
+const USAGE = `Optional ACP reliability check for the current coding-agent source.
+  yarn node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --fixture [--out DIR]
+  yarn node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --live [--out DIR] [--max-prompts 20]
 
 No arguments or --help prints this help and makes no model calls.
 --fixture runs the same lifecycle through local official-SDK agents, without cloud models.
 --live explicitly permits up to --max-prompts cloud prompt attempts across Claude and Codex.
 It creates fresh sessions, never resumes human conversations or automatically replays a failed prompt.
-Requires the built extension and existing vendor authentication. HOME remains unchanged.
+Requires Node 24.15+ and installed workspace dependencies; --live also needs vendor authentication.
+HOME remains unchanged. Workspace packages resolve to source, including the API CLI child.
 Results retain every attempt, full non-thought replies, hook correlation, usage, hashes and cleanup.
 The abrupt process-group crash case currently requires POSIX; this is a bounded development soak.
 `;
@@ -39,8 +40,10 @@ if (process.platform === "win32")
 const maxPrompts = Number(values["max-prompts"] ?? 20);
 if (!Number.isSafeInteger(maxPrompts) || maxPrompts < 18)
 	throw new Error("This case set needs a ceiling of at least 18 prompt attempts; no model calls were made.");
-const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+const packageRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const repo = path.resolve(packageRoot, "../..");
+const sourceResolver = path.join(packageRoot, "scripts/source-resolver.ts");
+await import(sourceResolver);
 const parent = path.resolve(values.out ?? path.join(repo, ".octocode/octocode-eval-benchmark/live-acp-reliability"));
 fs.mkdirSync(parent, { recursive: true });
 const run = path.join(parent, `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`);
@@ -64,8 +67,7 @@ Object.assign(process.env, {
 	OCTOCODE_HOOKS: "1",
 	OCTOCODE_MODELS_DEV: "0",
 	OCTOCODE_MEMORY_AUTO: "0",
-	OCTOCODE_API: "0",
-	OCTOCODE_API_HTTP: "0",
+	OCTOCODE_API: "1",
 });
 fs.writeFileSync(path.join(agentDir, "trust.json"), JSON.stringify({ [fs.realpathSync(workspace)]: true }));
 const hookFile = path.join(run, "hooks.jsonl");
@@ -88,12 +90,11 @@ fs.writeFileSync(
 const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import("@octocodeai/octocode-ai");
 const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } =
 	await import("@octocodeai/octocodecode");
-const { default: octocode } = await import(path.join(packageRoot, "dist/index.js"));
-const { ApiClient } = await import(path.join(packageRoot, "dist/api/client.js"));
-const { apiDir, listInstances } = await import(path.join(packageRoot, "dist/api/registry.js"));
-const { redactData } = await import(path.join(packageRoot, "dist/shared/sanitize.js"));
+const { ApiClient } = await import(path.join(packageRoot, "src/octocode/api/client.ts"));
+const { apiDir, listInstances } = await import(path.join(packageRoot, "src/octocode/api/registry.ts"));
+const { redactData } = await import(path.join(packageRoot, "src/octocode/shared/sanitize.ts"));
 const { descendantPids, groupMembers, stopTree, processMatch } = await import(
-	path.join(packageRoot, "dist/shared/process.js")
+	path.join(packageRoot, "src/octocode/shared/process.ts")
 );
 const hash = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const report = {
@@ -102,19 +103,32 @@ const report = {
 	started: new Date().toISOString(),
 	run,
 	maxPrompts,
-	runtime: { node: process.version, platform: process.platform, arch: process.arch },
+	runtime: {
+		node: process.version,
+		platform: process.platform,
+		arch: process.arch,
+		packageRoot,
+		sourceResolver,
+		codingAgent: import.meta.resolve("@octocodeai/octocodecode"),
+		ai: import.meta.resolve("@octocodeai/octocode-ai"),
+	},
 	cloudPromptAttempts: 0,
 	trials: [],
 	vendors: [],
 	checks: {},
 	hashes: Object.fromEntries(
 		[
-			"dist/index.js",
-			"dist/external/acp.js",
-			"dist/external/manager.js",
-			"dist/external/register.js",
-			"scripts/live-acp-reliability.mjs",
-			"scripts/acp-reliability-proxy.mjs",
+			"src/index.ts",
+			"scripts/source-resolver.ts",
+			"src/octocode/index.ts",
+			"src/octocode/agent-tool.ts",
+			"../acp/src/client/client.ts",
+			"src/octocode/external/manager.ts",
+			"src/octocode/external/register.ts",
+			"src/octocode/api/cli.ts",
+			"test/octocode/scripts/live-acp-reliability.mjs",
+			"test/octocode/scripts/acp-reliability-proxy.mjs",
+			"test/octocode/fixtures/external-acp-reliability-agent.mjs",
 		].map((file) => [file, hash(path.join(packageRoot, file))]),
 	),
 };
@@ -179,16 +193,20 @@ async function toolBatch(inputs) {
 	const start = events.length;
 	faux.setResponses([
 		fauxAssistantMessage(
-			inputs.map((input, i) => fauxToolCall("externalAgent", input, { id: ids[i] })),
+			inputs.map((input, i) =>
+				fauxToolCall("agent", { type: "external", input, reason: "Verify isolated ACP lifecycle" }, { id: ids[i] }),
+			),
 			{ stopReason: "toolUse" },
 		),
 		fauxAssistantMessage("Step complete."),
 	]);
-	await session.prompt("Execute the configured isolated externalAgent step.");
+	await session.prompt("Execute the configured isolated external agent step.");
 	return ids.map((id) => {
 		const event = events.slice(start).find((event) => event.type === "tool_execution_end" && event.toolCallId === id);
-		assert.ok(event, "registered externalAgent result");
-		return event.isError ? { error: JSON.stringify(event.result) } : event.result.details;
+		assert.ok(event, "registered agent external result");
+		return event.result.details?.error || !event.isError
+			? event.result.details
+			: { error: JSON.stringify(event.result) };
 	});
 }
 const tool = async (input) => (await toolBatch([input]))[0];
@@ -196,7 +214,15 @@ async function cli(input) {
 	return new Promise((resolve, reject) => {
 		const child = spawn(
 			process.execPath,
-			[path.join(packageRoot, "dist/api/cli.js"), "external", "--to", instance.id, JSON.stringify(input)],
+			[
+				"--import",
+				sourceResolver,
+				path.join(packageRoot, "src/octocode/api/cli.ts"),
+				"external",
+				"--to",
+				instance.id,
+				JSON.stringify(input),
+			],
 			{ cwd: workspace, stdio: ["ignore", "pipe", "pipe"], env: process.env },
 		);
 		cliChildren.add(child);
@@ -271,7 +297,10 @@ async function connect(vendor, label, sessionId) {
 		vendor === "claude" ? "@agentclientprotocol/claude-agent-acp@0.90.0" : "@agentclientprotocol/codex-acp@2.2.2";
 	const executable = values.fixture ? process.execPath : process.platform === "win32" ? "npx.cmd" : "npx";
 	const args = values.fixture
-		? [path.join(packageRoot, "tests/fixtures/external-acp-reliability-agent.mjs"), path.join(run, "fixture-sessions")]
+		? [
+				path.join(packageRoot, "test/octocode/fixtures/external-acp-reliability-agent.mjs"),
+				path.join(run, "fixture-sessions"),
+			]
 		: ["-y", pkg];
 	const data = await tool({
 		action: "connect",
@@ -279,7 +308,7 @@ async function connect(vendor, label, sessionId) {
 		transport: "acp",
 		vendor: values.fixture ? "test-fixture" : vendor,
 		command: process.execPath,
-		args: [path.join(packageRoot, "scripts/acp-reliability-proxy.mjs"), journal, executable, ...args],
+		args: [path.join(packageRoot, "test/octocode/scripts/acp-reliability-proxy.mjs"), journal, executable, ...args],
 		cwd: workspace,
 		timeoutMs: 120000,
 		...(sessionId ? { sessionId } : {}),
@@ -336,10 +365,7 @@ try {
 		cwd: workspace,
 		agentDir,
 		settingsManager,
-		extensionFactories: [
-			{ name: "scripted-controller", factory: provider },
-			{ name: "built-octocode", factory: octocode },
-		],
+		extensionFactories: [{ name: "scripted-controller", factory: provider }],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -352,7 +378,7 @@ try {
 		resourceLoader,
 		settingsManager,
 		sessionManager: SessionManager.inMemory(workspace),
-		tools: ["externalAgent"],
+		tools: ["agent"],
 	}));
 	session.subscribe((event) => {
 		if (event.type === "tool_execution_start" || event.type === "tool_execution_end") events.push(event);
@@ -360,7 +386,7 @@ try {
 	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined });
 	await session.setModel(session.modelRuntime.getModel("reliability-controller", "scripted"));
 	instance = listInstances(apiDir())[0];
-	assert.ok(instance && instance.cwd === fs.realpathSync(workspace));
+	assert.ok(instance && fs.realpathSync(instance.cwd) === fs.realpathSync(workspace));
 	api = new ApiClient(instance);
 	const controls = await tool({ action: "list" });
 	assert.deepEqual(controls.connections, []);

@@ -34,7 +34,7 @@ async function fixture() {
 		res.writeHead(200, { "content-type": "text/event-stream" });
 		if (childBash && requests.length === 1) {
 			res.end(
-				`data: ${JSON.stringify({ id: "permission-read", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, id: "read-permission", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: childBash }) } }] }, finish_reason: "tool_calls" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
+				`data: ${JSON.stringify({ id: "permission-read", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, id: "read-permission", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: childBash, reason: "Read the inherited permission mode" }) } }] }, finish_reason: "tool_calls" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 			);
 			return;
 		}
@@ -52,7 +52,7 @@ async function fixture() {
 			}
 			const queries = readReferences.map((file) =>
 				reader.endsWith("localFetch")
-					? { path: file, ranges: ["1-10"] }
+					? { path: file, ranges: [{ startLine: 1, endLine: 10 }] }
 					: { path: file, startLine: 1, endLine: 10, minify: "none" },
 			);
 			res.end(
@@ -221,6 +221,7 @@ async function fixture() {
 				return fauxAssistantMessage(
 					[
 						fauxToolCall("agent", {
+							reason: "Delegate the inspection",
 							type: "task",
 							input: {
 								goal: "Inspect inherited skills",
@@ -253,6 +254,7 @@ async function fixture() {
 				fauxAssistantMessage(
 					[
 						fauxToolCall("agent", {
+							reason: "Delegate the inspection",
 							type: "message",
 							input: { to, message: text, replyRequired: true },
 						}),
@@ -337,6 +339,9 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 		);
 		expect(declared).toContain("mcp");
 		expect(declared).toContain("tool_search");
+		// The child adopted the parent's skills, so it can load one by name.
+		expect(declared).toContain("skill");
+		expect(JSON.stringify(f.requests[0].messages)).toContain("Use the skill tool with a skill's name to load it");
 	} finally {
 		await f.close();
 	}

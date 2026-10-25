@@ -27,9 +27,9 @@ import { collectSettingsDiagnostics, deduplicateDiagnostics } from "./core/setti
 import { SettingsManager } from "./core/settings-manager.ts";
 import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
-import { builtInExtensions } from "./extensions/index.ts";
-import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { loadMcpCommand } from "../../mcp/src/cli.lazy.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
+import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
 import { createCliRuntimeFactory } from "./main/runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./main/session-manager.ts";
 import {
@@ -62,7 +62,7 @@ export async function main(args: string[], options?: MainOptions) {
 	resetTimings();
 	// Commands and startup selectors can load user-authored themes before runtime creation.
 	setThemeJsonValidator(validateThemeJson);
-	const extensionFactories = [...builtInExtensions, ...(options?.extensionFactories ?? [])];
+	const extensionFactories = options?.extensionFactories ?? [];
 	if (args[0] === "migrate") {
 		if (args.length === 2 && (args[1] === "--help" || args[1] === "-h")) {
 			console.log(
@@ -103,6 +103,7 @@ export async function main(args: string[], options?: MainOptions) {
 	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher();
+	if (await runModelDiscoveryCommand(args)) return;
 
 	if (await handlePackageCommand(args, { extensionFactories })) {
 		const exitCode = process.exitCode ?? 0;
@@ -156,7 +157,7 @@ export async function main(args: string[], options?: MainOptions) {
 			throw new Error(
 				"ACP workers require file-based extensions; inline extension factories cannot cross process boundaries.",
 			);
-		const { acpWorkerArguments, runAcpMode } = await import("./modes/acp/acp-mode.ts");
+		const { acpWorkerArguments, runAcpMode } = await import("../../acp/src/server/acp-mode.ts");
 		await runAcpMode(acpWorkerArguments(args, parsed));
 		return;
 	}

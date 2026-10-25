@@ -1,9 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { adoptTree, prepareTree, stopTree } from "../../../octocode/shared/process.ts";
-import type { JsonAgentSessionEvent } from "../../json-event.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../jsonl.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
-import type { RpcClientOptions, RpcCommandBody, RpcEventListener } from "./types.ts";
+import type { RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./types.ts";
 
 /**
  * The agent process behind an RpcClient: spawns it, reads its JSONL output, dispatches events and
@@ -254,10 +253,10 @@ export class RpcConnection {
 	/**
 	 * Collect events until agent becomes idle.
 	 */
-	collectEvents(timeout = 60000): Promise<JsonAgentSessionEvent[]> {
+	collectEvents(timeout = 60000): Promise<RpcEvent[]> {
 		if (this.exitError) return Promise.reject(this.exitError);
 		return new Promise((resolve, reject) => {
-			const events: JsonAgentSessionEvent[] = [];
+			const events: RpcEvent[] = [];
 			const timer = setTimeout(() => {
 				cleanup();
 				reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
@@ -286,6 +285,10 @@ export class RpcConnection {
 		try {
 			const data = JSON.parse(line);
 			if (typeof data !== "object" || data === null || typeof data.type !== "string") return;
+			if (data.type === "rpc_session_identity") {
+				if (typeof data.sessionId === "string" && data.sessionId) this.options.onSessionIdentity?.(data.sessionId);
+				return;
+			}
 			if (data.type === "extension_ui_request") {
 				// oxlint-disable-next-line unicorn/no-useless-spread -- snapshot so listeners that unsubscribe during dispatch do not change iteration
 				for (const listener of [...this.extensionUIListeners]) {
@@ -307,7 +310,7 @@ export class RpcConnection {
 			// do not cause later listeners to miss this event.
 			// oxlint-disable-next-line unicorn/no-useless-spread -- the snapshot described above
 			for (const listener of [...this.eventListeners]) {
-				listener(data as JsonAgentSessionEvent);
+				listener(data as RpcEvent);
 			}
 		} catch {
 			// Ignore non-JSON lines

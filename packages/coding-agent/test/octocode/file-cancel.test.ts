@@ -41,7 +41,7 @@ describe("file cancellation around filesystem mutations", () => {
 				const query = {
 					type,
 					path: file,
-					reasoning: "change it",
+					reason: "change it",
 					...(type === "write"
 						? { content: "changed" }
 						: type === "edit"
@@ -82,7 +82,7 @@ describe("file cancellation around filesystem mutations", () => {
 		const capture = vi.spyOn(checkpoints, "capture");
 		const running = tool.execute(
 			"cancel-delete",
-			{ queries: [{ type: "delete", path: file, reasoning: "remove it" }] },
+			{ queries: [{ type: "delete", path: file, reason: "remove it" }] },
 			controller.signal,
 			undefined,
 			ctx,
@@ -110,7 +110,7 @@ describe("file cancellation around filesystem mutations", () => {
 				const query = {
 					type,
 					path: file,
-					reasoning: "replace it",
+					reason: "replace it",
 					...(type === "write" ? { content: "changed" } : { edits: [{ oldText: "original", newText: "changed" }] }),
 				};
 				const result = await tool.execute("cancel-write", { queries: [query] }, controller.signal, undefined, ctx);

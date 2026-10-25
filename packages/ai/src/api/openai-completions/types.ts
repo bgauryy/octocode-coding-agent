@@ -25,6 +25,7 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	| "supportsMidConvoSystemMessages"
 	| "supportsMidConvoToolAdditions"
 	| "vllmPriority"
+	| "toolSchemaFlavor"
 > & {
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
@@ -32,6 +33,7 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];
 	supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];
 	vllmPriority?: OpenAICompletionsCompat["vllmPriority"];
+	toolSchemaFlavor?: OpenAICompletionsCompat["toolSchemaFlavor"];
 	/** The field streamed `reasoning` deltas are recorded and replayed under, when the provider expects another. */
 	reasoningReplayField?: "reasoning_content";
 };

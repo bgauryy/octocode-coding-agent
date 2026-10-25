@@ -1,3 +1,4 @@
+import { assertImageRequestContext } from "../utils/image-input.ts";
 import { lazyStream } from "../api/lazy.ts";
 import { type AuthResolutionOverrides, ModelsError } from "../auth/resolve.ts";
 import type { AuthResult } from "../auth/types.ts";
@@ -112,6 +113,7 @@ export class ModelRequests {
 			model,
 			async () => {
 				const provider = this.requireChatProvider(model);
+				assertImageRequestContext(model, transcript.messages);
 				const { requestModel, requestOptions } = await this.applyAuth(model, options);
 				return provider.stream(requestModel, transcript, requestOptions as ApiStreamOptions<TApi>);
 			},
@@ -126,6 +128,7 @@ export class ModelRequests {
 			model,
 			async () => {
 				const provider = this.requireChatProvider(model);
+				assertImageRequestContext(model, transcript.messages);
 				const { requestModel, requestOptions } = await this.applyAuth(model, options);
 				return provider.streamSimple(requestModel, transcript, requestOptions);
 			},

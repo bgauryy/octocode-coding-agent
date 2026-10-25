@@ -184,6 +184,7 @@ export class Team {
 		const ctx = this.ctx!;
 		if (!this.me) {
 			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost));
+			db.edits.adoptUnjoined(this.me.id);
 			this.activity.joined(this.me);
 			this.ticker.sync();
 		} else if (goal !== undefined) {

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "../../src/core/event-bus.ts";
 import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/index.ts";
-import { registerMcpHookCaller } from "../../src/extensions/mcp/hook-caller.ts";
+import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
 import { boundMcpHookCaller } from "../../src/octocode/hooks/mcp-gate.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
@@ -14,7 +14,7 @@ const hints: Record<string, ToolAnnotations> = {
 	mcp__db__list: { readOnlyHint: true },
 };
 
-/** The MCP owner as `extensions/mcp/events.ts` drives it: the tool is authorized before the server is reached. */
+/** The MCP owner as `mcp/events.ts` drives it: the tool is authorized before the server is reached. */
 function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } = {}) {
 	const fake = fakePi();
 	fake.pi.events = createEventBus();
@@ -76,9 +76,11 @@ describe("hook-initiated MCP calls and the permission gate", () => {
 		expect(reached).toEqual([]);
 	});
 
-	it("runs a read-only tool without asking in manual mode", async () => {
-		const { run, reached } = setup("manual");
+	it("requires approval even when an MCP tool supplies a read-only annotation", async () => {
+		const { run, reached, ctx } = setup("manual");
+		ctx.ui.select = vi.fn(async () => "Allow once");
 		await run("list");
+		expect(ctx.ui.select).toHaveBeenCalledOnce();
 		expect(reached).toEqual(["list"]);
 	});
 

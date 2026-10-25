@@ -43,6 +43,8 @@ export function readOnlyRoleRefusal(
 ): string | undefined {
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
+	if (event.toolName === "graphBuild")
+		return "Graph snapshot creation is refused in this role; use graphQuery on an existing snapshot.";
 	if (event.toolName === "debug" && input.action !== "terminate")
 		return refusal("Debugging (the adapter can execute code)");
 	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {

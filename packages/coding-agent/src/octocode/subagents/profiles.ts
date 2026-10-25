@@ -1,3 +1,4 @@
+import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,7 @@ import type { Permission } from "../permission/ask.ts";
 import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "../../utils/atomic-file.ts";
 import { globalPaths, nativeAgentDir, projectAgentDirs } from "../shared/home.ts";
-import { isMcpTool, LOCAL_RESEARCH_TOOLS } from "../shared/octocode-tools.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 
 export interface AgentProfile {
 	name: string;
@@ -47,6 +48,11 @@ export const GENERAL_PROFILE = "general";
 
 /** Every child can save files, communicate and recover history; local research is added separately. */
 export const CORE_TOOLS = ["file", "agent", "archive"] as const;
+/**
+ * Tools every child gets by default, unlike `CORE_TOOLS` a profile may remove them (`excludeTools` or a `-` entry):
+ * `skill` loads a listed skill by name, and stays out of requests while the child has none.
+ */
+export const DEFAULT_CHILD_TOOLS = ["skill"] as const;
 /** Deferred MCP catalogs need discovery before the child can call their tools directly; `mcp` restarts the child's own servers. */
 export const MCP_ACCESS_TOOLS = ["tool_search", "mcp"] as const;
 
@@ -175,8 +181,9 @@ function withCoreTools(tools: string, selected: readonly string[] | undefined): 
 	// An allowlist without MCP entries implicitly keeps all MCP servers. Preserve that reach when adding local tools.
 	const required = [
 		...CORE_TOOLS,
+		...DEFAULT_CHILD_TOOLS,
 		...MCP_ACCESS_TOOLS,
-		...(selected?.some(isMcpTool) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"]),
+		...(selected?.some(isMcpToolName) ? LOCAL_RESEARCH_TOOLS : ["mcp__*"]),
 	];
 	return [...toolList(tools), ...required.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
@@ -206,7 +213,9 @@ export function profileTools(profile?: AgentProfile): string {
 	return !selected || isRelative(selected)
 		? [
 				...(selected ?? []),
-				...[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
+				...[...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map(
+					(name) => `+${name}`,
+				),
 			].join(",")
 		: withCoreTools(profile!.tools!, selected);
 }

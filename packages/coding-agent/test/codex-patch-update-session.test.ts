@@ -140,7 +140,7 @@ async function run(
 							type: "write",
 							path: "original.txt",
 							content: "original\n",
-							reasoning: "Fixture mutation",
+							reason: "Fixture mutation",
 						},
 					],
 				}),
@@ -434,7 +434,7 @@ it("accepts the canonical patch alternative directly through the public file too
 				[
 					fauxToolCall("file", {
 						patch: command,
-						reasoning: "Canonical patch fixture",
+						reason: "Canonical patch fixture",
 					}),
 				],
 				{ stopReason: "toolUse" },
@@ -552,7 +552,7 @@ it("does not upgrade partial read coverage after a successful patch Update", asy
 								type: "write",
 								path: "source.txt",
 								content: "overwrite\n",
-								reasoning: "Coverage regression",
+								reason: "Coverage regression",
 							},
 						],
 					}),
@@ -587,7 +587,7 @@ it("keeps stale status after applying a valid patch anchor over external changes
 							{
 								type: "delete",
 								path: "source.txt",
-								reasoning: "Stale regression",
+								reason: "Stale regression",
 							},
 						],
 					}),
@@ -621,7 +621,7 @@ it("refuses a canonical Move when a Claude Write gate cannot receive a faithful 
 				[
 					fauxToolCall("file", {
 						patch: command,
-						reasoning: "Cross-profile move",
+						reason: "Cross-profile move",
 					}),
 				],
 				{ stopReason: "toolUse" },
@@ -650,13 +650,13 @@ it("rejects both input modes before invoking a source hook", async () => {
 				[
 					fauxToolCall("file", {
 						patch: command,
-						reasoning: "Ambiguous fixture",
+						reason: "Ambiguous fixture",
 						queries: [
 							{
 								type: "write",
 								path: "native.txt",
 								content: "native\n",
-								reasoning: "Ambiguous fixture",
+								reason: "Ambiguous fixture",
 							},
 						],
 					}),

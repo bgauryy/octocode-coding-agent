@@ -14,6 +14,7 @@ type Host = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "editor"
+	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "hiddenThinkingLabel"
@@ -30,6 +31,14 @@ type Host = Pick<
 	| "updatePendingMessagesDisplay"
 	| "renderSessionEntries"
 >;
+
+/** Draws the branch's entries into the cleared transcript and remembers them: their announcements can still follow. */
+function renderRebuild(host: Host): void {
+	const entries = host.sessionManager.buildContextEntries();
+	host.renderSessionEntries(entries);
+	host.entriesRenderedByRebuild.clear();
+	for (const entry of entries) host.entriesRenderedByRebuild.add(entry.id);
+}
 
 /** Both live transcript adapters consume these semantic events; native events retain terminal controls and diagnostics. */
 export function applicationRenderer(host: Host, port: ApplicationService): (event: ApplicationEvent) => void {
@@ -117,7 +126,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				host.pendingTools.clear();
 				host.streamingComponent = undefined;
 				host.chatContainer.clear();
-				host.renderSessionEntries(host.sessionManager.buildContextEntries());
+				renderRebuild(host);
 				for (const error of event.errors ?? []) showError(error.message);
 				break;
 			case "message.started":

@@ -156,7 +156,7 @@ export function countsText(counts: Record<State, number>): string {
 		counts.todo ? `${counts.todo} todo` : "",
 		counts.backlog ? `${counts.backlog} to triage` : "",
 	].filter(Boolean);
-	return ["/web · backlogs & activity", ...parts].join(" · ");
+	return ["/octocode · backlogs & activity", ...parts].join(" · ");
 }
 
 /** Markdown snapshot of the whole board with every note, for `<repo>/.octocode/backlog.md`. Nothing reads it back. */

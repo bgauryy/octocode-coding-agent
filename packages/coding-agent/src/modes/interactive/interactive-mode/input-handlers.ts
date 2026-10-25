@@ -10,6 +10,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { readClipboardFilePaths, readClipboardText } from "../../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../../utils/clipboard-image.ts";
 import { editInExternalEditor } from "../external-editor.ts";
+import { bindEditorHandlers } from "./extension-chrome.ts";
 import { quoteIfNeeded } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
@@ -116,6 +117,7 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	host.defaultEditor.onPasteImage = () => {
 		void host.handleClipboardPaste();
 	};
+	bindEditorHandlers(host);
 }
 
 export async function handleRightClickPaste(host: InputHandlersHost): Promise<void> {

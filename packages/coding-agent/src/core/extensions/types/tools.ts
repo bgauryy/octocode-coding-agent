@@ -255,7 +255,7 @@ export function defineTool<TParams extends TSchema, TDetails = unknown, TState =
 /** Tool info with name, description, parameter schema, prompt guidelines, and source metadata. */
 export type ToolInfo = Pick<
 	ToolDefinition,
-	"name" | "description" | "parameters" | "promptGuidelines" | "reachesTools"
+	"name" | "description" | "parameters" | "outputSchema" | "promptGuidelines" | "reachesTools"
 > & {
 	exposure: ToolExposure;
 	namespace?: ToolNamespace;

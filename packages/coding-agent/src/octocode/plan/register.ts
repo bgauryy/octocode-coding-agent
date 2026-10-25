@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "..
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { planningRefusal } from "./gate.ts";
+import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
 import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "./state.ts";
 import { approvedPlanPrompt, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
@@ -109,6 +110,7 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			const reason = planningRefusal(
 				event,
 				pi.getAllTools().find((tool) => tool.name === event.toolName),
+				getMcpSessionStatus(pi.events),
 			);
 			return reason ? { block: true, reason } : undefined;
 		},

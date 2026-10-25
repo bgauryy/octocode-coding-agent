@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "../core/extensions/index.ts";
-import { getMcpSessionStatus } from "../extensions/mcp/status.ts";
+import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 
 /** `/status`: the loaded skills and each MCP server's connection status. */

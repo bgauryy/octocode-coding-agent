@@ -1,10 +1,12 @@
+import { createEventBus } from "../../src/core/event-bus.ts";
+import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Skill } from "../../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
 import { childSkills, registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
 const skill = (name: string, disableModelInvocation = false): Skill => ({
@@ -31,7 +33,7 @@ describe("Octocode research routing in the policy", () => {
 		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: true })).not.toContain("tools.mcp__octocode__");
 	});
 
-	it("gives the parent delegation guidance and the child the skill rule", () => {
+	it("gives the parent delegation guidance, and every agent the one skill rule", () => {
 		const root = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
 		expect(root).toContain("Keep coupled work in one agent");
 		expect(root).toContain("`.octocode/<topic>/contract.md`");
@@ -39,7 +41,10 @@ describe("Octocode research routing in the policy", () => {
 		// The agent tool's `skills` parameter says how to select skills; the policy does not repeat it.
 		expect(root).not.toContain("input.skills");
 		const child = octocodePrompt({ octocode: true, profiles: [], canDelegate: false, canWrite: true });
-		expect(child).toContain("load any named skill first");
+		const skillRule = "when a listed skill's description matches it or the task names one, load that skill first";
+		expect(root).toContain(skillRule);
+		expect(child).toContain(skillRule);
+		expect(child).not.toContain("load any named skill first");
 		expect(child).not.toContain("contract.md");
 	});
 });
@@ -69,20 +74,24 @@ describe("registerTurnSetup routing and child trim", () => {
 			defaultActive: false,
 			namespace: { name: "mcp__octocode", instructions: "Search first, then fetch." },
 		});
-		const { mcp } = fakeOctocode({ by: "user", enabled: true });
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map(), octocode: mcp });
+
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "tool_search"] });
 		expect(sections.octocode).toContain("Use Octocode MCP");
 		expect(sections.octocode).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
-		expect(sections.octocode).toContain("Search first, then fetch.");
+		expect(sections.octocode).not.toContain("Search first, then fetch.");
 		expect(sections.docs).toBeUndefined();
 	});
 
 	it("keeps Octocode guidance while a configured, enabled server is still connecting", async () => {
 		const fake = fakePi();
 		for (const name of ["bash", "file", "tool_search"]) fake.tools.set(name, { name, exposure: "direct" });
-		const { mcp } = fakeOctocode({ by: "user", enabled: true });
-		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: mcp });
+
+		fake.pi.events = createEventBus();
+		setMcpSessionStatus(fake.pi.events, [
+			{ name: "octocode", enabled: true, state: "connecting", toolCount: 0, source: "mcp.json", exposure: "auto" },
+		]);
+		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash", "file", "tool_search"] });
 		expect(sections.octocode).toContain("Use Octocode MCP");
 		const disabled = fakePi();
@@ -90,7 +99,6 @@ describe("registerTurnSetup routing and child trim", () => {
 		registerTurnSetup(disabled.pi, {
 			isSubagent: true,
 			profiles: () => new Map(),
-			octocode: fakeOctocode({ by: "user", enabled: false }).mcp,
 		});
 		expect((await run(disabled, { selectedTools: ["bash", "file", "tool_search"] })).octocode).not.toContain(
 			"Use Octocode MCP",
@@ -105,8 +113,8 @@ describe("registerTurnSetup routing and child trim", () => {
 			exposure: "deferred",
 			defaultActive: false,
 		});
-		const { mcp } = fakeOctocode({ by: "user", enabled: true });
-		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map(), octocode: mcp });
+
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
 		const sections = await run(fake, { selectedTools: ["bash"] });
 		expect(sections.octocode).not.toContain("Use Octocode MCP");
 	});
@@ -117,7 +125,6 @@ describe("registerTurnSetup routing and child trim", () => {
 		registerTurnSetup(fake.pi, {
 			isSubagent: false,
 			profiles: () => new Map(),
-			octocode: fakeOctocode({ by: "off" }).mcp,
 		});
 		const full = await run(fake, { selectedTools: ["bash", "web", "agent"] });
 		expect(full.octocode).toContain("Use `web`");
@@ -138,13 +145,12 @@ describe("registerTurnSetup routing and child trim", () => {
 			registerTurnSetup(fake.pi, {
 				isSubagent,
 				profiles: () => new Map(),
-				octocode: fakeOctocode({ by: "off" }).mcp,
 			});
 			const { octocode } = await run(fake, { selectedTools: ["mcp__octocode__localFetch"] });
 			expect(octocode).toContain("A permission refusal is not a reason to retry through another tool.");
 			expect(octocode).toContain("exact recovery identifiers");
 			expect(octocode).toContain("state truncation or coverage gaps");
-			expect(octocode).toContain("Cached input still occupies the context window.");
+			expect(octocode).toContain("cached input still fills the context window");
 			expect(octocode).not.toContain("Use bash for builds");
 			expect(octocode).not.toContain("`agent`");
 			if (isSubagent) {
@@ -157,8 +163,8 @@ describe("registerTurnSetup routing and child trim", () => {
 	it("drops the docs block and skill descriptions in a child", async () => {
 		const fake = fakePi();
 		fake.tools.set("bash", { name: "bash", exposure: "direct" });
-		const { mcp } = fakeOctocode({ by: "off" });
-		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map(), octocode: mcp });
+
+		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
 		const event = {
 			systemPromptOptions: {
 				sections: {} as Record<string, string>,
@@ -182,9 +188,7 @@ describe("registerTurnSetup routing and child trim", () => {
 		expect(prompt).not.toContain("<docs>");
 		expect(prompt).toContain("<name>research</name>");
 		expect(prompt).toContain("<description>");
-		expect(prompt).toContain(
-			"Use Octocode localFetch (or localGetFileContent) to load a skill file when the task matches its description.",
-		);
+		expect(prompt).toContain("Use Octocode localFetch to load a skill file when the task matches its description.");
 	});
 
 	it("keeps descriptions and the original trigger in a parent's list", () => {

@@ -1,8 +1,4 @@
-/**
- * The session's tools and system prompt: the registry of allowed tools, which of them are active
- * (declared to the model) or callable from other tools, `prepareLoadout` hooks, and the system
- * prompt options built for that loadout.
- */
+/** The session's allowed tools, model declarations, `prepareLoadout` hooks and resulting system prompt. */
 
 import type { AgentMessage, AgentTool } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
@@ -14,7 +10,7 @@ import {
 	type ToolLoadout,
 	wrapRegisteredTools,
 } from "../extensions/index.ts";
-import { createToolNameMatcher, isMcpToolName } from "../mcp-servers.ts";
+import { createToolNameMatcher, isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
 import { applyToolModifiers } from "../settings-manager.ts";
 import {
@@ -104,6 +100,7 @@ export class SessionToolLoadout {
 			name: definition.name,
 			description: definition.description,
 			parameters: definition.parameters,
+			...(definition.outputSchema ? { outputSchema: definition.outputSchema } : {}),
 			promptGuidelines: definition.promptGuidelines,
 			exposure: this._getToolExposure(definition.name),
 			...(definition.namespace ? { namespace: definition.namespace } : {}),

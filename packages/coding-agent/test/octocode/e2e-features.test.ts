@@ -324,7 +324,7 @@ describe("Native features through the SDK", () => {
 			),
 			calls(
 				fauxToolCall("file", {
-					queries: [{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
+					queries: [{ reason: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "41", newText: "42" }] }],
 				}),
 			),
 			say("done"),
@@ -358,7 +358,7 @@ describe("Native features through the SDK", () => {
 		const replies = [
 			calls(agentCall("coordinate", { action: "join", goal: "main" })),
 			calls(agentCall("coordinate", { action: "lock", paths: ["held.txt", "mine.txt"] })),
-			calls(fauxToolCall("file", { queries: [{ reasoning: "try", type: "write", path: "held.txt", content: "x" }] })),
+			calls(fauxToolCall("file", { queries: [{ reason: "try", type: "write", path: "held.txt", content: "x" }] })),
 			calls(agentCall("coordinate", { action: "list" })),
 			calls(agentCall("message", { to: peer.id!, message: "please release held.txt", replyRequired: false })),
 			say("done"),

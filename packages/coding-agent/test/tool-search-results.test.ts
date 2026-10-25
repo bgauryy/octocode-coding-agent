@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolInfo } from "../src/core/extensions/types.ts";
-import { createToolSearchToolDefinition } from "../src/extensions/tool-search/tool.ts";
+import { createToolSearchToolDefinition } from "../src/core/tools/tool-search.ts";
 
 function fakeTools(tools: Array<Pick<ToolInfo, "name" | "description" | "exposure"> & { namespace?: string }>) {
 	let active: string[] = [];

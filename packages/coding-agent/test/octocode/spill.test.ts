@@ -15,7 +15,7 @@ import {
 	spillLabel,
 	spillOutput,
 } from "../../src/octocode/shared/spill.ts";
-import { convertMcpResult } from "../../src/extensions/mcp/tools.ts";
+import { convertMcpResult } from "../../../mcp/src/tools.ts";
 import { saveMessageFile, spillIntact } from "../../src/octocode/team/spill.ts";
 import { noisyPng, pixelSize, tmp } from "./helpers.ts";
 

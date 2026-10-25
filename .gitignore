@@ -44,3 +44,5 @@ collect.sh
 !.yarn/releases
 .pnp.*
 TMPTMP
+# Disposable host compilation trees
+packages/*/.build-sources-*/

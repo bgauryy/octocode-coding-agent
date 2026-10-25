@@ -40,7 +40,6 @@ function isolated(mode: "full" | "workspace" | "manual") {
 	const gate = permissionGate({
 		permission,
 		provenance: { check: () => undefined },
-		annotations: () => undefined,
 		env,
 	});
 	let id = 0;
@@ -52,7 +51,7 @@ function isolated(mode: "full" | "workspace" | "manual") {
 	return { main, worktree, scratch, attempt, env };
 }
 
-const write = (file: string) => ({ queries: [{ type: "write", path: file, content: "x", reasoning: "test" }] });
+const write = (file: string) => ({ queries: [{ type: "write", path: file, content: "x", reason: "test" }] });
 
 describe.each(["full", "workspace", "manual"] as const)("isolated subagent in %s mode", (mode) => {
 	it("refuses `file` writes and shell writes into the main tree, even by absolute path", async () => {

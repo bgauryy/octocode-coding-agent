@@ -48,7 +48,7 @@ const write = (name: string, content = "original") => ({
 	type: "write",
 	path: name,
 	content,
-	reasoning: "test",
+	reason: "test",
 });
 it("commits independent indexed replacements before any file effects", async () => {
 	const f = setup(
@@ -111,13 +111,13 @@ it("preserves sequential native queries when hooks return no replacements", asyn
 				type: "edit",
 				path: "same",
 				edits: [{ oldText: "A", newText: "B" }],
-				reasoning: "one",
+				reason: "one",
 			},
 			{
 				type: "edit",
 				path: "same",
 				edits: [{ oldText: "B", newText: "C" }],
-				reasoning: "two",
+				reason: "two",
 			},
 		],
 		[],
@@ -149,7 +149,7 @@ it("validates all candidate edit spans before an earlier write", async () => {
 				type: "edit",
 				path: "edit",
 				edits: [{ oldText: "AB", newText: "X" }],
-				reasoning: "edit",
+				reason: "edit",
 			},
 		],
 		[
@@ -176,7 +176,7 @@ it("refuses overlapping MultiEdit spans before any sibling write", async () => {
 					{ oldText: "A", newText: "a" },
 					{ oldText: "D", newText: "d" },
 				],
-				reasoning: "edit",
+				reason: "edit",
 			},
 		],
 		[
@@ -253,7 +253,7 @@ it("preserves native create then edit with source approval but no replacement", 
 				type: "edit",
 				path: "created",
 				edits: [{ oldText: "A", newText: "B" }],
-				reasoning: "followup",
+				reason: "followup",
 			},
 		],
 		[],

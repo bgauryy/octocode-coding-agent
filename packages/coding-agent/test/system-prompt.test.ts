@@ -60,11 +60,41 @@ describe("buildSystemPrompt", () => {
 		"loads skills through %s without read or bash",
 		(reader) => {
 			const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: [reader], contextFiles: [], skills: [testSkill] });
-			expect(prompt).toContain("Use Octocode localFetch (or localGetFileContent)");
+			expect(prompt).toContain("Use Octocode localFetch");
 			expect(prompt).toContain("/skills/test-skill/SKILL.md");
 			expect(prompt).not.toContain("Use the read tool");
 		},
 	);
+
+	test("names the skill tool as the skill reader, ahead of any file reader", () => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			selectedTools: ["skill", "bash", "mcp__octocode__localFetch"],
+			contextFiles: [],
+			skills: [testSkill],
+		});
+		expect(prompt).toContain(
+			"Use the skill tool with a skill's name to load it when the task matches its description.",
+		);
+		expect(prompt).toContain("resolve it against the skill directory the tool returns");
+		expect(prompt).not.toMatch(/Use Octocode localFetch|Use bash to load|localGetFileContent/);
+		// The tool needs no file reader.
+		expect(
+			buildSystemPrompt({ cwd: "/tmp", selectedTools: ["skill"], contextFiles: [], skills: [testSkill] }),
+		).toContain("Use the skill tool");
+	});
+
+	test("a hidden skill tool is not advertised: the file reader variant stays", () => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			selectedTools: ["skill", "mcp__octocode__localFetch"],
+			hiddenTools: ["skill"],
+			contextFiles: [],
+			skills: [testSkill],
+		});
+		expect(prompt).toContain("Use Octocode localFetch to load a skill file");
+		expect(prompt).not.toContain("skill tool");
+	});
 
 	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
 		"keeps skills without advertising the hidden %s reader",
@@ -108,7 +138,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Show file paths clearly");
+			expect(prompt).toContain("Refer to files by their paths");
 		});
 	});
 
@@ -123,7 +153,7 @@ describe("buildSystemPrompt", () => {
 				skills: [],
 			});
 
-			expect(defaultPrompt.startsWith("You are an expert coding assistant operating inside Octocode")).toBe(true);
+			expect(defaultPrompt.startsWith("You are a coding assistant operating inside Octocode")).toBe(true);
 			expect(customPrompt.startsWith("You are Exact.\n\n<cwd>")).toBe(true);
 		});
 
@@ -172,7 +202,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain(
 				"- When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
 			);
-			expect(prompt).toContain("environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)");
+			expect(prompt).toContain("the topic-to-page mapping for every Octocode subject is its docs/index.md");
 		});
 	});
 
@@ -258,8 +288,8 @@ describe("buildSystemPrompt", () => {
 					cwd: process.cwd(),
 				});
 			expect(build(["tool_search"])).toContain("<available_skills>");
-			expect(build(["tool_search"])).toContain("Use Octocode localFetch (or localGetFileContent)");
-			expect(build(["bash", "tool_search"])).toContain("Use Octocode localFetch (or localGetFileContent)");
+			expect(build(["tool_search"])).toContain("Use Octocode localFetch");
+			expect(build(["bash", "tool_search"])).toContain("Use Octocode localFetch");
 			expect(build(["bash", "tool_search"])).not.toContain("Use bash to load a skill's file");
 		});
 

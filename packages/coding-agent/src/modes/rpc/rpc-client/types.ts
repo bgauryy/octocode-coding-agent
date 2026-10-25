@@ -1,4 +1,4 @@
-import type { RpcCommand } from "../rpc-types.ts";
+import type { RpcCommand, RpcExtensionErrorEvent } from "../rpc-types.ts";
 import type { JsonAgentSessionEvent } from "../../json-event.ts";
 
 // ============================================================================
@@ -14,6 +14,8 @@ export type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 export interface RpcClientOptions {
 	/** Executable and argument prefix for source or standalone CLIs; takes precedence over cliPath. */
 	invocation?: { command: string; args: string[] };
+	/** @internal Canonical identity announced by an ACP-owned worker before extension startup. */
+	onSessionIdentity?: (sessionId: string) => void;
 	/** Path to the CLI entry point (default: searches for dist/cli.js) */
 	cliPath?: string;
 	/** Working directory for the agent */
@@ -37,4 +39,5 @@ export interface ModelInfo {
 	reasoning: boolean;
 }
 
-export type RpcEventListener = (event: JsonAgentSessionEvent) => void;
+export type RpcEvent = JsonAgentSessionEvent | RpcExtensionErrorEvent;
+export type RpcEventListener = (event: RpcEvent) => void;

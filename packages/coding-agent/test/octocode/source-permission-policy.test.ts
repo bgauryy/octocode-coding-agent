@@ -124,7 +124,7 @@ it("checks both canonical move targets", () => {
 				policy,
 				call("file", {
 					patch: `*** Begin Patch\n*** Update File: ${from}\n*** Move to: ${to}\n@@\n-a\n+b\n*** End Patch`,
-					reasoning: "test",
+					reason: "test",
 				}),
 				"/work",
 			).decision,

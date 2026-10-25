@@ -9,12 +9,14 @@ export function SessionAttachments({
 	sessionId,
 	value,
 	disabled,
+	acceptsImages = true,
 	onChange,
 	onUploading,
 }: {
 	sessionId: string;
 	value: readonly ApplicationAsset[];
 	disabled: boolean;
+	acceptsImages?: boolean;
 	onChange: (assets: ApplicationAsset[]) => void;
 	onUploading: (uploading: boolean) => void;
 }) {
@@ -22,7 +24,7 @@ export function SessionAttachments({
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState("");
 	async function upload(files: File[]) {
-		if (!files.length) return;
+		if (!files.length || disabled || !acceptsImages) return;
 		if (files.length + value.length > 20) {
 			setError("Attach up to 20 images per message.");
 			return;
@@ -53,7 +55,7 @@ export function SessionAttachments({
 					type="file"
 					accept="image/png,image/jpeg,image/webp,image/gif"
 					multiple
-					disabled={disabled || uploading}
+					disabled={disabled || uploading || !acceptsImages}
 					onChange={(event) => {
 						const files = [...(event.target.files ?? [])];
 						event.target.value = "";

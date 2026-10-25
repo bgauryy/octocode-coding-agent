@@ -137,4 +137,22 @@ describe("OAuth device-code polling", () => {
 		controller.abort();
 		await expect(resultPromise).rejects.toThrow("Login cancelled");
 	});
+
+	it("never reduces the interval when slow_down supplies a smaller minimum", async () => {
+		vi.useFakeTimers();
+		const poll = vi
+			.fn()
+			.mockResolvedValueOnce({ status: "slow_down", intervalSeconds: 1 })
+			.mockResolvedValueOnce({ status: "complete", value: "token" });
+		const result = pollOAuthDeviceCodeFlow({
+			intervalSeconds: 10,
+			expiresInSeconds: 60,
+			poll,
+			signal: neverAbortedSignal,
+		});
+		await vi.advanceTimersByTimeAsync(14999);
+		expect(poll).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(result).resolves.toBe("token");
+	});
 });

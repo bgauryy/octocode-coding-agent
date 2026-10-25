@@ -35,12 +35,15 @@ export function ItemDetail({
 	onClose,
 	actions,
 	activity,
+	reportHref,
 }: {
 	item: SnapshotItem;
 	index: BacklogIndex;
 	onClose: () => void;
 	actions?: ReactNode;
 	activity?: ReactNode;
+	/** Live pages pass this to open files links that point at saved workspace reports in their tab. */
+	reportHref?: (path: string) => string | undefined;
 }) {
 	const chain = originChain(index, it);
 	const blocking = blocks(index, it.ref);
@@ -177,9 +180,17 @@ export function ItemDetail({
 									: link.target.resource === "external"
 										? link.target.url
 										: `${link.target.resource} ${link.target.id}`;
+							const href = link.target.resource === "files" ? reportHref?.(link.target.path) : undefined;
 							return (
 								<li key={`${link.relation}:${target}`}>
-									<span className="muted">{link.relation.replace(/_/g, " ")}:</span> <code>{target}</code>
+									<span className="muted">{link.relation.replace(/_/g, " ")}:</span>{" "}
+									{href ? (
+										<a href={href} title="Open this report">
+											<code>{target}</code>
+										</a>
+									) : (
+										<code>{target}</code>
+									)}
 								</li>
 							);
 						})}

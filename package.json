@@ -7,10 +7,10 @@
 		"packages/coding-agent/examples/extensions/with-deps"
 	],
 	"scripts": {
-		"start": "node --import ./packages/coding-agent/src/experimental/source-resolver.ts ./packages/coding-agent/src/cli.ts",
+		"start": "node --import ./packages/coding-agent/scripts/source-resolver.ts ./packages/coding-agent/src/cli.ts",
 		"clean": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo run clean",
-		"build": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-mcp run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
-		"build:offline": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-mcp run build && yarn workspace @octocodeai/octocode-ai run build:offline && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
+		"build": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
+		"build:offline": "yarn workspace @octocodeai/octocode-contacts run build && yarn workspace @octocodeai/octocode-webview run build && yarn workspace @octocodeai/octocode-telemetry run build && yarn workspace @octocodeai/octocode-tui run build && yarn workspace @octocodeai/octocode-ai run build:offline && yarn workspace @octocodeai/octocode-agent-core run build && yarn workspace @octocodeai/octocodecode run build",
 		"build:native:darwin": "yarn workspace @octocodeai/octocode-tui run build:native:darwin",
 		"build:native:linux": "yarn workspace @octocodeai/octocode-tui run build:native:linux",
 		"build:native:win32": "yarn workspace @octocodeai/octocode-tui run build:native:win32",
@@ -31,7 +31,7 @@
 		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
 		"test": "node scripts/test-workspaces.mjs",
 		"test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/*.test.ts\"",
-		"test:mcp-conformance": "node packages/coding-agent/test/mcp-conformance/run.ts",
+		"test:mcp-conformance": "node packages/mcp/test/conformance/run.ts",
 		"version:patch": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo version patch --immediate && node scripts/sync-versions.js && yarn install --mode=update-lockfile",
 		"version:minor": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo version minor --immediate && node scripts/sync-versions.js && yarn install --mode=update-lockfile",
 		"version:major": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo version major --immediate && node scripts/sync-versions.js && yarn install --mode=update-lockfile",

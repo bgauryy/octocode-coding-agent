@@ -149,7 +149,7 @@ for (const protocol of ["claude", "codex"] as const) {
 						type: "write",
 						path: f.marker,
 						content: "PERMISSION_EFFECT\n",
-						reasoning: "Acceptance fixture",
+						reason: "Acceptance fixture",
 					},
 				],
 			});
@@ -259,13 +259,13 @@ it("Claude cannot use one file approval to authorize another effect in a native 
 					type: "write",
 					path: permitted,
 					content: "PERMITTED\n",
-					reasoning: "Allowed fixture",
+					reason: "Allowed fixture",
 				},
 				{
 					type: "write",
 					path: unapproved,
 					content: "UNAPPROVED\n",
-					reasoning: "Must still ask",
+					reason: "Must still ask",
 				},
 			],
 		});

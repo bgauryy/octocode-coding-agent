@@ -6,11 +6,12 @@ export function webCommand(
 	open: (ctx: ExtensionCommandContext, view: "board" | "activity") => Promise<void>,
 ): Subcommand {
 	return {
-		description: "Open the web workspace — /web [backlogs]",
+		aliases: ["web"],
+		description: "Open the web workspace — /octocode [backlogs]",
 		complete: (prefix) => wordCompletions(["backlogs"], prefix),
 		async handler(args, ctx) {
 			if (args.trim() && args.trim() !== "backlogs") {
-				say(ctx, "Usage: /web [backlogs]", "warning");
+				say(ctx, "Usage: /octocode [backlogs]", "warning");
 				return;
 			}
 			try {

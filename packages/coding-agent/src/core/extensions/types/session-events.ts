@@ -1,7 +1,7 @@
 /** Startup, resource and session lifecycle events. */
 
 import type { CompactionPreparation } from "../../compaction/index.ts";
-import type { RegisteredMcpServer } from "../../mcp-servers.ts";
+import type { RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "../../session-manager.ts";
 import type { ExtensionMode } from "./context.ts";
 import type { ExtensionUIContext } from "./ui.ts";

@@ -40,18 +40,18 @@ function importsOf(file: string): string[] {
  */
 const ALLOWED: Record<string, string[]> = {
 	shared: [],
+	llama: [],
 	api: ["shared"],
 	external: ["shared", "api"],
 	ask: ["shared"],
 	files: ["shared", "permission"],
 	team: ["shared", "agentdb"],
 	hooks: ["shared"],
-	mcp: ["shared"],
 	web: ["shared", "permission"],
 	browser: ["shared", "web", "permission"],
 	compaction: ["shared", "files", "permission"],
 	ui: ["shared", "permission"],
-	subagents: ["shared", "mcp", "team", "permission", "instructions"],
+	subagents: ["shared", "team", "permission", "instructions"],
 	instructions: ["shared"],
 	agentdb: ["shared"],
 	sessions: ["shared", "agentdb", "files", "subagents"],
@@ -61,6 +61,7 @@ const ALLOWED: Record<string, string[]> = {
 	plan: ["shared"],
 	permission: ["shared", "plan"],
 	debug: ["shared"],
+	skill: ["shared"],
 };
 
 describe("source layout", () => {
@@ -175,7 +176,7 @@ describe("source layout", () => {
 		expect(bare.filter(({ name }) => name === "@octocodeai/config").map(({ file }) => file)).toEqual([]);
 	});
 
-	it("is the only package in the repository that imports Octocode", () => {
+	it("limits Octocode integration outside the host to its MCP preset", () => {
 		const packagesDir = path.resolve(packageRoot, "..");
 		const others = fs
 			.readdirSync(packagesDir, { withFileTypes: true })
@@ -184,8 +185,11 @@ describe("source layout", () => {
 			const src = path.join(packagesDir, entry.name, "src");
 			if (!fs.existsSync(src)) return [];
 			return walk(src)
+				.filter((file) => !file.startsWith(path.join(packagesDir, "mcp", "src", "presets", "octocode") + path.sep))
 				.filter((file) =>
-					/['"](?:octocode|octocode-mcp|@octocodeai\/octocode-native)['"/]/.test(fs.readFileSync(file, "utf8")),
+					/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*|import\.meta\.resolve\(\s*)['"](?:octocode|octocode-mcp|@octocodeai\/octocode-native)['"/]/.test(
+						fs.readFileSync(file, "utf8"),
+					),
 				)
 				.map((file) => path.relative(packagesDir, file));
 		});

@@ -41,6 +41,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { mergeHeaders } from "@octocodeai/octocode-ai/utils/headers";
+import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import {
 	assertChatModel,
 	assertClassifierInputSupported,
@@ -151,6 +152,7 @@ export function streamChatModel<TApi extends Api>(
 	const transcript = normalizeContext(context);
 	return lazyStream(model, async () => {
 		assertChatModel(model);
+		assertImageRequestContext(model, transcript.messages);
 		const prepared = await prepareModelRequest(host, model, {
 			...options,
 			...host.getCachePolicy(model, options).options,
@@ -188,6 +190,7 @@ export function streamSimpleChatModel(
 	}
 	return lazyStream(model, async () => {
 		assertChatModel(model);
+		assertImageRequestContext(model, transcript.messages);
 		const prepared = await prepareModelRequest(host, model, {
 			...options,
 			...host.getCachePolicy(model, options).options,

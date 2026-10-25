@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, parse } from "node:path";
 import test from "node:test";
 import { produceArtifactSet, readArtifactSet } from "./package-artifacts.mjs";
+import { installConsumer } from "./local-package-install.mjs";
 
 function writePackage(directory, manifest, files) {
 	mkdirSync(directory, { recursive: true });
@@ -29,8 +30,18 @@ test("produces a verified, content-addressed artifact set", (t) => {
 	);
 	writePackage(
 		join(repoRoot, "packages", "target"),
-		{ name: "@pi-package-test/target", version: "1.0.0", files: ["dist"] },
+		{
+			name: "@pi-package-test/target",
+			version: "1.0.0",
+			files: ["dist"],
+			devDependencies: { "@pi-package-test/private": "workspace:*" },
+		},
 		{ "dist/index.js": "export const target = true;\n" },
+	);
+	writePackage(
+		join(repoRoot, "packages", "private"),
+		{ name: "@pi-package-test/private", version: "1.0.0", private: true },
+		{ "src/index.ts": "export const internal = true;\n" },
 	);
 	execFileSync("git", ["init", "--quiet"], { cwd: repoRoot });
 	execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoRoot });
@@ -87,28 +98,43 @@ test("produces a verified, content-addressed artifact set", (t) => {
 	);
 });
 
-test("local development artifacts resolve dependencies without modifying the source manifest", (t) => {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "octocode-local-artifacts-test-"));
-	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
-	const repoRoot = join(temporaryRoot, "repo");
-	const localPackage = join(temporaryRoot, "local dependency");
-	writePackage(localPackage, { name: "local-helper", version: "1.0.0" }, { "index.js": "export {};\n" });
-	const target = join(repoRoot, "packages", "target");
-	const manifest = {
-		name: "@octocode-test/target",
-		version: "1.0.0",
-		files: ["dist"],
-		dependencies: { "local-helper": "file:../../../local dependency" },
-	};
-	writePackage(target, manifest, { "dist/index.js": "export {};\n" });
-	const sourceBefore = readFileSync(join(target, "package.json"), "utf8");
-	const artifacts = produceArtifactSet({ repoRoot, build: false, source: { commit: "fixture", dirty: false } });
-	t.after(() => rmSync(artifacts.artifactDirectory, { recursive: true, force: true }));
-	const packed = artifacts.getPackage(manifest.name);
-	const packedManifest = JSON.parse(
-		execFileSync("tar", ["-xOf", packed.tarballPath, "package/package.json"], { encoding: "utf8" }),
-	);
-	assert.equal(packedManifest.dependencies["local-helper"], `file:${localPackage}`);
-	assert.deepEqual(packed.localDependencies, { "local-helper": `file:${localPackage}` });
-	assert.equal(readFileSync(join(target, "package.json"), "utf8"), sourceBefore);
-});
+for (const protocol of ["file:", "link:"])
+	test(`${protocol} development artifacts install without modifying the source manifest`, (t) => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), "octocode-local-artifacts-test-"));
+		t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
+		const repoRoot = join(temporaryRoot, "repo");
+		const localPackage = join(temporaryRoot, "local dependency");
+		writePackage(
+			localPackage,
+			{ name: "local-helper", version: "1.0.0", type: "module", main: "./index.js" },
+			{ "index.js": 'export const marker = "local dependency";\n' },
+		);
+		const target = join(repoRoot, "packages", "target");
+		const manifest = {
+			name: "@octocode-test/target",
+			version: "1.0.0",
+			type: "module",
+			main: "./dist/index.js",
+			files: ["dist"],
+			dependencies: { "local-helper": `${protocol}../../../local dependency` },
+		};
+		writePackage(target, manifest, { "dist/index.js": 'export { marker } from "local-helper";\n' });
+		const sourceBefore = readFileSync(join(target, "package.json"), "utf8");
+		const artifacts = produceArtifactSet({ repoRoot, build: false, source: { commit: "fixture", dirty: false } });
+		t.after(() => rmSync(artifacts.artifactDirectory, { recursive: true, force: true }));
+		const packed = artifacts.getPackage(manifest.name);
+		const packedManifest = JSON.parse(
+			execFileSync("tar", ["-xOf", packed.tarballPath, "package/package.json"], { encoding: "utf8" }),
+		);
+		assert.equal(packedManifest.dependencies["local-helper"], `file:${localPackage}`);
+		assert.deepEqual(packed.localDependencies, { "local-helper": `file:${localPackage}` });
+		assert.equal(readFileSync(join(target, "package.json"), "utf8"), sourceBefore);
+		const consumer = join(temporaryRoot, "consumer");
+		installConsumer({ artifactSet: artifacts, directory: consumer, packageNames: [manifest.name] });
+		const output = execFileSync(
+			process.execPath,
+			["--input-type=module", "-e", `import { marker } from "${manifest.name}"; console.log(marker);`],
+			{ cwd: consumer, encoding: "utf8" },
+		);
+		assert.equal(output.trim(), "local dependency");
+	});

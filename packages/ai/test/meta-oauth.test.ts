@@ -98,7 +98,7 @@ describe("Meta OAuth", () => {
 			type: "oauth",
 			refresh: "identity-token",
 			access: "LLM|minted-key",
-			expires: startTime.getTime() + 10000 + DAY_MS,
+			expires: startTime.getTime() + 10000 + DAY_MS - 5 * 60 * 1000,
 		});
 	});
 
@@ -124,7 +124,7 @@ describe("Meta OAuth", () => {
 			type: "oauth",
 			refresh: "identity-token",
 			access: "LLM|fresh-key",
-			expires: now.getTime() + DAY_MS,
+			expires: now.getTime() + DAY_MS - 5 * 60 * 1000,
 		});
 	});
 

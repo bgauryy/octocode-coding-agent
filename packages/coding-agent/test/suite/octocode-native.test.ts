@@ -82,13 +82,21 @@ it("runs native tools and releases team resources across a real session reload",
 			harness.session.setActiveToolsByName(["bash", "file", "agent"]);
 			harness.setResponses([
 				fauxAssistantMessage(
-					fauxToolCall("agent", { type: "coordinate", input: { action: "join", goal: "Verify native lifecycle" } }),
+					fauxToolCall("agent", {
+						type: "coordinate",
+						input: { action: "join", goal: "Verify native lifecycle" },
+						reason: "Register this session in the team",
+					}),
 					{
 						stopReason: "toolUse",
 					},
 				),
 				fauxAssistantMessage(
-					fauxToolCall("agent", { type: "coordinate", input: { action: "lock", paths: [`run-${run}.txt`] } }),
+					fauxToolCall("agent", {
+						type: "coordinate",
+						input: { action: "lock", paths: [`run-${run}.txt`] },
+						reason: "Reserve the file before editing",
+					}),
 					{
 						stopReason: "toolUse",
 					},
@@ -100,13 +108,16 @@ it("runs native tools and releases team resources across a real session reload",
 								type: "write",
 								path: `run-${run}.txt`,
 								content: `run ${run}`,
-								reasoning: "Test native execution",
+								reason: "Test native execution",
 							},
 						],
 					}),
 					{ stopReason: "toolUse" },
 				),
-				fauxAssistantMessage(fauxToolCall("bash", { command: `cat run-${run}.txt` }), { stopReason: "toolUse" }),
+				fauxAssistantMessage(
+					fauxToolCall("bash", { command: `cat run-${run}.txt`, reason: "Read the new file before editing" }),
+					{ stopReason: "toolUse" },
+				),
 				fauxAssistantMessage(
 					fauxToolCall("file", {
 						queries: [
@@ -114,7 +125,7 @@ it("runs native tools and releases team resources across a real session reload",
 								type: "edit",
 								path: `run-${run}.txt`,
 								edits: [{ oldText: `run ${run}`, newText: `updated ${run}` }],
-								reasoning: "Verify core file editing",
+								reason: "Verify core file editing",
 							},
 						],
 					}),

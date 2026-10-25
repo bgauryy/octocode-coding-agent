@@ -21,39 +21,11 @@ import type {
 import { completeSimple, isContextOverflow } from "@octocodeai/octocode-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT, serializeConversation } from "./utils.ts";
+import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
 
 const SUMMARIZATION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
-Use this EXACT format:
-
-## Goal
-[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
-
-## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned by user]
-- [Or "(none)" if none were mentioned]
-
-## Progress
-### Done
-- [x] [Completed tasks/changes]
-
-### In Progress
-- [ ] [Current work]
-
-### Blocked
-- [Issues preventing progress, if any]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Next Steps
-1. [Ordered list of what should happen next]
-
-## Critical Context
-- [Any data, examples, or references needed to continue]
-- [Or "(none)" if not applicable]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages.`;
+${SUMMARY_CHECKPOINT_FORMAT}`;
 
 const UPDATE_SUMMARIZATION_INSTRUCTIONS = `Update the existing structured summary with new information. RULES:
 - PRESERVE all existing information from the previous summary

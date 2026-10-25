@@ -17,6 +17,8 @@ interface ShellMutation {
 	opaque: string[];
 	/** The command writes somewhere the parse could not resolve (`> $FILE`), or did not parse. */
 	uncertain: boolean;
+	/** The parse gave up on (part of) the command: no parser, too large, timed out, or syntax it does not know. Its `writes` may be missing some. */
+	unparsed: boolean;
 }
 
 /** Programs that change every file operand: `rm a b`, `mv a b` (both are changed), `touch`, `mkdir`. */
@@ -110,6 +112,7 @@ function merge(into: ShellMutation, other: ShellMutation): void {
 	into.writes.push(...other.writes);
 	into.opaque.push(...other.opaque);
 	into.uncertain ||= other.uncertain;
+	into.unparsed ||= other.unparsed;
 }
 
 function inspect(command: BashCommand, found: ShellMutation, depth: number): void {
@@ -179,9 +182,10 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number): voi
  * one the parser cannot read at all is `uncertain` (a caller decides whether that matters).
  */
 export function shellMutation(command: string, depth = 0): ShellMutation {
-	const found: ShellMutation = { writes: [], opaque: [], uncertain: false };
+	const found: ShellMutation = { writes: [], opaque: [], uncertain: false, unparsed: false };
 	if (readOnlyCommand(command)) return found;
 	const syntax = bashSyntax(command);
+	found.unparsed = syntax.incomplete;
 	for (const target of syntax.targets) {
 		if (target.kind !== "write" || target.policyOnly) continue;
 		if (target.uncertain || target.path === undefined) found.uncertain = true;
@@ -196,6 +200,21 @@ export function shellMutation(command: string, depth = 0): ShellMutation {
 	}
 	found.writes = [...new Set(found.writes)];
 	return found;
+}
+
+/**
+ * The paths a reservation check compares for `command`: its parsed writes and, when the parse gave up (`unparsed`), every
+ * literal word as well. The parse has a time budget, so on a loaded machine a plain `echo x >> reserved.ts` can come back
+ * unparsed; checking its words keeps a reserved path that the command names from being written unchecked. A word that
+ * names no reserved path costs a lookup, not a refusal; expansions (`$FILE`) and options are skipped.
+ */
+export function reservationTargets(command: string): string[] {
+	const found = shellMutation(command);
+	if (!found.unparsed) return found.writes;
+	const words = command
+		.split(/[\s;&|<>()`'"]+/)
+		.filter((word) => word && !word.startsWith("-") && !/[$*?[\]{}]/.test(word));
+	return [...new Set([...found.writes, ...words])];
 }
 
 /** Loads the bash parser (once); callers await it before `shellMutation`. A load failure leaves every command unresolved (`uncertain`). */

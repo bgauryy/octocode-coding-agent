@@ -76,7 +76,7 @@ it("does not announce planning if stopping work fails, and can retry", async () 
 it("allows only host-owned reads; read-only annotations and similarly named tools cannot bypass it", () => {
 	const definition = (name: string, path = NATIVE_FEATURE_PATH) =>
 		({ name, sourceInfo: { path }, annotations: { readOnlyHint: true } }) as never;
-	for (const name of ["web", "askUser", "archive", "mcp__octocode__localFetch"])
+	for (const name of ["web", "askUser", "archive", "skill"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toBeUndefined();
 	for (const name of ["file", "bash", "execute", "agent", "browser", "debug", "mcp__untrusted__reader"])
 		expect(planningRefusal({ toolName: name, input: {} }, definition(name))).toContain("Plan mode blocks");

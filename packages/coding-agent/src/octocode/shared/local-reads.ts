@@ -4,12 +4,8 @@ import { resolveToolPath } from "./home.ts";
 import { canonicalPath } from "./home/repo.ts";
 import { sha256, sha256File } from "../../utils/atomic-file.ts";
 import { isRecord } from "../../utils/guards.ts";
-import { OCTOCODE_TOOL_PREFIX } from "./octocode-tools.ts";
-
-export const LOCAL_READ_TOOLS = new Set([
-	`${OCTOCODE_TOOL_PREFIX}localFetch`,
-	`${OCTOCODE_TOOL_PREFIX}localGetFileContent`,
-]);
+import { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
+export { LOCAL_READ_TOOLS } from "../../../../mcp/src/presets/octocode/names.ts";
 
 interface LocalRead {
 	file: string;
@@ -66,7 +62,7 @@ export async function completedLocalReads(
 	output: unknown,
 	cwd: string,
 ): Promise<LocalRead[]> {
-	// The shared MCP adapter wraps server data in CallToolResult; the native adapter exposes it directly.
+	// MCP results may expose server data directly or wrap it in CallToolResult.
 	if (isRecord(output) && isRecord(output.structuredContent)) {
 		if (output.isError === true) return [];
 		output = output.structuredContent;
@@ -116,7 +112,8 @@ export async function completedLocalReads(
 			continue;
 		}
 		if (isRecord(data.pagination) && data.pagination.unit !== "lines") continue;
-		const lines = data.content.split("\n");
+		// Separated ranges come joined by a `--` line, as grep joins context groups; every source line carries its number.
+		const lines = data.content.split("\n").filter((line) => line !== "--");
 		if (lines.at(-1) === "") lines.pop();
 		if (!lines.length && data.totalLines === 0) {
 			reads.push({ ...base, whole: true });

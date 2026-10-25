@@ -25,7 +25,7 @@ type AgentEventsHost = Pick<
 	| "chatContainer"
 	| "clearStatusIndicator"
 	| "defaultEditor"
-	| "entriesRenderedByBoundaryCompaction"
+	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "getRegisteredToolDefinition"
@@ -117,7 +117,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			break;
 
 		case "entry_appended":
-			if (host.entriesRenderedByBoundaryCompaction.delete(event.entry.id)) break;
+			if (host.entriesRenderedByRebuild.delete(event.entry.id)) break;
 			if (event.entry.type === "custom") {
 				host.addCustomEntryToChat(event.entry);
 				host.ui.requestRender();
@@ -155,7 +155,7 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 					});
 				}
 				host.renderSessionEntries(retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)));
-				for (const entryId of entriesAfterCompaction) host.entriesRenderedByBoundaryCompaction.add(entryId);
+				for (const entryId of entriesAfterCompaction) host.entriesRenderedByRebuild.add(entryId);
 				host.ui.requestRender();
 			}
 			break;

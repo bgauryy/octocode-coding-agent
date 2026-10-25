@@ -1,4 +1,5 @@
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
+import { isActiveCredential } from "./helpers.ts";
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "./types.ts";
 
 /**
@@ -34,7 +35,9 @@ export class InMemoryCredentialStore implements CredentialStore {
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		options?.signal?.throwIfAborted();
-		return [...this.credentials].map(([providerId, credential]) => ({ providerId, type: credential.type }));
+		return [...this.credentials]
+			.filter(([, credential]) => isActiveCredential(credential))
+			.map(([providerId, credential]) => ({ providerId, type: credential.type }));
 	}
 
 	modify(

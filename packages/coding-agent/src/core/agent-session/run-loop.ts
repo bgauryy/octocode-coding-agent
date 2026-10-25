@@ -15,11 +15,13 @@ import type { AgentInterruptedEvent } from "../extensions/types.ts";
 import type { BeforeAgentStartTrigger } from "../extensions/runner.ts";
 import type { SessionBash } from "./bash.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
+import { settleSessionDispatch } from "./dispatch.ts";
 import type { AbortReason, SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import { findLastAssistantMessage } from "./messages.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import { normalizePromptImages } from "./prompt-expansion.ts";
+import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { SessionRetry } from "./retry.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { PendingUserInput } from "./types.ts";
@@ -67,7 +69,7 @@ export class SessionRunLoop {
 	/**
 	 * Start a run from a user or custom message. The session counts as busy from here on, so
 	 * messages sent while before_agent_start handlers run are queued into this run instead of
-	 * starting another, and an abort requested meanwhile aborts the run as soon as it exists.
+	 * starting another. Cancellation during preparation prevents the first provider request.
 	 * @param onStarted Called once the run's messages are prepared, before the first request.
 	 */
 	async startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void, input?: PendingUserInput): Promise<void> {
@@ -111,6 +113,7 @@ export class SessionRunLoop {
 		// are dropped, so a tool that never registers does not stay pending.
 		this.host.tools.clearPendingToolNames();
 		try {
+			if (run.agentRunAbortRequested) return;
 			await session.agent.prompt(messages);
 			while (!run.agentRunAbortRequested && !run.inputTerminated) {
 				if (await this._handlePostAgentRun()) {
@@ -130,7 +133,7 @@ export class SessionRunLoop {
 			inputs.flushPendingCustomMessages();
 			try {
 				await this._emitInterruption();
-				await this._emitAgentSettled();
+				await settleSessionDispatch(session, () => this._emitAgentSettled());
 			} finally {
 				run.logicalTurnId = undefined;
 			}
@@ -168,6 +171,7 @@ export class SessionRunLoop {
 		} else {
 			// Normalize images after before_agent_start so extension-driven model selection
 			// determines the resize profile used for the request and history.
+			assertImageInputSupported(session.model, trigger.images ?? []);
 			const normalized = await normalizePromptImages(
 				session.settingsManager,
 				this.host.models.limitsModel(),

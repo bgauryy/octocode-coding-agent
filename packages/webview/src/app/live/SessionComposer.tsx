@@ -8,6 +8,7 @@ import { SendIcon, StopIcon } from "../ui/icons.tsx";
 import { Badge, Button } from "../ui/primitives.tsx";
 import { ConnectionNotice, StatusLine } from "./controls.tsx";
 import { SessionAttachments } from "./SessionAttachments.tsx";
+import { SessionRequests } from "./SessionRequests.tsx";
 import { useLive } from "./session.tsx";
 
 type SessionAction = "prompt" | "steer" | "followUp";
@@ -16,7 +17,6 @@ const ACTION_LABELS: Record<SessionAction, string> = {
 	steer: "Guide current work",
 	followUp: "Queue follow-up",
 };
-const RECEIPT_LABELS = { accepted: "Accepted", completed: "Completed", failed: "Failed" } as const;
 
 /** Announce run lifecycle changes only; the streaming text itself stays silent for screen readers. */
 function useRunAnnouncement(session: Pick<ApplicationSnapshot, "streaming" | "runId"> | undefined): string {
@@ -49,6 +49,7 @@ function SessionComposerForSession() {
 			state.application
 				? {
 						sessionId: state.application.sessionId,
+						model: state.application.model,
 						runId: state.application.runId,
 						streaming: state.application.streaming,
 						status: state.application.status,
@@ -61,6 +62,7 @@ function SessionComposerForSession() {
 		),
 	);
 	const connection = useStore(sessionStore, (state) => state.connection);
+	const connected = useStore(sessionStore, (state) => state.connection?.connected ?? false);
 	const draftKey = `session-command:${session?.sessionId ?? ""}`;
 	const draft = useStore(workspace, (state) => state.drafts[draftKey]);
 	const [pending, setPending] = useState(false);
@@ -84,6 +86,7 @@ function SessionComposerForSession() {
 				: choices[0];
 	const text = draft?.text ?? "";
 	const attachments = draft?.attachments ?? [];
+	const acceptsImages = session.model?.input.includes("image") ?? true;
 	const edit = (patch: { text?: string; to?: string; attachments?: ApplicationAsset[] }) =>
 		workspace.getState().setDraft(draftKey, {
 			...(workspace.getState().drafts[draftKey] ?? { text, attachments, to: mode }),
@@ -93,10 +96,25 @@ function SessionComposerForSession() {
 
 	async function submit(event: FormEvent) {
 		event.preventDefault();
-		if (sending.current || !session || !connection || (!text.trim() && !attachments.length) || !mode || uploading)
+		if (attachments.length && !acceptsImages) return;
+		if (
+			sending.current ||
+			!session ||
+			!connection ||
+			!connected ||
+			(!text.trim() && !attachments.length) ||
+			!mode ||
+			uploading
+		)
 			return;
 		const id = draft?.id ?? crypto.randomUUID();
 		workspace.getState().setDraft(draftKey, { id, text, attachments, to: mode });
+		const prefix = `session-sent:${session.sessionId}:`;
+		for (const key of Object.keys(workspace.getState().drafts)
+			.filter((key) => key.startsWith(prefix))
+			.slice(0, -2))
+			workspace.getState().setDraft(key, null);
+		workspace.getState().setDraft(prefix + id, { id, text, attachments, to: mode });
 		const current = () =>
 			sessionStore.getState().application?.sessionId === session.sessionId &&
 			sessionStore.getState().connection === connection;
@@ -114,7 +132,10 @@ function SessionComposerForSession() {
 			});
 			if (!current()) return;
 			sessionStore.setState({ application: connection.stream.snapshot });
-			setStatus(receipt.message || receipt.status);
+			setStatus(
+				receipt.message ||
+					(receipt.status === "failed" ? "Request failed." : "Sent. Follow the reply in Activity below."),
+			);
 			if (sameDraft())
 				workspace
 					.getState()
@@ -130,7 +151,7 @@ function SessionComposerForSession() {
 		}
 	}
 	async function stop() {
-		if (!session?.runId || !connection) return;
+		if (!session?.runId || !connection || !connected) return;
 		const runId = session.runId;
 		const existing = workspace.getState().requests[stopKey];
 		if (existing?.status === "sending") return;
@@ -167,7 +188,7 @@ function SessionComposerForSession() {
 				variant="danger"
 				icon={<StopIcon />}
 				loading={stopState?.status === "sending"}
-				disabled={stopState?.status === "accepted" || stopState?.status === "completed"}
+				disabled={!connected || stopState?.status === "accepted" || stopState?.status === "completed"}
 				onClick={stop}
 				title="Stopping keeps changes already made."
 			>
@@ -178,7 +199,7 @@ function SessionComposerForSession() {
 		<section className="session-panel" aria-label="Session controls">
 			<ConnectionNotice />
 			<div className="session-panel-header">
-				<h3>Work with this session</h3>
+				<h3>Message the current agent</h3>
 				{session.streaming ? (
 					<Badge tone="accent">
 						<span className="live-dot" aria-hidden="true" /> Running
@@ -188,6 +209,10 @@ function SessionComposerForSession() {
 				)}
 				{session.status && session.status !== "idle" && <span className="muted">{session.status}</span>}
 			</div>
+			<p className="muted">
+				Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear in
+				Activity below. Approvals appear in that terminal.
+			</p>
 			<output className="visually-hidden" aria-atomic="true">
 				{announcement}
 			</output>
@@ -216,10 +241,17 @@ function SessionComposerForSession() {
 						key={session.sessionId}
 						sessionId={session.sessionId}
 						value={attachments}
-						disabled={pending}
+						disabled={pending || !connected}
+						acceptsImages={acceptsImages}
 						onChange={(assets) => edit({ attachments: assets })}
 						onUploading={setUploading}
 					/>
+					{session.model && (
+						<p role={attachments.length && !acceptsImages ? "alert" : "status"}>
+							{session.model.name}: {acceptsImages ? "accepts images" : "configured for text only"}.
+							{!acceptsImages && " Select an image-capable model to send images."}
+						</p>
+					)}
 					<div className="composer-actions">
 						<Field label="When to send">
 							{(props) => (
@@ -237,7 +269,12 @@ function SessionComposerForSession() {
 							variant="primary"
 							icon={<SendIcon />}
 							loading={pending}
-							disabled={uploading}
+							disabled={
+								!connected ||
+								uploading ||
+								(!text.trim() && !attachments.length) ||
+								(attachments.length > 0 && !acceptsImages)
+							}
 							aria-keyshortcuts="Meta+Enter Control+Enter"
 						>
 							Send
@@ -256,23 +293,7 @@ function SessionComposerForSession() {
 				</p>
 			) : null}
 			<StatusLine>{status}</StatusLine>
-			{session.receipts.length > 0 && (
-				<ul className="receipts" aria-label="Recent session requests">
-					{session.receipts
-						.slice(-3)
-						.reverse()
-						.map((receipt) => (
-							<li key={receipt.id}>
-								<Badge
-									tone={receipt.status === "failed" ? "danger" : receipt.status === "completed" ? "success" : "neutral"}
-								>
-									{RECEIPT_LABELS[receipt.status]}
-								</Badge>
-								{receipt.message ? <span>{receipt.message}</span> : null}
-							</li>
-						))}
-				</ul>
-			)}
+			<SessionRequests sessionId={session.sessionId} receipts={session.receipts} />
 		</section>
 	);
 }

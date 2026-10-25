@@ -48,7 +48,7 @@ export function ActivityView({ index, params, setParams }: ViewProps) {
 		return (
 			<div className="view activity-view">
 				<ListSkeleton label="Connecting to the session" />
-				<p className="muted">Open /backlog from a running Octocode session to use agent controls.</p>
+				<p className="muted">Open /octocode from a running Octocode session to message that agent.</p>
 			</div>
 		);
 	return (

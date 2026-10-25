@@ -1,9 +1,8 @@
+import { octocodeToolDefinition } from "../../../mcp/test/mcp-preset-tool-fixture.ts";
 import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { octocodeToolDefinition } from "../../src/octocode/mcp/tools.ts";
-import { prepareOctocodeArguments } from "../../src/octocode/mcp/arguments.ts";
 import { fakeCtx } from "./fake-pi.ts";
 
 const inputSchema = {
@@ -67,13 +66,19 @@ describe("Octocode argument preflight", () => {
 		},
 	);
 
-	it("relocates one root cursor to its schema-declared query before authorization and sends once", async () => {
-		const f = setup();
-		expect((await f.run({ queries: [{ path: "file.ts" }], cursor: "continuation" })).isError).toBe(false);
-		expect(f.call).toHaveBeenCalledOnce();
-		expect(f.beforeToolCall.mock.calls[0][0].args).toEqual({
-			queries: [{ path: "file.ts", cursor: "continuation" }],
-		});
+	it("decodes queries chosen through a spec-valid root anyOf (queries or cursor) before gates", async () => {
+		const rootAnyOf = {
+			type: "object" as const,
+			anyOf: [
+				{ properties: { queries: inputSchema.properties.queries }, additionalProperties: false, required: ["queries"] },
+				{ properties: { cursor: { type: "string" } }, additionalProperties: false, required: ["cursor"] },
+			],
+		};
+		const f = setup(rootAnyOf as never);
+		expect((await f.run({ queries: JSON.stringify([{ path: "file.ts", length: "5" }]) })).isError).toBe(false);
+		expect(f.call.mock.calls[0][1]).toEqual({ queries: [{ path: "file.ts", length: 5 }] });
+		expect((await f.run({ cursor: "next" })).isError).toBe(false);
+		expect(f.call.mock.calls[1][1]).toEqual({ cursor: "next" });
 	});
 
 	it.each([
@@ -81,11 +86,13 @@ describe("Octocode argument preflight", () => {
 		{ queries: JSON.stringify({ path: "wrong-container" }) },
 		{ queries: [{}, {}], cursor: "ambiguous" },
 		{ queries: [{ cursor: "existing" }], cursor: "conflict" },
-	])("rejects ambiguous repair locally: %j", async (args) => {
+	])("rejects arguments the schema does not allow before gates: %j", async (args) => {
 		const f = setup();
 		const result = await f.run(args);
 		expect(result.isError).toBe(true);
-		expect(result.result.content).toEqual([expect.objectContaining({ text: expect.stringContaining("repair:") })]);
+		expect(result.result.content).toEqual([
+			expect.objectContaining({ text: expect.stringContaining("Validation failed") }),
+		]);
 		expect(f.call).not.toHaveBeenCalled();
 		expect(f.beforeToolCall).not.toHaveBeenCalled();
 	});
@@ -107,21 +114,5 @@ describe("Octocode argument preflight", () => {
 		const f = setup();
 		expect((await f.run({ queries: "[{}]", unknownField: true })).isError).toBe(true);
 		expect(f.call).not.toHaveBeenCalled();
-	});
-
-	it("preserves schema-declared root cursors and never guesses a cursor field absent from the schema", () => {
-		const args = { queries: [{}], cursor: "root-continuation" };
-		const rootSchema = { ...inputSchema, properties: { ...inputSchema.properties, cursor: { type: "string" } } };
-		expect(prepareOctocodeArguments(rootSchema, args)).toBe(args);
-		const unknownSchema = { properties: { queries: { type: "array", items: { type: "object" } } } };
-		expect(prepareOctocodeArguments(unknownSchema, args)).toBe(args);
-	});
-
-	it("leaves null, array and unknown-schema inputs to ordinary validation without mutation", () => {
-		for (const value of [null, [], { queries: null }]) {
-			expect(prepareOctocodeArguments(inputSchema, value)).toBe(value);
-		}
-		const args = { queries: "[{}]", cursor: "unknown" };
-		expect(prepareOctocodeArguments({}, args)).toBe(args);
 	});
 });

@@ -508,7 +508,7 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 	};
 	const run = (queries: unknown[]) => tool!.execute("t", { queries }, undefined, undefined, ctx);
 	const edit = (from: string, to: string) =>
-		run([{ reasoning: "r", type: "edit", path: "a.txt", edits: [{ oldText: from, newText: to }] }]);
+		run([{ reason: "r", type: "edit", path: "a.txt", edits: [{ oldText: from, newText: to }] }]);
 	return { handlers, commands, guard, forgotten, branch, notices, selects, sent, ctx, run, edit, labels };
 }
 
@@ -646,8 +646,8 @@ describe("/rewind and the fork offer", () => {
 		await handlers.get("session_start")!({}, ctx);
 		await handlers.get("agent_start")!({}, ctx);
 		await run([
-			{ reasoning: "r", type: "write", path: "a.txt", content: "two" },
-			{ reasoning: "r", type: "write", path: "b.txt", content: "b" },
+			{ reason: "r", type: "write", path: "a.txt", content: "two" },
+			{ reason: "r", type: "write", path: "b.txt", content: "b" },
 		]);
 		await handlers.get("agent_end")!({}, ctx);
 		expect(labels.get("u1")).toBe("✎ 2 files");
@@ -658,7 +658,7 @@ describe("/rewind and the fork offer", () => {
 		labels.set("u2", "✎ mine");
 		await handlers.get("input")!({ source: "interactive", text: "next" }, ctx);
 		await handlers.get("agent_start")!({}, ctx);
-		await run([{ reasoning: "r", type: "write", path: "a.txt", content: "three" }]);
+		await run([{ reason: "r", type: "write", path: "a.txt", content: "three" }]);
 		await handlers.get("agent_end")!({}, ctx);
 		// A user label that merely starts with the mark is still the user's.
 		expect(labels.get("u2")).toBe("✎ mine");
@@ -841,12 +841,12 @@ describe("/rewind and the fork offer", () => {
 			sync.mockClear();
 			promised.mockClear();
 			streamed.mockClear();
-			await run([{ reasoning: "r", type: "write", path: "a.txt", content: "three" }]);
+			await run([{ reason: "r", type: "write", path: "a.txt", content: "three" }]);
 			expect(reads()).toBe(2);
 			sync.mockClear();
 			promised.mockClear();
 			streamed.mockClear();
-			await run([{ reasoning: "r", type: "delete", path: "a.txt" }]);
+			await run([{ reason: "r", type: "delete", path: "a.txt" }]);
 			expect(reads()).toBe(2);
 		} finally {
 			sync.mockRestore();

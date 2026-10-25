@@ -3,7 +3,13 @@
  * Provider auth orchestration belongs to ModelRuntime and octocode-ai Models.
  */
 
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
+import {
+	isActiveCredential,
+	type AuthOperationOptions,
+	type Credential,
+	type CredentialInfo,
+	type CredentialStore,
+} from "@octocodeai/octocode-ai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
@@ -237,7 +243,9 @@ export class AuthStorage implements CredentialStore {
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
 		const entries = Object.entries(await this.readLatestData(options));
 		options?.signal?.throwIfAborted();
-		return entries.map(([providerId, credential]) => ({ providerId, type: credential.type }));
+		return entries
+			.filter(([, credential]) => isActiveCredential(credential))
+			.map(([providerId, credential]) => ({ providerId, type: credential.type }));
 	}
 }
 

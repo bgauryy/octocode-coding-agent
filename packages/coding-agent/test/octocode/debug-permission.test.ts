@@ -26,7 +26,7 @@ describe("debugger permission integration", () => {
 		"classifies %s as process execution and refuses it for a read-only role",
 		(action) => {
 			const event = call(action);
-			const request = classify(event, { cwd: "/repo" }, () => undefined);
+			const request = classify(event, { cwd: "/repo" });
 			expect(request).toMatchObject({ action: "shell", toolCallId: "debug-check" });
 			expect(request?.what).toContain(JSON.stringify(event.input));
 			expect(request?.grant).toBeUndefined();
@@ -46,7 +46,7 @@ describe("debugger permission integration", () => {
 		expect(isolatedTreeRefusal(call("variables"), worktree, env)).toMatch(/isolated/);
 		expect(isolatedTreeRefusal(call("terminate"), worktree, env)).toBeUndefined();
 		expect(readOnlyRoleRefusal(call("terminate"), worktree, env)).toBeUndefined();
-		expect(classify(call("terminate"), { cwd: worktree }, () => undefined)).toBeUndefined();
+		expect(classify(call("terminate"), { cwd: worktree })).toBeUndefined();
 		expect(isolatedTreeRefusal(call("launch"), main, env)).toBeUndefined();
 	});
 });

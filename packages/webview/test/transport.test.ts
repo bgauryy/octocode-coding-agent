@@ -212,3 +212,19 @@ it.each([
 	expect(client.stream.snapshot?.receipts).toEqual([]);
 	client.close();
 });
+
+it("returns a streamed failure when an older HTTP acceptance arrives afterwards", async () => {
+	const { client, socket } = connection();
+	socket.receive(frame(0, { type: "snapshot", snapshot }));
+	const response = Promise.withResolvers<Response>();
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(() => response.promise),
+	);
+	const pending = client.execute({ id: "request", sessionId: "session-a", action: "prompt", text: "Hello" });
+	const failed = { id: "request", status: "failed", message: "Model unavailable" };
+	socket.receive(frame(1, { type: "event", event: { type: "command.receipt", receipt: failed } }));
+	response.resolve(new Response(JSON.stringify({ receipt: { id: "request", status: "accepted" } })));
+	await expect(pending).resolves.toEqual(failed);
+	client.close();
+});

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { fakePi } from "./fake-pi.ts";
 
 describe("agent context boundaries", () => {
 	it("starts children with a fresh identity and browser mode while retaining user settings", () => {
@@ -88,7 +88,6 @@ describe("agent context boundaries", () => {
 		registerTurnSetup(fake.pi, {
 			isSubagent: false,
 			profiles: () => new Map([["reviewer", { name: "reviewer", description, prompt: "" }]]),
-			octocode: fakeOctocode({ by: "off" }).mcp,
 		});
 		(fake.pi as unknown as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
 		const prompt = async (selectedTools: string[]) => {

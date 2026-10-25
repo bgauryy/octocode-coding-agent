@@ -116,14 +116,15 @@ describe("defaultTools setting", () => {
 	});
 
 	it.each([
-		{ defaults: undefined, options: {}, expected: ["web"] },
-		{ defaults: ["-browser"], options: {}, expected: ["web"] },
-		{ defaults: ["+browser"], options: {}, expected: ["browser", "web"] },
-		{ defaults: ["-web"], options: {}, expected: [] },
-		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: [] },
+		{ defaults: undefined, options: {}, expected: ["browser", "debug", "web"] },
+		{ defaults: ["-browser"], options: {}, expected: ["debug", "web"] },
+		{ defaults: ["-debug"], options: {}, expected: ["browser", "web"] },
+		{ defaults: ["+browser"], options: {}, expected: ["browser", "debug", "web"] },
+		{ defaults: ["-web"], options: {}, expected: ["browser", "debug"] },
+		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: ["debug"] },
 		{ defaults: undefined, options: { tools: ["file"] }, expected: [] },
 	])(
-		"keeps browser opt-in and preserves web defaults and exclusions through startup: %j",
+		"activates browser and debug by default and preserves selections through startup: %j",
 		async ({ defaults, options, expected }) => {
 			const session = await createSession(defaults, options, [], true);
 			try {
@@ -131,18 +132,19 @@ describe("defaultTools setting", () => {
 				expect(
 					session
 						.getActiveToolNames()
-						.filter((name) => ["browser", "web"].includes(name))
+						.filter((name) => ["browser", "debug", "web"].includes(name))
 						.sort(),
 				).toEqual(expected);
 				if (!options.tools) expect(session.getActiveToolNames()).toContain("agent");
-				expect(session.agent.state.tools.some((tool) => tool.name === "browser")).toBe(
-					expected.some((name) => name === "browser"),
-				);
+				for (const name of ["browser", "debug"])
+					expect(session.agent.state.tools.some((tool) => tool.name === name)).toBe(
+						expected.some((entry) => entry === name),
+					);
 				await session.reload();
 				expect(
 					session
 						.getActiveToolNames()
-						.filter((name) => ["browser", "web"].includes(name))
+						.filter((name) => ["browser", "debug", "web"].includes(name))
 						.sort(),
 				).toEqual(expected);
 			} finally {
@@ -259,7 +261,7 @@ describe("defaultTools setting", () => {
 					{
 						type: "edit",
 						path: file,
-						reasoning: "Update the fixture",
+						reason: "Update the fixture",
 						edits: [{ oldText: "before", newText: "after" }],
 					},
 				],

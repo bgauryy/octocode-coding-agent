@@ -17,7 +17,7 @@ import { workspaceRefusal } from "./run.ts";
 
 export async function preparePatch(
 	patch: ParsedPatch,
-	reasoning: string,
+	reason: string,
 	guard: FileGuard,
 	ctx: ExtensionToolContext,
 	signal: AbortSignal | undefined,
@@ -70,12 +70,12 @@ export async function preparePatch(
 				type: "write",
 				path: hunk.path,
 				content: hunk.content,
-				reasoning,
+				reason,
 			};
 			const checked = await inspect(query);
 			prepared.push({ query, mode: "write", digest: checked.digest });
 		} else if (hunk.kind === "delete") {
-			const query: FileQuery = { type: "delete", path: hunk.path, reasoning };
+			const query: FileQuery = { type: "delete", path: hunk.path, reason };
 			const checked = await inspect(query);
 			if (!checked.data) throw new Error(`Cannot delete missing file ${hunk.path}`);
 			prepared.push({ query, mode: "delete", digest: checked.digest });
@@ -87,7 +87,7 @@ export async function preparePatch(
 				type: "edit",
 				path: hunk.path,
 				edits,
-				reasoning,
+				reason,
 			};
 			const checked = await inspect(query);
 			if (!checked.data) throw new Error(`Cannot update missing file ${hunk.path}`);
@@ -101,16 +101,16 @@ export async function preparePatch(
 					type: "write",
 					path: hunk.move_path,
 					content,
-					reasoning,
+					reason,
 				};
 				const target = await inspect(destination);
 				const samePath = canonicalPath(resolveToolPath(ctx.cwd, hunk.move_path)) === key;
 				// A move removes the source, so require the source deletion guard too.
-				await inspect({ type: "delete", path: hunk.path, reasoning });
+				await inspect({ type: "delete", path: hunk.path, reason });
 				prepared.push(
 					{ query: destination, mode: "write", digest: target.digest },
 					{
-						query: { type: "delete", path: hunk.path, reasoning },
+						query: { type: "delete", path: hunk.path, reason },
 						mode: "delete",
 						// A same-path Move writes first, then deletes those newly written bytes.
 						digest: samePath ? sha256(content) : checked.digest,
@@ -118,7 +118,7 @@ export async function preparePatch(
 				);
 			} else
 				prepared.push({
-					query: { type: "write", path: hunk.path, content, reasoning },
+					query: { type: "write", path: hunk.path, content, reason },
 					mode: "edit",
 					digest: checked.digest,
 				});

@@ -8,23 +8,23 @@ import { clipText } from "../shared/util.ts";
 
 /**
  * The review of a `file` batch: the `file.workspace` permission dialog. In `manual` mode every batch shows each
- * change with the system's reason lines and the model's reasoning (labelled unverified, last), and the user applies all, rejects all, or decides change by change.
+ * change with the system's reason lines and the model's reason (labelled unverified, last), and the user applies all, rejects all, or decides change by change.
  */
 
 interface ChangeQuery {
 	movePath?: string;
 	type: string;
 	path: string;
-	reasoning: string;
+	reason: string;
 	edits?: Array<{ oldText: string; newText: string; replaceAll?: boolean }> | undefined;
 	content?: string | undefined;
 }
 
-// Model-supplied paths, reasoning and file text reach Octocode's dialogs: strip terminal escapes first.
+// Model-supplied paths, reason and file text reach Octocode's dialogs: strip terminal escapes first.
 const clipLine = (line: string, max = 110) => clipText(sanitizeTerminalText(line), max);
 
 /** What the agent says a change is for, as the dialogs label it. */
-const agentSays = (reasoning: string): string => `agent says (unverified): ${clipLine(foldLines(reasoning), 160)}`;
+const agentSays = (reason: string): string => `agent says (unverified): ${clipLine(foldLines(reason), 160)}`;
 
 function snippet(text: string, sign: "-" | "+", maxLines = 3): string[] {
 	const lines = text.replace(/\n$/, "").split("\n");
@@ -37,7 +37,7 @@ function snippet(text: string, sign: "-" | "+", maxLines = 3): string[] {
 /** What a change does, for the review dialog: what, a bounded preview of the text involved, then what the agent says about it (unverified, last). */
 export function describeChange(query: ChangeQuery): string[] {
 	const head = `${query.type} ${sanitizeTerminalText(query.path)}${query.movePath ? ` → ${sanitizeTerminalText(query.movePath)}` : ""}`;
-	const says = `  ${agentSays(query.reasoning)}`;
+	const says = `  ${agentSays(query.reason)}`;
 	if (query.type === "delete") return [head, "  removes the file", says];
 	if (query.type === "write") return [head, ...snippet(query.content ?? "", "+", 5).map((line) => `  ${line}`), says];
 	const edits = query.edits ?? [];
@@ -89,7 +89,7 @@ export async function askReview(
 	const list = queries
 		.map((query, index) => sanitizeTerminalText(`${index + 1}. ${query.type} ${query.path}`))
 		.join("\n");
-	const says = queries.map((query, index) => `  ${index + 1}. ${agentSays(query.reasoning)}`).join("\n");
+	const says = queries.map((query, index) => `  ${index + 1}. ${agentSays(query.reason)}`).join("\n");
 	const choice = await ctx.ui.select(
 		`Apply ${plural(queries.length, "file change")}?\n${[list, ...reasonLines, says].join("\n")}`,
 		[APPLY_ALL, APPLY_SESSION, ...(queries.length > 1 ? [ONE_BY_ONE] : []), REJECT_ALL, REJECT_ALL_NOTE],

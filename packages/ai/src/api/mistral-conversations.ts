@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { clampThinkingLevel } from "../models.ts";
 import type { Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
@@ -49,6 +50,7 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			if (nextPayload !== undefined) {
 				payload = nextPayload as MistralChatPayload;
 			}
+			assertImageRequestPayload(model, payload);
 			const mistralStream = await requestMistralStream(model, payload, apiKey, options);
 			stream.push({ type: "start", partial: output });
 			await consumeChatStream(model, output, stream, mistralStream, options?.onProviderStreamEvent);

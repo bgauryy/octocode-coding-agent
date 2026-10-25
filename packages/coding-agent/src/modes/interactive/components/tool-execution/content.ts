@@ -1,4 +1,4 @@
-import { Container, Text } from "@octocodeai/octocode-tui";
+import { Box, Container, Text } from "@octocodeai/octocode-tui";
 import type { ApplicationContentBlock } from "@octocodeai/octocode-contacts";
 import { ApplicationAssets } from "../../../../core/application/assets.ts";
 import { normalizeApplicationContent } from "../../../../core/application/normalize.ts";
@@ -7,6 +7,7 @@ import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
 import { theme } from "../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { keyHint } from "../keybinding-hints.ts";
+import { reasonRow } from "./reason.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
 interface GenericToolDisplay {
@@ -42,6 +43,12 @@ export class GenericToolContent extends Container {
 				display.background,
 			),
 		);
+		const reason = reasonRow(display.toolName, display.args);
+		if (reason) {
+			const row = new Box(display.outputPad, 0, display.background);
+			row.addChild(reason);
+			this.addChild(row);
+		}
 		let content: ApplicationContentBlock[];
 		try {
 			content = normalizeApplicationContent(display.content, display.toolCallId, this.assets);

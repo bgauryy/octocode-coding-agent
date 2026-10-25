@@ -19,8 +19,8 @@ it("rejects an unreviewed native registration before activation, even with a rea
 	expect(() => pi.registerTool(tool)).toThrow("has no permission owner");
 	expect(fake.tools.size).toBe(0);
 	pi.registerTool({ ...tool, name: "file" });
-	pi.registerTool({ ...tool, name: "mcp__octocode__localFetch" });
-	expect([...fake.tools.keys()]).toEqual(["file", "mcp__octocode__localFetch"]);
+	expect(() => pi.registerTool({ ...tool, name: "mcp__octocode__localFetch" })).toThrow("has no permission owner");
+	expect([...fake.tools.keys()]).toEqual(["file"]);
 });
 
 it("user Bash calls carry explicit origin and independent opaque invocation IDs", async () => {

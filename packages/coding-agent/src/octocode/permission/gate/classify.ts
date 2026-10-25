@@ -1,10 +1,12 @@
 import path from "node:path";
-import type { ExtensionContext, ToolAnnotations, ToolCallEvent } from "../../../core/extensions/index.ts";
-import { readableHistory, readableSessionFolder } from "../../shared/history.ts";
-import { resolveToolPath, sessionsRoot } from "../../shared/home.ts";
-import { isMcpTool } from "../../shared/octocode-tools.ts";
+import type { ExtensionContext, ToolCallEvent } from "../../../core/extensions/index.ts";
+import { readableHistory } from "../../shared/history.ts";
+import { resolveToolPath } from "../../shared/home.ts";
+import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
+import { callReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
 import { runsLater } from "../file-access.ts";
+import { isNativeTool } from "../native-tools.ts";
 import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../../shared/home/repo.ts";
@@ -19,20 +21,9 @@ const BROWSER_ACTS = new Set(["click", "hover", "drag", "type", "fill", "press",
 /** Browser actions that take control of a browser: the user's own Chrome, arbitrary script in the page. Each is a `browser.control` ask. */
 const BROWSER_CONTROL = new Set(["evaluate", "attach"]);
 
-/** Conflicting hints keep the consequential classification in both permission and provenance checks. */
-export const readOnlyMcp = (hint: ToolAnnotations | undefined): boolean =>
-	hint?.readOnlyHint === true && hint.destructiveHint !== true;
-
 /** Whether `command` is a shell command a destructive pattern matches, relative targets resolved against `cwd`: a `shell.destructive` call, ask each time. */
 const destructive = (command: string, cwd: string): boolean => catastrophicCommand(command, cwd) !== undefined;
 
-/** The paths an MCP call names: its `path` and each of its `queries[].path`. */
-const mcpPaths = (input: Record<string, unknown>): string[] =>
-	[input, ...(Array.isArray(input.queries) ? input.queries : [])].flatMap((query) =>
-		query && typeof query === "object" && typeof (query as Record<string, unknown>).path === "string"
-			? [(query as Record<string, string>).path]
-			: [],
-	);
 /** The call's arguments, whole: the user approves exactly what is shown. */
 export const args = (input: Record<string, unknown>): string => JSON.stringify(input);
 
@@ -42,16 +33,27 @@ const dirGrant = (file: string, verb: string) => {
 	return { key: dir, label: `${verb} under ${dir}` };
 };
 
+/** What a native call says it is for: its `reason` argument, as the request's `purpose` (ahead of the assistant's last sentence). */
+export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">): { purpose?: string } {
+	const reason = isNativeTool(event.toolName) ? callReason(event.input) : undefined;
+	return reason ? { purpose: reason } : {};
+}
+
 /** What a call is, as a permission request; undefined when no mode asks about it. */
 export function classify(
 	event: ToolCallEvent,
 	ctx: Pick<ExtensionContext, "cwd">,
-	annotations: (toolName: string) => ToolAnnotations | undefined,
 	forceDestructive = false,
 ): PermissionRequest | undefined {
-	const request = classOf(event.toolName, event.input, ctx.cwd, annotations, forceDestructive);
+	const request = classOf(event.toolName, event.input, ctx.cwd, forceDestructive);
 	return request
-		? { ...request, toolCallId: event.toolCallId, cwd: ctx.cwd, ...(event.parentToolCallId ? { nested: true } : {}) }
+		? {
+				...request,
+				...(request.purpose === undefined ? reasonPurpose(event) : {}),
+				toolCallId: event.toolCallId,
+				cwd: ctx.cwd,
+				...(event.parentToolCallId ? { nested: true } : {}),
+			}
 		: undefined;
 }
 
@@ -59,9 +61,15 @@ function classOf(
 	tool: string,
 	input: Record<string, unknown>,
 	cwd: string,
-	annotations: (toolName: string) => ToolAnnotations | undefined,
 	forceDestructive: boolean,
 ): PermissionRequest | undefined {
+	if (tool === "graphBuild")
+		return {
+			action: "file.workspace",
+			title: "Build a workspace graph snapshot?",
+			what: [args(input), `Storage: ${path.join(cwd, ".octocode", "graph")}`],
+			grant: { key: "graphBuild", label: "derived graph snapshots in this workspace" },
+		};
 	const inRepo = (raw: string) => {
 		const file = canonicalPath(resolveToolPath(cwd, raw));
 		const root = workspaceRoot(cwd);
@@ -153,29 +161,10 @@ function classOf(
 			grant: { key: `page ${action}`, label: `browser ${action} on any page` },
 		};
 	}
-	if (isMcpTool(tool)) {
-		const hint = annotations(tool);
-		if (readOnlyMcp(hint)) {
-			// Octocode MCP may read the Octocode home; a session folder there that is not this session's or its repository's
-			// (another repository's, or all of them) asks like Octocode's read.
-			const foreign = mcpPaths(input)
-				.map((raw) => canonicalPath(resolveToolPath(cwd, raw)))
-				.find((file) => isWithin(file, canonicalPath(sessionsRoot())) && !readableSessionFolder(file, cwd));
-			return foreign
-				? {
-						action: "read.outside",
-						title: "Read another repository's session history?",
-						what: [tool, args(input)],
-						grant: dirGrant(foreign, "reads"),
-					}
-				: undefined;
-		}
-		// Only an explicit `destructiveHint: true` is destructive (asks each time, in workspace too). MCP's own default calls an
-		// unannotated tool destructive; treating it so would ask on every call with no session grant (FEATURES: known limits).
-		const marked = hint?.destructiveHint === true;
+	if (isMcpToolName(tool)) {
 		return {
-			action: marked ? "mcp.destructive" : "mcp.write",
-			title: marked ? "Run this destructive MCP tool?" : "Run this MCP tool?",
+			action: "mcp.write",
+			title: "Run this MCP tool?",
 			what: [tool, args(input)],
 			grant: { key: tool, label: tool },
 		};

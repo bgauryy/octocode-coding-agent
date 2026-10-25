@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
@@ -8,6 +9,7 @@ import { formatProviderError, normalizeProviderError } from "../utils/error-body
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { hasProviderHeader, providerHeadersToRecord } from "../utils/headers.ts";
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } from "./azure-openai-config.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
@@ -29,6 +31,8 @@ function formatAzureOpenAIError(error: unknown): string {
 
 // Azure OpenAI Responses-specific options
 export interface AzureOpenAIResponsesOptions extends AzureEndpointOptions {
+	/** Refreshable Entra token provider, e.g. Azure Identity's getBearerTokenProvider. */
+	azureADTokenProvider?: () => Promise<string>;
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	toolChoice?: ResponseCreateParamsStreaming["tool_choice"];
 	reasoningSummary?: "auto" | "detailed" | "concise" | null;
@@ -54,7 +58,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 		try {
 			// Create Azure OpenAI client
 			const apiKey = options?.apiKey;
-			if (!apiKey) {
+			if (!apiKey && !options?.azureADTokenProvider && !hasProviderHeader(options?.headers, "authorization")) {
 				throw new Error(`No API key for provider: ${model.provider}`);
 			}
 			const client = createClient(model, apiKey, options);
@@ -67,6 +71,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
+			assertImageRequestPayload(model, params);
 			const openaiStream = await requestOpenAISdkStream(model, options, (requestOptions) =>
 				client.responses.create(params, requestOptions),
 			);
@@ -99,7 +104,7 @@ export const streamSimple: StreamFunction<"azure-openai-responses", SimpleStream
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
 	const apiKey = options?.apiKey;
-	if (!apiKey) {
+	if (!apiKey && !hasProviderHeader(options?.headers, "authorization")) {
 		throw new Error(`No API key for provider: ${model.provider}`);
 	}
 
@@ -116,7 +121,11 @@ export const streamSimple: StreamFunction<"azure-openai-responses", SimpleStream
 	} satisfies AzureOpenAIResponsesOptions);
 };
 
-function createClient(model: Model<"azure-openai-responses">, apiKey: string, options?: AzureOpenAIResponsesOptions) {
+function createClient(
+	model: Model<"azure-openai-responses">,
+	apiKey: string | undefined,
+	options?: AzureOpenAIResponsesOptions,
+) {
 	const headers = { "User-Agent": getPiUserAgent(), ...model.headers };
 
 	if (options?.headers) {
@@ -124,9 +133,15 @@ function createClient(model: Model<"azure-openai-responses">, apiKey: string, op
 	}
 
 	const { baseUrl, apiVersion } = resolveAzureConfig(model, options);
+	const authorization = Object.entries(providerHeadersToRecord(headers) ?? {}).find(
+		([name]) => name.toLowerCase() === "authorization",
+	)?.[1];
+	const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? "")?.[1];
+	const tokenProvider = options?.azureADTokenProvider ?? (!apiKey && bearer ? async () => bearer : undefined);
 
 	return new AzureOpenAI({
-		apiKey,
+		// Empty explicitly prevents the SDK from loading an ambient API key alongside Entra.
+		...(tokenProvider ? { apiKey: "", azureADTokenProvider: tokenProvider } : { apiKey }),
 		apiVersion,
 		dangerouslyAllowBrowser: true,
 		fetch: options?.fetch,

@@ -149,8 +149,15 @@ const activityState = {
 	activityBefore: Type.Optional(Type.String()),
 	hasMoreActivities: Type.Optional(Type.Boolean()),
 };
+const ApplicationModelSchema = Type.Object({
+	provider: Type.String(),
+	id: Type.String(),
+	name: Type.String(),
+	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
+});
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
+	Type.Object({ type: Type.Literal("session.model"), model: Type.Optional(ApplicationModelSchema) }),
 	Type.Object({ type: Type.Literal("session.activity"), activity: ApplicationActivitySchema }),
 	Type.Object({
 		type: Type.Literal("session.reset"),
@@ -211,6 +218,7 @@ export const ApplicationCursorSchema = Type.Object({
 });
 export const ApplicationSnapshotSchema = Type.Object({
 	...activityState,
+	model: Type.Optional(ApplicationModelSchema),
 	errors: Type.Optional(Type.Array(ApplicationErrorSchema)),
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),

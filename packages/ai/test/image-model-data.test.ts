@@ -44,6 +44,18 @@ const decisionModel: OpenRouterModelListItem = {
 };
 
 describe("OpenRouter catalog parsing", () => {
+	it.each([
+		[{ input_modalities: ["text", "image"], output_modalities: ["text"] }, true],
+		[{ modality: "text->text+image", input_modalities: ["text"] }, false],
+		[{ modality: "text+image->text", input_modalities: ["text"] }, false],
+		[{ modality: "text+image->text" }, true],
+		[{ modality: "text->image" }, false],
+		[{}, false],
+	])("uses input modalities for chat image support: %j", (architecture, supportsImages) => {
+		const catalog = buildOpenRouterCatalog([{ ...chatOnly, architecture }], [], []);
+		expect(catalog.chat[0].input.includes("image")).toBe(supportsImages);
+	});
+
 	it("emits image-only models from the image listing as image models", () => {
 		const catalog = buildOpenRouterCatalog([], [imageOnly], []);
 		expect(catalog.chat).toEqual([]);

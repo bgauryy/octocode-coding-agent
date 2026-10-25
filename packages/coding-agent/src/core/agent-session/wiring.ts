@@ -136,6 +136,7 @@ export function createSessionCollaborators(
 		...base,
 		tools,
 		models,
+		inputs,
 		defaultToolModifiers,
 		recordAbortReason: (reason) => runLoop.recordAbortReason(reason),
 		executeNestedToolCall: (...args) => toolCalls.executeNested(...args),

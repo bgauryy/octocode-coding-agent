@@ -55,10 +55,13 @@ export function registerDebugTool(pi: ExtensionAPI): void {
 			{
 				name: "debug",
 				label: "Debugger",
-				defaultActive: false,
+				defaultActive: true,
 				description:
 					"Control one explicitly configured local DAP stdio adapter. Launch can execute and mutate repository code and requires permission. Launch with adapter executable, adapterArgs, launch arguments and optional source breakpoints; then use output, stack, scopes, variables, continue, next, stepIn, stepOut, breakpoints or terminate. All inspection and stepping calls require the current stop generation; frame and variable IDs expire on resume. Attach, evaluate, custom requests, runInTerminal and writes are unsupported.",
 				promptSnippet: "Inspect stopped runtime state through an optional DAP adapter",
+				promptGuidelines: [
+					"Use debug when a failing test or runtime behavior needs stopped-state inspection that logs and bash output cannot give.",
+				],
 				parameters: Type.Object({
 					action: Type.Union([
 						Type.Literal("launch"),

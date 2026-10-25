@@ -16,6 +16,16 @@ const OPENROUTER_ALIBABA_EXPLICIT_CACHE_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Kimi and Moonshot model ids (OpenRouter `moonshotai/kimi-*` slugs, relayed ids like `kimi-k3`) reach Moonshot's
+ * upstream inference and its strict tool-schema validation even when the provider in front of them is a gateway,
+ * so their tool parameters take the moonshot flavor regardless of provider or baseUrl. Only the schema flavor is
+ * affected: the gateway's own request format still wins for everything else.
+ */
+function isMoonshotModelId(modelId: string): boolean {
+	return /(?:^|[/\-_.])kimi/i.test(modelId) || /(?:^|[/\-_.])moonshot/i.test(modelId);
+}
+
+/**
  * Auto-detect compatibility settings from provider name and baseUrl.
  * Used as the base when model.compat is not set; explicit model.compat
  * entries override these detected values.
@@ -31,7 +41,12 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		baseUrl.includes("open.bigmodel.cn");
 	const isTogether =
 		provider === "together" || baseUrl.includes("api.together.ai") || baseUrl.includes("api.together.xyz");
-	const isMoonshot = provider === "moonshotai" || provider === "moonshotai-cn" || baseUrl.includes("api.moonshot.");
+	const isMoonshot =
+		provider === "moonshotai" ||
+		provider === "moonshotai-cn" ||
+		provider === "kimi-coding" ||
+		baseUrl.includes("api.moonshot.") ||
+		baseUrl.includes("api.kimi.com");
 	const isOpenRouter = provider === "openrouter" || baseUrl.includes("openrouter.ai");
 	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
 	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
@@ -123,6 +138,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 			isNvidia ||
 			isAntLing
 		),
+		toolSchemaFlavor: isMoonshot || isMoonshotModelId(model.id) ? "moonshot" : undefined,
 	};
 }
 
@@ -165,6 +181,8 @@ export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICom
 		sessionAffinityFormat: model.compat.sessionAffinityFormat ?? detected.sessionAffinityFormat,
 		supportsLongCacheRetention: model.compat.supportsLongCacheRetention ?? detected.supportsLongCacheRetention,
 		vllmPriority: model.compat.vllmPriority,
+		// "standard" is an explicit opt-out: it is truthy, so it overrides any auto-detected "moonshot".
+		toolSchemaFlavor: model.compat.toolSchemaFlavor ?? detected.toolSchemaFlavor,
 		reasoningReplayField: detected.reasoningReplayField,
 	};
 }

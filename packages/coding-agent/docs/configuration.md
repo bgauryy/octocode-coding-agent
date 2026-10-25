@@ -15,6 +15,30 @@ the core configuration directory. Project configuration remains in `.octocode/`.
 Place provider configuration in `models.json` within that directory.
 See [models](models.md) and [environment variables](environment-variables.md).
 
+## Built-in features
+
+`octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp`, `builtin:tool-search`, and `builtin:llama.cpp`; for example, `-builtin:mcp` in the `extensions` setting disables the built-in MCP host. Global and trusted workspace resource selection still use the normal settings precedence.
+
+SDK hosts can supply a named built-in factory to replace its default implementation, or set `nativeFeatures: false` to omit the defaults. Explicit factories still load in that mode, including the public `createToolSearchExtension()` factory. See the [SDK reference](sdk.md) and [native feature guide](native-features.md) for tool selection and third-party extension behavior.
+
+## Terminal images
+
+Inline image display is enabled by default when the terminal supports it. `/settings` exposes **Show images** and **Image width** when graphics support is available. These settings affect terminal display; model image-input support is configured separately in [models](models.md#describe-model-input-and-caching).
+
+```json
+{
+  "terminal": {
+    "showImages": true,
+    "images": "auto",
+    "imageWidthCells": 60
+  }
+}
+```
+
+Automatic detection recognizes Kitty, including `TERM=xterm-kitty`, and checks interactive terminals with a graphics query during startup. Confirmed support repaints existing attachments as images. A negative reply falls back to text; a terminal that sends no replies retains the environment-based choice. Input remains available while detection runs.
+
+Set `terminal.images` to `"kitty"` or `"iterm2"` to force a known protocol, or `false` to disable graphics. Explicit settings take precedence over the `OCTOCODE_IMAGE_PROTOCOL` environment override, which accepts `kitty`, `iterm2`, `none`, or `auto`. Automatic detection leaves images off inside tmux/screen and Rex. iTerm2 inline images work in regular mode; fullscreen mode uses text placeholders. See the [TUI image reference](../../tui/README.md#image-capability-detection) for protocol and renderer details.
+
 ## Runtime storage
 
 Interface-visible runtime state uses a session-scoped Zustand vanilla store in the application core. It is not persisted by Zustand. Session transcripts remain JSONL files; native session metadata, backlogs and history, memories, team coordination, and command receipts use the agent SQLite database. Settings, credentials, checkpoints, and output files retain their existing file owners.

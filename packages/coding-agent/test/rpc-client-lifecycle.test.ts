@@ -113,6 +113,31 @@ process.stderr.write("a".repeat(100000) + "END", () => reply(command, {}));
 		expect(forwarded.join("")).toHaveLength(100_003);
 	});
 
+	it("keeps private startup identity frames out of public events and preserves extension errors", async () => {
+		const identity = vi.fn();
+		const event = vi.fn();
+		const entry = fixture(`output({type:"rpc_session_identity",sessionId:7});
+output({type:"rpc_session_identity",sessionId:"canonical-id"});
+output({type:"extension_error",extensionPath:"command:test",event:"command",error:"refused"});
+process.stdin.resume();`);
+		const instance = new RpcClient({
+			invocation: { command: process.execPath, args: [entry] },
+			onSessionIdentity: identity,
+		});
+		clients.push(instance);
+		instance.onEvent(event);
+		await instance.start();
+		// start() waits a fixed 100ms, which a loaded machine can spend before the child writes; wait for its last frame.
+		await vi.waitFor(() => expect(event).toHaveBeenCalled(), { timeout: 10_000 });
+		expect(identity).toHaveBeenCalledExactlyOnceWith("canonical-id");
+		expect(event).toHaveBeenCalledExactlyOnceWith({
+			type: "extension_error",
+			extensionPath: "command:test",
+			event: "command",
+			error: "refused",
+		});
+	});
+
 	it("reports a spawn failure once and can stop a process that never obtained a PID", async () => {
 		const instance = new RpcClient({ invocation: { command: "/missing-octocode-rpc-executable", args: [] } });
 		clients.push(instance);

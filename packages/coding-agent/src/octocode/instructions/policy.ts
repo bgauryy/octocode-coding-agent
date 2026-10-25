@@ -34,10 +34,51 @@ interface PromptInputs {
 	canWeb?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
 	canMcp?: boolean;
-	/** The Octocode MCP server's own instructions, verbatim, once it has connected (Octocode puts a direct tool's namespace instructions in no prompt). */
-	octocodeInstructions?: string;
-	/** Short names of the Octocode tools `tool_search` loads (deferred), loaded or not, sorted. */
-	octocodeDeferredTools?: string[];
+	/** Short names of every reachable Octocode tool (declared or deferred), sorted: research workflows name only these. */
+	octocodeTools?: string[];
+}
+
+/**
+ * Question-to-tool workflows over the Octocode tools this agent can reach. A line appears only when its tools are present,
+ * so a profile without GitHub tools, or a server that renamed a tool, never gets a pointer to a tool it cannot call.
+ * Parameter mechanics stay in the server's tool descriptions; these lines say which tool answers which question.
+ */
+function octocodeWorkflows(tools: readonly string[]): string[] {
+	const has = new Set(tools);
+	const named = (...names: string[]) => names.filter((name) => has.has(name)).map((name) => `\`${name}\``);
+	const lines: string[] = [];
+	const locate = [
+		...(has.has("structureSearch") ? ["`structureSearch` for layout"] : []),
+		...(has.has("localSearch")
+			? ["`localSearch` with `matchString` for text (literal unless `regexEngine` is set)"]
+			: []),
+	];
+	if (locate.length > 0)
+		lines.push(
+			`  - Unknown location: ${locate.join(", ")}${has.has("localFetch") ? ", then `localFetch` on the hit lines" : ""}.`,
+		);
+	if (has.has("astSearch"))
+		lines.push("  - Code shape (calls, declarations or patterns, whatever the formatting): `astSearch`.");
+	if (has.has("lspSearch"))
+		lines.push(
+			"  - Definitions, references, callers or impact: `lspSearch` anchored at the path, name and line a search returned; a text match is not a reference.",
+		);
+	const github = [
+		...(named("ghSearchRepo", "ghSearchCode").length > 0
+			? [`${named("ghSearchRepo", "ghSearchCode").join(" or ")} to locate`]
+			: []),
+		...(has.has("ghStructure") ? ["`ghStructure` to browse"] : []),
+		...(has.has("ghGetFileContent") ? ["`ghGetFileContent` at the returned commitSha"] : []),
+		...(named("ghSearchHistory", "ghGetHistoryItem").length > 0
+			? [`${named("ghSearchHistory", "ghGetHistoryItem").join(", then ")} for when and why code changed`]
+			: []),
+	];
+	if (github.length > 0) lines.push(`  - GitHub: ${github.join("; ")}.`);
+	if (has.has("artifactSearch"))
+		lines.push(
+			"  - Packages (npm, PyPI, crates and other registries): `artifactSearch` for the release and its repository, then read that source at the release ref.",
+		);
+	return lines.length > 0 ? ["- Choose the Octocode tool by the question and chain them:", ...lines] : [];
 }
 
 const OUTCOMES = `${REPORT_STATUSES.slice(0, -1).join(", ")} or ${REPORT_STATUSES.at(-1)}`;
@@ -55,7 +96,14 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 				// The server's instructions own search-then-read order and paging; the `web` guideline owns web precedence.
 				"- Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it, here or outside this repository:",
 				"  - Here: where something is defined or used, who calls it; trace flows, impact and failures. Use it instead of ls, rg, grep or find in bash; this overrides the general rule to use bash for them.",
-				"  - Outside: how a dependency or library behaves, which API or version a package has, an upstream issue, PR, commit or release, or other implementations. Use it instead of answering from memory.",
+				// A known tool list without GitHub or registry tools (the browser specialist) has no outside research to offer.
+				...(input.octocodeTools?.length &&
+				!input.octocodeTools.some((name) => name.startsWith("gh") || name === "artifactSearch")
+					? []
+					: [
+							"  - Outside: GitHub repositories, code and history, and package registries (npm, PyPI and others): how a dependency or library behaves, which API or version a package has, an upstream issue, PR, commit or release, or other implementations. Use it instead of answering from memory.",
+						]),
+				...octocodeWorkflows(input.octocodeTools ?? []),
 				`- Use \`localFetch\` for ${readOnly ? "files you know" : "a file you will edit"}.${shell && !readOnly ? " Use bash for builds, tests, git and running commands." : ""} If an Octocode tool is unavailable, say so${shell ? " and use permitted bash search (`rg`, `fd`, `sed -n`)" : ""}. A permission refusal is not a reason to retry through another tool.`,
 			]
 		: [
@@ -68,24 +116,6 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 						? "- Use the `gh` CLI in bash when available for GitHub lookups."
 						: "- If the supplied evidence is insufficient and no lookup tool is available, report the missing evidence.",
 			];
-	// The server's text, whole: how its tools combine, page and continue is the server's to say.
-	const serverInstructions =
-		input.octocode && input.octocodeInstructions
-			? [
-					"",
-					"# Using Octocode MCP tools",
-					"These instructions govern code research, not writing from supplied facts.",
-					input.octocodeInstructions,
-				]
-			: [];
-	// The `mcp_servers` section leaves the octocode server out; this names its tools that are not declared up front.
-	const deferred =
-		input.octocode && input.octocodeDeferredTools?.length
-			? [
-					`- Load these Octocode tools with \`tool_search\` before the first call: ${input.octocodeDeferredTools.join(", ")}.`,
-				]
-			: [];
-
 	// The askUser tool description says when to ask; Safety owns the destructive-action rule.
 	const delegation = input.canDelegate
 		? [
@@ -112,7 +142,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			]
 		: [
 				"# Subagent",
-				"- You are a subagent; your task names your role, goal, parent, teammates and scratch folder. Finish it yourself; load any named skill first.",
+				"- You are a subagent; your task names your role, goal, parent, teammates and scratch folder. Finish it yourself.",
 				`- Your final answer is your report and reaches your parent by itself. Start it with one word, ${OUTCOMES}, then the result, verification and open questions. For partial or blocked work, include current state, evidence, blockers and the next action. Your parent keeps the first ${REPORT_MAX_BYTES / 1024} KB and gets the path of the whole report in your scratch folder.`,
 				...(!canSave
 					? []
@@ -150,31 +180,33 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	return {
 		octocode_work: [
 			"# Work and verification",
+			// One rule for the main session and subagents; the `skills` section lists them and the `skill` tool description owns loading.
+			"- Before starting a task, when a listed skill's description matches it or the task names one, load that skill first and follow it.",
 			// One rule for research scope: supplied facts are not re-researched; the code you change or rely on, and what the
 			// user asks to verify, is. The Research section below owns which tool does the checking.
-			`- Use the facts the user supplied and relevant skills; do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.${input.canDelegate ? " Give a delegate the same scope." : ""}`,
+			`- Treat facts the user supplied and relevant skill instructions as given; do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.${input.canDelegate ? " Give a delegate the same scope." : ""}`,
 			// The loader preloads AGENTS.md/CLAUDE.md only from the working directory and its ancestors (`resource-loader/context-files.ts`).
 			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; apply deeper instructions within their directory.",
 			readOnly
 				? "- For code questions: read affected code and callers before concluding; run the deciding check when a read-only one exists."
 				: "- For code changes: read affected code and callers before editing; after editing, run the deciding check (focused test, typecheck or reproduction).",
-			"- When testing, prefer observable behavior and public contracts over implementation details. Mock external boundaries; keep internal flows real where feasible. Use focused unit tests when useful; preserve coverage.",
+			"- When writing or reviewing tests, prefer observable behavior and public contracts over implementation details. Mock external boundaries; keep internal flows real where feasible. Use focused unit tests when useful; preserve coverage.",
 			...changing,
 			...checks,
-			`- Hypothesis test: compare the likely cause with its strongest rival; test before retrying. ${readOnly ? "Name causes" : "Fix causes"}; report blockers without suppressing errors.`,
+			// Roles name this protocol ("run a hypothesis test"); it is defined only here.
+			`- When a failure is unexplained, run a hypothesis test: compare the likely cause with its strongest rival; test before retrying. ${readOnly ? "Name causes" : "Fix causes"}; report blockers without suppressing errors.`,
 			`- Run independent calls together and dependent ones in sequence.${shell ? " For repeated mechanical work, write one short script instead of many calls." : ""}`,
-			`- ${readOnly ? "Label" : "Prefer reversible changes; label"} facts, assumptions and unknowns.`,
+			`- ${readOnly ? "" : "Prefer reversible changes. "}In your ${input.canDelegate ? "answer" : "report"}, label facts, assumptions and unknowns.`,
 			input.canDelegate
 				? "- Work until the request is done and checked, or you are blocked."
 				: "- Work until the Definition of Done or a blocker.",
 		].join("\n"),
 		octocode_research: [
 			"# Context and research",
-			"- Before a handoff or compaction, preserve the goal, constraints, decisions and exact recovery identifiers. Fetch evidence needed for the next decision; keep large results behind paths or cursors, and state truncation or coverage gaps. Cached input still occupies the context window.",
+			"- Before a handoff or compaction, write the goal, open decisions and exact recovery identifiers (paths, ids, cursors) into the handoff message or a scratch file the receiver can read.",
+			"- Fetch only the evidence the next decision needs; cached input still fills the context window. Keep large results behind paths or cursors and state truncation or coverage gaps.",
 			...research,
-			...deferred,
 		].join("\n"),
-		octocode_mcp: serverInstructions.join("\n").trim(),
 		octocode_delegation: (input.canDelegate && input.canUseAgent === false ? [] : delegation).join("\n"),
 		octocode_safety: [
 			"# Safety",

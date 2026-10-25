@@ -50,7 +50,13 @@ function setup(
 		tell,
 		stop,
 	});
-	const backlog = { store, actor: { id: session.sessionId }, session: session.sessionId, repoName: "repo" };
+	const backlog = {
+		store,
+		actor: { id: session.sessionId },
+		session: session.sessionId,
+		repoName: "repo",
+		repoRoot: dir,
+	};
 	const connection = runtime.bind(ctx, backlog);
 	const item = store.add({ title: "Fix login", goal: "Tests pass", reason: "Users are blocked", createdBy: "user" });
 	const command = { id: "work-1", action: "work" as const, backlogId: item.ref, version: item.version };

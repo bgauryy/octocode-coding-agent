@@ -1,5 +1,6 @@
 import http from "node:http";
 import net from "node:net";
+import { constants } from "node:os";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { type ApiEvent, CLIENT_MARGIN_MS, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
@@ -7,6 +8,14 @@ import type { InstanceRecord } from "./registry.ts";
 
 /** A call refused before any byte left this process: it can be retried unchanged once its cause is fixed. */
 const notSent = (message: string): Error => Object.assign(new Error(message), { execution: "not-sent" });
+
+function socketError(error: Error): Error {
+	const code =
+		isRecord(error) && typeof error.code === "string" && Object.hasOwn(constants.errno, error.code)
+			? ` (${error.code})`
+			: "";
+	return new Error(`API socket transport failed${code}`);
+}
 
 /** A failed call, carrying the JSON-RPC code. */
 export class ApiCallError extends Error {
@@ -17,6 +26,15 @@ export class ApiCallError extends Error {
 		this.code = code;
 		this.data = data;
 	}
+}
+
+function rpcError(value: unknown, token?: string): ApiCallError {
+	if (!isRecord(value) || !Number.isInteger(value.code) || typeof value.message !== "string")
+		throw new Error("Invalid API error response");
+	const safe = token
+		? (JSON.parse(JSON.stringify(value).replaceAll(token, "[redacted]")) as Record<string, unknown>)
+		: value;
+	return new ApiCallError(safe.message as string, safe.code as number, safe.data);
 }
 
 /** A `tool.start`/`tool.end` for a call another tool made (it carries `parentId`). */
@@ -58,16 +76,7 @@ export class ApiClient {
 		const result = Object.hasOwn(response, "result");
 		const failed = Object.hasOwn(response, "error");
 		if (result === failed) throw new Error("Invalid API response envelope");
-		if (failed) {
-			const error = response.error;
-			if (!isRecord(error) || !Number.isInteger(error.code) || typeof error.message !== "string")
-				throw new Error("Invalid API error response");
-			const token = this.instance.http?.token;
-			const safe = token
-				? (JSON.parse(JSON.stringify(error).replaceAll(token, "[redacted]")) as Record<string, unknown>)
-				: error;
-			throw new ApiCallError(safe.message as string, safe.code as number, safe.data);
-		}
+		if (failed) throw rpcError(response.error, this.instance.http?.token);
 		return response.result as T;
 	}
 
@@ -91,7 +100,7 @@ export class ApiClient {
 				options.timeoutMs,
 			);
 			socket.setEncoding("utf8");
-			socket.once("error", () => finish(new Error("API socket transport failed")));
+			socket.once("error", (error) => finish(socketError(error)));
 			socket.once("close", () => finish(new Error("API socket closed before its response")));
 			options.signal?.addEventListener("abort", abort, { once: true });
 			if (options.signal?.aborted) return abort();
@@ -206,14 +215,30 @@ export class ApiClient {
 		await new Promise<void>((resolve, reject) => {
 			const socket = net.connect(file);
 			let buffer = "";
-			socket.setEncoding("utf8");
-			socket.once("error", reject);
-			const abort = () => socket.destroy();
-			socket.on("close", () => {
+			let subscribed = false;
+			let finished = false;
+			const finish = (error?: unknown): void => {
+				if (finished) return;
+				finished = true;
 				options.signal?.removeEventListener("abort", abort);
-				resolve();
+				socket.destroy();
+				if (error) reject(error);
+				else resolve();
+			};
+			socket.setEncoding("utf8");
+			socket.once("error", (error) => finish(socketError(error)));
+			const abort = () => finish();
+			socket.on("close", () => {
+				finish(
+					!subscribed
+						? new Error("API socket closed before its subscription response")
+						: buffer.length
+							? new Error("API event stream ended with an incomplete frame")
+							: undefined,
+				);
 			});
 			options.signal?.addEventListener("abort", abort, { once: true });
+			if (options.signal?.aborted) return abort();
 			socket.on("connect", () => {
 				const { since, types } = options;
 				socket.write(
@@ -221,28 +246,67 @@ export class ApiClient {
 				);
 			});
 			socket.on("data", (chunk: string) => {
+				if (finished) return;
 				buffer += chunk;
-				if (buffer.length > MAX_FRAME_BYTES * 4) return void socket.destroy();
 				while (buffer.includes("\n")) {
 					const newline = buffer.indexOf("\n");
 					const line = buffer.slice(0, newline);
 					buffer = buffer.slice(newline + 1);
 					try {
-						const message = JSON.parse(line) as {
-							id?: unknown;
-							method?: string;
-							params?: ApiEvent;
-							result?: { seq: number; gap: boolean };
-						};
-						if (message.method === "event" && message.params) {
-							if (!(options.topLevel && isNestedToolEvent(message.params))) onEvent(message.params);
-						} else if (message.id === 1 && message.result) options.onSubscribed?.(message.result);
+						if (Buffer.byteLength(line, "utf8") > MAX_FRAME_BYTES)
+							throw new Error("API event frame exceeds the byte limit");
+						let message: unknown;
+						try {
+							message = JSON.parse(line);
+						} catch {
+							throw new Error("Invalid API event JSON");
+						}
+						if (!isRecord(message) || message.jsonrpc !== "2.0") throw new Error("Invalid API event frame");
+						if (message.method === "event") {
+							const event = message.params;
+							if (
+								Object.hasOwn(message, "id") ||
+								Object.hasOwn(message, "result") ||
+								Object.hasOwn(message, "error") ||
+								!isRecord(event) ||
+								!Number.isSafeInteger(event.seq) ||
+								typeof event.seq !== "number" ||
+								event.seq < 1 ||
+								typeof event.at !== "number" ||
+								!Number.isFinite(event.at) ||
+								typeof event.type !== "string" ||
+								!event.type ||
+								!isRecord(event.data)
+							)
+								throw new Error("Invalid API event notification");
+							const update: ApiEvent = { seq: event.seq, at: event.at, type: event.type, data: event.data };
+							if (!(options.topLevel && isNestedToolEvent(update))) onEvent(update);
+						} else {
+							if (message.id !== 1 || subscribed || Object.hasOwn(message, "method"))
+								throw new Error("Invalid API subscription response identity");
+							if (Object.hasOwn(message, "result") === Object.hasOwn(message, "error"))
+								throw new Error("Invalid API subscription response envelope");
+							if (Object.hasOwn(message, "error")) throw rpcError(message.error, this.instance.http?.token);
+							const result = message.result;
+							if (
+								!isRecord(result) ||
+								typeof result.seq !== "number" ||
+								!Number.isSafeInteger(result.seq) ||
+								result.seq < 0 ||
+								typeof result.gap !== "boolean"
+							)
+								throw new Error("Invalid API subscription result");
+							subscribed = true;
+							options.onSubscribed?.({ seq: result.seq, gap: result.gap });
+						}
+						if (finished) return;
 					} catch (error) {
-						socket.destroy();
-						reject(error);
+						finish(error);
 						return;
 					}
 				}
+				if (Buffer.byteLength(buffer, "utf8") > MAX_FRAME_BYTES)
+					finish(new Error("API event frame exceeds the byte limit"));
 			});
 		});
 	}

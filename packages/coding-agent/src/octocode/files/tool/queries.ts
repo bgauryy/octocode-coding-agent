@@ -1,12 +1,13 @@
 import { type Static, Type } from "typebox";
 import type { ExtensionToolContext } from "../../../core/extensions/index.ts";
+import { isRecord } from "../../../utils/guards.ts";
 import { elisionMarkers, escapeRegExp } from "../../shared/util.ts";
 import type { QueryOutcome } from "../render.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 
 const QuerySchema = Type.Object({
-	reasoning: Type.String({ description: "Why this change is needed" }),
+	reason: Type.String({ description: "Why this change is needed" }),
 	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
 	type: Type.Unsafe<"edit" | "write" | "delete">({
 		type: "string",
@@ -49,9 +50,25 @@ export const Params = Type.Object({
 			description: "Codex apply_patch text; use instead of queries",
 		}),
 	),
-	reasoning: Type.Optional(Type.String({ description: "Why this patch is needed" })),
+	reason: Type.Optional(Type.String({ description: "Why this patch is needed" })),
 });
 export type FileQuery = Static<typeof QuerySchema>;
+
+/** `reason` replaced `reasoning`; a call recorded with the old name (a resumed session) still validates. */
+const aliased = <T extends Record<string, unknown>>(value: T): T => {
+	if (!("reasoning" in value)) return value;
+	const { reasoning, ...rest } = value;
+	return { ...rest, reason: rest.reason ?? reasoning } as unknown as T;
+};
+
+/** The call's arguments with `reasoning` (top level and per query) read as `reason`. */
+export function renameReasoning(args: unknown): Static<typeof Params> {
+	if (!isRecord(args)) return args as Static<typeof Params>;
+	const renamed = aliased(args);
+	if (!Array.isArray(renamed.queries)) return renamed;
+	const queries = renamed.queries.map((query) => (isRecord(query) ? aliased(query) : query));
+	return { ...renamed, queries };
+}
 
 export interface PreparedChange {
 	query: FileQuery;
@@ -66,11 +83,11 @@ export interface FileReplacementOwner {
 	committed?(id: string, input: Record<string, unknown>): void;
 }
 
-/** The batch's `purpose`: what its changes' `reasoning` fields say, in order; none when they say nothing (the assistant's message then stands in). */
-export function changePurpose(queries: readonly Pick<FileQuery, "reasoning">[]): {
+/** The batch's `purpose`: what its changes' `reason` fields say, in order; none when they say nothing (the assistant's message then stands in). */
+export function changePurpose(queries: readonly Pick<FileQuery, "reason">[]): {
 	purpose?: string;
 } {
-	const said = [...new Set(queries.map((query) => query.reasoning?.trim()).filter(Boolean))];
+	const said = [...new Set(queries.map((query) => query.reason?.trim()).filter(Boolean))];
 	return said.length > 0 ? { purpose: said.join("; ") } : {};
 }
 

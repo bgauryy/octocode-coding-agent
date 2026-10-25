@@ -1,0 +1,156 @@
+# Provider protocol and authentication audit
+
+Reviewed: **2026-10-25**. Result: **documented defects repaired; live interoperability and private vendor contracts remain unverified**. This is a source and protocol review, not certification of every account, model or optional feature.
+
+## Follow-up implementation, 2026-10-25
+
+The initial findings and verification counts below are retained as historical evidence. The follow-up addresses the identified implementation gaps:
+
+- Removed built-in Anthropic subscription OAuth registration in accordance with the linked vendor policy. Compatibility-only modules remain for existing consumers; unsupported stored subscription tokens do not indicate configured access.
+- Added saved ChatGPT account/client registrations, returning-login hints, verified account matching, shared loopback callback handling with port fallback, remote renewable-session revocation and local secret removal. Signed-out registrations remain reusable without counting as credentials. Refresh cannot resurrect a signed-out record.
+- Added account-specific ChatGPT model discovery, visibility/order/display-name handling and trusted-metadata filtering. Host catalog wrappers preserve provider refresh hooks.
+- Updated MiniMax China to `api.minimax.cn` in the provider and generator. Runtime normalization upgrades the historical built-in root in old hydrated/cached data while preserving custom endpoints.
+- Added explicit Azure Entra bearer authentication and a Responses SDK token-provider option, including suppression of ambient API keys when bearer auth is selected. Manually supplied Entra tokens still require external renewal.
+- Validated legacy Anthropic/Codex token payloads, removed raw authentication-response bodies from errors, bounded token requests, honored server expiry for Meta key minting, and corrected the Copilot slowdown regression expectation.
+- Added [vendor model discovery](../packages/coding-agent/docs/model-discovery.md), driven by a [41-provider source registry](../packages/ai/src/providers/discovery-sources.ts). Only verified list routes are requested; separate control-plane and subscription catalogs have explicit guidance. Unknown IDs require model metadata, not guessed prices or capabilities. Offline operation does not resolve credentials.
+
+Still open: vendor approval and interoperability for private Copilot/Meta and fixed subscription-client contracts; account/region entitlement and feature-level live inference checks; ambient metadata-only cloud availability without explicit chain/ADC configuration. A successful public model list does not establish account access. No paid inference, real sign-in or remote revocation was performed.
+
+## Scope and evidence
+
+Enumerated all **41 built-in provider registrations** from [providers/all.ts](../packages/ai/src/providers/all.ts), including their hydrated model endpoints, registered APIs, and authentication methods. Reviewed shared request adapters, OAuth modules, credential resolution and refresh locking, and host authentication consumers. Compared these with official provider documentation, official provider source where available, OpenID discovery, [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), and [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628.html).
+
+The table below is an endpoint/protocol/authentication review, not certification of every model or optional feature. Targeted deterministic tests exercise wire payloads, streaming, tool conversion, reasoning replay, cache metadata, errors, and authentication. No paid inference, real user login, remote revocation, or cloud instance identity was exercised. No real home configuration or credentials were changed. Existing checkout changes were preserved.
+
+## Repairs in this review
+
+| Defect | Repair | Regression evidence |
+| --- | --- | --- |
+| ChatGPT login accepted any nonempty ID token, without signature or nonce validation | Verify RS256 against OpenAI's published JWKS; validate issuer, audience, authorized party, expiry, optional not-before, nonce and subject. Retain the verified subject across refresh. Reject unsigned, tampered, unknown-key and invalid-claim tokens. | [Identity tests](../packages/ai/test/openai-id-token.test.ts) use real RSA signatures and mock only the remote JWKS response. |
+| An unrelated error callback could terminate ChatGPT login before state validation | Check state before accepting errors, accept only GET callbacks, and prevent callback-page caching. | [Login tests](../packages/ai/test/openai-chatgpt-oauth.test.ts); localhost execution blocked in this environment. |
+| ChatGPT login cleanup depended on a cooperative manual-input prompt | Race authorization against the operation signal; include notification/prompt setup inside cleanup; bound token/JWKS HTTP calls. Change the default registration name from Pi to Octocode. | Login cancellation regression added; callback tests blocked. Refresh and pre-login validation tests pass. |
+| Gemini discovery only recognized `GEMINI_API_KEY` | Accept `GOOGLE_API_KEY` first, then `GEMINI_API_KEY`, in both provider resolution and compatibility discovery. Stored keys retain precedence. | [Provider credential tests](../packages/ai/test/provider-auth-conformance.test.ts); [Google documentation](https://ai.google.dev/gemini-api/docs/api-key). |
+| Meta's Model API documentation uses `MODEL_API_KEY`, while discovery only recognized `META_API_KEY` | Add `MODEL_API_KEY` as a fallback; preserve the existing `META_API_KEY` preference. | Provider credential tests; [Meta API overview](https://dev.meta.ai/docs/overview) and [Muse auth](https://dev.meta.ai/docs/muse-code/auth). |
+| `slow_down` could reduce polling when the server supplied a smaller interval | Wait at least the previous interval plus five seconds, or the larger server minimum. | [Device polling tests](../packages/ai/test/oauth-device-code.test.ts), including a decreasing server interval. |
+| Bedrock's explicit credential-chain login saved an empty credential that resolution subsequently rejected | Delegate that explicit selection to the AWS SDK; recognize default/shared configuration files even without `AWS_PROFILE`. | Provider credential tests; [AWS default credential chain](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html). |
+| Explicit Vertex ADC login required a local credential file, excluding attached service accounts | Delegate explicitly selected ADC with project/location to the Google SDK even without a local file. | Provider credential tests; [Google ADC search order](https://docs.cloud.google.com/docs/authentication/application-default-credentials). |
+
+Implementation owners: [ChatGPT login](../packages/ai/src/auth/oauth/openai-chatgpt.ts), [ID token verification](../packages/ai/src/auth/oauth/openai-id-token.ts), [device polling](../packages/ai/src/auth/oauth/device-code.ts), and [provider definitions](../packages/ai/src/providers/all.ts). Availability checks indicate configuration, not a successful server authentication. Cloud SDK credential failures still surface at request time.
+
+## Initial findings (historical; see follow-up above)
+
+| Priority | Finding and evidence | Required follow-up |
+| --- | --- | --- |
+| High | Anthropic registers a Claude Pro/Max login using a Claude Code client ID and Claude Code identity headers. [Anthropic's policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use) explicitly disallows third-party applications offering Claude.ai login. | Resolve the product's supported authentication surface. Use API keys or supported cloud credentials; an unmodified external Claude Code integration is a separate architecture. No existing auth method was removed in this research change. |
+| High | ChatGPT login always starts with `dynamic_agent_client`; storage has one credential per provider, and logout deletes local credentials. [OpenAI's sign-in guidance](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) and [session guidance](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions) require registration/account reuse and session revocation. | Introduce account/client registration records, returning-login hints and verified account matching, and revoke renewable sessions before clearing their tokens. Preserve compatibility with existing auth files. |
+| High | The OpenAI provider uses the bundled catalog and only filters out classifiers for OAuth. It does not load the selected account's `/v1/models` catalog, including visibility/order/slugs. [OpenAI model discovery](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference). | Add credential-specific discovery without substituting API-key `/models` semantics or guessing unavailable model metadata. |
+| Medium | MiniMax China uses `https://api.minimaxi.com/anthropic`; [current Chinese documentation](https://platform.minimax.cn/docs/api-reference/text-anthropic-api) uses `https://api.minimax.cn/anthropic`. The old hostname's continued compatibility was not established. | Confirm the legacy alias with the vendor or a controlled live call, then update the provider and catalog generator together if needed. Do not assume that a documentation redirect proves an API redirect. |
+| Medium | Azure login only exposes an API key. [Microsoft documents API-key and Entra authentication](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle). | Add an explicit Entra token-provider path if required; do not present a short-lived bearer token as a permanently stored Azure API key. Existing API-key support is a supported subset. |
+| Medium | Ambient-only cloud detection remains incomplete: an EC2 role without explicit Bedrock login and metadata-only Vertex credentials without explicit ADC login have no reliable availability signal. | Separate configured/unknown availability from authenticated status, while keeping SDKs responsible for credential resolution. Do not probe metadata servers indiscriminately from model pickers. |
+| Medium | Copilot token exchange/model policy endpoints, Meta's key-mint endpoint and hardcoded one-day lifetime, and fixed subscription client IDs are not established as stable third-party contracts by the public docs reviewed. | Validate vendor contracts and token expiry/error behavior with controlled interoperability tests. Keep these distinct from documented API-key inference. |
+| Medium | Anthropic's token response parser relies on unchecked JSON casts. Its error paths can include complete response bodies. Legacy Codex response validation also accepts weaker field shapes than the new ChatGPT flow. | Validate token payloads before persistence and redact authentication response diagnostics; test malformed responses and retained credentials after transient refresh failures. |
+
+The shared [OAuth resolver](../packages/ai/src/auth/resolve.ts) already serializes refresh under the credential-store lock, rechecks expiration under that lock, and persists replacement tokens before release. Cancellation stops waiting without discarding an in-flight rotated refresh token. These are useful existing protections; they do not complete account management or remote logout.
+
+## Initial provider-by-provider review (historical)
+
+**Aligned** means the reviewed endpoint and authentication shape agree with the linked documentation, with no additional mismatch identified in this pass. **Partial** means a documented subset, an unverified contract, or a remaining finding. **Repaired** identifies a correction above. Every row still needs live account/model validation before a production compatibility claim.
+
+API abbreviations: **Chat** = OpenAI-compatible Chat Completions; **Responses** = OpenAI-compatible Responses; **Messages** = Anthropic-compatible Messages; **Gemini** = Google GenerateContent. Paths are API base URLs; adapters append operation paths. OAuth is offered only where listed.
+
+| Provider ID | Registered protocol and base | Login/authentication | Assessment and official reference |
+| --- | --- | --- | --- |
+| `amazon-bedrock` | ConverseStream; regional Bedrock runtime | Bearer token or AWS credential chain | Repaired explicit chain/shared-file discovery. [AWS](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html). |
+| `ant-ling` | Chat; `api.ant-ling.com/v1` | API token | Aligned. [API reference](https://developer.ant-ling.com/en/docs/api-reference/chat/openai/). |
+| `anthropic` | Messages; `api.anthropic.com` | API key, bearer, federation; subscription OAuth also registered | API surface aligned; subscription login has the high-priority finding above. [API](https://platform.claude.com/docs/en/api/overview), [policy](https://code.claude.com/docs/en/legal-and-compliance). |
+| `azure` | Responses and Chat; configured resource `/openai/v1` | Azure API key | Partial: Entra not offered. [Microsoft](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle). |
+| `baseten` | Chat; `inference.baseten.co/v1` | API key as bearer | Aligned. [Model APIs](https://docs.baseten.co/inference/model-apis/overview). |
+| `cerebras` | Chat; `api.cerebras.ai/v1` | API key as bearer | Aligned endpoint; model-specific compatibility remains separate. [Compatibility](https://inference-docs.cerebras.ai/resources/openai). |
+| `cloudflare-ai-gateway` | Messages, Chat, Responses; account/gateway-specific `/anthropic`, `/compat`, `/openai` | Gateway token; account and gateway configuration | Reviewed unified gateway shape; per-route/provider behavior remains partial. [Unified API](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/). |
+| `cloudflare-workers-ai` | Chat `/ai/v1`; native classifier `/ai` | Cloudflare token plus account ID | Chat aligned; classifier extension not independently established here. [Compatibility](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/). |
+| `deepseek` | Chat; `api.deepseek.com` | API key as bearer | Aligned; adapter retains assistant reasoning content. [Quickstart](https://api-docs.deepseek.com/). |
+| `fireworks` | Messages `/inference`; Chat `/inference/v1` | API key | Aligned catalog paths; the common provider root is not used as the Chat model path. [Compatibility](https://docs.fireworks.ai/tools-sdks/openai-compatibility). |
+| `github-copilot` | Messages, Chat, Responses; credential-derived Copilot endpoint | Copilot token or GitHub device OAuth | Partial: GitHub device grant documented; Copilot exchange/model-policy contract needs live verification. [GitHub](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps). |
+| `google` | Gemini; `generativelanguage.googleapis.com/v1beta` | API key | Repaired documented key aliases/precedence. [Google](https://ai.google.dev/gemini-api/docs/api-key). |
+| `google-vertex` | Gemini on Vertex; project/location-specific endpoint | Cloud API key or ADC | Repaired explicit ADC without a local file. [ADC](https://docs.cloud.google.com/docs/authentication/application-default-credentials). |
+| `groq` | Chat; `api.groq.com/openai/v1` | API key as bearer | Aligned supported subset; Responses is available upstream but not registered here. [Compatibility](https://console.groq.com/docs/openai). |
+| `huggingface` | Chat; `router.huggingface.co/v1` | HF inference token | Aligned; token needs inference-provider permissions. [Chat API](https://huggingface.co/docs/inference-providers/en/tasks/chat-completion). |
+| `kimi-coding` | Chat; `api.kimi.com/coding/v1` | API key or subscription device OAuth | Compared OAuth implementation with official source; live entitlement unverified. [Kimi source](https://github.com/MoonshotAI/kimi-cli/blob/main/src/kimi_cli/auth/oauth.py). |
+| `meta` | Responses; `api.meta.ai/v1` | API key or device OAuth plus key mint | Repaired Model API key alias; key-mint lifecycle partial. [API](https://dev.meta.ai/docs/overview), [auth](https://dev.meta.ai/docs/muse-code/auth). |
+| `minimax` | Messages; `api.minimax.io/anthropic` | API/subscription key | Endpoint aligned. Current docs describe model restrictions; historical catalog IDs need live checks. [MiniMax](https://platform.minimax.io/docs/api-reference/text-anthropic-api). |
+| `minimax-cn` | Messages; `api.minimaxi.com/anthropic` | China API/subscription key | Documentation drift: current docs name `api.minimax.cn`. [Chinese reference](https://platform.minimax.cn/docs/api-reference/text-anthropic-api). |
+| `mistral` | `mistral-conversations` adapter sends Chat `/v1/chat/completions`; `api.mistral.ai` | API key as bearer | Wire protocol aligned; internal API name does not mean Mistral's hosted Conversations service. [Chat reference](https://docs.mistral.ai/api/endpoint/chat). |
+| `moonshotai` | Chat; `api.moonshot.ai/v1` | API key as bearer | Aligned. [Global quickstart](https://platform.kimi.ai/docs/get-your-api-key). |
+| `moonshotai-cn` | Chat; `api.moonshot.cn/v1` | China API key as bearer | Aligned; account/region keys are separate. [China quickstart](https://platform.kimi.com/docs/get-api-key). |
+| `nvidia` | Chat; `integrate.api.nvidia.com/v1` | NVIDIA API key | Partial documentation extraction: catalog accessible, detailed example page not retrievable. [NVIDIA catalog](https://build.nvidia.com/). |
+| `openai` | Responses and Decisions; `api.openai.com/v1` | API key or ChatGPT OAuth; classifiers excluded for OAuth | Core identity validation repaired; account discovery/lifecycle incomplete. [Sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference). |
+| `openai-codex` | Legacy Codex Responses; `chatgpt.com/backend-api` | Browser PKCE or headless device login | Partial: legacy backend/client contract, distinct from public Responses. [Codex auth](https://developers.openai.com/codex/auth). |
+| `opencode` | Messages, Gemini, Chat, Responses, System One; `/inference/{family}` | Console API key | Reviewed family-specific endpoint mapping; classifier route not independently verified. [Inference API](https://opencode.ai/v2/docs/console/api/inference/). |
+| `opencode-go` | Messages, Gemini, Chat, Responses; `/inference/go/{family}` | OpenCode API key | Family mapping reviewed; per-plan/model entitlement unverified. [Go guide](https://opencode.ai/v2/docs/console/go/). |
+| `openrouter` | Messages `/api`; Chat, images, System One `/api/v1` | API key or OAuth PKCE-issued permanent key | OAuth exchange aligned; all non-Chat routes are not certified by that OAuth review. [OAuth](https://openrouter.ai/docs/guides/overview/auth/oauth). |
+| `qwen-token-plan` | Chat; Singapore Token Plan `/compatible-mode/v1` | Dedicated plan key | Endpoint aligned. [Alibaba integration](https://help.aliyun.com/en/model-studio/chatbox). |
+| `qwen-token-plan-cn` | Chat; Beijing Token Plan `/compatible-mode/v1` | China plan key | Endpoint aligned. [Regional bases](https://help.aliyun.com/en/model-studio/base-url). |
+| `qwen-token-plan-individual` | Chat; same Singapore base | Individual plan key | Endpoint aligned; do not substitute standard pay-as-you-go keys. [Alibaba integration](https://help.aliyun.com/en/model-studio/chatbox). |
+| `together` | Chat; `api.together.ai/v1` | API key as bearer | Aligned. [Compatibility](https://docs.together.ai/docs/inference/openai-compatibility). |
+| `typesafe` | System One; `api.typesafe.ai/v1/systemone` | API key as bearer | Native endpoint/auth aligned. [Reference](https://docs.typesafe.ai/api/system-one). |
+| `vercel-ai-gateway` | Messages; `ai-gateway.vercel.sh`; classifier `/typesafe/v1` | Gateway API key | Messages aligned; OIDC and classifier route not independently validated here. [Messages API](https://vercel.com/docs/ai-gateway/sdks-and-apis/anthropic-messages-api). |
+| `xai` | Responses; `api.x.ai/v1` | API key or subscription device OAuth | Responses follows current recommendation; subscription integration still needs live verification. [Best practices](https://docs.x.ai/developers/model-capabilities/text/best-practices), [official CLI auth](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md). |
+| `xiaomi` | Chat; `api.xiaomimimo.com/v1` | API key | Protocol reviewed; exact account/model availability unverified. [Quickstart](https://mimo.mi.com/docs/quick-start/first-api-call). |
+| `xiaomi-token-plan-ams` | Chat; `token-plan-ams.xiaomimimo.com/v1` | Europe plan key | Endpoint aligned. [Token Plan](https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription). |
+| `xiaomi-token-plan-cn` | Chat; `token-plan-cn.xiaomimimo.com/v1` | China plan key | Endpoint aligned. [Token Plan](https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription). |
+| `xiaomi-token-plan-sgp` | Chat; `token-plan-sgp.xiaomimimo.com/v1` | Singapore plan key | Endpoint aligned. [Token Plan](https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription). |
+| `zai` | Chat; `api.z.ai/api/coding/paas/v4` | Coding Plan key | Coding endpoint, not the general API product. [Plan guide](https://docs.z.ai/devpack/quick-start). |
+| `zai-coding-cn` | Chat; `open.bigmodel.cn/api/coding/paas/v4` | China Coding Plan key | Endpoint aligned. [Chinese guide](https://docs.bigmodel.cn/cn/coding-plan/quick-start). |
+
+## API and OAuth best-practice assessment
+
+| Area | Observed implementation | Practical limit |
+| --- | --- | --- |
+| API keys versus OAuth | Separate provider-owned methods; stored credentials own resolution; explicit per-request keys can override. | Provider console login does not imply a public OAuth integration. Native Meta CLI's environment preference differs from this application's stored-first policy. |
+| PKCE | ChatGPT, legacy Codex, Anthropic and OpenRouter use fresh SHA-256 PKCE. OpenRouter uses a random loopback path because its flow does not return state. | Headless manual inputs accept provider-specific forms; those fallbacks also need interoperability tests. |
+| Device authorization | Copilot, Kimi, Meta and xAI use the shared poller with pending/slow-down/expiry/error handling. Legacy Codex has its own device endpoint. | Transient network backoff and request deadlines are not uniform across all flows; no live throttling test performed. |
+| Token storage and rotation | Locked read-modify-write and refresh persistence; host private-file/keychain handling already exists. | OAuth credentials remain local secrets. Account selection, revocation and malformed-response validation are incomplete as listed above. |
+| Streaming completion | Shared Responses finalization rejects unfinished streams; Chat checks finish reason; SDK-backed Google/Bedrock adapters receive abort signals. | Passing fixtures establish tested terminal events and failure paths, not every upstream event or transport failure. |
+| Tool and reasoning replay | Existing adapters retain provider-specific reasoning/signatures and convert tool IDs/schemas; targeted conversion/replay tests pass. | An OpenAI-compatible endpoint does not imply strict-schema, grammar-tool, native server-tool or arbitrary multimodal parity. |
+| Caching | Provider-specific cache flags and usage normalization exist. xAI uses Responses, stable session cache keys, and encrypted reasoning replay. | No new live cache-hit, pricing, or billing assertion is made. Regional and plan-specific catalogs can change. [xAI guidance](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits). |
+
+## Initial verification (historical)
+
+Node **24.22.1**, Yarn **4.18.1**. All commands used the Node 24 executable available in this workspace environment.
+
+| Run | Result |
+| --- | --- |
+| `yarn run check` | Passed: TypeScript, Oxlint, formatting, browser imports, workspace freshness, favicon and boundaries. |
+| Provider/API/authentication selection | **266 passed, 26 files**. Includes the new RSA/JWKS, key alias, cloud login and device polling regressions. |
+| Additional protocol/output/cache selection | **220 passed, 12 files**. Includes native/rich outputs, provider error bodies, root tool schemas, cache breakpoints, foreign tool IDs and retries. |
+| Coding-agent authentication consumers | **67 passed, 5 files**: auth storage/check, provider management, runtime auth options, Pi imports. |
+| ChatGPT refresh/pre-login tests | **3 passed, 6 excluded by the test-name filter**, one file. |
+| Full ChatGPT OAuth test file | **3 passed, 6 failed** because the sandbox returns `listen EPERM` for `127.0.0.1:1455`. The six browser/callback cases remain unverified; assertions were not weakened or converted into skips. |
+| Real browser OAuth, provider inference, remote logout, VM/instance identity, Bun/Windows | Not run. |
+
+The four passing selections total **556 tests across 44 files**. This is a focused audit, not a new run of the full repository suite. The earlier initial 25 passing tests are repeats and are not added to that total.
+
+Reproduce the new non-network regressions from `packages/ai`:
+
+```sh
+yarn vitest run test/openai-id-token.test.ts test/provider-auth-conformance.test.ts test/oauth-device-code.test.ts
+yarn vitest run test/openai-chatgpt-oauth.test.ts
+```
+
+The second command requires permission to bind a loopback TCP listener. HTTP provider responses and signing keys are mocked; JWT signatures are real. The follow-up above addresses the initial account/subscription implementation findings. Controlled live provider checks are still required before describing all providers as implemented correctly.
+
+## Follow-up verification, 2026-10-25
+
+Node **24.22.1**, Yarn **4.18.1**:
+
+| Run | Result |
+|---|---|
+| `yarn run check` | Passed: TypeScript, Oxlint, formatting, browser smoke, workspace freshness, favicon and package boundaries. |
+| `yarn run build:offline` | Passed using hydrated model data, including the coding-agent bundle. |
+| AI provider/auth/runtime/discovery selection | **384 passed, 32 files**. Includes account lifecycle, revocation cleanup, signed-out refresh protection, model pagination, unknown IDs, Azure bearer wire auth, cloud auth and protocol adapters. |
+| Host authentication/discovery/CLI selection | **95 passed, 8 files**. Includes real CLI subprocesses with isolated configuration for both offline mechanisms and preservation of provider refresh hooks. |
+| Final affected-provider regression selection | **47 passed, 5 files**. Includes **3 new** returning-account/identity-mismatch/redaction tests; the other 44 repeat tests above. These returning-login tests isolate the callback-server dependency and do not validate OS loopback interoperability. |
+| Full ChatGPT and shared callback-server files | **4 passed, 17 failed**, plus one reported unhandled listener error: this environment denies loopback binding with `listen EPERM`. Callback paths remain unverified; assertions were not weakened or skipped. |
+| Live sign-in, paid inference, remote revocation, cloud instance identity, Bun/Windows | Not run. |
+
+The fully passing selections contain **482 distinct tests**. The initial 556-test result is historical, not added to this follow-up total. New documentation link targets were checked. Existing staged repository work was preserved; fixes are integrated in the current `wave2-architecture` checkout, with no branch merge, commit or push performed.

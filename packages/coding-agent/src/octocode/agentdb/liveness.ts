@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { SessionManager } from "../../core/session-manager.ts";
+import { sharedAgentDb } from "./db.ts";
 import { sameProcess } from "../shared/process.ts";
 
 /**
@@ -18,4 +20,15 @@ export function sessionRunningPid(db: DatabaseSync, id: string): number | undefi
 		| { pid: number | null; pid_started: string | null }
 		| undefined;
 	return runningPid(row?.pid, row?.pid_started);
+}
+
+/** Live pid recorded for a session file, or undefined when the file/index is unavailable or no live process owns it. */
+export function sessionFileRunningPid(sessionPath: string): number | undefined {
+	try {
+		const session = SessionManager.open(sessionPath);
+		return sessionRunningPid(sharedAgentDb().db, session.getSessionId());
+	} catch {
+		// Resuming does not require the optional index: without it, retain the ordinary session-open path.
+		return undefined;
+	}
 }

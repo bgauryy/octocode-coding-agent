@@ -25,7 +25,17 @@ export function initializeBashSyntax(): Promise<void> {
 		await Parser.init({
 			wasmBinary: fs.readFileSync(asset("tree-sitter.wasm")),
 		});
-		language = await Language.load(fs.readFileSync(asset("tree-sitter-bash.wasm")));
+		const loaded = await Language.load(fs.readFileSync(asset("tree-sitter-bash.wasm")));
+		// The first parse compiles WASM paths and can exceed the 50ms budget in `bashSyntax` on a busy machine, which
+		// would mark the first real command incomplete. Pay that cost here, without a budget.
+		const parser = new Parser();
+		try {
+			parser.setLanguage(loaded);
+			parser.parse('A="b c" timeout 1 printf "x; y" | cat > /dev/null')?.delete();
+		} finally {
+			parser.delete();
+		}
+		language = loaded;
 	})().catch((error) => {
 		loading = undefined;
 		throw error;

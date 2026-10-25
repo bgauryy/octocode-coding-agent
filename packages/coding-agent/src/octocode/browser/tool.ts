@@ -27,7 +27,7 @@ export function registerBrowserTool(pi: ExtensionAPI, browser: BrowserTool): voi
 			{
 				name: "browser",
 				label: "Browser",
-				defaultActive: false,
+				defaultActive: true,
 				description:
 					"Drive one Chrome session (JavaScript pages, forms, logins); headless unless visible mode is on. One action per call:\n" +
 					"navigate(url), tab(url | index): snapshot = page text + numbered elements\n" +

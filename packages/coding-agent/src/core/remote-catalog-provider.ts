@@ -8,6 +8,7 @@ import {
 	type RefreshModelsContext,
 } from "@octocodeai/octocode-ai";
 import { withOpenCodeEndpoint } from "@octocodeai/octocode-ai/providers/opencode-endpoints";
+import { withMiniMaxEndpoint } from "@octocodeai/octocode-ai/providers/minimax-endpoints";
 import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { VERSION } from "../config.ts";
 import { fetchWithRetry } from "../utils/management-http.ts";
@@ -35,7 +36,7 @@ function mergeModels<TModel extends AnyModel>(baseline: readonly TModel[], dynam
 	for (const model of [...baseline, ...dynamic])
 		merged.set(
 			`${getModelType(model)}\0${model.id}`,
-			withOpenCodeEndpoint(isModelType(model, "chat") ? withCacheCapabilities(model) : model),
+			withMiniMaxEndpoint(withOpenCodeEndpoint(isModelType(model, "chat") ? withCacheCapabilities(model) : model)),
 		);
 	return [...merged.values()];
 }
@@ -122,6 +123,7 @@ export function withRemoteCatalog(
 			),
 		getAllModels: () => mergeModels(provider.getAllModels?.() ?? provider.getModels(), dynamicModels),
 		refreshModels: async (context) => {
+			await provider.refreshModels?.(context);
 			const stored = context.stored;
 			const restored = remoteModels(stored, localGeneratedAt).filter((model) => model.provider === provider.id);
 			if (
@@ -212,6 +214,7 @@ export function withPersonalizedCatalog(
 		getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
 		getAllModels,
 		refreshModels: async (context) => {
+			await provider.refreshModels?.(context);
 			const restored = (context.stored?.models ?? []).filter((model) => model.provider === provider.id);
 			if (
 				!(await context.publish({

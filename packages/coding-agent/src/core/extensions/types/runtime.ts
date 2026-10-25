@@ -3,7 +3,7 @@
 import type { AgentTool, AgentToolCallOutcome, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, Provider, TextContent } from "@octocodeai/octocode-ai";
 import type { KeyId } from "@octocodeai/octocode-tui";
-import type { McpServerRegistry } from "../../mcp-servers.ts";
+import type { McpServerRegistry } from "../../../../../mcp/src/servers.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
 import type { SessionEntry, SessionManager } from "../../session-manager.ts";

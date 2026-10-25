@@ -1,4 +1,5 @@
 import type { OAuthCredential } from "../../types.ts";
+import { parseOAuthTokenResponse } from "../token-response.ts";
 
 export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const AUTH_BASE_URL = "https://auth.openai.com";
@@ -20,7 +21,7 @@ function decodeJwt(token: string): JwtPayload | null {
 		const parts = token.split(".");
 		if (parts.length !== 3) return null;
 		const payload = parts[1] ?? "";
-		const decoded = atob(payload);
+		const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
 		return JSON.parse(decoded) as JwtPayload;
 	} catch {
 		return null;
@@ -29,7 +30,11 @@ function decodeJwt(token: string): JwtPayload | null {
 
 export async function fetchWithLoginCancellation(input: string, init: RequestInit): Promise<Response> {
 	try {
-		return await fetch(input, init);
+		return await fetch(input, {
+			...init,
+			redirect: "error",
+			signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(30_000)]),
+		});
 	} catch (error) {
 		if (init.signal?.aborted) {
 			throw new Error("Login cancelled");
@@ -40,25 +45,17 @@ export async function fetchWithLoginCancellation(input: string, init: RequestIni
 
 async function readTokenResponse(response: Response, operation: TokenOperation): Promise<OAuthToken> {
 	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(`OpenAI Codex token ${operation} failed (${response.status}): ${text || response.statusText}`);
+		await response.body?.cancel();
+		throw new Error(`OpenAI Codex token ${operation} failed (${response.status})`);
 	}
 
-	const rawJson = await response.json();
-	const json = rawJson as {
-		access_token?: string;
-		refresh_token?: string;
-		expires_in?: number;
-	} | null;
-	if (!json?.access_token || !json.refresh_token || typeof json.expires_in !== "number") {
-		throw new Error(`OpenAI Codex token ${operation} response missing fields: ${JSON.stringify(json)}`);
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		throw new Error("OpenAI Codex token response is not valid JSON");
 	}
-
-	return {
-		access: json.access_token,
-		refresh: json.refresh_token,
-		expires: Date.now() + json.expires_in * 1000,
-	};
+	return parseOAuthTokenResponse(body, "OpenAI Codex");
 }
 
 async function exchangeAuthorizationCode(
@@ -86,7 +83,7 @@ async function exchangeAuthorizationCode(
 export async function refreshAccessToken(refreshToken: string, signal: AbortSignal): Promise<OAuthToken> {
 	let response: Response;
 	try {
-		response = await fetch(TOKEN_URL, {
+		response = await fetchWithLoginCancellation(TOKEN_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({

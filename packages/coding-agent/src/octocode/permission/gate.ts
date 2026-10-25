@@ -5,12 +5,7 @@ import { isolatedMainTree, isolatedTreeRefusal } from "./isolated-tree.ts";
 import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type {
-	ExtensionContext,
-	ToolAnnotations,
-	ToolCallEvent,
-	ToolCallEventResult,
-} from "../../core/extensions/index.ts";
+import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/extensions/index.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Classification } from "../shared/winclassify/types.ts";
@@ -19,7 +14,7 @@ import { classifyPowerShell } from "../shared/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import { args, CHANGE_TOOLS, classify } from "./gate/classify.ts";
+import { args, CHANGE_TOOLS, classify, reasonPurpose } from "./gate/classify.ts";
 
 /**
  * The permission step of the `tool_call` pipeline, after the invariants and the PreToolUse hooks. A provenance hit
@@ -51,7 +46,6 @@ interface PermissionGateOptions {
 	provenance: {
 		check(event: ToolCallEvent, ctx: { cwd: string }): { why: string } | undefined;
 	};
-	annotations: (toolName: string) => ToolAnnotations | undefined;
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
 	powershell?: (command: string) => Promise<boolean>;
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
@@ -65,7 +59,7 @@ interface PermissionGateOptions {
 
 /** The `tool_call` gate: every call with an effect class (or a reason) reaches `Permission.check`, which applies the mode, records the call and asks when it must. A user's yes covers the call. */
 export function permissionGate(options: PermissionGateOptions) {
-	const { permission, provenance, annotations, powershell = powershellDestructive } = options;
+	const { permission, provenance, powershell = powershellDestructive } = options;
 	return async (
 		event: ToolCallEvent,
 		ctx: ExtensionContext,
@@ -111,7 +105,7 @@ export function permissionGate(options: PermissionGateOptions) {
 			const forceDestructive =
 				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
-			const request = classify(event, ctx, annotations, forceDestructive);
+			const request = classify(event, ctx, forceDestructive);
 			const hit = provenance.check(event, ctx);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),
@@ -124,6 +118,7 @@ export function permissionGate(options: PermissionGateOptions) {
 							...(request ?? {
 								title: `Run ${event.toolName}?`,
 								what: [`${event.toolName} ${args(input)}`],
+								...reasonPurpose(event),
 								toolCallId: event.toolCallId,
 								...(event.parentToolCallId ? { nested: true } : {}),
 							}),
@@ -155,6 +150,7 @@ export function permissionGate(options: PermissionGateOptions) {
 				...(call ?? {
 					title: `Run ${event.toolName}?`,
 					what: [event.toolName],
+					...reasonPurpose(event),
 					toolCallId: event.toolCallId,
 				}),
 				invocation: capturedInvocation,
@@ -186,7 +182,7 @@ export function permissionGate(options: PermissionGateOptions) {
 								readOnlyRoleRefusal(candidate, ctx.cwd, options.env) ??
 								isolatedTreeRefusal(candidate, ctx.cwd, options.env);
 							if (roleRefused) throw new Error(roleRefused);
-							const classified = classify(candidate, ctx, annotations, false);
+							const classified = classify(candidate, ctx, false);
 							if (!classified) throw new Error("Cannot classify Bash replacement");
 							const candidateHit = provenance.check(candidate, ctx);
 							const nextInvocation = captureToolInvocation(

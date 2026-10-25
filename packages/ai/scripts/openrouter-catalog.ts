@@ -40,7 +40,9 @@ export function buildOpenRouterCatalog(
 		if (!model.supported_parameters?.includes("tools")) continue;
 		// Parse input modalities
 		const input: ("text" | "image")[] = ["text"];
-		if (model.architecture?.modality?.includes("image")) {
+		const inputModalities =
+			model.architecture?.input_modalities ?? model.architecture?.modality?.split("->")[0]?.split("+");
+		if (inputModalities?.includes("image")) {
 			input.push("image");
 		}
 

@@ -3,8 +3,16 @@ import { fileURLToPath } from "node:url";
 import { canonicalPath } from "../../shared/home/repo.ts";
 import { isRecord } from "../../../utils/guards.ts";
 
-/** Research envelopes compact row paths relative to an explicit `root` or `base`. */
-export function matchesResponsePath(envelope: unknown, row: Record<string, unknown>, target: string): boolean {
+/**
+ * Research envelopes compact row paths relative to an explicit `root` or `base`; without one, a relative path is
+ * relative to `workspaceRoot`, the server's WORKSPACE_ROOT (the session cwd for the Octocode server).
+ */
+export function matchesResponsePath(
+	envelope: unknown,
+	row: Record<string, unknown>,
+	target: string,
+	workspaceRoot?: string,
+): boolean {
 	const data = isRecord(row.data) ? row.data : {};
 	if (typeof data.path !== "string") return false;
 	let shown = data.path;
@@ -20,8 +28,8 @@ export function matchesResponsePath(envelope: unknown, row: Record<string, unkno
 			? envelope.root
 			: typeof envelope.base === "string"
 				? envelope.base
-				: undefined
-		: undefined;
+				: workspaceRoot
+		: workspaceRoot;
 	if (!path.isAbsolute(shown) && (!root || !path.isAbsolute(root))) return false;
 	return canonicalPath(path.isAbsolute(shown) ? shown : path.resolve(root!, shown)) === target;
 }

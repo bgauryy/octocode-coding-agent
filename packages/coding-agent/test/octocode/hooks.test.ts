@@ -4,6 +4,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHooks, registerHooksCommand } from "../../src/octocode/hooks/register.ts";
+import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
+import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
@@ -325,9 +327,9 @@ describe("hook payloads", () => {
 			"file",
 			{
 				queries: [
-					{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: "x", newText: "y" }] },
+					{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: "x", newText: "y" }] },
 					{
-						reasoning: "r",
+						reason: "r",
 						type: "edit",
 						path: "b.ts",
 						edits: [
@@ -335,8 +337,8 @@ describe("hook payloads", () => {
 							{ oldText: "3", newText: "4" },
 						],
 					},
-					{ reasoning: "r", type: "write", path: "c.ts", content: "body" },
-					{ reasoning: "r", type: "delete", path: "d.ts" },
+					{ reason: "r", type: "write", path: "c.ts", content: "body" },
+					{ reason: "r", type: "delete", path: "d.ts" },
 				],
 			},
 			cwd,
@@ -451,7 +453,7 @@ describe("registerHooks", () => {
 		const call = (...paths: string[]) => ({
 			toolName: "file",
 			toolCallId: "f",
-			input: { queries: paths.map((p) => ({ reasoning: "r", type: "write", path: p, content: "x" })) },
+			input: { queries: paths.map((p) => ({ reason: "r", type: "write", path: p, content: "x" })) },
 		});
 		expect(await hooks.preToolUse(call("a.ts") as never, ctx as never)).toBeUndefined();
 		const blocked = await hooks.preToolUse(call("a.ts", ".env") as never, ctx as never);
@@ -523,7 +525,7 @@ describe("registerHooks", () => {
 		).toBeUndefined();
 
 		const edit = {
-			queries: [{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: "a", newText: "b" }] }],
+			queries: [{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: "a", newText: "b" }] }],
 		};
 		const result = (await fire(
 			"tool_result",
@@ -697,34 +699,49 @@ describe("Stop, Notification and hook timing", () => {
 	}, 10_000);
 
 	it("shows the running Stop hooks in the footer status (Octocode has removed its working line), then clears it", async () => {
-		const cwd = project({
-			Stop: [
-				{
-					matcher: "",
-					hooks: [
+		const config = parseHooks(
+			{
+				hooks: {
+					Stop: [
 						{
-							type: "command",
-							command: 'node -e "setTimeout(Boolean,1300)" #ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+							matcher: "",
+							hooks: [
+								{
+									type: "command",
+									command: 'node -e "setTimeout(Boolean,1300)" #ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+								},
+								{ type: "command", command: "true" },
+							],
 						},
-						{ type: "command", command: "true" },
 					],
 				},
-			],
-		});
+			},
+			"fixture",
+		);
 		const { pi, fire } = fakePi();
-		registerHooks(pi, { OCTOCODE_HOOKS: "1" }, tmp());
+		const work = Promise.withResolvers<HookVerdict>();
+		registerStopHook(pi, { config, errors: [], root: undefined }, () => work.promise);
 		const statuses: Array<string | undefined> = [];
 		const ctx = {
-			...context(cwd),
+			...context(tmp()),
 			hasUI: true,
 			mode: "tui",
 			ui: { setStatus: (_key: string, text: string | undefined) => statuses.push(text), notify: () => undefined },
 		};
 		await fire("session_start", { reason: "startup" }, ctx);
-		expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
-		expect(statuses[0]).toMatch(/^Stop hook: node -e .*\[redacted\] \+1$/);
-		expect(statuses.some((text) => / · 1(\.\d)?s$/.test(text ?? ""))).toBe(true);
-		expect(statuses.at(-1)).toBeUndefined();
+		vi.useFakeTimers();
+		try {
+			const pending = fire("agent_before_settle", settle(), ctx);
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(statuses[0]).toMatch(/^Stop hook: node -e .*\[redacted\] \+1$/);
+			expect(statuses.at(-1)).toMatch(/ · 1s$/);
+			work.resolve({});
+			expect(await pending).toBeUndefined();
+			expect(statuses.at(-1)).toBeUndefined();
+		} finally {
+			work.resolve({});
+			vi.useRealTimers();
+		}
 	}, 10_000);
 
 	it("draws Stop feedback as a sanitized, collapsible block under a ⚑ header, even with hooks off", () => {

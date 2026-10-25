@@ -159,13 +159,13 @@ const original = {
 			type: "write",
 			path: "first.txt",
 			content: "first\n",
-			reasoning: "First fixture file",
+			reason: "First fixture file",
 		},
 		{
 			type: "write",
 			path: "second.txt",
 			content: "second\n",
-			reasoning: "Second fixture file",
+			reason: "Second fixture file",
 		},
 	],
 };
@@ -379,7 +379,7 @@ it("retains a native delete's pre-call patch for a post-only Codex observer", as
 							{
 								type: "delete",
 								path: "delete.txt",
-								reasoning: "Delete fixture",
+								reason: "Delete fixture",
 							},
 						],
 					}),
@@ -422,7 +422,7 @@ it("preserves native query batches' continue-after-failure behavior independentl
 								type: "write",
 								path: "third.txt",
 								content: "third\n",
-								reasoning: "Verify continuation",
+								reason: "Verify continuation",
 							},
 						],
 					}),

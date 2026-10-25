@@ -1,4 +1,5 @@
 import type { ProviderEnv } from "../types.ts";
+import { isActiveCredential } from "./helpers.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { ModelsError } from "../utils/models-error.ts";
 
@@ -134,7 +135,7 @@ export async function refreshStoredOAuthCredential(
 			async (current) => {
 				signal.removeEventListener("abort", cancelLockWait);
 				signal.throwIfAborted();
-				if (current?.type !== "oauth") return undefined; // logged out meanwhile
+				if (current?.type !== "oauth" || current.signedOut) return undefined; // logged out meanwhile
 				if (!needsRefresh(current)) return undefined; // another process/request refreshed
 				try {
 					return await oauth.refresh(current, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS));
@@ -151,7 +152,7 @@ export async function refreshStoredOAuthCredential(
 	} finally {
 		signal.removeEventListener("abort", cancelLockWait);
 	}
-	return post?.type === "oauth" ? post : undefined;
+	return post?.type === "oauth" && !post.signedOut ? post : undefined;
 }
 
 /**
@@ -210,7 +211,8 @@ export async function readCredential(
 	signal: AbortSignal,
 ): Promise<Credential | undefined> {
 	try {
-		return await credentials.read(providerId, { signal });
+		const credential = await credentials.read(providerId, { signal });
+		return isActiveCredential(credential) ? credential : undefined;
 	} catch (error) {
 		throw new ModelsError("auth", `Credential store read failed for ${providerId}`, { cause: error });
 	}

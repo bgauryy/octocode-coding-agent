@@ -122,7 +122,6 @@ it("refuses applicable source restrictions when SDK arguments cannot be snapshot
 	const gate = permissionGate({
 		permission,
 		provenance: { check: () => undefined },
-		annotations: () => undefined,
 	});
 	const input: { flag: boolean; self?: unknown } = { flag: true };
 	input.self = input;

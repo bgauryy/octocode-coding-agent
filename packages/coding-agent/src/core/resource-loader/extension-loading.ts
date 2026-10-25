@@ -288,14 +288,7 @@ export class ExtensionSetLoader {
 		const errors: Array<{ path: string; error: string }> = [];
 
 		if (this.config.nativeFeatures) {
-			extensions.push(
-				await this.loadFactory(
-					(pi) => octocode(pi, { mcp: !this.config.disabledBuiltinExtensions.has("mcp") }),
-					"<inline:octocode>",
-					runtime,
-					{ hidden: true },
-				),
-			);
+			extensions.push(await this.loadFactory(octocode, "<inline:octocode>", runtime, { hidden: true }));
 		}
 
 		for (const [index, input] of this.config.extensionFactories.entries()) {

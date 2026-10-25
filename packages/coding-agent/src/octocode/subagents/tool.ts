@@ -8,7 +8,7 @@ import { timedTool } from "../shared/render/rows.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { modelLookup, settleWithin } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
-import { getMcpAddedServers } from "../../extensions/mcp/session-servers.ts";
+import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
 import { checkGoal } from "../team/identity.ts";
 import { AgentsView } from "../team/panel.ts";
 import { launchOverlap } from "../team/overlap.ts";

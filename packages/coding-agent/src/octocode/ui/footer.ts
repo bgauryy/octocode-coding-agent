@@ -228,7 +228,7 @@ export function footerLines(
 				priority: 75,
 			},
 			// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
-			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/web") },
+			{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/octocode") },
 			// As Octocode's own footer does (sanitizeStatusText): a line break inside a footer row breaks octocode-tui's row tracking.
 			...others.map(([, text]) => ({ text: singleLine(livePaint(text, theme)), priority: 20 })),
 		],

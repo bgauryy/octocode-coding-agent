@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
@@ -43,6 +44,61 @@ async function decide(
 }
 
 describe("leaving a session with running work", () => {
+	it("asks before switching or forking while a timed-out ACP peer still works", async () => {
+		process.env.OCTOCODE_PERMISSION = "full";
+		const { fake, ctx, cwd } = setup();
+		ctx.ui.selects.push("Allow once", "Allow once");
+		const agent = fake.tools.get("agent");
+		const call = (input: unknown) =>
+			agent.execute("external-guard", { type: "external", input }, undefined, undefined, ctx);
+		try {
+			expect(
+				await call({
+					action: "connect",
+					id: "peer",
+					transport: "acp",
+					vendor: "fixture",
+					command: process.execPath,
+					args: [
+						fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url)),
+						"wait",
+						path.join(cwd, "peer.jsonl"),
+					],
+					cwd,
+				}),
+			).toMatchObject({ details: { id: "peer" } });
+			expect(await call({ action: "prompt", id: "peer", text: "work", timeoutMs: 1000 })).toMatchObject({
+				isError: true,
+				details: { execution: "uncertain" },
+			});
+			const questions: string[] = [];
+			Object.assign(ctx.ui, {
+				confirm: async (_title: string, message: string) => {
+					questions.push(message);
+					return false;
+				},
+			});
+			expect(
+				await decide(fake, "session_before_switch", { type: "session_before_switch", reason: "new" }, ctx),
+			).toEqual({ cancel: true });
+			expect(await decide(fake, "session_before_fork", { type: "session_before_fork", entryId: "e1" }, ctx)).toEqual({
+				cancel: true,
+			});
+			expect(questions).toEqual([
+				"Stop 1 external prompt and start a new session?",
+				"Stop 1 external prompt and fork?",
+			]);
+			await call({ action: "cancel", id: "peer" });
+			expect(
+				await decide(fake, "session_before_switch", { type: "session_before_switch", reason: "new" }, ctx),
+			).toBeUndefined();
+			expect(questions).toHaveLength(2);
+		} finally {
+			await call({ action: "disconnect", id: "peer" });
+			await fake.emit("session_shutdown", { type: "session_shutdown" }, ctx);
+		}
+	});
+
 	it("asks before a switch, new session or fork stops running jobs; No cancels, headless never asks", async () => {
 		const { fake, ctx, cwd } = setup();
 		// Nothing running: no question.

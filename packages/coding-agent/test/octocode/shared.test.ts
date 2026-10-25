@@ -436,6 +436,15 @@ describe("native commands", () => {
 		expect(await fake.fire("input", { text: "/octocode-example" }, ctx)).toEqual({ action: "continue" });
 		expect(fake.commands.has("octocode")).toBe(false);
 	});
+	it("lets bare /octocode execute while retaining namespaced migration guidance", async () => {
+		const commands = new Subcommands();
+		commands.add("octocode", { description: "Workspace", handler: vi.fn(async () => {}) });
+		const fake = fakePi();
+		commands.register(fake.pi);
+		const ctx = fakeCtx({ cwd: ".", hasUI: true });
+		expect(await fake.fire("input", { text: "/octocode" }, ctx)).toEqual({ action: "continue" });
+		expect(await fake.fire("input", { text: "/octocode status now" }, ctx)).toEqual({ action: "handled" });
+	});
 	it("maps retired namespace inputs to precise migration guidance", () => {
 		expect(legacyNativeCommandGuidance("permissions workspace", ["permissions"])).toContain("/permissions workspace");
 		expect(legacyNativeCommandGuidance("sessions", ["resume"])).toBe(

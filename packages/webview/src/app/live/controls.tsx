@@ -22,7 +22,8 @@ export function ConnectionNotice() {
 	const tone = useStore(session, (state) => state.status.tone);
 	return available && tone !== "live" ? (
 		<p className="callout tone-warning" role="note">
-			Connection interrupted. Showing the last known session; agent availability and progress may be out of date.
+			Connection interrupted. Showing the last known session; agent availability and progress may be out of date. If the
+			session ended, run <code>/octocode</code> in a running terminal to reopen it.
 		</p>
 	) : null;
 }

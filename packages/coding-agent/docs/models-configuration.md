@@ -38,7 +38,7 @@ Each `models` entry adds a model to the provider. An entry whose `id` matches an
 | `baseUrl` | string |  | Overrides the provider baseUrl. |
 | `reasoning` | boolean | `false` | Whether the model supports thinking. |
 | `thinkingLevelMap` | object |  | Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported. |
-| `input` | `("text" \| "image")[]` | `["text"]` |  |
+| `input` | `("text" \| "image")[]` | `["text"]` | Accepted input modalities. Include "image" only when this model and endpoint accept image attachments. |
 | `inputLimits` | [object](#input-limits) |  |  |
 | `cost` | object |  |  |
 | `cost.input` | number |  | Required. Input cost in USD per million tokens. |
@@ -70,7 +70,7 @@ Each `modelOverrides` key is the ID of a built-in or extension model. Unknown ID
 | `name` | string |  | Display name, also matched by --model patterns. |
 | `reasoning` | boolean |  | Whether the model supports thinking. |
 | `thinkingLevelMap` | object |  | Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported. |
-| `input` | `("text" \| "image")[]` |  |  |
+| `input` | `("text" \| "image")[]` |  | Accepted input modalities. Include "image" only when this model and endpoint accept image attachments. |
 | `inputLimits` | [object](#input-limits) |  |  |
 | `cost` | object |  |  |
 | `cost.input` | number |  | Input cost in USD per million tokens. |
@@ -142,6 +142,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `sessionAffinityFormat` | `"openai" \| "openai-nosession" \| "openrouter"` |  | Session-affinity header format. openai sends session_id, x-client-request-id, and x-session-affinity; openai-nosession sends x-client-request-id and x-session-affinity; openrouter sends x-session-id. Does not affect prompt_cache_key. Default: auto-detected. |
 | `supportsLongCacheRetention` | boolean |  | Whether the provider supports long prompt cache retention (prompt_cache_retention: "24h" or Anthropic-style cache_control.ttl: "1h", depending on format). Default: auto-detected from provider and URL. |
 | `vllmPriority` | number |  | vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog. |
+| `toolSchemaFlavor` | `"standard" \| "moonshot"` |  | Tool parameter schema flavor. "moonshot" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. "standard" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints. |
 
 ### `openai-responses`
 

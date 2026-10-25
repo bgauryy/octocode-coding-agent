@@ -10,6 +10,7 @@ import {
 	type ProgramStatus,
 } from "./program-status.ts";
 import { PASTE_IDLE_TIMEOUT_MS, StdinBuffer } from "./stdin-buffer.ts";
+import { KittyGraphicsProbe } from "./terminal-image/probe.ts";
 
 const TERMINAL_PROGRESS_KEEPALIVE_MS = 1000;
 const TERMINAL_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07";
@@ -73,7 +74,7 @@ export function normalizeAppleTerminalInput(data: string, isAppleTerminal: boole
  */
 export interface Terminal {
 	// Start the terminal with input and resize handlers
-	start(onInput: (data: string) => void, onResize: () => void): void;
+	start(onInput: (data: string) => void, onResize: () => void, onCapabilitiesChange?: () => void): void;
 
 	// Stop the terminal and restore state
 	stop(): void;
@@ -207,6 +208,8 @@ export class ProcessTerminal implements Terminal {
 	private wasRaw = false;
 	private inputHandler?: (data: string) => void;
 	private resizeHandler?: () => void;
+	private capabilitiesHandler?: () => void;
+	private readonly graphicsProbe = new KittyGraphicsProbe();
 	private _kittyProtocolActive = false;
 	private _modifyOtherKeysActive = false;
 	private keyboardProtocolPushed = false;
@@ -246,9 +249,10 @@ export class ProcessTerminal implements Terminal {
 		return this._modifyOtherKeysActive;
 	}
 
-	start(onInput: (data: string) => void, onResize: () => void): void {
+	start(onInput: (data: string) => void, onResize: () => void, onCapabilitiesChange?: () => void): void {
 		this.inputHandler = onInput;
 		this.resizeHandler = onResize;
+		this.capabilitiesHandler = onCapabilitiesChange;
 
 		// Save previous state and enable raw mode
 		this.wasRaw = process.stdin.isRaw || false;
@@ -295,6 +299,7 @@ export class ProcessTerminal implements Terminal {
 
 		// Forward individual sequences to the input handler
 		this.stdinBuffer.on("data", (sequence) => {
+			if (this.graphicsProbe.consume(sequence)) return;
 			if (isProgramStatusReply(sequence)) {
 				if (this.programStatusQueryPending) {
 					this.programStatusQueryPending = false;
@@ -354,7 +359,13 @@ export class ProcessTerminal implements Terminal {
 		this.programStatusSupported = programStatusOverride === "1";
 		this.programStatusQueryPending = programStatusOverride !== "1" && programStatusOverride !== "0";
 		const programStatusQuery = this.programStatusQueryPending ? PROGRAM_STATUS_QUERY : "";
-		process.stdout.write(`${KITTY_KEYBOARD_PROTOCOL_QUERY}${programStatusQuery}${DEVICE_ATTRIBUTES_QUERY}`);
+		const graphicsQuery = this.graphicsProbe.start(
+			Boolean(process.stdin.isTTY && process.stdout.isTTY),
+			this.capabilitiesHandler,
+		);
+		process.stdout.write(
+			`${KITTY_KEYBOARD_PROTOCOL_QUERY}${programStatusQuery}${graphicsQuery}${DEVICE_ATTRIBUTES_QUERY}`,
+		);
 		this.writeProgramStatus();
 	}
 
@@ -365,7 +376,10 @@ export class ProcessTerminal implements Terminal {
 			this.pendingKeyboardProtocolDeviceAttributes -= 1;
 			// The last owed DA answers the latest query, which got no program status reply first. Earlier DA
 			// replies belong to queries from before a restart.
-			if (this.pendingKeyboardProtocolDeviceAttributes === 0) this.programStatusQueryPending = false;
+			if (this.pendingKeyboardProtocolDeviceAttributes === 0) {
+				this.programStatusQueryPending = false;
+				this.graphicsProbe.finish();
+			}
 		}
 		if (negotiationSequence.type === "kitty-flags") {
 			if (negotiationSequence.flags !== 0) {
@@ -484,6 +498,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	async drainInput(maxMs = 1000, idleMs = 50): Promise<void> {
+		this.graphicsProbe.stop();
 		const shouldDisableKittyProtocol = this.keyboardProtocolPushed || this._kittyProtocolActive;
 		this.clearKeyboardProtocolNegotiationBuffer();
 		if (shouldDisableKittyProtocol) {
@@ -522,6 +537,8 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	stop(): void {
+		this.graphicsProbe.stop();
+		this.capabilitiesHandler = undefined;
 		if (this.clearProgressInterval()) {
 			process.stdout.write(TERMINAL_PROGRESS_CLEAR_SEQUENCE);
 		}

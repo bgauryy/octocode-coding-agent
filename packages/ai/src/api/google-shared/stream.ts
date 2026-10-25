@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../../utils/assistant-message.ts";
 import type { GoogleGenAI, GenerateContentParameters } from "@google/genai";
 import { calculateCost } from "../../models.ts";
@@ -57,6 +58,7 @@ export function streamGoogle<T extends GoogleApiType>(
 			if (nextParams !== undefined) {
 				params = nextParams as GenerateContentParameters;
 			}
+			assertImageRequestPayload(model, params);
 			const googleStream = await retryGoogleRequest(() => client.models.generateContentStream(params), options);
 
 			stream.push({ type: "start", partial: output });

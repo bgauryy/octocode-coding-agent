@@ -147,7 +147,16 @@ async function mintApiKey(identityToken: string, signal: AbortSignal): Promise<O
 		const actionUrl = trustedHttpUrl(json?.action_url);
 		throw new Error(`Meta did not issue an API key.${actionUrl ? ` Complete setup at ${actionUrl}` : ""}`);
 	}
-	return { type: "oauth", refresh: identityToken, access: apiKey, expires: Date.now() + API_KEY_LIFETIME_MS };
+	const lifetimeMs = Math.min(
+		API_KEY_LIFETIME_MS,
+		(positiveNumber(json?.expires_in) ?? API_KEY_LIFETIME_MS / 1000) * 1000,
+	);
+	return {
+		type: "oauth",
+		refresh: identityToken,
+		access: apiKey,
+		expires: Date.now() + lifetimeMs - Math.min(5 * 60 * 1000, lifetimeMs / 10),
+	};
 }
 
 async function loginMeta(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {

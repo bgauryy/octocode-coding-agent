@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir, getLegacyConfigDirs, getModelsPath, getOctocodeHome, getSessionsDir } from "../src/config.ts";
 import { ModelConfig } from "../src/core/model-config.ts";
+import { AuthStorage } from "../src/core/auth-storage.ts";
+import { createModelRegistry } from "./model-runtime-test-utils.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { globalPaths } from "../src/octocode/shared/home.ts";
@@ -72,6 +74,51 @@ describe("Octocode home and Pi configuration fallback", () => {
 		const legacy = join(home, ".pi", "agent", "models.json");
 		write(legacy, "{broken");
 		expect((await ModelConfig.load(getModelsPath())).getError()).toContain(legacy);
+	});
+
+	it("loads image capabilities and limits from Pi provider definitions and model overrides", async () => {
+		const legacy = join(home, ".pi", "agent", "models.json");
+		const content = JSON.stringify({
+			providers: {
+				"pi-vision": {
+					api: "openai-completions",
+					baseUrl: "https://vision.invalid/v1",
+					apiKey: "fixture-key",
+					models: [
+						{ id: "vision", input: ["text", "image"], inputLimits: { images: { maxPerRequest: 3 } } },
+						{ id: "unconfigured" },
+					],
+				},
+				openai: { modelOverrides: { "gpt-4o": { input: ["text"], inputLimits: { images: { maxPerMessage: 2 } } } } },
+			},
+		});
+		write(legacy, content);
+		const registry = await createModelRegistry(AuthStorage.inMemory(), getModelsPath());
+		expect(registry.getError()).toBeUndefined();
+		expect(registry.find("pi-vision", "vision")).toMatchObject({
+			input: ["text", "image"],
+			inputLimits: { images: { maxPerRequest: 3 } },
+		});
+		expect(registry.find("pi-vision", "unconfigured")?.input).toEqual(["text"]);
+		expect(registry.find("openai", "gpt-4o")).toMatchObject({
+			input: ["text"],
+			inputLimits: { images: { maxPerMessage: 2 } },
+		});
+		write(
+			getModelsPath(),
+			JSON.stringify({
+				providers: {
+					"pi-vision": {
+						api: "openai-completions",
+						baseUrl: "https://native.invalid/v1",
+						models: [{ id: "vision", input: ["text"] }],
+					},
+				},
+			}),
+		);
+		await registry.refresh();
+		expect(registry.find("pi-vision", "vision")?.input).toEqual(["text"]);
+		expect(readFileSync(legacy, "utf8")).toBe(content);
 	});
 
 	it("inherits settings without importing trust or state and writes only native settings", async () => {

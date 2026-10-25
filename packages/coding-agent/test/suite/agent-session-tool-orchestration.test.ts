@@ -3,7 +3,7 @@ import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
-import { createToolSearchExtension } from "../../src/extensions/tool-search/index.ts";
+import { createToolSearchExtension } from "../../src/core/tools/tool-search.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 /**

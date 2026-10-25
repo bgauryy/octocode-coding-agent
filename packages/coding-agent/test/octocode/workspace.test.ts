@@ -34,7 +34,7 @@ function setup() {
 		tell,
 		stop: () => "Not owned by this session",
 	});
-	const backlog = { store, actor, session: ctx.sessionManager.getSessionId(), repoName: "repo" };
+	const backlog = { store, actor, session: ctx.sessionManager.getSessionId(), repoName: "repo", repoRoot: dir };
 	return { ...fake, ctx, tell, runtime, backlog, connection: runtime.bind(ctx, backlog) };
 }
 

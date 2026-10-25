@@ -68,7 +68,7 @@ it("applies Claude file rewrites through the registered native schema", async ()
 					type: Type.Literal("write"),
 					path: Type.String(),
 					content: Type.String(),
-					reasoning: Type.String(),
+					reason: Type.String(),
 				}),
 			),
 		}),
@@ -79,10 +79,10 @@ it("applies Claude file rewrites through the registered native schema", async ()
 	const event = {
 		toolName: "file",
 		toolCallId: "rewrite-file",
-		input: { queries: [{ type: "write", path: "old.txt", content: "old", reasoning: "create" }] },
+		input: { queries: [{ type: "write", path: "old.txt", content: "old", reason: "create" }] },
 	};
 	expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({ rewritten: true });
-	expect(event.input.queries).toEqual([{ type: "write", path: "/new.txt", content: "new", reasoning: "create" }]);
+	expect(event.input.queries).toEqual([{ type: "write", path: "/new.txt", content: "new", reason: "create" }]);
 });
 
 it("projects Codex Bash command input and preserves native execution options on rewrite", async () => {

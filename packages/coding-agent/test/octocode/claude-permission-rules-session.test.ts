@@ -139,13 +139,13 @@ it("a later denied native file batch member prevents all batch effects", async (
 					type: "write",
 					path: first,
 					content: "FIRST\n",
-					reasoning: "Fixture",
+					reason: "Fixture",
 				},
 				{
 					type: "write",
 					path: second,
 					content: "SECOND\n",
-					reasoning: "Denied fixture",
+					reason: "Denied fixture",
 				},
 			],
 		});
@@ -191,7 +191,7 @@ it("source ask on one native file invocation resolves once across outer and inte
 					type: "write",
 					path: f.marker,
 					content: "ASK_FILE_ONCE\n",
-					reasoning: "Ask rule fixture",
+					reason: "Ask rule fixture",
 				},
 			],
 		});
@@ -274,7 +274,7 @@ it("source allow cannot bypass the native unread-file mutation guard", async () 
 					type: "write",
 					path: f.marker,
 					content: "UNAPPROVED_REPLACEMENT\n",
-					reasoning: "Guard acceptance",
+					reason: "Guard acceptance",
 				},
 			],
 		});
@@ -298,7 +298,7 @@ it("source allow cannot bypass native state-folder protection", async () => {
 					type: "write",
 					path: target,
 					content: "UNAPPROVED_STATE\n",
-					reasoning: "Guard acceptance",
+					reason: "Guard acceptance",
 				},
 			],
 		});

@@ -13,6 +13,9 @@ describe("compatibility schemas", () => {
 		expectTypeOf<ProviderCompat["sessionAffinityFormat"]>().toEqualTypeOf<
 			"openai" | "openai-nosession" | "openrouter" | undefined
 		>();
+		expectTypeOf<Static<typeof OpenAICompletionsCompatSchema>["toolSchemaFlavor"]>().toEqualTypeOf<
+			"standard" | "moonshot" | undefined
+		>();
 	});
 
 	it("preserves API-specific defaults", () => {

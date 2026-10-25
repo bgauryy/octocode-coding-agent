@@ -25,6 +25,7 @@ import type { Backlog, BacklogWeb } from "../backlog/context.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { BacklogError } from "../backlog/store.ts";
 import { handleApplicationDataRequest } from "./application-data.ts";
+import { handleReportsRequest } from "./reports.ts";
 
 /** Streamed text reaches a browser at most this often per message (about 20 updates a second). */
 const DELTA_WINDOW_MS = 50;
@@ -211,6 +212,7 @@ export async function startWorkspaceWeb(
 				);
 				return reply(200, { events, before: events.length === 100 ? events[0].id : undefined });
 			}
+			if (handleReportsRequest(req, requestUrl, backlog.repoRoot, reply)) return;
 			if (
 				req.url !== WORKSPACE_ROUTES.backlogs &&
 				req.url !== WORKSPACE_ROUTES.workspace &&

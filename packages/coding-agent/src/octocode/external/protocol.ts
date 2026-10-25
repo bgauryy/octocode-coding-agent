@@ -79,6 +79,8 @@ export interface ExternalBackend {
 	readonly cwd: string;
 	/** Explicit liveness lets a transport retain a connection after an uncertain prompt failure. */
 	readonly isClosed?: boolean;
+	/** Remote work may remain active after the local prompt waiter times out. */
+	readonly isBusy?: boolean;
 	prompt(text: string, options: { timeoutMs: number; signal?: AbortSignal; key?: string }): Promise<ExternalReply>;
 	cancel(): Promise<void>;
 	close(): Promise<void>;

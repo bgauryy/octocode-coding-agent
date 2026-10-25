@@ -1,27 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { OctocodeServer } from "../../src/octocode/mcp/client.ts";
+import { connectionFixture } from "../../../mcp/test/mcp-connection-fixture.ts";
 import { shortPath } from "../../src/octocode/shared/format.ts";
 import { sessionOutputDir } from "../../src/octocode/shared/home.ts";
-import { tmp } from "./helpers.ts";
 
 /** A server that writes `stderr` and dies before it speaks MCP: the connect fails, and the failure carries its stderr. */
 async function failure(stderr: string): Promise<string> {
-	const server = new OctocodeServer({
+	const server = connectionFixture({
 		launch: (cwd) => ({
 			command: process.execPath,
 			args: ["-e", `require('node:fs').writeSync(2, ${JSON.stringify(stderr)}); process.exit(3)`],
 			cwd,
 			env: {},
 		}),
-		clientInfo: { name: "test", version: "0" },
+
 		onTools: () => undefined,
-		onFailure: () => undefined,
 	});
-	server.start(tmp());
-	expect(await server.ready()).toBe(false);
-	const { error } = server.status();
+
+	expect(
+		await server.getClient().then(
+			() => true,
+			() => false,
+		),
+	).toBe(false);
+	const { error } = server;
 	await server.close();
 	return error!;
 }

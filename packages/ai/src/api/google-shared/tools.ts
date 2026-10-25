@@ -1,5 +1,6 @@
 import { FunctionCallingConfigMode } from "@google/genai";
 import type { Tool } from "../../types.ts";
+import { liftRootComposition } from "../../utils/json-schema-shape.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
 import { getGeminiMajorVersion } from "./messages.ts";
 
@@ -52,7 +53,10 @@ export function convertTools(
 				return {
 					name: tool.name,
 					description: tool.description,
-					...(useParameters ? { parameters: sanitizeForOpenApi(parameters) } : { parametersJsonSchema: parameters }),
+					// Legacy `parameters` becomes Anthropic's input_schema on Cloud Code Assist, which rejects root composition.
+					...(useParameters
+						? { parameters: sanitizeForOpenApi(liftRootComposition(parameters)) }
+						: { parametersJsonSchema: parameters }),
 				};
 			}),
 		},

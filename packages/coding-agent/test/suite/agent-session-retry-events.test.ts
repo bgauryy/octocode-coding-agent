@@ -12,7 +12,9 @@ function normalizeEventOrder(events: Harness["events"]): string[] {
 				? `${event.type}:${event.message.role}`
 				: event.type === "tool_execution_start" || event.type === "tool_execution_end"
 					? `${event.type}:${event.toolName}`
-					: event.type;
+					: event.type === "session_dispatch"
+						? `${event.type}:${event.active}`
+						: event.type;
 		if (label === "message_update" && normalized[normalized.length - 1] === "message_update") {
 			continue;
 		}
@@ -274,6 +276,7 @@ describe("AgentSession retry and event characterization", () => {
 		await harness.session.prompt("hi");
 
 		expect(normalizeEventOrder(harness.events)).toEqual([
+			"session_dispatch:true",
 			"agent_start",
 			"turn_start",
 			"message_start:system",
@@ -286,6 +289,7 @@ describe("AgentSession retry and event characterization", () => {
 			"turn_end",
 			"agent_end",
 			"agent_settled",
+			"session_dispatch:false",
 		]);
 	});
 
@@ -313,6 +317,7 @@ describe("AgentSession retry and event characterization", () => {
 
 		expect(toolRuns).toEqual(["hello"]);
 		expect(normalizeEventOrder(harness.events)).toEqual([
+			"session_dispatch:true",
 			"agent_start",
 			"turn_start",
 			"message_start:system",
@@ -334,6 +339,7 @@ describe("AgentSession retry and event characterization", () => {
 			"turn_end",
 			"agent_end",
 			"agent_settled",
+			"session_dispatch:false",
 		]);
 	});
 
@@ -365,7 +371,7 @@ describe("AgentSession retry and event characterization", () => {
 		await harness.session.prompt("hi");
 
 		expect(harness.eventsOfType("agent_end")).toHaveLength(1);
-		expect(harness.events[harness.events.length - 1]?.type).toBe("agent_settled");
+		expect(normalizeEventOrder(harness.events).slice(-2)).toEqual(["agent_settled", "session_dispatch:false"]);
 	});
 
 	it("emits agent_end for aborted runs and persists the aborted assistant message", async () => {
@@ -388,7 +394,7 @@ describe("AgentSession retry and event characterization", () => {
 		await promptPromise;
 
 		expect(harness.eventsOfType("agent_end")).toHaveLength(1);
-		expect(harness.events[harness.events.length - 1]?.type).toBe("agent_settled");
+		expect(normalizeEventOrder(harness.events).slice(-2)).toEqual(["agent_settled", "session_dispatch:false"]);
 		const lastMessage = harness.session.messages[harness.session.messages.length - 1];
 		expect(lastMessage?.role).toBe("assistant");
 		if (lastMessage?.role === "assistant") {

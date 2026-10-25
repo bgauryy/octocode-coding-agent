@@ -196,6 +196,17 @@ describe("team message delivery", () => {
 		}
 	});
 
+	it("names the message a reply answers in its header, for a peer and for the user, and not otherwise", () => {
+		const peer = messageText(message({ replyTo: 5 }));
+		expect(peer).toMatch(/^Message #7 from agent researcher-1234 at [^\n]*\(in reply to #5\):\n/);
+		expect(messageText(message({ from: USER_SENDER, replyTo: 5 }), { fromUser: true })).toMatch(
+			/^Message #7 from the user at [^\n]* \(in reply to #5\):\nhi$/,
+		);
+		expect(messageText(message())).not.toContain("in reply to");
+		const interrupted = messageText(message({ replyTo: 5, interrupt: true }), { stopped: true });
+		expect(interrupted).toMatch(/\(in reply to #5\) \(an interrupt:/);
+	});
+
 	it("labels the sender, never passing an API client off as the user, and says how to reply", () => {
 		const peer = messageText(message({ replyRequired: true }), { parentId: "main-aaaaaa" });
 		expect(peer).toMatch(

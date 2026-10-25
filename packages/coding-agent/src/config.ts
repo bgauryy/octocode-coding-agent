@@ -91,11 +91,7 @@ export function getCliInvocation(): { command: string; prefix: string[] } {
 	if (existsSync(sourceCli)) {
 		return {
 			command: process.execPath,
-			prefix: [
-				"--import",
-				pathToFileURL(join(packageDir, "src", "experimental", "source-resolver.ts")).href,
-				sourceCli,
-			],
+			prefix: ["--import", pathToFileURL(join(packageDir, "scripts", "source-resolver.ts")).href, sourceCli],
 		};
 	}
 	return { command: process.execPath, prefix: [join(packageDir, "dist", "bundle", "cli.js")] };

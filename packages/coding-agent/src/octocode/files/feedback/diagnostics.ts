@@ -54,10 +54,8 @@ function describe(row: Record<string, unknown>, path: string): DiagnosticFeedbac
 		if (!isRecord(item)) return "Unknown diagnostic";
 		const range = isRecord(item.displayRange) ? item.displayRange : {};
 		const location = typeof range.startLine === "number" ? `:${range.startLine}` : "";
-		return `${typeof item.code === "string" ? `${item.code} ` : ""}${location} ${typeof item.message === "string" ? item.message : "Unknown diagnostic"}`.slice(
-			0,
-			240,
-		);
+		const code = typeof item.code === "string" || typeof item.code === "number" ? `${item.code} ` : "";
+		return `${code}${location} ${typeof item.message === "string" ? item.message : "Unknown diagnostic"}`.slice(0, 240);
 	});
 	const pagination = isRecord(data.pagination) ? data.pagination : {};
 	const truncated = data.isTruncated === true || pagination.hasMore === true || matches.length > MAX_ISSUES;
@@ -110,20 +108,14 @@ export async function inspectMutations(
 					resolve("pending");
 				}, WAIT_MS);
 			});
+			// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
+			// diagnostics (matches, category) by itself.
 			const call = ctx.executeTool(
 				TOOL,
+				{ queries: [{ operation: "diagnostic", path }] },
 				{
-					queries: [
-						{
-							operation: "diagnostic",
-							path,
-							extras: ["details", "diagnostics", "echo"],
-							mainGoal: "Inspect diagnostics after a file edit",
-							reasoning: "Report code diagnostics",
-						},
-					],
+					signal: controller.signal,
 				},
-				{ signal: controller.signal },
 			);
 			const outcome = await Promise.race([call, timeout]);
 			if (outcome === "pending") {
@@ -151,7 +143,7 @@ export async function inspectMutations(
 			}
 			const row = rowOf(parsed);
 			results.push(
-				row && matchesResponsePath(parsed, row, path) ? describe(row, path) : { path, state: "unavailable" },
+				row && matchesResponsePath(parsed, row, path, ctx.cwd) ? describe(row, path) : { path, state: "unavailable" },
 			);
 		} catch {
 			results.push({ path, state: signal?.aborted ? "cancelled" : "unavailable" });

@@ -12,6 +12,7 @@ function fixture(messages: unknown[] = []) {
 	const calls: unknown[][] = [];
 	const session = {
 		sessionId: "content-test",
+		model: { provider: "test-provider", id: "test-model", name: "Fixture", input: ["text", "image"] },
 		messages,
 		isStreaming: false,
 		subscribe(callback: typeof listener) {
@@ -40,6 +41,19 @@ async function snapshot(service: ApplicationService) {
 	return frame.snapshot;
 }
 const image = { type: "image", mimeType: "image/png", data: "aW1hZ2U=" };
+
+it("refreshes image capabilities when reconnecting after a session change", () => {
+	const f = fixture();
+	expect(f.service.getSnapshot().model?.input).toEqual(["text", "image"]);
+	Object.assign(f.session, {
+		sessionId: "text-session",
+		model: { provider: "test-provider", id: "text-model", name: "Text", input: ["text"] },
+		messages: [],
+	});
+	expect(f.service.getSnapshot().model?.input).toEqual(["text"]);
+	Object.assign(f.session, { sessionId: "unconfigured-session", model: undefined, messages: [] });
+	expect(f.service.getSnapshot().model).toBeUndefined();
+});
 
 it("preserves ordered model blocks, status, usage and citations in the common stream", async () => {
 	const f = fixture();

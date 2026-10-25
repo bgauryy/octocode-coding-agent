@@ -4,6 +4,7 @@ import { openFile } from "./open.ts";
 interface WebServer {
 	url: string;
 	close(): Promise<void>;
+	validate?: () => Promise<boolean>;
 }
 
 export function webLauncher(pi: ExtensionAPI, open = openFile) {
@@ -25,6 +26,11 @@ export function webLauncher(pi: ExtensionAPI, open = openFile) {
 	pi.on("session_shutdown", close);
 	return (sessionKey: string, start: () => Promise<WebServer>, view: "board" | "activity") =>
 		enqueue(async () => {
+			if (server && !((await server.validate?.().catch(() => false)) ?? true)) {
+				const previous = server;
+				server = undefined;
+				await previous.close();
+			}
 			if (!server || key !== sessionKey) {
 				const previous = server;
 				server = undefined;

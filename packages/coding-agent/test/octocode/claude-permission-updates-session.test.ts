@@ -304,7 +304,7 @@ it("session acceptEdits update allows a later workspace Write without another ho
 					type: "write",
 					path: "mode.txt",
 					content: "MODE_WRITE",
-					reasoning: "Mode acceptance",
+					reason: "Mode acceptance",
 				},
 			],
 		});
@@ -348,7 +348,7 @@ for (const [name, types, allowed] of [
 						type: "write",
 						path: outside,
 						content: "OUTSIDE",
-						reasoning: "Directory acceptance",
+						reason: "Directory acceptance",
 					},
 				],
 			});

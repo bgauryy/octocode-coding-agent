@@ -1,6 +1,6 @@
-# Optional native debugger
+# Native debugger
 
-Enable the `debug` tool with `octocode --tools +debug` and provide an installed stdio [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) adapter executable. A launch starts the adapter and the debuggee; the host permission gate reviews the executable and launch arguments. All operations except `terminate` use the shared process permission gate. Read-only and isolated child roles refuse debugging because adapter-specific effects cannot be confined by their path guards. The tool does not install adapters, attach to existing processes, evaluate expressions, run custom DAP requests, write memory or satisfy an adapter's `runInTerminal` request.
+The `debug` tool is active by default; disable it with `octocode --tools -debug`. Provide an installed stdio [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) adapter executable. A launch starts the adapter and the debuggee; the host permission gate reviews the executable and launch arguments. All operations except `terminate` use the shared process permission gate. Read-only and isolated child roles refuse debugging because adapter-specific effects cannot be confined by their path guards. The tool does not install adapters, attach to existing processes, evaluate expressions, run custom DAP requests, write memory or satisfy an adapter's `runInTerminal` request.
 
 For an adapter whose launch arguments include `program`, an illustrative call is:
 

@@ -91,6 +91,23 @@ describe("EventStream", () => {
 		expect(await firstEvent).toEqual({ value: undefined, done: true });
 		expect(await secondEvent).toEqual({ value: undefined, done: true });
 	});
+
+	it("wakes remaining consumers when a terminal event completes the stream", async () => {
+		const stream = new EventStream<number, number>(
+			(event) => event === 3,
+			(event) => event,
+		);
+		const firstIterator = stream[Symbol.asyncIterator]();
+		const secondIterator = stream[Symbol.asyncIterator]();
+		const firstEvent = firstIterator.next();
+		const secondEvent = secondIterator.next();
+		stream.push(3);
+
+		expect(await firstEvent).toEqual({ value: 3, done: false });
+		expect(await stream.result()).toBe(3);
+		expect(await secondEvent).toEqual({ value: undefined, done: true });
+		expect(await firstIterator.next()).toEqual({ value: undefined, done: true });
+	});
 });
 
 function message(timestamp: number, durationMs?: number): AssistantMessage {

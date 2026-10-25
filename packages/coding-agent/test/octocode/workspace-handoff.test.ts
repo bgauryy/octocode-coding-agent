@@ -33,7 +33,7 @@ function setup() {
 		tell: async () => ({}),
 		stop: () => undefined,
 	});
-	const backlog = { store, actor, session: ctx.sessionManager.getSessionId(), repoName: "repo" };
+	const backlog = { store, actor, session: ctx.sessionManager.getSessionId(), repoName: "repo", repoRoot: dir };
 	return { ...fake, ctx, runtime, backlog, connection: runtime.bind(ctx, backlog) };
 }
 

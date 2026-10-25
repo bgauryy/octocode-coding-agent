@@ -2,19 +2,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
+import { moduleSpecifiers } from "./module-specifiers.mjs";
+
 export const PACKAGE_POLICY = {
+	acp: ["ai"],
 	agent: ["ai"],
+	mcp: ["agent", "ai", "tui"],
 	ai: ["contacts", "telemetry"],
-	"coding-agent": ["agent", "ai", "contacts", "mcp", "tui", "webview"],
+	"coding-agent": ["agent", "ai", "contacts", "tui", "webview"],
 	contacts: [],
-	mcp: [],
 	telemetry: [],
 	tui: [],
 	webview: ["contacts"],
 };
 
 export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY) {
-	const issues = [];
+	const { hosts, issues } = sourceWorkspaceGroups(packages);
+	const unit = (name) => hosts.get(name) ?? name;
 	const names = new Map(Object.entries(packages).map(([dir, manifest]) => [manifest.name, dir]));
 	const edges = new Map(Object.keys(packages).map((dir) => [dir, new Set()]));
 	for (const [dir, manifest] of Object.entries(packages)) {
@@ -26,8 +31,9 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 		})) {
 			const target = names.get(name);
 			if (!target) continue;
-			edges.get(dir).add(target);
-			if (!(policy[dir] ?? []).includes(target)) issues.push(`forbidden dependency: ${dir} -> ${target}`);
+			if (unit(dir) !== unit(target)) edges.get(unit(dir)).add(unit(target));
+			if (unit(dir) !== unit(target) && !(policy[dir] ?? []).includes(target))
+				issues.push(`forbidden dependency: ${dir} -> ${target}`);
 		}
 	}
 	for (const source of sources) {
@@ -42,11 +48,12 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 					.split("/")[0];
 				if (packages[resolved] && resolved !== source.package) {
 					target = resolved;
-					issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
+					if (unit(source.package) !== unit(target))
+						issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
 				}
 			}
-			if (!target || target === source.package) continue;
-			edges.get(source.package).add(target);
+			if (!target || unit(target) === unit(source.package)) continue;
+			edges.get(unit(source.package)).add(unit(target));
 			if (!(policy[source.package] ?? []).includes(target))
 				issues.push(`forbidden import: ${source.package}/${source.path} -> ${target}`);
 			if (
@@ -72,7 +79,7 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 	return [...new Set(issues)];
 }
 
-function scan(root) {
+export function scanPackageBoundaries(root) {
 	const packages = {},
 		sources = [];
 	for (const dir of fs.readdirSync(path.join(root, "packages"))) {
@@ -93,17 +100,14 @@ function scan(root) {
 		for (const file of walk(path.join(folder, "src"))) {
 			if (file.endsWith(".generated.ts")) continue;
 			const text = fs.readFileSync(file, "utf8");
-			// Include type dependencies and literal dynamic imports, not only emitted JavaScript dependencies.
-			const imports = [...text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)(['"])([^'"]+)\1/g)].map(
-				(match) => match[2],
-			);
+			const imports = moduleSpecifiers(text, file).map((specifier) => specifier.value);
 			sources.push({ package: dir, path: path.relative(folder, file).split(path.sep).join("/"), imports });
 		}
 	}
 	return checkPackageBoundaries(packages, sources);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-	const issues = scan(process.cwd());
+	const issues = scanPackageBoundaries(process.cwd());
 	if (issues.length) {
 		console.error(issues.join("\n"));
 		process.exitCode = 1;

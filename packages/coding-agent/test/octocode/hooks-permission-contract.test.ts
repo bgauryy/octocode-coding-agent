@@ -107,7 +107,7 @@ it("cannot bypass an unrepresentable required Codex file policy with a Claude al
 			{
 				type: "edit",
 				path: "target",
-				reasoning: "edit",
+				reason: "edit",
 				edits: [{ oldText: "a", newText: "b" }],
 			},
 		],

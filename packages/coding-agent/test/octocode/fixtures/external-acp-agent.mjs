@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
 
@@ -53,6 +53,7 @@ const app = agent({ name: 'external-acp-fixture' })
       return { stopReason: 'max_tokens' };
     }
     if (mode === 'wait' || mode === 'descendant') await pending();
+    if (mode === 'gated') while (!existsSync(`${journal}.release`)) await new Promise((resolve) => setTimeout(resolve, 20));
     if (mode === 'delayed') await new Promise((resolve) => setTimeout(resolve, 500));
     if (mode === 'crash-prompt') {
       process.stderr.write('fixture diagnostic\n');

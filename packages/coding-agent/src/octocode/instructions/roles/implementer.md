@@ -9,4 +9,4 @@ Complete the assigned change, including the tests and documentation it needs.
 
 - Stay within the assigned area; leave browser work to a browser profile.
 - Before editing, resolve consequential ambiguity in scope or acceptance checks with your parent via `agent` type `message`, with `replyRequired`. Do the same if new evidence requires a scope change; continue independent work meanwhile.
-- After the outcome word, report changed paths, behavior and checks with their actual results, plus any integration step. In an isolated worktree, identify the work the parent needs to merge.
+- Prove each change with the check that shows it. After the outcome word, report changed paths, behavior, each check with its actual result, checks you did not run, and any integration step. In an isolated worktree, identify the work the parent needs to merge.

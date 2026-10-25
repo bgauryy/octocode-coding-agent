@@ -5,22 +5,19 @@ import {
 	type ApplicationHistory,
 } from "@octocodeai/octocode-contacts";
 
+import { requestJson } from "../../request.ts";
+
 /** Assets stay behind the same capability as the session. Only decoded bytes reach object URLs. */
 export function createApplicationApi(access: string) {
 	const authorization = { Authorization: `Bearer ${access}` };
-	async function read(response: Response): Promise<unknown> {
-		const value: unknown = await response.json();
-		if (!response.ok)
-			throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : "Content unavailable");
-		return value;
-	}
 	return {
 		async asset(sessionId: string, id: string, signal?: AbortSignal): Promise<Blob> {
-			const value = await read(
-				await fetch(`${WORKSPACE_ROUTES.assets}/${encodeURIComponent(id)}?${new URLSearchParams({ sessionId })}`, {
+			const value = await requestJson(
+				`${WORKSPACE_ROUTES.assets}/${encodeURIComponent(id)}?${new URLSearchParams({ sessionId })}`,
+				{
 					headers: authorization,
 					signal,
-				}),
+				},
 			);
 			if (
 				!isRecord(value) ||
@@ -39,27 +36,23 @@ export function createApplicationApi(access: string) {
 		},
 		async upload(sessionId: string, file: File): Promise<ApplicationAsset> {
 			const data = await fileData(file);
-			const value = await read(
-				await fetch(WORKSPACE_ROUTES.assets, {
-					method: "POST",
-					headers: { ...authorization, "Content-Type": "application/json" },
-					body: JSON.stringify({ sessionId, mimeType: file.type, name: file.name, data }),
-				}),
-			);
+			const value = await requestJson(WORKSPACE_ROUTES.assets, {
+				method: "POST",
+				headers: { ...authorization, "Content-Type": "application/json" },
+				body: JSON.stringify({ sessionId, mimeType: file.type, name: file.name, data }),
+			});
 			if (!isRecord(value) || !isAsset(value.asset)) throw new Error("Invalid attachment response");
 			return value.asset;
 		},
 		async history(sessionId: string, before?: string, activityBefore?: string): Promise<ApplicationHistory> {
-			const value = await read(
-				await fetch(
-					`${WORKSPACE_ROUTES.history}?${new URLSearchParams({
-						sessionId,
-						limit: "50",
-						...(before ? { before } : {}),
-						...(activityBefore ? { activityBefore } : {}),
-					})}`,
-					{ headers: authorization },
-				),
+			const value = await requestJson(
+				`${WORKSPACE_ROUTES.history}?${new URLSearchParams({
+					sessionId,
+					limit: "50",
+					...(before ? { before } : {}),
+					...(activityBefore ? { activityBefore } : {}),
+				})}`,
+				{ headers: authorization },
 			);
 			if (
 				!isRecord(value) ||

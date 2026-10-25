@@ -1,12 +1,11 @@
-import type { ToolAnnotations, ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
+import type { ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
-import { isMcpTool } from "../shared/octocode-tools.ts";
+import { isMcpToolName } from "../../../../mcp/src/servers.ts";
 import { secretProblem } from "../shared/sanitize.ts";
 import { contentText } from "../shared/util.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 import { isRecord } from "../../utils/guards.ts";
-import { readOnlyMcp } from "./gate/classify.ts";
 import { runsLater } from "./file-access.ts";
 import { KeyTable } from "./key-table.ts";
 import { commandNames, SHELL_TOOLS } from "./shell.ts";
@@ -24,8 +23,8 @@ const SHELL_HINT = "; to save quoted material, write it as data with the `file` 
 
 /**
  * A CaMeL-inspired provenance tripwire: tool outputs are tagged by where they came from, and a later call
- * whose arguments repeat them is flagged. `untrusted` output (web, browser, open-world MCP, network commands) reaching a
- * consequential argument (a shell command, file content, a mutating MCP call, a memory) and `private` output (reads
+ * whose arguments repeat them is flagged. `untrusted` output (web, browser, MCP, network commands) reaching a
+ * consequential argument (a shell command, file content, an MCP call, a memory) and `private` output (reads
  * outside the workspace, secret-looking lines) reaching an egress argument (a URL, a network command) are hits.
  *
  * It is substring matching, so paraphrase, encoding or splitting across calls defeat it by design: a tripwire, not
@@ -62,7 +61,7 @@ const NETWORK = new Set([
 	"irm",
 ]);
 /** Argument keys that are not an action: the model's own explanation of a call. */
-const NOT_ACTION = new Set(["reasoning", "oldText"]);
+const NOT_ACTION = new Set(["reason", "reasoning", "oldText"]);
 
 type Kind = "untrusted" | "private";
 interface Source {
@@ -76,8 +75,6 @@ interface Source {
 interface ProvenanceOptions {
 	/** The repository root reads are trusted under (default: the git toplevel of `cwd`). */
 	workspaceRoot?: (cwd: string) => string | undefined;
-	/** A tool's annotations (`pi.getAllTools()`); without them `mcp__*` tools count as open-world and not read-only. */
-	annotations?: (toolName: string) => ToolAnnotations | undefined;
 	maxShingles?: number;
 	maxBytesPerResult?: number;
 	now?: () => number;
@@ -112,14 +109,12 @@ class Provenance {
 	private readonly sources = new Map<number, Source>();
 	private nextSource = 1;
 	private readonly workspaceRoot: (cwd: string) => string | undefined;
-	private readonly annotations: (toolName: string) => ToolAnnotations | undefined;
 	private readonly maxShingles: number;
 	private readonly maxBytes: number;
 	private readonly now: () => number;
 
 	constructor(options: ProvenanceOptions = {}) {
 		this.workspaceRoot = options.workspaceRoot ?? workspaceRoot;
-		this.annotations = options.annotations ?? (() => undefined);
 		this.maxShingles = options.maxShingles ?? MAX_SHINGLES;
 		this.index = new KeyTable(this.maxShingles);
 		this.maxBytes = options.maxBytesPerResult ?? MAX_BYTES_PER_RESULT;
@@ -134,9 +129,12 @@ class Provenance {
 		if (origin?.kind === "untrusted") {
 			// The source's own address was chosen before its content was read.
 			for (const key of atoms(origin.label)) this.remember(key, 0, false);
+			// Echoed arguments were supplied before this result. Exclude only new taint; keep any earlier source.
+			const supplied = capBytes(leaves(event.input).join("\n"), this.maxBytes);
+			const echoed = new Set([...atoms(supplied), ...shingles(normalize(supplied))]);
 			const id = this.addSource(origin.kind, origin.label, false);
-			for (const key of atoms(text)) this.remember(key, id, false);
-			for (const key of shingles(normalize(text))) this.remember(key, id, true);
+			for (const key of atoms(text)) if (!echoed.has(key)) this.remember(key, id, false);
+			for (const key of shingles(normalize(text))) if (!echoed.has(key)) this.remember(key, id, true);
 		} else {
 			for (const key of atoms(text)) this.remember(key, 0, false);
 			if (origin) {
@@ -189,11 +187,7 @@ class Provenance {
 			return { kind: "untrusted", label: `browser ${str(input.url) ?? str(input.action) ?? ""}`.trim() };
 		if (toolName === "externalAgent" && input.action === "prompt")
 			return { kind: "untrusted", label: `externalAgent ${str(input.id) ?? ""}`.trim() };
-		if (isMcpTool(toolName))
-			return this.annotations(toolName)?.openWorldHint === false ? undefined : { kind: "untrusted", label: toolName };
-		// Octocode's built-in MCP resource reader: a server's text, like any open-world MCP result.
-		if (toolName === "read_mcp_resource")
-			return { kind: "untrusted", label: `${toolName} ${str(input.uri) ?? ""}`.trim() };
+		if (isMcpToolName(toolName)) return { kind: "untrusted", label: toolName };
 		if (SHELL_TOOLS.has(toolName)) {
 			const command = str(input.command) ?? "";
 			if (!isNetworkCommand(command)) return undefined;
@@ -216,7 +210,7 @@ class Provenance {
 
 	/**
 	 * Arguments that act: shell commands, file paths, the content of files that run or configure later sessions (or lie
-	 * outside the workspace), mutating MCP calls, memory notes. Content written into an ordinary workspace file is data.
+	 * outside the workspace), MCP calls, memory notes. Content written into an ordinary workspace file is data.
 	 */
 	private consequential(toolName: string, input: Record<string, unknown>, cwd: string): string[] {
 		if (SHELL_TOOLS.has(toolName)) return [str(input.command) ?? ""];
@@ -231,7 +225,7 @@ class Provenance {
 			});
 		}
 		if (toolName === "memory") return input.op === "set" ? leaves(input) : [];
-		if (isMcpTool(toolName)) return readOnlyMcp(this.annotations(toolName)) ? [] : leaves(input);
+		if (isMcpToolName(toolName)) return leaves(input);
 		return [];
 	}
 

@@ -173,6 +173,33 @@ describe("validateToolArguments", () => {
 		expect(validateToolArguments(tool, toolCall)).toEqual({ value: 42 });
 	});
 
+	it("resolves local $refs inside anyOf for validation and coercion", () => {
+		const tool: Tool = {
+			name: "echo",
+			description: "Echo tool",
+			parameters: {
+				type: "object",
+				properties: {
+					positive: { type: "number", minimum: 0 },
+					value: {
+						anyOf: [{ $ref: "#/properties/positive" }, { type: "string" }],
+					},
+				},
+			},
+		};
+		const numeric = { type: "toolCall", id: "tool-1", name: "echo", arguments: { value: 2 } } as ToolCall;
+		const stringified = {
+			type: "toolCall",
+			id: "tool-2",
+			name: "echo",
+			arguments: { value: "2" },
+		} as ToolCall;
+		// Numeric values resolve the referenced #/properties/positive branch.
+		expect(validateToolArguments(tool, numeric)).toEqual({ value: 2 });
+		// String values match the string branch directly.
+		expect(validateToolArguments(tool, stringified)).toEqual({ value: "2" });
+	});
+
 	it("accepts null for nullable array schemas with items", () => {
 		const { tool, toolCall } = createToolCallWithPlainSchema(
 			{ type: ["array", "null"], items: { type: "string" } },

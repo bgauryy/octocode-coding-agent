@@ -78,6 +78,18 @@ async function refreshProvider(
 afterEach(() => vi.restoreAllMocks());
 
 describe("remote catalog provider", () => {
+	it("preserves provider-owned refresh hooks through either catalog wrapper", async () => {
+		for (const wrap of [
+			(provider: Provider) => withRemoteCatalog(provider, "https://catalog.example"),
+			(provider: Provider) => withPersonalizedCatalog(provider, async (models) => models),
+		]) {
+			const refreshModels = vi.fn(async () => {});
+			const provider = wrap({ ...builtinProvider(), refreshModels });
+			await refreshProvider(provider, new InMemoryModelsStore(), { allowNetwork: false });
+			expect(refreshModels).toHaveBeenCalledOnce();
+			expect(refreshModels.mock.calls[0]).toEqual([expect.objectContaining({ allowNetwork: false })]);
+		}
+	});
 	it.each([true, false])("upgrades historical OpenCode catalog roots (network: %s)", async (allowNetwork) => {
 		const old = { ...model("old"), provider: "opencode", baseUrl: "https://opencode.ai/inference/v1" };
 		const custom = { ...old, id: "custom", baseUrl: "https://proxy.example/v1" };

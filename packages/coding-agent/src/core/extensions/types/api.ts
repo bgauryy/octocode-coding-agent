@@ -7,7 +7,7 @@ import type { TSchema } from "typebox";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../../cache-warmer.ts";
 import type { EventBus } from "../../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../../exec.ts";
-import type { McpServerConfig, RegisteredMcpServer } from "../../mcp-servers.ts";
+import type { McpServerConfig, RegisteredMcpServer } from "../../../../../mcp/src/servers.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { Settings } from "../../settings-manager.ts";
 import type { SkillResourceSnapshot } from "../../skill-resource-snapshot.ts";

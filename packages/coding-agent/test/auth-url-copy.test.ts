@@ -1,7 +1,7 @@
 import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { McpManagerView } from "../src/extensions/mcp/ui.ts";
+import { McpManagerView } from "../../mcp/src/ui.ts";
 import { LoginDialogComponent } from "../src/modes/interactive/components/login-dialog.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";

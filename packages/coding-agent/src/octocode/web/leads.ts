@@ -1,4 +1,4 @@
-import { OCTOCODE_TOOL_PREFIX } from "../shared/octocode-tools.ts";
+import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
 
 /** The Octocode research tools that can work on a saved page, when this session has them. */
 type SavedPageTools = { clasify: boolean; localSearch: boolean; localFetch: boolean };

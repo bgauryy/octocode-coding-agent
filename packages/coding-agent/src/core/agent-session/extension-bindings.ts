@@ -22,6 +22,7 @@ import { loadedSkillDirectories } from "../skills.ts";
 import type { SlashCommandInfo } from "../slash-commands.ts";
 import { isSyntheticPath } from "../source-info.ts";
 import type { AbortReason, SessionInternals } from "./host.ts";
+import type { SessionInputQueue } from "./input-queue.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
 import type { ExtensionBindings } from "./types.ts";
@@ -30,6 +31,7 @@ import { errorMessage } from "../../utils/guards.ts";
 export interface ExtensionBindingsHost extends Pick<SessionInternals, "session" | "run" | "cwd" | "emit"> {
 	readonly tools: SessionToolLoadout;
 	readonly models: SessionModelControl;
+	readonly inputs: Pick<SessionInputQueue, "hasWaitingCustomMessages">;
 	readonly defaultToolModifiers: readonly string[];
 	recordAbortReason(reason: AbortReason): void;
 	executeNestedToolCall(
@@ -258,7 +260,7 @@ export class SessionExtensionBindings {
 					}
 					void session.abort(reason);
 				},
-				hasPendingMessages: () => session.pendingMessageCount > 0,
+				hasPendingMessages: () => session.pendingMessageCount > 0 || this.host.inputs.hasWaitingCustomMessages,
 				shutdown: () => {
 					this._shutdownHandler?.();
 				},

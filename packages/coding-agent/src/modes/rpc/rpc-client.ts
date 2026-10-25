@@ -11,10 +11,10 @@ import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "..
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
-import type { JsonAgentSessionEvent } from "../json-event.ts";
 import { RpcConnection } from "./rpc-client/connection.ts";
+import { promptAndCollect } from "./rpc-client/prompt.ts";
 import { createQueueClient } from "./rpc-client/queue.ts";
-import type { ModelInfo, RpcClientOptions, RpcCommandBody, RpcEventListener } from "./rpc-client/types.ts";
+import type { ModelInfo, RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventListener } from "./rpc-client/types.ts";
 import type {
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
@@ -23,7 +23,7 @@ import type {
 	RpcSlashCommand,
 } from "./rpc-types.ts";
 
-export type { ModelInfo, RpcClientOptions, RpcEventListener } from "./rpc-client/types.ts";
+export type { ModelInfo, RpcClientOptions, RpcEvent, RpcEventListener } from "./rpc-client/types.ts";
 
 export class RpcClient {
 	private connection: RpcConnection;
@@ -70,26 +70,25 @@ export class RpcClient {
 		await this.connection.respondToExtensionUIRequest(response);
 	}
 
-	/**
-	 * Get collected stderr output (useful for debugging).
-	 */
 	getStderr(): string {
 		return this.connection.getStderr();
 	}
 
-	// Command Methods
-
 	/**
 	 * Send a prompt to the agent.
-	 * Returns the prompt's disposition after acceptance; use onEvent() to receive streaming events.
-	 * If the disposition is "handled", no run started for this prompt, so don't wait for agent_settled.
+	 * Returns acceptance unless waitForCompletion also waits for extension-dispatched work.
+	 * A handled prompt may have started other work; use onEvent() for streaming events.
 	 */
 	async prompt(
 		message: string,
 		images?: ImageContent[],
 		streamingBehavior?: "steer" | "followUp",
+		options?: { waitForCompletion?: boolean; dispatchId?: string },
 	): Promise<PromptDisposition> {
-		const response = await this.send({ type: "prompt", message, images, streamingBehavior });
+		const response = await this.send(
+			{ type: "prompt", message, images, streamingBehavior, ...options },
+			options?.waitForCompletion ? null : undefined,
+		);
 		return this.getData<{ disposition: PromptDisposition }>(response).disposition;
 	}
 
@@ -362,17 +361,15 @@ export class RpcClient {
 	/**
 	 * Collect events until agent becomes idle.
 	 */
-	collectEvents(timeout = 60000): Promise<JsonAgentSessionEvent[]> {
+	collectEvents(timeout = 60000): Promise<RpcEvent[]> {
 		return this.connection.collectEvents(timeout);
 	}
 
 	/**
-	 * Send prompt and wait for completion, returning all events.
+	 * Collect events through dispatched work completion. A timeout stops waiting, without aborting or replaying work.
 	 */
-	async promptAndWait(message: string, images?: ImageContent[], timeout = 60000): Promise<JsonAgentSessionEvent[]> {
-		const eventsPromise = this.collectEvents(timeout);
-		await this.prompt(message, images);
-		return eventsPromise;
+	async promptAndWait(message: string, images?: ImageContent[], timeout = 60000): Promise<RpcEvent[]> {
+		return promptAndCollect(this.connection, message, images, timeout);
 	}
 
 	// =========================================================================
@@ -390,7 +387,7 @@ export class RpcClient {
 	private getData<T>(response: RpcResponse): T {
 		if (!response.success) {
 			const errorResponse = response;
-			throw new Error(errorResponse.error);
+			throw Object.assign(new Error(errorResponse.error), { execution: errorResponse.execution });
 		}
 		// Type assertion: we trust response.data matches T based on the command sent.
 		// This is safe because each public method specifies the correct T for its command.

@@ -7,7 +7,8 @@ import { KeybindingsManager } from "../core/keybindings.ts";
 import type { SessionInfo, SessionListProgress } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { SessionSelectorComponent } from "../modes/interactive/components/session-selector.ts";
-import { createStartupTui, startStartupTui } from "./startup-ui.ts";
+import { createStartupTui, showStartupSelector, startStartupTui } from "./startup-ui.ts";
+import { sessionFileRunningPid } from "../octocode/agentdb/liveness.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
 
@@ -26,12 +27,28 @@ export async function selectSession(
 		const selector = new SessionSelectorComponent(
 			currentSessionsLoader,
 			allSessionsLoader,
-			(path: string) => {
-				if (!resolved) {
-					resolved = true;
+			async (path: string) => {
+				if (resolved) return;
+				const runningPid = sessionFileRunningPid(path);
+				if (runningPid !== undefined) {
 					ui.stop();
-					resolve(path);
+					const confirmed = await showStartupSelector(
+						settingsManager,
+						`Another Octocode process (pid ${runningPid}) has this session open. Resume it here as well?`,
+						[
+							{ label: "Resume", value: true },
+							{ label: "Cancel", value: false },
+						],
+					);
+					if (!confirmed) {
+						resolved = true;
+						resolve(null);
+						return;
+					}
 				}
+				resolved = true;
+				ui.stop();
+				resolve(path);
 			},
 			() => {
 				if (!resolved) {

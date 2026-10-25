@@ -8,6 +8,7 @@ import {
 	resolveJsonSchemaStrictSampling,
 	type UnsupportedStrictSchemaKeywordCheck,
 } from "../constrained-sampling.ts";
+import { liftRootComposition } from "../../utils/json-schema-shape.ts";
 import { toClaudeCodeName } from "./claude-code.ts";
 
 /**
@@ -69,7 +70,9 @@ export function convertTools(
 ): BetaTool[] {
 	if (!tools) return [];
 
-	return tools.map((tool, index) => {
+	return tools.map((declared, index) => {
+		// Anthropic rejects anyOf/oneOf/allOf at the root; the model sees one object listing every alternative's properties.
+		const tool = { ...declared, parameters: liftRootComposition(declared.parameters) };
 		const config = tool.constrainedSampling;
 		const strict =
 			disablePreferredStrictTools && config && config.type === "json_schema" && config.strict === "prefer"

@@ -43,7 +43,7 @@ describe("PostToolUse success boundary", () => {
 			{
 				toolName: "file",
 				toolCallId: "denied",
-				input: { queries: [{ type: "write", path: "denied.txt", content: "no", reasoning: "test" }] },
+				input: { queries: [{ type: "write", path: "denied.txt", content: "no", reason: "test" }] },
 				content: [{ type: "text", text: "The user denied the change." }],
 				isError: true,
 			},
@@ -59,7 +59,7 @@ describe("PostToolUse success boundary", () => {
 				type: "write",
 				path: file,
 				content: "authored",
-				reasoning: "test",
+				reason: "test",
 			})),
 		};
 		const result = await tool.execute("partial", input, undefined, undefined, ctx);

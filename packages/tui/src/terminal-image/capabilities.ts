@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
 import type { TerminalColorMode } from "../colors.ts";
-import type { CellDimensions, TerminalCapabilities } from "./types.ts";
+import type { CellDimensions, ImageProtocol, TerminalCapabilities } from "./types.ts";
 
 let cachedCapabilities: TerminalCapabilities | null = null;
 let capabilityOverrides: Partial<TerminalCapabilities> = {};
+let probedImageProtocol: ImageProtocol | undefined;
 
 // Default cell dimensions - updated by TUI when terminal responds to query
 let cellDimensions: CellDimensions = { widthPx: 9, heightPx: 18 };
@@ -68,7 +69,7 @@ function detectCapabilitiesFromEnvironment(tmuxForwardsHyperlink: () => boolean)
 		return { images: null, trueColor: true, hyperlinks: true };
 	}
 
-	if (process.env.KITTY_WINDOW_ID || termProgram === "kitty") {
+	if (process.env.KITTY_WINDOW_ID || termProgram === "kitty" || term === "xterm-kitty") {
 		return { images: "kitty", trueColor: true, hyperlinks: true };
 	}
 
@@ -119,18 +120,39 @@ function parseBooleanCapabilityOverride(value: string | undefined): boolean | un
 	return value === "1" ? true : value === "0" ? false : undefined;
 }
 
+function imageProtocolOverride(): ImageProtocol | undefined {
+	const protocol = process.env.OCTOCODE_IMAGE_PROTOCOL?.toLowerCase();
+	return protocol === "kitty" || protocol === "iterm2"
+		? protocol
+		: protocol === "none" || protocol === "0"
+			? null
+			: undefined;
+}
+
+/** Probe only automatic graphics detection; multiplexers and partial implementations stay conservative. */
+export function shouldProbeKittyGraphics(): boolean {
+	if (capabilityOverrides.images !== undefined || imageProtocolOverride() !== undefined) return false;
+	const term = process.env.TERM?.toLowerCase() ?? "";
+	if (process.env.TMUX || term.startsWith("tmux") || term.startsWith("screen")) return false;
+	if (process.env.TERM_PROGRAM?.toLowerCase() === "rex") return false;
+	return detectCapabilitiesFromEnvironment(() => false).images !== "iterm2";
+}
+
+/** Apply a terminal reply without overriding explicit configuration or changing unrelated capabilities. */
+export function setProbedImageProtocol(protocol: ImageProtocol): boolean {
+	if (!shouldProbeKittyGraphics()) return false;
+	const previous = getCapabilities().images;
+	probedImageProtocol = protocol;
+	cachedCapabilities = null;
+	return previous !== getCapabilities().images;
+}
+
 export function detectCapabilities(tmuxForwardsHyperlink: () => boolean = probeTmuxHyperlinks): TerminalCapabilities {
 	const hyperlinks = parseBooleanCapabilityOverride(process.env.OCTOCODE_HYPERLINKS);
 	const detected = detectCapabilitiesFromEnvironment(
 		hyperlinks === undefined ? tmuxForwardsHyperlink : () => hyperlinks,
 	);
-	const imageProtocol = process.env.OCTOCODE_IMAGE_PROTOCOL?.toLowerCase();
-	const images =
-		imageProtocol === "kitty" || imageProtocol === "iterm2"
-			? imageProtocol
-			: imageProtocol === "none" || imageProtocol === "0"
-				? null
-				: undefined;
+	const images = imageProtocolOverride();
 	const trueColor = parseBooleanCapabilityOverride(process.env.OCTOCODE_TRUE_COLOR);
 	return {
 		...detected,
@@ -145,6 +167,9 @@ export function getCapabilities(): TerminalCapabilities {
 		const hyperlinks = capabilityOverrides.hyperlinks;
 		cachedCapabilities = {
 			...detectCapabilities(hyperlinks === undefined ? undefined : () => hyperlinks),
+			...(probedImageProtocol !== undefined && imageProtocolOverride() === undefined
+				? { images: probedImageProtocol }
+				: {}),
 			...capabilityOverrides,
 		};
 	}
@@ -157,6 +182,7 @@ export function getTerminalColorMode(capabilities: TerminalCapabilities = getCap
 
 export function resetCapabilitiesCache(): void {
 	cachedCapabilities = null;
+	probedImageProtocol = undefined;
 }
 
 /** Override selected auto-detected capabilities. */

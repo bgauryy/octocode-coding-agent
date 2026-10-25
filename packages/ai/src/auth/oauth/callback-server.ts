@@ -6,6 +6,7 @@
  */
 
 import { createServer, type ServerResponse } from "node:http";
+import { raceWithAbortSignal } from "../../utils/abort.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "../../utils/oauth-page.ts";
 import type { ProviderAuthInteraction } from "../types.ts";
 
@@ -25,7 +26,7 @@ interface OAuthCallbackServerOptions<T> {
 	 * Finishes the sign-in with the received code before the browser page is sent, so the page can
 	 * show exchange failures. Pass `async (code) => code` to exchange the code later.
 	 */
-	complete: (code: string) => Promise<T>;
+	complete: (code: string, callbackUrl: URL) => Promise<T>;
 	signal?: AbortSignal;
 	timeoutMs?: number;
 }
@@ -104,7 +105,7 @@ export async function startOAuthCallbackServer<T>(
 			}
 			claimed = true;
 			try {
-				const value = await options.complete(code);
+				const value = await options.complete(code, url);
 				sendPage(response, 200, oauthSuccessHtml(`Signed in to ${providerName}. You may now close this page.`));
 				finish({ value });
 			} catch (error) {
@@ -143,6 +144,7 @@ export async function startOAuthCallbackServer<T>(
 		close: () => {
 			finish({ error: new Error("OAuth callback server closed") });
 			server.close();
+			server.closeAllConnections();
 		},
 	};
 }
@@ -159,8 +161,14 @@ export async function waitForCallbackOrManualInput<T>(
 ): Promise<{ type: "callback"; value: T } | { type: "manual"; input: string }> {
 	const manualAbort = new AbortController();
 	let manualError: Error | undefined;
-	const manual = interaction
-		.prompt({ type: "manual_code", ...prompt, signal: manualAbort.signal })
+	const manual = raceWithAbortSignal(
+		interaction.prompt({
+			type: "manual_code",
+			...prompt,
+			signal: AbortSignal.any([manualAbort.signal, interaction.signal]),
+		}),
+		interaction.signal,
+	)
 		.then((input) => {
 			callback?.cancel();
 			return input;

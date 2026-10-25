@@ -16,6 +16,23 @@ afterEach(() => {
 	process.env = saved;
 });
 
+// The tools octocode-mcp declares. The fake host registers none, but their names select the research-workflow lines
+// (`octocodeWorkflows`) and the "Outside" wording, so the measured prompt carries the same research policy as a real session.
+const OCTOCODE_TOOLS = [
+	"localSearch",
+	"localFetch",
+	"structureSearch",
+	"astSearch",
+	"lspSearch",
+	"ghSearchRepo",
+	"ghSearchCode",
+	"ghStructure",
+	"ghGetFileContent",
+	"ghSearchHistory",
+	"ghGetHistoryItem",
+	"artifactSearch",
+].map((name) => `mcp__octocode__${name}`);
+
 interface Size {
 	backlogEntities: number;
 	total: number;
@@ -40,7 +57,11 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 	const sections: Record<string, string> = {};
 	await fake.fire(
 		"before_agent_start",
-		{ type: "before_agent_start", prompt: "hi", systemPromptOptions: { sections, selectedTools: active } },
+		{
+			type: "before_agent_start",
+			prompt: "hi",
+			systemPromptOptions: { sections, selectedTools: [...active, ...OCTOCODE_TOOLS] },
+		},
 		ctx,
 	);
 	const perTool: Record<string, number> = {};
@@ -99,20 +120,30 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 22_000 (measured 21_808): +~650 user-requested editing and protocol policy: repository conventions, clean-code and
 // parallel/script rules, one worked example, a task-contract brief, and BLUF, 5W2H and SBAR defined once in
 // Communication (role files now name them instead of restating their slots).
-const MAIN_CEILING = 22_000;
+// 29_000 (measured 27_502 without entity fields): +5_333 for user-requested default browser/debug activation.
+// Their schemas now cost 3_409 and 1_924 characters respectively in every main-session request.
+// 31_000 (measured 30_600 without entity fields, with the real Octocode tool list): +1_631 over the 29_000 baseline.
+// B89's skill line and `skill` tool and B90's required `reason` property on every tool schema took the old measurement
+// to 29_131; the Octocode research-workflow lines and the wider "Outside" wording, now counted because this test passes
+// the tool list, add 1_469.
+const MAIN_CEILING = 31_000;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
 // 15_300 (measured 15_051): the same shared policy additions.
-const SPECIALIST_CEILING = 15_300;
+// 18_500 (measured 17_532 without entity fields): +1_924 for default debug activation.
+// 20_700 (measured 20_363 without entity fields, with the real Octocode tool list): the same B89 and B90 growth
+// (18_894 before the tool list) plus 1_469 for the research-workflow lines.
+const SPECIALIST_CEILING = 20_700;
 
 describe("prompt size", () => {
 	it("main session", async () => {
 		const size = await promptSize({ subagent: false });
 		console.log(`main session: ${size.total} chars (prompt ${size.prompt}); ${JSON.stringify(size.perTool)}`);
 		expect(size.prompt).toBeGreaterThan(0);
-		// Browser schemas belong to the specialist and consume no main-session prompt space.
-		expect(size.perTool.browser).toBeUndefined();
+		// Every native tool is active in the main session by default; specialist fallback remains covered elsewhere.
+		expect(size.perTool.browser).toBeGreaterThan(0);
+		expect(size.perTool.debug).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);
 		expect(

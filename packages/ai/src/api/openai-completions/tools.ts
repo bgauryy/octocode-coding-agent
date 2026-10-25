@@ -5,6 +5,7 @@ import {
 	resolveGrammarConstrainedSampling,
 	resolveJsonSchemaStrictSampling,
 } from "../constrained-sampling.ts";
+import { sanitizeMoonshotToolParameters } from "./tool-schema-flavor.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 export function convertTools(
@@ -31,12 +32,16 @@ export function convertTools(
 		}
 
 		const strict = resolveJsonSchemaStrictSampling(tool, compat.supportsStrictMode);
+		const parameters = getJsonSchemaToolParameters(tool, strict);
 		return {
 			type: "function",
 			function: {
 				name: tool.name,
 				description: tool.description,
-				parameters: getJsonSchemaToolParameters(tool, strict) as Record<string, unknown>,
+				parameters:
+					compat.toolSchemaFlavor === "moonshot"
+						? sanitizeMoonshotToolParameters(parameters)
+						: (parameters as Record<string, unknown>),
 				// Only include strict if provider supports it. Some reject unknown fields.
 				...(compat.supportsStrictMode && { strict: strict ?? false }),
 			},

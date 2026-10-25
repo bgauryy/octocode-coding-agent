@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { selectConfig } from "../cli/config-selector.ts";
 import { APP_NAME, getAgentDir, getBundledSkillsDir } from "../config.ts";
 import { DefaultPackageManager } from "../core/package-manager.ts";
-import { isBuiltinExtension } from "../core/resource-loader.ts";
+import { resolveExtensionFactories } from "../core/resource-loader/builtins.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { CONFIG_COMMAND_USAGE, printConfigCommandHelp } from "./help.ts";
 import {
@@ -63,9 +63,8 @@ export async function handleConfigCommand(
 		return true;
 	}
 	reportSettingsErrors(settingsManager, "config command");
-	const builtinExtensions = (runtimeOptions.extensionFactories ?? [])
-		.filter(isBuiltinExtension)
-		.map((input) => input.name);
+	const { builtinExtensions: builtins } = resolveExtensionFactories(runtimeOptions.extensionFactories);
+	const builtinExtensions = [...builtins.keys()];
 	const globalSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	const builtinSkillsDir = getBundledSkillsDir();
 	const globalResolvedPaths = await new DefaultPackageManager({

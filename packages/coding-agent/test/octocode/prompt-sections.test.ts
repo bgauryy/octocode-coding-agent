@@ -1,3 +1,4 @@
+import { renderServersSection } from "../../../mcp/src/section.ts";
 import { getCurrentSystemPrompt, getSystemMessageText, type SystemMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,17 +9,30 @@ import {
 } from "../../src/core/system-prompt.ts";
 import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { fakePi } from "./fake-pi.ts";
 
 describe("native prompt section updates", () => {
 	const input = {
 		octocode: true,
 		canDelegate: true,
 		profiles: [{ name: "researcher", description: "Investigate a question." }],
-		octocodeInstructions: "# Server instructions\nSearch and read.",
 	};
-	const sections = (value = input) =>
-		buildSystemPromptSections({ cwd: "/workspace", sections: octocodePromptSections(value) });
+	const serverSection = (instructions: string) =>
+		renderServersSection([
+			{
+				entry: { name: "octocode", source: "default", config: { command: "test" } },
+				connection: { state: "connected", instructions },
+				tools: { deferred: [], declared: [{ name: "mcp__octocode__read" }] },
+			},
+		])!;
+	const sections = (value = input, instructions = "Search and read.") =>
+		buildSystemPromptSections({
+			cwd: "/workspace",
+			sections: {
+				...octocodePromptSections(value),
+				...(instructions ? { mcp_servers: serverSection(instructions) } : {}),
+			},
+		});
 
 	it("sends only the changed policy section and replays the complete prompt", () => {
 		const before = sections();
@@ -41,17 +55,17 @@ describe("native prompt section updates", () => {
 
 	it("removes stale policy and server instructions when upgrading or disconnecting", () => {
 		const previous = buildSystemPromptSections({ cwd: "/workspace", sections: { octocode: octocodePrompt(input) } });
-		const current = sections({ ...input, octocodeInstructions: "" });
+		const current = sections(input, "");
 		const patch = diffSystemPromptSections(previous, current)!;
 		expect(patch.octocode).toBeNull();
 		expect(current.octocode_mcp).toBeUndefined();
-		expect(diffSystemPromptSections(sections(), current)?.octocode_mcp).toBeNull();
+		expect(diffSystemPromptSections(sections(), current)?.mcp_servers).toBeNull();
 	});
 
 	it("keeps server-provided headings opaque within the server section", () => {
 		const text = "# Safety\nServer capability guidance.\n# Work and verification\nMore guidance.";
-		const current = octocodePromptSections({ ...input, octocodeInstructions: text });
-		expect(current.octocode_mcp).toContain(text);
+		const current = sections(input, text);
+		for (const line of text.split("\n")) expect(current.mcp_servers).toContain(line);
 		expect(current.octocode_safety).not.toContain("Server capability");
 		expect(current.octocode_work).not.toContain("More guidance");
 	});
@@ -62,7 +76,7 @@ describe("native prompt section updates", () => {
 			const fake = fakePi();
 			const selectedTools = ["agent", "bash", "file"];
 			for (const name of selectedTools) fake.tools.set(name, { name });
-			registerTurnSetup(fake.pi, { isSubagent, profiles: () => new Map(), octocode: fakeOctocode({ by: "off" }).mcp });
+			registerTurnSetup(fake.pi, { isSubagent, profiles: () => new Map() });
 			const options = normalizeBuildSystemPromptOptions({ cwd: "/workspace", selectedTools });
 			await fake.emit("before_agent_start", { systemPromptOptions: options }, {});
 			const prompt = buildSystemPrompt(options);

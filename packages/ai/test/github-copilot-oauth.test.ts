@@ -659,8 +659,8 @@ describe("GitHub Copilot OAuth device flow", () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(accessTokenPollTimes).toHaveLength(2);
 
-		// slow_down carried a server-provided interval of 7 seconds.
-		await vi.advanceTimersByTimeAsync(6999);
+		// The server's 7-second minimum cannot reduce the RFC-required 5 + 5-second interval.
+		await vi.advanceTimersByTimeAsync(9999);
 		expect(accessTokenPollTimes).toHaveLength(2);
 
 		await vi.advanceTimersByTimeAsync(1);
@@ -669,7 +669,7 @@ describe("GitHub Copilot OAuth device flow", () => {
 		expect(accessTokenPollTimes).toEqual([
 			startTime.getTime() + 5000,
 			startTime.getTime() + 10000,
-			startTime.getTime() + 17000,
+			startTime.getTime() + 20000,
 		]);
 	});
 

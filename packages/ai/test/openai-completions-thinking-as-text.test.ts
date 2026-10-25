@@ -51,10 +51,11 @@ const compat = {
 	supportsLongCacheRetention: true,
 } satisfies Omit<
 	Required<OpenAICompletionsCompat>,
-	"cacheControlFormat" | "thinkingTokenBudgetField" | "vllmPriority"
+	"cacheControlFormat" | "thinkingTokenBudgetField" | "vllmPriority" | "toolSchemaFlavor"
 > & {
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];
+	toolSchemaFlavor?: OpenAICompletionsCompat["toolSchemaFlavor"];
 };
 
 function buildModel(baseUrl = "http://127.0.0.1:1"): Model<"openai-completions"> {

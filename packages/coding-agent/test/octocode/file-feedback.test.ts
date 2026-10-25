@@ -85,6 +85,9 @@ it("resolves native workspace-relative row paths against the response root", () 
 		),
 	).toBe(false);
 	expect(matchesResponsePath({ results: [row] }, row, f.file)).toBe(false);
+	// The Octocode server sends workspace-relative paths without an envelope root; its root is the session cwd.
+	expect(matchesResponsePath({ results: [row] }, row, f.file, path.dirname(f.file))).toBe(true);
+	expect(matchesResponsePath({ results: [row] }, row, f.file, path.join(path.dirname(f.file), "nested"))).toBe(false);
 	expect(
 		matchesResponsePath(
 			{ root: path.dirname(f.file), results: [{ data: { nodes: [] } }] },
@@ -234,6 +237,54 @@ it("flags a possible parser regression only from a clean before observation and 
 	expect(await inspectParseAfter([receipt], before, f.ctx)).toMatchObject([{ state: "superseded" }]);
 });
 
+it("claims a recovered parse whose walk ends at a terminal limit", async () => {
+	// Live finding: a recovered parse always ends the walk at a terminal limit, and the served row still
+	// proves the parse; the composed call must also stay within the research tool's query schema.
+	const f = fixture();
+	let recovered = false;
+	Object.defineProperty(f.ctx, "tools", { value: [{ name: "mcp__octocode__astSearch" }] });
+	Object.defineProperty(f.ctx, "executeTool", {
+		value: vi.fn(async () => ({
+			isError: false,
+			result: {
+				content: [],
+				structuredContent: {
+					results: [
+						{
+							data: {
+								operation: "syntaxTree",
+								path: "source.ts",
+								nodes: [],
+								...(recovered
+									? {
+											isPartial: true,
+											terminalLimit: true,
+											partialReasons: ["parseRecovered"],
+											diagnostics: [{ code: "syntaxTree.parse.recovered" }],
+										}
+									: {}),
+							},
+						},
+					],
+					root: path.dirname(f.file),
+				},
+			},
+		})),
+	});
+	const before = await captureParseBefore([f.file], f.ctx);
+	expect(before.get(f.file)?.state).toBe("parsed");
+	fs.writeFileSync(f.file, "const x = ;\n");
+	recovered = true;
+	expect((await captureParseBefore([f.file], f.ctx)).get(f.file)?.state).toBe("recovered");
+	const receipt = { ...f.receipt, digest: sha256(fs.readFileSync(f.file)) };
+	expect(await inspectParseAfter([receipt], before, f.ctx)).toMatchObject([{ state: "possible-regression" }]);
+	expect(f.ctx.executeTool).toHaveBeenCalledWith(
+		"mcp__octocode__astSearch",
+		{ queries: [{ operation: "syntaxTree", path: f.file }] },
+		expect.anything(),
+	);
+});
+
 it("suppresses old observations after a competing disk edit and avoids an uncallable tool", async () => {
 	const f = fixture();
 	callable(f.ctx, { kind: "diagnostics", matches: [] }, () => {
@@ -272,8 +323,8 @@ it("records only committed queries and inspects the final repeated write", async
 		"batch",
 		{
 			queries: [
-				{ type: "write", path: f.file, reasoning: "first", content: "const x = 2;\n" },
-				{ type: "write", path: f.file, reasoning: "second", content: "const x = 3;\n" },
+				{ type: "write", path: f.file, reason: "first", content: "const x = 2;\n" },
+				{ type: "write", path: f.file, reason: "second", content: "const x = 3;\n" },
 			],
 		},
 		undefined,

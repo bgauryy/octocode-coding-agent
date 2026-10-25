@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentContext, AgentMessage, PrepareNextTurnContext } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
+import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
 import { estimateProjectedContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
 import { convertToLlm } from "../messages.ts";
@@ -153,7 +154,10 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 		let { previous, context } = prepared;
 		const model = previous?.model ?? agent.state.model;
 		const thinkingLevel = previous?.thinkingLevel ?? agent.state.thinkingLevel;
-		if (!isVirtualModel(model)) return { ...previous, context, model, thinkingLevel };
+		if (!isVirtualModel(model)) {
+			assertImageRequestContext(model, convertToLlm(context.messages));
+			return { ...previous, context, model, thinkingLevel };
+		}
 
 		// The selection stays in agent state; only this request uses the routed model. A routing
 		// failure rejects, which ends the run with an error response. Only messages the user wrote
@@ -187,6 +191,7 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 			// wraps runs twice for this request and must give the same answer for the same input.
 			({ previous, context } = await prepare());
 		}
+		assertImageRequestContext(route.model, convertToLlm(context.messages));
 		return {
 			...previous,
 			context,

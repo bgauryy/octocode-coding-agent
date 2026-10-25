@@ -175,7 +175,7 @@ it("file permission cannot reinterpret Bash command fields as a Write replacemen
 					type: "write",
 					path: "original.txt",
 					content: "ORIGINAL",
-					reasoning: "Acceptance fixture",
+					reason: "Acceptance fixture",
 				},
 			],
 		});

@@ -25,7 +25,7 @@ describe("optional anchored edit adapter", () => {
 		const edit = (line: number, oldText: string, newText: string, sourceSha256 = sha256(bytes)) => ({
 			type: "edit" as const,
 			path: file,
-			reasoning: "fixture",
+			reason: "fixture",
 			edits: [{ line, sourceSha256, oldText, newText }],
 		});
 		return { file, bytes, guard, edit };

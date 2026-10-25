@@ -1,0 +1,209 @@
+/**
+ * Adapts MCP tools to pi tool definitions.
+ *
+ * Results map onto pi's model-facing content (text and images). Text over 20KB keeps its start and
+ * end with the middle cut out, like Codex does, and the full text is saved to a temp file the model
+ * can read. Programmatic callers receive the supported `CallToolResult` without `_meta`
+ * (supported `content` blocks, `structuredContent`, `isError`), never truncated: it is
+ * the tool's `structuredContent`, and every MCP tool declares a `CallToolResult` output schema. MCP
+ * errors (`isError`) are error results for the model, but programmatic consumers retain the structured result.
+ */
+
+import { createHash } from "node:crypto";
+import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
+import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-ai";
+import { type CallToolResult, type McpRequestOptions, toLlmContent } from "./client/index.ts";
+import type { TSchema } from "typebox";
+import type { ToolExposure } from "../../coding-agent/src/core/extensions/types.ts";
+import { isPluginMcpServerName } from "./servers.ts";
+import { spillOutput } from "../../coding-agent/src/octocode/shared/spill.ts";
+import type { McpExposure } from "./config.ts";
+import { visibleContent } from "./sanitize.ts";
+
+/** Automatic exposure is resolved by the host; standalone definitions default to direct. */
+export function toToolExposure(exposure: McpExposure): ToolExposure {
+	return exposure === "auto" ? "direct" : exposure;
+}
+
+/** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
+const MAX_TOOL_NAME_LENGTH = 64;
+/** Model-facing text of an MCP result beyond this is cut in the middle. */
+const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
+export interface McpToolDetails {
+	server: string;
+	tool: string;
+	/** Temp file with the full text output, when the model-facing text was truncated. */
+	fullOutputPath?: string;
+}
+
+/**
+ * Saves the full text of a truncated result, and returns the file path.
+ * `extension` includes the dot, for example `.txt`.
+ */
+type McpOutputSaver = (data: string | Uint8Array, extension: string) => string | undefined;
+
+export interface McpToolCaller {
+	callTool(name: string, args: Record<string, unknown>, options: McpRequestOptions): Promise<CallToolResult>;
+}
+
+/**
+ * `mcp__<server>__<tool>`, sanitized and shortened with a hash suffix when too long. Like Codex,
+ * everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier programmatic tool callers
+ * call it by. `isTaken` reports names used by a different MCP tool: sanitizing can map two tools to
+ * one name (`a-b` and `a_b`), which then get the hash suffix.
+ */
+export function createMcpToolName(
+	server: string,
+	tool: string,
+	isTaken: (name: string) => boolean = () => false,
+): string {
+	const name = `mcp__${server}__${tool}`.replace(
+		isPluginMcpServerName(server) ? /[^A-Za-z0-9_-]/g : /[^A-Za-z0-9_]/g,
+		"_",
+	);
+	if (name.length <= MAX_TOOL_NAME_LENGTH && !isTaken(name)) return name;
+	const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
+	return `${name.slice(0, MAX_TOOL_NAME_LENGTH - hash.length - 1)}_${hash}`;
+}
+
+function textOf(content: readonly (TextContent | ImageContent)[]): string {
+	return content
+		.filter((block): block is TextContent => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+}
+
+/**
+ * MCP content blocks as one schema for programmatic result consumers.
+ */
+const CONTENT_BLOCK_SCHEMA = {
+	type: "object",
+	properties: {
+		type: { enum: ["text", "image", "audio"] },
+		text: { type: "string" },
+		data: { type: "string" },
+		mimeType: { type: "string" },
+	},
+	required: ["type"],
+	additionalProperties: true,
+};
+
+/** Keywords whose values are data, so a `$ref` key in them is not a reference. */
+const SCHEMA_DATA_KEYWORDS: ReadonlySet<string> = new Set(["const", "enum", "default", "examples"]);
+/** Keywords whose values map names to schemas, so their keys are names, not keywords. */
+const SCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+	"properties",
+	"patternProperties",
+	"dependentSchemas",
+	"dependencies",
+	"$defs",
+	"definitions",
+]);
+
+/**
+ * `schema` as a subschema at the JSON pointer `pointer` (`#/properties/structuredContent`) of
+ * another schema: its local references (`#`, `#/$defs/Item`) are rewritten to point below
+ * `pointer`, so they resolve to the same subschemas as before.
+ */
+function relocateSchema(schema: unknown, pointer: string): unknown {
+	if (Array.isArray(schema)) return schema.map((item) => relocateSchema(item, pointer));
+	if (typeof schema !== "object" || schema === null) return schema;
+	const relocated: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(schema)) {
+		if (key === "$ref" && typeof value === "string" && (value === "#" || value.startsWith("#/"))) {
+			relocated[key] = `${pointer}${value.slice(1)}`;
+		} else if (SCHEMA_DATA_KEYWORDS.has(key)) {
+			relocated[key] = value;
+		} else if (SCHEMA_MAP_KEYWORDS.has(key) && typeof value === "object" && value !== null && !Array.isArray(value)) {
+			relocated[key] = Object.fromEntries(
+				Object.entries(value).map(([name, subschema]) => [name, relocateSchema(subschema, pointer)]),
+			);
+		} else {
+			relocated[key] = relocateSchema(value, pointer);
+		}
+	}
+	return relocated;
+}
+
+/**
+ * Output schema of every MCP tool: the structured `CallToolResult` (without `_meta`, which
+ * {@link convertMcpResult} drops), with the tool's own output schema as `structuredContent`.
+ */
+export function createMcpResultSchema(structuredContentSchema: Record<string, unknown> | undefined): TSchema {
+	return {
+		type: "object",
+		properties: {
+			content: { type: "array", items: CONTENT_BLOCK_SCHEMA },
+			// Servers may send structured content without declaring a schema for it, and it may be any JSON value.
+			structuredContent: structuredContentSchema
+				? relocateSchema(structuredContentSchema, "#/properties/structuredContent")
+				: {},
+			isError: { type: "boolean" },
+		},
+		required: ["content"],
+		// Fields newer protocol versions add.
+		additionalProperties: true,
+	};
+}
+
+/**
+ * Keep model-facing text within {@link MCP_OUTPUT_MAX_BYTES}. Longer text is saved whole and becomes one text block with its
+ * start and end and the file's path (`spillOutput`, shared with the Octocode server's results, which has its own budget);
+ * images follow it.
+ */
+export function limitMcpContent(
+	content: (TextContent | ImageContent)[],
+	label: string,
+	saveOutput?: McpOutputSaver,
+): { content: (TextContent | ImageContent)[]; fullOutputPath?: string } {
+	const spilled = spillOutput(textOf(content), {
+		label: `mcp ${label}`,
+		maxBytes: MCP_OUTPUT_MAX_BYTES,
+		// The budget is bytes; MCP text has no line limit.
+		maxLines: Number.MAX_SAFE_INTEGER,
+		...(saveOutput ? { save: (text: string) => saveOutput(text, ".txt") } : {}),
+	});
+	if (!spilled.truncated) return { content };
+	return {
+		content: [{ type: "text", text: spilled.text }, ...content.filter((block) => block.type === "image")],
+		...(spilled.file ? { fullOutputPath: spilled.file } : {}),
+	};
+}
+
+interface ConvertMcpResultOptions {
+	saveOutput?: McpOutputSaver;
+}
+
+/** Convert an MCP result. `isError` results become error results that keep the structured result. */
+export async function convertMcpResult(
+	server: string,
+	tool: string,
+	result: CallToolResult,
+	options: ConvertMcpResultOptions = {},
+): Promise<AgentToolResult<McpToolDetails>> {
+	// Without content blocks, toLlmContent falls back to the structured content as JSON.
+	const converted = visibleContent(toLlmContent(result));
+	if (result.isError && textOf(converted) === "") {
+		converted.push({ type: "text", text: `MCP tool ${server}/${tool} returned an error` });
+	}
+	const { content, fullOutputPath } = limitMcpContent(converted, `${server}/${tool}`, options.saveOutput);
+	const { _meta: _ignored, ...structuredResult } = result;
+	return {
+		content,
+		details: { server, tool, ...(fullOutputPath ? { fullOutputPath } : {}) },
+		structuredContent: structuredResult as unknown as JsonValue,
+		...(result.isError ? { isError: true } : {}),
+	};
+}
+
+/**
+ * Tool input schemas must be objects. MCP servers may omit `type`, and some providers reject object
+ * schemas without `properties`.
+ */
+export function toParameters(schema: Record<string, unknown>): TSchema {
+	return {
+		...schema,
+		type: schema.type ?? "object",
+		...(schema.properties === undefined ? { properties: {} } : {}),
+	};
+}

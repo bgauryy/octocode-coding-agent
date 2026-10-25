@@ -75,6 +75,17 @@ const bedrockAuth: ApiKeyAuth = {
 		if (await env("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")) return { auth: {}, source: "ECS task role" };
 		if (await env("AWS_CONTAINER_CREDENTIALS_FULL_URI")) return { auth: {}, source: "ECS task role" };
 		if (await env("AWS_WEB_IDENTITY_TOKEN_FILE")) return { auth: {}, source: "web identity token" };
+		// An explicit credential-chain login delegates discovery (including IMDS and
+		// credential_process) to the AWS SDK; no env marker or local key is required.
+		if (credential) return { auth: {}, env: credential.env, source: "stored credential" };
+		for (const path of [
+			(await env("AWS_SHARED_CREDENTIALS_FILE")) ?? "~/.aws/credentials",
+			(await env("AWS_CONFIG_FILE")) ?? "~/.aws/config",
+		]) {
+			const exists = await ctx.fileExists(path);
+			signal.throwIfAborted();
+			if (exists) return { auth: {}, source: "AWS shared configuration" };
+		}
 		return undefined;
 	},
 };

@@ -1,6 +1,6 @@
 import { defaultProviderAuthContext as defaultAuthContext } from "../auth/context.ts";
 import { InMemoryCredentialStore } from "../auth/credential-store.ts";
-import { type AuthResolutionOverrides, ModelsError, readCredential, resolveProviderAuth } from "../auth/resolve.ts";
+import { type AuthResolutionOverrides, readCredential, resolveProviderAuth } from "../auth/resolve.ts";
 import type {
 	AuthCheck,
 	AuthContext,
@@ -35,7 +35,7 @@ import type {
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { mergeHeaders } from "../utils/headers.ts";
 import { isModelType } from "../utils/model-operations.ts";
-import { checkProviderAuth, loginProvider } from "./auth.ts";
+import { checkProviderAuth, loginProvider, logoutProvider } from "./auth.ts";
 import type {
 	CreateModelsOptions,
 	ModelsApiStreamOptions,
@@ -261,14 +261,7 @@ export class ModelsImpl implements MutableModels {
 	}
 
 	async logout(providerId: string, options?: AuthOperationOptions): Promise<void> {
-		const signal = operationSignal(options?.signal);
-		signal.throwIfAborted();
-		try {
-			await this.credentials.delete(providerId, { signal });
-		} catch (error) {
-			signal.throwIfAborted();
-			throw new ModelsError("auth", `Credential store delete failed for ${providerId}`, { cause: error });
-		}
+		return logoutProvider(this.providers.get(providerId), this.credentials, providerId, options);
 	}
 
 	stream<TApi extends Api>(

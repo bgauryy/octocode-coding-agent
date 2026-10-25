@@ -76,7 +76,7 @@ export function createInteractiveModeHost(
 
 		// Streaming message tracking
 		streamingComponent: undefined,
-		entriesRenderedByBoundaryCompaction: new Set<string>(),
+		entriesRenderedByRebuild: new Set<string>(),
 		streamingMessage: undefined,
 
 		// Tool execution tracking: toolCallId -> component

@@ -66,7 +66,8 @@ export interface InteractiveModeState {
 	editor: ActiveEditor;
 	editorComponentFactory: EditorFactory | undefined;
 	readonly editorContainer: Container;
-	readonly entriesRenderedByBoundaryCompaction: Set<string>;
+	/** Entries a transcript rebuild already drew; their `entry_appended` announcement, which can follow it, draws nothing. */
+	readonly entriesRenderedByRebuild: Set<string>;
 	extensionEditor: ExtensionEditorComponent | undefined;
 	extensionInput: ExtensionInputComponent | undefined;
 	extensionSelector: ExtensionSelectorComponent | undefined;

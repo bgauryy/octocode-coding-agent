@@ -628,6 +628,8 @@ export abstract class TuiBase extends Container implements TUI {
 
 	protected afterTerminalStart(): void {}
 
+	protected onTerminalCapabilitiesChanged(): void {}
+
 	protected beforeTerminalStop(_options: TuiStopOptions): void {}
 
 	protected afterTerminalStop(_options: TuiStopOptions): void {}
@@ -1104,6 +1106,13 @@ export abstract class TuiBase extends Container implements TUI {
 		this.terminal.start(
 			(data) => this.handleTerminalInput(data),
 			() => this.requestRender(),
+			() => {
+				if (this.stopped) return;
+				this.onTerminalCapabilitiesChanged();
+				this.invalidate();
+				this.queryCellSize();
+				this.requestRender();
+			},
 		);
 		this.afterTerminalStart();
 		this.terminal.hideCursor();

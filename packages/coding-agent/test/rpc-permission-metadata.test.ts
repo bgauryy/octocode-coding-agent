@@ -97,8 +97,8 @@ describe("permission metadata over RPC UI", () => {
 		const review = askReview(
 			f.ctx,
 			[
-				{ type: "write", path: "new.ts", reasoning: "Add source", content: "export {};" },
-				{ type: "edit", path: "old.ts", movePath: "moved.ts", reasoning: "Move source" },
+				{ type: "write", path: "new.ts", reason: "Add source", content: "export {};" },
+				{ type: "edit", path: "old.ts", movePath: "moved.ts", reason: "Move source" },
 			],
 			undefined,
 			[],

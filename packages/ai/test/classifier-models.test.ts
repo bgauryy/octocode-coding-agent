@@ -230,6 +230,7 @@ describe("Models with classifier models", () => {
 			access: "access",
 			refresh: "refresh",
 			expires: Date.now() + 3_600_000,
+			availableModels: [{ id: "gpt-6-luna" }],
 		}));
 
 		const withApiKey = builtinModels({ credentials: apiKeyStore });

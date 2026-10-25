@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type OpenAI from "openai";
 import { clampThinkingLevel } from "../models.ts";
@@ -65,6 +66,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			if (nextParams !== undefined) {
 				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
 			}
+			assertImageRequestPayload(model, params);
 			const openaiStream = await requestOpenAISdkStream(model, options, (requestOptions) =>
 				client.chat.completions.create(params, requestOptions),
 			);

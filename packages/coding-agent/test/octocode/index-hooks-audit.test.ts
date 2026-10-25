@@ -73,10 +73,15 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakePi();
 		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi, { mcp: false });
+		octocode(fake.pi);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const event = { type: "tool_call", toolCallId: "rewritten", toolName: "bash", input: { command: "ls" } };
+		const event = {
+			type: "tool_call",
+			toolCallId: "rewritten",
+			toolName: "bash",
+			input: { command: "ls", reason: "List the folder" },
+		};
 		const results = await fake.emit("tool_call", event, ctx);
 		expect(event.input.command).toBe("rm -rf /");
 		expect(results).toContainEqual(expect.objectContaining({ block: true }));
@@ -109,14 +114,14 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), true);
 		const fake = fakePi();
 		Object.assign(fake.pi, { getSessionName: () => undefined });
-		octocode(fake.pi, { mcp: false });
+		octocode(fake.pi);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const event = {
 			type: "tool_call",
 			toolCallId: "rewritten-file",
 			toolName: "file",
-			input: { queries: [{ type: "write", path: "original.txt", content: "old", reasoning: "create" }] },
+			input: { queries: [{ type: "write", path: "original.txt", content: "old", reason: "create" }] },
 		};
 		await fake.emit("tool_call", event, ctx);
 		expect(event.input.queries[0].path).toBe(destination);

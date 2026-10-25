@@ -244,7 +244,7 @@ export function renderJobMessage(text: string, expanded: boolean, theme: Theme, 
 export interface QueryOutcome {
 	type: "edit" | "write" | "delete";
 	path: string;
-	reasoning: string;
+	reason: string;
 	ok: boolean;
 	message: string;
 	diff?: string;
@@ -294,12 +294,12 @@ export function diffStats(diff: string): { added: number; removed: number } {
 
 type FileArgs = {
 	patch?: string;
-	reasoning?: string;
+	reason?: string;
 	queries?: Array<{
 		type?: string;
 		path?: string;
 		movePath?: string;
-		reasoning?: string;
+		reason?: string;
 		edits?: unknown[];
 		content?: string;
 	}>;
@@ -313,8 +313,8 @@ export function renderFileCall(args: FileArgs, theme: Theme, context: RenderCont
 			200,
 		);
 	const why = (query: (typeof queries)[number] | undefined) =>
-		context.expanded && typeof query?.reasoning === "string" && query.reasoning.trim()
-			? [theme.fg("dim", `  ↳ ${clip(query.reasoning, 200)}`)]
+		context.expanded && typeof query?.reason === "string" && query.reason.trim()
+			? [theme.fg("dim", `  ↳ ${clip(query.reason, 200)}`)]
 			: [];
 	// One change: File(edit src/a.ts · 2 edits). Several: File(3 changes) with a sub-line each.
 	if (queries.length <= 1)

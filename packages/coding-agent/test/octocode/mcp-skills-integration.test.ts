@@ -1,3 +1,4 @@
+import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -17,9 +18,9 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
-import { getMcpSessionStatus } from "../../src/extensions/mcp/status.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
@@ -113,7 +114,16 @@ describe("installed MCP and skills through the native SDK", () => {
 					{ name: "faux", factory: provider },
 					...(owner === "configured-default"
 						? []
-						: [{ name: "builtin:mcp", factory: createMcpExtension({ logPath: path.join(root, "mcp.log") }) }]),
+						: [
+								{
+									name: "builtin:mcp",
+									factory: (pi: Parameters<ExtensionFactory>[0]) =>
+										createMcpExtension({
+											presets: [octocodePreset(() => pi.getSkillDirectories())],
+											logPath: path.join(root, "mcp.log"),
+										})(pi),
+								},
+							]),
 				],
 				additionalSkillPaths: [externalSkill],
 				...(owner === "configured-default" ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
@@ -152,16 +162,19 @@ describe("installed MCP and skills through the native SDK", () => {
 						turns.push(context);
 						const names = getCurrentTools(context.messages).map((tool) => tool.name);
 						expect(names).toEqual(expect.arrayContaining(["file", "agent", "archive"]));
-						expect(names.includes("browser")).toBe(role === "browser");
+						// Native sessions activate `browser` by default (docs/native-features.md); the browser role keeps it too.
+						expect(names).toContain("browser");
 						if (role === "browser") expect(names).not.toContain("bash");
 						const reader = names.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
 						expect(reader).toBeDefined();
 						const read = (file: string, end: number): JsonObject =>
 							reader!.endsWith("localFetch")
-								? { path: file, ranges: [`1-${end}`] }
+								? { path: file, ranges: [{ startLine: 1, endLine: end }] }
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
 						expect(getCurrentSystemPrompt(context.messages)).toContain("<name>octocode-research</name>");
-						expect(getCurrentSystemPrompt(context.messages)).toContain("Octocode localFetch");
+						expect(getCurrentSystemPrompt(context.messages)).toContain(
+							"Use the skill tool with a skill's name to load it",
+						);
 						return fauxAssistantMessage(
 							[
 								fauxToolCall(reader!, {
@@ -187,7 +200,7 @@ describe("installed MCP and skills through the native SDK", () => {
 											type: "write",
 											path: evidence,
 											content: "after\n",
-											reasoning: "Update the retrieved fixture",
+											reason: "Update the retrieved fixture",
 										},
 									],
 								}),
@@ -204,7 +217,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				const servers = getMcpSessionStatus(resourceLoader.getEventBus());
 				expect(servers).toEqual([expect.objectContaining({ name: "octocode", state: "connected", enabled: true })]);
 				expect(servers[0].toolCount).toBeGreaterThan(0);
-				expect(servers[0].source).toBe(owner === "native" ? "built-in Octocode" : path.join(agentDir, "mcp.json"));
+				expect(servers[0].source).toBe(owner === "native" ? "built-in octocode" : path.join(agentDir, "mcp.json"));
 				const infoOutput = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 				try {
 					await session.prompt("/status");

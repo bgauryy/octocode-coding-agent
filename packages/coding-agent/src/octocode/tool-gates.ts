@@ -22,7 +22,6 @@ export interface ToolGatesOptions {
 	planning?: { gate(event: ToolCallEvent): GateVerdict | undefined };
 	permission: Permission;
 	provenance: ReturnType<typeof createProvenance>;
-	annotations: (name: string) => ReturnType<ExtensionAPI["getAllTools"]>[number]["annotations"];
 	collab: ReturnType<typeof registerCollab>;
 	hooks: ReturnType<typeof registerHooks>;
 	sourcePolicy: ReturnType<typeof registerSourcePolicy>;
@@ -36,18 +35,7 @@ export interface ToolGatesOptions {
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
 	pi: ExtensionAPI,
-	{
-		permission,
-		provenance,
-		annotations,
-		collab,
-		hooks,
-		sourcePolicy,
-		activity,
-		localReads,
-		env,
-		planning,
-	}: ToolGatesOptions,
+	{ permission, provenance, collab, hooks, sourcePolicy, activity, localReads, env, planning }: ToolGatesOptions,
 ): void {
 	// The tool-call pipeline, cheapest and most certain first; the first block wins. Invariants (a subagent in the shared
 	// tree leaves git state alone, then reservations) and user
@@ -85,7 +73,6 @@ export function registerToolGates(
 				permissionGate({
 					permission,
 					provenance,
-					annotations,
 					replacement: {
 						definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),

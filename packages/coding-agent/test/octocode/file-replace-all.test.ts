@@ -28,7 +28,7 @@ function setup(content = "A\nA\n", partial = false) {
 					{
 						type: "edit",
 						path: file,
-						reasoning: "test",
+						reason: "test",
 						edits: [{ oldText: "A", newText: "B", replaceAll }],
 					},
 				],

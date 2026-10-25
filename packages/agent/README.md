@@ -513,7 +513,7 @@ Return `terminate: true` from `execute()`, a blocked `beforeToolCall`, or `after
 
 ### MCP tools
 
-`@octocodeai/octocode-mcp` connects to MCP servers. Hosts adapt each server tool to an `AgentTool` and execute it through `runToolCall()`, preserving `beforeToolCall` and `afterToolCall` hooks.
+`@octocodeai/octocodecode/mcp` connects to MCP servers. Hosts adapt each server tool to an `AgentTool` and execute it through `runToolCall()`, preserving `beforeToolCall` and `afterToolCall` hooks.
 
 ## Proxy Usage
 

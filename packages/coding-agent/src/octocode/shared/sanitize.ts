@@ -96,12 +96,15 @@ export function storedText(text: string | undefined, max?: number): string {
 	return max === undefined ? stored : [...stored].slice(0, max).join("");
 }
 
+const SECRET_ASSIGNMENT_NAME = "(?:password|passwd|secret|api[_-]?key|token)";
+const PRIVATE_KEY_BLOCK = /-----BEGIN ([A-Z ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/;
+const PRIVATE_KEY_BLOCKS = new RegExp(PRIVATE_KEY_BLOCK.source, "g");
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+	[PRIVATE_KEY_BLOCK, "a private key"],
 	[/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/, "an AWS access key id"],
 	[/\bghp_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\bgh[ousr]_[A-Za-z0-9]{30,}/, "a GitHub token"],
 	[/\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}/, "an API secret key (sk-…)"],
 	[/\bxox[bpas]-[A-Za-z0-9-]{10,}/, "a Slack token"],
-	[/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "a private key"],
 	[/\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/, "a JWT"],
 	[/\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/, "a Stripe key"],
 	[/\bAIza[0-9A-Za-z_-]{35}/, "a Google API key"],
@@ -111,7 +114,7 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 	[/\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/${}<>]{3,}@/i, "a password in a URL"],
 	// `password = s3cretValue`: the value must hold a digit and no code punctuation, so `token = getToken()` passes.
 	[
-		/\b(?:password|passwd|secret|api[_-]?key|token)\s*[:=]\s*['"]?(?=[^\s'"(){}<>,;$]*\d)[^\s'"(){}<>,;$]{8,}/i,
+		new RegExp(`\\b${SECRET_ASSIGNMENT_NAME}\\s*[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]*\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
 		"a password or key assignment",
 	],
 	[/\bBearer\s+[A-Za-z0-9._~+/-]{20,}/, "a bearer token"],
@@ -123,6 +126,53 @@ const SECRETS = SECRET_PATTERNS.map(([pattern, what]) => ({
 	what,
 	all: new RegExp(pattern.source, `${pattern.flags}g`),
 }));
+
+const SECRET_LINE_CONTINUATION = new RegExp(`\\b(?:${SECRET_ASSIGNMENT_NAME}\\s*(?:[:=]\\s*)?|Bearer\\s*)$`, "i");
+
+/** Outside a PEM block, only assignments and Bearer credentials can continue across a newline. */
+export function secretContinuesAfterLine(text: string): boolean {
+	return SECRET_LINE_CONTINUATION.test(text);
+}
+
+/** Matching footer for an unfinished PEM block; an empty footer means its oversized identity must stay withheld. */
+export function unfinishedPrivateKey(text: string): string | undefined {
+	for (const match of text.matchAll(PRIVATE_KEY_BLOCKS)) {
+		const footer = `-----END ${match[1]}-----`;
+		if (!match[0].endsWith(footer)) return footer.length <= 300 ? footer : "";
+	}
+	return undefined;
+}
+
+/** Redact a logical stream while keeping its fragment boundaries and metadata associations. */
+export function redactSecretFragments(fragments: readonly string[]): string[] {
+	const text = fragments.join("");
+	const ranges = SECRETS.flatMap(({ all }) =>
+		Array.from(text.matchAll(all), (match) => ({ start: match.index, end: match.index + match[0].length })),
+	).sort((left, right) => left.start - right.start);
+	const merged: Array<{ start: number; end: number }> = [];
+	for (const range of ranges) {
+		const last = merged.at(-1);
+		if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+		else merged.push(range);
+	}
+	let offset = 0;
+	let rangeIndex = 0;
+	return fragments.map((fragment) => {
+		const start = offset;
+		const end = (offset += fragment.length);
+		let cursor = start;
+		let result = "";
+		while (rangeIndex < merged.length && merged[rangeIndex].end <= start) rangeIndex++;
+		for (let index = rangeIndex; index < merged.length; index++) {
+			const range = merged[index];
+			if (range.start >= end) break;
+			result += text.slice(cursor, Math.max(cursor, range.start));
+			if (range.start >= start) result += "[redacted]";
+			cursor = Math.min(end, range.end);
+		}
+		return result + text.slice(cursor, end);
+	});
+}
 
 /** Why `text` must not be stored (it looks like it holds a credential), or undefined when it looks clean. */
 export function secretProblem(text: string): string | undefined {

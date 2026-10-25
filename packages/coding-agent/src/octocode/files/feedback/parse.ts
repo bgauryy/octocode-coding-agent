@@ -46,21 +46,9 @@ async function observe(
 			}, WAIT_MS);
 		});
 		const outcome = await Promise.race([
-			ctx.executeTool(
-				TOOL,
-				{
-					queries: [
-						{
-							operation: "syntaxTree",
-							path,
-							extras: ["details", "diagnostics", "echo"],
-							mainGoal: "Check syntax after editing",
-							reasoning: "Observe parser recovery",
-						},
-					],
-				},
-				{ signal: controller.signal },
-			),
+			// Only schema-declared fields: the tool's query schema rejects unknown fields, and the row carries the
+			// parse evidence (diagnostics, partialReasons) by itself.
+			ctx.executeTool(TOOL, { queries: [{ operation: "syntaxTree", path }] }, { signal: controller.signal }),
 			timeout,
 		]);
 		if (ctx.sessionManager.getSessionId() !== sessionId) return undefined;
@@ -82,7 +70,7 @@ async function observe(
 		if (
 			!data ||
 			row.status === "error" ||
-			!matchesResponsePath(value, row, path) ||
+			!matchesResponsePath(value, row, path, ctx.cwd) ||
 			data.operation !== "syntaxTree" ||
 			!Array.isArray(data.nodes)
 		)
@@ -92,11 +80,11 @@ async function observe(
 		const recovered =
 			diagnostics.some((diagnostic) => isRecord(diagnostic) && diagnostic.code === "syntaxTree.parse.recovered") ||
 			reasons.includes("parseRecovered");
-		// Parser recovery is itself a partial tree, but any other incomplete result cannot prove parse status.
+		// Parser recovery is itself a partial tree whose walk also ends at a terminal limit; that abbreviation does
+		// not change what the parser proved, while any other incomplete result cannot prove parse status.
 		if (
-			data.terminalLimit === true ||
 			reasons.some((reason) => reason !== "parseRecovered") ||
-			((data.isPartial === true || row.isPartial === true) && !recovered)
+			((data.terminalLimit === true || data.isPartial === true || row.isPartial === true) && !recovered)
 		)
 			return { digest, state: "unsupported" };
 		return { digest, state: recovered ? "recovered" : "parsed" };

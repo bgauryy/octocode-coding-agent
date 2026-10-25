@@ -6,11 +6,16 @@ import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
 import { errorMessage } from "../../utils/guards.ts";
-import { AcpBackend, type AcpPermission } from "./acp.ts";
+import { AcpBackend, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { type ExternalBackend, type ExternalInfo, type ExternalParams, parseExternalParams } from "./protocol.ts";
 
 export const MAX_EXTERNAL_CONNECTIONS = 8;
+
+/** A refusal before anything reached the external agent: `execution: "not-sent"` tells the model it may try again. */
+function notSent(message: string): Error {
+	return Object.assign(new Error(message), { execution: "not-sent" });
+}
 
 export interface ExternalPolicy {
 	authorize(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<void>;
@@ -25,6 +30,10 @@ interface Connection {
 	controller: AbortController;
 	backend?: ExternalBackend;
 	pending?: AbortController;
+}
+
+function isBusy(entry: Connection): boolean {
+	return entry.info.busy || entry.backend?.isBusy === true;
 }
 
 export interface ExternalFactories {
@@ -47,7 +56,7 @@ export class ExternalAgents {
 	}
 
 	get running(): number {
-		return [...this.connections.values()].filter((entry) => entry.info.busy).length;
+		return [...this.connections.values()].filter(isBusy).length;
 	}
 
 	async call(value: unknown, ctx: ExtensionContext, callerSignal?: AbortSignal): Promise<unknown> {
@@ -63,7 +72,7 @@ export class ExternalAgents {
 		signal.throwIfAborted();
 		if (input.action === "list") {
 			return {
-				connections: [...this.connections.values()].map((entry) => ({ ...entry.info })),
+				connections: [...this.connections.values()].map((entry) => ({ ...entry.info, busy: isBusy(entry) })),
 				instances: listInstances(apiDir()).map(({ id, pid, cwd, protocol, session }) => ({
 					id,
 					pid,
@@ -87,8 +96,8 @@ export class ExternalAgents {
 			await entry.backend?.cancel();
 			return { cancelled: input.id };
 		}
-		if (!entry.backend) throw new Error("External connection is still starting.");
-		if (entry.info.busy) throw new Error("External connection already has a prompt in flight.");
+		if (!entry.backend) throw notSent("External connection is still starting.");
+		if (isBusy(entry)) throw notSent("External connection already has a prompt in flight.");
 		entry.info.busy = true;
 		const pending = new AbortController();
 		entry.pending = pending;

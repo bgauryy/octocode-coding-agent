@@ -64,6 +64,7 @@ function fixture(messages: AgentMessage[] = []) {
 		hideThinkingBlock: false,
 		outputPad: 1,
 		pendingTools: new Map(),
+		entriesRenderedByRebuild: new Set<string>(),
 		toolOutputExpanded: false,
 		ui: { requestRender() {} },
 		settingsManager: { getShowImages: () => true, getImageWidthCells: () => 20, getShowCacheMissNotices: () => false },
@@ -118,6 +119,22 @@ describe("shared application data in the TUI", () => {
 			{ role: "user", content: [{ type: "image", data: PNG, mimeType: "image/png" }], timestamp: 0 },
 		]);
 		expect(restored.text()).toContain("Image attachment: image/png");
+	});
+
+	it("redraws existing attachments when terminal graphics support arrives or disappears", () => {
+		setCapabilities({ images: null, trueColor: true, hyperlinks: true });
+		const f = fixture();
+		f.host.renderSessionItems([
+			{ role: "user", content: [{ type: "image", data: PNG, mimeType: "image/png" }], timestamp: 0 },
+		]);
+		expect(f.text()).toContain("Image attachment: image/png");
+		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
+		f.host.chatContainer.invalidate();
+		expect(f.host.chatContainer.render(100).join("\n")).toContain("\x1b_G");
+		setCapabilities({ images: null, trueColor: true, hyperlinks: true });
+		f.host.chatContainer.invalidate();
+		expect(f.text()).toContain("Image attachment: image/png");
+		expect(f.host.chatContainer.render(100).join("\n")).not.toContain("\x1b_G");
 	});
 
 	it("preserves assistant block order and final execution arguments in live and restored transcripts", async () => {

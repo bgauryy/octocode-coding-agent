@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
@@ -70,6 +71,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			if (nextParams !== undefined) {
 				params = nextParams as ResponsesRequest;
 			}
+			assertImageRequestPayload(model, params);
 			const url = new URL(model.baseUrl);
 			url.pathname = `${url.pathname.replace(/\/$/, "")}/responses`;
 			const request = await retryProviderRequest(() => requestJsonEventStream(url, params, headers, options), {

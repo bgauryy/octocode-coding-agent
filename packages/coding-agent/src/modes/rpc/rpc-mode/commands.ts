@@ -5,6 +5,7 @@ import { getSkillCommands } from "../../../core/skill-commands.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "../rpc-types.ts";
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";
+import { handlePrompt } from "./prompt.ts";
 
 /** What command handling reads from the running RPC mode; `session` follows session rebinds. */
 export interface RpcCommandHost {
@@ -24,24 +25,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		// =================================================================
 
 		case "prompt": {
-			// Start prompt handling immediately, but emit the authoritative response only after
-			// prompt preflight succeeds. Queued and immediately handled prompts also count as success.
-			let preflightSucceeded = false;
-			void host.session
-				.prompt(command.message, {
-					images: command.images,
-					streamingBehavior: command.streamingBehavior,
-					source: "rpc",
-					preflightResult: (disposition) => {
-						preflightSucceeded = true;
-						output(success(id, "prompt", { disposition }));
-					},
-				})
-				.catch((e) => {
-					if (!preflightSucceeded) {
-						output(error(id, "prompt", e.message));
-					}
-				});
+			handlePrompt(host.session, command, output);
 			return undefined;
 		}
 

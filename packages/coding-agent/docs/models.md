@@ -1,5 +1,7 @@
 # Choose a Model
 
+Use [`octocode models discover`](model-discovery.md) to compare documented vendor model lists with the configured catalog, including IDs that need metadata before use.
+
 For a built-in provider, start with `/providers`, then choose a model with `/model`. Use custom model configuration only when Octocode does not already include the provider or endpoint you need.
 
 ## Choose a connection
@@ -83,6 +85,32 @@ To route a built-in provider through a proxy, set only its `baseUrl`. Its models
 
 ### Describe model input and caching
 
+Image support belongs to the exact model and endpoint. `yarn start --list-models` shows an `images` column, and `/model` shows image support in the selected model's details. The web composer displays the selected model's input support and keeps attachments when you switch to a text-only model. Select a model that accepts images or remove the attachments before sending.
+
+For a verified image-capable custom endpoint, set `"input": ["text", "image"]` in its model definition. Omitted `input` defaults to `["text"]`. The same fields work in Pi-compatible `models.json` provider definitions and `modelOverrides`; [configuration fallback](configuration.md#pi-configuration-fallback) controls which file supplies a provider. For example:
+
+```json
+{
+  "providers": {
+    "local-vision": {
+      "api": "openai-completions",
+      "baseUrl": "http://localhost:11434/v1",
+      "apiKey": "ollama",
+      "models": [
+        { "id": "your-installed-vision-model", "input": ["text", "image"] }
+      ]
+    },
+    "openai": {
+      "modelOverrides": {
+        "gpt-4o": { "input": ["text", "image"] }
+      }
+    }
+  }
+}
+```
+
+Replace the custom model ID with the image-capable model served by your endpoint. Declaring image input does not add vision to a text-only server. Native provider entries take precedence over Pi fallback entries; neither reading nor sending images rewrites Pi files. Newly submitted images are rejected for text-only models, including queued input or a virtual route that resolves to a text-only model. Previously answered image turns can still be replayed on a text-only model using omission notices; the original images remain in session history.
+
 Use `instructionCacheRetention` and `cacheRetention` to select instruction and history preferences in settings or provider/model configuration. See [Prompt caching](prompt-caching.md) for supported durations, recommended configurations, precedence and diagnostics. `promptCache` below describes warming lifetimes; it does not select retention or enable unsupported API fields.
 
 Use `inputLimits.images.resize` to control how Octocode encodes new image attachments and tool-result images before storing them in conversation history:
@@ -104,7 +132,7 @@ Use `inputLimits.images.resize` to control how Octocode encodes new image attach
 }
 ```
 
-`maxBytes` limits the base64-encoded payload. Omitted resize fields use conservative defaults of 2000 by 2000 pixels, 4.5 MiB encoded, and JPEG quality 80. Images are encoded once; changing models does not rewrite historical images. The catalog can also describe hard request limits with `inputLimits.maxRequestBytes`, `images.maxPerMessage`, and `images.maxPerRequest`, but Octocode does not yet rewrite or reject history based on them.
+`maxBytes` limits the base64-encoded payload. Omitted resize fields use conservative defaults of 2000 by 2000 pixels, 4.5 MiB encoded, and JPEG quality 80. Images are encoded once; changing models does not rewrite historical images. `inputLimits.maxRequestBytes`, `images.maxPerMessage`, and `images.maxPerRequest` reject requests that exceed the configured limits. Image counts include history and tool results. Built-in chat adapters check the final provider payload after `onPayload`, including merged tool-result messages; the byte check measures its JSON encoding, with binary image sources counted as base64. Provider SDK transport overhead and server limits can still cause a request to be rejected. Reduce attachments or start a new session when a request exceeds a limit.
 
 <a id="prompt-cache-lifetimes"></a>
 

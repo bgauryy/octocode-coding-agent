@@ -1,6 +1,15 @@
 import { expect, it } from "vitest";
 import { Value } from "typebox/value";
 import { ApplicationCommandSchema, parseApplicationFrame } from "../src/application.ts";
+it("validates model input capabilities and clearing a model in stream events", () => {
+	const frame = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
+	const model = { provider: "custom", id: "vision", name: "Vision", input: ["text", "image"] };
+	expect(parseApplicationFrame({ ...frame, event: { type: "session.model", model } })).toBeDefined();
+	expect(parseApplicationFrame({ ...frame, event: { type: "session.model" } })).toBeDefined();
+	expect(
+		parseApplicationFrame({ ...frame, event: { type: "session.model", model: { ...model, input: ["unknown"] } } }),
+	).toBeUndefined();
+});
 it("validates activity provenance and bounds in event, snapshot and reset frames", () => {
 	const envelope = { protocolVersion: 1, cursor: { sessionId: "session", epoch: "epoch", sequence: 1 }, at: 1 };
 	const activity = {

@@ -67,7 +67,7 @@ async function fixture(
 
 		if (options.ordinary && requests.length % 2 === 1) {
 			res.end(
-				`data: ${JSON.stringify({ id: `tool-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, id: `call-${requests.length}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "printf CHILD_TOOL_OUTPUT" }) } }] }, finish_reason: "tool_calls" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
+				`data: ${JSON.stringify({ id: `tool-${requests.length}`, object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, id: `call-${requests.length}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "printf CHILD_TOOL_OUTPUT", reason: "Run the child fixture command" }) } }] }, finish_reason: "tool_calls" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\ndata: [DONE]\n\n`,
 			);
 			return;
 		}

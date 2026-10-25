@@ -3,6 +3,7 @@ import type {
 	AuthCheck,
 	AuthContext,
 	AuthInteraction,
+	AuthOperationOptions,
 	AuthType,
 	Credential,
 	CredentialStore,
@@ -20,6 +21,7 @@ export async function resolveRefreshCredential(
 	signal: AbortSignal,
 ): Promise<Credential | undefined> {
 	if (stored?.type === "oauth") {
+		if (stored.signedOut) return undefined;
 		const oauth = provider.auth.oauth;
 		if (!oauth) return undefined;
 		if (Date.now() < stored.expires) return stored;
@@ -51,6 +53,7 @@ export async function checkProviderAuth(
 	signal: AbortSignal,
 ): Promise<AuthCheck | undefined> {
 	if (credential?.type === "oauth") {
+		if (credential.signedOut) return undefined;
 		return provider.auth.oauth ? { source: "OAuth", type: "oauth" } : undefined;
 	}
 	const apiKey = provider.auth.apiKey;
@@ -88,7 +91,11 @@ export async function loginProvider(
 	if (!method?.login) {
 		throw new ModelsError("auth", `${provider.name} does not support ${type} login`);
 	}
-	const loginOperation: Promise<Credential> = method.login({ ...interaction, signal }, options);
+	const previousCredential = await credentials.read(providerId, { signal });
+	const loginOperation: Promise<Credential> = method.login(
+		{ ...interaction, signal },
+		{ ...options, previousCredential },
+	);
 	const credential = await raceWithAbortSignal(loginOperation, signal);
 	let mutationStarted = false;
 	let markMutationStarted: (() => void) | undefined;
@@ -129,4 +136,45 @@ export async function loginProvider(
 		throw new ModelsError("auth", `Credential store modify failed for ${providerId}`, { cause: error });
 	}
 	return credential;
+}
+
+/** Revoke and clear tokens under the same store lock used by refresh. */
+export async function logoutProvider(
+	provider: Provider | undefined,
+	credentials: CredentialStore,
+	providerId: string,
+	options?: AuthOperationOptions,
+): Promise<void> {
+	const signal = operationSignal(options?.signal);
+	signal.throwIfAborted();
+	const logout = provider?.auth.oauth?.logout;
+	const stored = await credentials.read(providerId, { signal });
+	if (!logout || stored?.type !== "oauth") {
+		await credentials.delete(providerId, { signal });
+		return;
+	}
+	const lockWait = new AbortController();
+	const onAbort = () => lockWait.abort(signal.reason);
+	signal.addEventListener("abort", onAbort, { once: true });
+	if (signal.aborted) onAbort();
+	try {
+		const result = await credentials.modify(
+			providerId,
+			async (current) => {
+				signal.removeEventListener("abort", onAbort);
+				signal.throwIfAborted();
+				if (current?.type !== "oauth" || current.signedOut) return undefined;
+				return logout(current, AbortSignal.timeout(15_000));
+			},
+			{ signal: lockWait.signal },
+		);
+		if (result?.type === "oauth" && result.revocationUnconfirmed === true) {
+			throw new ModelsError(
+				"oauth",
+				"Signed out locally; remote session revocation was not confirmed. Disconnect the app in the provider's account settings.",
+			);
+		}
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
 }

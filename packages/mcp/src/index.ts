@@ -1,74 +1,38 @@
-export type { AuthProvider, McpFetch, UnauthorizedContext } from "./auth-provider.ts";
-export type { McpClientOptions, McpRequestOptions } from "./client/types.ts";
-export { McpClient } from "./client.ts";
-export {
-	type AudioContent,
-	type BlobResourceContents,
-	type CallToolResult,
-	type ContentAnnotations,
-	type ContentBlock,
-	type EmbeddedResourceContent,
-	type ImageContent,
-	type LlmContent,
-	type Resource,
-	type ResourceLinkContent,
-	type TextContent,
-	type TextResourceContents,
-	toLlmContent,
-} from "./protocol/content.ts";
-export {
-	isJsonRpcNotification,
-	isJsonRpcRequest,
-	isJsonRpcResponse,
-	JSON_RPC_ERROR_CODES,
-	type JsonRpcErrorObject,
-	type JsonRpcErrorResponse,
-	type JsonRpcId,
-	type JsonRpcMessage,
-	type JsonRpcNotification,
-	type JsonRpcRequest,
-	type JsonRpcResponse,
-	type JsonRpcSuccessResponse,
-	McpAbortError,
-	McpConnectionClosedError,
-	McpError,
-	McpTimeoutError,
-	parseJsonRpcMessage,
-} from "./protocol/jsonrpc.ts";
-export {
-	type CancelledNotification,
-	type ClientCapabilities,
-	type Implementation,
-	type InitializeParams,
-	type InitializeResult,
-	LATEST_PROTOCOL_VERSION,
-	type ListResourcesResult,
-	type ListResourceTemplatesResult,
-	type ListToolsResult,
-	type ProgressNotification,
-	type ReadResourceResult,
-	type ResourceTemplate,
-	type Root,
-	type ServerCapabilities,
-	SUPPORTED_PROTOCOL_VERSIONS,
-	type SupportedProtocolVersion,
-	type Tool,
-	type ToolAnnotations,
-	type ToolExecution,
-} from "./protocol/types.ts";
-export {
-	DEFAULT_INHERITED_ENV_VARS,
-	getDefaultEnvironment,
-	StdioTransport,
-	type StdioTransportOptions,
-} from "./transports/stdio.ts";
-export { McpAuthRequiredError, McpHttpError, McpSessionExpiredError } from "./transports/streamable-http/http.ts";
-export { StreamableHttpTransport, type StreamableHttpTransportOptions } from "./transports/streamable-http.ts";
-export { LegacySseTransport, type LegacySseTransportOptions } from "./transports/legacy-sse.ts";
-export type {
-	McpTransport,
-	McpTransportCloseListener,
-	McpTransportErrorListener,
-	McpTransportMessageListener,
-	McpTransportSendOptions,
-} from "./transports/transport.ts";
+/**
+ * Registers configured MCP servers and their native tools. Direct and automatic catalogs are
+ * awaited before the first prompt; deferred discovery waits only for the servers it reaches.
+ */
+
+import type { ExtensionAPI, ExtensionFactory } from "../../coding-agent/src/core/extensions/types.ts";
+import { registerMcpCommand } from "./command.ts";
+import { registerSessionEvents } from "./events.ts";
+import { registerMcpManageTool } from "./manage-tool-wiring.ts";
+import { registerInheritedMcpServers } from "./session-servers.ts";
+import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
+import { createMcpToolRenderers } from "./tool-definition.ts";
+
+export type { McpTransportFactory } from "./runtime.ts";
+export type { McpExtensionOptions } from "./state.ts";
+
+export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
+	return (pi: ExtensionAPI) => {
+		registerMcpHost(pi, options);
+	};
+}
+
+export function registerMcpHost(pi: ExtensionAPI, options: McpExtensionOptions = {}): McpExtensionState {
+	const state = new McpExtensionState(pi, options);
+	registerInheritedMcpServers(pi);
+
+	// A resumed session renders calls to MCP tools before their server connected, if it ever does.
+	pi.registerToolRenderer((toolName, next) => {
+		const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
+		return next() ?? (match ? createMcpToolRenderers(`${match[1]}/${match[2]}`) : undefined);
+	});
+
+	// Session events, then the model's `mcp` tool, then the `/mcp` command, in registration order.
+	registerSessionEvents(state);
+	registerMcpManageTool(state);
+	registerMcpCommand(state);
+	return state;
+}

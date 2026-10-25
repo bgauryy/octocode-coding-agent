@@ -14,7 +14,7 @@ describe("prompt", () => {
 		// Triggers for local and external research.
 		expect(root).toMatch(/Here: where something is defined or used, who calls it/);
 		expect(root).toMatch(
-			/Outside: how a dependency or library behaves, which API or version a package has, an upstream issue, PR, commit or release/,
+			/Outside: GitHub repositories, code and history, and package registries \(npm, PyPI and others\): how a dependency or library behaves/,
 		);
 		// A missing or refusing server has a stated recovery.
 		expect(root).toContain(
@@ -44,7 +44,7 @@ describe("prompt", () => {
 		// Octocode's base prompt owns the identity and the skills rule.
 		expect(root).not.toContain("You are Octocode");
 		expect(root).not.toContain("SKILL.md");
-		// Which Octocode tool does what is the server's business: no tool or parameter names.
+		// Without a known tool list, no tool or parameter names: workflows name only tools the agent can reach.
 		for (const coupled of [
 			"localSearch",
 			"structureSearch",
@@ -218,7 +218,7 @@ describe("prompt", () => {
 			const prompt = octocodePrompt(input);
 			expect(prompt.match(/For code (changes|questions): read affected code and callers/g)).toHaveLength(1);
 			expect(prompt.match(/smallest complete change|[Ii]nvestigate (and report|without edits)/g)).toHaveLength(1);
-			expect(prompt.match(/Hypothesis test: compare the likely cause with its strongest rival/g)).toHaveLength(1);
+			expect(prompt.match(/run a hypothesis test: compare the likely cause with its strongest rival/g)).toHaveLength(1);
 			expect(prompt).toContain("match detail to the task");
 			expect(prompt).toContain("never as a template for every reply");
 			expect(prompt).toContain("run the deciding check");
@@ -289,15 +289,65 @@ describe("prompt", () => {
 		expect(withoutAgent).not.toContain("`agent`");
 	});
 
+	it("routes questions to the Octocode tools the agent can reach, and only those", () => {
+		const all = [
+			"artifactSearch",
+			"astSearch",
+			"ghGetFileContent",
+			"ghGetHistoryItem",
+			"ghSearchCode",
+			"ghSearchHistory",
+			"ghSearchRepo",
+			"ghStructure",
+			"localFetch",
+			"localSearch",
+			"lspSearch",
+			"structureSearch",
+		];
+		const full = octocodePrompt({ octocode: true, profiles: [], canDelegate: true, octocodeTools: all });
+		expect(full).toContain("- Choose the Octocode tool by the question and chain them:");
+		expect(full).toContain(
+			"  - Unknown location: `structureSearch` for layout, `localSearch` with `matchString` for text (literal unless `regexEngine` is set), then `localFetch` on the hit lines.",
+		);
+		expect(full).toContain("`astSearch`.");
+		expect(full).toContain(
+			"`lspSearch` anchored at the path, name and line a search returned; a text match is not a reference.",
+		);
+		expect(full).toContain(
+			"  - GitHub: `ghSearchRepo` or `ghSearchCode` to locate; `ghStructure` to browse; `ghGetFileContent` at the returned commitSha; `ghSearchHistory`, then `ghGetHistoryItem` for when and why code changed.",
+		);
+		expect(full).toContain(
+			"`artifactSearch` for the release and its repository, then read that source at the release ref.",
+		);
+		// The browser specialist reaches only local readers: no GitHub, package or outside-research lines.
+		const local = octocodePrompt({
+			octocode: true,
+			profiles: [],
+			canDelegate: false,
+			readOnlyRole: true,
+			canShell: false,
+			octocodeTools: ["astSearch", "localFetch", "localSearch", "lspSearch", "structureSearch"],
+		});
+		expect(local).toContain("`lspSearch`");
+		expect(local).not.toMatch(/GitHub|artifactSearch|ghSearch|Outside:/);
+		// A renamed or missing tool drops out instead of being named.
+		const renamed = octocodePrompt({
+			octocode: true,
+			profiles: [],
+			canDelegate: true,
+			octocodeTools: ["localFetch", "codeSearch"],
+		});
+		expect(renamed).not.toMatch(/structureSearch|localSearch|codeSearch|Choose the Octocode tool/);
+		// Without Octocode there are no workflows, whatever the list says.
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true, octocodeTools: all })).not.toContain(
+			"lspSearch",
+		);
+	});
+
 	it("names the Octocode tools tool_search loads, only when Octocode is reachable", () => {
-		const octocodeDeferredTools = ["ghSearchCode", "ghSearchRepo"];
-		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: true, octocodeDeferredTools })).toContain(
-			"- Load these Octocode tools with `tool_search` before the first call: ghSearchCode, ghSearchRepo.",
-		);
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true, octocodeDeferredTools })).not.toContain(
-			"Load these Octocode tools",
-		);
-		expect(octocodePrompt({ octocode: true, profiles: [], canDelegate: true })).not.toContain("tool_search");
+		const prompt = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
+		expect(prompt).not.toContain("Load these Octocode tools");
+		expect(prompt).not.toContain("# Using Octocode MCP tools");
 	});
 
 	it("gives writers the editing craft rules and read-only roles only the research ones", () => {

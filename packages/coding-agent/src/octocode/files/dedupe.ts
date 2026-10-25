@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI } from "../../core/extensions/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
 import { LOCAL_READ_TOOLS } from "../shared/local-reads.ts";
-import { OCTOCODE_TOOL_PREFIX } from "../shared/octocode-tools.ts";
+import { OCTOCODE_TOOL_PREFIX } from "../../../../mcp/src/presets/octocode/names.ts";
+import { sha256 } from "../../utils/atomic-file.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { contextMessages, plainText, sessionCleared } from "./reads.ts";
 
@@ -23,8 +23,7 @@ interface ReadIndex {
 	rebuild: boolean;
 }
 
-const resultKey = (tool: string, inputKey: string, text: string) =>
-	`${tool}\0${inputKey}\0${createHash("sha256").update(text).digest("hex")}`;
+const resultKey = (tool: string, inputKey: string, text: string) => `${tool}\0${inputKey}\0${sha256(text)}`;
 
 /** JSON tool inputs compare independently of property order; deep equality still verifies each candidate. */
 function argumentsKey(input: Record<string, unknown>): string {

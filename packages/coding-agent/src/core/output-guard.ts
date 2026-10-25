@@ -83,13 +83,18 @@ export function isStdoutTakenOver(): boolean {
 }
 
 export function writeRawStdout(text: string): void {
-	if (text.length === 0) {
-		return;
-	}
-	rawStdoutWriteTail = rawStdoutWriteTail.then(() => writeRawStdoutChunk(text));
-	void rawStdoutWriteTail.catch(() => {
+	void writeRawStdoutAsync(text).catch(() => {
 		process.exit(1);
 	});
+}
+
+/** Protocol owners await write failures so they can release their sessions before exiting. */
+export function writeRawStdoutAsync(text: string): Promise<void> {
+	if (text.length === 0) {
+		return Promise.resolve();
+	}
+	rawStdoutWriteTail = rawStdoutWriteTail.then(() => writeRawStdoutChunk(text));
+	return rawStdoutWriteTail;
 }
 
 export async function waitForRawStdoutBackpressure(): Promise<void> {

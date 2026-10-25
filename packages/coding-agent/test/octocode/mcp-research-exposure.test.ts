@@ -1,3 +1,4 @@
+import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
@@ -8,9 +9,9 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { createToolSearchExtension } from "../../src/extensions/tool-search/index.ts";
-import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { createToolSearchExtension } from "../../src/core/tools/tool-search.ts";
+import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
@@ -59,7 +60,10 @@ async function declaredTools(
 		extensionFactories: [
 			{ name: "faux", factory: provider },
 			{ name: "builtin:tool-search", factory: createToolSearchExtension() },
-			{ name: "builtin:mcp", factory: createMcpExtension({ logPath: path.join(root, "mcp.log") }) },
+			{
+				name: "builtin:mcp",
+				factory: createMcpExtension({ presets: [octocodePreset()], logPath: path.join(root, "mcp.log") }),
+			},
 		],
 		noExtensions: true,
 		noPromptTemplates: true,
@@ -152,14 +156,28 @@ describe("Octocode research tools declared for a user-owned server", () => {
 	}, 120_000);
 
 	it("applies the default to the octocode server only", async () => {
-		const { getMcpToolExposure } = await import("../../src/core/mcp-servers.ts");
-		expect(getMcpToolExposure({ command: "x" }, "localFetch", "octocode")).toBe("direct");
-		expect(getMcpToolExposure({ command: "x" }, "ghSearchCode", "octocode")).toBe("auto");
-		expect(getMcpToolExposure({ command: "x" }, "localFetch", "docs")).toBe("auto");
-		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("auto");
-		expect(getMcpToolExposure({ command: "x", exposure: "deferred" }, "localFetch", "octocode")).toBe("deferred");
-		expect(getMcpToolExposure({ command: "x", toolExposure: { "local*": "hidden" } }, "localFetch", "octocode")).toBe(
-			"hidden",
+		const { getMcpToolExposure } = await import("../../../mcp/src/servers.ts");
+		expect(getMcpToolExposure({ command: "x" }, "localFetch", octocodePreset(() => [], {}).toolExposure)).toBe(
+			"direct",
 		);
+		expect(getMcpToolExposure({ command: "x" }, "ghSearchCode", octocodePreset(() => [], {}).toolExposure)).toBe(
+			"auto",
+		);
+		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("auto");
+		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("auto");
+		expect(
+			getMcpToolExposure(
+				{ command: "x", exposure: "deferred" },
+				"localFetch",
+				octocodePreset(() => [], {}).toolExposure,
+			),
+		).toBe("deferred");
+		expect(
+			getMcpToolExposure(
+				{ command: "x", toolExposure: { "local*": "hidden" } },
+				"localFetch",
+				octocodePreset(() => [], {}).toolExposure,
+			),
+		).toBe("hidden");
 	});
 });

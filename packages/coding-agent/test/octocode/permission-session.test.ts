@@ -122,7 +122,7 @@ describe("allow a whole kind of action for the session", () => {
 				confirm: async () => true,
 			},
 		} as never;
-		const changes = [{ type: "write", path: "a.ts", reasoning: "r", content: "x" }];
+		const changes = [{ type: "write", path: "a.ts", reason: "r", content: "x" }];
 		expect(await askReview(ctx, changes)).toBe("session");
 		expect(asked[0]).toContain("Allow all file changes in the repository for this session");
 	});

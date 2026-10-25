@@ -8,7 +8,7 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
 import { sessionOption } from "../../src/octocode/permission/ask/text.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import {

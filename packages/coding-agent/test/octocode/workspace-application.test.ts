@@ -50,7 +50,7 @@ function setup() {
 		stop: () => undefined,
 		application: () => application,
 	});
-	const backlog = { store, actor: { id: "parent" }, session: session.sessionId, repoName: "repo" };
+	const backlog = { store, actor: { id: "parent" }, session: session.sessionId, repoName: "repo", repoRoot: dir };
 	return {
 		application,
 		session,

@@ -10,7 +10,7 @@ import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { CacheWarmer } from "./cache-warmer.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ExtensionRunner } from "./extensions/index.ts";
-import { createToolNameMatcher } from "./mcp-servers.ts";
+import { createToolNameMatcher } from "../../../mcp/src/servers.ts";
 import { findInitialModel } from "./model-resolver.ts";
 import { ModelRuntime } from "./model-runtime.ts";
 import { defaultToolNames as getDefaultToolNames } from "./native-tools.ts";

@@ -66,12 +66,13 @@ async function postForm(url: string, fields: Record<string, string>, signal: Abo
 	try {
 		response = await fetch(url, {
 			method: "POST",
+			redirect: "error",
 			headers: {
 				Accept: "application/json",
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body: new URLSearchParams(fields),
-			signal,
+			signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
 		});
 	} catch (error) {
 		if (signal.aborted) {

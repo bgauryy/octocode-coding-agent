@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type JsonObject } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
+import { createMcpExtension } from "../../../mcp/src/index.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllEnvs());
 const echoServer = path.resolve(import.meta.dirname, "fixtures/echo-mcp.mjs");
 
 /** A parent session, a fixture provider serving the child, and a parent model that scripts the tool calls. */
-async function fixture() {
+async function fixture(registered = false) {
 	const root = tmp("child-mcp-inheritance-");
 	const cwd = path.join(root, "project");
 	const home = path.join(root, "home");
@@ -95,6 +95,7 @@ async function fixture() {
 			{
 				name: "parent-fixture",
 				factory: (pi) => {
+					if (registered) pi.registerMcpServer("extension-echo", { command: process.execPath, args: [echoServer] });
 					pi.registerProvider("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
@@ -136,6 +137,7 @@ async function fixture() {
 			fauxAssistantMessage(
 				[
 					fauxToolCall("agent", {
+						reason: "Delegate the check",
 						type: "task",
 						input: {
 							goal: "Use the added server",
@@ -221,6 +223,21 @@ it("gives a child nothing when no server was added", async () => {
 		await f.session.prompt("Delegate.");
 		expect(f.requests).toHaveLength(1);
 		expect(declaredTools(f.requests[0]).some((name) => name.startsWith("mcp__echo__"))).toBe(false);
+	} finally {
+		await f.close();
+	}
+}, 60000);
+
+it("inherits an extension server even when the child's extension loader does not load its parent plugin", async () => {
+	const f = await fixture(true);
+	try {
+		f.delegate();
+		await f.session.prompt("Delegate with the extension server.");
+		expect(f.requests).toHaveLength(1);
+		expect(declaredTools(f.requests[0])).toContain("mcp__extension_echo__shout");
+		expect(JSON.stringify(f.requests[0])).toContain("mcp__extension_echo");
+		expect(f.confirmations).toHaveLength(0);
+		expect(fs.existsSync(path.join(f.root, "agent", "mcp.json"))).toBe(false);
 	} finally {
 		await f.close();
 	}

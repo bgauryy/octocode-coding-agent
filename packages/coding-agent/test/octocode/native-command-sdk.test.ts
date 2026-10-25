@@ -5,6 +5,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -43,6 +44,11 @@ it("loads one native command per canonical name through the real SDK", async () 
 	try {
 		const runner = session.extensionRunner;
 		const commands = runner.getRegisteredCommands();
+		const inventory = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].map((command) => command.name));
+		const aliases = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].flatMap((command) => command.aliases ?? []));
+		const guide = fs.readFileSync(path.join(import.meta.dirname, "../../docs/commands.md"), "utf8");
+		expect(guide).toContain(`${inventory.size} canonical slash commands and ${aliases.size} compatibility aliases`);
+		for (const name of inventory) expect(guide).toMatch(new RegExp("^\\| `/" + name + "(?:[ `])", "m"));
 		for (const name of [
 			"agents",
 			"api",
@@ -58,7 +64,7 @@ it("loads one native command per canonical name through the real SDK", async () 
 			"rewind",
 			"status",
 			"trust",
-			"web",
+			"octocode",
 		])
 			expect(commands.filter((command) => command.name === name)).toHaveLength(1);
 		for (const name of ["permission", "sessions", "info", "session"]) {
@@ -73,6 +79,7 @@ it("loads one native command per canonical name through the real SDK", async () 
 			["allowed-tools", "permissions"],
 			["list-agents", "agents"],
 			["peers", "agents"],
+			["web", "octocode"],
 		]) {
 			expect(runner.getCommand(alias)?.handler).toBe(runner.getCommand(canonical)?.handler);
 		}
@@ -89,7 +96,6 @@ it("loads one native command per canonical name through the real SDK", async () 
 
 		expect(commands.filter((command) => command.name === "mcp")).toHaveLength(1);
 		expect(commands.filter((command) => command.name === "llama")).toHaveLength(1);
-		expect(commands.some((command) => command.name === "octocode")).toBe(false);
 	} finally {
 		await session.dispose();
 	}

@@ -21,7 +21,7 @@ import { loadedSkillDirectories, loadSkills } from "../src/core/skills.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import * as nativeExtension from "../src/octocode/index.ts";
-import { prepareOctocodeSkillLaunch } from "../src/octocode/mcp/skill-paths.ts";
+import { prepareOctocodeSkillLaunch } from "../../mcp/src/presets/octocode/skill-paths.ts";
 
 describe("bundled public skills", () => {
 	let root: string;
@@ -311,18 +311,17 @@ describe("bundled public skills", () => {
 		);
 	});
 
-	it("passes no-mcp to the native extension instead of leaving its dedicated client enabled", async () => {
+	it("disables the shared MCP host while retaining native tools", async () => {
 		const native = vi.spyOn(nativeExtension, "default").mockImplementation(() => {});
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			noExtensions: true,
 			disabledBuiltinExtensions: ["mcp"],
 			settingsManager: SettingsManager.inMemory(),
 		});
 		await loader.reload();
-		expect(native).toHaveBeenCalledWith(expect.objectContaining({ registerTool: expect.any(Function) }), {
-			mcp: false,
-		});
+		expect(native).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ registerTool: expect.any(Function) }));
+		expect(loader.getExtensions().errors).toEqual([]);
+		expect(loader.getExtensions().extensions.map((extension) => extension.path)).not.toContain("builtin:mcp");
 	});
 });

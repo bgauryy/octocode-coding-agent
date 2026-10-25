@@ -53,7 +53,7 @@ This table covers providers with a single primary API-key variable. Providers th
 | OpenAI | `OPENAI_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | NVIDIA NIM | `NVIDIA_API_KEY` |
-| Google Gemini | `GEMINI_API_KEY` |
+| Google Gemini | `GOOGLE_API_KEY` or `GEMINI_API_KEY` (`GOOGLE_API_KEY` takes precedence) |
 | GitHub Copilot | `COPILOT_GITHUB_TOKEN` |
 | Mistral | `MISTRAL_API_KEY` |
 | Groq | `GROQ_API_KEY` |
@@ -70,7 +70,7 @@ This table covers providers with a single primary API-key variable. Providers th
 | Together AI | `TOGETHER_API_KEY` |
 | Baseten | `BASETEN_API_KEY` |
 | Kimi For Coding | `KIMI_API_KEY` |
-| Meta | `META_API_KEY` |
+| Meta | `META_API_KEY` or `MODEL_API_KEY` (`META_API_KEY` takes precedence) |
 | MiniMax | `MINIMAX_API_KEY` |
 | MiniMax (China) | `MINIMAX_CN_API_KEY` |
 | Moonshot AI (Global and China) | `MOONSHOT_API_KEY` |
@@ -82,6 +82,10 @@ This table covers providers with a single primary API-key variable. Providers th
 | Xiaomi MiMo Token Plan (Singapore) | `XIAOMI_TOKEN_PLAN_SGP_API_KEY` |
 
 Anthropic also recognizes `ANTHROPIC_OAUTH_TOKEN` as an API credential and `ANTHROPIC_AUTH_TOKEN` as bearer authentication.
+
+The [provider protocol and authentication audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md) records the 2026-10-25 documentation review, repairs, and remaining limitations. Anthropic's published policy does not permit offering Claude.ai subscription login in third-party applications, so the built-in Anthropic provider does not register subscription OAuth. Use an API key or supported cloud provider. Legacy subscription tokens do not mark this provider as configured.
+
+Sign in with ChatGPT retains account/client registrations and offers a saved account or a new account on the next login. Saved account selection reuses its issued client ID and available ID-token hint, then verifies the returned account. Logout revokes saved renewable sessions and removes their local tokens; nonsecret registrations remain for reuse. If remote revocation cannot be confirmed, local tokens are still removed and the error explains how to disconnect the app in account settings. Model availability comes from the selected account's vendor list; see [model discovery](model-discovery.md).
 
 With no key or token set, Anthropic uses workload identity federation when `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE` are set: the Anthropic SDK exchanges the identity token for a short-lived access token and refreshes it itself (re-reading the identity token file, so keep that file fresh for long sessions). `ANTHROPIC_SERVICE_ACCOUNT_ID` and `ANTHROPIC_WORKSPACE_ID` are passed through when set.
 
@@ -162,6 +166,8 @@ export AZURE_OPENAI_DEPLOYMENT_NAME_MAP=gpt-5.4=my-gpt-deployment,deepseek-v4-pr
 ```
 
 `AZURE_OPENAI_API_VERSION` overrides the API version for OpenAI models (default `v1`).
+
+Azure login also offers an Entra bearer token. Set `AZURE_OPENAI_AD_TOKEN` or select that option in `/providers`; acquire the token through Azure Identity or Azure CLI. Stored API keys take precedence. This token is short-lived and must be renewed externally; Octocode does not refresh a manually supplied Entra token. SDK users can supply `azureADTokenProvider` to the Azure Responses adapter for automatic credential acquisition. Bearer auth suppresses the SDK's ambient API-key default.
 
 To use a Foundry model that Octocode does not include, add it under `azure` in [`models.json`](models.md#configure-a-compatible-endpoint) with `api: "openai-completions"`. Custom models require a `baseUrl`; `AZURE_OPENAI_BASE_URL` and `AZURE_OPENAI_RESOURCE_NAME` take priority over it when set:
 

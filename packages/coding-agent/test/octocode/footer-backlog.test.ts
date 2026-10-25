@@ -22,14 +22,14 @@ describe("backlog discovery in the native footer", () => {
 	])("keeps the web entry point with counts %o", (counts) => {
 		const statuses = new Map([[STATUS.backlog, countsText(counts)]]);
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 200);
-		expect(bottom).toContain("/web · backlogs & activity");
-		expect(top).not.toContain("/web");
+		expect(bottom).toContain("/octocode · backlogs & activity");
+		expect(top).not.toContain("/octocode");
 		expect(bottom).toContain("15.5k tokens");
 		expect(bottom).toContain("2 compactions");
 		if (counts.ongoing) expect(bottom).toContain("2 ongoing · 4 todo · 3 to triage");
 	});
 
-	it("shortens the hint to /web while preserving location and usage at common terminal widths", () => {
+	it("shortens the hint to /octocode while preserving location and usage at common terminal widths", () => {
 		const statuses = new Map([
 			[STATUS.backlog, countsText({ backlog: 3, todo: 4, ongoing: 2, done: 5 })],
 			["octocode-permission", "permission: manual"],
@@ -37,7 +37,7 @@ describe("backlog discovery in the native footer", () => {
 		for (const width of [80, 100, 120]) {
 			const [top, bottom] = footerLines(state, "main", statuses, theme, width);
 			expect(top).toContain("manual");
-			expect(bottom).toContain("/web");
+			expect(bottom).toContain("/octocode");
 			expect(bottom).toContain("project");
 			expect(bottom).toContain("15.5k tokens");
 		}

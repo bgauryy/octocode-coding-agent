@@ -73,7 +73,7 @@ JSON/RPC output has explicit stdout backpressure handling. A future network brid
 - `onEvent(listener)` receives `JsonAgentSessionEvent` values.
 - `onExtensionUIRequest(listener)` receives `RpcExtensionUIRequest` values. Both subscription methods return an unsubscribe function.
 - `respondToExtensionUIRequest(response)` sends a typed reply with the original dialog ID. Its promise reports completion of the pipe write; the protocol does not acknowledge UI replies as ordinary RPC commands.
-- `collectEvents()` and `promptAndWait()` collect session events until `agent_settled`; UI requests are not mixed into those results.
+- `collectEvents()` collects session events until `agent_settled`. `promptAndWait()` collects through the correlated command response, including nested extension work and commands with no model run; see [completion and timeout semantics](../packages/coding-agent/docs/sdk.md#process-clients). UI requests are not mixed into either result.
 
 Before this change, UI requests were passed to listeners as though they were `JsonAgentSessionEvent` values, and there was no public client method to reply. Consumers that worked around the incorrect event type should move their UI handling to `onExtensionUIRequest`.
 

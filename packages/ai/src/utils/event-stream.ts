@@ -55,6 +55,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		} else {
 			this.queue.enqueue(event);
 		}
+		if (this.done) this.finishWaitingConsumers();
 	}
 
 	end(result?: R): void {
@@ -62,6 +63,10 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 		if (result !== undefined) {
 			this.resolveFinalResult(result);
 		}
+		this.finishWaitingConsumers();
+	}
+
+	private finishWaitingConsumers(): void {
 		// Notify all waiting consumers that we're done
 		while (this.waiting.length > 0) {
 			const waiter = this.waiting.dequeue()!;

@@ -136,7 +136,7 @@ export function streamProxy(
 			let sawTerminalEvent = false;
 
 			const processLine = (line: string): void => {
-				if (!line.startsWith("data: ")) return;
+				if (sawTerminalEvent || !line.startsWith("data: ")) return;
 				const data = line.slice(6).trim();
 				if (!data) return;
 				const proxyEvent = JSON.parse(data) as ProxyAssistantMessageEvent;
@@ -147,7 +147,7 @@ export function streamProxy(
 				}
 			};
 
-			while (true) {
+			while (!sawTerminalEvent) {
 				const { done, value } = await reader.read();
 				if (done) break;
 
@@ -203,6 +203,10 @@ export function streamProxy(
 		} finally {
 			if (options.signal) {
 				options.signal.removeEventListener("abort", abortHandler);
+			}
+			if (reader) {
+				await reader.cancel().catch(() => {});
+				reader.releaseLock();
 			}
 		}
 	})();

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseArgs, pickInstance } from "../../src/octocode/api/args.ts";
+import { integerFlag, parseArgs, pickInstance } from "../../src/octocode/api/args.ts";
+import { WAIT_MS } from "../../src/octocode/api/protocol.ts";
 import { registerApi } from "../../src/octocode/api/register.ts";
 import { apiDir, type InstanceRecord } from "../../src/octocode/api/registry.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -21,6 +22,37 @@ describe("octocode-pi-api arguments", () => {
 		expect(() => parseArgs(["hello", "--from"])).toThrow("--from needs a value.");
 		// The next flag is not a value.
 		expect(() => parseArgs(["--to", "--wait"])).toThrow("--to needs a value.");
+	});
+
+	it("preserves every argument after -- as message text", () => {
+		const { flags, words } = parseArgs(["--require-idle", "--", "--to", "other-agent", "--wait"], "send");
+		expect(Object.fromEntries(flags)).toEqual({ "require-idle": true });
+		expect(words).toEqual(["--to", "other-agent", "--wait"]);
+	});
+
+	it("rejects unknown, duplicate and command-inappropriate flags", () => {
+		expect(() => parseArgs(["--sesion", "s1"], "send")).toThrow("Unknown flag --sesion");
+		expect(() => parseArgs(["--wait"], "status")).toThrow("--wait is not valid for status");
+		expect(() => parseArgs(["--to", "first", "--to", "second"], "send")).toThrow("--to was supplied more than once");
+	});
+
+	it("validates decimal integer flag values against the shared protocol bounds", () => {
+		for (const value of [String(WAIT_MS.min), String(WAIT_MS.max)]) {
+			expect(integerFlag(parseArgs(["--timeout", value]).flags, "timeout", WAIT_MS)).toBe(Number(value));
+		}
+		for (const value of [
+			"",
+			"NaN",
+			"Infinity",
+			"1.5",
+			"1e3",
+			"0x1000",
+			String(WAIT_MS.min - 1),
+			String(WAIT_MS.max + 1),
+		]) {
+			expect(() => integerFlag(parseArgs(["--timeout", value]).flags, "timeout", WAIT_MS)).toThrow();
+		}
+		expect(integerFlag(parseArgs([]).flags, "timeout", WAIT_MS)).toBeUndefined();
 	});
 
 	it("picks the named instance, else the only one, else the one in this directory", () => {

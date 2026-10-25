@@ -3,11 +3,13 @@
  * /resume session selector.
  */
 
+import path from "node:path";
 import { Spacer } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { ExtensionCommandContext } from "../../../core/extensions/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { SessionManager } from "../../../core/session-manager.ts";
+import { sessionFileRunningPid } from "../../../octocode/agentdb/liveness.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
 import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
@@ -53,6 +55,7 @@ type SessionNavigationHost = Pick<
 	| "sessionManager"
 	| "settingsManager"
 	| "showError"
+	| "showExtensionConfirm"
 	| "showExtensionEditor"
 	| "showExtensionSelector"
 	| "showSelector"
@@ -307,6 +310,22 @@ export async function handleResumeSession(
 	sessionPath: string,
 	options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
 ): Promise<{ cancelled: boolean }> {
+	const currentFile = host.sessionManager.getSessionFile();
+	if (currentFile && path.resolve(currentFile) === path.resolve(sessionPath)) {
+		host.showStatus("That is the current session.");
+		return { cancelled: true };
+	}
+	const runningPid = sessionFileRunningPid(sessionPath);
+	if (
+		runningPid !== undefined &&
+		!(await host.showExtensionConfirm(
+			"Session is running",
+			`Another Octocode process (pid ${runningPid}) has this session open. Resume it here as well?`,
+		))
+	) {
+		host.showStatus("Resume cancelled");
+		return { cancelled: true };
+	}
 	host.clearStatusIndicator();
 	try {
 		const result = await host.runtimeHost.switchSession(sessionPath, {

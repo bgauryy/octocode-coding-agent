@@ -96,7 +96,7 @@ describe("the file tool while Octocode's local readers are unavailable", () => {
 			try {
 				const result = await tool.execute(
 					"f",
-					{ queries: [{ reasoning: "r", path: "a.txt", ...query }] },
+					{ queries: [{ reason: "r", path: "a.txt", ...query }] },
 					undefined,
 					undefined,
 					fakeCtx({ cwd, hasUI: false }),

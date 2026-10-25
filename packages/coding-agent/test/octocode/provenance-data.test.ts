@@ -32,7 +32,7 @@ function seeded() {
 }
 
 const fileWrite = (path: string, content: string) =>
-	call("file", { queries: [{ type: "write", path, content, reasoning: "save the research report" }] });
+	call("file", { queries: [{ type: "write", path, content, reason: "save the research report" }] });
 
 describe("provenance: untrusted text saved as data", () => {
 	it("lets a report that quotes a web page be written into the workspace (file, Octocode write and edit)", () => {

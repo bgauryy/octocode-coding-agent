@@ -80,13 +80,13 @@ export async function pollOAuthDeviceCodeFlow<T>(options: OAuthDeviceCodePollOpt
 		if (result.status === "slow_down") {
 			slowDownResponses += 1;
 			// Use the server-provided interval when given (GitHub reports the new required minimum
-			// in `interval`); trusting only a client-tracked value risks polling early forever under
-			// WSL/VM clock drift. Otherwise apply RFC 8628 section 3.5: increase by 5 seconds.
+			// in `interval`) without reducing the RFC 8628 section 3.5 increase of 5 seconds.
+			// A larger server minimum also protects against repeated early polling under clock drift.
 			intervalMs =
 				typeof result.intervalSeconds === "number" &&
 				Number.isFinite(result.intervalSeconds) &&
 				result.intervalSeconds > 0
-					? Math.max(MINIMUM_INTERVAL_MS, Math.floor(result.intervalSeconds * 1000))
+					? Math.max(intervalMs + SLOW_DOWN_INTERVAL_INCREMENT_MS, Math.floor(result.intervalSeconds * 1000))
 					: Math.max(MINIMUM_INTERVAL_MS, intervalMs + SLOW_DOWN_INTERVAL_INCREMENT_MS);
 		}
 

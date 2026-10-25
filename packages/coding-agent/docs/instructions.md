@@ -18,7 +18,7 @@ The common policy does not copy tool schemas, skill bodies or project instructio
 The policy groups overlapping principles into five concerns:
 
 - **Work and verification:** establish the goal and constraints, inspect owners and callers, make the smallest complete change, and run the deciding check.
-- **Context and research:** retain the next step's actionable evidence, decisions and exact recovery identifiers; retrieve large material by path or cursor and disclose coverage gaps. Cached input still occupies the context window.
+- **Context and research:** retain the next step's actionable evidence, decisions and exact recovery identifiers; retrieve large material by path or cursor and disclose coverage gaps. Fetch only what the next decision needs; cached input still fills the context window.
 - **Delegation:** assign bounded tasks with ownership and observable completion checks; the parent owns integration and user communication.
 - **Safety:** preserve authorization, user changes and trust boundaries. An unavailable research tool can have a permitted fallback; a permission refusal cannot be bypassed by switching tools.
 - **Communication:** lead with the result and its evidence, distinguish verified facts from unknowns, and report checks actually run. Findings have no mandatory narrative template.

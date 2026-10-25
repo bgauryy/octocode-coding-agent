@@ -1,6 +1,6 @@
 # Configurations
 
-Use `~/.octocode/octocodecode/` for your global configuration and `.octocode/` for workspace configuration. Start Octocode in the workspace you want to configure. Run `/mcp config` to see the exact MCP paths, their read order, and whether workspace files are trusted.
+Use `~/.octocode/octocodecode/` for global core configuration and `.octocode/` for workspace configuration. MCP definitions are the exception: the canonical global file is `~/.octocode/mcp.json`, and the canonical workspace file is `.octocode/mcp.json`. Start Octocode in the workspace you want to configure. Run `/mcp config` to see the exact MCP paths, their read order, and whether workspace files are trusted.
 
 `OCTOCODE_HOME` changes the shared configuration and runtime home. `OCTOCODE_CODING_AGENT_DIR` changes only the core configuration directory; native runtime files keep their own home. Explicit home overrides and custom SDK agent directories disable automatic Pi configuration fallback. See [configuration and compatibility](packages/coding-agent/docs/configuration.md).
 
@@ -13,12 +13,12 @@ In this table, **global** means `~/.octocode/octocodecode/` unless overridden. C
 | Configure | Global location | Workspace location | Inspect or apply |
 | --- | --- | --- | --- |
 | General settings and default model selection | `settings.json` | `.octocode/settings.json` | `/settings`; `/reload` after file edits |
-| MCP servers and tool exposure | `mcp.json` | `.octocode/mcp.json` | `/mcp`, `/mcp config`, `/mcp tools` |
+| MCP servers and tool exposure | `~/.octocode/mcp.json` | `.octocode/mcp.json` | `/mcp`, `/mcp config`, `/mcp tools` |
 | Providers, endpoints and model definitions | `models.json` | No automatically loaded workspace `models.json`; select a configured model in workspace settings | `/model` reloads model definitions; `/modelsettings` manages catalog and routing |
 | Provider sign-in and API keys | `auth.json` | No workspace credential file | `/providers` (`/login`), `/logout` |
 | MCP OAuth tokens | `mcp-auth.json` | No workspace token file | `/mcp login <server>`, `/mcp logout <server>` |
 | GitHub sign-in for Octocode research | Saved by the native Octocode CLI in Octocode's home and the OS credential store | No workspace credential file | `/github`, `/github login`, `/github logout`; `octocode native auth status` in a shell |
-| Skills | `skills/<name>/SKILL.md`; also `~/.agents/skills/` | `.octocode/skills/<name>/SKILL.md`; also `.agents/skills/` | `/skills`, `/status`, `/reload` |
+| Skills | `skills/<name>/SKILL.md`; also `~/.agents/skills/` | `.octocode/skills/<name>/SKILL.md`; also `.agents/skills/` | `/skills`, `/skills info <name>`, `/skills enable <name>`, `/skills disable <name>` |
 | Prompt templates | `prompts/*.md` | `.octocode/prompts/*.md` | `/help`, `/reload` |
 | Extensions | `extensions/` | `.octocode/extensions/` | `/reload`; load diagnostics report conflicts |
 | Local plugins | `plugins` entries in `settings.json` | `plugins` entries in trusted `.octocode/settings.json` | `/reload`; see [plugin component review](packages/coding-agent/docs/plugins.md) |
@@ -30,6 +30,12 @@ In this table, **global** means `~/.octocode/octocodecode/` unless overridden. C
 | Native command hooks | `hooks.json` in the runtime home | `.octocode/hooks.json` at the repository root | `/hooks`, `/reload` |
 
 Trusted workspace settings override global settings. Objects merge recursively; arrays replace rather than append. Resource settings such as `skills`, `extensions`, `prompts`, and `themes` support additional paths and selection patterns through their loaders. [Settings schema](packages/coding-agent/schemas/settings.schema.json) lists the supported fields.
+
+Run `octocode config` to select built-in extensions as well as installed resources. Built-in names and enable/disable settings are described in [built-in features](packages/coding-agent/docs/configuration.md#built-in-features).
+
+`/octocode` opens the local web workspace for the current session. Its private server registry is stored in `workspace-web/` beside the configured agent database and keyed by repository and session. Different sessions share repository entities in the database while keeping their live controls separate. See [the backlog view](packages/coding-agent/docs/native-features.md#backlog-view) for concurrent editing and reconnect behavior.
+
+Inline terminal images use `terminal.showImages`, `terminal.images`, and `terminal.imageWidthCells`; automatic capability detection and explicit overrides are described in [terminal images](packages/coding-agent/docs/configuration.md#terminal-images).
 
 Settings, MCP configuration, and project trust saves replace the target file atomically, so a concurrent reader sees a complete old or new document. Settings saves also lock the read–merge–write operation, including first creation, so cooperating writers preserve each other's unrelated changes. An empty settings file or one whose root is not a JSON object is reported as invalid and is not overwritten by a settings change, including when the file becomes invalid after startup; repair the file, then run `/reload`.
 
@@ -56,9 +62,9 @@ Enablement defaults to **true**. Disabling keeps the definition, stops its conne
 
 `/mcp tools` inspects the current connection snapshot without invoking tools or enabling disconnected servers. In the manager, select **Tools**, then a tool to inspect its complete description and input schema. The shell tool-list command connects enabled configured servers; selecting one server avoids connecting the others. `list`, `tools`, and `config` support `--json` in the shell.
 
-The automatic Octocode research server is visible in session status and tool listings. `/mcp reconnect octocode`, or the model's [`mcp` tool](packages/coding-agent/docs/mcp.md#let-the-model-manage-servers), restarts it. Its local research tools (`localFetch`, `localSearch`, `structureSearch`, `astSearch`, `lspSearch`) are declared to the model and its GitHub and package tools load through `tool_search` when it is available; an explicit `octocode` entry in `mcp.json` gets the same split unless it sets `exposure` or `toolExposure`. Persistent enablement/exposure controls require an explicit `octocode` transport entry in `mcp.json`; a control-only entry has nothing to override when no configured transport exists. `OCTOCODE_MCP=0` turns off automatic startup. Shell MCP commands inspect configured servers and do not load native extensions.
+Octocode research is the default entry in the shared MCP host registry, implemented by the private [MCP workspace](packages/mcp/README.md). The `octocode` preset supplies launch and tool-presentation defaults; configured and registered servers use the same connection and management paths. `/mcp enable octocode`, `/mcp disable octocode` and `/mcp exposure octocode <mode>` save control-only overrides, so an explicit command is unnecessary. `OCTOCODE_MCP=0` disables the default unless configuration overrides it. Local research tools are direct by default; the remaining catalog uses automatic discovery according to model support and size. Explicit `exposure` or `toolExposure` settings win. Shell MCP commands load the same default and configuration. `mcp({ intent: "stop", server: "octocode" })` stops it for this session; only an explicit connect/restart resumes it. See the [MCP reference](packages/coding-agent/docs/mcp.md#host-and-protocol-support).
 
-After changing files or using shell configuration commands, run `/reload` in existing sessions. Session `/mcp` enable/disable/exposure actions apply immediately. Cached catalogs contain tool descriptions, schemas and server instructions in memory; disabling or disconnecting withdraws them, and reconnecting refreshes them.
+After changing files or using shell configuration commands, run `/reload` in existing sessions. Session `/mcp` enable/disable/exposure actions apply immediately. The host supports tools only; elicitation, resources and annotations are unsupported. Cached catalogs contain full tool descriptions, schemas and server instructions in memory; disabling or disconnecting withdraws them, and reconnecting refreshes them.
 
 ### MCP precedence
 
@@ -66,9 +72,9 @@ With the default home, global files are read from lowest to highest priority:
 
 1. `~/.pi/mcp.json`
 2. `~/.pi/agent/mcp.json`
-3. `~/.octocode/mcp.json`
-4. `~/.octocode/agent/mcp.json`
-5. `~/.octocode/octocodecode/mcp.json`
+3. `~/.octocode/agent/mcp.json`
+4. `~/.octocode/octocodecode/mcp.json` (previous native location, still read)
+5. `~/.octocode/mcp.json` (canonical global file)
 
 Trusted workspace files then apply in this order: `.pi/mcp.json`, `.mcp.json`, `.agents/mcp.json`, `.octocode/mcp.json`. Each path is relative to the session directory. A later transport definition replaces the earlier server with the same name; a later control-only entry changes `enabled`, `exposure` or `toolExposure` without copying credentials. `/mcp config` shows the actual paths when your home is overridden. Workspace MCP files load only while `/trust`'s record of their exact content matches: after you add or edit one, its servers stay unloaded until you run `/trust` again. An SDK session loads none unless the host passes `projectTrusted: true`.
 
@@ -86,9 +92,9 @@ Removing an override can reveal an inherited server again. Use disable when you 
 
 ## ACP clients
 
-An editor can launch `octocode --mode acp` to control Octocode through inbound ACP v1. It uses the normal host credentials, settings, project trust and `OCTOCODE_PERMISSION` policy; no separate ACP configuration file is required. The client supplies each session's working directory. Stdio MCP definitions supplied with `session/new` are registered temporarily for that worker, with literal environment values, and are not written to global or workspace `mcp.json`. HTTP/SSE client definitions and in-protocol model or permission-mode changes are not supported. See the [ACP reference](packages/coding-agent/docs/acp.md) for invocation, permissions and session limits.
+An editor can launch `octocode --mode acp` to control Octocode through inbound ACP v1. It uses the normal host credentials, settings, project trust and `OCTOCODE_PERMISSION` policy; no separate ACP configuration file is required. The client supplies each session's working directory. Stdio, Streamable HTTP and legacy SSE MCP definitions supplied with `session/new`, `session/load` or `session/resume` are registered temporarily for that worker through the shared MCP host. Environment and header values are literal; definitions are not written to global or workspace `mcp.json`. In-protocol model or permission-mode changes are not supported. See the [ACP reference](packages/coding-agent/docs/acp.md) for invocation, permissions and session limits.
 
-The native `agent` tool's `type: "external"` / `transport: "acp"` connection is outbound ACP to another agent. `/api` and `octocode-api` remain the separate local session API.
+The native `agent` tool's `type: "external"` / `transport: "acp"` connection is outbound ACP to another agent. `/api` and `octocode-api` expose the separate [local session API](packages/coding-agent/docs/session-api.md).
 
 ## Skills and prompts
 
@@ -102,8 +108,12 @@ Prompt templates are Markdown files in `prompts/`. Skills and prompts get direct
 
 Use `/providers` (`/login`) for provider access, `/model` (`/models`) to select a model, `/thinking` (`/effort`) to choose reasoning effort, `/context size` for a session context budget, and `/modelsettings` for model shortcuts, catalog and routing. Put custom endpoints and model definitions in the global `models.json`; the [models guide](packages/coding-agent/docs/models.md) has examples and the [models configuration reference](packages/coding-agent/docs/models-configuration.md) describes each field.
 
-Default selection uses `defaultProvider` and `defaultModel` in settings. Authentication lives in global `auth.json` or environment variables; MCP OAuth uses the separate global `mcp-auth.json`. Keep credentials out of shared workspace files. Provider/model settings can select cache retention; paid cache warming is controlled by global settings. See [providers](packages/coding-agent/docs/providers.md), [environment variables](packages/coding-agent/docs/environment-variables.md), and [prompt caching](packages/coding-agent/docs/prompt-caching.md).
+Use `octocode models discover [--provider <id>] [--json]` to compare vendor lists with configured model IDs; `--offline` and `OCTOCODE_OFFLINE=1` use only local definitions. See [vendor model discovery](packages/coding-agent/docs/model-discovery.md). ChatGPT logout retains nonsecret account/client registrations in `auth.json` for returning login while removing tokens; these signed-out records do not mark the provider as configured.
+
+Default selection uses `defaultProvider` and `defaultModel` in settings. Authentication lives in global `auth.json` or environment variables; MCP OAuth uses the separate global `mcp-auth.json`. Gemini recognizes both `GOOGLE_API_KEY` and `GEMINI_API_KEY`, with `GOOGLE_API_KEY` taking precedence; Meta recognizes `META_API_KEY` and the Model API's `MODEL_API_KEY`, with `META_API_KEY` taking precedence. Explicit Bedrock credential-chain and Vertex ADC login delegate credential resolution to their SDKs. Keep credentials out of shared workspace files. Provider/model settings can select cache retention; paid cache warming is controlled by global settings. See [providers](packages/coding-agent/docs/providers.md), [environment variables](packages/coding-agent/docs/environment-variables.md), and [prompt caching](packages/coding-agent/docs/prompt-caching.md).
 
 Pi settings and provider definitions are fallback inputs when using the default home; native values take precedence and writes go to Octocode files. Pi authentication is imported only through explicit confirmation in `/providers pi`; trust decisions are not imported. Details and historical migrations remain in [configuration and compatibility](packages/coding-agent/docs/configuration.md).
 
-Native workflow controls: `OCTOCODE_EDIT_DIAGNOSTICS=0` disables advisory edit diagnostics; `OCTOCODE_SUBAGENT_LINGER_SECONDS` retains finished workers for explicit follow-up within its bounded window; the `bashBackgroundAfterSeconds` setting (default 90, `0` off) or `OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS` sets when a foreground `bash` command moves to the background. `debug` is an opt-in tool, and `bash` accepts `verify: true` per invocation. See [native features](packages/coding-agent/docs/native-features.md) and the [environment reference](packages/coding-agent/docs/environment-variables.md).
+Image-capable models use `"input": ["text", "image"]` in native or Pi-compatible provider model definitions and `modelOverrides`. Custom definitions without `input` default to text-only. Image request limits use the existing `inputLimits` fields; see [model input and caching](packages/coding-agent/docs/models.md#describe-model-input-and-caching) for examples and send-time validation.
+
+Native workflow controls: `OCTOCODE_EDIT_DIAGNOSTICS=0` disables advisory edit diagnostics; `OCTOCODE_SUBAGENT_LINGER_SECONDS` retains finished workers for explicit follow-up within its bounded window; the `bashBackgroundAfterSeconds` setting (default 90, `0` off) or `OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS` sets when a foreground `bash` command moves to the background. `debug` and `browser` are active by default and can be removed through `defaultTools` or `--tools`; `bash` accepts `verify: true` per invocation. See [native features](packages/coding-agent/docs/native-features.md) and the [environment reference](packages/coding-agent/docs/environment-variables.md).

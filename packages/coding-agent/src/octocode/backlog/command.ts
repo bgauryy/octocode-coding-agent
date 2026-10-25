@@ -156,7 +156,7 @@ export function backlogCommand(pi: ExtensionAPI, deps: CommandDeps): Subcommand 
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
 	const usage = `backlog [${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
-		description: `${usage} — the repository task board`,
+		description: `${usage} — deprecated task-board commands; use /octocode for the live workspace`,
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);
 			let items: Item[] = [];

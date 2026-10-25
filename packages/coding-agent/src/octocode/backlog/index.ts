@@ -6,6 +6,7 @@ import { backlogCommand } from "./command.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
 import { countsText } from "./format.ts";
 import { registerBacklogTool } from "./tool.ts";
+import { sharedWorkspaceWeb } from "./shared-web.ts";
 
 interface RegisterBacklogOptions extends BacklogOptions {
 	openWeb?: OpenBacklogWeb;
@@ -16,7 +17,7 @@ interface RegisterBacklogOptions extends BacklogOptions {
 
 /**
  * The repository backlog: the `backlog` tool, `/backlog` (registered centrally after
- * `commands` is registered) and footer counts with a persistent `/web` hint for backlogs and activity.
+ * `commands` is registered) and footer counts with a persistent `/octocode` hint for backlogs and activity.
  */
 export function registerBacklog(
 	pi: ExtensionAPI,
@@ -39,14 +40,15 @@ export function registerBacklog(
 	};
 
 	const launch = webLauncher(pi, open);
+	const openWeb = options.openWeb ? sharedWorkspaceWeb(options.openWeb, backlogOptions.env) : undefined;
 	const openView = async (ctx: ExtensionCommandContext, view: "board" | "activity") => {
 		const backlog = openBacklog(ctx, backlogOptions);
 		await launch(
 			backlog.store.repo + ":" + backlog.session,
 			async () => {
-				if (!options.openWeb)
+				if (!openWeb)
 					throw new Error("The workspace web app is unavailable in this host. Use /backlog tui or /backlog html.");
-				return options.openWeb(ctx, backlog, () => refresh(ctx));
+				return openWeb(ctx, backlog, () => refresh(ctx));
 			},
 			view,
 		);

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 import { getAgentDir } from "../src/config.ts";
-import { updateMcpServerConfig } from "../src/extensions/mcp/config.ts";
+import { updateMcpServerConfig } from "../../mcp/src/config.ts";
 
 let root: string;
 let home: string;

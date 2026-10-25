@@ -5,7 +5,7 @@
 
 import { setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import { MCP_STATUS_EVENT } from "../../../extensions/mcp/status.ts";
+import { MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
 import { setRegisteredThemes } from "../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";

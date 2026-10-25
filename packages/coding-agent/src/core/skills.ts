@@ -64,12 +64,12 @@ export interface FormatSkillsOptions {
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
  *
- * `fileReadTool` names the tool that loads skill files; `indirect` names none, for a reader that
- * is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
+ * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
+ * returns its directory; `indirect` names none, for a reader that is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
-	fileReadTool: "read" | "bash" | "indirect" | "octocode" = "read",
+	fileReadTool: "read" | "bash" | "indirect" | "octocode" | "skill" = "read",
 	options: FormatSkillsOptions = {},
 ): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
@@ -88,14 +88,18 @@ export function formatSkillsForPrompt(
 	);
 	const lines = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
-		fileReadTool === "octocode"
-			? `Use Octocode localFetch (or localGetFileContent) to load a skill file ${when}.`
-			: fileReadTool === "read"
-				? `Use the read tool to load a skill's file ${when}.`
-				: fileReadTool === "bash"
-					? `Use bash to load a skill's file ${when}.`
-					: `Load a skill's file ${when}.`,
-		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+		fileReadTool === "skill"
+			? `Use the skill tool with a skill's name to load it ${when}.`
+			: fileReadTool === "octocode"
+				? `Use Octocode localFetch to load a skill file ${when}.`
+				: fileReadTool === "read"
+					? `Use the read tool to load a skill's file ${when}.`
+					: fileReadTool === "bash"
+						? `Use bash to load a skill's file ${when}.`
+						: `Load a skill's file ${when}.`,
+		fileReadTool === "skill"
+			? "When a skill references a relative path, resolve it against the skill directory the tool returns and use that absolute path in tool commands."
+			: "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 		...(undescribed > 0
 			? [
 					`To fit the prompt, ${undescribed} skill${undescribed === 1 ? " is" : "s are"} listed without a description; load one when its name fits the task.`,

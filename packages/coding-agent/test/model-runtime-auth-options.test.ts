@@ -33,6 +33,27 @@ function testModel(id: string) {
 }
 
 describe("ModelRuntime auth options", () => {
+	it("does not treat signed-out registrations or unsupported subscription tokens as configured", async () => {
+		const credentials = new InMemoryCredentialStore();
+		await credentials.modify("openai", async () => ({
+			type: "oauth",
+			access: "",
+			refresh: "",
+			expires: 0,
+			signedOut: true,
+			accounts: [{ subject: "account", clientId: "oaiapp_saved" }],
+		}));
+		await credentials.modify("anthropic", async () => ({
+			type: "oauth",
+			access: "legacy",
+			refresh: "legacy",
+			expires: Date.now() + 3600_000,
+		}));
+		const runtime = await ModelRuntime.create({ credentials, modelsPath: null, allowModelNetwork: false });
+		expect(runtime.getProviderAuthStatus("openai").configured).toBe(false);
+		expect(runtime.getProviderAuthStatus("anthropic").configured).toBe(false);
+		expect(runtime.getProvider("anthropic")?.auth.oauth).toBeUndefined();
+	});
 	it("accepts a octocode-ai CredentialStore", async () => {
 		const credentials = new InMemoryCredentialStore();
 		await credentials.modify("anthropic", async () => ({ type: "api_key", key: "stored-key" }));
@@ -88,7 +109,7 @@ describe("ModelRuntime auth options", () => {
 				}),
 				expect.objectContaining({
 					type: "oauth",
-					provider: expect.objectContaining({ id: "anthropic", name: "Anthropic" }),
+					provider: expect.objectContaining({ id: "openai", name: "OpenAI" }),
 				}),
 				expect.objectContaining({
 					type: "api_key",
@@ -108,7 +129,7 @@ describe("ModelRuntime auth options", () => {
 	it("attaches the provider's active auth status to every method option", async () => {
 		const runtime = await ModelRuntime.create({
 			credentials: AuthStorage.inMemory({
-				anthropic: {
+				openai: {
 					type: "oauth",
 					access: "access",
 					refresh: "refresh",
@@ -118,18 +139,18 @@ describe("ModelRuntime auth options", () => {
 			modelsPath: null,
 		});
 
-		const options = authOptions(runtime).filter((option) => option.provider.id === "anthropic");
+		const options = authOptions(runtime).filter((option) => option.provider.id === "openai");
 		expect(options).toHaveLength(2);
-		expect(await runtime.checkAuth("anthropic")).toMatchObject({ type: "oauth" });
+		expect(await runtime.checkAuth("openai")).toMatchObject({ type: "oauth" });
 	});
 
 	it("distinguishes subscription OAuth from generic OAuth sign-in", async () => {
 		const runtime = await ModelRuntime.create({
 			credentials: AuthStorage.inMemory({
-				anthropic: {
+				openai: {
 					type: "oauth",
-					access: "anthropic-access",
-					refresh: "anthropic-refresh",
+					access: "openai-access",
+					refresh: "openai-refresh",
 					expires: Date.now() + 60 * 60_000,
 				},
 				openrouter: {
@@ -142,8 +163,8 @@ describe("ModelRuntime auth options", () => {
 			modelsPath: null,
 		});
 
-		expect(runtime.isUsingOAuth("anthropic")).toBe(true);
-		expect(runtime.isUsingSubscription("anthropic")).toBe(true);
+		expect(runtime.isUsingOAuth("openai")).toBe(true);
+		expect(runtime.isUsingSubscription("openai")).toBe(true);
 		expect(runtime.isUsingOAuth("openrouter")).toBe(true);
 		expect(runtime.isUsingSubscription("openrouter")).toBe(false);
 	});

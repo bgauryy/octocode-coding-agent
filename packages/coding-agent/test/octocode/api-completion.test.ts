@@ -9,6 +9,16 @@ describe("API CLI completions", () => {
 		expect(completeApi(["watch", "--types", "turn.start,message.d"])).toContain("turn.start,message.delta");
 		expect(completeApi(["send", "--from", ""])).toEqual([]);
 		expect(completeApi(["send", "hello"])).toEqual([]);
+		expect(completeApi(["constructor", ""])).toEqual([]);
+	});
+	it("offers guarded send and event replay flags without completing free-form values or message text", () => {
+		expect(completeApi(["send", "--"])).toEqual(
+			expect.arrayContaining(["--key", "--session", "--timeout", "--require-idle"]),
+		);
+		expect(completeApi(["watch", "--si"])).toEqual(["--since"]);
+		for (const flag of ["--key", "--session", "--timeout"]) expect(completeApi(["send", flag, ""])).toEqual([]);
+		expect(completeApi(["watch", "--since", ""])).toEqual([]);
+		expect(completeApi(["send", "--", "--to"], ["pi-one"])).toEqual([]);
 	});
 	it("uses distinct shell functions for the two executables", () => {
 		for (const shell of ["bash", "zsh", "fish"] as const) {

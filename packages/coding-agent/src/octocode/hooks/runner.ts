@@ -11,7 +11,7 @@ import {
 } from "./contracts.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
 import { runMcpHook } from "./mcp.ts";
-import type { BoundMcpHookCaller } from "../../extensions/mcp/hook-caller.ts";
+import type { BoundMcpHookCaller } from "../../../../mcp/src/hook-caller.ts";
 import { runHttpHook } from "./http.ts";
 import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";

@@ -26,7 +26,8 @@ const loaded = async (options?: { projectTrusted?: boolean }) =>
 		path.basename(extension.path),
 	);
 
-it("skips project extensions in an untrusted project", async () => {
+// The first load in a worker compiles the extension runtime: about 5s when idle, far longer under full-suite load.
+it("skips project extensions in an untrusted project", { timeout: 120_000 }, async () => {
 	expect(await loaded()).toEqual(["global.ts"]);
 	expect(await loaded({ projectTrusted: false })).toEqual(["global.ts"]);
 });

@@ -167,5 +167,5 @@ export function envInt(
 
 export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
 
-/** Owner-only file with the MCP servers the parent's `mcp` tool added this session; a child registers them at start (`extensions/mcp/session-servers.ts`). */
+/** Owner-only handoff of enabled, non-stopped extension MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
 export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

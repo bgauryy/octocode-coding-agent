@@ -21,7 +21,7 @@ const write = (target: string, content = "ORIGINAL") => ({
 	type: "write",
 	path: target,
 	content,
-	reasoning: "File rewrite acceptance",
+	reason: "File rewrite acceptance",
 });
 it("Claude Write permission replacement writes only its new path and content", async () => {
 	const f = await fixture("claude");
@@ -120,7 +120,7 @@ for (const kind of ["write", "edit"] as const) {
 								type: "edit",
 								path: target,
 								edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
-								reasoning: "Edit acceptance",
+								reason: "Edit acceptance",
 							},
 				],
 			});
@@ -153,7 +153,7 @@ it("a real prior read permits Edit replacement while preserving exact source fie
 					type: "edit",
 					path: target,
 					edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
-					reasoning: "Edit acceptance",
+					reason: "Edit acceptance",
 				},
 			],
 		});
@@ -231,7 +231,7 @@ it("real read evidence permits the unchanged native Edit control", async () => {
 					type: "edit",
 					path: target,
 					edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
-					reasoning: "Read evidence control",
+					reason: "Read evidence control",
 				},
 			],
 		});
@@ -310,7 +310,7 @@ it("Edit replacement to an unread target preserves both existing files", async (
 					type: "edit",
 					path: original,
 					edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
-					reasoning: "Unread candidate",
+					reason: "Unread candidate",
 				},
 			],
 		});
@@ -514,7 +514,7 @@ for (const tool of ["Write", "Edit"] as const) {
 								type: "edit",
 								path: target,
 								edits: [{ oldText: "BEFORE", newText: "ORIGINAL" }],
-								reasoning: "Unknown source fields",
+								reason: "Unknown source fields",
 							},
 				],
 			});
@@ -546,7 +546,7 @@ it("invalid replace_all type cannot change either occurrence", async () => {
 					type: "edit",
 					path: target,
 					edits: [{ oldText: "BEFORE BEFORE", newText: "ORIGINAL" }],
-					reasoning: "Unsupported replace all",
+					reason: "Unsupported replace all",
 				},
 			],
 		});
@@ -567,7 +567,7 @@ it("canonical patch permission replacement remains an explicit unavailable mode"
 		replaceHook(f, decision({ file_path: target, content: "REWRITTEN\n" }));
 		await f.run("file", {
 			patch: `*** Begin Patch\n*** Add File: ${original}\n+ORIGINAL\n*** End Patch`,
-			reasoning: "Unsupported patch replacement",
+			reason: "Unsupported patch replacement",
 		});
 		expect(fs.existsSync(original)).toBe(false);
 		expect(fs.existsSync(target)).toBe(false);
@@ -632,7 +632,7 @@ for (const [name, body, anchor] of [
 						type: "edit",
 						path: target,
 						edits: [{ oldText: anchor, newText: "ORIGINAL" }],
-						reasoning: "Original invalid anchor",
+						reason: "Original invalid anchor",
 					},
 				],
 			});
@@ -658,7 +658,7 @@ for (const existing of [false, true]) {
 				type: "edit",
 				path: target,
 				edits: [{ oldText, newText }],
-				reasoning: "Sequential unchanged original",
+				reason: "Sequential unchanged original",
 			});
 			await f.run("file", {
 				queries: existing ? [edit("A", "B"), edit("B", "C")] : [write(target, "A"), edit("A", "B")],

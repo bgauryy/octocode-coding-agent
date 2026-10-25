@@ -1,11 +1,10 @@
-import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
+import { defineConfig, mergeConfig } from "vitest/config";
+import hostConfig from "../coding-agent/vitest.config.ts";
 
-export default defineConfig({
-	test: {
-		globals: true,
-		environment: "node",
-		reporters: process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"],
-	},
-	resolve: { conditions: ["source"] },
-	ssr: { resolve: { conditions: ["source"] } },
-});
+export default mergeConfig(
+	{ ...hostConfig, test: { ...hostConfig.test, setupFiles: [] } },
+	defineConfig({
+		test: { setupFiles: [fileURLToPath(new URL("../coding-agent/test/setup-env.ts", import.meta.url))] },
+	}),
+);

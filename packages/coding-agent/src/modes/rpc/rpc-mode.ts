@@ -24,6 +24,8 @@ import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.ts";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
 import { error } from "./rpc-mode/responses.ts";
+import type { RpcSessionIdentity } from "./session-identity.ts";
+import { ACP_WORKER_ENV, createSessionControls } from "./rpc-mode/session-controls.ts";
 import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "../../utils/guards.ts";
@@ -34,6 +36,8 @@ import { errorMessage } from "../../utils/guards.ts";
  */
 export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<never> {
 	takeOverStdout();
+	const acpOwnsSession = process.env[ACP_WORKER_ENV] === "1";
+	delete process.env[ACP_WORKER_ENV];
 	let session = runtimeHost.session;
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;
@@ -49,6 +53,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	let shutdownRequested = false;
 	let shuttingDown = false;
 	let removeSignalHandlers = (): void => {};
+	const initialized = Promise.withResolvers<void>();
+	void initialized.promise.catch(() => {});
 
 	runtimeHost.setRebindSession(async () => {
 		await rebindSession();
@@ -56,16 +62,23 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 	const rebindSession = async (): Promise<void> => {
 		session = runtimeHost.session;
+		unsubscribe?.();
+		unsubscribeBackpressure?.();
+		unsubscribe = session.subscribe((event) => {
+			output(toJsonEvent(event));
+			if (event.type === "agent_settled") {
+				void checkShutdownRequested();
+			}
+		});
+		unsubscribeBackpressure = session.agent.subscribe(async () => {
+			await waitForRawStdoutBackpressure();
+		});
 		await session.bindExtensions({
 			uiContext: createExtensionUIContext(output, pendingExtensionRequests),
 			mode: "rpc",
 			commandContextActions: {
 				waitForIdle: () => session.waitForIdle(),
-				newSession: async (options) => runtimeHost.newSession(options),
-				fork: async (entryId, forkOptions) => {
-					const result = await runtimeHost.fork(entryId, forkOptions);
-					return { cancelled: result.cancelled };
-				},
+				...createSessionControls(runtimeHost, acpOwnsSession),
 				navigateTree: async (targetId, options) => {
 					const result = await session.navigateTree(targetId, {
 						summarize: options?.summarize,
@@ -74,9 +87,6 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 						label: options?.label,
 					});
 					return { cancelled: result.cancelled };
-				},
-				switchSession: async (sessionPath, options) => {
-					return runtimeHost.switchSession(sessionPath, options);
 				},
 				reload: async () => {
 					await session.reload();
@@ -89,24 +99,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 				output({ type: "extension_error", extensionPath: err.extensionPath, event: err.event, error: err.error });
 			},
 		});
-
-		unsubscribe?.();
-		unsubscribeBackpressure?.();
-		unsubscribe = session.subscribe((event) => {
-			output(toJsonEvent(event));
-			if (event.type === "agent_settled") {
-				void checkShutdownRequested();
-			}
-		});
-		unsubscribeBackpressure = session.agent.subscribe(async () => {
-			await waitForRawStdoutBackpressure();
-		});
 	};
-
-	await rebindSession();
-	removeSignalHandlers = handleTerminationSignals((signal, signalExitCode) => {
-		void shutdown(signalExitCode, signal);
-	});
 
 	// Handle a single command
 	const commandHost: RpcCommandHost = {
@@ -130,6 +123,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			process.exit(exitCode);
 		}
 		shuttingDown = true;
+		initialized.reject(new Error("RPC session closed during startup."));
+		for (const [id, request] of pendingExtensionRequests)
+			request.resolve({ type: "extension_ui_response", id, cancelled: true });
+		pendingExtensionRequests.clear();
 		removeSignalHandlers();
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
@@ -176,6 +173,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		}
 		const command = parsed as RpcCommand;
 		try {
+			if (!acpOwnsSession || command.type !== "abort") await initialized.promise;
+			if (shuttingDown) return;
 			const response = await handleCommand(command);
 			if (response) {
 				output(response);
@@ -202,6 +201,19 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			process.stdin.off("end", onInputEnd);
 		};
 	})();
+
+	removeSignalHandlers = handleTerminationSignals((signal, signalExitCode) => {
+		void shutdown(signalExitCode, signal);
+	});
+	if (acpOwnsSession)
+		output({ type: "rpc_session_identity", sessionId: session.sessionId } satisfies RpcSessionIdentity);
+	try {
+		await rebindSession();
+		initialized.resolve();
+	} catch (error) {
+		initialized.reject(error);
+		throw error;
+	}
 
 	// Keep process alive forever
 	return new Promise(() => {});

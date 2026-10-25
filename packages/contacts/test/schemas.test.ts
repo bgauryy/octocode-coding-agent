@@ -58,6 +58,13 @@ describe("StringEnum", () => {
 		expect(Object.keys(schema)).not.toContain("description");
 		expect(Object.keys(schema)).not.toContain("default");
 	});
+
+	it("preserves an explicitly supplied empty description and enum default", () => {
+		const defaultValue = "";
+		const schema = StringEnum(["", "value"] as const, { description: "", default: defaultValue });
+		expect(schema).toMatchObject({ description: "", default: "" });
+		expect(Value.Check(schema, defaultValue)).toBe(true);
+	});
 });
 
 describe("ApplicationCommandSchema", () => {

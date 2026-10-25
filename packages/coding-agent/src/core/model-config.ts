@@ -47,6 +47,7 @@ const ModelFieldDescriptions = {
 	reasoning: "Whether the model supports thinking.",
 	contextWindow: "Context window in tokens.",
 	maxTokens: "Maximum output tokens.",
+	input: 'Accepted input modalities. Include "image" only when this model and endpoint accept image attachments.',
 } as const;
 
 const ModelDefinitionSchema = Type.Object({
@@ -57,7 +58,9 @@ const ModelDefinitionSchema = Type.Object({
 	baseUrl: Type.Optional(Type.String({ minLength: 1, description: "Overrides the provider baseUrl." })),
 	reasoning: Type.Optional(Type.Boolean({ default: false, description: ModelFieldDescriptions.reasoning })),
 	thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
-	input: Type.Optional(Type.Array(ModelInputModalitySchema, { default: ["text"] })),
+	input: Type.Optional(
+		Type.Array(ModelInputModalitySchema, { default: ["text"], description: ModelFieldDescriptions.input }),
+	),
 	inputLimits: Type.Optional(ModelInputLimitsSchema),
 	cost: Type.Optional(ModelCostSchema),
 	promptCache: Type.Optional(ModelPromptCacheSchema),
@@ -78,7 +81,7 @@ const ModelOverrideSchema = Type.Object({
 	name: Type.Optional(Type.String({ minLength: 1, description: ModelFieldDescriptions.name })),
 	reasoning: Type.Optional(Type.Boolean({ description: ModelFieldDescriptions.reasoning })),
 	thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
-	input: Type.Optional(Type.Array(ModelInputModalitySchema)),
+	input: Type.Optional(Type.Array(ModelInputModalitySchema, { description: ModelFieldDescriptions.input })),
 	inputLimits: Type.Optional(ModelInputLimitsSchema),
 	cost: Type.Optional(Type.Partial(ModelCostSchema)),
 	promptCache: Type.Optional(ModelPromptCacheSchema),

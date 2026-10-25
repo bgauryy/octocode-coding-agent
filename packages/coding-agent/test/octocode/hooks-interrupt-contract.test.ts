@@ -82,7 +82,7 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 		const { registerHooks } = await import("../../src/octocode/hooks/register.ts");
 		const { fakePi, fakeCtx } = await import("./fake-pi.ts");
 		const { createEventBus } = await import("../../src/core/event-bus.ts");
-		const { registerMcpHookCaller } = await import("../../src/extensions/mcp/hook-caller.ts");
+		const { registerMcpHookCaller } = await import("../../../mcp/src/hook-caller.ts");
 		const home = tmp();
 		fs.mkdirSync(path.join(home, ".codex"));
 		fs.writeFileSync(

@@ -15,6 +15,7 @@ import {
 } from "./prompt-expansion.ts";
 import type { SessionRunLoop } from "./run-loop.ts";
 import type { PendingUserInput, PromptOptions, QueuedInputDisposition } from "./types.ts";
+import { checkSessionDispatch } from "./dispatch.ts";
 
 export interface PromptingHost extends Pick<SessionInternals, "session" | "run" | "cwd"> {
 	readonly inputs: SessionInputQueue;
@@ -24,6 +25,7 @@ export interface PromptingHost extends Pick<SessionInternals, "session" | "run" 
 
 export async function prompt(host: PromptingHost, text: string, options?: PromptOptions): Promise<void> {
 	const { session, run } = host;
+	checkSessionDispatch(session);
 	if (run.isEmittingAgentSettled) {
 		run.deferredSettledActions.push(async () => await session.prompt(text, options));
 		return;
@@ -53,6 +55,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		options?.source ?? "interactive",
 		session.isStreaming ? options?.streamingBehavior : undefined,
 	);
+	checkSessionDispatch(session);
 	if (!processedInput) {
 		preflightResult?.("handled");
 		return;
@@ -97,6 +100,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	const hasConfiguredAuth =
 		session.modelRuntime.hasConfiguredAuth(session.model.provider) ||
 		(await session.modelRuntime.checkAuth(session.model.provider)) !== undefined;
+	checkSessionDispatch(session);
 	if (!hasConfiguredAuth) {
 		const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
 		if (isOAuth) {
@@ -169,6 +173,7 @@ export async function sendCustomMessage<T = unknown>(
 			session.agent.followUp(appMessage);
 		} else {
 			session.agent.steer(appMessage);
+			host.inputs.noteSteeredCustomMessage(appMessage);
 		}
 	} else if (options?.triggerTurn) {
 		if (run.isEmittingAgentSettled) {

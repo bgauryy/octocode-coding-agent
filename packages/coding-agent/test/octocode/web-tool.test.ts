@@ -903,7 +903,7 @@ describe("search provider chain", () => {
 		);
 	});
 
-	it("stops at once when the call is aborted, without trying the next provider", async () => {
+	it("stops at once when the call is aborted, keeping the abort reason and without trying the next provider", async () => {
 		const controller = new AbortController();
 		const hosts: string[] = [];
 		guard.stub = async (url: string) => {
@@ -911,11 +911,13 @@ describe("search provider chain", () => {
 			controller.abort(new Error("stopped"));
 			throw new Error("aborted fetch");
 		};
-		await expect(search("q", 3, { TAVILY_API_KEY: "t" }, controller.signal)).rejects.toThrow("aborted fetch");
+		// The signal's own reason is what a real fetch rejects with, and it reaches the caller instead of a provider-specific failure.
+		await expect(search("q", 3, { TAVILY_API_KEY: "t" }, controller.signal)).rejects.toThrow("stopped");
 		expect(hosts).toEqual(["api.tavily.com"]);
 		hosts.length = 0;
-		await expect(search("q", 3, {}, controller.signal)).rejects.toThrow("aborted fetch");
-		expect(hosts).toEqual(["html.duckduckgo.com"]);
+		// A call that starts already aborted never reaches a provider.
+		await expect(search("q", 3, {}, controller.signal)).rejects.toThrow("stopped");
+		expect(hosts).toEqual([]);
 	});
 });
 

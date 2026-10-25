@@ -36,7 +36,6 @@ function child(mode: "full" | "workspace", readOnly = true) {
 	const gate = permissionGate({
 		permission,
 		provenance: { check: () => undefined },
-		annotations: () => undefined,
 		env,
 	});
 	let id = 0;
@@ -57,7 +56,7 @@ function child(mode: "full" | "workspace", readOnly = true) {
 }
 
 const write = (file: string, content = "changed") => ({
-	queries: [{ type: "write", path: file, content, reasoning: "test" }],
+	queries: [{ type: "write", path: file, content, reason: "test" }],
 });
 
 describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only subagent role in %s mode", (mode) => {

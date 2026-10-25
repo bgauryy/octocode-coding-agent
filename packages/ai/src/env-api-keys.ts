@@ -72,6 +72,8 @@ function hasVertexAdcCredentials(env?: ProviderEnv): boolean {
 }
 
 function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
+	if (provider === "google") return ["GOOGLE_API_KEY", "GEMINI_API_KEY"];
+	if (provider === "meta") return ["META_API_KEY", "MODEL_API_KEY"];
 	if (provider === "github-copilot") {
 		return ["COPILOT_GITHUB_TOKEN"];
 	}
@@ -91,7 +93,6 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
 		azure: "AZURE_OPENAI_API_KEY",
 		nvidia: "NVIDIA_API_KEY",
 		deepseek: "DEEPSEEK_API_KEY",
-		google: "GEMINI_API_KEY",
 		"google-vertex": "GOOGLE_CLOUD_API_KEY",
 		groq: "GROQ_API_KEY",
 		cerebras: "CEREBRAS_API_KEY",
@@ -113,7 +114,6 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
 		opencode: "OPENCODE_API_KEY",
 		"opencode-go": "OPENCODE_API_KEY",
 		"kimi-coding": "KIMI_API_KEY",
-		meta: "META_API_KEY",
 		"cloudflare-workers-ai": "CLOUDFLARE_API_KEY",
 		"cloudflare-ai-gateway": "CLOUDFLARE_API_KEY",
 		xiaomi: "XIAOMI_API_KEY",

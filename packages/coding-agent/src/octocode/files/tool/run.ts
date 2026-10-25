@@ -147,7 +147,7 @@ export async function runQuery(
 	approvedTarget?: string,
 ): Promise<QueryOutcome> {
 	const mode = prepared?.mode ?? query.type;
-	const base = { type: mode, path: query.path, reasoning: query.reasoning };
+	const base = { type: mode, path: query.path, reason: query.reason };
 	const file = resolveToolPath(ctx.cwd, query.path);
 	// Capture before any await: the live extension context may be retired during a committed write's cleanup.
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? `standalone:${id}`;
@@ -336,7 +336,7 @@ export async function workspaceRefusal(
 		action: "file.outside",
 		title: inside ? "Change a file that runs in later sessions?" : "Change a file outside the workspace?",
 		what: [`${query.type} ${real}`, `workspace: ${root ?? "none (the home folder is not a workspace)"}`],
-		purpose: query.reasoning,
+		purpose: query.reason,
 		toolCallId,
 		cwd: ctx.cwd,
 		grant: { key: dir, label: `file changes under ${dir}` },

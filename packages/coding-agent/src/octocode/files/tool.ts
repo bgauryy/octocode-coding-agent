@@ -27,6 +27,7 @@ import {
 	formatOutcomes,
 	Params,
 	type PreparedChange,
+	renameReasoning,
 } from "./tool/queries.ts";
 import { runQuery } from "./tool/run.ts";
 import { formatFeedback, inspectMutations } from "./feedback/diagnostics.ts";
@@ -34,7 +35,7 @@ import { captureParseBefore, formatParseFeedback, inspectParseAfter } from "./fe
 
 /**
  * Octocode's `file` tool: batched edit / write / delete queries, each with a
- * reasoning line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
+ * reason line. Edits and writes run through the engines of `tool/apply.ts` (exact replacement with a
  * whitespace/punctuation fallback, diffs, per-file mutation queue) but replace files atomically (temp file + rename) with a content check under a cross-process lock.
  * Writers outside Octocode that do not acquire that lock can still race the check. A file read with Octocode's `localFetch` (while that server is unavailable: printed by a plain `bash` command, see `bash-reads.ts`), or changed by this
  * tool, that changed on disk since then must be read again before a write or delete; an edit re-validates each oldText
@@ -67,12 +68,13 @@ export function registerFileTool(
 				label: "File",
 				description:
 					"Create, edit or delete files; outside paths need approval in manual/workspace modes. Batch each file’s replacements in one query. Queries continue after failures; patch validates all operations first and stops on execution failure. Neither mode rolls back earlier changes. " +
-					"Read existing files first. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll), with a whitespace/punctuation fallback when exact matching fails. Stale single-match edits require an exact LF-normalized anchor. Inspect every outcome.",
+					"Read existing files first: a file that already exists but was not read in this session is refused with a read-first error, so check it before editing it. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll), with a whitespace/punctuation fallback when exact matching fails. Stale single-match edits require an exact LF-normalized anchor. Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
 					"Use file for authored changes; batch related files when useful. After a formatter or generator rewrites files, inspect its changes.",
 				],
 				parameters: Params,
+				prepareArguments: renameReasoning,
 				// `file` calls run one at a time (the guard, review dialog and checkpoints are shared); other tools batched beside
 				// them still run in parallel. Each path's writes also queue behind Octocode's edit/write through withFileMutationQueue.
 				execute: async (
@@ -87,7 +89,7 @@ export function registerFileTool(
 					if (canonical?.environment_id)
 						throw new Error("Remote patch environment routing is not available in this local file tool");
 					let queries: FileQuery[] = canonical
-						? patchChanges(params.patch!, params.reasoning ?? "Apply patch")
+						? patchChanges(params.patch!, params.reason ?? "Apply patch")
 						: params.queries!;
 					if (!queries.length) {
 						if (canonical)
@@ -241,7 +243,7 @@ export function registerFileTool(
 					}
 					if (canonical && rejected.size) throw new Error("Patch rejected; no changes applied");
 					const prepared = canonical
-						? await preparePatch(canonical, params.reasoning ?? "Apply patch", guard, ctx, signal, permission, id)
+						? await preparePatch(canonical, params.reason ?? "Apply patch", guard, ctx, signal, permission, id)
 						: undefined;
 					if (prepared) queries = prepared.map((item) => item.query);
 					const parseBefore = feedback?.enabled
@@ -262,7 +264,7 @@ export function registerFileTool(
 							? {
 									type: query.type,
 									path: query.path,
-									reasoning: query.reasoning,
+									reason: query.reason,
 									ok: false,
 									message: skip,
 								}

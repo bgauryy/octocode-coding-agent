@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { projectMcpConfigPaths } from "../../../core/mcp-config-paths.ts";
+import { projectMcpConfigPaths } from "../../../../../mcp/src/paths.ts";
 import { sha256 } from "../../../utils/atomic-file.ts";
 import { projectAgentDirs, projectHookFiles, projectSkillDirs } from "../home.ts";
 

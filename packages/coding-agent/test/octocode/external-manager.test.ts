@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../../src/core/extensions/index.ts";
-import { AcpError } from "../../src/octocode/external/acp.ts";
+import { AcpError } from "../../../acp/src/client/client.ts";
 import {
 	ExternalAgents,
 	MAX_EXTERNAL_CONNECTIONS,
@@ -111,7 +111,7 @@ describe("external manager policy and lifecycle", () => {
 		expect(await state.list()).toHaveLength(MAX_EXTERNAL_CONNECTIONS);
 	});
 
-	it("keeps a live ACP peer after a prompt timeout and releases manager busy state", async () => {
+	it("keeps a live ACP peer busy after a prompt timeout until cancellation", async () => {
 		const state = setup();
 		const manager = new ExternalAgents(state.policy);
 		managers.push(manager);
@@ -127,19 +127,54 @@ describe("external manager policy and lifecycle", () => {
 		await expect(
 			manager.call({ action: "prompt", id: "one", text: "work", timeoutMs: 1000 }, state.ctx),
 		).rejects.toMatchObject({ execution: "uncertain" });
-		expect(manager.running).toBe(0);
+		expect(manager.running).toBe(1);
 		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({
-			connections: [{ id: "one", busy: false }],
+			connections: [{ id: "one", busy: true }],
 		});
 		await expect(manager.call({ action: "prompt", id: "one", text: "no overlap" }, state.ctx)).rejects.toMatchObject({
 			execution: "not-sent",
 		});
+		expect(state.beforeSend).toHaveBeenCalledOnce();
 		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({ connections: [{ id: "one" }] });
 		await manager.call({ action: "cancel", id: "one" }, state.ctx);
+		expect(manager.running).toBe(0);
 		await expect(manager.call({ action: "prompt", id: "one", text: "closed" }, state.ctx)).rejects.toThrow(
 			"Unknown external connection",
 		);
 		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({ connections: [] });
+	});
+
+	it("clears ACP busy state when a timed-out remote prompt settles and accepts a later prompt", async () => {
+		const state = setup();
+		const manager = new ExternalAgents(state.policy);
+		managers.push(manager);
+		const journal = join(state.cwd, "settlement-events.jsonl");
+		await manager.call(
+			{
+				...state.input,
+				command: process.execPath,
+				args: [fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url)), "gated", journal],
+			},
+			state.ctx,
+		);
+		await expect(
+			manager.call({ action: "prompt", id: "one", text: "old output", timeoutMs: 1000 }, state.ctx),
+		).rejects.toMatchObject({ execution: "uncertain" });
+		expect(manager.running).toBe(1);
+		expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({
+			connections: [{ id: "one", busy: true }],
+		});
+		writeFileSync(`${journal}.release`, "settle");
+		await vi.waitFor(async () => {
+			expect(manager.running).toBe(0);
+			expect(await manager.call({ action: "list" }, state.ctx)).toMatchObject({
+				connections: [{ id: "one", busy: false }],
+			});
+		});
+		await expect(
+			manager.call({ action: "prompt", id: "one", text: "new output", timeoutMs: 5000 }, state.ctx),
+		).resolves.toMatchObject({ reply: { text: "first\nnew output", stopReason: "end_turn" }, busy: false });
+		expect(manager.running).toBe(0);
 	});
 
 	it("releases prompt ownership if the sender session becomes unavailable before dispatch", async () => {
@@ -228,6 +263,10 @@ describe("external manager policy and lifecycle", () => {
 		const first = state.prompt("first");
 		await vi.waitFor(() => expect(state.beforeSend).toHaveBeenCalledOnce());
 		await expect(state.prompt("second")).rejects.toThrow("in flight");
+		// The refused second prompt reached nothing, and the failure says so (the model may retry after the first ends).
+		expect(externalFailure(await state.prompt("third").catch((error: unknown) => error))).toMatchObject({
+			execution: "not-sent",
+		});
 		expect(state.owned.prompt).not.toHaveBeenCalled();
 		gate.resolve();
 		await first;

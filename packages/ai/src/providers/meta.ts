@@ -10,7 +10,7 @@ export function metaProvider(): Provider<"openai-responses"> {
 		name: "Meta",
 		baseUrl: "https://api.meta.ai/v1",
 		auth: {
-			apiKey: envApiKeyAuth("Meta Model API key", ["META_API_KEY"]),
+			apiKey: envApiKeyAuth("Meta Model API key", ["META_API_KEY", "MODEL_API_KEY"]),
 			oauth: lazyOAuth({
 				name: "Meta (Muse subscription)",
 				isSubscription: true,

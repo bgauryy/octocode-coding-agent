@@ -25,6 +25,7 @@ import { commandImages, dispatchCommand } from "./service/commands.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { lifecycleEvent } from "./service/lifecycle.ts";
+import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
 import { ApplicationActivities } from "./service/activities.ts";
 import { ApplicationDelivery } from "./service/delivery.ts";
@@ -98,7 +99,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	constructor(session: AgentSession, onDispose?: (service: ApplicationService) => void) {
 		this.onDispose = onDispose;
 		this.session = session;
-		this.state.setState({ sessionId: session.sessionId });
+		this.state.setState({ sessionId: session.sessionId, model: applicationModel(session) });
 		this.sourceMessages = session.messages;
 	}
 	get sessionId(): string {
@@ -161,7 +162,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private checkSession(): void {
 		const changedSession = this.currentSession !== this.session.sessionId;
 		if (!changedSession && this.sourceMessages === this.session.messages) return;
-		this.state.setState({ sessionId: this.session.sessionId });
+		this.state.setState({ sessionId: this.session.sessionId, model: applicationModel(this.session) });
 		this.sourceMessages = this.session.messages;
 		this.epoch = randomUUID();
 		this.sequence = 0;
@@ -325,7 +326,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			return { ...previous.receipt };
 		}
 		if (command.action === "abort" && command.runId !== this.state.getState().runId) throw new Error("Run changed");
-		const images = commandImages(command, this.transcript.assets);
+		const images = commandImages(command, this.transcript.assets, this.session);
 		if (this.state.getState().receipts.size >= 1000)
 			throw new Error("Command receipt capacity reached; start a new session");
 		const receiptStore = this.receiptStore;
@@ -357,6 +358,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		return { ...receipt };
 	}
 	private project(event: AgentSessionEvent): void {
+		publishModelChange(this.session, this.state, (change) => this.publish(change));
 		switch (event.type) {
 			case "message_start":
 			case "message_end":

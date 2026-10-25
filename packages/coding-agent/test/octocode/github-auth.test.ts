@@ -5,7 +5,7 @@ import {
 	parseDeviceCode,
 	runGithubAuth,
 	type GithubAuthOptions,
-} from "../../src/octocode/mcp/octocode/github-auth.ts";
+} from "../../../mcp/src/presets/octocode/github-auth.ts";
 
 const fixture = fileURLToPath(new URL("../fixtures/fake-octocode-auth.mjs", import.meta.url));
 

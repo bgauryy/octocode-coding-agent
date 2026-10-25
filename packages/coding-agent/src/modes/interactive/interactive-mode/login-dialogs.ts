@@ -245,7 +245,7 @@ async function loginProvider(
 				prompt: storage ? storage.wrapPrompt(prompt) : prompt,
 				notify: (event) => notifyAuthDialog(dialog, event),
 			},
-			{ getDeviceId: () => host.settingsManager.getOrCreateDeviceId() },
+			{ getDeviceId: () => host.settingsManager.getOrCreateDeviceId(), agentName: APP_NAME },
 			storage ? { transformCredential: storage.transformCredential } : undefined,
 		);
 	} finally {

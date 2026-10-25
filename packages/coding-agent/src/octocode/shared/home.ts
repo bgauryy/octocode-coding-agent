@@ -9,6 +9,9 @@ import { dirsToRepoRoot, repoKey } from "./home/repo.ts";
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
 export const OCTOCODE_DIR = ".octocode";
 
+/** `<root>/.octocode` for a repository root already resolved by the caller. Nothing is created. */
+export const workspaceOctocodeDir = (root: string): string => path.join(root, OCTOCODE_DIR);
+
 /**
  * Octocode Code's home: `OCTOCODE_HOME` when set, else `~/.octocode/octocodecode`.
  */

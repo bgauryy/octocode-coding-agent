@@ -8,8 +8,14 @@ import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
-import { CORE_TOOLS, MCP_ACCESS_TOOLS, loadProfiles, parseProfile } from "../../src/octocode/subagents/profiles.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
+import {
+	CORE_TOOLS,
+	DEFAULT_CHILD_TOOLS,
+	MCP_ACCESS_TOOLS,
+	loadProfiles,
+	parseProfile,
+} from "../../src/octocode/subagents/profiles.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
 import { tmp } from "./helpers.ts";
 
 const SESSION = { dir: "/tmp/session", id: "core-test" };
@@ -25,9 +31,18 @@ describe("core tools of a subagent profile", () => {
 
 	it("adds file, communication, history and MCP access to an allowlist, once, and passes them as --tools", () => {
 		const parsed = profile("tools: edit,bash");
-		expect(allowed(parsed.tools)).toEqual(["edit", "bash", "file", "agent", "archive", ...MCP_ACCESS_TOOLS, "mcp__*"]);
+		expect(allowed(parsed.tools)).toEqual([
+			"edit",
+			"bash",
+			"file",
+			"agent",
+			"archive",
+			"skill",
+			...MCP_ACCESS_TOOLS,
+			"mcp__*",
+		]);
 		const args = parseArgs(buildAgentArgs(parsed, undefined, SESSION));
-		expect(args.tools).toEqual(["edit", "bash", "file", "agent", "archive", ...MCP_ACCESS_TOOLS, "mcp__*"]);
+		expect(args.tools).toEqual(["edit", "bash", "file", "agent", "archive", "skill", ...MCP_ACCESS_TOOLS, "mcp__*"]);
 		// A name already listed is not repeated.
 		expect(allowed(profile("tools: read,grep").tools)).toEqual([
 			"read",
@@ -35,10 +50,12 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"archive",
+			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
 		expect(CORE_TOOLS).toEqual(["file", "agent", "archive"]);
+		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
 
 	it("counts a pattern that already matches a core tool, and adds the rest", () => {
@@ -47,21 +64,34 @@ describe("core tools of a subagent profile", () => {
 			"agent*",
 			"file",
 			"archive",
+			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
 	});
 
 	it("gives an empty allowlist the core tools: it still reaches its parent", () => {
-		expect(allowed(profile('tools: ","').tools)).toEqual(["file", "agent", "archive", ...MCP_ACCESS_TOOLS, "mcp__*"]);
+		expect(allowed(profile('tools: ","').tools)).toEqual([
+			"file",
+			"agent",
+			"archive",
+			"skill",
+			...MCP_ACCESS_TOOLS,
+			"mcp__*",
+		]);
 	});
 
 	it("adds core tools with modifiers when a profile leaves its tools unspecified", () => {
 		const parsed = profile("excludeTools: browser");
 		expect(parsed.tools).toBeUndefined();
 		expect(parseArgs(buildAgentArgs(parsed, undefined, SESSION)).tools).toEqual(
-			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
+			[...CORE_TOOLS, ...DEFAULT_CHILD_TOOLS, ...MCP_ACCESS_TOOLS, ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`),
 		);
+	});
+
+	it("lets a profile drop the skill tool, unlike the core tools", () => {
+		expect(() => profile("excludeTools: skill")).not.toThrow();
+		expect(() => profile("tools: -skill")).not.toThrow();
 	});
 
 	it("leaves a relative list alone: it changes the default selection, which has the core tools", () => {
@@ -104,6 +134,7 @@ describe("core tools of a subagent profile", () => {
 			"file",
 			"agent",
 			"archive",
+			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);

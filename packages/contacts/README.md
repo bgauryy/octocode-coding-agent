@@ -6,7 +6,7 @@ The `contacts` package owns common contracts for packages and interfaces. Its pa
 - `snapshot`: backlog states, notes, comments, audit records and presentation snapshots.
 - `team`: agent presence and message delivery records.
 - `workspace`: event, command, receipt and snapshot types.
-- `protocol`: HTTP routes, runtime command/mutation schemas and WebSocket event union.
+- `protocol`: HTTP routes, runtime command/mutation schemas, report index and file payloads, and WebSocket event union.
 - `application`: shared application commands, frames, snapshots, receipts and connection interfaces.
 - `content` (root export): ordered display blocks, source annotations, session-scoped asset references and attachment schemas. Binary bytes and provider continuation tokens do not travel inside display blocks.
 - `schema`: the shared string-enum schema helper, also re-exported by the AI package.

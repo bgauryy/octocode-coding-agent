@@ -6,12 +6,14 @@ import type {
 	ApplicationMessage,
 	ApplicationReceipt,
 	ApplicationTool,
+	ApplicationSnapshot,
 } from "@octocodeai/octocode-contacts";
 
 /** Host-owned interface data. Engine context and resource handles stay with their execution owners. */
 export interface ApplicationRuntimeState {
 	revision: number;
 	sessionId: string;
+	model?: ApplicationSnapshot["model"];
 	messages: ReadonlyMap<string, ApplicationMessage>;
 	tools: ReadonlyMap<string, ApplicationTool>;
 	activities: ReadonlyMap<string, ApplicationActivity>;
@@ -50,6 +52,9 @@ export function createApplicationState(sessionId = ""): ApplicationStateStore {
 /** Apply lifecycle facts before notifying either local or serialized consumers. */
 export function acceptApplicationEvent(store: ApplicationStateStore, event: ApplicationEvent): void {
 	switch (event.type) {
+		case "session.model":
+			store.setState({ model: event.model ? structuredClone(event.model) : undefined });
+			break;
 		case "run.started":
 			store.setState({ runId: event.runId, streaming: true });
 			break;

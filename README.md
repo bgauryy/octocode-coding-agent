@@ -25,7 +25,7 @@ yarn start research --help
 yarn start native --help
 ```
 
-Local dependencies make this a development checkout. Publication is blocked while they remain configured; locally packed artifacts depend on the sibling checkout and are not portable releases.
+Local dependencies make this a development checkout. Publication is blocked while they remain configured. Local packaging converts `link:` and `file:` dependencies to absolute `file:` references in disposable artifacts, preserving the development manifests. These artifacts still depend on the sibling checkout and are not portable releases.
 
 ## Validate a registry release candidate
 
@@ -65,12 +65,13 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 | Directory | Responsibility |
 | --- | --- |
 | [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native Octocode features and SDK |
+| [acp](packages/acp/README.md) | Private inbound/outbound ACP integration, compiled into coding-agent |
+| [mcp](packages/mcp/README.md) | Private MCP client and host integration, compiled into coding-agent |
 | [agent](packages/agent/README.md) | Agent loop and tool execution |
 | [ai](packages/ai/README.md) | Provider APIs and model catalog |
 | [tui](packages/tui/README.md) | Terminal UI |
 | [webview](packages/webview/README.md) | Browser workspace, board, Markdown/code rendering and UI state |
 | [contacts](packages/contacts/README.md) | Shared entity contracts, schemas and workspace protocols |
-| [mcp](packages/mcp/README.md) | MCP client |
 | [telemetry](packages/telemetry/README.md) | Telemetry contracts and adapters |
 
 ## Development

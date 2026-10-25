@@ -1,5 +1,5 @@
 import type { Extension } from "./extensions/types.ts";
-import { MCP_MANAGE_TOOL_NAME } from "./mcp-servers.ts";
+import { MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
 import { DEFAULT_TOOL_NAMES } from "./settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "./source-info.ts";
 

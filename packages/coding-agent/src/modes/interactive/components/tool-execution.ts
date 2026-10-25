@@ -18,6 +18,7 @@ import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { createResultFallback, formatToolExecution } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";
+import { reasonRow } from "./tool-execution/reason.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
 
@@ -284,6 +285,8 @@ export class ToolExecutionComponent extends Container {
 					hasContent = true;
 				}
 			}
+			const reason = reasonRow(this.toolName, this.args);
+			if (reason) renderContainer.addChild(this.createResultRegion(reason));
 
 			if (this.result) {
 				const resultRenderer = this.getResultRenderer();

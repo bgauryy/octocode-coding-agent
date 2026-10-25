@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { refreshGithubFooter, updateGithubFooter } from "../src/modes/interactive/interactive-mode/github-footer.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
-import type { GithubStatus } from "../src/octocode/mcp/octocode/github-auth.ts";
+import type { GithubStatus } from "../../mcp/src/presets/octocode/github-auth.ts";
 const status: GithubStatus = {
 	authenticated: true,
 	verification: "verified",

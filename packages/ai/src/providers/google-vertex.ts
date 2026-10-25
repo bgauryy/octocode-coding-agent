@@ -78,7 +78,9 @@ const vertexAuth: ApiKeyAuth = {
 		const project =
 			credential?.env?.GOOGLE_CLOUD_PROJECT ?? (await env("GOOGLE_CLOUD_PROJECT")) ?? (await env("GCLOUD_PROJECT"));
 		const location = credential?.env?.GOOGLE_CLOUD_LOCATION ?? (await env("GOOGLE_CLOUD_LOCATION"));
-		if (hasCredentials && project && location) {
+		// Explicit ADC login also supports attached service accounts. The Google SDK
+		// owns that credential chain; requiring a local file would disable metadata auth.
+		if ((hasCredentials || credential) && project && location) {
 			return {
 				auth: {},
 				env: credential?.env,

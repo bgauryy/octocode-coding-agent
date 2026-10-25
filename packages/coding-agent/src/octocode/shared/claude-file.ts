@@ -12,7 +12,7 @@ export function rewrittenString(value: unknown, field: string): string {
 	return value;
 }
 
-/** Reverse a Claude file-query projection without changing unrelated batch queries or native reasoning. */
+/** Reverse a Claude file-query projection without changing unrelated batch queries or native reason. */
 export function rewriteFileQuery(
 	input: Record<string, unknown>,
 	index: number,
@@ -28,10 +28,10 @@ export function rewriteFileQuery(
 			type: "write",
 			path: file,
 			content: rewrittenString(updated.content, "content"),
-			reasoning: previous.reasoning,
+			reason: previous.reason,
 		};
 	} else if (previous.type === "delete") {
-		query = { type: "delete", path: file, reasoning: previous.reasoning };
+		query = { type: "delete", path: file, reason: previous.reason };
 	} else {
 		const multiple = Array.isArray(previous.edits) && previous.edits.length !== 1;
 
@@ -40,7 +40,7 @@ export function rewriteFileQuery(
 		query = {
 			type: previous.type,
 			path: file,
-			reasoning: previous.reasoning,
+			reason: previous.reason,
 			edits: edits.map((edit) => {
 				if (!isRecord(edit)) throw new Error("Rewritten edit must be an object");
 				if (edit.replace_all !== undefined && typeof edit.replace_all !== "boolean")

@@ -1,4 +1,4 @@
-import type { Models } from "@octocodeai/octocode-ai";
+import { envApiKeyAuth, fauxProvider, type Models } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "../harness.ts";
 
@@ -70,6 +70,12 @@ describe("issue #7301 stalled availability refresh", () => {
 	it("recovers without letting the stalled refresh overwrite the newer snapshot", async () => {
 		harness = await createHarness({ withConfiguredAuth: false });
 		const runtime = harness.session.modelRuntime;
+		for (const providerId of ["stale-provider", "current-provider"]) {
+			runtime.registerNativeProvider({
+				...fauxProvider({ provider: providerId }).provider,
+				auth: { apiKey: envApiKeyAuth(providerId, []) },
+			});
+		}
 		await harness.authStorage.modify("stale-provider", async () => ({ type: "api_key", key: "stale-key" }));
 		await runtime.refresh({ allowNetwork: false });
 		expect(runtime.getProviderAuthStatus("stale-provider")).toEqual({ configured: true, source: "stored" });

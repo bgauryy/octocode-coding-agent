@@ -50,6 +50,9 @@ export class ApplicationStream {
 		const event = frame.event;
 		let next = this.snapshot;
 		switch (event.type) {
+			case "session.model":
+				next = { ...next, model: event.model };
+				break;
 			case "message.started":
 			case "message.completed": {
 				const found = next.messages.some((message) => message.id === event.message.id);

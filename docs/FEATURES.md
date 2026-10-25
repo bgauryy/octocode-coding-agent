@@ -1,6 +1,6 @@
 # Octocode feature architecture
 
-The coding-agent host owns execution, permissions and session state. Terminal, browser and ACP clients adapt that host. Reusable agent, AI, MCP and TUI packages retain their own boundaries.
+The coding-agent host owns execution, permissions and session state. Terminal, browser and ACP clients adapt that host. Reusable agent, AI and TUI packages retain their own boundaries; MCP client and host integration live in the private `packages/mcp` workspace, compiled into coding-agent.
 
 ```mermaid
 flowchart TD
@@ -22,7 +22,7 @@ flowchart TD
 | Editing and verification | One guarded `file` writer, read/commit receipts, advisory diagnostics, shell verification and optional DAP: [editing and debugging](EDITING_AND_DEBUGGING.md). |
 | Agent communication | Child processes, durable Team mail, explicit revival and optional worktrees: [communication](AGENT_COMMUNICATION.md). [Protocol RFC](RFC_COMMUNICATION_PROTOCOL.md) covers shared contracts and proposed A2A interoperability. |
 | Permissions and prompts | Shared checks, effect-specific authorization, trusted resources and capability-aware instructions: [execution flow](EXECUTION_AND_PERMISSIONS.md). |
-| Process integration | Inbound ACP manages native sessions; outbound ACP delegates to another agent: [ACP design](RFC_ACP_EXPOSURE.md) and [protocol reference](../packages/coding-agent/docs/acp.md). |
+| Process integration | Inbound ACP manages native sessions; outbound ACP delegates to another agent: [ACP design](RFC_ACP_EXPOSURE.md) and [protocol reference](../packages/coding-agent/docs/acp.md). The [local API](../packages/coding-agent/docs/session-api.md) lets scripts attach to running hosts. |
 | Browser automation | Optional native browser tool and specialist routing; navigation, private-network and upload checks remain in the host: [native guide](../packages/coding-agent/docs/native-features.md#browser-and-web-access). |
 | Skills, plugins and hooks | Resource discovery and project trust select instruction and executable sources: [extensions](PLUGINS_MODS_HOOKS.md), [skills](../packages/coding-agent/docs/skills.md). |
 | Memory and backlog | Scoped memory and durable project entities supplement session context: [native guide](../packages/coding-agent/docs/native-features.md), [entity model](ENTITIES.md). |

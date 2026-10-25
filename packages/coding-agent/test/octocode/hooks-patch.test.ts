@@ -14,21 +14,21 @@ const input = {
 			type: "write",
 			path: "new.txt",
 			content: "hello\n+world\n",
-			reasoning: "create",
+			reason: "create",
 		},
-		{ type: "delete", path: "old.txt", reasoning: "remove" },
+		{ type: "delete", path: "old.txt", reason: "remove" },
 	],
 };
 const command = "*** Begin Patch\n*** Add File: new.txt\n+hello\n++world\n*** Delete File: old.txt\n*** End Patch";
 it("projects a whole batch and retains rewritten command text in canonical mode", () => {
 	expect(projectCodexPatch(input)).toBe(command);
 	const replacement = rewriteCodexPatch(input, { command });
-	expect(replacement).toEqual({ patch: command, reasoning: "create; remove" });
+	expect(replacement).toEqual({ patch: command, reason: "create; remove" });
 	expect(projectCodexPatch(replacement)).toBe(command);
 	const changed = command.replace("new.txt", "other.txt").replace("+hello", "+changed");
 	expect(rewriteCodexPatch(input, { command: changed, ignored: true })).toEqual({
 		patch: changed,
-		reasoning: "create; remove",
+		reason: "create; remove",
 	});
 });
 it("rejects lossy or ambiguous projections instead of silently modifying content", () => {
@@ -68,7 +68,7 @@ it("allows a rewritten patch to change the batch size and operations", () => {
 		}),
 	).toEqual({
 		patch: "*** Begin Patch\n*** Delete File: another.txt\n*** End Patch",
-		reasoning: "create; remove",
+		reason: "create; remove",
 	});
 });
 
@@ -106,7 +106,7 @@ async function fixture(matcher = "apply_patch", rewrite?: string) {
 					type: Type.Literal("write"),
 					path: Type.String(),
 					content: Type.String(),
-					reasoning: Type.String(),
+					reason: Type.String(),
 				}),
 			),
 		}),

@@ -251,6 +251,13 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		);
 	}
 
+	protected override onTerminalCapabilitiesChanged(): void {
+		this.terminal.write(this.deleteKittyImages());
+		this.uploadedKittyImages.clear();
+		this.imageProtocol = getCapabilities().images;
+		this.resetRenderState();
+	}
+
 	protected override beforeTerminalStop(_options: TuiStopOptions): void {
 		this.search.closeSearch();
 		this.selection.stopSelectionAutoScroll();

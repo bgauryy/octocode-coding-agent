@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/team/tools.ts";
@@ -10,7 +11,19 @@ import { tmp } from "./helpers.ts";
 function member(dbFile: string, cwd: string) {
 	const fake = fakePi();
 	const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: dbFile });
-	registerCollab(fake.pi, team);
+	registerCollab(fake.pi, team, {
+		// As index.ts wires it: what the parse names a command writes.
+		shellChanges: async (command) => {
+			await shellParserReady();
+			// Recorder assertions use deterministic time; bash-parser-bounds.test.ts checks the parse deadline.
+			const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+			try {
+				return shellMutation(command).writes;
+			} finally {
+				clock.mockRestore();
+			}
+		},
+	});
 	const ctx = fakeCtx({ cwd });
 	return { ...fake, team, ctx };
 }
@@ -86,6 +99,49 @@ describe("recent changes by agent", () => {
 		expect(listed).not.toContain("c.md");
 	});
 
+	it("names every writer and tool of a file, latest first, and marks the reader", async () => {
+		const { a, b } = await pair();
+		const idA = a.team.join("one").id;
+		const idB = b.team.join("two").id;
+		await toolCall(a, "write", { path: "src/shared.ts" }, {});
+		await toolCall(b, "file", { queries: [] }, { details: { outcomes: [{ path: "src/shared.ts", ok: true }] } });
+		await toolCall(a, "file", { queries: [] }, { details: { outcomes: [{ path: "src/shared.ts", ok: true }] } });
+		const line = text(await changes(b)).split("\n")[1];
+		expect(line).toMatch(
+			new RegExp(`^- src/shared\\.ts · ${idA}, ${idB} \\(you\\) via file, write · \\d+s ago · 3 changes$`),
+		);
+		// The agent filter keeps only that agent's rows for a file (the stop report lists a run's files this way).
+		const mine = b.team.editLog()!.changes({ withinMs: 60_000, agent: idB });
+		expect(mine).toMatchObject([{ path: "src/shared.ts", agents: [idB], tools: ["file"], count: 1 }]);
+	});
+
+	it("records the writes a bash command's parse names after it ran, and nothing for a failed, blocked or read-only one", async () => {
+		const { a, b, cwd } = await pair();
+		const idA = a.team.join("one").id;
+		b.team.join("two");
+		await toolCall(a, "bash", { command: "echo x >> notes.md && cp a.txt out/b.txt" }, {});
+		await toolCall(a, "bash", { command: "echo y > blocked.md" }, {}, true);
+		await toolCall(a, "bash", { command: "cat notes.md" }, {});
+		await toolCall(a, "bash", { command: "echo z > ps.txt", type: "powershell" }, {});
+		const listed = text(await changes(b));
+		expect(listed).toMatch(new RegExp(`- notes\\.md · ${idA} via bash · \\d+s ago`));
+		expect(listed).toMatch(new RegExp(`- out/b\\.txt · ${idA} via bash`));
+		expect(listed).not.toMatch(/blocked\.md|ps\.txt|a\.txt ·/);
+		expect(fs.existsSync(path.join(cwd, "blocked.md"))).toBe(false);
+	});
+
+	it("credits what a session wrote before joining to the name it joins with, not its pid", async () => {
+		const { a, b } = await pair();
+		b.team.join("peer");
+		// `b` joined, so the database exists; `a` writes first as an unnamed session.
+		await toolCall(a, "write", { path: "src/early.ts" }, {});
+		expect(text(await changes(b))).toContain(`src/early.ts · pid ${process.pid} via write`);
+		const idA = a.team.join("late").id;
+		const listed = text(await changes(b));
+		expect(listed).toContain(`src/early.ts · ${idA} via write`);
+		expect(listed).not.toContain("pid ");
+	});
+
 	it("filters by path prefix, limits the rows and bounds the time window", async () => {
 		const { a, b } = await pair();
 		a.team.join();
@@ -96,7 +152,7 @@ describe("recent changes by agent", () => {
 		expect(limited).toContain("lib/three.ts");
 		expect(limited).toMatch(/2 more; raise limit/);
 		expect(text(await changes(b, { paths: ["nothing/"] }))).toBe(
-			"No agent changed files under nothing/ in the last 60m. Files changed outside agents (you, bash, git) are not tracked: search files by modification time for those.",
+			"No agent changed files under nothing/ in the last 60m. Files changed outside agents (you, git, scripts, bash commands whose writes cannot be named) are not tracked: search files by modification time for those.",
 		);
 	});
 

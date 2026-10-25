@@ -134,8 +134,10 @@ export class ReportQueue {
 		if (!this.session) return;
 		const file = this.session.getSessionFile();
 		if (file) this.scanFile(file);
-		// Include in-memory receipts even before the session writer flushes them to disk.
-		this.scanEntries();
+		// The session writer buffers entries in memory until the first assistant message creates the transcript; after
+		// that every entry is appended as it is added. So with a transcript path, in-memory entries are a durable receipt
+		// only once the file exists. A session with no transcript path has nothing more durable than its entries.
+		if (!file || fs.existsSync(file)) this.scanEntries();
 		for (const [id, report] of this.pending) {
 			if (this.known.has(id)) {
 				try {

@@ -4,12 +4,12 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { inspectPluginMcp, loadConfiguredPluginMcp } from "../src/core/plugin-mcp.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createMcpExtension } from "../src/extensions/mcp/index.ts";
-import { getMcpHookCaller } from "../src/extensions/mcp/hook-caller.ts";
+import { createMcpExtension } from "../../mcp/src/index.ts";
+import { getMcpHookCaller } from "../../mcp/src/hook-caller.ts";
 import type { ExtensionAPI } from "../src/core/extensions/types.ts";
-import { createInMemoryTransportPair } from "@octocodeai/octocode-mcp/testing";
-import { LATEST_PROTOCOL_VERSION } from "@octocodeai/octocode-mcp";
-import { mcpNamespace } from "../src/core/mcp-servers.ts";
+import { createInMemoryTransportPair } from "../../mcp/src/client/testing/index.ts";
+import { LATEST_PROTOCOL_VERSION } from "../../mcp/src/client/index.ts";
+import { mcpNamespace } from "../../mcp/src/servers.ts";
 import { createHarness } from "./suite/harness.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 

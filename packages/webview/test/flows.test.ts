@@ -281,7 +281,7 @@ it("renders assistant deltas before completion and exposes scoped session comman
 	});
 	await vi.waitFor(() =>
 		expect(document.querySelector('[aria-label="Recent session requests"]')?.textContent).toContain(
-			"CompletedRun stopped",
+			"HandledRun stopped",
 		),
 	);
 	// The next run gets a working Stop button with its own request id: an id belongs to one command.
@@ -303,7 +303,7 @@ it("renders assistant deltas before completion and exposes scoped session comman
 	app.navigate("activity");
 	await vi.waitFor(() =>
 		expect(document.querySelector('[aria-label="Recent session requests"]')?.textContent).toContain(
-			"CompletedRun stopped",
+			"HandledRun stopped",
 		),
 	);
 });

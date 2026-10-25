@@ -14,21 +14,13 @@ The check reads the command's words past wrappers (`env`, `timeout`, `sudo`), `V
 
 ## MCP tools
 
-Each MCP tool call is classified from the annotations its server declares ([`gate/classify.ts`](../src/octocode/permission/gate/classify.ts), [`mode.ts`](../src/octocode/permission/mode.ts)):
+Each MCP tool call uses the ordinary `mcp.write` class ([`gate/classify.ts`](../src/octocode/permission/gate/classify.ts), [`mode.ts`](../src/octocode/permission/mode.ts)). `manual` asks; `workspace` and the default `full` allow it. A session grant covers one tool name.
 
-| Server declares | Class | `manual` | `workspace` | `full` |
-|---|---|---|---|---|
-| `readOnlyHint: true` without `destructiveHint: true` | none (a read of another repository's session history still asks) | allowed | allowed | allowed |
-| `destructiveHint: true` | `mcp.destructive` | asks | asks | allowed |
-| Anything else, including no annotations | `mcp.write` | asks | allowed | allowed |
-
-The default mode is `full`, so by default no MCP call asks, destructive ones included. A session grant covers one tool name.
-
-The hints come from the server. The MCP specification tells clients to treat annotations as untrusted unless the server is trusted, and Octocode does not verify them: a server that marks a writing tool `readOnlyHint: true` skips the ask even in `manual`. Choose `manual` or `workspace` only for servers you would trust to describe their own tools, and note that an instruction such as "call only read-only MCP tools" is text the gate cannot enforce. A call the [provenance check](../src/octocode/permission/provenance.ts) flags still asks in `manual` and `workspace`; `full` records it.
+MCP annotations are unsupported and discarded. Server hints cannot waive an approval or mark output trusted. The [provenance check](../src/octocode/permission/provenance.ts) treats every MCP result as untrusted and every MCP call's arguments as consequential. Echoes of supplied arguments, such as a requested file path, do not become newly untrusted; earlier taint and checks on new server content remain. A provenance hit still asks in `manual` and `workspace`; `full` records it. Hook and source-policy checks remain in force.
 
 ### Hook-initiated MCP calls
 
-A hook that calls an MCP tool (`mcp_tool`, see [hooks](hooks.md)) passes the same permission step as a model call: the classes above, provenance, hook asks and the read-only role refusals. A refused call fails the hook with the reason. Two parts of the `tool_call` pipeline do not apply: PreToolUse hooks and extension `tool_call` handlers do not run for the hook's own call, because they would run the same hook again. The MCP owner also refuses a tool that is hidden by `toolExposure` or that its server no longer offers. In `manual` and `workspace` the user may be asked while the hook waits; the hook's timeout keeps running. Two cases are not gated, to avoid waiting on themselves: a `PermissionRequest` hook (it answers an ask, so it cannot ask) and a hook call made while another hook call is being decided (for example a `Notification` hook fired by that ask), which is refused. Hook configuration is trust-gated like a command hook. The implementation is [`hooks/mcp-gate.ts`](../src/octocode/hooks/mcp-gate.ts).
+A hook that calls an MCP tool (`mcp_tool`, see [hooks](hooks.md)) passes the same permission step as a model call: ordinary MCP classification, provenance, hook asks and the read-only role refusals. A refused call fails the hook with the reason. Two parts of the `tool_call` pipeline do not apply: PreToolUse hooks and extension `tool_call` handlers do not run for the hook's own call, because they would run the same hook again. The MCP owner also refuses a tool that is hidden by `toolExposure` or that its server no longer offers. In `manual` and `workspace` the user may be asked while the hook waits; the hook's timeout keeps running. Two cases are not gated, to avoid waiting on themselves: a `PermissionRequest` hook (it answers an ask, so it cannot ask) and a hook call made while another hook call is being decided (for example a `Notification` hook fired by that ask), which is refused. Hook configuration is trust-gated like a command hook. The implementation is [`hooks/mcp-gate.ts`](../src/octocode/hooks/mcp-gate.ts).
 
 ## Read-only roles
 

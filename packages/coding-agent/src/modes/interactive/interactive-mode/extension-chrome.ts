@@ -61,6 +61,34 @@ type ExtensionChromeHost = Pick<
 	| "workingVisible"
 >;
 
+export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEditor" | "editor">): void {
+	if (host.editor === host.defaultEditor) return;
+	host.editor.onSubmit = (text) => host.defaultEditor.onSubmit?.(text);
+	host.editor.onChange = (text) => host.defaultEditor.onChange?.(text);
+
+	// If extending CustomEditor, copy app-level handlers
+	// Use duck typing since instanceof fails across jiti module boundaries
+	const customEditor = host.editor as unknown as Record<string, unknown>;
+	if ("actionHandlers" in customEditor && customEditor.actionHandlers instanceof Map) {
+		if (!customEditor.onEscape) {
+			customEditor.onEscape = () => host.defaultEditor.onEscape?.();
+		}
+		if (!customEditor.onCtrlD) {
+			customEditor.onCtrlD = () => host.defaultEditor.onCtrlD?.();
+		}
+		if (!customEditor.onPasteImage) {
+			customEditor.onPasteImage = () => host.defaultEditor.onPasteImage?.();
+		}
+		if (!customEditor.onExtensionShortcut) {
+			customEditor.onExtensionShortcut = (data: string) => host.defaultEditor.onExtensionShortcut?.(data);
+		}
+		// Copy action handlers (clear, suspend, model switching, etc.)
+		for (const [action, handler] of host.defaultEditor.actionHandlers) {
+			(customEditor.actionHandlers as Map<string, () => void>).set(action, handler);
+		}
+	}
+}
+
 /**
  * Set an extension widget (string array or custom component).
  */
@@ -300,10 +328,7 @@ export function setCustomEditorComponent(host: ExtensionChromeHost, factory: Edi
 	if (factory) {
 		// Create the custom editor with tui, theme, and keybindings
 		const newEditor = factory(host.ui, getEditorTheme(), host.keybindings);
-
-		// Wire up callbacks from the default editor
-		newEditor.onSubmit = host.defaultEditor.onSubmit;
-		newEditor.onChange = host.defaultEditor.onChange;
+		bindEditorHandlers({ defaultEditor: host.defaultEditor, editor: newEditor });
 
 		// Copy text from previous editor
 		newEditor.setText(currentText);
@@ -322,28 +347,6 @@ export function setCustomEditorComponent(host: ExtensionChromeHost, factory: Edi
 		// Set autocomplete if supported
 		if (newEditor.setAutocompleteProvider && host.autocompleteProvider) {
 			newEditor.setAutocompleteProvider(host.autocompleteProvider);
-		}
-
-		// If extending CustomEditor, copy app-level handlers
-		// Use duck typing since instanceof fails across jiti module boundaries
-		const customEditor = newEditor as unknown as Record<string, unknown>;
-		if ("actionHandlers" in customEditor && customEditor.actionHandlers instanceof Map) {
-			if (!customEditor.onEscape) {
-				customEditor.onEscape = () => host.defaultEditor.onEscape?.();
-			}
-			if (!customEditor.onCtrlD) {
-				customEditor.onCtrlD = () => host.defaultEditor.onCtrlD?.();
-			}
-			if (!customEditor.onPasteImage) {
-				customEditor.onPasteImage = () => host.defaultEditor.onPasteImage?.();
-			}
-			if (!customEditor.onExtensionShortcut) {
-				customEditor.onExtensionShortcut = (data: string) => host.defaultEditor.onExtensionShortcut?.(data);
-			}
-			// Copy action handlers (clear, suspend, model switching, etc.)
-			for (const [action, handler] of host.defaultEditor.actionHandlers) {
-				(customEditor.actionHandlers as Map<string, () => void>).set(action, handler);
-			}
 		}
 
 		host.editor = newEditor;

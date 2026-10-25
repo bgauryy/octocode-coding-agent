@@ -2,7 +2,7 @@ import { resolveAzureBaseUrl, resolveDeploymentName } from "../api/azure-openai-
 import { azureOpenAIResponsesApi } from "../api/azure-openai-responses.lazy.ts";
 import { lazyStream } from "../api/lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
-import { envApiKeyAuth } from "../auth/helpers.ts";
+import { azureAuth } from "./azure-auth.ts";
 import { createProvider, type Provider } from "../models.ts";
 import type { Api, Model, ProviderStreams, StreamOptions } from "../types.ts";
 import { AZURE_MODELS } from "./azure.models.ts";
@@ -45,7 +45,7 @@ export function azureProvider(): Provider<"azure-openai-responses" | "openai-com
 	return createProvider({
 		id: "azure",
 		name: "Azure",
-		auth: { apiKey: envApiKeyAuth("Azure OpenAI API key", ["AZURE_OPENAI_API_KEY"]) },
+		auth: { apiKey: azureAuth() },
 		models: Object.values(AZURE_MODELS),
 		api: {
 			"azure-openai-responses": azureOpenAIResponsesApi(),

@@ -8,6 +8,7 @@ import {
 	type WorkspaceSnapshot,
 } from "@octocodeai/octocode-contacts";
 import { ApplicationStream } from "./application-stream.ts";
+import { requestJson } from "./request.ts";
 
 interface Observer {
 	application(stream: ApplicationStream, frame: ApplicationFrame): void;
@@ -70,7 +71,7 @@ export class BrowserConnection {
 			try {
 				message = JSON.parse(String(event.data));
 			} catch {
-				this.observer.status("Invalid server response. Reopen /backlog.");
+				this.observer.status("Invalid server response. Reopen /octocode.");
 				retire(1008);
 				return;
 			}
@@ -81,7 +82,7 @@ export class BrowserConnection {
 					this.observer.status("Refreshing session state…");
 					retire();
 				} else if (result === "invalid") {
-					this.observer.status("Incompatible session stream. Reopen /backlog.");
+					this.observer.status("Incompatible session stream. Reopen /octocode.");
 					retire(1008);
 				} else if (result === "applied") {
 					this.authenticated = true;
@@ -118,8 +119,8 @@ export class BrowserConnection {
 			this.authenticated = false;
 			this.observer.status(
 				event.code === 1008
-					? "Access or protocol expired — reopen /backlog. Showing last received state."
-					: "Disconnected · reconnecting… Showing last received state.",
+					? "Access or protocol expired — reopen /octocode. Showing last received state."
+					: "Disconnected · reconnecting… If the session ended, open /octocode in a running terminal.",
 			);
 			if (event.code !== 1008) {
 				this.timer = setTimeout(() => this.open(), this.delay);
@@ -135,16 +136,13 @@ export class BrowserConnection {
 			throw new Error("Session changed. Reopen the command before sending.");
 		const epoch = this.stream.cursor?.epoch;
 		if (!epoch) throw new Error("Session state is refreshing. Wait for the connection before sending.");
-		const response = await fetch(WORKSPACE_ROUTES.application, {
+		const result = await requestJson(WORKSPACE_ROUTES.application, {
 			method: "POST",
 			headers: { Authorization: "Bearer " + this.token, "Content-Type": "application/json" },
 			body: JSON.stringify(command),
 		});
-		const result: unknown = await response.json();
 		if (this.closed || this.stream.snapshot?.sessionId !== command.sessionId || this.stream.cursor?.epoch !== epoch)
 			throw new Error("Session changed while the request was pending. Check its original session for the outcome.");
-		if (!response.ok)
-			throw new Error(record(result) && typeof result.error === "string" ? result.error : "Request failed");
 		if (
 			!record(result) ||
 			!record(result.receipt) ||
@@ -155,7 +153,7 @@ export class BrowserConnection {
 			throw new Error("Invalid command receipt");
 		const receipt = result.receipt as unknown as ApplicationReceipt;
 		this.stream.acceptReceipt(receipt);
-		return receipt;
+		return this.stream.snapshot?.receipts.find((item) => item.id === receipt.id) ?? receipt;
 	}
 
 	close(): void {

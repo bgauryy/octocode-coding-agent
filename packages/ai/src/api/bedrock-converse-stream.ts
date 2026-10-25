@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { BedrockRuntimeClient, ConversationRole, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
@@ -125,6 +126,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			if (nextCommandInput !== undefined) {
 				commandInput = nextCommandInput as typeof commandInput;
 			}
+			assertImageRequestPayload(model, commandInput);
 			const command = new ConverseStreamCommand(commandInput);
 
 			const response = await client.send(command, { abortSignal: options.signal });

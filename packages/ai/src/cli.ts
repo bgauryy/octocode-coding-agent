@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import type { AuthPrompt, OAuthCredential, Provider } from "./index.ts";
 import { builtinProviders } from "./providers/all.ts";
@@ -26,7 +26,19 @@ function loadAuth(): Record<string, OAuthCredential> {
 }
 
 function saveAuth(auth: Record<string, OAuthCredential>): void {
-	writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2), "utf-8");
+	if (existsSync(AUTH_FILE)) chmodSync(AUTH_FILE, 0o600);
+	writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2), { encoding: "utf-8", mode: 0o600 });
+	chmodSync(AUTH_FILE, 0o600);
+}
+
+function getDeviceId(): string {
+	const path = `${AUTH_FILE}.host-id`;
+	try {
+		writeFileSync(path, randomUUID(), { flag: "wx", mode: 0o600 });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
+	return readFileSync(path, "utf-8").trim();
 }
 
 async function answerPrompt(rl: ReturnType<typeof createInterface>, authPrompt: AuthPrompt): Promise<string> {
@@ -48,7 +60,7 @@ async function login(providerId: string): Promise<void> {
 	if (!provider) throw new Error(`Unknown provider: ${providerId}`);
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	try {
-		// This dev CLI does not persist an installation ID; apps should reuse one across logins.
+		const auth = loadAuth();
 		const credential = await provider.auth.oauth.login(
 			{
 				signal: new AbortController().signal,
@@ -70,9 +82,8 @@ async function login(providerId: string): Promise<void> {
 					}
 				},
 			},
-			{ getDeviceId: randomUUID },
+			{ getDeviceId, agentName: "octocode-ai", previousCredential: auth[providerId] },
 		);
-		const auth = loadAuth();
 		auth[providerId] = credential;
 		saveAuth(auth);
 		console.log(`\nCredentials saved to ${AUTH_FILE}`);

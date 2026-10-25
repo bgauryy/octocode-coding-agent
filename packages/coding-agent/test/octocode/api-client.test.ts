@@ -1,7 +1,8 @@
 import http from "node:http";
 import net from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient } from "../../src/octocode/api/client.ts";
+import { ApiCallError, ApiClient } from "../../src/octocode/api/client.ts";
+import { MAX_FRAME_BYTES } from "../../src/octocode/api/protocol.ts";
 import { removeSocket, socketPath } from "../../src/octocode/api/registry.ts";
 import { tmp } from "./helpers.ts";
 
@@ -59,6 +60,29 @@ async function httpServer(
 }
 
 describe("bounded API client calls", () => {
+	it.each(["EPERM", "ENOENT", "private-example-token"])(
+		"reports a safe socket error code for calls and subscriptions: %s",
+		async (code) => {
+			const connect = vi.spyOn(net, "connect").mockImplementation(() => {
+				const socket = new net.Socket();
+				queueMicrotask(() => socket.emit("error", Object.assign(new Error("private-example-token"), { code })));
+				return socket;
+			});
+			try {
+				const client = new ApiClient({ socket: "/private-example-token.sock" });
+				const message = `API socket transport failed${code.startsWith("E") ? ` (${code})` : ""}`;
+				for (const call of [() => client.call("ping"), () => client.watch(() => undefined)]) {
+					const error: unknown = await call().catch((error: unknown) => error);
+					expect(error).toBeInstanceOf(Error);
+					expect(error).toMatchObject({ message });
+					expect(String(error)).not.toContain("private-example-token");
+				}
+			} finally {
+				connect.mockRestore();
+			}
+		},
+	);
+
 	it.each([
 		{ jsonrpc: "2.0", id: 2, result: {} },
 		{ jsonrpc: "1.0", id: 1, result: {} },
@@ -138,5 +162,81 @@ describe("bounded API client calls", () => {
 		const controller = new AbortController();
 		controller.abort();
 		await expect(remote.call("ping", {}, { signal: controller.signal })).rejects.toThrow("aborted");
+	});
+});
+
+describe("bounded API event streams", () => {
+	it("rejects subscription errors with their code and receipt data, and releases the socket", async () => {
+		const { client, sockets } = await socketServer((socket) =>
+			socket.write(
+				`${JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					error: { code: -32602, message: "invalid cursor", data: { execution: "not-sent" } },
+				})}\n`,
+			),
+		);
+		await expect(client.watch(() => undefined)).rejects.toMatchObject({
+			code: -32602,
+			message: "invalid cursor",
+			data: { execution: "not-sent" },
+		});
+		await vi.waitFor(() => expect(sockets.size).toBe(0));
+	});
+
+	it.each([
+		{ jsonrpc: "2.0", id: 2, result: { seq: 0, gap: false } },
+		{ jsonrpc: "1.0", id: 1, result: { seq: 0, gap: false } },
+		{ jsonrpc: "2.0", id: 1, result: { seq: 0, gap: false }, error: { code: 1, message: "bad" } },
+		{ jsonrpc: "2.0", id: 1, result: { seq: -1, gap: false } },
+		{ jsonrpc: "2.0", id: 1, result: { seq: 0, gap: "false" } },
+		{ jsonrpc: "2.0", id: 1, error: { code: "bad", message: "bad" } },
+		{ jsonrpc: "2.0", method: "event", params: { seq: 1, at: 1, type: "message", data: null } },
+	])("rejects malformed watch frames %j", async (frame) => {
+		const { client } = await socketServer((socket) => socket.write(`${JSON.stringify(frame)}\n`));
+		await expect(client.watch(() => undefined)).rejects.toThrow("Invalid API");
+	});
+
+	it("keeps replay events sent before the subscription response and reports the gap", async () => {
+		const event = { seq: 4, at: 1, type: "message", data: { text: "replayed" } };
+		const { client } = await socketServer((socket) =>
+			socket.end(
+				[
+					JSON.stringify({ jsonrpc: "2.0", method: "event", params: event }),
+					JSON.stringify({ jsonrpc: "2.0", id: 1, result: { seq: 4, gap: true } }),
+					"",
+				].join("\n"),
+			),
+		);
+		const onEvent = vi.fn();
+		const onSubscribed = vi.fn();
+		await client.watch(onEvent, { since: 0, onSubscribed });
+		expect(onEvent).toHaveBeenCalledExactlyOnceWith(event);
+		expect(onSubscribed).toHaveBeenCalledExactlyOnceWith({ seq: 4, gap: true });
+	});
+
+	it("rejects malformed JSON, oversized UTF-8 frames and truncated streams without exposing frame contents", async () => {
+		const malformed = await socketServer((socket) => socket.write("private-example-token\n"));
+		await expect(malformed.client.watch(() => undefined)).rejects.toThrow("Invalid API event JSON");
+		const huge = await socketServer((socket) => socket.write("é".repeat(MAX_FRAME_BYTES / 2 + 1)));
+		await expect(huge.client.watch(() => undefined)).rejects.toThrow("byte limit");
+		const truncated = await socketServer((socket) =>
+			socket.end('{"jsonrpc":"2.0","id":1,"result":{"seq":0,"gap":false}}\n{"partial":'),
+		);
+		await expect(truncated.client.watch(() => undefined)).rejects.toThrow("incomplete frame");
+	});
+
+	it("rejects EOF before subscription and preserves token redaction for socket subscription errors", async () => {
+		const empty = await socketServer((socket) => socket.end());
+		await expect(empty.client.watch(() => undefined)).rejects.toThrow("before its subscription response");
+		const { file } = await socketServer((socket) =>
+			socket.write(
+				'{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"private-example-token","data":{"token":"private-example-token"}}}\n',
+			),
+		);
+		const client = new ApiClient({ socket: file, http: { url: "http://127.0.0.1:1", token: "private-example-token" } });
+		const failed = await client.watch(() => undefined).catch((error: unknown) => error);
+		expect(failed).toBeInstanceOf(ApiCallError);
+		expect(failed).toMatchObject({ message: "[redacted]", data: { token: "[redacted]" } });
 	});
 });

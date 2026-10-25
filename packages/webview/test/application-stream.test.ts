@@ -23,6 +23,16 @@ const frame = (
 		at: sequence,
 		...body,
 	}) as ApplicationFrame;
+it("updates and clears model input capabilities without changing the transcript", () => {
+	const stream = new ApplicationStream();
+	stream.accept(frame(0, { type: "snapshot", snapshot }));
+	const model = { provider: "custom", id: "vision", name: "Vision", input: ["text", "image"] };
+	expect(stream.accept(frame(1, { type: "event", event: { type: "session.model", model } }))).toBe("applied");
+	expect(stream.snapshot?.model).toEqual(model);
+	expect(stream.snapshot?.messages).toEqual([]);
+	expect(stream.accept(frame(2, { type: "event", event: { type: "session.model" } }))).toBe("applied");
+	expect(stream.snapshot?.model).toBeUndefined();
+});
 it("applies partial output once and replaces it with authoritative final content", () => {
 	const stream = new ApplicationStream();
 	stream.accept(frame(0, { type: "snapshot", snapshot }));

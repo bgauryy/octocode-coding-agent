@@ -158,6 +158,12 @@ describe("local MCP read evidence", () => {
 			{ whole: false, lines: [1, 1] },
 			{ whole: false, lines: [4, 4] },
 		]);
+		// localFetch joins the ranges of one query with a `--` line, as grep does; the separator is not a source line.
+		const separated = await completedLocalReads(before, output(file, "1\tone\n--\n4\tfour\n", { totalLines: 4 }), cwd);
+		expect(separated.map(({ whole, lines }) => ({ whole, lines }))).toEqual([
+			{ whole: false, lines: [1, 1] },
+			{ whole: false, lines: [4, 4] },
+		]);
 	});
 
 	it("refuses changed, failed, filtered, byte-window and unrequested reads", async () => {
@@ -303,7 +309,7 @@ describe("unified agent", () => {
 
 	it("lists the commands this session registered in /status, not a fixed set", async () => {
 		const fake = fakePi();
-		octocode(fake.pi, { mcp: false });
+		octocode(fake.pi);
 		const ctx = fakeCtx({ cwd: tmp() });
 		await fake.commands.get("status").handler("", ctx);
 		const line = ctx.ui.notes
@@ -319,7 +325,7 @@ describe("unified agent", () => {
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		try {
 			const fake = fakePi();
-			octocode(fake.pi, { mcp: false });
+			octocode(fake.pi);
 			expect(fake.tools.get("agent").parameters.properties.type.enum).toEqual(["coordinate", "message"]);
 			for (const old of ["externalAgent", "coordinate", "sendMessage", "read", "powershell"])
 				expect(fake.tools.has(old)).toBe(false);

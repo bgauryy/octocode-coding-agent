@@ -305,7 +305,7 @@ See `hello.ts`, `todo.ts`, `dynamic-tools.ts`, and `truncated-tool.ts`.
 
 Registering a `direct` or `model-only` tool activates it; the other exposures are not activated on registration. The active set (`octocode.getActiveTools()`, `octocode.setActiveTools()`) is the set of tools declared to the model. `octocode.getAllTools()` reports each tool's `exposure`, `namespace`, `annotations`, and `reachesTools`.
 
-`annotations` are hints about what a tool does, with the meaning of MCP tool annotations: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. MCP tools carry the hints their server declares. Missing hints take the MCP defaults: a tool is not read-only, and may be destructive and reach an open world. The hints are not verified, but a permission extension can use them to decide which calls to confirm. This confirms the calls Codex asks approval for:
+`annotations` are hints about what a tool does, with the meaning of MCP tool annotations: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. Custom extensions may attach these hints to their own tools. MCP server annotations are discarded, and the native permission gate does not consult hints. An extension can implement its own policy; for example:
 
 ```typescript
 octocode.on("tool_call", async (event, ctx) => {

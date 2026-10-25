@@ -2,18 +2,136 @@
 status: Needs work
 confidence: medium
 question: What do the native feature implementation and regression checks establish?
-next: Resolve concurrent repository check failures and rerun restricted process and live integration checks on a suitable host.
+next: Validate real editor interoperability and additional provider/platform combinations; rerun remaining historical restricted-host checks before closing those gaps.
 ---
 
 # Native feature validation
 
 ## Answer
 
-The **2026-10-24 tools, context and communication follow-up** repaired verified cache, context-budget, cancellation, routing, report and prompt defects. Focused regressions pass; repository-wide checks remain blocked by concurrent source changes and some host-dependent tests fail. A2A is still a proposal. This is not an all-green production certification or a claim that every tool is perfect.
+The **2026-10-25 ACP cross-SDK review rates the advertised ACP v1 stdio implementation 8/10 after repairs**. The official Python SDK passed 11 bidirectional integration groups against real Octocode processes. Startup, cancellation, session identity, command failure reporting and process cleanup received failing regression tests before repair. A fresh independent ACP v1 Test Compatibility Kit run passed **59 tests with 15 skipped**, reporting **CONFORMANT** for its covered requirements. The subsequent real Codex exchange verified context and a return message through a configured MCP callback; direct shell access to the API socket was refused by Codex's sandbox. These checks establish bounded interoperability, not universal compatibility or official certification. Optional features, editor interoperability and cross-platform behavior retain the limits below. A2A remains a proposal. Earlier reviews and their counts remain historical evidence.
 
 **Earlier broad feature review: 7.6/10.** The [registration-driven coverage matrix](FEATURE_COVERAGE.md) includes mail, all native domains, command surfaces and supporting packages. That follow-up fixed shared message rejection propagation, native API receipt handling, browser stream continuity, Bash report failure visibility and user-queue edits that dropped unrelated mail. Real ACP stdio session lifecycle passed; real LLDB completed its DAP handshake but could not launch the target. Scores are historical engineering judgments, not coding-success benchmarks. The earlier six-boundary review was 7.8/10 and is not directly comparable.
 
 ## Changes
+
+### ACP workspace extraction — 2026-10-25
+
+The implementation now has one source owner in [`packages/acp`](../packages/acp/README.md): eight inbound modules in `src/server/` and three outbound connection/capture modules in `src/client/`. Eleven existing test files and their shared harness moved with it. Coding-agent retains the CLI selection, RPC/native execution, permissions, persistence, external manager and local API, together with its real host integration tests and interoperability runners.
+
+This is a **private source workspace compiled into coding-agent**, matching the MCP workspace convention. It is not a separately released SDK. The host ships the pinned ACP SDK and compiles this workspace into `dist/acp/`; neither its installed runtime dependencies nor the release artifact set includes the private ACP package. Public CLI behavior and protocol capabilities are unchanged. Source maps point back to `packages/acp`, and the obsolete source and built ACP locations are absent.
+
+Two new ownership/staging checks failed before extraction, then passed. An installed-package regression also failed before the smoke test checked the shipped ACP backend. The extraction moved existing behavior and tests without weakening assertions or changing protocol fields. Two verification runners that constructed the old source path were updated.
+
+| Fresh verification | Observed result |
+| --- | --- |
+| Relocated package tests | **139 passed / 11 files**, matching the pre-move baseline of 82 inbound and 57 outbound tests. |
+| Coding-agent ACP CLI/RPC/API integration | **28 passed / 7 files**, covering real worker lifecycle, startup, permissions, identity, command completion and broken-output cleanup. |
+| Native manager, reliability runner, attached Octocode and session guards | **64 passed / 5 files**. Includes the offline subprocess/socket reliability scenarios. |
+| Repository scripts | **48 passed** on the completed rerun, including package ownership/staging and the installed ACP backend regression. The first run raced the concurrent offline build while packing `dist`; it failed with `ENOENT`. The rerun followed build completion. |
+| TypeScript, lint, formatting and repository boundaries | **`yarn run check` passed.** ACP runtime SDK imports now live only in `packages/acp/src/`. |
+| Build and local installed consumers | **`yarn run build:offline` passed; seven isolated package consumers passed.** Coding-agent's installed smoke check imports both ACP entry points. These remain local development artifacts because the three sibling dependencies have not been released separately. |
+| Compiled ACP round trips | The built outbound client prompted both `dist/cli.js` and `dist/bundle/cli.js` through ACP and received the expected offline-provider reply. Both worker processes stopped; temporary configuration was removed. No source resolver was used for the controller or either CLI launch. |
+| Official Python SDK 0.12.1 | **11/11 bidirectional scenario groups passed** after the move. Process cleanup and isolated configuration checks passed. |
+| Independent ACP v1 TCK 0.2.0 | **59 passed, 15 skipped; exit 0.** Uses the same pinned kit as the earlier review; optional-capability and generic cancellation-probe skips retain the limitations documented below. |
+| Real Codex and Octocodecode | **Passed again after extraction**, using the same ACP-adapter and scoped MCP callback arrangement described below. Context, exactly three Codex prompt frames, one return API send, ACP observation, disconnect, process cleanup and unchanged original credential/configuration files were verified. |
+| Documentation | **210 local links/anchors passed across ten updated documents**, and `git diff --check` passed. |
+
+Evidence is retained under `.octocode/octocode-research/tmp/acp-audit/` in the `extraction-*.log` and `extraction-*.json` files. Existing dated results below describe their earlier snapshots. This move does not establish standalone-package portability, Windows/Bun behavior or real editor approval UX.
+
+### Real Codex and Octocodecode exchange — 2026-10-25
+
+**A real bidirectional exchange passed, with an explicit callback integration for the return direction.** This used the source Octocodecode **1.3.0** CLI, the installed **`@agentclientprotocol/codex-acp` 2.0.0** adapter and the desktop Codex CLI **0.163.0-alpha.11.2**, on macOS with Node **24.22.1** and Yarn **4.18.1**. Codex reported **`gpt-6-astra`**; Octocode used the existing configured **`guy-provider-anthropic-x` / `claude-opus-5-5`** route. These were live model calls, separate from the deterministic peer used in the earlier live check.
+
+| Check | Observed result |
+| --- | --- |
+| Codex controller to Octocodecode | Launched the source ACP broker and worker, initialized v1, created a session and received the requested unique marker. |
+| Octocodecode to real Codex | The native `agent` tool connected through the Codex ACP adapter and sent two prompts. Codex acknowledged the marker and recalled it on the same session. |
+| Direct Codex shell callback | **Failed.** `octocode-api send --wait` returned a socket transport failure under Codex's read-only sandbox. Separate no-model sandbox and App Server probes reproduced `connect EPERM`; the CLI's exact `--allow-unix-socket` probe succeeded. A named socket profile alone did not resolve the tested App Server command. This does not establish a working direct-shell configuration for the ACP adapter. |
+| Codex to Octocodecode through a configured MCP callback | **Passed.** A test-only MCP tool was restricted to the one expected message, instance and conversation. Codex called it once; it invoked the real `message.send` API with a key, session guard, idle requirement and bounded wait. Octocode returned the marker, and Codex reported that actual reply. The child retained its read-only shell mode. |
+| ACP observation and continued context | The API-started response also streamed on the parent's existing ACP connection. A subsequent ACP prompt recalled the original marker. |
+| Delivery and cleanup | The successful run had exactly three outbound Codex prompt frames and one callback API send. Disconnect removed the peer. All seven tracked processes stopped before fallback cleanup, API discovery was empty, temporary credential/configuration copies were removed, and original files' hashes were unchanged. |
+| Diagnostic repair, using TDD | Two failing assertions reproduced lost `EPERM`/`ENOENT` details before the [API client repair](../packages/coding-agent/src/octocode/api/client.ts). Recognized OS codes are now retained for calls and subscriptions; raw error messages and paths remain hidden. **35 tests passed / 3 files**, including client, CLI subprocess and socket tests. |
+| Repository check | **Passed:** `yarn run check`, including TypeScript, lint, formatting, browser imports, bundle freshness and package boundaries. |
+| Documentation | **106 local links/anchors passed across four updated guides/reports**; scoped `git diff --check` passed. |
+
+The successful run made seven logical model turns: four in Octocode (including the callback) and three in Codex. The earlier failed direct-shell attempt is retained separately, not counted as a successful round trip. Neither attempt replayed an uncertain prompt. The MCP bridge only forwarded the API call; it did not synthesize the model response.
+
+The return path was **Codex → configured MCP callback → Octocode local API**, while the outbound path was **Octocode → ACP adapter → Codex App Server**. This establishes these specific integration paths, not a native Codex ACP endpoint, a built-in general MCP callback server, real editor UI behavior or universal compatibility. No permission challenge occurred during the successful run, so it does not validate interactive approval UX. The engineering rating remains **8/10** for the advertised ACP v1 stdio scope.
+
+Ignored local evidence is retained under `.octocode/octocode-research/tmp/acp-audit/`: `codex-live-roundtrip.mjs`, `codex-return-mcp.mjs`, `codex-live-roundtrip.json`, `codex-live-readonly-socket-failure.json`, `codex-socket-probe.json` and `codex-check.log`. The live harness is specific to this machine's installed binaries and authentication; the portable offline and cross-SDK runners remain documented in the [ACP guide](../packages/coding-agent/docs/acp.md#verify-the-transports).
+
+### ACP cross-SDK review — 2026-10-25
+
+**Rating: 8/10 for the advertised ACP v1 stdio scope after the repairs below.** This is an engineering judgment, not a task-success benchmark. The architecture has clear ownership: the official TypeScript SDK owns protocol handling, the broker owns session processes, native sessions own execution and authorization, and the external manager owns outbound peers. The review found substantial lifecycle gaps despite the earlier passing compatibility run; a protocol kit alone did not establish correct startup, cancellation or cleanup.
+
+| Dimension | Score / 10 | Basis and remaining limit |
+| --- | ---: | --- |
+| Protocol and library integration | 8.5 | Official TypeScript SDK 2.0.2 stable v1 APIs, capability negotiation and an independent protocol kit. Optional omissions are documented rather than advertised. |
+| Ownership and recovery | 8 | Canonical identity, replay ordering, cancellation and broken-output cleanup now have real-process regressions. Windows process-tree behavior remains unverified. |
+| Permissions and execution boundaries | 8.5 | Typed single-use approval, late-reply cancellation and a pre-provider abort boundary. The permission system is host policy, not an OS sandbox. |
+| Independent interoperability | 7.5 | Official Python SDK 0.12.1 exercises both directions. Real editor clients, packaged distribution paths and other platform/provider combinations remain untested. |
+| Documentation and reproducibility | 7.5 | Owning guides describe capabilities, failures, startup and executable cross-SDK checks. Broad integration claims still need a repeatable editor/platform matrix. |
+
+The equal-weight mean is **8.0**. Unsupported optional methods and draft transports are not protocol violations; they limit which integrations the product can serve. No claim of compatibility with every ACP agent, editor or future version follows from this score.
+
+| Confirmed defect | Repair and regression evidence |
+| --- | --- |
+| Startup output was missed or used a provisional ID; restoration could run startup hooks against a throwaway conversation | [RPC startup](../packages/coding-agent/src/modes/rpc/rpc-mode.ts) subscribes early. A private identity frame enables canonical registration, and [history replay](../packages/acp/src/server/history.ts) snapshots the saved transcript before live startup. [Real startup tests](../packages/coding-agent/test/acp-startup.test.ts) check new/load identity and exactly-once work. |
+| Awaited startup dialogs or permissions deadlocked before stdin handling was installed | The reader handles UI replies before initialization completes; ordinary RPC commands retain their readiness barrier. [Startup ownership tests](../packages/acp/test/server/acp-startup-ownership.test.ts) and [ordinary RPC tests](../packages/coding-agent/test/rpc-startup.test.ts) cover pending creation, cancellation, close, EOF and cleanup. |
+| Extension commands could replace the native conversation behind an ACP handle; guard failures could look successful | [Session controls](../packages/coding-agent/src/modes/rpc/rpc-mode/session-controls.ts) reject new/switch/fork before mutation. The accurate `RpcEvent` union retains existing extension errors, and [projection](../packages/acp/src/server/events.ts) preserves command failure even after model success. [Real identity tests](../packages/coding-agent/test/acp-session-identity.test.ts) require a visible error and a usable subsequent prompt. |
+| Cancellation during `before_agent_start` still entered the provider | The [run loop](../packages/coding-agent/src/core/agent-session/run-loop.ts) checks cancellation immediately before the first provider request, inside existing settlement/cleanup. A [deterministic gated regression](../packages/coding-agent/test/agent-session-preflight-cancel.test.ts) proves no provider call and a successful later turn. |
+| A closed stdout reader could terminate the broker while native workers survived | [ACP output](../packages/acp/src/server/acp-mode.ts) awaits write errors and routes them through owned-worker shutdown. The [pipe-close regression](../packages/coding-agent/test/acp-output-close.test.ts) keeps stdin open and requires both workers to stop before broker exit. |
+| An outbound request timeout made a still-running peer appear idle, bypassing the session-switch warning | [Backend busy state](../packages/acp/src/client/client.ts) remains visible through the [manager](../packages/coding-agent/src/octocode/external/manager.ts) until settlement or explicit cancellation. [Session guard tests](../packages/coding-agent/test/octocode/session-guard.test.ts) exercise the actual leave/fork confirmation. |
+
+Each production defect above had a recorded failing assertion before repair. Integration also caught a temporary type-only export mistake and an Oxfmt violation; both were corrected. The TCK run during that export mistake was interrupted after recording failures and is not a completed compatibility result. Test assertions and coverage thresholds were retained.
+
+| Fresh run | Observed result and scope |
+| --- | --- |
+| Inbound ACP, RPC, dispatch, output and preflight cancellation | **174 passed / 32 files.** Includes real startup work, awaited dialogs/permissions, cancel/close/EOF, restoration, identity guards and ordinary RPC startup ordering. |
+| Outbound ACP, external manager, session guards and local API | **130 passed / 10 files.** Includes uncertain execution, late settlement, redaction, attached Octocode and subprocess/socket behavior. |
+| Final command-error projection and native identity rerun | **27 passed / 2 files** after the last production edit; overlaps the inbound selection. Command failure survives a later successful model response. |
+| Official [Python SDK 0.12.1](https://agentclientprotocol.com/libraries/python), Python 3.14.6, Pydantic 2.14.1 | **11/11 scenario groups passed:** seven inbound and four outbound. Real source CLI/RPC workers and real outbound backend, with deterministic offline model/agent fixtures. |
+| Python integration cleanup and isolation | Broker, four native workers and two Python peers exited before fallback cleanup. Both helper clients stopped; temporary user configuration was removed. A synthetic parent-only environment variable reached neither direction. Forced resolver-import failure also cleaned up. |
+| Fresh independent ACP TCK 0.2.0 | **59 passed, 15 skipped, no failures; CONFORMANT; exit 0.** Same pinned TCK/schema revisions as the earlier run below. Mandatory: 30 pass / 1 skip; capability tier: 10 pass / 13 skip; advisory: 12 pass / 1 skip; informational: 5 pass. No untested requirements. |
+| Repository check | **Passed** on Node 24.22.1 / Yarn 4.18.1: TypeScript, type-aware lint, max-lines baseline, formatting, browser imports, bundle freshness, favicon and package boundaries. |
+| Documentation | **165 local links/anchors passed across seven reviewed documents.** Python runner help exited 0. Validation and coverage reports passed strict HTML generation; browser rendering remains unverified. |
+
+The Python SDK is a separate protocol implementation from the TypeScript SDK. The TCK uses its own Python harness and schemas; running the TCK alone was not a Python SDK integration test. The new [bidirectional runner](../packages/coding-agent/test/octocode/scripts/check-acp-python.mjs) pins the tested Python package, isolates both directions and verifies process exit before fallback termination. The [ACP guide](../packages/coding-agent/docs/acp.md#verify-the-transports) owns install/run commands; [SDK guidance](../packages/coding-agent/docs/sdk.md#process-clients) documents the corrected event type. The TCK remains experimental, and its verdict is not official certification. Its skips have the same scope as the earlier run below, including an unexercised generic `$/cancel_request` probe; required `session/cancel` passed.
+
+These new runs used no provider credentials. The earlier six live model turns remain separate evidence below. Real editor UX, Windows/Bun execution, portable packaging, additional live providers and draft ACP v2/remote transports were not established by this review. Local logs and machine-readable reports are retained under `.octocode/octocode-research/tmp/acp-audit/`; they are ignored working evidence, not committed fixtures. Focused reruns overlap the broader selections and must not be added to their counts.
+
+### ACP and external-process follow-up — 2026-10-25
+
+Reviewed the changing checkout against the official [ACP introduction](https://agentclientprotocol.com/get-started/introduction), stable v1 requirements, [SDK migration guidance](https://github.com/agentclientprotocol/typescript-sdk/blob/v2.0.2/MIGRATION_STABLE_UNSTABLE.md) and the independent [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck). Runtime: **Node 24.22.1, Yarn 4.18.1**. The SDK is now pinned to **2.0.2**, using its stable v1 entry point and typed `agent()`/`client()` APIs. The SDK upgrade does not enable draft ACP v2.
+
+| Owner | Verified defect and repair |
+| --- | --- |
+| [Broker](../packages/acp/src/server/broker.ts) and [session](../packages/acp/src/server/session.ts) | Commands could finish their ACP request before nested work; independent API/Team work was not reliably observed. Correlated dispatch completion includes nested and deferred work, and autonomous work retains updates, approval and cancellation handling. Busy refusals preserve the worker. |
+| [Session restoration](../packages/acp/test/server/acp-reload.test.ts) | The independent client could not load or resume an idle session already open on its connection. Idle restoration now validates the original workspace, replaces the worker with current MCP definitions, and completes replay before replying. Busy/restoring sessions are refused without cancelling their work. |
+| [MCP handoff](../packages/acp/src/server/mcp.ts) | With automatic extensions disabled, client servers registered without a running MCP host. The handoff explicitly loads the existing shared host. The independent stdio MCP initialization probe now passes. |
+| [History](../packages/acp/src/server/history.ts) and [event projection](../packages/acp/src/server/events.ts) | Stored images and visible external messages were missing from replay. They now reach the client; live visible extension messages are projected too. Hidden extension context stays hidden. |
+| [Local API](../packages/coding-agent/docs/session-api.md) | CLI flags, session guards, replay-gap reporting and structured errors now preserve the server's contract. A same-key retry retrieves the existing receipt; uncertain work is never automatically redispatched. |
+| [Outbound capture](../packages/acp/src/client/redaction.ts) | Chunk boundaries and multiline private-key blocks could bypass credential matching. Logical-stream redaction and bounded unfinished state cover those cases, with explicit incomplete-capture metadata. |
+
+The first independent TCK run recorded **52 passed, 7 failed, 15 skipped**. Five failures came from rejecting same-connection load/resume, one from the disabled MCP host, and one from a transient concurrent backlog export error during worker startup. All seven cases passed after repair/recheck. A targeted TCK selection still exits nonzero because unselected mandatory requirements are not tested; the final verdict below comes from the complete suite.
+
+| Run | Observed result and scope |
+| --- | --- |
+| Independent ACP TCK 0.2.0, revision `b7f40fb3c003c45926547be5a1f7e2b374035815` | **59 passed, 15 skipped; CONFORMANT; exit 0.** Upstream schema revision `beac4ba96190018e9f6d82e148ff275084c5aa3e`. Real source CLI and native RPC workers; isolated offline model fixture; actual client MCP process startup. |
+| TCK requirement coverage | Mandatory: 30 pass / 1 skip; advertised-capability tier: 10 pass / 13 skip; advisory: 12 pass / 1 skip; informational: 5 pass. No failed or untested requirements in the complete run. Requirement counts differ from test counts. |
+| Inbound ACP, RPC completion, session dispatch and API coexistence | **111 passed / 13 files**, including new restoration and history regressions. |
+| Outbound ACP, capture/redaction, attached Octocode and reliability-runner selection | **88 passed / 6 files** after the SDK upgrade. |
+| External manager, API command subprocesses and API socket | **31 passed / 3 files** after the SDK upgrade. |
+| Repository check | **Passed**: TypeScript, Oxlint, max-lines baseline, Oxfmt, browser imports, workspace bundle freshness, favicon and package boundaries. Earlier attempts stopped on concurrent edits; the final run exited 0. |
+| Documentation and commands | **264 local links/anchors passed across 12 edited documents**; API and compatibility-runner help commands exited 0; `git diff --check` passed. |
+| Earlier repair-stage selections on this date | 106 passed / 12 inbound files; 194 passed / 16 external/API files; 102 passed / 4 redaction files. These runs overlap each other and the final selections; do not add their counts. |
+| Earlier offline reliability run on this date | 18 attempts: 16 completed and 2 intentional uncertain crashes; no replay, recovery, concurrent sessions and cleanup checked. |
+| Live provider exchange earlier on this date | Six real model turns: five ACP prompts and one local API prompt. Verified remembered context, close/load replay, a native external-agent exchange, API wait/retry without duplicate dispatch, API output forwarded to ACP, and a subsequent ACP prompt. |
+
+The live run used one configured Octocode provider route. Its separate ACP peer was a deterministic subprocess controlled by this Codex task, **not a second Codex model session**. Original credential/configuration files were unchanged, temporary credential copies were removed, owned peer processes stopped, and no API discovery records remained after shutdown. The independent TCK run used no provider credentials and is separate evidence from that earlier live run.
+
+TCK skips include unadvertised audio, deletion, extra workspace roots, system-prompt configuration, modes/config options and logout, plus authentication without an advertised flow. Its generic `$/cancel_request` probe did not exercise cancellation before the fixture completed; required `session/cancel` behavior passed. The kit does not cover every protocol field, permission path, binary format or editor. Local permission, adversarial-output and lifecycle tests supplement it. Windows, real editor UX, other vendors and remote ACP transports were not tested. The [ACP guide](../packages/coding-agent/docs/acp.md#verify-the-transports) provides repeatable fixture and TCK commands.
 
 ### Tools, context and communication follow-up — 2026-10-24
 
@@ -21,13 +139,13 @@ Reviewed the changing working tree with Node **24.19.0** and Yarn **4.18.1**. Fo
 
 | Location | Finding and behavioral effect | Severity | Repair |
 | --- | --- | --- | --- |
-| [MCP resources](../packages/coding-agent/src/extensions/mcp/resources.ts) | Server payloads could override the trusted routing identity; trimming opaque cursors could change which page was requested | High | Connection-owned server tags win; continuation bytes remain exact and require a server |
-| [MCP management](../packages/coding-agent/src/extensions/mcp/manage-tool.ts), [debugger](../packages/coding-agent/src/octocode/debug/tool.ts), [Team send](../packages/coding-agent/src/octocode/team/session/send.ts) | Canceled operations could still mutate server state, launch an adapter or resume a parked worker during approval | High | Check abort before effects and carry combined run/tool cancellation through approval and revival |
+| MCP resources (`extensions/mcp/resources.ts` at this snapshot; subsequently reorganized) | Server payloads could override the trusted routing identity; trimming opaque cursors could change which page was requested | High | Connection-owned server tags win; continuation bytes remain exact and require a server |
+| [MCP management](../packages/mcp/src/manage-tool.ts), [debugger](../packages/coding-agent/src/octocode/debug/tool.ts), [Team send](../packages/coding-agent/src/octocode/team/session/send.ts) | Canceled operations could still mutate server state, launch an adapter or resume a parked worker during approval | High | Check abort before effects and carry combined run/tool cancellation through approval and revival |
 | [OpenAI-compatible caching](../packages/ai/src/api/openai-completions/cache-control.ts) | Explicitly disabled instruction caching was reenabled by a default; schema data named `cache_control` consumed fake breakpoint slots | Medium | Preserve the disabled layer; reuse the marker counter that excludes opaque schema payloads |
 | [Context budget](../packages/coding-agent/src/core/compaction/tokens.ts) | Same-name replacement tool schemas contributed no new declaration estimate | Medium | Compare declaration content, including constrained sampling, while excluding hidden declarations |
 | [Child reports](../packages/coding-agent/src/octocode/subagents/report.ts) | An empty final follow-up could inherit an earlier task's `done` outcome | Medium | Record an incomplete follow-up while retaining prior evidence; a successful retry clears the failure |
-| [ACP history](../packages/coding-agent/src/modes/acp/history.ts) and [MCP handoff](../packages/coding-agent/src/modes/acp/mcp.ts) | Restored tool output was silently cut; valid `__proto__` headers disappeared and escaped duplicate checking | Medium | Share the live bounded result projector; validate header names with a Set and preserve literal keys |
-| [Outbound ACP capture](../packages/coding-agent/src/octocode/external/acp-output.ts) | Aggregate turn updates and connection stderr grew without a retention bound | Medium | Bound previews and private overflow archives, expose missing evidence and preserve terminal outcomes |
+| [ACP history](../packages/acp/src/server/history.ts) and [MCP handoff](../packages/acp/src/server/mcp.ts) | Restored tool output was silently cut; valid `__proto__` headers disappeared and escaped duplicate checking | Medium | Share the live bounded result projector; validate header names with a Set and preserve literal keys |
+| [Outbound ACP capture](../packages/acp/src/client/output.ts) | Aggregate turn updates and connection stderr grew without a retention bound | Medium | Bound previews and private overflow archives, expose missing evidence and preserve terminal outcomes |
 | [Prompt assembly](../packages/coding-agent/src/core/system-prompt.ts), [native policy](../packages/coding-agent/src/octocode/instructions/policy.ts) and [turn setup](../packages/coding-agent/src/octocode/turn.ts) | Hidden or absent tools were recommended; path refusal suggested switching tools; overlapping narrative rules consumed context | Medium | Route by actual exposure, distinguish unavailable tools from permission refusals, and consolidate guidance into five concerns |
 | [Archive tool](../packages/coding-agent/src/octocode/compaction/archive-tool.ts) | Recovery text recommended the removed `read` tool | Low | Require an available reader and appropriate permission without changing archive scope |
 
@@ -52,7 +170,7 @@ The [instruction reference](../packages/coding-agent/docs/instructions.md) recor
 | Browser import and package-boundary checks | Passed |
 | Documentation | 109 local links/anchors passed across six edited documents. Strict HTML generation passed; visual inspection was blocked because the browser URL policy disallows local file URLs |
 
-Remaining limits: exact tokenizer accounting, measured live cache hits/billing, live editor/provider ACP and browser behavior are not established. Core context fallback remains an estimate. MCP `readOnlyHint` is still trusted for manual-mode read classification, as documented in [permissions](../packages/coding-agent/docs/permissions.md); a mislabeled server can therefore avoid a mutation prompt. Attached/persistent Chrome observes some private WebSocket traffic rather than blocking it. External Octocode dependency tool bodies were not exhaustively audited.
+At this 2026-10-24 snapshot, exact tokenizer accounting, measured live cache hits/billing, live editor/provider ACP and browser behavior were not established. Core context fallback remains an estimate. MCP `readOnlyHint` is still trusted for manual-mode read classification, as documented in [permissions](../packages/coding-agent/docs/permissions.md); a mislabeled server can therefore avoid a mutation prompt. Attached/persistent Chrome observes some private WebSocket traffic rather than blocking it. External Octocode dependency tool bodies were not exhaustively audited.
 
 Internal Team mail acknowledges model-context inclusion, API acceptance acknowledges dispatch, and a child report records a task outcome. These meanings remain separate. ACP uses its existing session and permission lifecycle; no A2A transport or universal task protocol was introduced. See [agent communication](AGENT_COMMUNICATION.md).
 
@@ -64,13 +182,15 @@ The subsequent all-feature follow-up used **six Sol6 workers**, registration and
 
 ## Evidence
 
-| Current feature | Score / 10 | Strength; remaining limitation |
+The scores and limits in this table describe the 2026-10-23 review. Later dated follow-ups above supersede its integration evidence.
+
+| Historical feature review | Score / 10 | Strength; remaining limitation at that review |
 | --- | ---: | --- |
-| Research and Octocode MCP | 7.5 | [Native research ownership](../packages/coding-agent/src/octocode/mcp/octocode.ts), discovery and bounded output; live server/provider combinations remain sampled. |
+| Research and Octocode MCP | 7.5 | [Native research ownership](../packages/mcp/src/presets/octocode/index.ts), discovery and bounded output; live server/provider combinations remain sampled. |
 | Editing and feedback | 8 | [Guarded edits and receipts](EDITING_AND_DEBUGGING.md); diagnostics cannot attest the exact source revision. |
 | Permissions and prompts | 8 | [Native authority checks](EXECUTION_AND_PERMISSIONS.md) and capability-aware prompts; tool policy is not an OS sandbox. |
 | Workers and internal communication | 8 | [Durable mail, revival and relay](AGENT_COMMUNICATION.md); asynchronous rejected handoffs now retry without replaying model-acknowledged mail. Cross-host delivery is not provided. |
-| External ACP | 7.8 | [Session broker](../packages/coding-agent/src/modes/acp/broker.ts), typed approvals and actual CLI lifecycle; no real provider/editor turn. |
+| External ACP | 7.8 | [Session broker](../packages/acp/src/server/broker.ts), typed approvals and actual CLI lifecycle; no real provider/editor turn. |
 | Generic MCP | 7.5 | [Reusable transports](../packages/mcp/README.md) and redirect protection; live remote authentication/interoperability incomplete. |
 | Debugging and verification | 8 | [DAP lifecycle](../packages/coding-agent/src/octocode/debug/session.ts), launch-error precedence and verification receipts; real target launch failed. |
 | Browser | 7 | [Network and upload checks](../packages/coding-agent/src/octocode/browser/tool/checks.ts); live Chrome not rerun. |
@@ -90,7 +210,7 @@ Each score considers correctness, authority boundaries, lifecycle/recovery and v
 | Edits and feedback | 8 | [Parser feedback](../packages/coding-agent/src/octocode/files/feedback/parse.ts) refuses failed/partial and switched-session observations; response roots accept explicit `root` or `base`. [Read snapshots](../packages/coding-agent/src/octocode/files/read-receipts.ts) release failed calls without removing successful evidence before result hooks. |
 | Debugging and verification | 7.5 | [DAP lifecycle](../packages/coding-agent/src/octocode/debug/session.ts) closes on abort, exit or termination; buffered frames cannot revive a closed session. Fixtures exercise these races; live adapters remain untested. |
 | Agent communication | 8 | [Parked worker restoration](../packages/coding-agent/src/octocode/subagents/linger.ts) preserves a validated browser-mode override while rejecting other profile drift. Revival still needs fresh authorization and generation checks. |
-| ACP and MCP | 7.5 | [Transport](../packages/mcp/src/transports/streamable-http.ts) refuses redirects for requests carrying literal/custom headers. ACP rejects credential-bearing/fragment URLs; typed approvals and worker disposal have regression coverage. |
+| ACP and MCP | 7.5 | [Transport](../packages/mcp/src/client/transports/streamable-http.ts) refuses redirects for requests carrying literal/custom headers. ACP rejects credential-bearing/fragment URLs; typed approvals and worker disposal have regression coverage. |
 | Prompt projection | 8 | [Turn setup](../packages/coding-agent/src/octocode/turn.ts) separates explicit read-only roles from missing file tools. Shared instructions were condensed while preserving report outcomes and existing size budgets. |
 
 In that earlier review, each peer scored correctness, authorization, lifecycle and evidence from 0–5. Its 7.8/10 aggregate covered those six boundaries. Research, skills, browser, hooks, memory and host/UI ownership were traced but not exhaustively exercised.
@@ -98,6 +218,8 @@ In that earlier review, each peer scored correctness, authorization, lifecycle a
 Transferable lessons: keep capability selection separate from authority; check transport policy at the actual network sink; reauthorize revived work; preserve mutation evidence across later failures; verify event ordering before attaching cleanup; treat parser/LSP output as advisory without a source-version contract.
 
 ## Gaps
+
+These gaps describe the 2026-10-23 review. The dated follow-ups above record later repairs and validation, including live ACP turns and passing local API tests.
 
 - Worktree PID reuse and pending-report claim identity assertions still fail where `ps` is prohibited; owners conservatively retain uncertain processes. Detached descendant cleanup needs a normal host.
 - Native API Unix socket tests failed at `listen EPERM`; selected MCP HTTP listener tests were also blocked in earlier runs. The latest workspace HTTP/WebSocket test successfully bound `127.0.0.1` and passed, so a blanket claim that every loopback listener is unavailable would be incorrect. Live remote interoperability remains unverified.
@@ -187,7 +309,7 @@ Peer judgments were 8.2/10 for the mail fix, 8/10 for the DAP fix and 8/10 for t
 | `yarn run build:offline` | Passed |
 | Replacement documentation | 81 local targets/anchors passed; six Mermaid blocks; strict HTML generation passed for six pages; visual rendering unverified |
 
-The focused native command is `yarn vitest run --config vitest.octocode.config.ts <test paths>` from `packages/coding-agent`; core and ACP tests use its default Vitest config. MCP transport tests run from `packages/mcp`. The root README and package guides own reproducible setup.
+The focused native command is `yarn vitest run --config vitest.octocode.config.ts <test paths>` from `packages/coding-agent`; core and ACP tests use its default Vitest config. MCP transport tests now run from `packages/coding-agent` with `yarn vitest run test/mcp-client`. The root README and package guides own reproducible setup.
 
 ### Retained earlier runs — 2026-10-23
 

@@ -4,7 +4,7 @@ import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts"
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -37,7 +37,6 @@ describe("read-only subagent roles", () => {
 			registerTurnSetup(fake.pi, {
 				isSubagent: true,
 				profiles: () => new Map(),
-				octocode: fakeOctocode({ by: "off" }).mcp,
 			});
 			const event = {
 				systemPromptOptions: {
@@ -60,7 +59,6 @@ describe("read-only subagent roles", () => {
 			registerTurnSetup(fake.pi, {
 				isSubagent: false,
 				profiles: () => new Map(),
-				octocode: fakeOctocode({ by: "off" }).mcp,
 			});
 			const event = {
 				systemPromptOptions: { sections: {} as Record<string, string>, selectedTools },

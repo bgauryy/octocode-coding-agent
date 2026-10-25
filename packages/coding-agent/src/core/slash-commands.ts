@@ -128,7 +128,12 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "new", aliases: ["clear", "reset"], description: "Start a new session", argumentHint: "<previous-name>" },
 	{ name: "compact", description: "Manually compact the session context", argumentHint: "<instructions>" },
 	{ name: "resume", aliases: ["continue"], description: "Browse and resume saved sessions", argumentHint: "<search>" },
-	{ name: "skills", description: "Find and use a loaded skill", argumentHint: "<search>" },
+	{
+		name: "skills",
+		description: "Find, inspect, enable or disable skills",
+		argumentHint: "<search|list|info|enable|disable>",
+		argumentValues: ["list", "info", "enable", "disable"],
+	},
 	{ name: "debug", description: "Save local terminal and session diagnostics" },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
 	{ name: "quit", aliases: ["exit"], description: `Quit ${APP_NAME}` },

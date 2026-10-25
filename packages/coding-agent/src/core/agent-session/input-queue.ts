@@ -6,6 +6,7 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
+import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionInternals } from "./host.ts";
 import type { PendingUserInput, QueuedInput } from "./types.ts";
@@ -27,6 +28,9 @@ export class SessionInputQueue {
 	private _pendingNextTurnMessages: CustomMessage[] = [];
 	/** Context-only custom messages queued during a run, flushed once the current turn's tool results are in. */
 	private _pendingCustomMessages: CustomMessage[] = [];
+
+	/** Custom messages steered into the running agent (team mail), until the agent takes them. */
+	private readonly _steeredCustomMessages = new Set<CustomMessage>();
 
 	private readonly host: Pick<SessionInternals, "session" | "emit" | "refreshContext">;
 
@@ -153,6 +157,7 @@ export class SessionInputQueue {
 		images?: ImageContent[],
 		input?: PendingUserInput,
 	): Promise<void> {
+		assertImageInputSupported(this.host.session.model, images ?? []);
 		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
 		if (images) {
 			content.push(...images);
@@ -193,6 +198,30 @@ export class SessionInputQueue {
 		return messages;
 	}
 
+	/** Records a custom message handed to the agent's steering queue, so a running tool can see that it waits. */
+	noteSteeredCustomMessage(message: CustomMessage): void {
+		this._steeredWaiting();
+		this._steeredCustomMessages.add(message);
+	}
+
+	/**
+	 * Whether a custom message is waiting for the agent's next step: steered into the running agent, or held until the
+	 * current turn's tool results are in. Follow-ups (background reports) wait for the run to end and do not count.
+	 */
+	get hasWaitingCustomMessages(): boolean {
+		return this._steeredWaiting() || this._pendingCustomMessages.length > 0;
+	}
+
+	/** Forgets the steered messages the agent took; whether one is still queued. */
+	private _steeredWaiting(): boolean {
+		let waiting = false;
+		for (const message of this._steeredCustomMessages) {
+			if (this.host.session.agent.hasQueuedMessage(message)) waiting = true;
+			else this._steeredCustomMessages.delete(message);
+		}
+		return waiting;
+	}
+
 	addPendingCustomMessage(message: CustomMessage): void {
 		this._pendingCustomMessages.push(message);
 	}
@@ -204,9 +233,11 @@ export class SessionInputQueue {
 			appMessage.display,
 			appMessage.details,
 		);
-		this.host.refreshContext();
+		// Announce the message before the refresh: the first event after the refresh makes transcript views rebuild from
+		// every entry, so a view told about the message afterwards would show it twice.
 		this.host.emit({ type: "message_start", message: appMessage });
 		this.host.emit({ type: "message_end", message: appMessage });
+		this.host.refreshContext();
 	}
 
 	/**

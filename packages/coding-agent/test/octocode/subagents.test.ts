@@ -7,7 +7,7 @@ import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src
 import { teamTask } from "../../src/octocode/instructions/task.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { LOCAL_RESEARCH_TOOLS } from "../../src/octocode/shared/octocode-tools.ts";
+import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
@@ -222,7 +222,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,file,agent,archive,tool_search,mcp,mcp__*",
+			tools: "read,grep,file,agent,archive,skill,tool_search,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -241,7 +241,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,file,agent,archive,tool_search,mcp,mcp__*",
+			"read,grep,file,agent,archive,skill,tool_search,mcp,mcp__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -298,7 +298,9 @@ describe("subagents", () => {
 			"-e",
 			"builtin:tool-search",
 			"--tools",
-			["file", "agent", "archive", "tool_search", "mcp", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
+			["file", "agent", "archive", "skill", "tool_search", "mcp", ...LOCAL_RESEARCH_TOOLS]
+				.map((name) => `+${name}`)
+				.join(","),
 			"--exclude-tools",
 			"browser,bash",
 		]);

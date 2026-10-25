@@ -8,9 +8,18 @@ describe("CLI value completion", () => {
 		expect(completeCli(["--tui-mode", ""])).toEqual(["fullscreen", "regular"]);
 		expect(completeCli(["--tools", "read,ba"])).toContain("read,bash");
 	});
+	it("completes every reviewed native tool and the built-in MCP tools", async () => {
+		const { default: octocode } = await import("../src/octocode/index.ts");
+		const { fakePi } = await import("./octocode/fake-pi.ts");
+		const fake = fakePi();
+		octocode(fake.pi);
+		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp", "tool_search"]));
+		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual(["file,browser"]);
+	});
 	it("follows nested commands and does not suggest flags in free text or after --", () => {
 		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["auto", "deferred", "direct", "hidden"]);
 		expect(completeCli(["auth", ""])).toContain("check");
+		expect(completeCli(["models", ""])).toContain("discover");
 		expect(completeCli(["--api-key", ""])).toEqual([]);
 		expect(completeCli(["--", "--"])).toEqual([]);
 		expect(completeCli(["--mode", "text", "--th"])).toEqual(["--thinking", "--theme"]);

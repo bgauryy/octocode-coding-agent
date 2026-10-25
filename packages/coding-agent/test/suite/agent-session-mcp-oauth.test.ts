@@ -7,10 +7,10 @@ import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryAuthStorageBackend } from "../../src/core/auth-storage.ts";
 import { emitSessionShutdownEvent } from "../../src/core/extensions/runner.ts";
-import { runMcpCommand } from "../../src/extensions/mcp/cli.ts";
-import type { McpOAuthConfig, McpServerEntry } from "../../src/extensions/mcp/config.ts";
-import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
-import { McpOAuthCredentialStore } from "../../src/extensions/mcp/oauth.ts";
+import { runMcpCommand } from "../../../mcp/src/cli.ts";
+import type { McpOAuthConfig, McpServerEntry } from "../../../mcp/src/config.ts";
+import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { McpOAuthCredentialStore } from "../../../mcp/src/oauth.ts";
 import { createHarness, createTestUiContext, getMessageText, type Harness } from "./harness.ts";
 import { startOAuthMcpServer } from "./mcp-oauth-server.ts";
 

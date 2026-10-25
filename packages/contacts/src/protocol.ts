@@ -12,8 +12,56 @@ export const WORKSPACE_ROUTES = {
 	backlogs: "/api/backlogs",
 	workspace: "/api/workspace",
 	audit: "/api/audit",
+	reports: "/api/reports",
 	live: "/api/backlogs/live",
 } as const;
+
+/** Workspace report folders under `.octocode/`, mapped to their report kind. */
+export const REPORT_SOURCE_DIRS = {
+	"octocode-rfc-generator": "rfc",
+	"octocode-research": "research",
+	"octocode-brainstorming": "brainstorm",
+} as const;
+export const REPORT_KINDS = ["rfc", "research", "brainstorm"] as const;
+
+export const ReportFileSummarySchema = Type.Object(
+	{
+		name: Type.String({ minLength: 1, maxLength: 128 }),
+		bytes: Type.Integer({ minimum: 0 }),
+	},
+	{ additionalProperties: false },
+);
+
+/** One saved report folder: its id is the folder name, its files are the Markdown documents inside it. */
+export const ReportSummarySchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1, maxLength: 128 }),
+		kind: StringEnum(REPORT_KINDS),
+		title: Type.String({ maxLength: 300 }),
+		status: Type.Optional(Type.String({ maxLength: 40 })),
+		confidence: Type.Optional(Type.String({ maxLength: 20 })),
+		question: Type.Optional(Type.String({ maxLength: 2000 })),
+		updated: Type.String({ minLength: 4, maxLength: 64 }),
+		files: Type.Array(ReportFileSummarySchema, { maxItems: 32 }),
+	},
+	{ additionalProperties: false },
+);
+
+export const ReportsIndexSchema = Type.Object(
+	{ reports: Type.Array(ReportSummarySchema, { maxItems: 200 }) },
+	{ additionalProperties: false },
+);
+
+/** One Markdown file of a report; the host only serves files listed in the report's own index entry. */
+export const ReportFileSchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1, maxLength: 128 }),
+		kind: StringEnum(REPORT_KINDS),
+		file: Type.String({ minLength: 1, maxLength: 128 }),
+		markdown: Type.String({ maxLength: 524288 }),
+	},
+	{ additionalProperties: false },
+);
 
 export const WorkspaceCommandSchema = Type.Object(
 	{
@@ -48,6 +96,10 @@ export const BacklogMutationSchema = Type.Object(
 );
 
 export type BacklogMutation = Static<typeof BacklogMutationSchema>;
+export type ReportFileSummary = Static<typeof ReportFileSummarySchema>;
+export type ReportSummary = Static<typeof ReportSummarySchema>;
+export type ReportsIndex = Static<typeof ReportsIndexSchema>;
+export type ReportFile = Static<typeof ReportFileSchema>;
 export type WorkspaceServerEvent =
 	| { type: "snapshot"; data: Snapshot }
 	| { type: "workspace"; data: WorkspaceSnapshot };

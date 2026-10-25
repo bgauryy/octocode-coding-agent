@@ -2,11 +2,10 @@ import type { ExtensionAPI } from "../core/extensions/index.ts";
 import type { Skill } from "../core/skills.ts";
 import { octocodePromptSections } from "./instructions/policy.ts";
 import { readRolePrompt } from "./instructions/role.ts";
-import type { OctocodeMcp } from "./mcp/octocode.ts";
+import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { envFlag, READ_ONLY_ENV } from "./shared/env.ts";
 import { promptRootsFromEnv, rebasePath } from "./shared/prompt-root.ts";
-import { visibleControls } from "./shared/sanitize.ts";
-import { isOctocodeTool } from "./shared/octocode-tools.ts";
+import { isOctocodeTool, OCTOCODE_SERVER, OCTOCODE_TOOL_PREFIX } from "../../../mcp/src/presets/octocode/names.ts";
 import { type AgentProfile, profileSelectsTool } from "./subagents/profiles.ts";
 import { AGENT_COLLABORATE_ENV } from "./team/store/env.ts";
 
@@ -16,7 +15,6 @@ export function registerTurnSetup(
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
-		octocode: Pick<OctocodeMcp, "owner" | "ready" | "instructions">;
 	},
 ): { reset(): void } {
 	let prompt: Record<string, string> | undefined;
@@ -25,33 +23,25 @@ export function registerTurnSetup(
 	const readOnlyRole = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 
-	pi.on("before_agent_start", async (event, ctx) => {
+	pi.on("before_agent_start", async (event) => {
 		const selected = event.systemPromptOptions.selectedTools ?? pi.getActiveTools();
-		// Connecting may register tools after the core took its snapshot. Only those new tools extend it;
-		// a connected server must not undo an explicit tool deselection on a later turn.
-		const before = new Set(pi.getActiveTools());
-		const owner = options.octocode.owner(ctx);
-		if (owner.by === "extension") await options.octocode.ready(ctx);
-		const available = [...selected, ...pi.getActiveTools().filter((name) => !before.has(name))];
+		const server = getMcpSessionStatus(pi.events).find((server) => server.name === OCTOCODE_SERVER);
 		// Deferred tools are reachable through discovery even before a tool is loaded.
-		const indirect = available.includes("tool_search")
+		const indirect = selected.includes("tool_search")
 			? pi
 					.getAllTools()
-					.filter((tool) => isOctocodeTool(tool.name) && !available.includes(tool.name) && tool.exposure === "deferred")
+					.filter((tool) => isOctocodeTool(tool.name) && !selected.includes(tool.name) && tool.exposure === "deferred")
 			: [];
 		// A server from the user's mcp.json may still be connecting when the prompt is built; the prompt says how to recover
 		// when a tool turns out to be missing, so an enabled configured server counts as reachable (and the prompt stays cached).
 		const octocode =
-			available.some(isOctocodeTool) ||
+			selected.some(isOctocodeTool) ||
 			indirect.length > 0 ||
-			(owner.by === "user" && owner.enabled && canReachMcp(available));
-		const instructions = octocode ? (options.octocode.instructions ?? octocodeNamespaceInstructions(pi)) : undefined;
-		// Every deferred Octocode tool, loaded or not, so loading one does not change the section.
-		const deferredTools = available.includes("tool_search")
-			? pi
-					.getAllTools()
-					.filter((tool) => isOctocodeTool(tool.name) && tool.exposure === "deferred")
-					.map((tool) => tool.name.replace(/^mcp__octocode__/, ""))
+			(server?.enabled === true && !["failed", "stopped", "disabled"].includes(server.state) && canReachMcp(selected));
+		// Every Octocode tool this agent can call, declared or deferred: loading a deferred tool does not change the set.
+		const octocodeTools = octocode
+			? [...new Set([...selected.filter(isOctocodeTool), ...indirect.map((tool) => tool.name)])]
+					.map((name) => name.slice(OCTOCODE_TOOL_PREFIX.length))
 					.sort()
 			: [];
 		// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
@@ -72,9 +62,8 @@ export function registerTurnSetup(
 			canShell: selected.includes("bash") || selected.includes("powershell"),
 			canWeb: selected.includes("web"),
 			// Availability follows the connected servers; a global MCP opt-out still applies.
-			canMcp: available.some((name) => name.startsWith("mcp__") || name === "mcp" || name === "tool_search"),
-			...(octocode && instructions ? { octocodeInstructions: instructions } : {}),
-			...(octocode && deferredTools.length > 0 ? { octocodeDeferredTools: deferredTools } : {}),
+			canMcp: selected.some((name) => name.startsWith("mcp__") || name === "mcp" || name === "tool_search"),
+			...(octocode && octocodeTools.length > 0 ? { octocodeTools } : {}),
 			// Subagent-only, and the same for every child of one run mode: nothing per-child may enter the prompt.
 			...(options.isSubagent && envFlag(process.env, AGENT_COLLABORATE_ENV) ? { collaborate: true } : {}),
 		};
@@ -112,15 +101,8 @@ export function registerTurnSetup(
 }
 
 /** Whether this session can reach MCP tools at all: declared, through discovery or from scripts. */
-const canReachMcp = (available: readonly string[]): boolean =>
-	available.some((name) => name.startsWith("mcp__") || name === "tool_search");
-
-/** The server instructions an Octocode server from the user's mcp.json gave its tools' namespace, if any. */
-function octocodeNamespaceInstructions(pi: Pick<ExtensionAPI, "getAllTools">): string | undefined {
-	const text = pi.getAllTools().find((tool) => isOctocodeTool(tool.name) && tool.namespace?.instructions)
-		?.namespace?.instructions;
-	return text ? visibleControls(text).trim() || undefined : undefined;
-}
+const canReachMcp = (selected: readonly string[]): boolean =>
+	selected.some((name) => name.startsWith("mcp__") || name === "tool_search");
 
 /** Copy the skill metadata so child prompt preparation cannot mutate the loader's catalog. */
 export function childSkills(skills: readonly Skill[]): Skill[] {

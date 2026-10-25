@@ -79,7 +79,7 @@ it("edits an unchanged LF anchor inside a stale CRLF file without overwriting th
 				{
 					type: "edit",
 					path: "a.txt",
-					reasoning: "fix anchor",
+					reason: "fix anchor",
 					edits: [{ oldText: "one\ntwo", newText: "one\nsecond" }],
 				},
 			],

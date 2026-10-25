@@ -76,7 +76,13 @@ export async function workspaceServerFixture() {
 		tell: async () => ({}),
 		stop: () => undefined,
 	});
-	const backlog = { store, actor: { id: session.sessionId }, session: session.sessionId, repoName: "repo" };
+	const backlog = {
+		store,
+		actor: { id: session.sessionId },
+		session: session.sessionId,
+		repoName: "repo",
+		repoRoot: directory,
+	};
 	const workspace = runtime.bind(ctx, backlog);
 	const changed = vi.fn();
 	let server!: http.Server;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ToolAnnotations, ToolCallEvent } from "../../src/core/extensions/index.ts";
+import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
 import { archiveFolder } from "../../src/octocode/shared/archive.ts";
@@ -14,12 +14,6 @@ import { runsLater } from "../../src/octocode/permission/file-access.ts";
 
 const call = (toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}) =>
 	({ type: "tool_call", toolCallId: "t1", toolName, input, ...extra }) as ToolCallEvent;
-const hints: Record<string, ToolAnnotations> = {
-	mcp__octocode__localSearch: { readOnlyHint: true },
-	mcp__docs__write_page: { readOnlyHint: false },
-	mcp__db__drop: { destructiveHint: true },
-};
-const annotations = (name: string) => hints[name];
 
 function setup(
 	mode: "manual" | "workspace" | "full",
@@ -47,7 +41,6 @@ function setup(
 	const gate = permissionGate({
 		permission,
 		provenance,
-		annotations,
 		powershell: options.powershell ?? (async () => false),
 	});
 	return { cwd, ctx, gate, asked, fake };
@@ -58,7 +51,7 @@ describe("action classes of tool calls", () => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const ctx = { cwd };
-		const of = (event: ToolCallEvent) => classify(event, ctx, annotations)?.action;
+		const of = (event: ToolCallEvent) => classify(event, ctx)?.action;
 		expect(of(call("bash", { command: "npm test" }))).toBe("shell");
 		expect(of(call("powershell", { command: "Get-ChildItem" }))).toBe("shell");
 		expect(of(call("edit", { path: "src/a.ts", edits: [] }))).toBe("file.workspace");
@@ -81,10 +74,10 @@ describe("action classes of tool calls", () => {
 		expect(of(call("browser", { action: "attach", port: 9222 }))).toBe("browser.control");
 		expect(of(call("browser", { action: "fill", fields: [] }))).toBe("browser");
 		expect(of(call("browser", { action: "snapshot" }))).toBeUndefined();
-		expect(of(call("mcp__octocode__localSearch", {}))).toBeUndefined();
+		expect(of(call("mcp__octocode__localSearch", {}))).toBe("mcp.write");
 		expect(of(call("mcp__docs__write_page", {}))).toBe("mcp.write");
 		expect(of(call("mcp__unknown__thing", {}))).toBe("mcp.write");
-		expect(of(call("mcp__db__drop", {}))).toBe("mcp.destructive");
+		expect(of(call("mcp__db__drop", {}))).toBe("mcp.write");
 		// Octocode's own tools check inside their execute (file review, memory, spawn) or never ask.
 		for (const name of ["file", "memory", "agent", "askUser", "backlog", "coordinate", "sendMessage"])
 			expect(of(call(name, {})), name).toBeUndefined();
@@ -92,25 +85,47 @@ describe("action classes of tool calls", () => {
 
 	it("offers a session grant only for what it can name exactly", () => {
 		const ctx = { cwd: tmp() };
-		const grant = classify(call("bash", { command: "npm test" }), ctx, annotations)?.grant;
+		const grant = classify(call("bash", { command: "npm test" }), ctx)?.grant;
 		expect(grant?.label).toContain("`npm test`");
-		expect(classify(call("bash", { command: "npm test" }), { cwd: tmp() }, annotations)?.grant?.key).not.toBe(
-			grant?.key,
-		);
-		expect(classify(call("powershell", { command: "npm test" }), ctx, annotations)?.grant?.key).not.toBe(grant?.key);
-		expect(classify(call("bash", { command: "npm test && rm -rf dist" }), ctx, annotations)?.grant).toBeUndefined();
-		expect(classify(call("web", { query: "pi agent" }), ctx, annotations)?.grant).toEqual({
+		expect(classify(call("bash", { command: "npm test" }), { cwd: tmp() })?.grant?.key).not.toBe(grant?.key);
+		expect(classify(call("powershell", { command: "npm test" }), ctx)?.grant?.key).not.toBe(grant?.key);
+		expect(classify(call("bash", { command: "npm test && rm -rf dist" }), ctx)?.grant).toBeUndefined();
+		expect(classify(call("web", { query: "pi agent" }), ctx)?.grant).toEqual({
 			key: "search",
 			label: "web searches",
 		});
-		expect(classify(call("bash", { command: "rm -rf ~" }), ctx, annotations)?.grant).toBeUndefined();
-		expect(classify(call("mcp__docs__write_page", {}), ctx, annotations)?.grant?.key).toBe("mcp__docs__write_page");
+		expect(classify(call("bash", { command: "rm -rf ~" }), ctx)?.grant).toBeUndefined();
+		expect(classify(call("mcp__docs__write_page", {}), ctx)?.grant?.key).toBe("mcp__docs__write_page");
 	});
 
 	it("labels a call a codemode script issued", () => {
-		expect(
-			classify(call("bash", { command: "ls" }, { parentToolCallId: "p1" }), { cwd: tmp() }, annotations)?.nested,
-		).toBe(true);
+		expect(classify(call("bash", { command: "ls" }, { parentToolCallId: "p1" }), { cwd: tmp() })?.nested).toBe(true);
+	});
+});
+
+describe("the purpose from a call's reason", () => {
+	it("is the request's purpose for a native tool, and only for one", () => {
+		const ctx = { cwd: tmp() };
+		const input = { command: "npm test", reason: "check the fix" };
+		expect(classify(call("bash", input), ctx)?.purpose).toBe("check the fix");
+		expect(classify(call("bash", { command: "npm test" }), ctx)?.purpose).toBeUndefined();
+		expect(classify(call("bash", { command: "ls", reason: "   " }), ctx)?.purpose).toBeUndefined();
+		// A tool outside the native set (an MCP server, an extension) may use `reason` for something else.
+		expect(classify(call("mcp__docs__write_page", { reason: "x" }), ctx)?.purpose).toBeUndefined();
+	});
+
+	it("shows in the ask ahead of the assistant's sentence", async () => {
+		const manual = setup("manual", { selects: ["Deny"] });
+		await manual.gate(call("bash", { command: "ls", reason: "list the folder" }), manual.ctx);
+		expect(manual.asked[0]).toContain("agent says (unverified): list the folder");
+	});
+
+	it("is recorded in the audit of a call that asked for nothing", async () => {
+		const full = setup("full");
+		await full.gate(call("bash", { command: "ls", reason: "list the folder" }), full.ctx);
+		expect(full.fake.entries.map((entry) => entry.data)).toContainEqual(
+			expect.objectContaining({ action: "shell", purpose: "list the folder" }),
+		);
 	});
 });
 
@@ -131,10 +146,10 @@ describe("permission gate", () => {
 		const cwd = path.join(home, "proj");
 		fs.mkdirSync(cwd);
 		for (const command of ["rm -rf ..", "cd ~ && rm -rf ./", "chmod -R 000 /", "> /dev/sda", "rm /etc/hosts"]) {
-			expect(classify(call("bash", { command }), { cwd }, annotations)?.action, command).toBe("shell.destructive");
+			expect(classify(call("bash", { command }), { cwd })?.action, command).toBe("shell.destructive");
 		}
-		expect(classify(call("bash", { command: "rm -rf ./dist" }), { cwd }, annotations)?.action).toBe("shell");
-		expect(classify(call("bash", { command: "rm -rf *" }), { cwd }, annotations)?.action).toBe("shell");
+		expect(classify(call("bash", { command: "rm -rf ./dist" }), { cwd })?.action).toBe("shell");
+		expect(classify(call("bash", { command: "rm -rf *" }), { cwd })?.action).toBe("shell");
 	});
 
 	it("classifies a PowerShell command as shell.destructive when the helper flags it or cannot parse it, else shell", async () => {
@@ -189,13 +204,9 @@ describe("permission gate", () => {
 		const cwd = path.join(home, "proj");
 		fs.mkdirSync(cwd);
 		for (const file of [path.join(home, ".zshrc"), path.join(home, ".ssh", "config")]) {
-			expect(classify(call("write", { path: file, content: "x" }), { cwd }, annotations)?.action, file).toBe(
-				"file.outside",
-			);
+			expect(classify(call("write", { path: file, content: "x" }), { cwd })?.action, file).toBe("file.outside");
 		}
-		expect(classify(call("write", { path: "src/app.ts", content: "x" }), { cwd }, annotations)?.action).toBe(
-			"file.workspace",
-		);
+		expect(classify(call("write", { path: "src/app.ts", content: "x" }), { cwd })?.action).toBe("file.workspace");
 		const root = "/repo";
 		for (const file of [
 			"sub/.git/hooks/pre-commit",
@@ -329,12 +340,15 @@ describe("permission gate", () => {
 		]);
 	});
 
-	it("allows read-only MCP in manual and asks for destructive MCP in workspace", async () => {
-		const manual = setup("manual");
-		expect(await manual.gate(call("mcp__octocode__localSearch", { queries: [] }), manual.ctx)).toBeUndefined();
+	it("asks for MCP in manual and uses ordinary MCP policy in workspace", async () => {
+		const manual = setup("manual", { selects: ["Deny"] });
+		expect(await manual.gate(call("mcp__octocode__localSearch", { queries: [] }), manual.ctx)).toMatchObject({
+			block: true,
+		});
+		expect(manual.asked[0]).toContain("mcp__octocode__localSearch");
 		const workspace = setup("workspace", { selects: ["Allow once"] });
 		expect(await workspace.gate(call("mcp__db__drop", { table: "users" }), workspace.ctx)).toBeUndefined();
-		expect(workspace.asked[0]).toContain("mcp__db__drop");
+		expect(workspace.asked).toEqual([]);
 	});
 
 	it("asks only once when the user already allowed the call for its provenance", async () => {
@@ -373,9 +387,9 @@ describe("permission gate", () => {
 		await manual.gate(call("read", { path: "/etc/hosts" }), manual.ctx);
 		expect(manual.asked).toHaveLength(3);
 		vi.stubEnv(PARENT_SESSION_ENV, "..");
-		expect(
-			classify(call("read", { path: path.join(parent, "LIBRARY.md") }), { cwd: manual.cwd }, annotations)?.action,
-		).toBe("read.outside");
+		expect(classify(call("read", { path: path.join(parent, "LIBRARY.md") }), { cwd: manual.cwd })?.action).toBe(
+			"read.outside",
+		);
 		vi.unstubAllEnvs();
 	});
 
@@ -400,7 +414,7 @@ describe("permission gate", () => {
 		const home = tmp();
 		vi.stubEnv("HOME", home);
 		fs.mkdirSync(path.join(home, "proj"));
-		const of = (event: ToolCallEvent, cwd = home) => classify(event, { cwd }, annotations)?.action;
+		const of = (event: ToolCallEvent, cwd = home) => classify(event, { cwd })?.action;
 		expect(of(call("write", { path: "notes.txt", content: "x" }))).toBe("file.outside");
 		expect(of(call("edit", { path: path.join(home, ".zshrc"), edits: [] }))).toBe("file.outside");
 		expect(of(call("read", { path: path.join(home, ".ssh", "id_rsa") }))).toBe("read.outside");
@@ -416,7 +430,6 @@ describe("permission gate", () => {
 			const gate = permissionGate({
 				permission,
 				provenance: { check: () => undefined },
-				annotations,
 				powershell: async () => false,
 			});
 			return gate(call("write", { path: "notes.txt", content: "x" }), ctx);
@@ -425,10 +438,7 @@ describe("permission gate", () => {
 		expect(await run("full")).toBeUndefined();
 	});
 
-	it("does not let a read-only hint override a destructive MCP hint", () => {
-		expect(
-			classify(call("mcp__db__drop", {}), { cwd: tmp() }, () => ({ readOnlyHint: true, destructiveHint: true }))
-				?.action,
-		).toBe("mcp.destructive");
+	it("does not infer permissions from MCP tool names", () => {
+		expect(classify(call("mcp__db__drop", {}), { cwd: tmp() })?.action).toBe("mcp.write");
 	});
 });

@@ -285,7 +285,7 @@ describe("across processes", () => {
 	const stores: TeamStore[] = [];
 	// Node runs the TypeScript worker directly; the source resolver maps workspace packages to their sources.
 	const worker = path.join(import.meta.dirname, "fixtures", "team-mail-worker.ts");
-	const sourceResolver = path.join(import.meta.dirname, "..", "..", "src", "experimental", "source-resolver.ts");
+	const sourceResolver = path.join(import.meta.dirname, "..", "..", "scripts", "source-resolver.ts");
 	afterEach(() => {
 		for (const child of children.splice(0)) child.kill("SIGKILL");
 		for (const team of teams.splice(0)) team.stop();

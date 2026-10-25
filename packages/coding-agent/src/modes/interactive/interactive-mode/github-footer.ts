@@ -1,5 +1,5 @@
 import type { FooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { type GithubStatus, runGithubAuth } from "../../../octocode/mcp/octocode/github-auth.ts";
+import { type GithubStatus, runGithubAuth } from "../../../../../mcp/src/presets/octocode/github-auth.ts";
 import { theme } from "../theme/theme.ts";
 
 type Host = {

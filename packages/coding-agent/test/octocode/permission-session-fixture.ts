@@ -4,6 +4,7 @@ import { createFauxCore, type JsonObject, fauxAssistantMessage, fauxToolCall } f
 import { vi } from "vitest";
 import { Type } from "typebox";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
+import { isNativeTool } from "../../src/octocode/permission/native-tools.ts";
 import { saveDecision } from "../../src/octocode/shared/trust.ts";
 import { createReadTool } from "../fixtures/read-tool.ts";
 import { createWriteTool } from "../fixtures/write-tool.ts";
@@ -185,7 +186,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 													type: "write",
 													path: path.join(cwd, name),
 													content: name + "\n",
-													reasoning: "Nested acceptance fixture",
+													reason: "Nested acceptance fixture",
 												},
 											],
 										}),
@@ -207,6 +208,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 									const outcomes = await Promise.all(
 										["a", "b"].map((name) =>
 											ctx.executeTool("bash", {
+												reason: "Run the owned acceptance command",
 												command: `printf ORIGINAL_${name} > original-${name}.txt`,
 											}),
 										),
@@ -304,7 +306,10 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 			faux.setResponses([
 				() => {
 					providerRequests++;
-					return fauxAssistantMessage([fauxToolCall(tool, args)], {
+					// Native tools require a `reason`; a fixture that names none states the fixture's own.
+					const called =
+						isNativeTool(tool) && args.reason === undefined ? { ...args, reason: "Permission fixture" } : args;
+					return fauxAssistantMessage([fauxToolCall(tool, called)], {
 						stopReason: "toolUse",
 					});
 				},

@@ -7,7 +7,7 @@ import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AutocompleteProviderFactory } from "../src/core/extensions/types.ts";
 import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
-import { setMcpSessionStatus } from "../src/extensions/mcp/status.ts";
+import { setMcpSessionStatus } from "../../mcp/src/status.ts";
 import type { QuietStartup } from "../src/core/settings-manager.ts";
 import type { SourceInfo } from "../src/core/source-info.ts";
 import type { AuthSelectorProvider } from "../src/modes/interactive/components/oauth-selector.ts";
@@ -858,8 +858,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			toolCount: 0,
 			source: "built-in Octocode",
 		};
-		setMcpSessionStatus(events, "native", [server]);
-		setMcpSessionStatus(events, "configured", [{ ...server, name: "docs", enabled: false }]);
+		setMcpSessionStatus(events, [server, { ...server, name: "docs", enabled: false }]);
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
 			events,
@@ -873,7 +872,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(initial.indexOf("[Skills]")).toBeLessThan(initial.indexOf("[MCPs]"));
 		expect(initial).toContain("octocode: connecting");
 		expect(initial).toContain("docs: disabled");
-		setMcpSessionStatus(events, "native", [{ ...server, state: "connected", toolCount: 9 }]);
+		setMcpSessionStatus(events, [
+			{ ...server, state: "connected", toolCount: 9 },
+			{ ...server, name: "docs", enabled: false },
+		]);
 		const connected = render();
 		expect(connected).toContain("octocode: connected");
 		expect(connected).not.toContain("connecting");

@@ -1,3 +1,4 @@
+import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
@@ -87,6 +88,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				if (nextParams !== undefined) {
 					params = { ...(nextParams as MessageCreateParamsStreaming), stream: true };
 				}
+				assertImageRequestPayload(model, params);
 				try {
 					response = await retryProviderRequest(
 						() => client.beta.messages.create(params, requestOptions).asResponse(),

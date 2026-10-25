@@ -11,7 +11,7 @@ import { resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../shared/sanitize.ts";
 import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
-import { EDIT_RETENTION_MINUTES } from "./edits.ts";
+import { EDIT_RETENTION_MINUTES, unjoinedAgent } from "./edits.ts";
 import { lockAdvice } from "./lock-advice.ts";
 import { plural } from "../shared/render/text.ts";
 import { timedTool, timingOf } from "../shared/render/rows.ts";
@@ -53,12 +53,14 @@ export function registerCollab(
 		registerTool?: ExtensionAPI["registerTool"];
 		/** The paths a bash command writes, as far as a parse can name them (wired by `index.ts` from the permission layer). */
 		shellWrites?: (command: string) => Promise<string[]>;
+		/** The paths a bash command that ran wrote, only those the parse names (not the guesses `shellWrites` also checks); recorded as changes. */
+		shellChanges?: (command: string) => Promise<string[]>;
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(pi);
 	registerCoordinateTool(pi, team, options.stopAgent, options.registerTool);
 	registerSendMessageTool(pi, team, options.registerTool);
-	registerTeamEvents(pi, team, options.beforeLeave);
+	registerTeamEvents(pi, team, options.beforeLeave, options.shellChanges);
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
@@ -229,7 +231,12 @@ function registerCoordinateTool(
 	);
 }
 
-function registerTeamEvents(pi: ExtensionAPI, team: Team, beforeLeave?: (reason: string) => Promise<unknown>): void {
+function registerTeamEvents(
+	pi: ExtensionAPI,
+	team: Team,
+	beforeLeave?: (reason: string) => Promise<unknown>,
+	shellChanges?: (command: string) => Promise<string[]>,
+): void {
 	pi.on("session_start", async (_event, ctx) => team.start(ctx));
 	pi.on("session_shutdown", async (event) => {
 		try {
@@ -260,17 +267,33 @@ function registerTeamEvents(pi: ExtensionAPI, team: Team, beforeLeave?: (reason:
 		return undefined;
 	});
 	// Who changed which file, for `coordinate changes`: Octocode's edit/write by their arguments, `file` by its outcomes (a
-	// batch can partly fail). Arguments are only on the start event, so they wait here for the end.
+	// batch can partly fail), `bash` by the paths its parse names. Arguments are only on the start event, so they wait here
+	// for the end; a blocked or failed call ends as an error and records nothing.
 	const pending = new Map<string, string[]>();
+	const commands = new Map<string, string>();
 	pi.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) team.onToolStart();
 		if (event.toolName === "edit" || event.toolName === "write")
 			pending.set(event.toolCallId, mutatedPaths(event.toolName, event.args));
+		else if (event.toolName === "bash" && shellChanges && isRecord(event.args) && event.args.type !== "powershell") {
+			const command = optionalString(event.args.command);
+			if (command !== undefined) commands.set(event.toolCallId, command);
+		}
 	});
 	pi.on("tool_execution_end", async (event, ctx) => {
 		const args = pending.get(event.toolCallId);
 		pending.delete(event.toolCallId);
+		const command = commands.get(event.toolCallId);
+		commands.delete(event.toolCallId);
 		if (event.isError) return;
+		let written: string[] = [];
+		if (command !== undefined) {
+			try {
+				written = (await shellChanges?.(command)) ?? [];
+			} catch {
+				// A command the parse cannot read records nothing.
+			}
+		}
 		const outcomes =
 			event.toolName === "file" && isRecord(event.result) && isRecord(event.result.details)
 				? event.result.details.outcomes
@@ -279,11 +302,11 @@ function registerTeamEvents(pi: ExtensionAPI, team: Team, beforeLeave?: (reason:
 			? outcomes.flatMap((outcome) =>
 					isRecord(outcome) && outcome.ok === true && typeof outcome.path === "string" ? [outcome.path] : [],
 				)
-			: (args ?? []);
+			: [...(args ?? []), ...written];
 		if (files.length === 0) return;
 		try {
 			team.editLog()?.record(
-				team.id ?? `pid ${process.pid}`,
+				team.id ?? unjoinedAgent(),
 				event.toolName,
 				files.map((file) => resolveToolPath(ctx.cwd, file)),
 			);

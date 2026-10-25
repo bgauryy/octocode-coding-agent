@@ -6,7 +6,7 @@ import { canonicalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { atomicWriteFileSync } from "../utils/atomic-file.ts";
 import { lockSyncWithRetry } from "../utils/file-write-lock.ts";
-import { projectMcpConfigPaths } from "./mcp-config-paths.ts";
+import { projectMcpConfigPaths } from "../../../mcp/src/paths.ts";
 import { errorMessage } from "../utils/guards.ts";
 
 export type ProjectTrustDecision = boolean | null;

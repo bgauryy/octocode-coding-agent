@@ -215,24 +215,19 @@ export async function init(host: StartupHost): Promise<void> {
 	}
 	host.ui.requestRender();
 
-	// Ensure fd and rg are available after mounting the TUI (downloads if missing, adds to PATH via getBinDir)
-	// so slow downloads do not make startup appear frozen.
-	// Both are needed: fd for autocomplete, rg for grep tool and bash commands.
-	const [fdPath] = await Promise.all([
+	// Ensure fd and rg after mounting the TUI (downloads if missing, adds to PATH via getBinDir). Extension startup is
+	// independent, so run it concurrently rather than adding its latency to a slow first download.
+	const managedTools = Promise.all([
 		ensureTool("fd", (status) => host.showManagedToolStatus(status)),
 		ensureTool("rg", (status) => host.showManagedToolStatus(status)),
 	]);
+	const [, [fdPath]] = await Promise.all([host.rebindCurrentSession(), managedTools]);
 	host.fdPath = fdPath;
 
-	// Enable the remaining input handlers only after managed-tool setup completes.
+	// Enable remaining input only after both independent setup paths complete, and keep resources before messages.
 	host.setupKeyHandlers();
 	host.setupEditorSubmitHandler();
 	host.ui.requestRender();
-
-	// Initialize extensions first so resources are shown before messages
-	await host.rebindCurrentSession();
-
-	// Render initial messages AFTER showing loaded resources
 	host.renderInitialMessages();
 
 	// Set up theme file watcher

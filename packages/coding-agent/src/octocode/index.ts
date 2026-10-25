@@ -1,3 +1,4 @@
+import { registerGraphTools } from "./graph/register.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
@@ -12,7 +13,8 @@ import { getApplicationPortForSession } from "../core/application/index.ts";
 import { startWorkspaceWeb } from "./workspace/server.ts";
 import { WorkspaceRuntime } from "./workspace/runtime.ts";
 import type { ExtensionAPI, ExtensionContext } from "../core/extensions/index.ts";
-import { registerMcpReconnect } from "../extensions/mcp/status.ts";
+import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../mcp/src/status.ts";
+import { OCTOCODE_SERVER } from "../../../mcp/src/presets/octocode/names.ts";
 import { agentModes, agentOperation } from "./agent-tool.ts";
 import { registerApi } from "./api/register.ts";
 import { registerAskUser } from "./ask/tool.ts";
@@ -33,7 +35,6 @@ import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
 import { registerFileTool } from "./files/tool.ts";
 import { registerHooks, registerHooksCommand } from "./hooks/register.ts";
-import { reconnectOctocodeMcp, registerOctocodeMcp } from "./mcp/octocode.ts";
 import { registerMemory } from "./memory/register.ts";
 import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { Permission } from "./permission/ask.ts";
@@ -41,7 +42,7 @@ import { registerPermissionCommand } from "./permission/command.ts";
 import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
-import { shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
+import { reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerSessions } from "./sessions/register.ts";
 import { notify, Subcommands } from "./shared/commands.ts";
@@ -51,8 +52,8 @@ import { interactive } from "./shared/interactive.ts";
 import { withDialog } from "./shared/locks.ts";
 import { EXTERNAL_SENDER, type MessageEnvelope } from "./shared/messages.ts";
 import { projectTrust, registerTrustCommand } from "./shared/trust.ts";
-import { firstLine } from "./shared/util.ts";
 import { registerSkills } from "./skills.ts";
+import { registerSkillTool } from "./skill/tool.ts";
 import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
@@ -71,9 +72,7 @@ import { registerNotify } from "./ui/notify.ts";
 import { registerWebTool } from "./web/web.ts";
 
 /**
- * Native Octocode features build on the core tools, skills, sessions, MCP and compaction: guarded file edits, the
- * Octocode MCP server (its own MCP client), subagents, web and browser tools, askUser and a focused prompt.
- *
+ * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
  * Cross-cutting runtime policy is composed here, in an order that reads top to bottom: the `tool_call` gate pipeline
  * (invariants, hooks, then the permission mode; every refusal and call is audited; no domain registers its own
  * `tool_call` handler), the hold that keeps a headless run open for its background work, and the confirmation before a
@@ -85,9 +84,8 @@ import { registerWebTool } from "./web/web.ts";
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
  *
- * Native features register direct commands; core merges shared status, model and trust views.
  */
-export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = {}): void {
+export default function octocode(pi: ExtensionAPI): void {
 	pi = withNativePermissionOwners(pi);
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
 	// First, so every feature's pi.sendMessage goes through it and its agent_settled handler runs before theirs.
@@ -98,15 +96,16 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	let profiles = new Map<string, AgentProfile>();
 	/** Why each profile file was refused at load (`loadProfiles`' `onSkip`), by file name: the `agent` tool names it for an unknown profile. */
 	let refused = new Map<string, string>();
-	const octocodeMcp = registerOctocodeMcp(pi, packageVersion(), options.mcp !== false, (unavailable) => {
-		guard.reader = unavailable ? BASH_READER : LOCAL_FETCH_READER;
-	});
-	const unregisterMcpReconnect = registerMcpReconnect(pi.events, "octocode", reconnectOctocodeMcp(octocodeMcp));
-	pi.on("session_shutdown", async () => unregisterMcpReconnect());
+	const updateReader = () => {
+		const server = getMcpSessionStatus(pi.events).find((server) => server.name === OCTOCODE_SERVER);
+		guard.reader =
+			server?.enabled && !["failed", "stopped", "disabled"].includes(server.state) ? LOCAL_FETCH_READER : BASH_READER;
+	};
+	pi.events.on(MCP_STATUS_EVENT, updateReader);
+	pi.on("session_start", updateReader);
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ pi, isSubagent, agent: () => team.id });
-	const annotations = (name: string) => pi.getAllTools().find((tool) => tool.name === name)?.annotations;
-	const provenance = createProvenance({ annotations });
+	const provenance = createProvenance();
 
 	pi.on("session_start", async (_event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
@@ -139,6 +138,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	const jobs = registerBashTool(pi, commands);
 	let agents: AgentControl | undefined;
 	let external: ExternalAgents | undefined;
+	registerGraphTools(pi);
 	const planning = registerPlanning(pi, commands, async () => {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
@@ -182,7 +182,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		agentId: () => team.id,
 		openWeb: (ctx, backlog, changed) => startWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});
-	if (!isSubagent) commands.add("web", webCommand(openWorkspace));
+	if (!isSubagent) commands.add("octocode", webCommand(openWorkspace));
 	registerMemory(pi, { commands, isSubagent, permission });
 	const skillCount = () => pi.getCommands().filter((command) => command.source === "skill").length;
 	commands.add("status", statusCommand(pi));
@@ -195,6 +195,10 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
 		shellWrites: async (command) => {
+			await shellParserReady();
+			return reservationTargets(command);
+		},
+		shellChanges: async (command) => {
 			await shellParserReady();
 			return shellMutation(command).writes;
 		},
@@ -223,7 +227,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	const activity = registerActivity(pi, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
 	// Every call a permission check lets through (full mode asks nothing) shows as a short line while its tool runs.
 	permission.onAction((event) => activity.consequential(event.action, event.what, event.warn));
-	const turn = registerTurnSetup(pi, { isSubagent, profiles: () => profiles, octocode: octocodeMcp });
+	const turn = registerTurnSetup(pi, { isSubagent, profiles: () => profiles });
 	const hooks = registerHooks(
 		pi,
 		process.env,
@@ -300,6 +304,7 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	registerCompaction(pi, guard, isSubagent);
 	registerArchiveCommand(commands);
 	registerArchiveTool(pi);
+	registerSkillTool(pi);
 	// After the file guard's `tool_result` handler (`registerFileTool`), which must digest the text a read returned.
 	registerReadDedupe(pi);
 	registerHooksCommand(commands, hooks);
@@ -365,7 +370,6 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	registerToolGates(pi, {
 		permission,
 		provenance,
-		annotations,
 		collab,
 		hooks,
 		sourcePolicy,
@@ -380,7 +384,12 @@ export default function octocode(pi: ExtensionAPI, options: { mcp?: boolean } = 
 	commands.register(pi, () =>
 		[
 			`Octocode ${packageVersion() ?? ""}`.trim(),
-			firstLine(octocodeMcp.describe()),
+			`MCP: ${
+				getMcpSessionStatus(pi.events)
+					.filter((server) => server.enabled)
+					.map((server) => `${server.name} ${server.state}`)
+					.join(", ") || "none enabled"
+			}`,
 			`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
 			`Skills: ${skillCount()}`,
 			`Hooks: ${hooks.summary()}`,

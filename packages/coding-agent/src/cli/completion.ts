@@ -3,8 +3,11 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { getBuiltinProviders, getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
-import { loadMcpConfig } from "../extensions/mcp/config.ts";
+import { loadMcpConfig } from "../../../mcp/src/config.ts";
+import { MCP_EXPOSURES, MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
 import { ProjectTrustStore } from "../core/trust-manager.ts";
+import { TOOL_SEARCH_TOOL_NAME } from "../core/tools/tool-search.ts";
+import { getNativeToolNames } from "../octocode/permission/native-tools.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { VALID_THINKING_LEVELS } from "./args.ts";
 
@@ -69,8 +72,8 @@ export const CLI_FLAGS = [
 	"--offline",
 	"--",
 ];
-const exposures = ["auto", "deferred", "direct", "hidden"];
 const commands: Record<string, readonly string[]> = {
+	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
 	mcp: ["add", "remove", "enable", "disable", "exposure", "list", "tools", "config", "login", "logout"],
 	install: [],
@@ -87,7 +90,7 @@ const values: Record<string, readonly string[]> = {
 	"--mode": ["text", "json", "rpc", "acp"],
 	"--thinking": VALID_THINKING_LEVELS,
 	"--tui-mode": ["fullscreen", "regular"],
-	"--exposure": exposures,
+	"--exposure": MCP_EXPOSURES,
 };
 const paths = new Set([
 	"--session",
@@ -125,7 +128,7 @@ const textFlags = new Set([
 	"--timeout",
 	"--min-expiry",
 ]);
-const tools = ["bash", "file", "agent", "backlog", "web", "memory"];
+const tools = [...getNativeToolNames(), MCP_MANAGE_TOOL_NAME, TOOL_SEARCH_TOOL_NAME];
 
 function fileValues(prefix: string, cwd: string): string[] {
 	const slash = prefix.lastIndexOf("/");
@@ -190,10 +193,11 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 			return [];
 		}
 	}
-	if (command === "mcp" && action === "exposure" && words.length === 4) return filter(exposures);
+	if (command === "mcp" && action === "exposure" && words.length === 4) return filter(MCP_EXPOSURES);
 	if (command && commands[command]) {
 		if (words.length === 2 && !prefix.startsWith("-")) return filter(commands[command]);
 		const flags = ["--help", "-h"];
+		if (command === "models" && action === "discover") flags.push("--provider", "--offline", "--json");
 		if (command === "auth")
 			flags.push(
 				"--provider",

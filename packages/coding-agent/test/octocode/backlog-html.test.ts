@@ -307,7 +307,7 @@ describe("/backlog html", () => {
 			open,
 			openWeb: (_ctx, backlog, changed) => startWorkspaceWeb(backlog, changed),
 		});
-		commands.add("web", webCommand(openWorkspace));
+		commands.add("octocode", webCommand(openWorkspace));
 		const cwd = path.join(tmp, "repo");
 		fs.mkdirSync(cwd, { recursive: true });
 		return {
@@ -338,19 +338,19 @@ describe("/backlog html", () => {
 		const t = setup(open);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		try {
-			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("", ctx)]);
+			await Promise.all([t.commands.get("octocode")!.handler("", ctx), t.command.handler("", ctx)]);
 			const urls = open.mock.calls.map(([url]) => new URL(url));
 			expect(urls[0].origin).toBe(urls[1].origin);
 			expect(urls.map((url) => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
 			expect(urls.every((url) => !url.search)).toBe(true);
-			await t.commands.get("web")!.handler("backlogs", ctx);
+			await t.commands.get("octocode")!.handler("backlogs", ctx);
 			expect(open.mock.calls[2][0]).toBe(urls[1].href);
-			await t.commands.get("web")!.handler("unknown", ctx);
+			await t.commands.get("octocode")!.handler("unknown", ctx);
 			expect(open).toHaveBeenCalledTimes(3);
-			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /web [backlogs]");
+			expect(ctx.ui.notes.at(-1)?.message).toBe("Usage: /octocode [backlogs]");
 			await t.fire("session_start", {}, ctx);
 			await expect(fetch(urls[0].origin)).rejects.toThrow();
-			await t.commands.get("web")!.handler("", ctx);
+			await t.commands.get("octocode")!.handler("", ctx);
 			expect(new URL(open.mock.calls[3][0]).hash).not.toBe(urls[0].hash);
 		} finally {
 			await t.fire("session_shutdown", {}, ctx);

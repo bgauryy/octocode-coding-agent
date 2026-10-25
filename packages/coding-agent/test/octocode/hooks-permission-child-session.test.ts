@@ -74,6 +74,7 @@ async function fixture(
 									function: {
 										name: "bash",
 										arguments: JSON.stringify({
+											reason: "Run the child permission fixture",
 											command: options.rules
 												? `printf EXECUTED > ${quote(effect)}; printf CHILD_PERMISSION_ALLOWED`
 												: "printf CHILD_PERMISSION_ALLOWED",

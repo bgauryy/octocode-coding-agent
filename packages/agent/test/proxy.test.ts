@@ -30,6 +30,89 @@ afterEach(() => {
 });
 
 describe("streamProxy", () => {
+	it("cancels and unlocks the response body when an event cannot be parsed", async () => {
+		const cancel = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("data: invalid-json\n\n"));
+			},
+			cancel,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(body)),
+		);
+
+		const stream = streamProxy(model, normalizeContext({ systemPrompt: "", messages: [] }), {
+			authToken: "test-token",
+			proxyUrl: "https://proxy.example.com",
+		});
+		const events: AssistantMessageEvent[] = [];
+		for await (const event of stream) events.push(event);
+
+		expect(events.map((event) => event.type)).toEqual(["error"]);
+		expect((await stream.result()).stopReason).toBe("error");
+		expect(cancel).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(body.locked).toBe(false));
+	});
+
+	it("closes the response body at a terminal event without consuming later events", async () => {
+		const cancel = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				const done = { type: "done", reason: "stop", usage };
+				const trailing = { type: "text_start", contentIndex: 0 };
+				controller.enqueue(
+					new TextEncoder().encode(`data: ${JSON.stringify(done)}\n\ndata: ${JSON.stringify(trailing)}\n\n`),
+				);
+			},
+			cancel,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(body)),
+		);
+
+		const stream = streamProxy(model, normalizeContext({ systemPrompt: "", messages: [] }), {
+			authToken: "test-token",
+			proxyUrl: "https://proxy.example.com",
+		});
+		const result = await stream.result();
+		expect(result.stopReason).toBe("stop");
+		expect(result.content).toEqual([]);
+		expect(cancel).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(body.locked).toBe(false));
+	});
+
+	it("preserves abort reporting and releases the cancelled body", async () => {
+		const controller = new AbortController();
+		const cancel = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			start(streamController) {
+				streamController.enqueue(new TextEncoder().encode('data: {"type":"start"}\n\n'));
+			},
+			cancel,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(body)),
+		);
+		const stream = streamProxy(model, normalizeContext({ systemPrompt: "", messages: [] }), {
+			authToken: "test-token",
+			proxyUrl: "https://proxy.example.com",
+			signal: controller.signal,
+		});
+		const iterator = stream[Symbol.asyncIterator]();
+		expect((await iterator.next()).value?.type).toBe("start");
+		controller.abort();
+
+		expect(await stream.result()).toMatchObject({ stopReason: "aborted", errorMessage: "Request aborted by user" });
+		expect(cancel).toHaveBeenCalledOnce();
+		expect((await iterator.next()).value?.type).toBe("error");
+		expect((await iterator.next()).done).toBe(true);
+		await vi.waitFor(() => expect(body.locked).toBe(false));
+	});
+
 	it("preserves tool-call metadata received only on toolcall_end", async () => {
 		const proxyEvents: ProxyAssistantMessageEvent[] = [
 			{ type: "start" },

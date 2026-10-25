@@ -273,17 +273,17 @@ describe("with Octocode MCP (default)", () => {
 				fauxToolCall("file", {
 					queries: [
 						{
-							reasoning: "answer is off by one",
+							reason: "answer is off by one",
 							type: "edit",
 							path: "app.ts",
 							edits: [{ oldText: "41", newText: "42" }],
 						},
-						{ reasoning: "document the constant", type: "write", path: "NOTES.md", content: "# Notes\n" },
-						{ reasoning: "replace a whole file", type: "write", path: "unread.txt", content: "replaced" },
+						{ reason: "document the constant", type: "write", path: "NOTES.md", content: "# Notes\n" },
+						{ reason: "replace a whole file", type: "write", path: "unread.txt", content: "replaced" },
 					],
 				}),
 			),
-			calls(fauxToolCall("file", { queries: [{ reasoning: "no longer needed", type: "delete", path: "NOTES.md" }] })),
+			calls(fauxToolCall("file", { queries: [{ reason: "no longer needed", type: "delete", path: "NOTES.md" }] })),
 			say("done"),
 		]);
 		const [afterRead, afterBatch, afterDelete] = turns.slice(-3);
@@ -310,7 +310,7 @@ describe("with Octocode MCP (default)", () => {
 				return fauxAssistantMessage(
 					[
 						fauxToolCall("file", {
-							queries: [{ reasoning: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "42", newText: "43" }] }],
+							queries: [{ reason: "bump", type: "edit", path: "app.ts", edits: [{ oldText: "42", newText: "43" }] }],
 						}),
 					],
 					{ stopReason: "toolUse" },
@@ -332,7 +332,7 @@ describe("with Octocode MCP (default)", () => {
 				fauxToolCall("file", {
 					queries: [
 						{
-							reasoning: "bump",
+							reason: "bump",
 							type: "edit",
 							path: "seen.ts",
 							edits: [{ oldText: "seen = 1", newText: "seen = 2" }],
@@ -439,15 +439,15 @@ describe("with another MCP server and Octocode disabled", () => {
 			calls(
 				fauxToolCall("file", {
 					queries: [
-						{ reasoning: "new", type: "write", path: "new.txt", content: "fresh" },
-						{ reasoning: "clobber", type: "write", path: "existing.txt", content: "x" },
+						{ reason: "new", type: "write", path: "new.txt", content: "fresh" },
+						{ reason: "clobber", type: "write", path: "existing.txt", content: "x" },
 					],
 				}),
 			),
 			calls(fauxToolCall("read", { path: "existing.txt" })),
 			calls(
 				fauxToolCall("file", {
-					queries: [{ reasoning: "replace", type: "write", path: "existing.txt", content: "replaced" }],
+					queries: [{ reason: "replace", type: "write", path: "existing.txt", content: "replaced" }],
 				}),
 			),
 			say("done"),
@@ -467,7 +467,7 @@ describe("with another MCP server and Octocode disabled", () => {
 			calls(fauxToolCall("read", { path: "twice.txt" })),
 			calls(
 				fauxToolCall("file", {
-					queries: [{ reasoning: "replace", type: "write", path: "twice.txt", content: "replaced" }],
+					queries: [{ reason: "replace", type: "write", path: "twice.txt", content: "replaced" }],
 				}),
 			),
 			say("done"),
@@ -560,9 +560,7 @@ describe("compaction", () => {
 		fs.writeFileSync(path.join(s.cwd, "notes.txt"), "hello\n");
 		await s.run("Please read notes.txt and create todo.txt", [
 			calls(fauxToolCall("read", { path: "notes.txt" })),
-			calls(
-				fauxToolCall("file", { queries: [{ reasoning: "create", type: "write", path: "todo.txt", content: "x" }] }),
-			),
+			calls(fauxToolCall("file", { queries: [{ reason: "create", type: "write", path: "todo.txt", content: "x" }] })),
 			say(`Done. ${"detail ".repeat(14_000)}`),
 		]);
 		await s.run("Now keep going with the plan", [say(`More work. ${"detail ".repeat(14_000)}`)]);
@@ -594,7 +592,7 @@ describe("compaction", () => {
 		const turns = await s.run("overwrite", [
 			calls(
 				fauxToolCall("file", {
-					queries: [{ reasoning: "replace", type: "write", path: "notes.txt", content: "x" }],
+					queries: [{ reason: "replace", type: "write", path: "notes.txt", content: "x" }],
 				}),
 			),
 			say("done"),

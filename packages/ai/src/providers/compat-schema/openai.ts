@@ -164,6 +164,12 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 					"vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog.",
 			}),
 		),
+		toolSchemaFlavor: Type.Optional(
+			Type.Union([Type.Literal("standard"), Type.Literal("moonshot")], {
+				description:
+					'Tool parameter schema flavor. "moonshot" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. "standard" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints.',
+			}),
+		),
 	},
 	{
 		description:

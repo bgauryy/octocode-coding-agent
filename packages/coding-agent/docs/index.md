@@ -17,6 +17,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 - [Providers](providers.md)
 - [Models](models.md)
+- [Vendor model discovery](model-discovery.md)
 - [Models configuration reference](models-configuration.md)
 - [Virtual models](virtual-models.md)
 - [Custom providers](custom-provider.md)
@@ -24,6 +25,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 ## Tools and customization
 
 - [MCP](mcp.md)
+- [Codemode migration](codemode.md)
 - [Optional native debugger](debugging.md)
 - [Extensions](extensions.md)
 - [Hooks: enablement, discovery and supported protocols](hooks.md)
@@ -36,15 +38,18 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Keybindings](keybindings.md)
 - [Terminal UI](tui.md)
 - [SDK](sdk.md)
-- [Agent Client Protocol: expose Octocode to editors](acp.md)
+- [Agent Client Protocol: expose Octocode to editors and connect to peers](acp.md)
+- [Local session API: send messages to running agents](session-api.md)
 
 ## Architecture
 
 - [Application and interface boundaries](../../../docs/INTERFACE_ARCHITECTURE.md)
+- [Agent communication and worker lifecycle](../../../docs/AGENT_COMMUNICATION.md)
 - [Native feature architecture and flows](../../../docs/FEATURES.md)
 - [Shared entities and contracts](../../../docs/ENTITIES.md)
 - [Data and presentation architecture](../../../docs/DATA_PRESENTATION.md)
 - [Browser workspace review](../../../docs/WEBVIEW_REVIEW.md)
+- [Provider protocol and authentication audit](../../../docs/PROVIDER_PROTOCOL_AUDIT.md)
 
 ## Package references
 
@@ -56,5 +61,5 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 | tui | [Terminal components and rendering](../../tui/README.md) |
 | webview | [Browser state, transport and rendering](../../webview/README.md) |
 | contacts | [Shared serializable contracts and schemas](../../contacts/README.md) |
-| mcp | [Standalone MCP client and transports](../../mcp/README.md) |
+| MCP client API | [Private MCP workspace and public client API](../../mcp/README.md) |
 | telemetry | [Telemetry contracts and schemas](../../telemetry/README.md) |

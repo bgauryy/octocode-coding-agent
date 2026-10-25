@@ -8,13 +8,19 @@ import { redactSecrets } from "../../../octocode/shared/sanitize.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
 import type { ImageContent } from "@octocodeai/octocode-ai";
 import type { ApplicationAssets } from "../assets.ts";
+import type { AgentSession } from "../../agent-session.ts";
+import { assertImageInputSupported, assertImageCounts } from "@octocodeai/octocode-ai/utils/image-input";
 
 /** Resolve attachment references before accepting a command, while the current session still owns them. */
-export function commandImages(command: ApplicationCommand, assets: ApplicationAssets): ImageContent[] | undefined {
+export function commandImages(
+	command: ApplicationCommand,
+	assets: ApplicationAssets,
+	session: Pick<AgentSession, "model">,
+): ImageContent[] | undefined {
 	if (command.action === "abort") return undefined;
 	if (!command.text.trim() && !command.attachments?.length) throw new Error("Enter a message or attach an image");
 	if (!command.attachments?.length) return undefined;
-	return command.attachments.map((id) => {
+	const images: ImageContent[] = command.attachments.map((id) => {
 		const payload = assets.get(id);
 		if (
 			!payload ||
@@ -24,6 +30,9 @@ export function commandImages(command: ApplicationCommand, assets: ApplicationAs
 			throw new Error("Image attachment is unavailable in this session");
 		return { type: "image", data: payload.data, mimeType: payload.asset.mimeType };
 	});
+	assertImageInputSupported(session.model, images);
+	if (session.model) assertImageCounts(session.model, [images.length]);
+	return images;
 }
 
 /** What dispatching an accepted command needs of the application service. */

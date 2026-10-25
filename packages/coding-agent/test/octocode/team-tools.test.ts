@@ -1,7 +1,7 @@
 import fs, * as importedModule1 from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
+import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { type AgentControl, registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -27,7 +27,7 @@ function member(dbFile: string, cwd: string) {
 	const { reservationGate } = registerCollab(fake.pi, team, {
 		shellWrites: async (command) => {
 			await shellParserReady();
-			return shellMutation(command).writes;
+			return reservationTargets(command);
 		},
 	});
 	// As index.ts wires it: the activity line reaches the team panel.
@@ -121,6 +121,8 @@ describe("team tools on a fake Octocode", () => {
 			"sed -i s/a/b/ src/a.ts",
 			"rm -f lib/deep/y.ts",
 			"sh -c 'cp free.ts src/a.ts'",
+			// The parse gives up (here: too large; live: its time budget on a loaded machine), yet the command names a reserved path.
+			`echo x >> src/a.ts; ${"true; ".repeat(30_000)}`,
 		])
 			expect(await b.gate({ toolName: "bash", input: { command } }, b.ctx), command).toEqual([
 				expect.objectContaining({ block: true, reason: expect.stringContaining(`reserved by ${a.team.id}`) }),
@@ -131,6 +133,7 @@ describe("team tools on a fake Octocode", () => {
 			"git status",
 			"echo x > $TARGET",
 			"cd /tmp && mv free.ts src/a.ts",
+			`echo x >> free.ts; ${"true; ".repeat(30_000)}`,
 		])
 			expect(await b.gate({ toolName: "bash", input: { command } }, b.ctx), command).toEqual([undefined]);
 		// `file` is guarded inside the file tool itself; unrelated tools pass.

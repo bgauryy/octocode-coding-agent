@@ -467,7 +467,7 @@ Built-in providers resolve these env vars (Node.js; in browsers pass `apiKey` ex
 | TypeSafe | `TYPESAFE_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | NVIDIA NIM | `NVIDIA_API_KEY` |
-| Google | `GEMINI_API_KEY` |
+| Google | `GOOGLE_API_KEY` or `GEMINI_API_KEY` (`GOOGLE_API_KEY` wins when both are set) |
 | Vertex AI | `GOOGLE_CLOUD_API_KEY` or `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) + `GOOGLE_CLOUD_LOCATION` + ADC |
 | Mistral | `MISTRAL_API_KEY` |
 | Groq | `GROQ_API_KEY` |
@@ -488,7 +488,7 @@ Built-in providers resolve these env vars (Node.js; in browsers pass `apiKey` ex
 | Hugging Face | `HF_TOKEN` |
 | OpenCode Zen / OpenCode Go | `OPENCODE_API_KEY` |
 | Kimi For Coding | `KIMI_API_KEY` |
-| Meta | `META_API_KEY` |
+| Meta | `META_API_KEY` or `MODEL_API_KEY` (`META_API_KEY` wins when both are set) |
 | Qwen Token Plan (existing catalog) | `QWEN_TOKEN_PLAN_API_KEY` |
 | Qwen Token Plan (Individual) | `QWEN_TOKEN_PLAN_API_KEY` |
 | Qwen Token Plan (China) | `QWEN_TOKEN_PLAN_CN_API_KEY` |
@@ -503,7 +503,7 @@ Built-in providers resolve these env vars (Node.js; in browsers pass `apiKey` ex
 subscriptions, while the existing provider retains its broader catalog for backward compatibility.
 Stored credentials remain provider-scoped, so save the key under the provider ID you register.
 
-Amazon Bedrock resolves ambient AWS credentials (`AWS_PROFILE`, access key pairs, `AWS_BEARER_TOKEN_BEDROCK`, ECS task roles, web identity tokens); its provider-owned login flow supports bearer tokens, AWS profiles, and the existing credential chain. Vertex AI resolves either an explicit key or gcloud Application Default Credentials plus project/location, with a provider-owned login flow for API keys, ADC, and service-account files.
+Amazon Bedrock resolves ambient AWS credentials (`AWS_PROFILE`, access key pairs, `AWS_BEARER_TOKEN_BEDROCK`, ECS task roles, web identity tokens, and shared configuration files); its provider-owned login flow supports bearer tokens, AWS profiles, and the existing credential chain. Explicit credential-chain login delegates to the AWS SDK, including instance roles and credential processes. Vertex AI resolves either an explicit key or gcloud Application Default Credentials plus project/location, with a provider-owned login flow for API keys, ADC, and service-account files. Explicit ADC login also permits attached service accounts without a local credential file; the Google SDK resolves the credentials at request time.
 
 ## Tools
 
@@ -1753,27 +1753,30 @@ const response = await models.complete(model, context, {
 
 Use this when one process needs different provider settings per request, or when ambient environment variables should not leak into a provider call.
 
+## Vendor model discovery
+
+`discoverProviderModels(models, providerId, options)` from `@octocodeai/octocode-ai/providers/discovery` compares documented vendor model IDs with configured definitions. Set `allowNetwork: false` for a catalog-only result without resolving credentials. The source registry covers every built-in provider, including explicit control-plane and subscription-catalog guidance where no inference list contract is verified. The helper does not add models or guess prices, capabilities or context limits. See [model discovery](../coding-agent/docs/model-discovery.md) for status meanings, the CLI and an SDK example.
+
 ## OAuth Providers
 
 Several providers support OAuth authentication instead of static API keys:
 
-- **Anthropic** (Claude Pro/Max subscription)
 - **OpenAI** (Sign in with ChatGPT: uses the ChatGPT subscription with the OpenAI API)
 - **OpenAI Codex (legacy)** (ChatGPT Plus/Pro subscription, access to GPT-5.x Codex models)
 - **GitHub Copilot** (Copilot subscription)
 - **OpenRouter** (OAuth PKCE that mints a user-controlled API key)
 
-Each of these providers carries an `OAuthAuth` on `provider.auth.oauth` with three operations: `login(interaction)` uses the provider-neutral `AuthInteraction.prompt()`/`notify()` protocol and returns a credential, `refresh(credential, signal)` refreshes expiring credentials when applicable, and `toAuth(credential)` derives request auth (GitHub Copilot's per-account base URL comes from here). Provider login interactions and refresh calls always carry a concrete abort signal. Refresh is automatic: `models.getAuth(providerId)` and request paths refresh expired tokens under a credential-store lock, so concurrent requests and processes cannot double-refresh. OpenRouter's OAuth flow instead returns a permanent API key, so its refresh operation is a no-op.
+Each of these providers carries an `OAuthAuth` on `provider.auth.oauth` with three required operations: `login(interaction)` uses the provider-neutral `AuthInteraction.prompt()`/`notify()` protocol and returns a credential, `refresh(credential, signal)` refreshes expiring credentials when applicable, and `toAuth(credential)` derives request auth (GitHub Copilot's per-account base URL comes from here). Provider login interactions and refresh calls always carry a concrete abort signal. Refresh is automatic: `models.getAuth(providerId)` and request paths refresh expired tokens under a credential-store lock, so concurrent requests and processes cannot double-refresh. OpenRouter's OAuth flow instead returns a permanent API key, so its refresh operation is a no-op.
 
 ```typescript
 import { createModels } from '@octocodeai/octocode-ai';
-import { anthropicProvider } from '@octocodeai/octocode-ai/providers/anthropic';
+import { openaiProvider } from '@octocodeai/octocode-ai/providers/openai';
 
 const models = createModels({ credentials: myStore }); // persistent CredentialStore
-models.setProvider(anthropicProvider());
+models.setProvider(openaiProvider());
 
 // Login: Models drives the flow and persists the credential
-await models.login('anthropic', 'oauth', {
+await models.login('openai', 'oauth', {
   prompt: async (p) => {
     // p.type: 'text' | 'secret' | 'select' | 'manual_code'
     // manual_code prompts race a local callback server; p.signal aborts them when the server wins
@@ -1792,12 +1795,14 @@ await models.login('anthropic', 'oauth', {
 });
 
 // From here on, requests resolve and refresh the token automatically
-const model = models.getModel('anthropic', 'claude-sonnet-4-5')!;
+const model = models.getModels('openai')[0]!;
 await models.complete(model, context);
 
 // Logout
-await models.logout('anthropic');
+await models.logout('openai');
 ```
+
+Built-in Anthropic subscription OAuth is not offered: use API keys or supported cloud credentials. OpenAI login reuses saved account/client registrations, validates returned identity, and accepts `LoginOptions.getDeviceId` (a stable installation UUID) and `agentName`. `Models.login` passes the previous credential to the provider. Providers can implement an optional `OAuthAuth.logout` hook; OpenAI revokes renewable sessions under the credential-store lock, clears local tokens even when revocation is unconfirmed, and retains only nonsecret signed-out registrations. `signedOut` records never count as authentication.
 
 ### Vertex AI
 
@@ -1827,11 +1832,11 @@ The quickest way to authenticate:
 
 ```bash
 npx @octocodeai/octocode-ai login              # interactive provider selection
-npx @octocodeai/octocode-ai login anthropic    # login to specific provider
+npx @octocodeai/octocode-ai login openai       # login to specific provider
 npx @octocodeai/octocode-ai list               # list available providers
 ```
 
-Credentials are saved to `auth.json` in the current directory.
+Credentials are saved to `auth.json` in the current directory with owner-only permissions. The development CLI retains its installation UUID in `auth.json.host-id` and passes existing registrations on returning login.
 
 ### Programmatic OAuth
 
@@ -1841,7 +1846,7 @@ Provider notes:
 
 **OpenAI Codex (legacy)**: Superseded by Sign in with ChatGPT on the OpenAI provider. Requires a ChatGPT Plus or Pro subscription. Provides access to GPT-5.x Codex models with extended context windows and reasoning capabilities. The library automatically handles session-based prompt caching when `sessionId` is provided in stream options unless `cacheRetention` is `"none"`. You can set `transport` in stream options to `"sse"`, `"websocket"`, or `"auto"` for Codex Responses transport selection. When using WebSocket with a `sessionId` and cache retention enabled, connections are reused per session and expire after 5 minutes of inactivity. Call `cleanupSessionResources(sessionId)` when finished so the pooled connection does not keep the process alive.
 
-**Azure OpenAI (Responses)**: Uses the Responses API only. Set `AZURE_OPENAI_API_KEY` and either `AZURE_OPENAI_BASE_URL` or `AZURE_OPENAI_RESOURCE_NAME`. `AZURE_OPENAI_BASE_URL` supports both `https://<resource>.openai.azure.com` and `https://<resource>.cognitiveservices.azure.com`; root endpoints are normalized to `.../openai/v1` automatically. Use `AZURE_OPENAI_API_VERSION` (defaults to `v1`) to override the API version if needed. Deployment names are treated as model IDs by default, override with `azureDeploymentName` or `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` using comma-separated `model-id=deployment` pairs (for example `gpt-4o-mini=my-deployment,gpt-4o=prod`). Legacy deployment-based URLs are intentionally unsupported.
+**Azure OpenAI**: Serves Responses and compatible Chat models. Use `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_AD_TOKEN` (an externally renewed Entra bearer token). The Azure Responses adapter also accepts `azureADTokenProvider` for SDK-managed token acquisition. Set either `AZURE_OPENAI_BASE_URL` or `AZURE_OPENAI_RESOURCE_NAME`. `AZURE_OPENAI_BASE_URL` supports both `https://<resource>.openai.azure.com` and `https://<resource>.cognitiveservices.azure.com`; root endpoints are normalized to `.../openai/v1` automatically. Use `AZURE_OPENAI_API_VERSION` (defaults to `v1`) to override the API version if needed. Deployment names are treated as model IDs by default, override with `azureDeploymentName` or `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` using comma-separated `model-id=deployment` pairs (for example `gpt-4o-mini=my-deployment,gpt-4o=prod`). Legacy deployment-based URLs are intentionally unsupported.
 
 **GitHub Copilot**: If you get "The requested model is not supported" error, enable the model manually in VS Code: open Copilot Chat, click the model selector, select the model (warning icon), and click "Enable".
 

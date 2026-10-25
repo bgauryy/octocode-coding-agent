@@ -14,7 +14,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { parseArgs } from "../src/cli/args.ts";
 import { getCliInvocation } from "../src/config.ts";
-import { acpWorkerArguments } from "../src/modes/acp/acp-mode.ts";
+import { acpWorkerArguments } from "../../acp/src/server/acp-mode.ts";
 
 const children: ChildProcessWithoutNullStreams[] = [];
 const directories: string[] = [];

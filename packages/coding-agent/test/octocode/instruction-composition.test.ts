@@ -15,7 +15,7 @@ import {
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness } from "../suite/harness.ts";
-import { fakeOctocode, fakePi } from "./fake-pi.ts";
+import { fakePi } from "./fake-pi.ts";
 
 let root: string;
 beforeEach(() => {
@@ -49,7 +49,6 @@ it("composes a child role once alongside discovered user and project instruction
 	registerTurnSetup(fake.pi, {
 		isSubagent: true,
 		profiles: () => new Map(),
-		octocode: fakeOctocode({ by: "off" }).mcp,
 	});
 	const options = normalizeBuildSystemPromptOptions({
 		cwd,
@@ -74,7 +73,6 @@ it("updates the named policy section when selected research tools change", async
 	registerTurnSetup(fake.pi, {
 		isSubagent: false,
 		profiles: () => new Map(),
-		octocode: fakeOctocode({ by: "off" }).mcp,
 	});
 	const render = async (selectedTools: string[]) => {
 		const options = normalizeBuildSystemPromptOptions({ cwd: root, selectedTools });
@@ -85,9 +83,9 @@ it("updates the named policy section when selected research tools change", async
 	const unchanged = await render(["read", "mcp__octocode__localSearch"]);
 	expect(diffSystemPromptSections(first, unchanged)).toBeUndefined();
 	const removed = await render(["read"]);
-	expect(first.octocode).toContain("Use Octocode MCP");
-	expect(removed.octocode).not.toContain("Use Octocode MCP");
-	expect(diffSystemPromptSections(first, removed)).toHaveProperty("octocode", removed.octocode);
+	expect(first.octocode_research).toContain("Use Octocode MCP");
+	expect(removed.octocode_research).not.toContain("Use Octocode MCP");
+	expect(diffSystemPromptSections(first, removed)).toHaveProperty("octocode_research", removed.octocode_research);
 	expect(removed.preamble).toBe(first.preamble);
 });
 
@@ -107,7 +105,6 @@ it("sends the updated policy to the model through the real session pipeline", as
 				registerTurnSetup(pi, {
 					isSubagent: false,
 					profiles: () => new Map(),
-					octocode: fakeOctocode({ by: "off" }).mcp,
 				});
 			},
 		],

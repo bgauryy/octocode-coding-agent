@@ -12,6 +12,7 @@ export function applicationSnapshot(
 ): ApplicationSnapshot {
 	return {
 		sessionId: state.sessionId,
+		...(state.model ? { model: cloneDisplay(state.model) } : {}),
 		...transcript.window(),
 		...activities.window(),
 		errors: cloneDisplay(state.errors),

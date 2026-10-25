@@ -38,6 +38,7 @@ import { runDefaultCompaction } from "./agent-session/compaction-control.ts";
 import { buildExtensionRuntime, reloadExtensionRuntime } from "./agent-session/extension-runtime.ts";
 import { createRunState, type SessionInternals } from "./agent-session/host.ts";
 import { SessionListeners } from "./agent-session/listeners.ts";
+import { abortSessionDispatches, trackSessionDispatch } from "./agent-session/dispatch.ts";
 import { prompt, queueUserInput, sendCustomMessage, splitUserContent } from "./agent-session/prompting.ts";
 import { exportToHtml, getUserMessagesForForking } from "./agent-session/reports.ts";
 import { getSummarizationRequestAuth } from "./agent-session/request-auth.ts";
@@ -410,7 +411,11 @@ export class AgentSession implements AgentSessionApi {
 	// Prompting and input queues
 
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
-		await prompt(this._c.prompting, text, options);
+		await trackSessionDispatch(
+			this,
+			() => prompt(this._c.prompting, text, options),
+			(active, dispatchId) => this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
+		);
 	}
 	async steer(
 		text: string,
@@ -430,7 +435,12 @@ export class AgentSession implements AgentSessionApi {
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
 	): Promise<void> {
-		await sendCustomMessage(this._c.prompting, message, options);
+		const send = () => sendCustomMessage(this._c.prompting, message, options);
+		if (options?.triggerTurn)
+			await trackSessionDispatch(this, send, (active, dispatchId) =>
+				this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
+			);
+		else await send();
 	}
 	async sendUserMessage(
 		content: string | (TextContent | ImageContent)[],
@@ -470,6 +480,7 @@ export class AgentSession implements AgentSessionApi {
 		return this._c.inputs.move(id, direction);
 	}
 	async abort(reason: "interrupted" | "replacement" | "shutdown" | "internal" = "interrupted"): Promise<void> {
+		abortSessionDispatches(this);
 		await this._c.runLoop.abort(reason);
 	}
 	async stopActiveWork(): Promise<void> {

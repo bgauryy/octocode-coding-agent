@@ -126,7 +126,7 @@ These controls belong to the integrated Octocode features. Child identity, grant
 | `OCTOCODE_CLEANUP_DAYS` | Retention for kept session output and bash logs; default `30` days; `0` disables the sweep |
 | `OCTOCODE_NOTIFY` | Answer notifications: `off`, `unfocused` (default) or `always` |
 | `OCTOCODE_NOTIFY_METHOD` | Notification protocol: `osc9`, `osc777`, `osc99` or `bel`; otherwise detected from the terminal |
-| `OCTOCODE_API` | Set to `1` to enable the local session API; off by default |
+| `OCTOCODE_API` | Set to `1` to enable the [local session API](session-api.md); off by default |
 | `OCTOCODE_API_HTTP` | Enable loopback HTTP on this port (`0` chooses an available port), even without `OCTOCODE_API=1` |
 
 See [native features](native-features.md) for runtime ownership and [configuration](configuration.md) for storage paths and compatibility.

@@ -12,7 +12,11 @@ The audit covers native registration, internal mail, external protocols, core se
 
 ## Scope
 
-The [2026-10-24 follow-up](FEATURE_VALIDATION.md#tools-context-and-communication-follow-up--2026-10-24) retraced every native tool family and the MCP/SDK exposure paths, caching/context boundaries, internal communication and ACP. The inventory below remains the earlier broad review; its historical test evidence is not a new run. Octocode dependency tool implementations and live vendor integrations were not exhaustively exercised.
+The [2026-10-25 ACP extraction](FEATURE_VALIDATION.md#acp-workspace-extraction--2026-10-25) moves both ACP implementations into the private `packages/acp` workspace. Relocated tests, host integration, compiled and locally installed artifacts, Python SDK interoperability and the real Codex exchange were rechecked; the package remains compiled with its coding-agent host.
+
+The [2026-10-25 real Codex exchange](FEATURE_VALIDATION.md#real-codex-and-octocodecode-exchange--2026-10-25) verifies live Codex replies and context through its ACP adapter, plus a return message through an explicitly configured MCP callback into Octocode's API. Direct shell access to the API failed under Codex's read-only sandbox; that failure and the successful callback path are recorded separately.
+
+The [2026-10-25 cross-SDK review](FEATURE_VALIDATION.md#acp-cross-sdk-review--2026-10-25) adds bidirectional official Python SDK integration and regressions for startup, identity, cancellation and process ownership. The [earlier ACP follow-up](FEATURE_VALIDATION.md#acp-and-external-process-follow-up--2026-10-25) adds an independent protocol compatibility run, a real provider conversation and local API/ACP coexistence checks. The [2026-10-24 follow-up](FEATURE_VALIDATION.md#tools-context-and-communication-follow-up--2026-10-24) retraced every native tool family and the MCP/SDK exposure paths, caching/context boundaries, internal communication and ACP. The inventory below remains the earlier broad review; its historical test evidence is not a new run. Octocode dependency tool implementations and live vendor integrations were not exhaustively exercised.
 
 Reviewed on **2026-10-23** against the changing working tree. Inventory comes from [native composition](../packages/coding-agent/src/octocode/index.ts), [agent operations](../packages/coding-agent/src/octocode/agent-tool.ts), [core commands](../packages/coding-agent/src/core/slash-commands.ts) and package exports. Six Sol6 workers split ownership and reviewed each other's corrections. Test names below identify evidence, not a complete test manifest; selected runs overlap the broader suites.
 
@@ -40,8 +44,8 @@ Native source paths are relative to `packages/coding-agent/src/octocode/`; test 
 | Team mail | `team/{mail,inbox,delivery,routing}`; direct/role/broadcast/reply, wake/interrupt, acknowledgments, retries | Offline: Team delivery, efficiency, messages, interrupt and communication regressions |
 | Dead letters and sender proof | `team/store/`, `proof.ts`; unread departures, notice acceptance, spill, forged sender rejection | Offline: Team retention, efficiency and communication regressions |
 | Native process API | `api/`; discovery, authentication, RPC, event replay, idempotent sends and abort ownership | Limited: pure/receipt tests; Unix socket integration blocked; keys/replay are memory scoped |
-| Inbound ACP | `src/modes/acp/`; initialize, session lifecycle, streamed updates, permissions, cancellation, MCP configuration | Limited: default core ACP suites and real CLI lifecycle; no live editor/provider turn |
-| Outbound agents | `external/`; ACP/native API connection, prompt, permission forwarding, cancellation and reset | Limited: outbound ACP/manager tests; real external agents not exercised |
+| Inbound ACP | `packages/acp/src/server/`; initialize, session lifecycle, streamed updates, permissions, cancellation, MCP configuration | Historical coverage: default core ACP suites and real CLI lifecycle; later live checks are linked above |
+| Outbound agents | `packages/acp/src/client/` and `external/`; ACP/native API connection, prompt, permission forwarding, cancellation and reset | Historical coverage: outbound ACP/manager tests; later real Codex checks are linked above |
 | Shared application service | `src/core/application/`; commands, receipt conflicts, bounded replay, session/epoch cursors | Offline: core application tests and workspace stream integration |
 | Browser workspace | `workspace/`, `packages/webview/`; authentication, live stream, reconnect, forms, backlog/agent/activity views | Limited: HTTP/WS loopback and jsdom passed; physical browser interaction unverified |
 | Browser automation | `browser/`; specialist selection, navigation/network policy, uploads, lifecycle | Limited: offline browser suites; Chrome end-to-end excluded |
@@ -57,7 +61,7 @@ Native source paths are relative to `packages/coding-agent/src/octocode/`; test 
 | Model routing and authentication | `subagents/catalog`, `models-command`, `packages/ai/`; catalog, routing, provider requests/auth/cache | Limited: AI/default core suites; credentialed live tests skipped |
 | Status, editor and notices | `ui/`; activity, queued delivery, notifications, editor and status views | Offline: activity/editor/UI/notify/delivery suites |
 | Terminal, input and rendering | `packages/tui/`, terminal mode; keys, paste, editor, render and navigation | Limited: TUI/core tests; two reftable filesystem watcher failures remain |
-| Generic MCP | `packages/mcp/`, host MCP extension; stdio/SSE/HTTP parsing, redirects, resources and auth state | Limited: offline transport tests; live OAuth/network exchange incomplete |
+| Generic MCP | `packages/mcp/src/` (client, transports and host); stdio/SSE/HTTP parsing, redirects, resources and auth state | Limited: offline transport tests; live OAuth/network exchange incomplete |
 | Agent loop and provider runtime | `packages/agent/`, `packages/ai/`; streaming, tools, steering, cancellation, retries and conversion | Offline: full package suites; live providers skipped |
 | SDK and CLI | `src/index.ts`, `src/core/sdk.ts`, modes; exports, options, resource selection and protocol entry points | Offline: default core suite; standalone factories now cover Bash only |
 | Telemetry and shared schemas | `packages/telemetry/`, `packages/contacts/`; event contracts, validation and propagation | Offline: full package suites |
@@ -73,7 +77,7 @@ Commands are inventoried separately from tools. The [command reference](../packa
 
 - Team mail is agent messaging, not a built-in SMTP/Gmail/Outlook service. No email provider was configured or tested.
 - A2A remains proposed in the [communication RFC](RFC_COMMUNICATION_PROTOCOL.md). ACP, MCP, DAP and Team delivery keep their own semantics; no universal wire protocol is implemented.
-- Live provider/editor ACP, Chrome, real debugger stepping, Windows execution, process-identity cleanup and visual accessibility require additional host/integration runs.
+- ACP has sampled live provider and independent fixture evidence from 2026-10-25. Real editor UX, additional providers, Chrome, real debugger stepping, Windows execution, broader process-identity cleanup and visual accessibility still require integration runs.
 - Native tool diagnostics are advisory; source revision attestation and comparative task/performance benchmarks remain absent.
 
 ## Checks

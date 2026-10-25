@@ -169,7 +169,8 @@
                     },
                     "default": [
                       "text"
-                    ]
+                    ],
+                    "description": "Accepted input modalities. Include \"image\" only when this model and endpoint accept image attachments."
                   },
                   "inputLimits": {
                     "$ref": "#/$defs/ModelInputLimits"
@@ -324,7 +325,8 @@
                           "text",
                           "image"
                         ]
-                      }
+                      },
+                      "description": "Accepted input modalities. Include \"image\" only when this model and endpoint accept image attachments."
                     },
                     "inputLimits": {
                       "$ref": "#/$defs/ModelInputLimits"
@@ -1117,6 +1119,19 @@
         "vllmPriority": {
           "type": "number",
           "description": "vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog."
+        },
+        "toolSchemaFlavor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "standard"
+            },
+            {
+              "type": "string",
+              "const": "moonshot"
+            }
+          ],
+          "description": "Tool parameter schema flavor. \"moonshot\" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. \"standard\" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints."
         },
         "supportsAdditionalTools": {
           "type": "boolean",

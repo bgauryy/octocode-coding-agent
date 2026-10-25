@@ -36,7 +36,6 @@ function setup(
 	const reserved = vi.fn(async () => undefined as { block: true; reason: string } | undefined);
 	const gate = permissionGate({
 		permission,
-		annotations: () => undefined,
 		provenance,
 		replacement: { definition: () => definition, refresh, reserved },
 	});

@@ -34,16 +34,16 @@ const changes = [
 	{
 		type: "edit",
 		path: "src/a.ts",
-		reasoning: "Fix the loop",
+		reason: "Fix the loop",
 		edits: [{ oldText: "i <= n", newText: "i < n" }],
 	},
 	{
 		type: "write",
 		path: "src/new.ts",
-		reasoning: "Add helper",
+		reason: "Add helper",
 		content: "export const x = 1;\nexport const y = 2;",
 	},
-	{ type: "delete", path: "old.ts", reasoning: "Unused" },
+	{ type: "delete", path: "old.ts", reason: "Unused" },
 ];
 
 describe("file change review", () => {
@@ -64,14 +64,14 @@ describe("file change review", () => {
 			describeChange({
 				type: "write",
 				path: "p",
-				reasoning: "r",
+				reason: "r",
 				content: "one\n",
 			}),
 		).toEqual(["write p", "  + one", "  agent says (unverified): r"]);
 		const long = describeChange({
 			type: "write",
 			path: "p",
-			reasoning: "r",
+			reason: "r",
 			content: Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n"),
 		});
 		expect(long.join("\n")).toContain("… 15 more line(s)");
@@ -175,7 +175,7 @@ describe("file change review", () => {
 			});
 		};
 		const params = {
-			queries: [{ type: "write", path: "new.ts", reasoning: "add", content: "new" }],
+			queries: [{ type: "write", path: "new.ts", reason: "add", content: "new" }],
 		};
 		const pending = tool.execute("revoked", params, undefined, undefined, ctx);
 		const cancelled = expect(pending).rejects.toThrow(/^Cancelled before any change was applied/);
@@ -221,10 +221,10 @@ describe("file change review", () => {
 				{
 					type: "edit",
 					path: "a.ts",
-					reasoning: "bump",
+					reason: "bump",
 					edits: [{ oldText: "1", newText: "2" }],
 				},
-				{ type: "write", path: "b.ts", reasoning: "add", content: "x" },
+				{ type: "write", path: "b.ts", reason: "add", content: "x" },
 			],
 		};
 		const dialog = ui({
@@ -268,7 +268,7 @@ describe("file change review", () => {
 			queries: ["cancel-a.ts", "cancel-b.ts"].map((file) => ({
 				type: "write",
 				path: file,
-				reasoning: "add",
+				reason: "add",
 				content: "new",
 			})),
 		};
@@ -296,7 +296,7 @@ describe("file change review", () => {
 		await tool!.execute(
 			"3",
 			{
-				queries: [{ type: "write", path: "c.ts", reasoning: "add", content: "y" }],
+				queries: [{ type: "write", path: "c.ts", reason: "add", content: "y" }],
 			},
 			undefined,
 			undefined,
@@ -312,7 +312,7 @@ it("labels all-occurrence edits in review", () => {
 		describeChange({
 			type: "edit",
 			path: "f",
-			reasoning: "update",
+			reason: "update",
 			edits: [{ oldText: "A", newText: "B", replaceAll: true }],
 		}),
 	).toContain("  all occurrences");

@@ -114,6 +114,8 @@ export class Subcommands {
 		pi.on("input", async (event, ctx) => {
 			const match = /^\/octocode(?:\s+(.*))?$/s.exec(event.text.trim());
 			if (!match) return { action: "continue" };
+			// Bare /octocode is now the live board; only the retired namespaced form needs migration guidance.
+			if (!match[1]?.trim() && this.has("octocode")) return { action: "continue" };
 			say(
 				ctx,
 				legacyNativeCommandGuidance(

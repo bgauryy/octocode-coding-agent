@@ -158,7 +158,7 @@ describe("permission modes in a headless run", () => {
 		});
 		const [, after] = await run("change things", [
 			calls(
-				fauxToolCall("file", { queries: [{ reasoning: "add", type: "write", path: "new.txt", content: "x" }] }),
+				fauxToolCall("file", { queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }] }),
 				fauxToolCall("bash", { command: "echo ran > ran.txt" }),
 			),
 			say("blocked"),
@@ -181,7 +181,7 @@ describe("permission modes in a headless run", () => {
 		const [, after] = await run("go", [
 			calls(
 				fauxToolCall("bash", { command: DESTRUCTIVE }),
-				fauxToolCall("file", { queries: [{ reasoning: "add", type: "write", path: "new.txt", content: "x" }] }),
+				fauxToolCall("file", { queries: [{ reason: "add", type: "write", path: "new.txt", content: "x" }] }),
 			),
 			say("done"),
 		]);

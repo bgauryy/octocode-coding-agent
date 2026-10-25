@@ -94,6 +94,7 @@ export function contentText(block: ApplicationContentBlock, readAsset?: AssetRea
 
 /** Binary attachments keep a visible description when graphics are unavailable or disabled. */
 export class ContentAttachmentComponent extends Container {
+	private imageProtocol = getCapabilities().images;
 	private image?: Image;
 	private imageKey?: string;
 	private block: ApplicationContentBlock;
@@ -110,6 +111,11 @@ export class ContentAttachmentComponent extends Container {
 		this.rebuild();
 	}
 
+	override invalidate(): void {
+		if (this.imageProtocol !== getCapabilities().images) this.rebuild();
+		super.invalidate();
+	}
+
 	setImageWidthCells(imageWidthCells: number): void {
 		this.options = { ...this.options, imageWidthCells };
 		this.rebuild();
@@ -122,6 +128,7 @@ export class ContentAttachmentComponent extends Container {
 	}
 
 	private rebuild(): void {
+		this.imageProtocol = getCapabilities().images;
 		this.clear();
 		const block = this.block;
 		if (block.type === "image" && this.options.showImages !== false && getCapabilities().images) {

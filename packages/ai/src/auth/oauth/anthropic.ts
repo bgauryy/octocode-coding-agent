@@ -1,5 +1,5 @@
 /**
- * Anthropic OAuth flow (Claude Pro/Max)
+ * Legacy compatibility flow; not registered by the built-in Anthropic provider.
  *
  * NOTE: This module uses Node.js http.createServer for the OAuth callback server.
  * It is only intended for CLI use, not browser environments.
@@ -9,6 +9,7 @@ import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { startOAuthCallbackServer, waitForCallbackOrManualInput, parseAuthorizationInput } from "./callback-server.ts";
 import { generatePKCE } from "./pkce.ts";
+import { parseOAuthTokenResponse } from "./token-response.ts";
 
 const decode = (s: string) => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
@@ -51,13 +52,14 @@ async function postJson(url: string, body: Record<string, string | number>, sign
 			Accept: "application/json",
 		},
 		body: JSON.stringify(body),
+		redirect: "error",
 		signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
 	});
 
 	const responseBody = await response.text();
 
 	if (!response.ok) {
-		throw new Error(`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`);
+		throw new Error(`HTTP request failed. status=${response.status}; url=${url}`);
 	}
 
 	return responseBody;
@@ -90,21 +92,13 @@ async function exchangeAuthorizationCode(
 		);
 	}
 
-	let tokenData: { access_token: string; refresh_token: string; expires_in: number };
+	let tokenData: unknown;
 	try {
-		tokenData = JSON.parse(responseBody) as { access_token: string; refresh_token: string; expires_in: number };
-	} catch (error) {
-		throw new Error(
-			`Token exchange returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`,
-		);
+		tokenData = JSON.parse(responseBody);
+	} catch {
+		throw new Error("Anthropic token exchange returned invalid JSON");
 	}
-
-	return {
-		type: "oauth",
-		refresh: tokenData.refresh_token,
-		access: tokenData.access_token,
-		expires: Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000,
-	};
+	return parseOAuthTokenResponse(tokenData, "Anthropic", { expiryMarginMs: 5 * 60 * 1000 });
 }
 
 async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
@@ -227,26 +221,13 @@ async function refreshAnthropicToken(refreshToken: string, signal: AbortSignal):
 		throw new Error(`Anthropic token refresh request failed. url=${TOKEN_URL}; details=${formatErrorDetails(error)}`);
 	}
 
-	let data: { access_token: string; refresh_token: string; expires_in: number; scope?: string };
+	let data: unknown;
 	try {
-		data = JSON.parse(responseBody) as {
-			access_token: string;
-			refresh_token: string;
-			expires_in: number;
-			scope?: string;
-		};
-	} catch (error) {
-		throw new Error(
-			`Anthropic token refresh returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`,
-		);
+		data = JSON.parse(responseBody);
+	} catch {
+		throw new Error("Anthropic token refresh returned invalid JSON");
 	}
-
-	return {
-		type: "oauth",
-		refresh: data.refresh_token,
-		access: data.access_token,
-		expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
-	};
+	return parseOAuthTokenResponse(data, "Anthropic", { previousRefresh: refreshToken, expiryMarginMs: 5 * 60 * 1000 });
 }
 
 export const anthropicOAuth: OAuthAuth = {

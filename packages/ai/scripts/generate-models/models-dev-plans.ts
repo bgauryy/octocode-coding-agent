@@ -21,7 +21,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 	// Process MiniMax models
 	const minimaxVariants = [
 		{ key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
-		{ key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimaxi.com/anthropic" },
+		{ key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimax.cn/anthropic" },
 	] as const;
 	// MiniMax asked to hide older models from its direct providers (#2596).
 	const minimaxHiddenIds = new Set(["MiniMax-M2", "MiniMax-M2.1", "MiniMax-M2.5", "MiniMax-M2.5-highspeed"]);

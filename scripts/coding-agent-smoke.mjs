@@ -9,6 +9,11 @@ export const codingAgentName = "@octocodeai/octocodecode";
 export function smokeTestCodingAgent(directory, runtime = process.execPath, { strictRuntime = false } = {}) {
 	const packageDir = join(directory, "node_modules", codingAgentName);
 	const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+	for (const name of ["mcp", "acp"]) {
+		const dependency = `@octocodeai/octocode-${name}`;
+		if (manifest.dependencies?.[dependency] || manifest.optionalDependencies?.[dependency])
+			throw new Error(`Installed Octocode must not depend on the private ${name.toUpperCase()} workspace`);
+	}
 	const home = mkdtempSync(join(tmpdir(), "octocode-coding-agent-smoke-home-"));
 	const entry = join(packageDir, "octocode-install-smoke.mjs");
 	const env = {
@@ -41,16 +46,24 @@ import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAgentSession, SessionManager, ModelRuntime } from "${codingAgentName}";
+import { McpClient, StdioTransport } from "${codingAgentName}/mcp";
+import { McpOAuthProvider } from "${codingAgentName}/mcp/oauth";
+import { createInMemoryTransportPair } from "${codingAgentName}/mcp/testing";
 import octocode from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/octocode/index.js")).href)};
-import { octocodeLaunch } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/octocode/mcp/octocode.js")).href)};
+import { octocodeLaunch } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/mcp/presets/octocode/launch.js")).href)};
+import { runAcpMode } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/acp/server/acp-mode.js")).href)};
+import { AcpBackend } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/acp/client/client.js")).href)};
 import { getCliInvocation, getSubagentsDir${strictRuntime ? ", getBundledSkillsDir, getResearchCliInvocation" : ""} } from ${JSON.stringify(pathToFileURL(join(packageDir, "dist/config.js")).href)};
-for (const dependency of ["octocode-mcp", "chrome-launcher", "@agentclientprotocol/sdk"]) {
+for (const dependency of ["chrome-launcher", "@agentclientprotocol/sdk"]) {
 	assert.ok(existsSync(fileURLToPath(import.meta.resolve(dependency))), dependency);
 }
 assert.equal(typeof createAgentSession, "function");
 assert.equal(typeof SessionManager.inMemory, "function");
 assert.equal(typeof ModelRuntime.create, "function");
 assert.equal(typeof octocode, "function");
+assert.equal(typeof runAcpMode, "function");
+assert.equal(typeof AcpBackend.connect, "function");
+for (const entry of [McpClient, StdioTransport, McpOAuthProvider, createInMemoryTransportPair]) assert.equal(typeof entry, "function");
 const mcpLaunch = octocodeLaunch(process.cwd());
 assert.equal(mcpLaunch.command, process.execPath, "installed MCP runs without npx");
 assert.ok(existsSync(mcpLaunch.args[0]), "MCP executable exists");

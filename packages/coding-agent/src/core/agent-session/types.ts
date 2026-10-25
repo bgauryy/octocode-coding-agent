@@ -37,6 +37,7 @@ export type AgentSessionEvent =
 			willRetry: boolean;
 	  }
 	| { type: "agent_settled"; aborted: boolean }
+	| { type: "session_dispatch"; active: boolean; dispatchId: string }
 	| {
 			type: "queue_update";
 			steering: readonly string[];

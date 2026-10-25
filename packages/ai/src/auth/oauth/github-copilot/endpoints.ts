@@ -60,10 +60,18 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
 }
 
 export async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-	const response = await fetch(url, init);
+	const response = await fetch(url, {
+		...init,
+		redirect: "error",
+		signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(30_000)]),
+	});
 	if (!response.ok) {
-		const text = await response.text();
-		throw new Error(`${response.status} ${response.statusText}: ${text}`);
+		await response.body?.cancel();
+		throw new Error(`GitHub Copilot authentication request failed (HTTP ${response.status})`);
 	}
-	return response.json();
+	try {
+		return await response.json();
+	} catch {
+		throw new Error("GitHub Copilot authentication response is not valid JSON");
+	}
 }

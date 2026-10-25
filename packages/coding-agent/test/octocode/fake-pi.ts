@@ -3,7 +3,6 @@ import os from "node:os";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../src/core/extensions/index.ts";
 import type { ModelRegistry } from "../../src/core/model-registry.ts";
-import type { OctocodeMcp, OctocodeOwner } from "../../src/octocode/mcp/octocode.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 
@@ -96,7 +95,7 @@ export function fakePi() {
 	};
 }
 
-interface FakeUi {
+export interface FakeUi {
 	notes: Array<{ message: string; type?: string }>;
 	statuses: Map<string, string | undefined>;
 	widgets: Map<string, unknown>;
@@ -207,22 +206,6 @@ export function fakeCtx(options: {
 		} satisfies Pick<ModelRegistry, "getAvailable" | "getAll" | "find" | "getCachePolicy">,
 		getContextUsage: () => undefined,
 	} as never;
-}
-
-/** A stand-in for the Octocode server a turn asks about: who runs it, whether it connects, and its instructions. */
-export function fakeOctocode(owner: OctocodeOwner = { by: "extension" }) {
-	const state = { owner, connected: true, instructions: undefined as string | undefined, readyCalls: 0 };
-	const mcp: Pick<OctocodeMcp, "owner" | "ready" | "instructions"> = {
-		owner: () => state.owner,
-		ready: async () => {
-			state.readyCalls++;
-			return state.connected;
-		},
-		get instructions() {
-			return state.instructions;
-		},
-	};
-	return { mcp, state };
 }
 
 /** A started permission state in `mode` (default workspace: in-repo work runs, anything else asks). */

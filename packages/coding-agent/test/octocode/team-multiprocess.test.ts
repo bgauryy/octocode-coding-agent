@@ -11,7 +11,7 @@ import { tmp } from "./helpers.ts";
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 
 const posix = process.platform !== "win32";
-const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "src", "experimental", "source-resolver.ts");
+const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "scripts", "source-resolver.ts");
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: "worker",

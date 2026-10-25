@@ -40,13 +40,25 @@ The description determines when the model considers loading the skill. State bot
 
 Use relative paths from the skill directory when referring to bundled files. Octocode tells the model where the skill lives so it can resolve those paths.
 
+## Find and control skills
+
+Run `/skills` (or `/skills list`) to inspect all discovered skills, including disabled ones: it shows load state, model/user invocation eligibility, source, and file path. Select a row to insert a loaded skill's command, see details, or change its state. `/skills <search>` keeps the quick picker for loaded, user-invocable skills.
+
+| Command | Effect |
+| --- | --- |
+| `/skills info <name-or-path>` | Show source, state, and exact file |
+| `/skills disable <name-or-path>` | Save an exclusion in user or trusted project settings, then reload |
+| `/skills enable <name-or-path>` | Save an inclusion in the same scope, then reload |
+
+Use the exact path when names collide. A session-only or synthetic skill cannot be persisted with these commands. The commands change Octocode settings only; a shared skill file may have a different enable state in Claude, Codex, or OpenCode. `/skills list` may show an enabled skill as “not loaded” when its file is invalid, another skill won the same-name collision, or automatic skill loading is off; inspect startup diagnostics before assuming it reached the model. `octocode config` remains the broader terminal manager for skills and other resources.
+
 ## Understand how skills load
 
 At startup, Octocode scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
 
 The skill entries share a budget of 8,000 characters (about 1% of a 200k-token window). A description longer than the 1,024-character limit is cut. When the entries do not fit, descriptions are dropped from the last skills first and the prompt says how many skills are listed without one; if the bare entries still do not fit, the last skills are named on one line without an entry. SDK callers can change the budget with the `budgetChars` option of `formatSkillsForPrompt`.
 
-When a task matches, the model reads `SKILL.md` and follows its instructions. Native sessions use Octocode `localFetch` for this (or `localGetFileContent` with an older server), also when `localFetch` is deferred and loaded through `tool_search`. Skills do not register an executable tool for each workflow. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use a skill command when you need to load it explicitly.
+When a task matches, the model loads the skill and follows its instructions; the common policy tells it to do so before starting. Native sessions give the model a `skill` tool for this: it takes a skill's name and returns that skill's `SKILL.md` (front matter removed) with the skill's directory, so relative references resolve. It reads only skills the session loaded, refuses an unknown name with the close matches, and refuses a skill with `disable-model-invocation`. The tool is active in the main session and in subagents, and is left out of requests while no loaded skill allows model invocation. A profile can drop it with `excludeTools: skill`. Without the tool (an SDK session, or one that excludes it) the prompt names a file reader instead: Octocode `localFetch`, also when it is deferred and loaded through `tool_search`, `read` or `bash`. The terminal draws a load as `Skill: <name>`, whether it came from the `skill` tool or from a `localFetch` read of a loaded skill's `SKILL.md`. Skills do not register an executable tool for each workflow. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use a skill command when you need to load it explicitly.
 
 The automatically managed Octocode MCP server allows reads inside each loaded skill's directory, including its references and assets. These resource roots include model-only skills and eligible path-selection candidates hidden by a name collision; they do not depend on slash-command visibility. Native sessions apply the same launch defaults to a configured local stdio server named `octocode` when neither its configuration nor the process environment sets `ALLOWED_PATHS`. The defaults are transient; configuration files stay unchanged. An explicit `ALLOWED_PATHS` wins, including an empty value. HTTP servers and custom SDK MCP factories keep their own access policy.
 

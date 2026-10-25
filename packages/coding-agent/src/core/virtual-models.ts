@@ -95,7 +95,7 @@ export interface VirtualModelDefinition<TState = unknown> {
 	 */
 	contextWindow?: number;
 	maxTokens?: number;
-	/** Input types accepted for selection. Defaults to text and images; routed models without image support get placeholders. */
+	/** Input types accepted for selection. Defaults to text and images; the routed model must accept new image input. */
 	input?: ("text" | "image")[];
 	/** Pick the physical model, which must have credentials, and thinking level for one request. */
 	route(request: ModelRouteRequest<TState>): ModelRoute<TState> | Promise<ModelRoute<TState>>;

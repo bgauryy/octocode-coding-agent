@@ -30,9 +30,13 @@ function createFixture(t, { importUndeclared = false } = {}) {
 				name,
 				version: "1.0.0",
 				type: "module",
-				main: "./dist/index.js",
-				types: "./dist/index.d.ts",
-				exports: { ".": { import: "./dist/index.js" } },
+				...(name === "octocode-mcp"
+					? { bin: "dist/cli.js" }
+					: {
+							main: "./dist/index.js",
+							types: "./dist/index.d.ts",
+							exports: { ".": { import: "./dist/index.js" } },
+						}),
 				files: ["dist"],
 			},
 			{
@@ -50,7 +54,12 @@ function createFixture(t, { importUndeclared = false } = {}) {
 			type: "module",
 			main: "./dist/index.js",
 			types: "./dist/index.d.ts",
-			exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
+			exports: {
+				".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+				"./mcp": "./dist/mcp/client/index.js",
+				"./mcp/oauth": "./dist/mcp/client/oauth/index.js",
+				"./mcp/testing": "./dist/mcp/client/testing/index.js",
+			},
 			files: ["dist"],
 			bin: { octocode: "dist/bundle/cli.js", "octocode-api": "dist/bundle/octocode-api.js" },
 			dependencies: { "octocode-mcp": "1.0.0", "chrome-launcher": "1.0.0", "@agentclientprotocol/sdk": "1.0.0" },
@@ -62,13 +71,18 @@ export class SessionManager { static inMemory() {} }
 export class ModelRuntime { static create() {} }
 `,
 			"dist/index.d.ts": "export {};\n",
+			"dist/acp/server/acp-mode.js": "export function runAcpMode() {}\n",
+			"dist/acp/client/client.js": "export class AcpBackend { static connect() {} }\n",
+			"dist/mcp/client/index.js": "export class McpClient {}\nexport class StdioTransport {}\n",
+			"dist/mcp/client/oauth/index.js": "export class McpOAuthProvider {}\n",
+			"dist/mcp/client/testing/index.js": "export function createInMemoryTransportPair() {}\n",
 			"dist/cli.js": 'console.log("1.0.0");\n',
 			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
 			"dist/bundle/octocode-api.js": 'console.log("octocode-api list");\n',
 			"dist/octocode/index.js": "export default function octocode() {};\n",
-			"dist/octocode/mcp/octocode.js": `import { fileURLToPath } from "node:url";
+			"dist/mcp/presets/octocode/launch.js": `import { fileURLToPath } from "node:url";
 export function octocodeLaunch() {
-	return { command: process.execPath, args: [fileURLToPath(new URL("./cli.js", import.meta.resolve("octocode-mcp")))] };
+	return { command: process.execPath, args: [fileURLToPath(new URL("./dist/cli.js", import.meta.resolve("octocode-mcp/package.json")))] };
 }
 `,
 			"dist/config.js": `import { fileURLToPath } from "node:url";
@@ -86,8 +100,14 @@ export function getCliInvocation() {
 	return directory;
 }
 
-test("accepts a valid coding-agent package", (t) => {
+test("accepts a valid coding-agent package with a CLI-only MCP dependency", (t) => {
 	smokeTestCodingAgent(createFixture(t));
+});
+
+test("rejects a missing MCP executable", (t) => {
+	const directory = createFixture(t);
+	rmSync(join(directory, "node_modules", "octocode-mcp", "dist/cli.js"));
+	assert.throws(() => smokeTestCodingAgent(directory), /MCP executable exists/);
 });
 
 // #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
@@ -106,4 +126,16 @@ test("rejects a broken API executable despite a working agent CLI", (t) => {
 	const directory = createFixture(t);
 	writeFileSync(join(directory, "node_modules", codingAgentName, "dist/bundle/octocode-api.js"), "process.exit(2);\n");
 	assert.throws(() => smokeTestCodingAgent(directory), /Command failed/);
+});
+
+test("rejects a missing public MCP export despite a working agent SDK", (t) => {
+	const directory = createFixture(t);
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/mcp/client/index.js"));
+	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find module/);
+});
+
+test("rejects a missing ACP backend despite a working bundled CLI", (t) => {
+	const directory = createFixture(t);
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/acp/client/client.js"));
+	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find module/);
 });

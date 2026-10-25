@@ -340,7 +340,7 @@ describe("agents view", () => {
 		expect(describeConflicts([{ path: "a\u200b.ts", heldBy: held }], 0)).toContain(
 			"- a\\u{200b}.ts is covered by ow\\u{1b}ner (src/: r\\u{202e};",
 		);
-		const changes = [{ path: "a\u001b[2J.ts", agent: "x\u0007", tool: "edit", at: 0, count: 1 }];
+		const changes = [{ path: "a\u001b[2J.ts", agents: ["x\u0007"], tools: ["edit"], at: 0, count: 1 }];
 		expect(describeChanges(changes, { minutes: 5, limit: 5, paths: ["d\u202e"] }, 0)).toContain("under d\\u{202e}");
 		expect(describeChanges(changes, { minutes: 5, limit: 5 }, 0)).toContain("- a\\u{1b}[2J.ts · x\\u{7} via edit");
 		expect(deadLetterText({ id: 3, recipients: ["bob"], text: "hi\u001b[2J there" })).toContain(
@@ -375,7 +375,7 @@ describe("agents view", () => {
 describe("collaboration prompt", () => {
 	it("assigns parent handoff ownership and routes child blockers to the parent", () => {
 		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true })).toContain(
-			"own user communication, approvals and integration; check reports against the Definition of Done",
+			"own user communication, approvals and integration; check reports against acceptance checks",
 		);
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
@@ -710,7 +710,7 @@ describe("Team safety", () => {
 				tool!.execute(
 					"c",
 					{
-						queries: [{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: "one", newText: "two" }] }],
+						queries: [{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: "one", newText: "two" }] }],
 					},
 					undefined,
 					undefined,
@@ -750,7 +750,7 @@ describe("Team safety", () => {
 			);
 			return tool!.execute(
 				"c",
-				{ queries: [{ reasoning: "r", type: "edit", path: "a.ts", edits: [{ oldText: from, newText: to }] }] },
+				{ queries: [{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: from, newText: to }] }] },
 				undefined,
 				undefined,
 				{ cwd, hasUI: false },
@@ -823,7 +823,7 @@ describe("Team safety", () => {
 			let checks = 0;
 			guard.reservedBy = () => (checks++ === 0 ? undefined : "a.ts is reserved by peer-1");
 			await expect(
-				tool!.execute("c", { queries: [{ reasoning: "r", path: "a.ts", ...query }] }, undefined, undefined, {
+				tool!.execute("c", { queries: [{ reason: "r", path: "a.ts", ...query }] }, undefined, undefined, {
 					cwd,
 					hasUI: false,
 				}),

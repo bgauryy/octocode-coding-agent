@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-const resolver = new URL("../src/experimental/source-resolver.ts", import.meta.url).href;
+const resolver = new URL("../scripts/source-resolver.ts", import.meta.url).href;
 
 describe("explicit historical migrations", () => {
 	it("leaves old files intact during startup and help, then converts only on migrate", () => {

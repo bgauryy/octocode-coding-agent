@@ -72,7 +72,9 @@ export function messageText(
 				? " (an interrupt: your current step was stopped; act on this first)"
 				: " (an interrupt: your current step was stopped at the request of the sender below, who is not verified as the user)"
 			: "";
-	const header = `${messageHeader(label, message.at, message.id)}${interrupt}`;
+	// The header says which message this one answers, so a reply reads as one without relying on its content.
+	const answers = message.replyTo === undefined ? "" : ` (in reply to #${message.replyTo})`;
+	const header = `${messageHeader(label, message.at, message.id)}${answers}${interrupt}`;
 	if (fromUser) return `${visibleControls(header)}:\n${visibleControls(body)}`;
 	return fenceUntrusted(header, body, footer ? { footer } : {});
 }
@@ -232,7 +234,7 @@ export function dbFailure(error: unknown): string {
 	return typeof code === "string" ? code : errorMessage(error).replace(/^Team database unavailable: /, "");
 }
 
-/** `coordinate changes` output: one line per file, newest first, naming the agent and tool of its latest change. */
+/** `coordinate changes` output: one line per file, newest first, naming every agent and tool that changed it (latest first). */
 export function describeChanges(
 	changes: Change[],
 	options: {
@@ -254,13 +256,13 @@ export function describeChanges(
 			: [];
 	if (changes.length === 0)
 		return [
-			`No agent changed files${scope} in the last ${options.minutes}m. Files changed outside agents (you, bash, git) are not tracked: search files by modification time for those.`,
+			`No agent changed files${scope} in the last ${options.minutes}m. Files changed outside agents (you, git, scripts, bash commands whose writes cannot be named) are not tracked: search files by modification time for those.`,
 			...kept,
 		].join("\n");
 	const shown = changes.slice(0, options.limit);
 	const lines = shown.map(
 		(change) =>
-			`- ${change.path} · ${change.agent}${change.agent === options.self ? " (you)" : ""} via ${change.tool} · ${formatAgo(now - change.at)}${change.count > 1 ? ` · ${change.count} changes` : ""}`,
+			`- ${change.path} · ${change.agents.map((agent) => `${agent}${agent === options.self ? " (you)" : ""}`).join(", ")} via ${change.tools.join(", ")} · ${formatAgo(now - change.at)}${change.count > 1 ? ` · ${change.count} changes` : ""}`,
 	);
 	const more =
 		changes.length > shown.length ? [`(${changes.length - shown.length} more; raise limit or narrow paths)`] : [];

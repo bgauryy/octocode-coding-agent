@@ -19,7 +19,7 @@ const edit = (target: string, oldText: string, newText: string) => ({
 	type: "edit",
 	path: target,
 	edits: [{ oldText, newText }],
-	reasoning: "Replace all acceptance",
+	reason: "Replace all acceptance",
 });
 it("source Edit replace_all updates both original occurrences after a real read", async () => {
 	const f = await fixture("claude", { fileReadTool: true });
@@ -94,7 +94,7 @@ it("partial read permits all occurrences but does not grant whole-file write cov
 					type: "write",
 					path: target,
 					content: "OVERWRITE",
-					reasoning: "Coverage must remain partial",
+					reason: "Coverage must remain partial",
 				},
 			],
 		});
@@ -162,7 +162,7 @@ it("native replaceAll projects source replace_all consistently before and after 
 					type: "edit",
 					path: target,
 					edits: [{ oldText: "BEFORE", newText: "AFTER", replaceAll: true }],
-					reasoning: "Native flag projection",
+					reason: "Native flag projection",
 				},
 			],
 		});
@@ -210,7 +210,7 @@ for (const overlap of [false, true]) {
 							{ oldText: "aa", newText: "X", replaceAll: true },
 							{ oldText: overlap ? "aa b" : "b", newText: "Y" },
 						],
-						reasoning: "Original-span combination",
+						reason: "Original-span combination",
 					},
 				],
 			});
@@ -270,7 +270,7 @@ for (const mixed of [false, true]) {
 							...(mixed ? [{ oldText: "aa", newText: "X", replaceAll: true }] : []),
 							{ oldText: "b\n", newText: "Y\n" },
 						],
-						reasoning: "Fuzzy combination boundary",
+						reason: "Fuzzy combination boundary",
 					},
 				],
 			});

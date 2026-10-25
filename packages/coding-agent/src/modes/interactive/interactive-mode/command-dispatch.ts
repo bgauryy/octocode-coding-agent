@@ -10,6 +10,7 @@ import { CommandSelectorComponent } from "../components/command-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "../../../utils/guards.ts";
+import { handleSkillsCommand } from "./skills-command.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
 type CommandDispatchHost = Pick<
@@ -43,6 +44,8 @@ type CommandDispatchHost = Pick<
 	| "pendingUserInputs"
 	| "queueCompactionMessage"
 	| "queueInteractiveMessage"
+	| "runtimeHost"
+	| "sessionManager"
 	| "session"
 	| "showError"
 	| "showExtensionSelector"
@@ -152,7 +155,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			showCommandPicker(host, args);
 			return;
 		case "skills":
-			showCommandPicker(host, args, true);
+			if (!(await handleSkillsCommand(host, args || "list"))) showCommandPicker(host, args, true);
 			return;
 		case "settings":
 			host.showSettingsSelector();

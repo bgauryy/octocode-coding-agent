@@ -4,12 +4,12 @@ import { rewriteFileQuery } from "../../src/octocode/shared/claude-file.ts";
 it("reverses each Claude file projection while preserving unrelated queries and native reasoning", () => {
 	const input = {
 		queries: [
-			{ type: "write", path: "old", content: "old", reasoning: "create" },
+			{ type: "write", path: "old", content: "old", reason: "create" },
 			{
 				type: "edit",
 				path: "edit",
 				edits: [{ oldText: "a", newText: "b" }],
-				reasoning: "fix",
+				reason: "fix",
 			},
 		],
 	};
@@ -18,7 +18,7 @@ it("reverses each Claude file projection while preserving unrelated queries and 
 		content: "new",
 	});
 	expect(write).toEqual({
-		queries: [{ type: "write", path: "/new", content: "new", reasoning: "create" }, input.queries[1]],
+		queries: [{ type: "write", path: "/new", content: "new", reason: "create" }, input.queries[1]],
 	});
 	const edit = rewriteFileQuery(input, 1, {
 		file_path: "/edited",
@@ -32,7 +32,7 @@ it("reverses each Claude file projection while preserving unrelated queries and 
 				type: "edit",
 				path: "/edited",
 				edits: [{ oldText: "x", newText: "y" }],
-				reasoning: "fix",
+				reason: "fix",
 			},
 		],
 	});
@@ -45,7 +45,7 @@ it("preserves replace-all semantics and refuses invalid or incomplete replacemen
 				type: "edit",
 				path: "a",
 				edits: [{ oldText: "a", newText: "b" }],
-				reasoning: "fix",
+				reason: "fix",
 			},
 		],
 	};

@@ -130,7 +130,7 @@ A named entry with `builtin: true` supplies the code of a `builtin:<name>` exten
 
 ### MCP
 
-The default resource loader includes `tool_search` and MCP. A custom loader with `nativeFeatures: false` can supply `createToolSearchExtension()` and `createMcpExtension()` explicitly.
+The default resource loader includes `tool_search` and MCP. A custom loader with `nativeFeatures: false` can supply `createToolSearchExtension()` and `createMcpExtension()` explicitly. `createMcpExtension({ presets: [octocodePreset()] })` opts into the Octocode default; both factories and the `McpServerPreset` type are exported from `@octocodeai/octocodecode`. Presets supply default configuration, exposure, launch and presentation policies while the host owns every connection. Omitting presets leaves only configured and extension-registered servers. The low-level client is exported separately from `@octocodeai/octocodecode/mcp`; see the [client API reference](../../mcp/README.md).
 
 MCP defaults to automatic exposure: small catalogs are direct, and large catalogs use discovery when the provider supports incremental tool loading. Explicit `deferred` exposure activates `tool_search`. Discovered tools are called natively through the session pipeline.
 
@@ -139,6 +139,14 @@ MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Co
 ## Process clients
 
 The exported `RpcClient` controls an Octocode RPC subprocess. Its `invocation: { command, args }` option supplies an executable and argument prefix before RPC flags, taking precedence over `cliPath`. `onClose(listener)` reports unexpected exit and explicit stop, so hosts can settle pending work; remove listeners with the returned unsubscribe function. See the [RPC client types](../src/modes/rpc/rpc-client/types.ts).
+
+`onEvent`, `collectEvents` and `promptAndWait` use `RpcEvent`, which includes serialized session events and the existing `extension_error` notification (`extensionPath`, `event`, `error`). Narrow by `type` before accessing event-specific fields. Extension UI requests have their separate subscription. The internal `onSessionIdentity` option carries ACP worker startup identity; it is not an application event or a general RPC readiness signal.
+
+`RpcClient.prompt(text, images?, streamingBehavior?, options?)` normally returns the initial prompt disposition. A `handled` command can still dispatch asynchronous work through an extension. Pass `{ waitForCompletion: true, dispatchId: "request-1" }` as the fourth argument to wait for that work, including nested sends and deferred follow-ups. The wire `prompt` command accepts the same optional fields; `dispatchId` is a nonempty string of at most 128 characters. Completion-aware calls refuse a busy session with `execution: "not-sent"` and do not queue or replay the prompt. They have no client response deadline; the host owns cancellation and process shutdown.
+
+`RpcClient.promptAndWait(text, images?, timeoutMs?)` uses completion-aware dispatch and returns the collected events, including for commands that start no model run. Its default timeout is 60 seconds. A timeout removes the request waiter and event subscription; it does not abort or replay the underlying work. Call `abort()` explicitly when the host intends to stop it. The lower-level `collectEvents()` helper still ends on `agent_settled` and is not a command-completion primitive.
+
+Session subscribers and RPC clients also receive `session_dispatch` with `active` and `dispatchId`. This boundary begins before asynchronous input preparation and ends after tracked work finishes, so it can include handled commands with no model run and work started outside a client prompt. It complements model events such as `agent_settled`; it is host dispatch metadata, not an extension hook. The ACP adapter uses it to correlate prompt completion and relay independently started API or team work.
 
 RPC mode validates every stdin line against `RpcCommandSchema` ([schema](../src/modes/rpc/rpc-command-schema.ts)), the TypeBox definition from which `RpcCommand` is derived, before dispatching it. An invalid line is answered with `{ id?, type: "response", command, success: false, error }` and never reaches the session. `command` is the supplied `type` (`"invalid"` when the line is not an object or has no string `type`), `id` is echoed when it is a string, and `error` is `Unknown command: <type>` for an unknown type or names the bad field, such as `Invalid "set_model" command: missing required field "modelId"`.
 

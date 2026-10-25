@@ -112,3 +112,82 @@ it("does not apply an old abort response to a later run", async () => {
 	await userEvent.click(screen.getByRole("button", { name: "Stop current run" }));
 	expect(posted()[1]).toMatchObject({ action: "abort", runId: "run-2" });
 });
+
+it("keeps image drafts when switching to a text-only model and allows removing the attachment", async () => {
+	const view = await composer();
+	const asset = { id: "image-1", mimeType: "image/png", size: 3, name: "screen.png" };
+	fetchControl.mockImplementationOnce(async () => new Response(JSON.stringify({ asset })));
+	fireEvent.change(screen.getByLabelText("Attach images"), {
+		target: { files: [new File(["png"], "screen.png", { type: "image/png" })] },
+	});
+	await screen.findByText("screen.png");
+	await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Inspect this");
+	await view.session({ model: { provider: "custom", id: "text", name: "Text model", input: ["text"] } });
+	expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+	expect(screen.getByLabelText("Attach images")).toBeDisabled();
+	expect(screen.getByRole("alert")).toHaveTextContent("Select an image-capable model");
+	expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Inspect this");
+	await userEvent.click(screen.getByRole("button", { name: "Remove screen.png" }));
+	expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+	expect(screen.queryByText("screen.png")).toBeNull();
+});
+
+it("reenables a retained image draft when selecting a model that accepts images", async () => {
+	const view = await composer();
+	const asset = { id: "image-1", mimeType: "image/png", size: 3, name: "screen.png" };
+	fetchControl.mockImplementationOnce(async () => new Response(JSON.stringify({ asset })));
+	fireEvent.change(screen.getByLabelText("Attach images"), {
+		target: { files: [new File(["png"], "screen.png", { type: "image/png" })] },
+	});
+	await screen.findByText("screen.png");
+	await view.session({ model: { provider: "custom", id: "text", name: "Text model", input: ["text"] } });
+	expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+	await view.session({ model: { provider: "custom", id: "vision", name: "Vision model", input: ["text", "image"] } });
+	expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+	expect(screen.getByLabelText("Attach images")).toBeEnabled();
+	expect(screen.getByText("screen.png")).toBeVisible();
+});
+
+it("identifies the receiving session and keeps a draft editable while disconnected", async () => {
+	const view = await composer();
+	expect(screen.getByText(/Messages go to the terminal session that opened this page/)).toHaveTextContent("s");
+	const box = screen.getByRole("textbox", { name: "Message" });
+	await userEvent.type(box, "Keep my message");
+	view.disconnect();
+	expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+	await userEvent.type(box, " until reconnected");
+	fireEvent.submit(box.closest("form")!);
+	expect(posted()).toEqual([]);
+	expect(box).toHaveValue("Keep my message until reconnected");
+});
+
+it("restores a message rejected after acceptance without overwriting a newer draft", async () => {
+	const view = await composer();
+	const box = screen.getByRole("textbox", { name: "Message" });
+	await userEvent.type(box, "Please implement this");
+	await userEvent.click(screen.getByRole("button", { name: "Send" }));
+	await waitFor(() => expect(box).toHaveValue(""));
+	const id = posted()[0].id;
+	await userEvent.type(box, "New draft");
+	await view.session({ receipts: [{ id, status: "failed", message: "Provider unavailable" }] });
+	expect(screen.getByRole("button", { name: "Restore message" })).toBeDisabled();
+	expect(box).toHaveValue("New draft");
+	await userEvent.clear(box);
+	view.show(null);
+	view.show(<SessionComposer />);
+	await userEvent.click(screen.getByRole("button", { name: "Restore message" }));
+	expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Please implement this");
+	await userEvent.click(screen.getByRole("button", { name: "Send" }));
+	expect(posted()[1].id).not.toBe(id);
+	expect(posted()[1].sessionId).toBe("s");
+});
+
+it("distinguishes a queued follow-up from a completed answer", async () => {
+	await composer(true);
+	await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Then review the result");
+	await userEvent.selectOptions(screen.getByRole("combobox", { name: "When to send" }), "followUp");
+	fetchControl.mockImplementationOnce(async (_url, init) => receipt(init, "completed", ""));
+	await userEvent.click(screen.getByRole("button", { name: "Send" }));
+	expect(await screen.findByText("Follow-up queued")).toBeVisible();
+	expect(screen.queryByText("Completed")).toBeNull();
+});

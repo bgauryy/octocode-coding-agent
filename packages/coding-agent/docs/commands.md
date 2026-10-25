@@ -1,8 +1,8 @@
 # Commands and aliases
 
-The shipped command inventory contains **45 canonical slash commands and 16 compatibility aliases**: 35 core descriptors, eight additional native commands, and two bundled extension commands. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
+The shipped command inventory contains **45 canonical slash commands and 17 compatibility aliases**: 35 core descriptors, eight additional native commands, and two bundled extension commands. Availability depends on the host, enabled extensions and whether this is a main or child session. Loaded skills, prompt templates and third-party extensions add their own commands.
 
-Run `/help [search]` for the current terminal inventory or `/skills [search]` for loaded skills. Selecting a result inserts it into the editor. Type a command followed by a space to see argument completions. In the syntax below, `[value]` is optional and `<value>` is required; do not type the brackets.
+Run `/help [search]` for the current terminal inventory. `/skills` opens the skill manager with source and load state; `/skills <search>` finds loaded skill commands. Selecting a command inserts it into the editor. Type a command followed by a space to see argument completions. In the syntax below, `[value]` is optional and `<value>` is required; do not type the brackets.
 
 ## Provider and model setup
 
@@ -45,7 +45,7 @@ Every compatibility alias appears in the second column. Aliases preserve the can
 | `/resume [all\|query]` | `/continue` | Browse saved sessions; native lookup supports a query or `all` directories |
 | `/settings` | `/config` | Open settings; direct `key=value` setters are not supported |
 | `/share` | — | Share the session through the existing private GitHub gist flow |
-| `/skills [search]` | — | Find and select a loaded skill |
+| `/skills [search\|list\|info\|enable\|disable]` | — | Inspect discovered skills, enable or disable them, or select a loaded skill command |
 | `/status` | `/usage`, `/cost`, `/stats` | Show session statistics, usage, native activity, skills and MCP status; not subscription quotas |
 | `/tree` | — | Navigate branches of the current session |
 | `/trust [project\|config\|off]` | — | Manage project resource trust and native configuration trust |
@@ -56,18 +56,18 @@ See [session workflows](native-features.md#session-workflow-commands) for side-q
 
 ## Additional native commands
 
-These eight commands have no built-in aliases.
+These eight commands extend the native inventory. `/web` is a compatibility alias for `/octocode`.
 
 | Command | Arguments and purpose |
 | --- | --- |
 | `/api` | Inspect the local session API; `on [http]` starts it, `off` stops it |
 | `/archive [segment]` | List compacted-history segments or show one segment's file path |
-| `/backlog` | Open the live task board with a UI, or print the board headlessly; operations listed below |
+| `/backlog` | Deprecated for opening the live workspace; retained for task-board operations listed below |
 | `/hooks` | Inspect hook enablement, loaded definitions, sources and diagnostics; no arguments |
 | `/jobs` | List background shell jobs; `kill <id>` stops one |
 | `/memory` | Browse durable memories; accepts `list`, `search <words>`, `add [title — body]`, `auto on`, `auto off`, `last` |
 | `/rewind [turns]` | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
-| `/web [backlogs]` | Open the live workspace on Activity, or its task board with `backlogs` |
+| `/octocode [backlogs]` | Open the live workspace on Activity, or its task board with `backlogs`; `/web` is the compatibility alias |
 
 See [native features](native-features.md), [hooks](hooks.md), [permissions](permissions.md), and the [backlog view](native-features.md#backlog-view) for feature-specific behavior.
 
@@ -88,6 +88,7 @@ All aliases accept the same operations as their canonical command. These are arg
 
 | Command family | Supported forms |
 | --- | --- |
+| `/skills` | No argument opens the manager; `list [search]` lists sources and load states, `info <name-or-path>` inspects a skill, `enable <name-or-path>` and `disable <name-or-path>` save settings and reload; other text searches loaded skill commands |
 | `/agents` | No argument lists agents; `tell <agent\|all> <message>`, `interrupt <id> <message>`, `kill <id>`, `merge <id>`, `stats`, `external ...` |
 | `/agents external` | `list`, `connect octocode <instanceId>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; a JSON object can supply advanced connection options |
 | `/permissions` | No argument shows status; `manual`, `workspace`, `full`, `grants`, `grants clear`, `log`, `plan`, `plan off` |
@@ -160,7 +161,7 @@ Aliases use the canonical handler and prompt unchanged. Most commands perform ho
 | `/backlog do <id>` | Sends the task's saved context and comments, requires a fresh read of all pages before acting, and requires verification before completion. Saved task text does not grant additional permissions. Other backlog operations use host controls. | [Task handoff, version checks and delivery](../test/octocode/workspace-handoff.test.ts), [backlog command operations](../test/octocode/backlog.test.ts) |
 | `/agents tell`, `/agents interrupt`, `/agents external prompt` | Forwards the user's message to the selected agent through existing permission and delivery controls. These operations do not supply a separate summarization or planning prompt. Other agent operations use host controls. | [Team controls](../test/octocode/team-tools.test.ts), [external agent manager](../test/octocode/external-manager.test.ts) |
 
-The other **38 commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/providers`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/web`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
+The other **38 commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/providers`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
 
 [Dispatch tests](../test/slash-command-dispatch.test.ts) compare all 13 aliases with their canonical handler's arguments and effects. [Collision tests](../test/command-aliases.test.ts) cover extensions, prompts and skills. The native SDK test checks all 15 native registrations and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
 
@@ -176,6 +177,6 @@ The final repository-wide `yarn run check` passed TypeScript, then stopped on li
 
 ## Source verification
 
-Verified on 2026-10-24 against [core metadata](../src/core/slash-commands.ts), [terminal dispatch](../src/modes/interactive/interactive-mode/command-dispatch.ts), [native registration](../src/octocode/index.ts), [native command registration rules](../src/octocode/shared/commands.ts), and [bundled extensions](../src/extensions/index.ts). Argument forms were checked against their handlers, and the skill list against the installed research package selected by [the bundle resolver](../src/config.ts). Shell entry points come from [CLI help](../src/cli/args/help.ts) and the [API CLI](../src/octocode/api/cli.ts).
+Verified on 2026-10-24 against [core metadata](../src/core/slash-commands.ts), [terminal dispatch](../src/modes/interactive/interactive-mode/command-dispatch.ts), [native registration](../src/octocode/index.ts), [native command registration rules](../src/octocode/shared/commands.ts), and [built-in composition](../src/core/resource-loader/builtins.ts). Argument forms were checked against their handlers, and the skill list against the installed research package selected by [the bundle resolver](../src/config.ts). Shell entry points come from [CLI help](../src/cli/args/help.ts) and the [API CLI](../src/octocode/api/cli.ts).
 
 Update this reference when a command registration or alias changes. The static inventory is not a promise that every host loads every command.

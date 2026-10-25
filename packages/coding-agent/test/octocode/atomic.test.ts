@@ -85,7 +85,7 @@ describe("file tool content precondition", () => {
 		fs.writeFileSync(file, "bbbb");
 		fs.utimesSync(file, mtime, mtime);
 		expect(guard.check(file, "write", "a.txt")).toMatch(/changed on disk/);
-		await expect(run(cwd, [{ reasoning: "r", type: "write", path: "a.txt", content: "cccc" }])).rejects.toThrow(
+		await expect(run(cwd, [{ reason: "r", type: "write", path: "a.txt", content: "cccc" }])).rejects.toThrow(
 			/changed on disk/,
 		);
 		expect(fs.readFileSync(file, "utf8")).toBe("bbbb");
@@ -99,7 +99,7 @@ describe("file tool content precondition", () => {
 		const { guard, run } = fileTool();
 		guard.record(file);
 		const result = await run(cwd, [
-			{ reasoning: "r", type: "edit", path: "run.sh", edits: [{ oldText: "one", newText: "two" }] },
+			{ reason: "r", type: "edit", path: "run.sh", edits: [{ oldText: "one", newText: "two" }] },
 		]);
 		expect(result.content[0].text).toContain("1. OK edit run.sh");
 		expect(fs.readFileSync(file, "utf8")).toBe("echo two\n");
@@ -110,11 +110,11 @@ describe("file tool content precondition", () => {
 	it("writes new files and replaces read ones", async () => {
 		const cwd = tmp();
 		const { guard, run } = fileTool();
-		await run(cwd, [{ reasoning: "r", type: "write", path: "sub/new.txt", content: "hello" }]);
+		await run(cwd, [{ reason: "r", type: "write", path: "sub/new.txt", content: "hello" }]);
 		const file = path.join(cwd, "sub", "new.txt");
 		expect(fs.readFileSync(file, "utf8")).toBe("hello");
 		guard.record(file);
-		await run(cwd, [{ reasoning: "r", type: "write", path: "sub/new.txt", content: "bye" }]);
+		await run(cwd, [{ reason: "r", type: "write", path: "sub/new.txt", content: "bye" }]);
 		expect(fs.readFileSync(file, "utf8")).toBe("bye");
 	});
 });

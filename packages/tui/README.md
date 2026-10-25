@@ -703,6 +703,16 @@ tui.addChild(image);
 
 Supported formats: PNG, JPEG, GIF, WebP. Dimensions are parsed from the image headers automatically.
 
+#### Image capability detection
+
+`getCapabilities().images` returns `"kitty"`, `"iterm2"`, or `null`. Environment hints include `TERM=xterm-kitty`, so Kitty sessions can be recognized without local window variables.
+
+On interactive stdin and stdout, `ProcessTerminal` also sends a Kitty graphics query with a one-pixel PNG. It shares the keyboard negotiation's device-attributes sentinel and does not wait before accepting input. A matching `OK` enables Kitty images; an error or a device-attributes reply without a graphics acknowledgement disables them. If neither reply arrives, environment detection remains in effect. The query does not display or store the pixel. See the [Kitty protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums).
+
+The optional third callback to `Terminal.start(onInput, onResize, onCapabilitiesChange)` reports capability changes. The TUI uses it to invalidate mounted components, query cell dimensions, and repaint images in both renderers. Custom components that choose an image or text fallback during construction should reconsider that choice in `invalidate()`.
+
+Explicit capability overrides take precedence. Automatic probing is skipped for redirected streams, tmux/screen, Rex, and terminals detected as using the iTerm2 image protocol. `OCTOCODE_IMAGE_PROTOCOL=kitty`, `iterm2`, or `none` forces the corresponding choice; `auto` keeps detection enabled.
+
 #### Alternate-screen image compatibility
 
 `TuiAltScreen` supports inline images and partial viewport cropping in terminals that implement the Kitty graphics protocol, including Kitty and Ghostty. iTerm2's inline-image protocol does not provide operations to delete an existing placement or crop its source while scrolling. To prevent stale images from remaining over repainted content, `TuiAltScreen` renders image components as text placeholders in iTerm2. `TuiMainScreen` continues to render iTerm2 inline images normally.

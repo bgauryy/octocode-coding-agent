@@ -45,7 +45,7 @@ Shell hints cover built-in flags, enum values, bundled model/provider names, con
 
 ## Configuration
 
-[CONFIGURATIONS.md](../../CONFIGURATIONS.md) maps global and workspace settings for skills, MCP, models, prompts, extensions and agents. `/mcp config` shows the active locations and trust state; `/mcp tools [server] [tool]` inspects tool names, descriptions and schemas. `/mcp enable <server>` and `/mcp disable <server>` control configured servers; add `--local` for a trusted workspace override. `/status` lists loaded skills and MCP connections. See the [MCP guide](docs/mcp.md) for automatic Octocode ownership, exposure and shell commands.
+[CONFIGURATIONS.md](../../CONFIGURATIONS.md) maps global and workspace settings for skills, MCP, models, prompts, extensions and agents. `/mcp config` shows the active locations and trust state; `/mcp tools [server] [tool]` inspects tool names, descriptions and schemas. `/mcp enable <server>` and `/mcp disable <server>` control configured servers; add `--local` for a trusted workspace override. `/status` lists loaded skills and MCP connections. See the [MCP guide](docs/mcp.md) for the default Octocode preset, exposure and shell commands.
 
 ## Session API
 
@@ -58,11 +58,12 @@ OCTOCODE_API=1 yarn start
 In another terminal:
 
 ```sh
-node packages/coding-agent/src/octocode/api/cli.ts list
-node packages/coding-agent/src/octocode/api/cli.ts status --to <id>
+yarn node packages/coding-agent/src/octocode/api/cli.ts list
+yarn node packages/coding-agent/src/octocode/api/cli.ts status --to <id>
+yarn node packages/coding-agent/src/octocode/api/cli.ts send --to <id> --wait -- "Reply with ACK."
 ```
 
-Installed builds expose the same commands through `octocode-api`. Within the agent, `/api on` and `/api off` control the API. See [environment variables](docs/environment-variables.md) for opt-in transport settings.
+Installed builds expose the same commands through `octocode-api`. Within the agent, `/api on` and `/api off` control the API. See the [local session API guide](docs/session-api.md) for session guards, message keys, event watching, external peers and runnable checks, and [environment variables](docs/environment-variables.md) for opt-in transport settings.
 
 The native SDK supports one active `AgentSession` per process. Sequential CLI/RPC reloads are supported; concurrent native sessions share session and database state and are not isolated.
 

@@ -41,8 +41,9 @@ function packPackages(packages, tarballDirectory) {
 		const localDependencies = {};
 		for (const section of ["dependencies", "optionalDependencies"]) {
 			for (const [name, specifier] of Object.entries(packageJson[section] ?? {})) {
-				if (!specifier.startsWith("file:")) continue;
-				const localPath = resolve(pkg.directory, specifier.slice(5));
+				const local = /^(?:file|link):(.+)$/.exec(specifier);
+				if (!local) continue;
+				const localPath = resolve(pkg.directory, local[1]);
 				if (!existsSync(localPath)) throw new Error(`Missing local dependency ${name}: ${localPath}`);
 				localDependencies[name] = `file:${localPath}`;
 				packageJson[section][name] = localDependencies[name];

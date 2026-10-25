@@ -596,13 +596,13 @@ describe("backlog tool", () => {
 		const t = setup();
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 todo");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 todo");
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 ongoing");
 		// Items live on the board (`/backlog`), not in a widget under the editor.
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "update", id: "B1", state: "done", completion: completed(), note: "ok" }, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity");
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
 			"○ Backlog(update B1 → done)",
 		);
@@ -636,16 +636,16 @@ describe("backlog tool", () => {
 describe("backlog status", () => {
 	it("names every open state and keeps the web hint when there are no open items", () => {
 		expect(countsText({ ongoing: 2, todo: 4, backlog: 1, done: 9 })).toBe(
-			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
+			"/octocode · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
 		);
-		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/web · backlogs & activity");
+		expect(countsText({ ongoing: 0, todo: 0, backlog: 0, done: 3 })).toBe("/octocode · backlogs & activity");
 	});
 
 	it("shows the web workspace hint at session start before any item exists", async () => {
 		const t = setup();
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.emit("session_start", {}, ctx);
-		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
+		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity");
 	});
 
 	it("gives RPC clients the same status text and clears it when the database becomes unreadable", async () => {
@@ -653,7 +653,7 @@ describe("backlog status", () => {
 		const rpc = fakeCtx({ cwd: t.cwd, mode: "rpc" });
 		await t.call({ op: "add", why: "Required work", title: "one", goal: "it works", state: "todo" }, rpc);
 		await t.call({ op: "update", id: "B1", state: "ongoing" }, rpc);
-		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity · 1 ongoing");
+		expect(rpc.ui.statuses.get("octocode-backlog")).toBe("/octocode · backlogs & activity · 1 ongoing");
 		expect(rpc.ui.widgets.has("octocode-backlog")).toBe(false);
 		const db = path.join(t.cwd, "foreign.sqlite");
 		fs.writeFileSync(db, "not sqlite at all, not even close to a header of one".repeat(20));

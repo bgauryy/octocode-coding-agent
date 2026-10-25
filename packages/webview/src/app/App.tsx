@@ -12,6 +12,7 @@ import { TreeView } from "./features/TreeView.tsx";
 import { BoardSkeleton } from "./features/ViewSkeleton.tsx";
 import { hasOpenModal, navigate, replaceHash, useHashRoute, useHotkeys } from "./hooks.ts";
 import { attention, indexBacklog } from "./model/backlog.ts";
+import { reportLinkHref } from "./model/reports.ts";
 import { hashFor, type Params, resolveRoute } from "./model/route.ts";
 import { AlertIcon, BoardIcon, PlusIcon, TableIcon, TerminalIcon, TreeIcon } from "./ui/icons.tsx";
 import { RichTextContext } from "./ui/LongText.tsx";
@@ -249,6 +250,7 @@ function ItemSheet({
 					onClose={onClose}
 					actions={live ? <live.ItemActions item={item} /> : undefined}
 					activity={live ? <live.ItemActivity item={item} /> : undefined}
+					reportHref={live ? reportLinkHref : undefined}
 				/>
 			) : (
 				<MissingItem refName={destination.kind === "item" ? destination.ref : "Item"} onClose={onClose} />

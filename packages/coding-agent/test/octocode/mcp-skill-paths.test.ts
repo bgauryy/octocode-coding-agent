@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { McpServerEntry } from "../../src/extensions/mcp/config.ts";
-import { prepareOctocodeSkillLaunch } from "../../src/octocode/mcp/skill-paths.ts";
+import type { McpServerEntry } from "../../../mcp/src/config.ts";
+import { prepareOctocodeSkillLaunch } from "../../../mcp/src/presets/octocode/skill-paths.ts";
 import { tmp } from "./helpers.ts";
 
 const entry = (env?: Record<string, string>): McpServerEntry => ({

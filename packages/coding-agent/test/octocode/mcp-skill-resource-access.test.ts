@@ -12,7 +12,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createAgentSession } from "../../src/core/sdk.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { octocodeLaunch } from "../../src/octocode/mcp/octocode/launch.ts";
+import { octocodeLaunch } from "../../../mcp/src/presets/octocode/launch.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -89,7 +89,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			...(owner !== "native" ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
+			additionalExtensionPaths: ["builtin:mcp"],
 			extensionFactories: [
 				{
 					name: "faux",
@@ -126,7 +126,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			let reader: string | undefined;
 			const read = (file: string): JsonObject =>
 				reader!.endsWith("localFetch")
-					? { path: file, ranges: ["1-10"] }
+					? { path: file, ranges: [{ startLine: 1, endLine: 10 }] }
 					: { path: file, startLine: 1, endLine: 10, minify: "none" };
 			let result = "";
 			faux.setResponses([

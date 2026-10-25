@@ -24,6 +24,8 @@ export const RpcCommandSchema = Type.Union([
 		message: Type.String(),
 		images: ImagesSchema,
 		streamingBehavior: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")])),
+		waitForCompletion: Type.Optional(Type.Boolean()),
+		dispatchId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
 	}),
 	command("steer", { message: Type.String(), images: ImagesSchema }),
 	command("follow_up", { message: Type.String(), images: ImagesSchema }),

@@ -1,5 +1,12 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contacts";
-import { type BacklogMutation, WORKSPACE_ROUTES } from "@octocodeai/octocode-contacts/protocol";
+import {
+	REPORT_KINDS,
+	type BacklogMutation,
+	type ReportFile,
+	type ReportSummary,
+	type ReportsIndex,
+	WORKSPACE_ROUTES,
+} from "@octocodeai/octocode-contacts/protocol";
 import type { BacklogAudit, Snapshot, SnapshotItem } from "@octocodeai/octocode-contacts/snapshot";
 import type {
 	WorkspaceCommand,
@@ -11,6 +18,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo } from "r
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
+import { requestJson } from "../../request.ts";
 import { BrowserConnection } from "../../transport.ts";
 import { createApplicationApi } from "./application-api.ts";
 import type { BacklogStore } from "../extension.ts";
@@ -38,23 +46,19 @@ interface SessionState {
 /** Authenticated calls to the local host; the host stays the authority for every change. */
 function createApi(access: string) {
 	const headers = { Authorization: `Bearer ${access}`, "Content-Type": "application/json" };
-	async function read<T>(response: Response, fallback: string): Promise<T> {
-		const result = await response.json();
-		if (!response.ok) throw new Error(result?.error || fallback);
-		return result as T;
-	}
 	return {
 		...createApplicationApi(access),
-		backlogs: async () =>
-			read<Snapshot>(await fetch(WORKSPACE_ROUTES.backlogs, { headers }), "Could not load the board"),
+		backlogs: async () => requestJson<Snapshot>(WORKSPACE_ROUTES.backlogs, { headers }, "Could not load the board"),
 		mutate: async (payload: BacklogMutation) =>
-			read<{ item: Pick<SnapshotItem, "ref" | "version"> }>(
-				await fetch(WORKSPACE_ROUTES.backlogs, { method: "POST", headers, body: JSON.stringify(payload) }),
+			requestJson<{ item: Pick<SnapshotItem, "ref" | "version"> }>(
+				WORKSPACE_ROUTES.backlogs,
+				{ method: "POST", headers, body: JSON.stringify(payload) },
 				"Could not save",
 			),
 		command: async (payload: WorkspaceCommand): Promise<WorkspaceReceipt> => {
-			const result = await read<{ receipt?: unknown }>(
-				await fetch(WORKSPACE_ROUTES.workspace, { method: "POST", headers, body: JSON.stringify(payload) }),
+			const result = await requestJson<{ receipt?: unknown }>(
+				WORKSPACE_ROUTES.workspace,
+				{ method: "POST", headers, body: JSON.stringify(payload) },
 				"Request failed",
 			);
 			const receipt = result?.receipt as Partial<WorkspaceReceipt> | undefined;
@@ -72,17 +76,66 @@ function createApi(access: string) {
 			return receipt as WorkspaceReceipt;
 		},
 		audit: async (params: { before?: number; backlogId?: string }, signal?: AbortSignal) =>
-			read<{ events: BacklogAudit[]; before?: number }>(
-				await fetch(
-					`${WORKSPACE_ROUTES.audit}?${new URLSearchParams({
-						...(params.before ? { before: String(params.before) } : {}),
-						...(params.backlogId ? { backlogId: params.backlogId } : {}),
-					})}`,
-					{ headers: { Authorization: headers.Authorization }, signal },
-				),
+			requestJson<{ events: BacklogAudit[]; before?: number }>(
+				`${WORKSPACE_ROUTES.audit}?${new URLSearchParams({
+					...(params.before ? { before: String(params.before) } : {}),
+					...(params.backlogId ? { backlogId: params.backlogId } : {}),
+				})}`,
+				{ headers: { Authorization: headers.Authorization }, signal },
 				"Could not load audit",
 			),
+		reports: async (signal?: AbortSignal): Promise<ReportsIndex> => {
+			const value = await requestJson(
+				WORKSPACE_ROUTES.reports,
+				{ headers: { Authorization: headers.Authorization }, signal },
+				"Could not load reports",
+			);
+			if (!isRecord(value) || !Array.isArray(value.reports) || !value.reports.every(isReportSummary))
+				throw new Error("Invalid reports response");
+			return value as unknown as ReportsIndex;
+		},
+		reportFile: async (
+			id: string,
+			kind: ReportSummary["kind"],
+			file: string,
+			signal?: AbortSignal,
+		): Promise<ReportFile> => {
+			const value = await requestJson(
+				`${WORKSPACE_ROUTES.reports}/file?${new URLSearchParams({ id, kind, name: file })}`,
+				{
+					headers: { Authorization: headers.Authorization },
+					signal,
+				},
+				"Could not load the report",
+			);
+			if (
+				!isRecord(value) ||
+				value.id !== id ||
+				value.kind !== kind ||
+				value.file !== file ||
+				typeof value.markdown !== "string"
+			)
+				throw new Error("Invalid report file response");
+			return value as unknown as ReportFile;
+		},
 	};
+}
+
+function isReportSummary(value: unknown): value is ReportSummary {
+	return (
+		isRecord(value) &&
+		typeof value.id === "string" &&
+		typeof value.kind === "string" &&
+		REPORT_KINDS.includes(value.kind as ReportSummary["kind"]) &&
+		typeof value.title === "string" &&
+		typeof value.updated === "string" &&
+		Array.isArray(value.files) &&
+		value.files.every((entry) => isRecord(entry) && typeof entry.name === "string" && typeof entry.bytes === "number")
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
 }
 type LiveApi = ReturnType<typeof createApi>;
 

@@ -1,4 +1,9 @@
-import type { ApiKeyAuth, OAuthAuth } from "./types.ts";
+import type { ApiKeyAuth, Credential, OAuthAuth } from "./types.ts";
+
+/** Signed-out account registrations are not authentication credentials. */
+export function isActiveCredential(credential: Credential | undefined): credential is Credential {
+	return credential !== undefined && !(credential.type === "oauth" && credential.signedOut === true);
+}
 
 /**
  * Standard api-key auth: a stored credential key wins, otherwise the first
@@ -41,6 +46,8 @@ export function lazyOAuth(input: {
 	name: string;
 	isSubscription?: boolean;
 	loginLabel?: string;
+	/** Only flows with remote session revocation opt in to loading on logout. */
+	canLogout?: boolean;
 	load: () => Promise<OAuthAuth>;
 }): OAuthAuth {
 	let promise: Promise<OAuthAuth> | undefined;
@@ -54,6 +61,15 @@ export function lazyOAuth(input: {
 		loginLabel: input.loginLabel,
 		login: async (interaction, options) => (await loaded()).login(interaction, options),
 		refresh: async (credential, signal) => (await loaded()).refresh(credential, signal),
+		...(input.canLogout
+			? {
+					logout: async (credential: Parameters<NonNullable<OAuthAuth["logout"]>>[0], signal: AbortSignal) => {
+						const flow = await loaded();
+						if (!flow.logout) throw new Error("OAuth logout is not available");
+						return flow.logout(credential, signal);
+					},
+				}
+			: {}),
 		toAuth: async (credential) => (await loaded()).toAuth(credential),
 	};
 }

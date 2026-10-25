@@ -16,7 +16,7 @@ import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { shortPath } from "../shared/format.ts";
 import { readPaths } from "../shared/home.ts";
-import { isOctocodeTool } from "../shared/octocode-tools.ts";
+import { isOctocodeTool } from "../../../../mcp/src/presets/octocode/names.ts";
 import { saveContentCopy } from "../shared/spill.ts";
 import { cacheClock } from "./cache.ts";
 

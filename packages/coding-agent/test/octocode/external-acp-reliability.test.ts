@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AcpBackend, AcpError } from "../../src/octocode/external/acp.ts";
+import { AcpBackend, AcpError } from "../../../acp/src/client/client.ts";
 import { groupMembers, processMatch } from "../../src/octocode/shared/process.ts";
 
 const runner = fileURLToPath(new URL("./scripts/live-acp-reliability.mjs", import.meta.url));

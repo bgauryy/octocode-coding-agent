@@ -171,3 +171,15 @@ export const ArrowDownIcon = (props: IconProps) => (
 		<path d="M8 3v10M4 9l4 4 4-4" />
 	</Svg>
 );
+export const DocIcon = (props: IconProps) => (
+	<Svg {...props}>
+		<path d="M4 2.5h4.5L12 6v7a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 3 13V4a1.5 1.5 0 0 1 1-1.5Z" />
+		<path d="M8.5 2.5V6H12M5.5 9h5M5.5 11.5h3.5" />
+	</Svg>
+);
+export const ResearchIcon = (props: IconProps) => (
+	<Svg {...props}>
+		<path d="M6.5 2.5v3.2L3.2 11.5a1.6 1.6 0 0 0 1.4 2.4h6.8a1.6 1.6 0 0 0 1.4-2.4L9.5 5.7V2.5" />
+		<path d="M5.5 2.5h5M5 10.5h6" />
+	</Svg>
+);

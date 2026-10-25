@@ -907,6 +907,8 @@
 				const command = str(args.command);
 				const cmdDisplay = command === null ? invalidArg : escapeHtml(command || "...");
 				html += `<div class="tool-command">$ ${cmdDisplay}</div>`;
+				const reason = str(args.reason);
+				if (reason?.trim()) html += `<div class="tool-reason">↳ ${escapeHtml(reason.trim())}</div>`;
 				if (result) {
 					const output = getResultText().trim();
 					if (output) html += formatExpandableOutput(output, 5);

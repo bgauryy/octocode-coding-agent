@@ -1,3 +1,4 @@
+import { isOctocodeReader, isOctocodeSearch } from "../../../mcp/src/presets/octocode/names.ts";
 /**
  * System prompt construction and project context loading
  */
@@ -107,11 +108,7 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	const hasLocalSearch = [...selectedTools, ...deferredTools].some((name) =>
-		/^mcp__octocode__(localSearch|localSearchCode|structureSearch|astSearch|lspSearch|localFindFiles|localViewStructure)$/.test(
-			name,
-		),
-	);
+	const hasLocalSearch = [...selectedTools, ...deferredTools].some(isOctocodeSearch);
 
 	if (selectedTools.includes("bash") && !hasLocalSearch) addRule("Use bash for file operations like ls, rg, find");
 
@@ -119,9 +116,9 @@ function buildRules(
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
-	// The floor for SDK sessions that carry no `octocode` section; Octocode's Communication policy refines, not replaces, these.
+	// Always added: sessions without an `octocode` section need them as their only floor; with it, Octocode's Communication policy refines, not replaces, these.
 	addRule("Be concise in your responses");
-	addRule("Show file paths clearly when working with files");
+	addRule("Refer to files by their paths");
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
 
@@ -155,7 +152,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		promptSections.preamble = customPrompt;
 	} else {
 		promptSections.preamble =
-			"You are an expert coding assistant operating inside Octocode, a coding agent harness. You help users understand and change code: you research the code and its dependencies, edit files, run commands and checks, and report what you verified.";
+			"You are a coding assistant operating inside Octocode, a coding agent harness. You help users understand and change code: you research the code and its dependencies, edit files, run commands and checks, and report what you verified.";
 		const visibleTools = declaredTools.filter((name) => !!toolSnippets[name]);
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
@@ -163,10 +160,9 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		promptSections.rules = buildRules(declaredTools, deferredTools, toolGuidelines, promptGuidelines);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
-- Additional docs: ${getDocsPath()}
+- Additional docs: ${getDocsPath()}; the topic-to-page mapping for every Octocode subject is its docs/index.md
 - Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
 - When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), Octocode packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), non-LLM models (docs/models.md)
 - When working on Octocode topics, read the docs and examples that define the behavior, and follow .md cross-references that resolve a task dependency before implementing; read a complete section when its conditions or exceptions affect the change.`;
 	}
 
@@ -176,13 +172,15 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	// Octocode ships no `read` tool, but an extension or SDK caller may register one under that name.
 	// A deferred Octocode reader counts like a declared one: tool_search loads it, as the rules above assume.
 	const readers = ["read", "bash"] as const;
-	const isOctocodeReader = (tool: string) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(tool);
-	const skillFileReadTool = [...declaredTools, ...deferredTools].some(isOctocodeReader)
-		? "octocode"
-		: (readers.find((tool) => declaredTools.includes(tool)) ??
-			(readers.some((tool) => selectedTools.includes(tool)) || selectedTools.some(isOctocodeReader)
-				? "indirect"
-				: undefined));
+	// The skill tool loads a skill by name and needs no file reader, so it comes first.
+	const skillFileReadTool = declaredTools.includes("skill")
+		? "skill"
+		: [...declaredTools, ...deferredTools].some(isOctocodeReader)
+			? "octocode"
+			: (readers.find((tool) => declaredTools.includes(tool)) ??
+				(readers.some((tool) => selectedTools.includes(tool)) || selectedTools.some(isOctocodeReader)
+					? "indirect"
+					: undefined));
 	if (skillFileReadTool && skills.length > 0) {
 		const skillsPrompt = formatSkillsForPrompt(skills, skillFileReadTool).trim();
 		if (skillsPrompt) promptSections.skills = skillsPrompt;

@@ -4,7 +4,7 @@ import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";
 	path: string;
-	reasoning: string;
+	reason: string;
 	edits?: { oldText: string; newText: string }[];
 	content?: string;
 	movePath?: string;
@@ -22,16 +22,16 @@ export function validatePatchPath(value: string): string {
 		);
 	return value;
 }
-export function patchChanges(patch: string, reasoning: string): PatchChange[] {
+export function patchChanges(patch: string, reason: string): PatchChange[] {
 	return parsePatch(patch).hunks.map((h) => {
 		validatePatchPath(h.path);
-		if (h.kind === "add") return { type: "write", path: h.path, content: h.content, reasoning };
-		if (h.kind === "delete") return { type: "delete", path: h.path, reasoning };
+		if (h.kind === "add") return { type: "write", path: h.path, content: h.content, reason };
+		if (h.kind === "delete") return { type: "delete", path: h.path, reason };
 		if (h.move_path !== null) validatePatchPath(h.move_path);
 		return {
 			type: "edit",
 			path: h.path,
-			reasoning,
+			reason,
 			edits: h.chunks.map((c) => ({
 				oldText: c.old.join("\n"),
 				newText: c.new.join("\n"),
@@ -65,7 +65,7 @@ export function mutatedPaths(toolName: string, input: unknown): string[] {
 export function fileChanges(input: Record<string, unknown>): Record<string, unknown>[] {
 	if (typeof input.patch === "string") {
 		try {
-			return patchChanges(input.patch, typeof input.reasoning === "string" ? input.reasoning : "Apply patch").map(
+			return patchChanges(input.patch, typeof input.reason === "string" ? input.reason : "Apply patch").map(
 				(change) => ({ ...change }),
 			);
 		} catch {

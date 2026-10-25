@@ -7,6 +7,7 @@
 
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
+import { reasonRow } from "../../modes/interactive/components/tool-execution/reason.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ToolRenderContext, ToolRenderers } from "../extensions/types.ts";
 import { ansiLinesToHtml } from "./ansi-to-html.ts";
@@ -101,6 +102,8 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 				);
 				renderedCallComponents.set(toolCallId, component);
 				const lines = component.render(width);
+				// The shared reason row of the TUI, so an exported native call states its goal under its header.
+				lines.push(...(reasonRow(toolName, args)?.render(width) ?? []));
 				return ansiLinesToHtml(lines);
 			} catch {
 				// On error, return undefined so HTML export can fall back to structured result rendering

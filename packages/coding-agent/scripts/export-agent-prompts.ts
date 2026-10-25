@@ -11,9 +11,10 @@ import { teamTask, withIdentity } from "../src/octocode/instructions/task.ts";
 import { loadProfiles, profileSelectsTool } from "../src/octocode/subagents/profiles.ts";
 import { registerTurnSetup } from "../src/octocode/turn.ts";
 import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
-import { octocodeToolDefinition } from "../src/octocode/mcp/tools.ts";
-import type { Tool } from "@octocodeai/octocode-mcp";
-import { fakeOctocode, fakePi } from "../test/octocode/fake-pi.ts";
+import { defineOctocodeTool, octocodeToolName } from "../../mcp/src/presets/octocode/tools.ts";
+import { renderServersSection } from "../../mcp/src/section.ts";
+import type { Tool } from "../../mcp/src/client/index.ts";
+import { fakePi } from "../test/octocode/fake-pi.ts";
 
 const destination = process.argv[2];
 if (!destination) throw new Error("Usage: export-agent-prompts.ts <output-directory> [captured-mcp-catalog.json]");
@@ -45,12 +46,16 @@ try {
 		if (profile?.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 		if (profile?.prompt) process.env[ROLE_PROMPT_FILE_ENV] = writeRolePrompt(profile.prompt, temporary);
 		const native = fakePi();
-		octocode(native.pi, { mcp: false });
+		octocode(native.pi);
 		for (const tool of catalog?.catalog.tools ?? []) {
-			const definition = octocodeToolDefinition(tool, {
+			const definition = defineOctocodeTool({
+				tool,
+				server: "octocode",
+				name: octocodeToolName(tool.name),
+				timeoutMs: 60_000,
 				namespace: { name: "mcp__octocode", instructions: catalog?.initialize.instructions },
 				exposure: "direct",
-				call: async () => {
+				getClient: async () => {
 					throw new Error("Prompt export does not execute MCP tools");
 				},
 			});
@@ -65,7 +70,6 @@ try {
 		registerTurnSetup(turn.pi, {
 			isSubagent: child,
 			profiles: () => profiles,
-			octocode: fakeOctocode({ by: "off" }).mcp,
 		});
 		const options = normalizeBuildSystemPromptOptions({
 			cwd: "/workspace/project",
@@ -76,6 +80,23 @@ try {
 			skills: [],
 		});
 		await turn.emit("before_agent_start", { systemPromptOptions: options }, {});
+		if (catalog)
+			options.sections.mcp_servers =
+				renderServersSection([
+					{
+						entry: {
+							name: "octocode",
+							config: { command: "fixture", exposure: "direct" },
+							source: "prompt fixture",
+							scope: "default",
+						},
+						connection: { state: "connected", instructions: catalog.initialize.instructions },
+						tools: {
+							declared: tools.filter((tool) => tool.name.startsWith("mcp__")).map((tool) => ({ name: tool.name })),
+							deferred: [],
+						},
+					},
+				]) ?? "";
 		const prompt = buildSystemPrompt(options);
 		fs.writeFileSync(path.join(output, `${name}.system.md`), `${prompt}\n`);
 		fs.writeFileSync(

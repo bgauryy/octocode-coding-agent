@@ -45,7 +45,7 @@ async function setup() {
 		close: () => {},
 	};
 	const web = await startWorkspaceWeb(
-		{ store, actor: { id: "parent" }, session: "session", repoName: "repo" },
+		{ store, actor: { id: "parent" }, session: "session", repoName: "repo", repoRoot: directory },
 		() => {},
 		workspace,
 	);

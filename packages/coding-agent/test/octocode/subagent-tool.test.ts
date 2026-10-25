@@ -289,7 +289,7 @@ describe("agent tool with a scripted pi child", () => {
 				"--model",
 				"faux/model",
 				"--tools",
-				"read,bash,file,agent,archive,tool_search,mcp,mcp__*",
+				"read,bash,file,agent,archive,skill,tool_search,mcp,mcp__*",
 				"--exclude-tools",
 				"browser",
 			]),

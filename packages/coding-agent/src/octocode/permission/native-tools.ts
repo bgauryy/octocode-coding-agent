@@ -1,11 +1,14 @@
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
-import { isOctocodeTool } from "../shared/octocode-tools.ts";
+import type { TSchema } from "typebox";
+import type { ExtensionAPI, ToolDefinition } from "../../core/extensions/index.ts";
+import { withoutReason, withReason } from "../shared/reason.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
  * effects; a read-only hint alone cannot bypass that review. Extensions outside Octocode retain their own contract.
  */
 const NATIVE_PERMISSION_OWNERS = new Map([
+	["graphBuild", "gate/classify: derived workspace snapshots; Rust enforces path scope"],
+	["graphQuery", "Rust CLI: workspace-scoped immutable graph reads"],
 	["bash", "gate/classify: shell and destructive commands"],
 	["debug", "gate/classify: debugger execution; termination only stops an existing session"],
 	["browser", "gate/classify plus BrowserTool: page actions, host access, uploads and control"],
@@ -16,15 +19,36 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	["askUser", "Session UI only: collects the user's answers"],
 	["backlog", "Session workspace state only: backlog records and comments"],
 	["archive", "Archive tool: authorized session history, checked by the history reader"],
+	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 ]);
+
+/** Whether `name` is a native tool: one with a reviewed permission owner above (MCP and extension tools are not). */
+export const isNativeTool = (name: string): boolean => NATIVE_PERMISSION_OWNERS.has(name);
+
+export const getNativeToolNames = (): string[] => [...NATIVE_PERMISSION_OWNERS.keys()];
+
+/**
+ * A native tool as the model sees it: `reason` is a required argument (unless the tool declares its own). The tool's
+ * `execute` never receives the one added here, so strict argument checks such as the `agent` envelope's still hold.
+ * `renderCall` keeps the whole call, so rows can show it.
+ */
+function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>): ToolDefinition<P, D, S> {
+	const parameters = withReason(tool.parameters);
+	if (parameters === tool.parameters) return tool;
+	return {
+		...tool,
+		parameters,
+		execute: (id, params, ...rest) => tool.execute(id, withoutReason(params), ...rest),
+	};
+}
 
 /** Fail before an unreviewed native tool enters the registry, including late registrations. */
 export function withNativePermissionOwners(pi: ExtensionAPI): ExtensionAPI {
 	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
-		if (!NATIVE_PERMISSION_OWNERS.has(tool.name) && !isOctocodeTool(tool.name)) {
+		if (!isNativeTool(tool.name)) {
 			throw new Error(`Native tool ${tool.name} has no permission owner; register its gate or internal check first.`);
 		}
-		pi.registerTool(tool);
+		pi.registerTool(withReasonArgument(tool));
 	};
 	return new Proxy(pi, {
 		get(target, property, receiver) {

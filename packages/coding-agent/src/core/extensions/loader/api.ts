@@ -4,7 +4,7 @@ import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "../../event-bus.ts";
 import type { ExecOptions } from "../../exec.ts";
 import { execCommand } from "../../exec.ts";
-import { type McpServerConfig, mcpNamespace, validateMcpServerConfig } from "../../mcp-servers.ts";
+import { type McpServerChange, type McpServerConfig, validateMcpServerConfig } from "../../../../../mcp/src/servers.ts";
 import { NATIVE_FEATURE_PATH } from "../../native-tools.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../../virtual-models.ts";
 import type {
@@ -37,6 +37,7 @@ export function createExtensionAPI(
 ): { api: ExtensionAPI; commit: () => void; discard: () => void } {
 	const pendingFlagValues = new Map<string, boolean | string>();
 	const pendingRuntimeChanges: Array<() => void> = [];
+	const pendingMcpChanges: McpServerChange[] = [];
 	const loadingUnsubscribers: Array<() => void> = [];
 	let state: "loading" | "active" | "failed" = "loading";
 	const assertActive = () => {
@@ -49,9 +50,16 @@ export function createExtensionAPI(
 		if (state === "loading") pendingRuntimeChanges.push(change);
 		else change();
 	};
+	const applyMcpChange = (change: McpServerChange) => {
+		if (state === "loading") {
+			runtime.mcpServers.validate([...pendingMcpChanges, change]);
+			pendingMcpChanges.push(change);
+		} else runtime.mcpServers.apply([change]);
+	};
 	const clearPending = () => {
 		pendingFlagValues.clear();
 		pendingRuntimeChanges.length = 0;
+		pendingMcpChanges.length = 0;
 		loadingUnsubscribers.length = 0;
 	};
 
@@ -284,22 +292,13 @@ export function createExtensionAPI(
 			if (typeof validated === "string") {
 				throw new Error(`Invalid MCP server registered by extension "${extension.path}": ${validated}`);
 			}
-			const owner = runtime.mcpServers.get(name)?.extensionPath;
-			if (owner !== undefined && owner !== extension.path) {
-				throw new Error(`MCP server "${name}" is already registered by extension "${owner}"`);
-			}
-			// Names that differ only in `-` and `_` would share a namespace.
-			const clash = runtime.mcpServers
-				.list()
-				.find((server) => server.name !== name && mcpNamespace(server.name) === mcpNamespace(name));
-			if (clash) throw new Error(`MCP server "${name}" conflicts with registered server "${clash.name}"`);
 			const server = { name, config: structuredClone(validated), extensionPath: extension.path };
-			applyRuntimeChange(() => runtime.mcpServers.register(server));
+			applyMcpChange({ type: "register", server });
 		},
 
 		unregisterMcpServer(name: string) {
 			assertActive();
-			applyRuntimeChange(() => runtime.mcpServers.unregister(name, extension.path));
+			applyMcpChange({ type: "unregister", name, extensionPath: extension.path });
 		},
 
 		getMcpServers() {
@@ -342,6 +341,7 @@ export function createExtensionAPI(
 		commit: () => {
 			if (state !== "loading") return;
 			runtime.assertActive();
+			runtime.mcpServers.apply(pendingMcpChanges);
 			for (const [name, value] of pendingFlagValues) {
 				if (!runtime.flagValues.has(name)) runtime.flagValues.set(name, value);
 			}

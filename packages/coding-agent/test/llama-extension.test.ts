@@ -5,10 +5,10 @@ import type { AuthContext, AuthPrompt, ModelsPublication, ModelsStoreEntry } fro
 import { afterEach, describe, expect, it } from "vitest";
 import { createEventBus } from "../src/core/event-bus.ts";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
-import { LlamaClient, type LlamaProgress, normalizeLlamaServerUrl } from "../src/extensions/llama/client.ts";
-import { findHuggingFaceToken, HuggingFaceClient } from "../src/extensions/llama/huggingface.ts";
-import llamaExtension from "../src/extensions/llama/index.ts";
-import { createLlamaProvider, LLAMA_PROVIDER_ID } from "../src/extensions/llama/provider.ts";
+import { LlamaClient, type LlamaProgress, normalizeLlamaServerUrl } from "../src/octocode/llama/client.ts";
+import { findHuggingFaceToken, HuggingFaceClient } from "../src/octocode/llama/huggingface.ts";
+import llamaExtension from "../src/octocode/llama/index.ts";
+import { createLlamaProvider, LLAMA_PROVIDER_ID } from "../src/octocode/llama/provider.ts";
 
 const servers: Server[] = [];
 

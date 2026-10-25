@@ -15,15 +15,6 @@
 			"@octocodeai/octocode-telemetry/render": [
 				"./packages/telemetry/src/render.ts"
 			],
-			"@octocodeai/octocode-mcp": [
-				"./packages/mcp/src/index.ts"
-			],
-			"@octocodeai/octocode-mcp/oauth": [
-				"./packages/mcp/src/oauth/index.ts"
-			],
-			"@octocodeai/octocode-mcp/testing": [
-				"./packages/mcp/src/testing/index.ts"
-			],
 			"@octocodeai/octocode-ai": [
 				"./packages/ai/src/index.ts"
 			],
@@ -69,12 +60,40 @@
 			],
 			"@octocodeai/octocode-webview/*": [
 				"./packages/webview/src/*.ts"
+			],
+			"@octocodeai/octocodecode/mcp": [
+				"./packages/mcp/src/client/index.ts"
+			],
+			"@octocodeai/octocodecode/mcp/oauth": [
+				"./packages/mcp/src/client/oauth/index.ts"
+			],
+			"@octocodeai/octocodecode/mcp/testing": [
+				"./packages/mcp/src/client/testing/index.ts"
+			],
+			"@octocodeai/octocode-mcp": [
+				"./packages/mcp/src/client/index.ts"
+			],
+			"@octocodeai/octocode-mcp/oauth": [
+				"./packages/mcp/src/client/oauth/index.ts"
+			],
+			"@octocodeai/octocode-mcp/testing": [
+				"./packages/mcp/src/client/testing/index.ts"
+			],
+			"@octocodeai/octocode-mcp/host": [
+				"./packages/mcp/src/index.ts"
+			],
+			"@octocodeai/octocode-acp/server": [
+				"./packages/acp/src/server/acp-mode.ts"
+			],
+			"@octocodeai/octocode-acp/client": [
+				"./packages/acp/src/client/client.ts"
 			]
 		}
 	},
 	"include": [
 		"packages/*/src/**/*",
 		"packages/*/test/**/*",
+		"packages/coding-agent/scripts/source-resolver.ts",
 		"packages/coding-agent/examples/**/*"
 	],
 	"exclude": [

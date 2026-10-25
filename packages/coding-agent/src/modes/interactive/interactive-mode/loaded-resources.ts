@@ -4,7 +4,7 @@
  */
 
 import { Spacer } from "@octocodeai/octocode-tui";
-import { getMcpSessionStatus } from "../../../extensions/mcp/status.ts";
+import { getMcpSessionStatus } from "../../../../../mcp/src/status.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";

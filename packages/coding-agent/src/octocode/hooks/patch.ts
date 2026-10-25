@@ -61,12 +61,12 @@ export function rewriteCodexPatch(input: Record<string, unknown>, updated: JsonO
 	const reason = Array.isArray(input.queries)
 		? input.queries
 				.filter(isRecord)
-				.map((q) => q.reasoning)
+				.map((q) => q.reason)
 				.filter((value) => typeof value === "string")
 				.join("; ")
-		: input.reasoning;
+		: input.reason;
 	return {
 		patch: updated.command,
-		reasoning: typeof reason === "string" && reason ? reason : "Apply the patch rewritten by a PreToolUse hook",
+		reason: typeof reason === "string" && reason ? reason : "Apply the patch rewritten by a PreToolUse hook",
 	};
 }

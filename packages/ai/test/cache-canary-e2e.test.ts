@@ -59,6 +59,10 @@ function probeTool(name: string): Tool {
  * `opencode/gemini-3.5-flash-lite` over `google-generative-ai` hit the cache from about 4.1k prompt tokens (4,003 never
  * hit; 4,067 hit; 4,259 missed once) and never at 3.8k, so Gemini models get a prefix of about 12k tokens. Docs:
  * https://ai.google.dev/gemini-api/docs/caching.
+ *
+ * OpenCode routes Gemini's implicit cache by the `x-opencode-session` header (sent by the provider headers): on
+ * 2026-10-25 the same 5.2k-token request read `cachedContentTokenCount` 4,066 with the header and nothing without it,
+ * even at 21k tokens. Hits come in blocks of about 4k tokens, so the original 3.8k canary prompt could never read.
  */
 const GEMINI_RULES = 400;
 const DEFAULT_RULES = 120;

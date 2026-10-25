@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { getBundledSkillsDir } from "../config.ts";
-import { builtInExtensions } from "../extensions/index.ts";
+import { resolveExtensionFactories } from "./resource-loader/builtins.ts";
 import type { Theme } from "../modes/interactive/theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
@@ -19,7 +19,6 @@ import { resetTimings } from "./timings.ts";
 import {
 	type BuiltinExtension,
 	collectExtensionPackageWarnings,
-	isBuiltinExtension,
 	mergeExtensionWarnings,
 } from "./resource-loader/extension-sets.ts";
 import {
@@ -92,9 +91,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
 		this.eventBus = options.eventBus ?? createEventBus();
 		this.nativeFeatures = options.nativeFeatures !== false;
-		const factories = [...(this.nativeFeatures ? builtInExtensions : []), ...(options.extensionFactories ?? [])];
-		this.extensionFactories = factories.filter((input) => !isBuiltinExtension(input));
-		this.builtinExtensions = new Map(factories.filter(isBuiltinExtension).map((input) => [input.name, input]));
+		const factories = resolveExtensionFactories(options.extensionFactories, this.nativeFeatures);
+		this.extensionFactories = factories.extensionFactories;
+		this.builtinExtensions = factories.builtinExtensions;
 		this.packageManager = new DefaultPackageManager({
 			cwd: this.cwd,
 			agentDir: this.agentDir,

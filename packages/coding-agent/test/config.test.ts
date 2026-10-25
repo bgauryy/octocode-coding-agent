@@ -165,12 +165,10 @@ describe("findNodePackageDir", () => {
 test("launches source subagents from paths with URL delimiters", () => {
 	tempDir = mkdtempSync(join(tmpdir(), "octocode source #%-"));
 	const sourceDir = join(tempDir, "src");
-	mkdirSync(join(sourceDir, "experimental"), { recursive: true });
+	mkdirSync(sourceDir, { recursive: true });
+	mkdirSync(join(tempDir, "scripts"), { recursive: true });
 	writeFileSync(join(tempDir, "package.json"), '{"type":"module"}');
-	writeFileSync(
-		join(sourceDir, "experimental", "source-resolver.ts"),
-		'process.env.OCTOCODE_TEST_RESOLVER = "loaded";',
-	);
+	writeFileSync(join(tempDir, "scripts", "source-resolver.ts"), 'process.env.OCTOCODE_TEST_RESOLVER = "loaded";');
 	writeFileSync(join(sourceDir, "cli.ts"), "console.log(process.env.OCTOCODE_TEST_RESOLVER);");
 	process.env.OCTOCODE_PACKAGE_DIR = tempDir;
 

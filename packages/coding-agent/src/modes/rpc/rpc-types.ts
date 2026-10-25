@@ -205,7 +205,7 @@ export type RpcResponse =
 	  }
 
 	// Error response (any command can fail)
-	| { id?: string; type: "response"; command: string; success: false; error: string };
+	| { id?: string; type: "response"; command: string; success: false; error: string; execution?: "not-sent" };
 
 // ============================================================================
 // Extension UI Events (stdout)
@@ -266,3 +266,11 @@ export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }
 	| { type: "extension_ui_response"; id: string; cancelled: true };
+
+/** Extension failure already emitted on the RPC wire alongside session events. */
+export interface RpcExtensionErrorEvent {
+	type: "extension_error";
+	extensionPath: string;
+	event: string;
+	error: string;
+}

@@ -11,6 +11,7 @@ import type {
 import { withCacheCapabilities } from "./utils/cache-capabilities.ts";
 import { withClaudeThinkingCapabilities } from "./utils/claude-thinking.ts";
 import { withGoogleVertexPricing } from "./utils/google-vertex-pricing.ts";
+import { withMiniMaxEndpoint } from "./providers/minimax-endpoints.ts";
 
 type ModelGroups = Record<string, Record<string, object>>;
 
@@ -69,7 +70,9 @@ export function flattenChatModelCatalog<const TProvider extends ProviderId, cons
 	return Object.fromEntries(
 		Object.entries(flattenModelCatalog(groups, "chat")).map(([id, model]) => [
 			id,
-			withCacheCapabilities(withClaudeThinkingCapabilities(withGoogleVertexPricing(model as Model<Api>))),
+			withMiniMaxEndpoint(
+				withCacheCapabilities(withClaudeThinkingCapabilities(withGoogleVertexPricing(model as Model<Api>))),
+			),
 		]),
 	) as ChatModelCatalog<TGroups, TProvider>;
 }

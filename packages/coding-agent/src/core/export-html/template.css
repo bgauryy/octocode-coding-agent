@@ -505,6 +505,14 @@
       word-break: break-word;
     }
 
+    .tool-reason {
+      color: var(--muted);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .tool-output {
       margin-top: var(--line-height);
       color: var(--toolOutput);
