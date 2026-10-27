@@ -1,4 +1,5 @@
 import { getKeybindings } from "../keybindings.ts";
+import { GLYPH } from "../tokens/design.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
@@ -188,7 +189,7 @@ export class SelectList implements Component {
 		descriptionSingleLine: string | undefined,
 		primaryColumnWidth: number,
 	): string {
-		const prefix = isSelected ? "→ " : "  ";
+		const prefix = isSelected ? `${GLYPH.cursor} ` : "  ";
 		const prefixWidth = visibleWidth(prefix);
 
 		if (descriptionSingleLine && width > 40) {

@@ -473,7 +473,9 @@ describe("backlog tool", () => {
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session" });
 		expect(sub.tool.parameters.properties.op.enum).toEqual(["list", "get", "add", "update"]);
 		expect(sub.tool.parameters.properties.state.enum).toEqual(["ongoing", "done"]);
-		expect(sub.tool.description).toContain("its parent has claimed");
+		// The description is the same for every role (it leads the cached prefix); the limits are in the refusals below.
+		expect(sub.tool.description).toBe(parent.tool.description);
+		expect(sub.tool.description).not.toMatch(/subagent|parent/i);
 		expect(sub.tool.parameters.properties.op.description).toContain("add: propose");
 		expect(sub.tool.parameters.properties.op.description).not.toContain("remove");
 		expect(sub.tool.promptGuidelines.join(" ")).not.toContain("set it ongoing");

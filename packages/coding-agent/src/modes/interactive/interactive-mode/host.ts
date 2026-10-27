@@ -38,7 +38,7 @@ import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
-import type { Theme } from "../theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type {
 	CompactionCostNotice,
 	RenderSessionItem,

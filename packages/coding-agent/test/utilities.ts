@@ -11,7 +11,7 @@ import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { createEventBus } from "../src/core/event-bus.ts";
+import { createEventBus, type EventBus } from "../src/core/event-bus.ts";
 import type {
 	Extension,
 	ExtensionFactory,
@@ -106,9 +106,9 @@ type TestExtensionInput = InlineExtension | CreateTestExtensionsResultInput;
 export async function createTestExtensionsResult(
 	inputs: TestExtensionInput[],
 	cwd = process.cwd(),
+	eventBus: EventBus = createEventBus(),
 ): Promise<LoadExtensionsResult> {
 	const runtime = createExtensionRuntime();
-	const eventBus = createEventBus();
 	const extensions: Extension[] = [];
 
 	for (const [index, input] of inputs.entries()) {

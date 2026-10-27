@@ -1,5 +1,5 @@
 import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@octocodeai/octocode-tui";
-import { getAvailableThemes, getSelectListTheme } from "../theme/theme.ts";
+import { getAvailableThemes, getSelectListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
 const THEME_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -9,6 +9,9 @@ const THEME_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 
 /**
  * Component that renders a theme selector
+ *
+ * @deprecated Unused by the interactive mode (the settings selector owns theme choice). Kept exported for SDK
+ * consumers; it is removed in the next release.
  */
 export class ThemeSelectorComponent extends Container {
 	private selectList: SelectList;

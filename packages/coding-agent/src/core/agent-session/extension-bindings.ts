@@ -15,7 +15,7 @@ import type {
 	ShutdownHandler,
 } from "../extensions/index.ts";
 import { getPromptCommands } from "../prompt-templates.ts";
-import type { ResourceExtensionPaths } from "../resource-loader.ts";
+import type { ResourceExtensionPaths } from "../resource-loader/types.ts";
 import { captureSkillResourceSnapshot } from "../skill-resource-snapshot.ts";
 import { getSkillCommands } from "../skill-commands.ts";
 import { loadedSkillDirectories } from "../skills.ts";

@@ -6,7 +6,7 @@ import type { ModelRuntime } from "../src/core/model-runtime.ts";
 import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { modelDetails } from "../src/modes/interactive/components/model-selector/details.ts";
 import { sortModelItems } from "../src/modes/interactive/components/model-selector/model-items.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function model(provider: string, id: string): Model<"openai-completions"> {

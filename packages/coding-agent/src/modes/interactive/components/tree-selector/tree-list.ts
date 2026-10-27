@@ -1,6 +1,6 @@
 import { type Component, getKeybindings, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { formatLabelTimestamp, getEntryCopyText, getEntryDisplayText } from "./entry-text.ts";
 import { matchesTreeFilter } from "./filter.ts";
 import {

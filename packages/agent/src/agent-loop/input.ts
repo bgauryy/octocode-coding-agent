@@ -31,7 +31,8 @@ export function inputCommitter(context: AgentContext, recorded: AgentMessage[], 
  * what the model may call. Before each request the difference becomes `toolsAdded` and
  * `toolsRemoved` on a system message. When a pending system message exists, its tool fields
  * are treated as intent and replaced with the delta between the committed transcript and
- * the executable set, so replay always yields exactly `context.tools`. Otherwise a new
+ * the executable set, so replay always yields exactly `context.tools`, plus the declared tools
+ * in `context.pendingToolNames` that are not executable yet. Otherwise a new
  * system message is inserted before the first non-system pending message.
  */
 function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage[]): AgentMessage[] {
@@ -46,10 +47,22 @@ function declareToolChanges(context: AgentContext, pendingMessages: AgentMessage
 	const baseline = pending
 		? pendingMessages.map((message, index) => (index === systemIndex ? withToolChanges(pending, NO_CHANGES) : message))
 		: pendingMessages;
-	const changes = getToolStateChanges(
+	const delta = getToolStateChanges(
 		getCurrentTools([...context.messages, ...baseline]),
 		(context.tools ?? []).map(toToolDeclaration),
 	);
+	// Pending tools keep their previous declaration until they register or the host drops them.
+	const awaiting = context.pendingToolNames?.();
+	const changes = awaiting?.size
+		? { ...delta, toolsRemoved: delta.toolsRemoved.filter((tool) => !awaiting.has(tool.name)) }
+		: delta;
+	/* B134-DEBUG */ if (process.env.OCTOCODE_DEBUG_PENDING === "1")
+		void import("node:fs").then((fs) =>
+			fs.appendFileSync(
+				"/tmp/b134-debug.log",
+				`${new Date().toISOString()} pid=${process.pid} declare ${JSON.stringify({ awaiting: awaiting ? [...awaiting] : null, removedRaw: delta.toolsRemoved.map((t) => t.name), removed: changes.toolsRemoved.map((t) => t.name), tools: (context.tools ?? []).length })}\n`,
+			),
+		);
 	const unchanged = changes.toolsAdded.length === 0 && changes.toolsRemoved.length === 0;
 
 	if (pending) {

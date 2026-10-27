@@ -7,7 +7,7 @@ import type {
 	ToolCallEvent,
 	ToolCallEventResult,
 } from "../../core/extensions/index.ts";
-import { resolveToolPath } from "../shared/home.ts";
+import { reservationPath, resolveToolPath } from "../shared/home.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
 import { storedText } from "../shared/sanitize.ts";
 import { contentText, firstLine, modelLookup, optionalString, textResult, unpricedModel } from "../shared/util.ts";
@@ -23,6 +23,8 @@ import type { Team } from "./session.ts";
 import { registerMessageRenderer, registerSendMessageTool } from "./tools/messages.ts";
 
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
+const POWERSHELL_HELD =
+	"This PowerShell command was not run: the paths it writes cannot be checked against reservations, so while another agent holds one only read-only commands run. Use the file tool for edits.";
 const DEFAULT_CHANGES_LIMIT = 20;
 
 type StopAgent = (id: string, by: string) => string | undefined;
@@ -55,6 +57,8 @@ export function registerCollab(
 		shellWrites?: (command: string) => Promise<string[]>;
 		/** The paths a bash command that ran wrote, only those the parse names (not the guesses `shellWrites` also checks); recorded as changes. */
 		shellChanges?: (command: string) => Promise<string[]>;
+		/** Whether a shell command only reads (wired by `index.ts` from the permission layer); unset: none is. */
+		shellReadOnly?: (command: string) => boolean;
 	} = {},
 ): { reservationGate: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(pi);
@@ -65,16 +69,23 @@ export function registerCollab(
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
 	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers Octocode's own edit and write.
-	const refusal = (file: string, cwd: string) => team.reservation(resolveToolPath(cwd, file), file);
+	// A `..` after a symlink stays in the path (`reservationPath`): the shell reads it past the link, not before it.
+	const refusal = (file: string, cwd: string) => team.reservation(reservationPath(cwd, file), file);
 	const reservationGate = async (
 		event: ToolCallEvent,
 		ctx: ExtensionContext,
 	): Promise<ToolCallEventResult | undefined> => {
 		if (event.toolName === "file") return undefined;
-		const command =
-			event.toolName === "bash" ? optionalString((event.input as Record<string, unknown>)?.command) : undefined;
+		const input: Record<string, unknown> = isRecord(event.input) ? { ...event.input } : {};
+		// No parse names the paths a PowerShell command writes: while another agent holds a reservation, only one that reads runs.
+		if (event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) {
+			if (options.shellReadOnly?.(optionalString(input.command) ?? "")) return undefined;
+			const reason = team.reservation(undefined, "");
+			return reason ? { block: true, reason: `${POWERSHELL_HELD} ${reason}` } : undefined;
+		}
+		const command = event.toolName === "bash" ? optionalString(input.command) : undefined;
 		const files =
-			command !== undefined && (event.input as Record<string, unknown>).type !== "powershell"
+			command !== undefined
 				? ((await options.shellWrites?.(command)) ?? [])
 				: mutatedPaths(event.toolName, event.input);
 		for (const file of files) {

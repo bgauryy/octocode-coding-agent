@@ -32,7 +32,12 @@ export class ApplicationActivities {
 		identity: Pick<ApplicationActivity, "id" | "at" | "source" | "entryId">,
 		slot?: string,
 	): ApplicationActivity {
-		const activity: ApplicationActivity = { ...identity, kind: input.kind, text: input.text.slice(0, 4000) };
+		const activity: ApplicationActivity = {
+			...identity,
+			kind: input.kind,
+			text: input.text.slice(0, 4000),
+			...(input.failed ? { outcome: "failed" as const } : {}),
+		};
 		if (input.text.length > 4000 && input.data === undefined)
 			activity.full = this.assets.put(input.text, "text/plain", "utf8", undefined, slot);
 		if (input.data !== undefined) {

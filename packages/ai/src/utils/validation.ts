@@ -1,8 +1,10 @@
 import { Compile } from "typebox/compile";
-import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
+import { formatValidationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
+
+export { formatValidationPath } from "./validation-errors.ts";
 
 const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
 /** Validators for sub-schemas compiled with their root's `$defs`, so a `$ref` inside an alternative resolves. */
@@ -313,20 +315,6 @@ function getValidator(schema: Tool["parameters"]): ReturnType<typeof Compile> {
 	return validator;
 }
 
-/** Dotted path of a schema validation error, naming the missing property for `required`; "root" for the whole value. */
-export function formatValidationPath(error: TLocalizedValidationError): string {
-	if (error.keyword === "required") {
-		const requiredProperties = (error.params as { requiredProperties?: string[] }).requiredProperties;
-		const requiredProperty = requiredProperties?.[0];
-		if (requiredProperty) {
-			const basePath = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
-			return basePath ? `${basePath}.${requiredProperty}` : requiredProperty;
-		}
-	}
-	const path = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
-	return path || "root";
-}
-
 /**
  * Finds a tool by name and validates the tool call arguments against its TypeBox schema
  * @param tools Array of tool definitions
@@ -376,13 +364,5 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		return args;
 	}
 
-	const errors =
-		validator
-			.Errors(args)
-			.map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
-			.join("\n") || "Unknown validation error";
-
-	const errorMessage = `Validation failed for tool "${toolCall.name}":\n${errors}\n\nReceived arguments:\n${JSON.stringify(toolCall.arguments, null, 2)}`;
-
-	throw new Error(errorMessage);
+	throw new Error(formatValidationFailure(toolCall.name, [...validator.Errors(args)], toolCall.arguments));
 }

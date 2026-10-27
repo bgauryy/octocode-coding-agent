@@ -17,9 +17,9 @@ import { type AgentProfile, GENERAL_PROFILE, profileSelectsTool, profileTools } 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
 export const MAX_SUBAGENTS_ENV = "OCTOCODE_MAX_SUBAGENTS";
-const DEFAULT_MAX_SUBAGENTS = 3;
+const DEFAULT_MAX_SUBAGENTS = 6;
 
-/** How many subagents may run at once: `OCTOCODE_MAX_SUBAGENTS` (a positive integer), else 3. A call past it waits for a slot. */
+/** How many subagents may run at once: `OCTOCODE_MAX_SUBAGENTS` (a positive integer), else 6. A call past it waits for a slot. */
 export function maxSubagents(env: NodeJS.ProcessEnv = process.env): number {
 	const value = envInt(env, MAX_SUBAGENTS_ENV, DEFAULT_MAX_SUBAGENTS);
 	return value >= 1 ? value : DEFAULT_MAX_SUBAGENTS;
@@ -32,13 +32,25 @@ function lingerSeconds(env: NodeJS.ProcessEnv = process.env): number {
 	return Math.max(0, envInt(env, SUBAGENT_LINGER_ENV, 0));
 }
 
-/** Seconds a background run that reported `blocked` stays resumable even with the linger setting at 0: it waits for an answer. */
+/**
+ * Seconds a background run stays resumable even with the linger setting at 0 when it waits for an answer: it reported
+ * `blocked`, or it ended with a `replyRequired` message to its parent still unanswered.
+ */
 export const BLOCKED_LINGER_SECONDS = 600;
 
-/** The window a finished background run stays reachable: the setting, or at least `BLOCKED_LINGER_SECONDS` after a `blocked` report. */
-export function reachableSeconds(outcome: ReportStatus | undefined, env: NodeJS.ProcessEnv = process.env): number {
-	const seconds = lingerSeconds(env);
-	return outcome === "blocked" ? Math.max(seconds, BLOCKED_LINGER_SECONDS) : seconds;
+/**
+ * The window a finished background run stays reachable: the profile's `linger` when it sets one, else the setting; at
+ * least `BLOCKED_LINGER_SECONDS` after a `blocked` report or while it has an unanswered ask to its parent
+ * (`awaitsReply`), whatever outcome it reported.
+ */
+export function reachableSeconds(
+	outcome: ReportStatus | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+	profileLinger?: number,
+	awaitsReply = false,
+): number {
+	const seconds = profileLinger ?? lingerSeconds(env);
+	return outcome === "blocked" || awaitsReply ? Math.max(seconds, BLOCKED_LINGER_SECONDS) : seconds;
 }
 
 /** The refusal for a resume while every slot is taken (a message is answered now; it does not wait for a slot). */
@@ -129,11 +141,17 @@ export interface Run {
 	identity: Identity & { role: string; goal: string };
 	profile: AgentProfile | undefined;
 	/** The model it runs on (the parent's when nothing else routes); `fallback` is the profile's unavailable preference. */
-	route: Extract<ModelRoute, { model?: string }>;
+	route: RunRoute;
 	/** Why the run starts without the team (its database is unusable), for the result. */
 	teamNote: string;
 	release: () => void;
 }
+
+/**
+ * A run's model route, with what chose it for its failure report: `via` names the request that picked the model (the
+ * `model` argument or the profile's preference; absent when it is this session's model), `parent` this session's model.
+ */
+export type RunRoute = Extract<ModelRoute, { model?: string }> & { via?: string; parent?: string };
 
 /** What a call asks for, checked before anything waits, asks or starts: its profile and the model it routes to. */
 type RunPlan = Pick<Run, "profile" | "route">;
@@ -170,7 +188,13 @@ export function planRun(
 		catalog: currentCatalog(),
 	});
 	if ("error" in route) throw new Error(route.error);
-	return { profile, route };
+	const via = params.model
+		? `model argument: ${params.model}`
+		: profile?.model && !route.fallback
+			? `profile ${profile.name}: ${profile.model}`
+			: undefined;
+	const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+	return { profile, route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) } };
 }
 
 /**
@@ -208,7 +232,6 @@ export function claimRun(
 		...(parentId ? { parentId } : {}),
 		...(collaborate ? { collaborate } : {}),
 	};
-	runs.running.set(identity.id, undefined);
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
 	const childModel = ctx.modelRegistry
 		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)
@@ -220,6 +243,8 @@ export function claimRun(
 	}
 	const scratch = agentScratch(cwd, identity.id);
 	if (scratch) identity.scratch = scratch;
+	// Taken last: a throw above leaves no name behind (the caller gives the slot back when nothing is claimed).
+	runs.running.set(identity.id, undefined);
 	const release = () => {
 		if (!runs.running.delete(identity.id)) return;
 		runs.slots.give();

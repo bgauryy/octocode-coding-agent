@@ -111,6 +111,9 @@ export function applySettingChange(callbacks: SettingsCallbacks, id: string, new
 		case "terminal-progress":
 			callbacks.onShowTerminalProgressChange(newValue === "true");
 			break;
+		case "reduce-motion":
+			callbacks.onReduceMotionChange(newValue === "auto" ? "auto" : newValue === "true");
+			break;
 		case "tui-mode":
 			callbacks.onTuiModeChange(newValue as TuiMode);
 			break;

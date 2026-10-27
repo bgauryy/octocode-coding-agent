@@ -19,7 +19,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { loadedSkillDirectories, loadSkills } from "../src/core/skills.ts";
 import { ConfigSelectorComponent } from "../src/modes/interactive/components/config-selector.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import * as nativeExtension from "../src/octocode/index.ts";
 import { prepareOctocodeSkillLaunch } from "../../mcp/src/presets/octocode/skill-paths.ts";
 

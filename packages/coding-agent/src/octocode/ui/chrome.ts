@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type Color, mixColors, rgbColor, type TUI } from "@octocodeai/octocode-tui";
+import { animationClock, type Color, mixColors, rgbColor, SPINNER, type TUI } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
 import { appKey, expandKey } from "../shared/render/text.ts";
 import { statusColor } from "../shared/render/status.ts";
@@ -11,6 +11,7 @@ import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
 import { thinkingTranscript } from "./thinking.ts";
+import { registerTurnLine } from "./turn-line.ts";
 
 let version: { value: string | undefined } | undefined;
 
@@ -28,7 +29,6 @@ export function packageVersion(): string | undefined {
 /** How long the banner's light band takes to cross, and its frame interval. */
 const SHINE_MS = 1_100;
 const SHINE_FRAME_MS = 40;
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Colour at `t` (0..1) along evenly spaced stops. */
 function along(stops: Color[], t: number): Color {
@@ -75,9 +75,9 @@ export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 /** The working indicator: a braille spinner whose frames walk the banner's gradient. */
 export function spinnerFrames(theme: Theme): string[] {
 	const ramp = themeRamp(theme);
-	return SPINNER.map((frame, index) => {
+	return SPINNER.braille.map((frame, index) => {
 		// Out and back, so the colour loops without a jump.
-		const t = 1 - Math.abs(1 - (2 * index) / SPINNER.length);
+		const t = 1 - Math.abs(1 - (2 * index) / SPINNER.braille.length);
 		return ramp ? ramp(t, "stroke", 0, frame) : theme.fg("accent", frame);
 	});
 }
@@ -108,9 +108,14 @@ export function bannerHeader(
 			"/agents team",
 		],
 	};
-	let timer: ReturnType<typeof setInterval> | undefined;
+	let unsubscribe: (() => void) | undefined;
 	const shine = (): number | undefined => {
 		if (shineFrom === undefined || !ramp) return undefined;
+		// Reduced motion: no sweep at all, also when it is switched on mid-sweep.
+		if (animationClock.isReducedMotion()) {
+			stop();
+			return undefined;
+		}
 		const progress = (Date.now() - shineFrom) / SHINE_MS;
 		if (progress >= 1) {
 			stop();
@@ -119,16 +124,20 @@ export function bannerHeader(
 		return Math.max(0, progress);
 	};
 	const stop = () => {
-		if (timer) clearInterval(timer);
-		timer = undefined;
+		unsubscribe?.();
+		unsubscribe = undefined;
 		shineFrom = undefined;
 	};
 	if (shineFrom !== undefined && ramp) {
-		timer = setInterval(() => {
-			shine();
-			tui.requestRender();
-		}, SHINE_FRAME_MS);
-		timer.unref?.();
+		if (animationClock.isReducedMotion()) shineFrom = undefined;
+		else
+			unsubscribe = animationClock.subscribe(
+				() => {
+					shine();
+					tui.requestRender();
+				},
+				{ everyMs: SHINE_FRAME_MS, kind: "decor" },
+			);
 	}
 	let cached: { width: number; shine: number | undefined; lines: string[] } | undefined;
 	return {
@@ -148,14 +157,15 @@ export function bannerHeader(
 }
 
 /**
- * Octocode's look in the TUI: the "OCTOCODE CODE" banner as the header (in place of Octocode's logo and key hints; nothing
- * is written to the session, so it stays put across /new, /resume and /fork), a two-line footer, a gradient working
- * spinner, a hidden-thinking label and the generation speed of the last run. Only time spent streaming assistant
+ * Octocode's look in the TUI: the "OCTOCODE CODE" banner as the header (in place of Octocode's logo and key hints; it is
+ * not in the session, so it stays put across /new, /resume and /fork), a two-line footer, a gradient working
+ * spinner, and the generation speed of the last run. Only time spent streaming assistant
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.
  */
 export function registerUi(pi: ExtensionAPI, isSubagent: boolean): void {
 	if (isSubagent) return;
 	registerFooter(pi);
+	registerTurnLine(pi);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
 	pi.on("session_start", async (event, ctx) => {
@@ -186,7 +196,11 @@ export function registerUi(pi: ExtensionAPI, isSubagent: boolean): void {
 		stopRowTimers();
 		if (!ctx.hasUI) return;
 		const speed = tokensPerSecond(generated.output, generated.ms);
-		if (speed !== undefined) ctx.ui.setStatus(STATUS.speed, statusColor(ctx, "dim", `${speed.toFixed(0)} tok/s`));
+		// A run too short to measure clears the previous run's figure rather than leaving it beside this run's time.
+		ctx.ui.setStatus(
+			STATUS.speed,
+			speed === undefined ? undefined : statusColor(ctx, "dim", `${speed.toFixed(0)} tok/s`),
+		);
 	});
 }
 
@@ -210,13 +224,12 @@ function paintIndicators(ctx: ExtensionContext): void {
 	const theme = ctx.ui.theme;
 	// Octocode's loader steps every 80 ms when no interval is given.
 	ctx.ui.setWorkingIndicator({ frames: spinnerFrames(theme) });
-	// Shown in place of a thinking block when `hideThinkingBlock` is on (the thinking toggle shows it again).
-	ctx.ui.setHiddenThinkingLabel(
-		`${theme.fg("thinkingText", "Toggle reasoning")}${theme.fg("dim", ` (${appKey("app.thinking.toggle")})`)}`,
-	);
 }
 
-/** Output tokens per second of streaming time, or undefined when nothing was generated. */
+/** Streaming shorter than this is mostly one network chunk: a reply of a few tokens would read as thousands per second. */
+const MIN_SPEED_SAMPLE_MS = 1_000;
+
+/** Output tokens per second of streaming time, or undefined when nothing was generated or too briefly to measure. */
 export function tokensPerSecond(outputTokens: number, streamingMs: number): number | undefined {
-	return streamingMs > 0 && outputTokens > 0 ? outputTokens / (streamingMs / 1000) : undefined;
+	return streamingMs >= MIN_SPEED_SAMPLE_MS && outputTokens > 0 ? outputTokens / (streamingMs / 1000) : undefined;
 }

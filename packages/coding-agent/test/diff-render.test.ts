@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { generateDiffString } from "../src/core/tools/edit-diff.ts";
 import { renderDiff } from "../src/modes/interactive/components/diff.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 
 const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 /** Background SGR sequences (`48;…`) in a line. */

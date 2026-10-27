@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { Value } from "typebox/value";
-import { ApplicationCommandSchema, parseApplicationFrame } from "../src/application.ts";
+import { ApplicationCommandSchema, parseApplicationFrame, parseApplicationTool } from "../src/application.ts";
 it("validates model input capabilities and clearing a model in stream events", () => {
 	const frame = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
 	const model = { provider: "custom", id: "vision", name: "Vision", input: ["text", "image"] };
@@ -127,4 +127,19 @@ it("rejects malformed stream variants and incompatible versions", () => {
 			event: { type: "tool.started", toolCallId: "tool", toolName: "read", order: -1 },
 		}),
 	).toBeUndefined();
+});
+it("carries not-run tools and failed activities as optional fields that older frames omit", () => {
+	const envelope = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
+	const tool = { type: "tool.completed", toolCallId: "t", toolName: "read", failed: true, text: "Not run" };
+	expect(parseApplicationFrame({ ...envelope, event: tool })).toBeDefined();
+	expect(parseApplicationFrame({ ...envelope, event: { ...tool, notRun: true } })).toBeDefined();
+	expect(parseApplicationFrame({ ...envelope, event: { ...tool, notRun: false } })).toBeUndefined();
+	expect(
+		parseApplicationTool({ toolCallId: "t", order: 0, toolName: "read", text: "", status: "failed", notRun: true }),
+	).toBeDefined();
+	const activity = { id: "a", kind: "compaction_end", at: 1, text: "failed", source: "live" };
+	const wrap = (value: object) => ({ ...envelope, event: { type: "session.activity", activity: value } });
+	expect(parseApplicationFrame(wrap(activity))).toBeDefined();
+	expect(parseApplicationFrame(wrap({ ...activity, outcome: "failed" }))).toBeDefined();
+	expect(parseApplicationFrame(wrap({ ...activity, outcome: "bad" }))).toBeUndefined();
 });

@@ -55,7 +55,12 @@ export class PendingRequests {
 				signal: options.signal,
 				// The spec forbids cancelling `initialize`.
 				onAbort: () =>
-					this.cancel(id, new McpAbortError(), method !== "initialize", String(options.signal?.reason ?? "Aborted")),
+					this.cancel(
+						id,
+						new McpAbortError(undefined, options.signal?.reason),
+						method !== "initialize",
+						String(options.signal?.reason ?? "Aborted"),
+					),
 				sendController: new AbortController(),
 				cancellable: method !== "initialize",
 				onProgress: options.onProgress,

@@ -319,7 +319,7 @@ export class SettingsList implements Component {
 		const kb = getKeybindings();
 		const changeKeys = kb.getKeys("tui.select.confirm");
 		if (!this.searchInput?.getValue()) changeKeys.push("space");
-		const hints = this.searchEnabled ? ["Type to search"] : [];
+		const hints = this.searchEnabled ? ["type to search"] : [];
 		if (changeKeys.length > 0) hints.push(`${[...new Set(changeKeys)].join("/")} change`);
 		const cancelKeys = kb.getKeys("tui.select.cancel");
 		if (cancelKeys.length > 0) hints.push(`${cancelKeys.join("/")} cancel`);

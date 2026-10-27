@@ -55,7 +55,11 @@ describe("ACP persistent sessions", () => {
 		expect(h.updates.map(({ update }) => update)).toEqual([
 			{ sessionUpdate: "user_message_chunk", content: { type: "text", text: "look" } },
 			{ sessionUpdate: "user_message_chunk", content: image },
-			{ sessionUpdate: "user_message_chunk", content: { type: "text", text: "External client: question" } },
+			{
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "External client: question" },
+				_meta: { "octocode/customType": "octocode-external" },
+			},
 			{ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } },
 		]);
 	});

@@ -7,6 +7,7 @@ import { AGENT_APPLICATION_ID, AgentDbError } from "../../src/octocode/agentdb/s
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
+import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { TEAM_WORKSPACE_ENV } from "../../src/octocode/shared/env.ts";
 import * as importedModule4 from "../../src/octocode/files/tool.ts";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
@@ -157,6 +158,22 @@ describe("team database", () => {
 		expect(store.owned("one", now + 2_000).size).toBe(0);
 		expect(store.owned("one", later).size).toBe(0);
 		expect(store.conflict("src/a.ts", "two", "file", later)).toBeUndefined();
+	});
+
+	it("compares reservations by canonical path: a `..` after a symlink names the link target's parent", () => {
+		const cwd = repo();
+		fs.mkdirSync(path.join(cwd, "out", "sub"), { recursive: true });
+		fs.symlinkSync(path.join("out", "sub"), path.join(cwd, "rel"));
+		const store = open(cwd, path.join(tmp(), "team.sqlite"));
+		for (const id of ["one", "two"]) store.save(member(id));
+		expect(store.lock("one", [{ path: "out/x.ts", kind: "file", reason: "work" }]).ok).toBe(true);
+		// The shell writes `out/x.ts` for `rel/../x.ts`; lexically collapsing first would name `x.ts` beside the link.
+		expect(store.conflict("rel/../x.ts", "two")).toMatchObject({ owner: "one" });
+		expect(store.conflict(`${cwd}/rel/../x.ts`, "two")).toMatchObject({ owner: "one" });
+		expect(store.conflict("x.ts", "two")).toBeUndefined();
+		expect(pathKey(cwd, "rel/../x.ts")).toBe(pathKey(cwd, "out/x.ts"));
+		// The gate hands the store the path as written, not lexically collapsed.
+		expect(store.conflict(reservationPath(cwd, "rel/../x.ts"), "two")).toMatchObject({ owner: "one" });
 	});
 
 	it("reserves files and trees all-or-nothing on component boundaries, case-insensitively", () => {

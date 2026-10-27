@@ -9,17 +9,15 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
-import { CHIPS, type PermissionMode } from "../permission/mode.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { thinkingTranscript } from "./thinking.ts";
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 type Paint = Pick<Theme, "fg">;
 
-/** What the editor needs from the permission state: the live mode and the Shift+Tab step. */
+/** What the editor needs from the permission state: the Shift+Tab step (the footer shows the mode). */
 interface EditorPermission {
-	readonly mode: PermissionMode;
 	/** May wait for a confirmation (`Permission.chooseMode`); the editor does not wait for it. */
 	cycle(ctx: ExtensionContext): unknown;
 }
@@ -91,14 +89,14 @@ function borderTint(text: string, pi: (text: string) => string, theme: Paint): (
 
 /**
  * Draws `editor` as Octocode's prompt: a closed box (`╭─╮ │ │ ╰─╯`) tinted by the theme accent, `octocode` in the
- * idle top border (Octocode's working line takes that place during a run), the mode in the bottom border, and a muted hint
+ * idle top border (Octocode's working line takes that place during a run), a plain bottom border (the footer is the
+ * one home of the permission mode), and a muted hint
  * while the prompt is empty and `hint()` holds. Octocode's rendering, input and handlers stay its own: the box wraps the rows Octocode renders at
  * the inner width, and clicks shift by the same inset, so wrapping, scrolling, the cursor marker and click-to-place
  * keep working. Colour is never the only signal: the mode is written next to the tint.
  */
 export function decorateEditor(
 	editor: CustomEditor,
-	permission: Pick<EditorPermission, "mode">,
 	theme: () => Paint,
 	hint: () => boolean,
 	keybindings?: KeybindingsManager,
@@ -134,8 +132,7 @@ export function decorateEditor(
 	});
 	Reflect.set(editor, "renderBottomBorder", (width: number, hidden: number) => {
 		if (!boxed || hidden > 0) return bottomBorder(width, hidden);
-		const chip = CHIPS[permission.mode];
-		return labelledRule(width, "", theme().fg(chip.color, ` ${chip.short} `), rule);
+		return labelledRule(width, "", "", rule);
 	});
 	editor.render = (width: number): string[] => {
 		boxed = width >= BOX_MIN_WIDTH;
@@ -168,8 +165,9 @@ const isEditor = (component: Component): component is CustomEditor =>
 	);
 
 /**
- * The main editor in the TUI: Shift+Tab cycles the permission mode (Octocode reserves Shift+Tab for thinking, so
- * registerShortcut would skip it; the override lives in the editor), and `decorateEditor` draws the prompt. A prior
+ * The main editor in the TUI: `app.permission.cycle` (Shift+Tab by default) cycles the permission mode before any
+ * editor action sees the key; it is a reserved built-in binding, so registerShortcut would skip it and the override
+ * lives in the editor. `decorateEditor` draws the prompt. A prior
  * factory's editor is kept and decorated when it is an editor; any other component only gets the shortcut. The hint
  * shows until the conversation starts: by then the footer chip carries the Shift+Tab reminder.
  */
@@ -210,7 +208,6 @@ export function registerEditor(pi: ExtensionAPI, permission: EditorPermission): 
 			return isEditor(editor)
 				? decorateEditor(
 						editor,
-						permission,
 						() => context.ui.theme,
 						() => !started,
 						keybindings,

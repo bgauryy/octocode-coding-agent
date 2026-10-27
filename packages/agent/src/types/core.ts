@@ -220,6 +220,13 @@ export interface AgentContext {
 	messages: AgentMessage[];
 	/** Tools available for execution in this run. */
 	tools?: AgentTool<any>[];
+	/**
+	 * Names of tools the host has declared to the model that are not executable yet, for example tools of a
+	 * server that is still connecting. They stay declared: the loop does not declare them removed while they
+	 * are absent from `tools`. Once the host drops a name from this set and `tools` still lacks it, the tool is
+	 * declared removed as usual. A call to one before it registers is a tool error (see `unknownToolMessage`).
+	 */
+	pendingToolNames?: () => ReadonlySet<string>;
 }
 
 /**

@@ -51,11 +51,10 @@ function backlogPrompt(subagent: boolean): {
 	promptGuidelines: string[];
 } {
 	const description =
+		// The same text for every role, so parent and child declare identical bytes; a role's limits are stated when it hits them.
 		"Repository work: backlog proposed, todo accepted, ongoing claimed, done completed. History is retained. " +
-		(subagent
-			? "A subagent proposes work and updates only items its parent has claimed. "
-			: "An item another running session holds takes only notes. ") +
-		"Start needs reason/goal; done needs completion. Use version for edits. Secrets are refused.";
+		"An item another running session holds takes only notes. " +
+		"Claiming (ongoing) needs reason and goal; done needs completion. Use version for edits. Secrets are refused.";
 	const ops =
 		"list/get: read; follow Next for more. " +
 		(subagent
@@ -72,8 +71,8 @@ function backlogPrompt(subagent: boolean): {
 					"Record progress on assigned work. Propose follow-ups, and failures you leave unfixed (trigger, evidence, fix), with goal and from; do not execute them. Verify the goal before done.",
 				]
 			: [
-					"Track multi-step, delegated or research work in backlog: add it with a goal and claim it before starting or delegating; skip one-step tasks. Propose follow-ups with a goal and from their source item.",
-					"Close an item only after verifying its goal. If you stop with a failure unfixed, add an item with its trigger, evidence and proposed fix.",
+					"Use backlog for work that outlives this turn, that a subagent should report progress on, or that the user asks to track: add it with a goal and claim it before starting or delegating. Questions and one-step tasks need no item.",
+					"Close an item only after verifying its goal. If you stop with a failure unfixed, add an item with its trigger, evidence and proposed fix. Propose follow-ups with a goal and from.",
 				],
 	};
 }

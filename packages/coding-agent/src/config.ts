@@ -30,14 +30,14 @@ function getSourceOrDistDir(): string {
 /**
  * Get path to built-in themes directory (shipped with package)
  * - For Bun binary: theme/ next to executable
- * - For Node.js (dist/): dist/modes/interactive/theme/
- * - For source (src/): src/modes/interactive/theme/
+ * - For Node.js (dist/): dist/theme/
+ * - For source (src/): src/theme/
  */
 export function getThemesDir(): string {
 	if (isBunBinary) {
 		return join(getPackageDir(), "theme");
 	}
-	return join(getSourceOrDistDir(), "modes", "interactive", "theme");
+	return join(getSourceOrDistDir(), "theme");
 }
 
 /**
@@ -97,20 +97,27 @@ export function getCliInvocation(): { command: string; prefix: string[] } {
 	return { command: process.execPath, prefix: [join(packageDir, "dist", "bundle", "cli.js")] };
 }
 
+/** The installed platform binary of `@octocodeai/octocode-native`, through the package's own resolver (it ships no `bin`). */
+export function getNativeBinaryPath(): string {
+	const resolver = createRequire(getPackageJsonPath())("@octocodeai/octocode-native/bin/resolve-binary.cjs") as {
+		resolveNativeBinaryPath(): string;
+	};
+	return resolver.resolveNativeBinaryPath();
+}
+
 export function getResearchCliInvocation(kind: "research" | "native"): { command: string; prefix: string[] } {
-	const require = createRequire(getPackageJsonPath());
-	let entry: string;
 	if (kind === "native") {
-		entry = require.resolve("@octocodeai/octocode-native/bin/octocode.cjs");
-	} else {
-		const manifestPath = require.resolve("octocode/package.json");
-		const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-			bin?: string | Record<string, string>;
-		};
-		const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.octocode;
-		if (!bin) throw new Error("The installed octocode research package has no CLI entry");
-		entry = resolve(dirname(manifestPath), bin);
+		const binary = getNativeBinaryPath();
+		if (!existsSync(binary)) throw new Error(`Octocode native CLI is missing: ${binary}`);
+		return { command: binary, prefix: [] };
 	}
+	const manifestPath = createRequire(getPackageJsonPath()).resolve("octocode/package.json");
+	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+		bin?: string | Record<string, string>;
+	};
+	const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.octocode;
+	if (!bin) throw new Error("The installed octocode research package has no CLI entry");
+	const entry = resolve(dirname(manifestPath), bin);
 	if (!existsSync(entry)) throw new Error(`Octocode ${kind} CLI is missing: ${entry}`);
 	return { command: isBunBinary ? "node" : process.execPath, prefix: [entry] };
 }
@@ -219,11 +226,6 @@ export function getCustomThemesDir(): string {
 /** Get path to models.json */
 export function getModelsPath(): string {
 	return join(getAgentDir(), "models.json");
-}
-
-/** Get path to auth.json */
-export function getAuthPath(): string {
-	return join(getAgentDir(), "auth.json");
 }
 
 /** Get path to settings.json */

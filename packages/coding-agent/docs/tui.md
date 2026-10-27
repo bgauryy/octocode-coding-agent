@@ -1,6 +1,5 @@
 # Terminal UI
 
-
 For user-facing command navigation, `/help` opens a searchable command picker and `/skills` filters it to loaded skills. Selection inserts a command in the editor; it does not run it immediately. See [native commands](native-features.md#find-and-run-commands) for command names and the combined status, models, and trust menus.
 
 The built-in footer reserves its own line for the coordinator's provider/model and thinking level. On narrower terminals it separates model identity from thinking so usage totals cannot hide either. Models without reasoning support show `thinking unavailable`; virtual selections additionally show the latest physical route. `/thinking` (alias of `/effort`) changes reasoning effort, and `/context size` chooses a session context budget. Extension-provided replacement footers control their own layout.
@@ -11,14 +10,14 @@ Start with `ctx.ui` methods from an [extension](extensions.md#interact-with-the-
 
 ## Choose an integration point
 
-| Need | Use |
-|---|---|
+| Need                                         | Use                                                      |
+| -------------------------------------------- | -------------------------------------------------------- |
 | Select, confirm, input, or multi-line editor | `ctx.ui.select()`, `confirm()`, `input()`, or `editor()` |
-| Non-blocking feedback | `ctx.ui.notify()` or `setStatus()` |
-| Persistent content near the editor | `ctx.ui.setWidget()` |
-| Replace the header, footer, or editor | The corresponding `ctx.ui` component factory |
-| Temporary interactive screen or overlay | `ctx.ui.custom()` |
-| Custom rendering for a tool or session entry | An extension renderer |
+| Non-blocking feedback                        | `ctx.ui.notify()` or `setStatus()`                       |
+| Persistent content near the editor           | `ctx.ui.setWidget()`                                     |
+| Replace the header, footer, or editor        | The corresponding `ctx.ui` component factory             |
+| Temporary interactive screen or overlay      | `ctx.ui.custom()`                                        |
+| Custom rendering for a tool or session entry | An extension renderer                                    |
 
 These APIs receive Octocode’s active theme and keybindings where needed. Do not create a second terminal renderer inside an extension.
 
@@ -79,62 +78,62 @@ import type { ExtensionAPI } from "@octocodeai/octocodecode";
 import { truncateToWidth } from "@octocodeai/octocode-tui";
 
 export default function (octocode: ExtensionAPI) {
-  octocode.registerCommand("pick-target", {
-    description: "Pick a deployment target",
-    handler: async (_args, ctx) => {
-      if (ctx.mode !== "tui") {
-        ctx.ui.notify("pick-target requires interactive mode", "error");
-        return;
-      }
+	octocode.registerCommand("pick-target", {
+		description: "Pick a deployment target",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("pick-target requires interactive mode", "error");
+				return;
+			}
 
-      const choices = ["development", "staging", "production"];
-      const selected = await ctx.ui.custom<string | undefined>((tui, theme, keybindings, done) => {
-        let selectedIndex = 0;
-        let cachedWidth: number | undefined;
-        let cachedLines: string[] | undefined;
+			const choices = ["development", "staging", "production"];
+			const selected = await ctx.ui.custom<string | undefined>((tui, theme, keybindings, done) => {
+				let selectedIndex = 0;
+				let cachedWidth: number | undefined;
+				let cachedLines: string[] | undefined;
 
-        const invalidate = () => {
-          cachedWidth = undefined;
-          cachedLines = undefined;
-        };
+				const invalidate = () => {
+					cachedWidth = undefined;
+					cachedLines = undefined;
+				};
 
-        return {
-          render(width: number): string[] {
-            if (cachedLines && cachedWidth === width) return cachedLines;
+				return {
+					render(width: number): string[] {
+						if (cachedLines && cachedWidth === width) return cachedLines;
 
-            cachedWidth = width;
-            cachedLines = [
-              theme.fg("accent", "Choose a deployment target"),
-              ...choices.map((choice, index) => `${index === selectedIndex ? "> " : "  "}${choice}`),
-              theme.fg("dim", "up/down move, enter selects, escape cancels"),
-            ].map((line) => truncateToWidth(line, width));
-            return cachedLines;
-          },
-          handleInput(data: string): void {
-            if (keybindings.matches(data, "tui.select.up")) {
-              selectedIndex = (selectedIndex - 1 + choices.length) % choices.length;
-            } else if (keybindings.matches(data, "tui.select.down")) {
-              selectedIndex = (selectedIndex + 1) % choices.length;
-            } else if (keybindings.matches(data, "tui.select.confirm")) {
-              done(choices[selectedIndex]);
-              return;
-            } else if (keybindings.matches(data, "tui.select.cancel")) {
-              done(undefined);
-              return;
-            } else {
-              return;
-            }
+						cachedWidth = width;
+						cachedLines = [
+							theme.fg("accent", "Choose a deployment target"),
+							...choices.map((choice, index) => `${index === selectedIndex ? "> " : "  "}${choice}`),
+							theme.fg("dim", "up/down move, enter selects, escape cancels"),
+						].map((line) => truncateToWidth(line, width));
+						return cachedLines;
+					},
+					handleInput(data: string): void {
+						if (keybindings.matches(data, "tui.select.up")) {
+							selectedIndex = (selectedIndex - 1 + choices.length) % choices.length;
+						} else if (keybindings.matches(data, "tui.select.down")) {
+							selectedIndex = (selectedIndex + 1) % choices.length;
+						} else if (keybindings.matches(data, "tui.select.confirm")) {
+							done(choices[selectedIndex]);
+							return;
+						} else if (keybindings.matches(data, "tui.select.cancel")) {
+							done(undefined);
+							return;
+						} else {
+							return;
+						}
 
-            invalidate();
-            tui.requestRender();
-          },
-          invalidate,
-        };
-      });
+						invalidate();
+						tui.requestRender();
+					},
+					invalidate,
+				};
+			});
 
-      if (selected) ctx.ui.notify(`Selected ${selected}`, "info");
-    },
-  });
+			if (selected) ctx.ui.notify(`Selected ${selected}`, "info");
+		},
+	});
 }
 ```
 
@@ -158,13 +157,13 @@ Use `theme.style()` to combine foreground and background colors with text attrib
 
 ```typescript
 return new Text(
-  theme.style("Done!", {
-    fg: "success",
-    bg: "toolSuccessBg",
-    bold: true,
-  }),
-  0,
-  0,
+	theme.style("Done!", {
+		fg: "success",
+		bg: "toolSuccessBg",
+		bold: true,
+	}),
+	0,
+	0,
 );
 ```
 

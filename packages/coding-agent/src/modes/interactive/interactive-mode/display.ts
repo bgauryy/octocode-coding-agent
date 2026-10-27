@@ -3,12 +3,14 @@
  * renderer lookup, the fullscreen scrollbar and PNG transcoder, and the startup display flags.
  */
 
-import { type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
+import { GLYPH, type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
 import type { MarkdownTransformer, ToolRenderers } from "../../../core/extensions/index.ts";
 import { withBuiltInRenderers } from "../../../core/tools/renderers/index.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { STATE_COLOR } from "../../../theme/status.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import type { ThemeColor } from "../../../theme/theme-tokens.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the display helpers. */
@@ -81,14 +83,29 @@ export function clearEditor(host: DisplayHost): void {
 	host.ui.requestRender();
 }
 
+/** The three notice kinds: one `<glyph> <sentence>` line in a state colour (`STATE_COLOR`; `warning` is the risk colour). */
+type NoticeKind = "success" | "warning" | "error";
+
+const NOTICE_MARK: Record<NoticeKind, { glyph: string; color: ThemeColor }> = {
+	success: { glyph: GLYPH.done, color: STATE_COLOR.done },
+	warning: { glyph: GLYPH.warning, color: "warning" },
+	error: { glyph: GLYPH.failed, color: STATE_COLOR.failed },
+};
+
+/** A notice line at the transcript's left pad: `✓ New session started`, `⚠ Project config not loaded`, `✗ Compaction failed`. */
+export function noticeLine(kind: NoticeKind, message: string, pad: number): ThemedText {
+	const { glyph, color } = NOTICE_MARK[kind];
+	return new ThemedText(() => theme.fg(color, `${glyph} ${message}`), pad, 0);
+}
+
 export function showError(host: DisplayHost, errorMessage: string): void {
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(new ThemedText(() => theme.fg("error", `Error: ${errorMessage}`), host.outputPad, 0));
+	host.chatContainer.addChild(noticeLine("error", errorMessage, host.outputPad));
 	host.ui.requestRender();
 }
 
 export function showWarning(host: DisplayHost, warningMessage: string): void {
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
+	host.chatContainer.addChild(noticeLine("warning", warningMessage, host.outputPad));
 	host.ui.requestRender();
 }

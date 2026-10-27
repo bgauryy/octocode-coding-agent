@@ -1,7 +1,8 @@
-import { getCapabilities, getImageDimensions, imageFallback } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
+import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
+import { formatDuration } from "../../octocode/shared/duration.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
 
 export function str(value: unknown): string | null {
@@ -65,24 +66,12 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 	return `${header} ${theme.fg("muted", preview)}`;
 }
 
-/** Duration as `4.2s` below a minute, then `1m 30s` and `2h 3m 4s`. */
-function formatToolDuration(ms: number): string {
-	const seconds = ms / 1000;
-	if (seconds < 60) return `${seconds.toFixed(1)}s`;
-
-	const totalSeconds = Math.floor(seconds);
-	const minutes = Math.floor(totalSeconds / 60);
-	const remainder = totalSeconds % 60;
-	if (minutes < 60) return `${minutes}m ${remainder}s`;
-
-	return `${Math.floor(minutes / 60)}h ${minutes % 60}m ${remainder}s`;
-}
-
 /** Renderer state of {@link startToolTimer} and {@link toolTimerText}, kept in `ToolRenderContext.state`. */
 interface ToolTimerState {
 	startedAt?: number;
 	endedAt?: number;
-	interval?: ReturnType<typeof setInterval>;
+	/** Stops the row's repaint subscription on the animation clock. */
+	unsubscribe?: () => void;
 }
 
 /** Start the row's clock once execution starts. Call from `renderCall`. */
@@ -101,22 +90,20 @@ export function startToolTimer(context: ToolRenderContext<ToolTimerState>): void
  */
 export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPartial: boolean): string | undefined {
 	const state = context.state;
-	if (state.startedAt !== undefined && isPartial && !state.interval) {
-		state.interval = setInterval(() => context.invalidate(), 1000);
+	if (state.startedAt !== undefined && isPartial && !state.unsubscribe) {
+		state.unsubscribe = animationClock.subscribe(() => context.invalidate(), { everyMs: MOTION.tickMs, kind: "info" });
 	}
 	if (!isPartial || context.isError) {
 		state.endedAt ??= Date.now();
-		if (state.interval) {
-			clearInterval(state.interval);
-			state.interval = undefined;
-		}
+		state.unsubscribe?.();
+		state.unsubscribe = undefined;
 	}
 	// A final result's recorded duration wins: it is monotonic and survives reloads. The renderer's own clock is the
 	// fallback for live progress and for results stored without one.
-	if (!isPartial && context.durationMs !== undefined) return `Took ${formatToolDuration(context.durationMs)}`;
+	if (!isPartial && context.durationMs !== undefined) return `Took ${formatDuration(context.durationMs, true)}`;
 	if (state.startedAt === undefined) return undefined;
 	const endTime = state.endedAt ?? Date.now();
-	return `${isPartial ? "Elapsed" : "Took"} ${formatToolDuration(endTime - state.startedAt)}`;
+	return `${isPartial ? "Elapsed" : "Took"} ${formatDuration(endTime - state.startedAt, true)}`;
 }
 
 export function invalidArgText(theme: Theme): string {

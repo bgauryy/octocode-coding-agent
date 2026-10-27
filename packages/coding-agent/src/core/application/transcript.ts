@@ -6,6 +6,7 @@ import type {
 	ApplicationTool,
 } from "@octocodeai/octocode-contacts";
 import type { AgentSessionEvent } from "../agent-session.ts";
+import { stoppedToolText } from "./interrupted-tools.ts";
 import { toolHint } from "../../octocode/shared/util.ts";
 import { ApplicationAssets } from "./assets.ts";
 import type { ApplicationStateStore } from "./state.ts";
@@ -214,15 +215,15 @@ export class ApplicationTranscript {
 		for (const block of normalizeApplicationContent(calls, message.id, this.assets))
 			if (block.type === "toolCall") {
 				const previous = this.tools.get(block.toolCallId);
+				const finished = previous?.status === "completed" || previous?.status === "failed";
+				const stopText = finished
+					? undefined
+					: stoppedToolText(typeof source.stopReason === "string" ? source.stopReason : undefined, 0);
 				this.acceptTool({
-					type:
-						previous?.status === "completed" ||
-						previous?.status === "failed" ||
-						message.status === "aborted" ||
-						message.status === "failed"
-							? "tool.completed"
-							: "tool.started",
-					failed: previous?.status === "failed" || message.status === "aborted" || message.status === "failed",
+					type: finished || stopText !== undefined ? "tool.completed" : "tool.started",
+					failed: previous?.status === "failed" || stopText !== undefined,
+					...(stopText === undefined ? {} : { text: stopText }),
+					...(stopText !== undefined && source.stopReason === "error" ? { notRun: true as const } : {}),
 					toolCallId: block.toolCallId,
 					toolName: block.name,
 					arguments: block.arguments,
@@ -324,6 +325,7 @@ export class ApplicationTranscript {
 			...data,
 			order: previous?.order ?? this.nextOrder++,
 			text: event.text ?? previous?.text ?? "",
+			notRun: event.notRun,
 			status: type === "tool.completed" ? (failed ? "failed" : "completed") : "running",
 		};
 		if (JSON.stringify(tool).length > 60000) {

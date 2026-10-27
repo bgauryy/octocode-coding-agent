@@ -3,7 +3,7 @@ import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { readOnlyCommand } from "./read-only.ts";
-import { base } from "./words.ts";
+import { base, wrappedCommand } from "./words.ts";
 
 /**
  * What a shell command changes, as far as its parse shows: a policy for read-only roles and team reservations, not a
@@ -76,6 +76,16 @@ const PACKAGE_MUTATING = new Set([
 	"prune",
 	"version",
 ]);
+/** `git config` and `npm config` read with these; any other form of `git config` changes `.git/config` or `~/.gitconfig`. */
+const GIT_CONFIG_READS =
+	/^(?:-l|--list|--get(?:-all|-regexp|-urlmatch|-color(?:bool)?)?|--show-(?:origin|scope)|--name-only|--type=.*|-z|--null)$/;
+/** Config files and `package.json` fields these package-manager forms rewrite (`npm pkg set`, `npm config set`). */
+const PACKAGE_CONFIG_WRITES = new Map([
+	["pkg", new Set(["set", "delete", "fix"])],
+	["config", new Set(["set", "delete", "edit", "fix"])],
+]);
+/** Programs that rewrite files they are given and name no destination a parse could follow. */
+const OPAQUE_WRITERS = ["patch", "dd", "unzip", "wget", "rsync", "ed", "ex"];
 const SHELL_PROGRAMS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
 const FIND_ACTIONS = new Set([
 	"-delete",
@@ -90,6 +100,50 @@ const FIND_ACTIONS = new Set([
 ]);
 
 type Word = string | undefined;
+
+/** Git options that take the next word as their value (`git -C dir`, `git -c k=v`); `--opt=value` forms carry it in one word. */
+const GIT_OPTION_VALUES = new Set([
+	"-C",
+	"-c",
+	"--git-dir",
+	"--work-tree",
+	"--namespace",
+	"--super-prefix",
+	"--config-env",
+]);
+
+/** The subcommand and its arguments after git's global options (`git -C . -c k=v --no-pager checkout -- f`). */
+function gitCommand(rest: Word[]): { sub: Word; after: Word[] } {
+	let at = 0;
+	while (at < rest.length && rest[at]?.startsWith("-") && rest[at] !== "--")
+		at += GIT_OPTION_VALUES.has(rest[at]!) ? 2 : 1;
+	const operands = operandsOf(rest.slice(at));
+	return { sub: operands[0], after: operands.slice(1) };
+}
+
+/** `gawk -i inplace` (also `-iinplace`, `--include=inplace`) rewrites its input files. */
+function gawkInPlace(words: Word[]): boolean {
+	return words.some(
+		(word, index) =>
+			(word === "-i" && /^inplace(?:\.awk)?$/.test(words[index + 1] ?? "")) ||
+			/^(?:-i|--include=)inplace(?:\.awk)?$/.test(word ?? ""),
+	);
+}
+
+/** Whether `git config` (its words after `config`, and its operands) writes: any form but a read flag or a single key. */
+function changesGitConfig(rest: Word[], after: Word[]): boolean {
+	const subAt = rest.findIndex((word) => word === "config");
+	const flags = rest.slice(subAt + 1).filter((word) => word?.startsWith("-"));
+	if (flags.some((flag) => GIT_CONFIG_READS.test(flag ?? ""))) return false;
+	if (
+		flags.some((flag) =>
+			/^(?:--(?:unset|unset-all|add|replace-all|edit|remove-section|rename-section)|-e)$/.test(flag ?? ""),
+		)
+	)
+		return true;
+	// `git config key` reads; `git config key value` writes. A key or value that did not resolve is treated as a write.
+	return after.length >= 2 || after.includes(undefined);
+}
 
 /** The words that are not options (a `--` ends them); an unresolved word stays `undefined`. */
 function operandsOf(words: Word[]): Word[] {
@@ -116,15 +170,23 @@ function merge(into: ShellMutation, other: ShellMutation): void {
 }
 
 function inspect(command: BashCommand, found: ShellMutation, depth: number): void {
-	for (const at of bashCandidates(command, "deny").executables) {
+	const literals = command.tokens.map((word) => word.literal);
+	const executables = new Set<number>();
+	for (const index of bashCandidates(command, "deny").executables) {
+		// `sudo`, `env`, `exec` and the like run the command after their options: that command is what changes things.
+		const real = wrappedCommand(literals, index);
+		if (real === undefined) found.uncertain = true;
+		else executables.add(real);
+		executables.add(index);
+	}
+	for (const at of executables) {
 		const token = command.tokens[at];
 		if (token?.literal === undefined) continue;
 		const name = base(token.literal);
 		const rest: Word[] = command.tokens.slice(at + 1).map((word) => word.literal);
 		const options = rest.filter((word) => word?.startsWith("-"));
 		const operands = operandsOf(rest);
-		const sub = operands[0];
-		const after = operands.slice(1);
+		const { sub, after } = name === "git" ? gitCommand(rest) : { sub: operands[0], after: operands.slice(1) };
 		const take = (words: Word[]) => {
 			for (const word of words) {
 				if (word === undefined) found.uncertain = true;
@@ -145,7 +207,9 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number): voi
 			take(operands);
 		} else if (name === "perl" && options.some((word) => /^-[a-zA-Z]*i/.test(word ?? ""))) {
 			found.opaque.push("perl -i");
-		} else if (["patch", "dd", "unzip", "wget"].includes(name)) {
+		} else if (["awk", "gawk"].includes(name) && gawkInPlace(rest)) {
+			found.opaque.push(`${name} -i inplace`);
+		} else if (OPAQUE_WRITERS.includes(name)) {
 			found.opaque.push(name);
 		} else if (
 			name === "curl" &&
@@ -162,11 +226,14 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number): voi
 				(GIT_MUTATING.has(sub) || (sub === "stash" && !["list", "show"].includes(after[0] ?? "")))
 			)
 				found.opaque.push(`git ${sub}`);
+			else if (sub === "config" && changesGitConfig(rest, after)) found.opaque.push("git config");
 			else if (sub === "worktree" && ["add", "remove", "move", "prune"].includes(after[0] ?? ""))
 				found.opaque.push("git worktree");
 		} else if (PACKAGE_MANAGERS.has(name)) {
 			if (sub === undefined && name === "yarn" && options.length === 0) found.opaque.push("yarn install");
 			else if (sub !== undefined && PACKAGE_MUTATING.has(sub)) found.opaque.push(`${name} ${sub}`);
+			else if (sub !== undefined && PACKAGE_CONFIG_WRITES.get(sub)?.has(after[0] ?? ""))
+				found.opaque.push(`${name} ${sub} ${after[0]}`);
 		} else if (SHELL_PROGRAMS.has(name) || name === "eval") {
 			const script = name === "eval" ? operands.join(" ") : scriptOf(rest);
 			if (script !== undefined && depth < 4 && !operands.includes(undefined))

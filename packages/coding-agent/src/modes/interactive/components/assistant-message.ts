@@ -1,11 +1,22 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import type { ApplicationMessage } from "@octocodeai/octocode-contacts";
-import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	Container,
+	GLYPH,
+	Markdown,
+	type MarkdownTheme,
+	MOTION,
+	MouseRegion,
+	Spacer,
+	Text,
+} from "@octocodeai/octocode-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 import { ApplicationAssets } from "../../../core/application/assets.ts";
 import { normalizeApplicationMessage } from "../../../core/application/normalize.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import {
 	ContentAttachmentComponent,
@@ -13,11 +24,23 @@ import {
 	FullContentReader,
 	type ContentOptions,
 } from "./application-content.ts";
+import {
+	durationSuffix,
+	interruptedText,
+	isAbortWording,
+	LiveThinkingLabel,
+	observeThinking,
+	revealHint,
+	thinkingMs,
+} from "./reasoning-label.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+
+/** A live label that no render has drawn for this long belongs to a component that left the screen. */
+const STALE_FRAME_MS = 2_000;
 
 /**
  * Component that renders a complete assistant message
@@ -39,12 +62,18 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
+	private mouseHint = false;
+	/** The frame subscription of a streaming reasoning label; held only while one is on screen. */
+	private stopFrames: (() => void) | undefined;
+	private liveLabel: LiveThinkingLabel | undefined;
+	/** Whether a tool row already showed the interrupt; decided once, when the message first reads as interrupted. */
+	private interruptShownByTool: boolean | undefined;
 
 	constructor(
 		message?: AssistantMessage,
 		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
-		hiddenThinkingLabel = "Thinking...",
+		hiddenThinkingLabel = "Thinking…",
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
 		contentOptions: ContentOptions = {},
@@ -81,6 +110,13 @@ export class AssistantMessageComponent extends Container {
 		if (this.lastMessage) {
 			this.updateMessage(this.lastMessage);
 		}
+	}
+
+	/** Whether the terminal reports the mouse, so a hidden reasoning stub may say it can be clicked. */
+	setMouseHint(mouse: boolean): void {
+		if (this.mouseHint === mouse) return;
+		this.mouseHint = mouse;
+		if (this.lastMessage) this.updateMessage(this.lastMessage);
 	}
 
 	setHiddenThinkingLabel(label: string): void {
@@ -181,15 +217,46 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
+	/**
+	 * Ask for a frame every spinner step while a reasoning label streams, and not otherwise: the subscription ends with the
+	 * stream, with this component (`dispose`), or once frames stop drawing the label (it left the transcript unannounced).
+	 * Reduced motion keeps the subscription, but the clock does not tick decoration then.
+	 */
+	private syncFrames(): void {
+		const requestRender = this.contentOptions.requestRender;
+		if (!this.liveLabel || !requestRender) return this.dispose();
+		if (this.stopFrames) return;
+		this.stopFrames = animationClock.subscribe(
+			(now) => {
+				if (this.liveLabel && now - this.liveLabel.renderedAt < STALE_FRAME_MS) requestRender();
+				else this.dispose();
+			},
+			{ everyMs: MOTION.spinnerMs, kind: "decor" },
+		);
+	}
+
+	/** Stop asking for frames; the component may still be rendered, with a static label. */
+	dispose(): void {
+		this.stopFrames?.();
+		this.stopFrames = undefined;
+	}
+
 	updateMessage(message: ApplicationMessage, isStreaming = this.isStreaming): void {
 		message = this.fullContent.message(message, this.contentOptions.readAsset);
 		this.lastMessage = message;
 		if (this.isStreaming !== isStreaming) this.markdown.clear();
 		this.isStreaming = isStreaming;
 		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
+		const now = Date.now();
+		blocks.forEach((block, index) => {
+			if (block.type !== "thinking") return;
+			const chars = contentText(block, this.contentOptions.readAsset).trim().length;
+			observeThinking(block.id, chars, index < blocks.length - 1, now, isStreaming);
+		});
 
 		// Clear content container
 		this.contentContainer.clear();
+		this.liveLabel = undefined;
 
 		const hasVisibleContent = blocks.some((c) => c.type !== "toolCall" && (c.type !== "text" || c.text.trim()));
 
@@ -215,11 +282,13 @@ export class AssistantMessageComponent extends Container {
 				}
 			} else if (content.type === "thinking") {
 				const thinkingBlocks: string[] = [];
+				const spanIds: string[] = [];
 				for (; i < blocks.length; i++) {
 					const thinkingContent = blocks[i];
 					if (thinkingContent.type !== "thinking") {
 						break;
 					}
+					spanIds.push(thinkingContent.id);
 					const thinking = contentText(thinkingContent, this.contentOptions.readAsset).trim();
 					if (thinking) {
 						thinkingBlocks.push(thinking);
@@ -241,17 +310,26 @@ export class AssistantMessageComponent extends Container {
 				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
 				const active = this.isStreaming && i === blocks.length - 1;
 				const interrupted = !this.isStreaming && ["aborted", "error", "length"].includes(message.stopReason ?? "");
-				const label = active ? "Thinking…" : interrupted ? "Reasoning interrupted" : "Reasoning";
+				const label = interrupted ? "Reasoning interrupted" : "Reasoning";
+				const time = durationSuffix(thinkingMs(spanIds));
+				const hint = hidden ? revealHint(this.mouseHint) : "";
 				const thinkingComponent = new Container();
-				thinkingComponent.addChild(
-					new Text(
-						theme.fg(interrupted ? "warning" : active ? "accent" : "thinkingText", `${hidden ? "▸" : "▾"} ${label}`) +
-							(hidden ? theme.fg("dim", " · click to expand") : ""),
-						this.outputPad,
-						0,
-					),
-				);
-				if (hidden && this.hiddenThinkingLabel !== "Thinking...") {
+				if (active) {
+					this.liveLabel = new LiveThinkingLabel(hint, this.outputPad);
+					thinkingComponent.addChild(this.liveLabel);
+				} else {
+					thinkingComponent.addChild(
+						new Text(
+							theme.fg(
+								interrupted ? "warning" : "thinkingText",
+								`${hidden ? GLYPH.collapsed : GLYPH.expanded} ${label}${time}`,
+							) + (hint ? theme.fg("dim", ` ${hint}`) : ""),
+							this.outputPad,
+							0,
+						),
+					);
+				}
+				if (hidden && this.hiddenThinkingLabel !== "Thinking…") {
 					thinkingComponent.addChild(new Text(this.hiddenThinkingLabel, this.outputPad, 0));
 				}
 				if (!hidden) {
@@ -281,8 +359,10 @@ export class AssistantMessageComponent extends Container {
 			}
 		}
 
+		this.syncFrames();
+
 		// Check if incomplete/failed - show after partial content.
-		// For aborted/error tool calls, tool execution components show the error.
+		// An abort with tool calls shows on their rows. A failure shows its error here once; its tool rows say not run.
 		// Length stops can happen before a tool call is complete, so surface them here too.
 		const hasToolCalls = blocks.some((c) => c.type === "toolCall");
 		this.hasToolCalls = hasToolCalls;
@@ -291,20 +371,18 @@ export class AssistantMessageComponent extends Container {
 			this.contentContainer.addChild(
 				new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0),
 			);
-		} else if (!hasToolCalls) {
-			if (message.stopReason === "aborted") {
-				const abortMessage =
-					message.errorMessage && message.errorMessage !== "Request was aborted"
-						? message.errorMessage
-						: "Operation aborted";
+		} else if (message.stopReason === "error" && !isAbortWording(message.errorMessage)) {
+			const errorMsg = sanitizeTerminalText(message.errorMessage || "Unknown error");
+			this.contentContainer.addChild(new Spacer(1));
+			this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
+		} else if (!hasToolCalls && (message.stopReason === "aborted" || message.stopReason === "error")) {
+			// A tool row that already says `aborted` is the one statement of the interrupt.
+			this.interruptShownByTool ??= toolInterruptShown();
+			if (!this.interruptShownByTool) {
 				this.contentContainer.addChild(new Spacer(1));
 				this.contentContainer.addChild(
-					new Text(theme.fg("warning", sanitizeTerminalText(abortMessage)), this.outputPad, 0),
+					new Text(theme.fg("warning", sanitizeTerminalText(interruptedText(message.errorMessage))), this.outputPad, 0),
 				);
-			} else if (message.stopReason === "error") {
-				const errorMsg = sanitizeTerminalText(message.errorMessage || "Unknown error");
-				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
 			}
 		}
 	}

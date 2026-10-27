@@ -90,37 +90,50 @@ export function startConnection(state: McpExtensionState, server: McpServer, aft
 	return ready;
 }
 
-/** Wait for the latest connection attempts, including ones queued while waiting, or an abort. */
+/** The longest a `tool_search` waits for servers that are still connecting before it searches the connected ones. */
+export const DISCOVERY_WAIT_MS = 15_000;
+
+/**
+ * Wait for the latest connection attempts, including ones queued while waiting, an abort, or `timeoutMs` (no
+ * deadline when omitted). Returns the servers whose attempt had not settled when the wait ended.
+ */
 export async function waitForServers(
 	state: McpExtensionState,
 	waiting: readonly McpServer[],
 	signal: AbortSignal | undefined,
-): Promise<void> {
+	timeoutMs?: number,
+): Promise<McpServer[]> {
+	const deadline = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+	const stop = deadline ? (signal ? AbortSignal.any([signal, deadline]) : deadline) : signal;
+	const settled = new Set<Promise<void>>();
+	const stillPending = (attempts: { server: McpServer; ready: Promise<void> }[]) =>
+		attempts.flatMap(({ server, ready }) => (settled.has(ready) || !isLive(state, server) ? [] : [server]));
 	for (;;) {
 		const ready = waiting.flatMap((server) =>
-			isEnabled(server) && state.servers.includes(server) && server.ready ? [{ server, ready: server.ready }] : [],
+			isLive(state, server) && server.ready ? [{ server, ready: server.ready }] : [],
 		);
-		if (ready.length === 0 || signal?.aborted) return;
+		if (ready.length === 0 || stop?.aborted) return stillPending(ready);
+		for (const { ready: attempt } of ready) void attempt.then(() => settled.add(attempt));
 		let onAbort: (() => void) | undefined;
 		await Promise.race([
 			Promise.all(ready.map((attempt) => attempt.ready)),
 			new Promise<void>((resolve) => {
 				onAbort = () => resolve();
-				signal?.addEventListener("abort", onAbort, { once: true });
+				stop?.addEventListener("abort", onAbort, { once: true });
 			}),
 		]);
-		if (onAbort) signal?.removeEventListener("abort", onAbort);
+		if (onAbort) stop?.removeEventListener("abort", onAbort);
+		// Done when aborted, or when no attempt was replaced by a newer one while waiting.
 		if (
-			signal?.aborted ||
-			ready.every(
-				(attempt) =>
-					!isEnabled(attempt.server) ||
-					!state.servers.includes(attempt.server) ||
-					attempt.ready === attempt.server.ready,
-			)
+			stop?.aborted ||
+			ready.every((attempt) => !isLive(state, attempt.server) || attempt.ready === attempt.server.ready)
 		)
-			return;
+			return stillPending(ready);
 	}
+}
+
+function isLive(state: McpExtensionState, server: McpServer): boolean {
+	return isEnabled(server) && state.servers.includes(server);
 }
 
 /**
@@ -216,6 +229,8 @@ export async function reconnect(server: McpServer): Promise<string | undefined> 
 	const connection = server.connection;
 	if (!connection) return `MCP server "${server.entry.name}" is disabled.`;
 	const previous = server.ready;
+	// A hung connect is cancelled rather than waited out; `previous` then settles at once.
+	connection.abortOpening();
 	const ready = (async () => {
 		await previous;
 		await connection.reconnect();

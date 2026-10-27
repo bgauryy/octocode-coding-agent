@@ -6,11 +6,13 @@ import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../shared/render.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { MailDetails } from "../model.ts";
-import { senderLabel } from "../routing.ts";
 import type { Team } from "../session.ts";
 import { clip, plural } from "../../shared/render/text.ts";
 import { timedTool, timingOf } from "../../shared/render/rows.ts";
 import { isRecord } from "../../../utils/guards.ts";
+
+/** Columns of the sent text shown on the collapsed Send row. */
+const PREVIEW_CHARS = 60;
 
 /** Shows team mail in the conversation. */
 export function registerMessageRenderer(pi: ExtensionAPI): void {
@@ -23,12 +25,16 @@ export function registerMessageRenderer(pi: ExtensionAPI): void {
 			? mail
 			: [{ from: "agent", text: typeof message.content === "string" ? message.content : "", at: Date.now() }];
 		for (const entry of entries) {
-			const sender = entry?.sender;
-			const from = clip(`${String(entry?.from ?? "agent")}${sender ? ` (${senderLabel(sender)})` : ""}`, 100);
-			const kind = entry?.replyRequired ? " · reply requested" : "";
+			// The sender's role and goal are already on its Agent row; the number is what `replyTo` takes.
+			const from = clip(String(entry?.from ?? "agent"), 64);
+			const meta = [
+				typeof entry?.id === "number" ? `#${entry.id}` : "",
+				formatClock(entry?.at ?? Date.now()),
+				entry?.replyRequired ? "reply requested" : "",
+			].filter(Boolean);
 			box.addChild(
 				new Text(
-					`${theme.fg("accent", "✉")} ${theme.fg("toolTitle", theme.bold(`from ${from}`))} ${theme.fg("dim", `· ${formatClock(entry?.at ?? Date.now())}${kind}`)}`,
+					`${theme.fg("accent", "✉")} ${theme.fg("toolTitle", theme.bold(from))} ${theme.fg("dim", `→ you · ${meta.join(" · ")}`)}`,
 					0,
 					0,
 				),
@@ -53,7 +59,7 @@ export function registerSendMessageTool(
 			name: "sendMessage",
 			label: "Send message",
 			description:
-				"Send steering, questions or evidence to a teammate or your session tree. Delivery is queued; unread departures are reported. A lingering child resumes on a message; otherwise start a new task.",
+				"Send steering, questions or evidence to a teammate or your session tree. Delivery is queued; unread departures are reported. A lingering child resumes on a message.",
 			promptGuidelines: [
 				"Send self-contained blockers, decisions or evidence that change the next step. Skip acknowledgements and completion pings; reports arrive automatically.",
 			],
@@ -77,7 +83,7 @@ export function registerSendMessageTool(
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: cancel your child's current step and continue with this message. Default: deliver at its next step.",
+							"true: stop the recipient's current step and continue with this message; only the agent that started a subagent may. Default: deliver at its next step.",
 					}),
 				),
 			}),
@@ -112,7 +118,14 @@ export function registerSendMessageTool(
 			renderCall(args, theme, context) {
 				const to = args.to === undefined ? "" : `→ ${String(args.to)}`;
 				const reply = args.replyTo === undefined ? "" : `reply to #${String(args.replyTo)}`;
-				return toolHeader(theme, context, "Send", [to, reply].filter(Boolean).join(" · "));
+				// Queueing is instant: a millisecond count says nothing, so only a send that took a second or more shows its time.
+				const slow = (context.durationMs ?? 0) >= 1_000;
+				return toolHeader(
+					theme,
+					slow ? context : { ...context, durationMs: undefined },
+					"Send",
+					[to, reply].filter(Boolean).join(" · "),
+				);
 			},
 			renderResult(result, _options, theme, context) {
 				const details: Record<string, unknown> = isRecord(result.details) ? result.details : {};
@@ -122,12 +135,14 @@ export function registerSendMessageTool(
 					Array.isArray(details.departed) && details.departed.length
 						? ` · not sent to ${details.departed.map(String).join(", ")}`
 						: "";
+				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
+				// Collapsed, the first line of what was sent; the whole message shows when expanded.
+				const first = context.expanded ? "" : clip(message.trimStart(), PREVIEW_CHARS);
+				const preview = first ? ` · "${first}"` : "";
 				const summary =
 					typeof details.id === "number"
-						? `Queued #${details.id}${sent.length > 1 ? ` to ${plural(sent.length, "agent")}` : ""}${departed}`
+						? `Queued #${details.id}${sent.length > 1 ? ` to ${plural(sent.length, "agent")}` : ""}${preview}${departed}`
 						: firstLine(text);
-				// The message itself is the model's own words: shown only when expanded.
-				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
 				return resultBlock(theme, context, {
 					summary,
 					body: context.isError ? text.split("\n").slice(1).join("\n") : message,

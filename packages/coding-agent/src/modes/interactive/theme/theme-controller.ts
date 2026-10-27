@@ -1,6 +1,6 @@
 import type { RgbColor, TerminalColors, TUI } from "@octocodeai/octocode-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
-import { SYSTEM_THEME_NAME } from "./system-theme.ts";
+import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import {
 	getTerminalTheme,
 	initTheme,
@@ -13,7 +13,7 @@ import {
 	setThemeInstance,
 	type ThemeAppearance,
 	type Theme,
-} from "./theme.ts";
+} from "../../../theme/theme.ts";
 
 type ThemeResult = { success: boolean; error?: string };
 

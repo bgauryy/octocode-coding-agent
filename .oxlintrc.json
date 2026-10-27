@@ -1,14 +1,6 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": [
-		"eslint",
-		"typescript",
-		"unicorn",
-		"oxc",
-		"import",
-		"node",
-		"promise"
-	],
+	"plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
 	"categories": {
 		"correctness": "error"
 	},
@@ -70,19 +62,8 @@
 	},
 	"overrides": [
 		{
-			"files": [
-				"packages/webview/src/**",
-				"packages/webview/test/**"
-			],
-			"plugins": [
-				"eslint",
-				"typescript",
-				"unicorn",
-				"oxc",
-				"import",
-				"react",
-				"jsx-a11y"
-			],
+			"files": ["packages/webview/src/**", "packages/webview/test/**"],
+			"plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react", "jsx-a11y"],
 			"env": {
 				"browser": true
 			},
@@ -96,13 +77,7 @@
 			}
 		},
 		{
-			"files": [
-				"**/test/**",
-				"**/*.test.ts",
-				"**/*.test.tsx",
-				"**/*.test.mjs",
-				"scripts/**/*.test.*"
-			],
+			"files": ["**/test/**", "**/*.test.ts", "**/*.test.tsx", "**/*.test.mjs", "scripts/**/*.test.*"],
 			"rules": {
 				"max-lines": "off",
 				"typescript/no-floating-promises": "off",

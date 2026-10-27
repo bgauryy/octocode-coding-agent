@@ -146,6 +146,61 @@ describe("a background subagent that reported blocked", () => {
 	});
 });
 
+describe("a profile's linger seconds", () => {
+	const profile = (linger?: number): Map<string, AgentProfile> =>
+		new Map([
+			["watcher", { name: "watcher", description: "", prompt: "Watch.", ...(linger === undefined ? {} : { linger }) }],
+		]);
+	const run = async (
+		setting: string | undefined,
+		linger: number | undefined,
+		test: (t: ReturnType<typeof setup>) => Promise<void>,
+	) => {
+		if (setting === undefined) delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		else process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = setting;
+		const t = setup("full", tmp(), profile(linger));
+		try {
+			await test(t);
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	};
+
+	it("keeps a finished run of that profile reachable although the setting is off, and a message resumes it", async () => {
+		await run(undefined, 900, async (t) => {
+			const id = await t.start("linger watched", { profile: "watcher" });
+			await t.control.settle();
+			expect(t.reports()[0]).toContain(`${id} stays reachable for 900 s`);
+			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toHaveProperty("resumed");
+			await t.control.settle();
+			expect(t.reports()[1]).toContain("Follow-up from your parent:\nlinger follow-up");
+		});
+	});
+
+	it("replaces the setting, including with 0 to turn the window off for the profile", async () => {
+		await run("60", 900, async (t) => {
+			await t.start("linger longer", { profile: "watcher" });
+			await t.control.settle();
+			expect(t.reports()[0]).toContain("stays reachable for 900 s");
+		});
+		await run("60", 0, async (t) => {
+			await t.start("linger off", { profile: "watcher" });
+			await t.control.settle();
+			expect(t.reports()[0]).not.toContain("reachable");
+		});
+	});
+
+	it("still gives a blocked report the blocked window when the profile's is shorter", async () => {
+		await run(undefined, 30, async (t) => {
+			const id = await t.start("linger blocked on a decision", { profile: "watcher" });
+			await t.control.settle();
+			expect(t.reports()[0]).toContain(`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s`);
+		});
+	});
+});
+
 describe("a lingering background subagent", () => {
 	it("restores a browser child with a per-call visible-mode override", async () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
@@ -236,6 +291,36 @@ describe("a lingering background subagent", () => {
 			}
 		} finally {
 			await first.control.stopAll();
+			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
+		}
+	}, 30_000);
+
+	it("never saves MCP server configs in the parked record, and resumes with the current servers", async () => {
+		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
+		const t = setup("full");
+		let servers: Record<string, unknown> = { old: { command: "echo", env: { TOKEN: "SECRET-PARKED-123" } } };
+		Object.assign(t.f.pi, {
+			events: { on: () => () => undefined, emit: (_name: string, reply: (added: unknown) => void) => reply(servers) },
+		});
+		try {
+			const id = await t.start("linger with servers");
+			await t.control.settle();
+			expect(t.reports()[0]).toContain("mcp=old ");
+			const text = fs.readFileSync(path.join(sessionDir("session-test"), "parked-workers.json"), "utf8");
+			expect(text).not.toContain("SECRET-PARKED-123");
+			const saved = (JSON.parse(text) as Array<{ run: { identity: Record<string, unknown> } }>).find(
+				(entry) => entry.run.identity.id === id,
+			);
+			expect(saved?.run.identity).toBeDefined();
+			expect(saved?.run.identity).not.toHaveProperty("mcpServers");
+			// The session's servers changed since: the continuation gets the current ones, not the ones it started with.
+			servers = { fresh: { command: "echo" } };
+			expect(await t.team.send(id, "linger again", { replyRequired: false })).toHaveProperty("resumed");
+			await t.control.settle();
+			expect(t.reports()[1]).toContain("mcp=fresh ");
+		} finally {
+			await t.control.stopAll();
+			t.team.stop();
 			delete process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS;
 		}
 	}, 30_000);

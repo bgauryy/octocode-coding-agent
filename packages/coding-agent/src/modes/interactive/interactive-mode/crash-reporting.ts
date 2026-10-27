@@ -8,7 +8,7 @@ import { APP_NAME, detectInstallChange, VERSION } from "../../../config.ts";
 import { findExtensionStackMatches, recordCrash as writeCrashRecord } from "../../../core/crash-log.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { stopThemeWatcher, theme } from "../theme/theme.ts";
+import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
 import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";

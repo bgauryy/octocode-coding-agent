@@ -23,6 +23,8 @@ import { runSubagent } from "./process.ts";
 import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
 import { buildAgentArgs, type ChildSession, childSession } from "./process/session.ts";
 import { type AgentProfile, askSpawn } from "./profiles.ts";
+import { startGate } from "./rate-gate.ts";
+import { childStagger } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
 import { renderAgentCall, renderAgentMessage, renderAgentResult } from "./render.ts";
@@ -229,6 +231,7 @@ export function registerAgentTool(
 				// Refusals first (unknown profile, unavailable model), then a slot, then the spawn ask: the user is never asked
 				// for a run that cannot start, and a denied spawn claims and starts nothing.
 				const plan = planRun(getProfiles(), params, ctx, getRefused?.());
+				await startGate.wait(launchSignal); // a child just failed on a rate limit: the next start would meet it too
 				await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
 				let claimed: Run | undefined;
 				let grants: Awaited<ReturnType<typeof askSpawn>>;
@@ -251,20 +254,6 @@ export function registerAgentTool(
 					if (!claimed) runs.slots.give();
 				}
 				const run = claimed;
-				if (resultContract) run.identity.resultContract = resultContract;
-				run.identity.skillResources = skillResources;
-				// Servers the model added with `mcp` (the user confirmed each) reach the child as a transient file.
-				const addedServers = getMcpAddedServers(pi.events);
-				if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
-				// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
-				// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
-				run.identity.permission = {
-					mode: permission.mode,
-					grants: [...new Set([...grants, ...permission.childGrants()])],
-				};
-				// With a person to ask, the child's approval dialogs come here (this tool exists only in the main session).
-				run.identity.relay = ctx.hasUI;
-				const host = relayHost(ctx);
 				const isolation = new Isolation(run.identity.id);
 				let finalized: Promise<string> | undefined;
 				const finish = () => {
@@ -272,7 +261,22 @@ export function registerAgentTool(
 					return finalized;
 				};
 				let handedOff = false;
+				// From the claim on, every failure goes through `finish`: the slot and the name are given back.
 				try {
+					if (resultContract) run.identity.resultContract = resultContract;
+					run.identity.skillResources = skillResources;
+					// Servers the model added with `mcp` (the user confirmed each) reach the child as a transient file.
+					const addedServers = getMcpAddedServers(pi.events);
+					if (Object.keys(addedServers).length > 0) run.identity.mcpServers = addedServers;
+					// A child cannot ask anyone, so it gets the mode, the reach the user's spawn approval named (for the whole run: that
+					// approval is the consent, `askSpawn`) and every kind the user allowed for this session. Never a class that always asks.
+					run.identity.permission = {
+						mode: permission.mode,
+						grants: [...new Set([...grants, ...permission.childGrants()])],
+					};
+					// With a person to ask, the child's approval dialogs come here (this tool exists only in the main session).
+					run.identity.relay = ctx.hasUI;
+					const host = relayHost(ctx);
 					const cwd = params.isolate ? await isolation.start(ctx, run.identity, params.workingCopy) : ctx.cwd;
 					launchSignal.throwIfAborted();
 					const worktree = isolation.worktree;
@@ -293,24 +297,21 @@ export function registerAgentTool(
 					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 					const lingers = params.background === true && !params.isolate;
 					const args = buildAgentArgs(run.profile, run.route.model, session, []);
-					const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined) =>
-						record(
+					const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, warm?: () => void) => {
+						const tracked = track(update);
+						const progress: typeof tracked = (change) => {
+							if (change.responding) warm?.();
+							tracked(change);
+						};
+						return record(
 							run,
 							details,
 							session,
-							runSubagent(
-								task,
-								args,
-								cwd,
-								run.profile,
-								run.identity,
-								runSignal,
-								track(update),
-								onSpawn,
-								undefined,
-								host,
-							),
+							runSubagent(task, args, cwd, run.profile, run.identity, runSignal, progress, onSpawn, undefined, host),
 						);
+					};
+					// Siblings with the same profile and model share a prompt prefix: the later ones wait (bounded) for the first one's reply, which writes the cache.
+					const prefix = [run.identity.role, run.route.model ?? run.route.parent, params.skills?.join(",")].join("\0");
 					const stopping = () => {
 						details.stopping = true;
 						onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });
@@ -331,7 +332,7 @@ export function registerAgentTool(
 						run,
 						details,
 						params.task,
-						(runSignal) => launch(runSignal, undefined),
+						(runSignal) => childStagger.run(prefix, runSignal, (warm) => launch(runSignal, undefined, warm)),
 						finish,
 						ctx.sessionManager.getSessionId(),
 						lingers ? lingering.window(run, ctx) : undefined,

@@ -49,12 +49,12 @@ Use a unique `--key` for each intended message. To recover after a lost response
 
 Keys are at most 128 characters. The host retains up to 128 keyed receipts for the current conversation in memory and refuses new keys at capacity instead of evicting old receipts. Session replacement, API restart (including `/api off` followed by `/api on`) or process restart loses these receipts. A saved conversation is not a durable idempotency store.
 
-| Result | Meaning and next step |
-| --- | --- |
-| `execution: "not-sent"` | The operation was refused before dispatch. Correct the cause before retrying. |
-| Server wait timeout (`-32001`) | The message was accepted; work may still be running. Inspect status or wait again with the original key. |
-| `execution: "uncertain"` | The host handoff failed after dispatch. The original key retains the failure and cannot dispatch again. Inspect the conversation before deciding on new work. |
-| Connection failure or client timeout without a disposition | Delivery may have happened. Do not infer failure before dispatch from a missing response. |
+| Result                                                     | Meaning and next step                                                                                                                                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `execution: "not-sent"`                                    | The operation was refused before dispatch. Correct the cause before retrying.                                                                                 |
+| Server wait timeout (`-32001`)                             | The message was accepted; work may still be running. Inspect status or wait again with the original key.                                                      |
+| `execution: "uncertain"`                                   | The host handoff failed after dispatch. The original key retains the failure and cannot dispatch again. Inspect the conversation before deciding on new work. |
+| Connection failure or client timeout without a disposition | Delivery may have happened. Do not infer failure before dispatch from a missing response.                                                                     |
 
 Errors exit nonzero. Protocol errors are JSON on stderr with `error`, `code` and optional `data`; client failures may include `execution`. Other CLI errors are plain text. Preserve this information when integrating. Neither the CLI nor the external-agent adapter automatically replays a possibly executed prompt.
 
@@ -107,16 +107,16 @@ The peer must have its local API enabled. The adapter verifies its discovered in
 
 The local API uses JSON-RPC 2.0, protocol version 1. The [protocol constants](../src/octocode/api/protocol.ts) and [method dispatch](../src/octocode/api/bridge.ts) own its contract. This version number is independent of ACP's version.
 
-| Method | Purpose |
-| --- | --- |
-| `initialize`, `ping` | Read API capabilities/instance identity; check liveness |
-| `status` | Read conversation identity, model, activity, pending input and event sequence |
-| `message.send` | Send `text` with optional `from`, `mode`, `key`, `expectedSessionId`, `requireIdle`, `wait`, `timeoutMs` |
-| `turn.abort` | Request cancellation; optional `expectedSessionId` and owning `key` guards |
-| `messages.list` | Read bounded text history; `limit` defaults to 20, capped at 100; use the returned `earlier.before` as `before` |
-| `events.subscribe`, `events.unsubscribe` | Manage a socket subscription, with optional `since` and `types` |
-| `agents.list`, `agents.tell` | List the native Team directory or send Team mail with `to` and `text`; Team delivery has its own [acknowledgment contract](../../../docs/AGENT_COMMUNICATION.md) |
-| `external.call` | Invoke an external-agent action using its inner action object |
+| Method                                   | Purpose                                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize`, `ping`                     | Read API capabilities/instance identity; check liveness                                                                                                          |
+| `status`                                 | Read conversation identity, model, activity, pending input and event sequence                                                                                    |
+| `message.send`                           | Send `text` with optional `from`, `mode`, `key`, `expectedSessionId`, `requireIdle`, `wait`, `timeoutMs`                                                         |
+| `turn.abort`                             | Request cancellation; optional `expectedSessionId` and owning `key` guards                                                                                       |
+| `messages.list`                          | Read bounded text history; `limit` defaults to 20, capped at 100; use the returned `earlier.before` as `before`                                                  |
+| `events.subscribe`, `events.unsubscribe` | Manage a socket subscription, with optional `since` and `types`                                                                                                  |
+| `agents.list`, `agents.tell`             | List the native Team directory or send Team mail with `to` and `text`; Team delivery has its own [acknowledgment contract](../../../docs/AGENT_COMMUNICATION.md) |
+| `external.call`                          | Invoke an external-agent action using its inner action object                                                                                                    |
 
 On the Unix socket, each frame is one JSON line. Responses correlate by request ID; events are notifications with `method: "event"` and the event object in `params`. Replay notifications can arrive before the subscription response. That response includes `seq` and `gap`.
 

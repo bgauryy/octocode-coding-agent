@@ -1,4 +1,4 @@
-import { LATEST_PROTOCOL_VERSION } from "../src/client/index.ts";
+import { type JsonRpcMessage, LATEST_PROTOCOL_VERSION, McpSessionExpiredError } from "../src/client/index.ts";
 import { createInMemoryTransportPair } from "../src/client/testing/index.ts";
 import { expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../coding-agent/src/core/extensions/types.ts";
@@ -168,5 +168,73 @@ it("refuses a hook call the host's gate refuses, and a tool that is hidden or no
 		harness.cleanup();
 		await pair.client.close();
 		await pair.server.close();
+	}
+});
+
+it("runs a hook call through the connection's request path, retrying once on an expired session", async () => {
+	const calls: unknown[] = [];
+	const transport = (expireCalls: boolean) => {
+		const pair = createInMemoryTransportPair();
+		pair.server.onMessage((message) => {
+			if (!("id" in message) || !("method" in message)) return;
+			if (message.method === "tools/call") calls.push(message.params);
+			const result =
+				message.method === "initialize"
+					? {
+							protocolVersion: LATEST_PROTOCOL_VERSION,
+							capabilities: { tools: {} },
+							serverInfo: { name: "policy", version: "1" },
+						}
+					: message.method === "tools/list"
+						? { tools: [{ name: "check", inputSchema: { type: "object" } }] }
+						: { content: [{ type: "text", text: "fresh session" }] };
+			void pair.server.send({ jsonrpc: "2.0", id: message.id, result });
+		});
+		void pair.server.start();
+		if (expireCalls) {
+			const send = pair.client.send.bind(pair.client);
+			// The HTTP transport's 404 for a session the server no longer knows.
+			pair.client.send = async (message: JsonRpcMessage) => {
+				if ("method" in message && message.method === "tools/call") throw new McpSessionExpiredError("gone");
+				return send(message);
+			};
+		}
+		return pair.client;
+	};
+	const transports = [transport(true), transport(false)];
+	let opened = 0;
+	let api!: ExtensionAPI;
+	const harness = await createHarness({
+		initialActiveToolNames: [],
+		extensionFactories: [
+			createMcpExtension({
+				loadConfig: () => ({
+					servers: [{ name: "policy", config: { command: "unused" }, source: "fixture" }],
+					errors: [],
+					globalConfig: "fixture",
+				}),
+				createTransport: () => transports[opened++],
+			}),
+			(pi) => {
+				api = pi;
+			},
+		],
+	});
+	try {
+		await harness.session.bindExtensions({});
+		const result = await getMcpHookCaller(api.events)!({
+			server: "policy",
+			tool: "check",
+			input: {},
+			signal: new AbortController().signal,
+			waitForConnection: true,
+			authorize,
+		});
+		expect(result.content).toEqual([{ type: "text", text: "fresh session" }]);
+		expect(opened).toBe(2);
+		expect(calls).toHaveLength(1);
+	} finally {
+		harness.cleanup();
+		await Promise.all(transports.map((transport) => transport.close()));
 	}
 });

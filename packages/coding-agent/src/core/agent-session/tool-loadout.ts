@@ -22,6 +22,7 @@ import {
 } from "../system-prompt.ts";
 import type { SessionInternals } from "./host.ts";
 import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.ts";
+import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
@@ -35,17 +36,15 @@ export class SessionToolLoadout {
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	/**
-	 * Tools of the restored or reloaded loadout that are not registered yet, such as tools of MCP
-	 * servers that are still connecting. They are activated when they are registered, and dropped when
-	 * `setActiveToolsByName()` deactivates a tool or the next agent run starts.
+	 * Tools of the restored or reloaded loadout that are not registered yet. They are activated when
+	 * registered, and dropped when `setActiveToolsByName()` deactivates a tool or the next run starts,
+	 * except MCP tools of servers still connecting, which `pendingMcp` keeps until registered or settled.
 	 */
 	private _pendingToolNames = new Set<string>();
+	readonly pendingMcp = new PendingMcpTools();
 	/** Matches the `--tools` entries: tool names or patterns. */
 	private _allowedTools?: (name: string) => boolean;
-	/**
-	 * Whether the allowlist filters MCP tools: it is empty (`--no-tools`) or names an MCP tool
-	 * (`mcp__*`). Otherwise it keeps MCP tools registered for tool_search.
-	 */
+	/** Whether the allowlist filters MCP tools: it is empty (`--no-tools`) or names an `mcp__*` tool. */
 	private _allowlistFiltersMcp = false;
 	private _excludedTools?: (name: string) => boolean;
 	// Tool registry for extension getTools/setTools
@@ -152,8 +151,11 @@ export class SessionToolLoadout {
 		for (const name of this.host.session.getActiveToolNames()) this._pendingToolNames.add(name);
 	}
 
-	clearPendingToolNames(): void {
-		this._pendingToolNames.clear();
+	/** Declared MCP tools kept pending until their server registers them; the model's declarations keep them. */
+	pendingMcpToolNames = (): ReadonlySet<string> => new Set([...this._pendingToolNames].filter(isMcpToolName));
+
+	settlePendingToolNames(): void {
+		this.pendingMcp.retain(() => this._pendingToolNames, this.host.session.resourceLoader.getEventBus?.());
 	}
 
 	/**

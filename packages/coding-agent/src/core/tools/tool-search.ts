@@ -370,9 +370,20 @@ export function createToolSearchToolDefinition(
 	};
 }
 
-/** Registers inactive discovery; hosts without native features can add it explicitly. */
+/**
+ * Registers discovery, inactive until something needs it. MCP activates it when a server's tools are deferred
+ * (`mcp/src/tool-registry.ts`); a native tool registered with `exposure: "deferred"` (the graph tools) has no server to do
+ * so, and without `tool_search` it would be neither declared nor loadable, so any registered deferred tool activates it.
+ * Hosts without native features can add it explicitly.
+ */
 export function createToolSearchExtension(): ExtensionFactory {
 	return (pi) => {
 		pi.registerTool({ ...createToolSearchToolDefinition({ tools: pi }), defaultActive: false });
+		const offerForDeferredTools = () => {
+			if (pi.getAllTools().some((tool) => tool.exposure === "deferred")) activateDiscovery(pi);
+		};
+		// Every extension has registered its tools by session start; a tool registered later is covered by the next turn.
+		pi.on("session_start", offerForDeferredTools);
+		pi.on("before_agent_start", offerForDeferredTools);
 	};
 }

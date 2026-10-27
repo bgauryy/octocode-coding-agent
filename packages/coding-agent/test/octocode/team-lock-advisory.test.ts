@@ -52,3 +52,44 @@ describe("the coordinate lock advisory", () => {
 		);
 	});
 });
+
+describe("the reservation gate for PowerShell", () => {
+	const stops: Array<() => Promise<unknown>> = [];
+	afterEach(async () => {
+		for (const stop of stops.splice(0)) await stop();
+	});
+
+	async function member(db: string, cwd: string, readOnly?: (command: string) => boolean) {
+		const fake = fakePi();
+		const team = new Team(fake.pi, { OCTOCODE_AGENT_DB: db });
+		const { reservationGate } = registerCollab(fake.pi, team, readOnly ? { shellReadOnly: readOnly } : {});
+		const ctx = fakeCtx({ cwd });
+		await fake.emit("session_start", {}, ctx);
+		stops.push(() => fake.emit("session_shutdown", {}, ctx));
+		const lock = (paths: string[]) =>
+			fake.tools.get("coordinate").execute("c", { action: "lock", paths, reason: "auth" }, undefined, undefined, ctx);
+		const gate = (toolName: string, input: Record<string, unknown>) =>
+			reservationGate({ toolName, input } as never, ctx);
+		return { team, lock, gate };
+	}
+
+	it("refuses a PowerShell command it cannot show read-only while another agent holds a reservation", async () => {
+		const cwd = workspace();
+		const db = path.join(tmp(), "team.sqlite");
+		const owner = await member(db, cwd);
+		const peer = await member(db, cwd, (command) => command.startsWith("cat "));
+		const write = { command: "Set-Content packages/a/src/x.ts 'gone'", type: "powershell" };
+		// Nobody holds anything yet: PowerShell runs as before.
+		expect(await peer.gate("bash", write)).toBeUndefined();
+		await owner.lock(["packages/a/src/x.ts"]);
+		const refused = await peer.gate("bash", write);
+		expect(refused).toMatchObject({ block: true, reason: expect.stringContaining(`reserved by ${owner.team.id}`) });
+		expect(refused?.reason).toContain("PowerShell");
+		expect(await peer.gate("powershell", { command: "Remove-Item packages/b/src/y.ts" })).toMatchObject({
+			block: true,
+		});
+		// A command the classifier shows read-only still runs; so does the holder's own PowerShell.
+		expect(await peer.gate("bash", { command: "cat packages/a/src/x.ts", type: "powershell" })).toBeUndefined();
+		expect(await owner.gate("bash", write)).toBeUndefined();
+	});
+});

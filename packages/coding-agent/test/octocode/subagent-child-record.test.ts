@@ -249,8 +249,9 @@ describe("what the parent keeps of a child's run", () => {
 		expect(text).toContain("latest compaction failure: Context overflow recovery failed: provider down");
 		expect(
 			rendered(
-				s.agent.renderResult(result, { isPartial: false, expanded: false }, theme, {
+				s.agent.renderResult(result, { isPartial: false, expanded: true }, theme, {
 					isError: false,
+					expanded: true,
 					durationMs: 250,
 				}),
 			),

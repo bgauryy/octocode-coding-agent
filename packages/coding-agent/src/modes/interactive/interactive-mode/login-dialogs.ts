@@ -13,7 +13,7 @@ import { KeychainLoginSession } from "../../../core/auth-storage/keychain-login.
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

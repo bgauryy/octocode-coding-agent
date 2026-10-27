@@ -1,4 +1,4 @@
-import { calculateCost } from "../models.ts";
+import { calculateCost } from "../models/model-helpers.ts";
 import type { ClassifierApi, ClassifierModel, ClassifierOptions, ProviderHeaders, Usage } from "../types.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";

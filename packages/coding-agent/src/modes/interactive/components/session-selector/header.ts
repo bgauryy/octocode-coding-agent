@@ -1,5 +1,5 @@
 import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { keyHint } from "../keybinding-hints.ts";
 import type { NameFilter, SortMode } from "../session-selector-search.ts";
 

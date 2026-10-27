@@ -27,6 +27,12 @@ describe("unknownToolMessage", () => {
 		);
 	});
 
+	it("tells the model a pending MCP tool is still connecting", () => {
+		expect(unknownToolMessage(session([], ["bash"]), "mcp__gh__search", new Set(["mcp__gh__search"]))).toBe(
+			"Tool mcp__gh__search not found: its MCP server is still connecting. Retry in a moment.",
+		);
+	});
+
 	it("keeps the default for names the session does not know", () => {
 		expect(unknownToolMessage(session([], ["bash"]), "made_up")).toBeUndefined();
 	});

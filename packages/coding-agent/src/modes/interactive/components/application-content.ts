@@ -9,9 +9,9 @@ import {
 import { Container, Image, Text, getCapabilities } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 
-export type AssetReader = (id: string) => ApplicationAssetPayload | undefined;
+type AssetReader = (id: string) => ApplicationAssetPayload | undefined;
 export interface ContentOptions {
 	readAsset?: AssetReader;
 	showImages?: boolean;

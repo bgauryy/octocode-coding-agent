@@ -4,7 +4,7 @@ import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
-import { stopThemeWatcher } from "../modes/interactive/theme/theme.ts";
+import { stopThemeWatcher } from "../theme/theme.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { errorMessage } from "../utils/guards.ts";
 

@@ -1,18 +1,14 @@
 import { execFileSync, spawn } from "node:child_process";
 import { statSync } from "node:fs";
-import { createRequire } from "node:module";
+import { getNativeBinaryPath } from "../../config.ts";
 import { adoptTree, killTree, prepareTree } from "../shared/process.ts";
 import { isRecord } from "../../utils/guards.ts";
+import { defaultSchemaCacheFile, type GraphSchema, readSchemaCache, writeSchemaCache } from "./schema-cache.ts";
 
 export const GRAPH_TOOLS = ["graphBuild", "graphQuery"] as const;
 export type GraphTool = (typeof GRAPH_TOOLS)[number];
 
-export function graphBinary(): string {
-	const resolver = createRequire(import.meta.url)("@octocodeai/octocode-native/bin/resolve-binary.cjs") as {
-		resolveNativeBinaryPath(): string;
-	};
-	return resolver.resolveNativeBinaryPath();
-}
+export const graphBinary = (): string => getNativeBinaryPath();
 
 function environment(cwd: string, trusted: boolean): NodeJS.ProcessEnv {
 	return {
@@ -23,18 +19,10 @@ function environment(cwd: string, trusted: boolean): NodeJS.ProcessEnv {
 	};
 }
 
-const schemas = new Map<string, { inputSchema: Record<string, unknown>; description: string }>();
+const schemas = new Map<string, GraphSchema>();
 let binaryStamp = "";
 
-export function graphSchema(binary: string, name: GraphTool, cwd: string) {
-	const stat = statSync(binary);
-	const stamp = `${binary}:${stat.size}:${stat.mtimeMs}`;
-	if (binaryStamp !== stamp) {
-		schemas.clear();
-		binaryStamp = stamp;
-	}
-	const cached = schemas.get(name);
-	if (cached) return cached;
+function fetchSchema(binary: string, name: GraphTool, cwd: string): GraphSchema {
 	const output = execFileSync(binary, ["schema", name, "--view", "query"], {
 		cwd,
 		env: environment(cwd, false),
@@ -45,9 +33,33 @@ export function graphSchema(binary: string, name: GraphTool, cwd: string) {
 	const schema: unknown = JSON.parse(output);
 	if (!isRecord(schema) || !isRecord(schema.inputSchema) || typeof schema.description !== "string")
 		throw new Error(`Octocode CLI did not return a schema for ${name}; rebuild or update Octocode.`);
-	const entry = { inputSchema: schema.inputSchema, description: schema.description };
-	schemas.set(name, entry);
-	return entry;
+	return { inputSchema: schema.inputSchema, description: schema.description };
+}
+
+/**
+ * The CLI's contract for one graph tool. It is read from memory, else from the on-disk cache of this binary's stamp,
+ * else from the CLI itself, which then stores every tool's schema so only the first start after a new build pays.
+ */
+export function graphSchema(
+	binary: string,
+	name: GraphTool,
+	cwd: string,
+	cacheFile: string = defaultSchemaCacheFile(),
+): GraphSchema {
+	const stat = statSync(binary);
+	const stamp = `${binary}:${stat.size}:${stat.mtimeMs}`;
+	if (binaryStamp !== stamp) {
+		schemas.clear();
+		binaryStamp = stamp;
+		for (const [tool, schema] of Object.entries(readSchemaCache(cacheFile, stamp) ?? {})) schemas.set(tool, schema);
+	}
+	const cached = schemas.get(name);
+	if (cached) return cached;
+	for (const tool of GRAPH_TOOLS) {
+		if (!schemas.has(tool)) schemas.set(tool, fetchSchema(binary, tool, cwd));
+	}
+	writeSchemaCache(cacheFile, stamp, Object.fromEntries(schemas));
+	return schemas.get(name) as GraphSchema;
 }
 
 /** Run the installed native CLI with JSON on stdin; cancellation stops its process tree. */

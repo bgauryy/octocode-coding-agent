@@ -61,7 +61,8 @@ describe("bash tool", () => {
 		const { tool } = setup();
 		expect(tool.name).toBe("bash");
 		expect(Object.keys(tool.parameters.properties)).toEqual(["type", "command", "timeout", "background", "verify"]);
-		expect(tool.promptGuidelines).toContain(
+		// The OCTOCODE_* variables are still set; the prompt no longer carries a rule with no action for them.
+		expect(tool.promptGuidelines).not.toContain(
 			"You can inspect OCTOCODE_* environment variables for current model and session details.",
 		);
 		// `cmd | tail` alone exits with tail's status: a failed build would read as passing.
@@ -693,7 +694,7 @@ describe("bash rendering", () => {
 			),
 		).toBe("○ Bash(sleep 1) · timeout 30s");
 		expect(rendered(tool.renderCall({ command: "serve", background: true }, theme, done({ durationMs: 40 })))).toBe(
-			"● Bash(serve) · background · 40ms",
+			"✓ Bash(serve) · background · 40ms",
 		);
 	});
 
@@ -722,7 +723,7 @@ describe("bash rendering", () => {
 		).split("\n");
 		expect(lines).toEqual([
 			"  ⎿  exit 0 · 20 lines",
-			"     … +15 lines (ctrl+o to expand)",
+			"     … +15 earlier lines (ctrl+o to expand)",
 			"     line 16",
 			"     line 17",
 			"     line 18",
@@ -770,7 +771,7 @@ describe("bash rendering", () => {
 					expect(collapsed.slice(1)).toEqual(body.filter((line) => line.trim() !== ""));
 					continue;
 				}
-				const hidden = Number(/\+(\d+) lines?/.exec(collapsed[1])?.[1] ?? 0);
+				const hidden = Number(/\+(\d+) earlier lines?/.exec(collapsed[1])?.[1] ?? 0);
 				expect(hidden + collapsed.slice(2).length).toBe(body.length);
 				expect(collapsed.slice(-3)).toEqual(body.filter((line) => line.trim() !== "").slice(-3));
 			}
@@ -884,10 +885,10 @@ describe("bash rendering", () => {
 		const job = [...renderers.values()][0];
 		const message = { content: "Background bash bash-1 finished after 3s: yarn build\nLog: /tmp/j.log\nok" };
 		expect(rendered(job(message, { expanded: false }, theme))).toBe(
-			" ● Job(bash-1: yarn build)\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
+			" ✓ Job(bash-1: yarn build)\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
 		);
 		expect(rendered(job(message, { expanded: true }, theme))).toBe(
-			" ● Job(bash-1: yarn build)\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
+			" ✓ Job(bash-1: yarn build)\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
 		);
 		// A job the user killed is interrupted, not failed.
 		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };

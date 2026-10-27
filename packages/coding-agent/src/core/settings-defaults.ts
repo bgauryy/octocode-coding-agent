@@ -37,6 +37,7 @@ export const SETTINGS_DEFAULTS = {
 		imageWidthCells: 60,
 		clearOnShrink: false,
 		showTerminalProgress: false,
+		reduceMotion: "auto" as boolean | "auto",
 	},
 	images: {
 		autoResize: true,

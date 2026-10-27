@@ -7,7 +7,7 @@ import {
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
 import type { SettingsManager } from "../../../../core/settings-manager.ts";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import type {
 	ConfigWriteScope,
 	FlatEntry,

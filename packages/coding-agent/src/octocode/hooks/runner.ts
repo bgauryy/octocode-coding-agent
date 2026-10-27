@@ -23,6 +23,9 @@ import { firstLine, parseJson } from "../shared/util.ts";
 import { type HookProtocol, unsupportedOutput } from "./profiles.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
 
+/** How long output pipes may stay open after the hook process exited (a background child can hold them) before its result stands. */
+const EXIT_DRAIN_MS = 150;
+
 /** Context a hook may add to the conversation, as in the native host. */
 export const HOOK_CONTEXT_MAX_BYTES = 16 * 1024;
 
@@ -82,6 +85,7 @@ export function runHook(
 		let outBytes = 0;
 		let errBytes = 0;
 		let timedOut = false;
+		let exited = false;
 		const collect = (chunks: Buffer[], size: number, chunk: Buffer): number => {
 			if (size < HOOK_OUTPUT_MAX_BYTES) chunks.push(chunk.subarray(0, HOOK_OUTPUT_MAX_BYTES - size));
 			return size + chunk.length;
@@ -109,6 +113,8 @@ export function runHook(
 			hook.protocol === "claude" && hook.async && !hook.asyncRewake
 				? undefined
 				: setTimeout(() => {
+						// A hook that exited has answered; only pipes held open by its children are still running.
+						if (exited) return;
 						timedOut = true;
 						stop();
 					}, hook.timeoutMs);
@@ -135,6 +141,12 @@ export function runHook(
 		};
 		child.on("error", (error) => finish(null, error.message));
 		child.on("close", (code) => finish(code));
+		// `close` waits for every holder of stdout/stderr: a background child that outlives the hook would hide its exit
+		// code (a deny) behind the timeout. The exit code stands once the pipes had a moment to drain.
+		child.on("exit", (code) => {
+			exited = true;
+			setTimeout(() => finish(code), EXIT_DRAIN_MS).unref();
+		});
 		// A hook that ignores stdin closes the pipe early; that is not an error.
 		child.stdin.on("error", () => undefined);
 		child.stdin.end(JSON.stringify(input));

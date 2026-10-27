@@ -72,8 +72,8 @@ describe("automatic MCP exposure", () => {
 		expect(resolveMcpExposure("auto", large, model(), true, true)).toBe("deferred");
 		expect(resolveMcpExposure("auto", large, model(), false, true)).toBe("direct");
 	});
-	it("prefers discovery only for the octocode server without its own exposure", () => {
-		expect(prefersDeferred("octocode", {})).toBe(true);
+	it("does not give the Octocode preset a special discovery preference", () => {
+		expect(prefersDeferred("octocode", {})).toBe(false);
 		expect(prefersDeferred("octocode", { exposure: "direct" })).toBe(false);
 		expect(prefersDeferred("octocode", { exposure: "auto" })).toBe(false);
 		expect(prefersDeferred("docs", {})).toBe(false);
@@ -85,7 +85,7 @@ describe("automatic exposure across servers", () => {
 		Array.from({ length: count }, (_, index) => ({ name: `tool${index}`, inputSchema: { type: "object" as const } }));
 	const server = (name: string, count: number): McpServer =>
 		({
-			entry: { name, config: { command: "x" }, source: "test" },
+			entry: { name, config: { command: "x", exposure: "auto" }, source: "test" },
 			connection: { tools: tools(count), state: "connected" },
 		}) as unknown as McpServer;
 	const selected = { ...model(NATIVE), contextWindow: 1000, maxTokens: 500 };

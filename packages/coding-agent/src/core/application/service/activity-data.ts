@@ -35,6 +35,8 @@ export interface ActivityData {
 	kind: string;
 	text: string;
 	data?: unknown;
+	/** The activity reports a failure; clients show it as one. */
+	failed?: boolean;
 }
 function pick(value: unknown, keys: readonly string[]): Record<string, unknown> {
 	const source = record(value);
@@ -92,12 +94,26 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 				text: entry.replacement === null ? "Context entry omitted" : "Context entry replaced",
 				data: { targetId: entry.targetId, operation: entry.replacement === null ? "omit" : "replace" },
 			};
-		case "custom":
+		case "custom": {
+			// Octocode records a refused or cancelled compaction as a note (`octocode/compaction/record.ts`); it is a failure.
+			const note = record(entry.data);
+			if (
+				entry.customType === "octocode-compaction-note" &&
+				(note.kind === "thrash-stop" || note.kind === "checkpoint-not-saved") &&
+				typeof note.reason === "string"
+			)
+				return {
+					kind: entry.type,
+					text: note.reason,
+					data: { customType: entry.customType, kind: note.kind },
+					failed: true,
+				};
 			return {
 				kind: entry.type,
 				text: `Extension state: ${entry.customType}`,
 				data: { customType: entry.customType, privateDataStored: entry.data !== undefined },
 			};
+		}
 		case "compaction":
 			return { kind: entry.type, text: "Context compacted", data: summary(entry) };
 		case "branch_summary":
@@ -139,7 +155,8 @@ export function nativeActivity(event: AgentSessionEvent): ActivityData | undefin
 		case "compaction_end":
 			return {
 				kind: event.type,
-				text: event.aborted ? "Compaction aborted" : event.errorMessage ? "Compaction failed" : "Compaction finished",
+				text: event.aborted ? "Compaction aborted" : event.errorMessage ? event.errorMessage : "Compaction finished",
+				...(!event.aborted && event.errorMessage ? { failed: true } : {}),
 				data: {
 					...pick(event, ["reason", "aborted", "willRetry", "errorMessage"]),
 					...(event.result ? { result: summary(event.result) } : {}),

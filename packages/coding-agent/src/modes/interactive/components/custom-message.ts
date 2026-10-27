@@ -2,7 +2,7 @@ import type { TextContent } from "@octocodeai/octocode-ai";
 import { type Component, Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 
 /**

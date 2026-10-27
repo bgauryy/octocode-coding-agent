@@ -57,10 +57,14 @@ export interface SessionSeams {
 	checkCompaction(
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck?: boolean,
-		toolResults?: AgentMessage[],
 		incoming?: readonly AgentMessage[],
 	): Promise<boolean>;
-	runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean>;
+	runAutoCompaction(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		targetModel?: Model<any>,
+		targetThinking?: ThinkingLevel,
+	): Promise<boolean>;
 	emitExtensionEvent: AgentEventsHost["emitExtensionEvent"];
 	waitForIdle(): Promise<void>;
 	setExtensionRunner(runner: ExtensionRunner): void;
@@ -103,12 +107,13 @@ export function createSessionCollaborators(
 	const retry = new SessionRetry({
 		...base,
 		modelForMessage: (message) => models.modelForMessage(message),
-		omitRecoveryAttempt: (message, toolResults) => boundaries.omitRecoveryAttempt(message, toolResults),
+		omitRecoveryAttempt: (message) => boundaries.omitRecoveryAttempt(message),
 	});
 	const toolCalls = new SessionToolCalls({
 		...base,
 		limitsModel: () => models.limitsModel(),
 		getCallableTools: () => tools.getCallableTools(),
+		pendingToolNames: tools.pendingMcpToolNames,
 	});
 	const bash = new SessionBash({ ...base, recordBashResult: seams.recordBashResult });
 	const compaction = new SessionCompaction({ ...base, cacheWarmer, summarize: seams.runDefaultCompaction });
@@ -181,7 +186,7 @@ export function createSessionCollaborators(
 			...base,
 			modelForMessage: (message) => models.modelForMessage(message),
 			findPersistedMessageEntryId: (message) => boundaries.findPersistedMessageEntryId(message),
-			omitRecoveryAttempt: (message, results) => boundaries.omitRecoveryAttempt(message, results),
+			omitRecoveryAttempt: (message) => boundaries.omitRecoveryAttempt(message),
 			runAutoCompaction: seams.runAutoCompaction,
 			emitSessionCompactFailed: (event) => compaction.emitSessionCompactFailed(event),
 		},

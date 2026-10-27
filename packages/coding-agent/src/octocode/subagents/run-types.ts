@@ -23,6 +23,8 @@ export interface RunDetails {
 	profile: string;
 	goal: string;
 	toolCalls: number;
+	/** Model requests the child made in this run (`budget.ts`); absent before its first reply. */
+	requests?: number;
 	/** Tool calls the child could not run without the user's approval. */
 	denied?: number | undefined;
 	/** Its latest steps: tool calls (`→ bash ls`), thoughts (`✻ …`) and narration (`› …`). */
@@ -96,6 +98,9 @@ export interface ResultDetails {
 	usage?: Usage;
 	/** Whether any of the run's replies came from a model without pricing (then `usage.cost` leaves them out). */
 	unpriced?: boolean;
+	/** As in `RunDetails`: where it ran, shown when the report is expanded. */
+	model?: string;
+	fallback?: string;
 	/** Its compactions, warnings and errors, and saved conversation, as in `RunDetails`. */
 	compactions?: Compactions;
 	notices?: ChildNotices;
@@ -103,5 +108,6 @@ export interface ResultDetails {
 	asks?: Ask[];
 	/** As in `RunDetails`. */
 	firstTurnTokens?: number;
+	requests?: number;
 	startup?: { failed: true; cause?: string };
 }

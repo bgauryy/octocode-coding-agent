@@ -1,8 +1,10 @@
 import { truncateToWidth } from "@octocodeai/octocode-tui";
 
 /**
- * The "OCTOCODE CODE" banner drawn as Octocode's header. Pure in (paint, width, version, shine) and always BANNER_HEIGHT
- * rows: a height change on resize makes Octocode redraw (and clear) the whole scrollback. Three layouts by width: the 6-row
+ * The "OCTOCODE CODE" banner drawn as Octocode's header. Pure in (paint, width, version, shine). Its height is fixed
+ * per size class (BANNER_HEIGHT with the full art, COMPACT_BANNER_HEIGHT below it): a height change on resize makes
+ * Octocode redraw (and clear) the whole scrollback, so it may change only where the art itself does, and narrow
+ * terminals do not pay for rows only the full art needs. Three layouts by width: the 6-row
  * ANSI Shadow block font, a 2-row half-block font, then plain text. Strokes run along a left-to-right gradient taken
  * from the theme, box-drawing shadows are a darker shade of the same hue, and `shine` (0..1) is the position of a
  * light band that sweeps across once on start.
@@ -46,6 +48,8 @@ const WORD_GAP = "   ";
 const ART_ROWS = 6;
 /** Art, tagline, hints and a blank separator. */
 export const BANNER_HEIGHT = ART_ROWS + 3;
+/** Blank row, compact art (the plain name takes fewer rows), tagline, hints and a blank separator: every width below the full art. */
+export const COMPACT_BANNER_HEIGHT = 6;
 /** Gradient steps: neighbouring cells of one step share one escape sequence. */
 const STEPS = 32;
 /** Half-width of the shine band, as a fraction of the art width. */
@@ -135,7 +139,8 @@ export function bannerLines(paint: BannerPaint, width: number, info: BannerInfo 
 		return `${paint.fg("muted", key)}${label.length > 0 ? ` ${paint.fg("dim", label.join(" "))}` : ""}`;
 	});
 	const all = [...art, tagline, hints.join(dot)];
-	while (all.length < BANNER_HEIGHT) all.push("");
+	const height = width >= FULL_WIDTH ? BANNER_HEIGHT : COMPACT_BANNER_HEIGHT;
+	while (all.length < height) all.push("");
 	// Every line must fit the width, however narrow the terminal.
-	return all.slice(0, BANNER_HEIGHT).map((line) => truncateToWidth(line, Math.max(1, width), ""));
+	return all.slice(0, height).map((line) => truncateToWidth(line, Math.max(1, width), ""));
 }

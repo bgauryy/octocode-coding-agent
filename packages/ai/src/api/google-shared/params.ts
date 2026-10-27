@@ -1,5 +1,5 @@
 import type { GenerateContentConfig, GenerateContentParameters, ThinkingConfig } from "@google/genai";
-import { clampThinkingLevel } from "../../models.ts";
+import { clampThinkingLevel } from "../../models/model-helpers.ts";
 import type { Model, SimpleStreamOptions, StreamOptions, ThinkingBudgets, TranscriptContext } from "../../types.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { getSystemMessageText } from "../../utils/text.ts";

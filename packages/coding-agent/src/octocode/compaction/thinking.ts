@@ -1,4 +1,5 @@
 import { isRecord } from "../../utils/guards.ts";
+import { fenceUntrustedResults } from "../shared/untrusted-results.ts";
 import { applyClearedResults } from "./clearing.ts";
 
 /**
@@ -48,11 +49,12 @@ export function stripStaleThinking<T>(messages: T[]): T[] {
 }
 
 /**
- * What Octocode's `context` handler changes in every request to `model`: the results in `cleared` (the session branch's,
- * `sessionCleared`) as their placeholders, and no stale thinking. The cache-shared summary replays it, so its prefix is the one the cache holds.
+ * What Octocode's `context` handler changes in every request to `model`: web and MCP results inside a fence that marks them as
+ * data (`fenceUntrustedResults`), the results in `cleared` (the session branch's, `sessionCleared`) as their placeholders, and
+ * no stale thinking. The cache-shared summary replays it, so its prefix is the one the cache holds.
  * The same list when nothing changes.
  */
 export function requestMessages<T>(messages: T[], model: unknown, cleared: ReadonlyMap<string, string>): T[] {
-	const replaced = applyClearedResults(messages, cleared);
+	const replaced = applyClearedResults(fenceUntrustedResults(messages, cleared), cleared);
 	return bindsThinkingToPrefix(model) ? stripStaleThinking(replaced) : replaced;
 }

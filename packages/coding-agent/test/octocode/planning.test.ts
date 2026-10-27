@@ -2,6 +2,10 @@ import { contentText, fauxAssistantMessage, getCurrentSystemMessage } from "@oct
 import { afterEach, expect, it, vi } from "vitest";
 import { registerPlanning } from "../../src/octocode/plan/register.ts";
 import { planningRefusal } from "../../src/octocode/plan/gate.ts";
+import { PLAN_REMINDER_TYPE } from "../../src/octocode/plan/prompts.ts";
+import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts";
+import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
+import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { readPlan, PLAN_ENTRY } from "../../src/octocode/plan/state.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { NATIVE_FEATURE_PATH } from "../../src/core/native-tools.ts";
@@ -87,6 +91,120 @@ it("allows only host-owned reads; read-only annotations and similarly named tool
 			definition("mcp__octocode__localFetch", "builtin:mcp"),
 		),
 	).toContain("blocks");
+});
+
+it("lets the planner inspect the repository with read-only shell commands and nothing else", async () => {
+	await shellParserReady();
+	const bash = { name: "bash", sourceInfo: { path: NATIVE_FEATURE_PATH } } as never;
+	const refusal = (input: Record<string, unknown>) =>
+		planningRefusal({ toolName: "bash", input }, bash, [], planReadOnly);
+	for (const command of [
+		"git log --oneline -5",
+		"git diff --stat && git status",
+		"rg -n planning src | head -20",
+		"ls -la packages",
+		"env LANG=C git log",
+	])
+		expect(refusal({ command }), command).toBeUndefined();
+	for (const command of [
+		"git commit -m x",
+		"git branch -D old",
+		"git -C elsewhere checkout main",
+		"sed -i s/a/b/ file.ts",
+		"echo x > file.ts",
+		"cat a | tee b",
+		"sh -c 'rm -rf x'",
+		"node -e 1",
+		"yarn vitest run",
+		"cat $(rm x)",
+		"npm install",
+		"",
+	])
+		expect(refusal({ command }), command).toContain("Plan mode blocks this bash command");
+	expect(refusal({ command: "ls", background: true })).toContain("Plan mode blocks");
+	expect(refusal({ command: "ls", type: "powershell" })).toContain("Plan mode blocks");
+	expect(refusal({})).toContain("Plan mode blocks");
+	// Without an injected classifier every shell command stays blocked.
+	expect(planningRefusal({ toolName: "bash", input: { command: "ls" } }, bash)).toContain("Plan mode blocks");
+	// Only the native bash tool: a same-named tool from elsewhere stays blocked.
+	expect(
+		planningRefusal(
+			{ toolName: "bash", input: { command: "ls" } },
+			{ name: "bash", sourceInfo: { path: "/project/fake.ts" } } as never,
+			[],
+			planReadOnly,
+		),
+	).toContain("Plan mode blocks");
+});
+
+it("gates a native bash call through the host's classifier once it is injected", async () => {
+	await shellParserReady();
+	const fake = fakePi();
+	const planning = registerPlanning(
+		fake.pi,
+		new Subcommands(),
+		vi.fn(async () => {}),
+	);
+	fake.tools.set("bash", { name: "bash", sourceInfo: { path: NATIVE_FEATURE_PATH } });
+	const ctx = fakeCtx({ cwd: "/repo" });
+	Object.assign(ctx, {
+		sessionManager: {
+			getSessionId: () => "plan-gate",
+			getBranch: () => [
+				{ type: "custom", customType: PLAN_ENTRY, data: { version: 1, active: true, revision: 1, text: "p" } },
+			],
+		},
+	});
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	const gate = (command: string) => planning.gate({ toolName: "bash", input: { command } });
+	expect(gate("git log")).toMatchObject({ block: true });
+	planning.readOnlyShell = planReadOnly;
+	expect(gate("git log")).toBeUndefined();
+	expect(gate("git commit -m x")).toMatchObject({ block: true });
+});
+
+it("puts the active plan back after a compaction, once, and only while planning", async () => {
+	const fake = fakePi();
+	registerPlanning(
+		fake.pi,
+		new Subcommands(),
+		vi.fn(async () => {}),
+	);
+	let branch: unknown[] = [
+		{
+			type: "custom",
+			customType: PLAN_ENTRY,
+			data: { version: 1, active: true, revision: 3, text: "1. Inspect\n2. Fix" },
+		},
+	];
+	const ctx = fakeCtx({ cwd: "/repo" });
+	Object.assign(ctx, { sessionManager: { getSessionId: () => "plan-reminder", getBranch: () => branch } });
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	await fake.fire("session_compact", { reason: "threshold", compactionEntry: {} }, ctx);
+	expect(fake.sent).toHaveLength(1);
+	expect(fake.sent[0]).toMatchObject({
+		message: { customType: PLAN_REMINDER_TYPE, display: false },
+		options: { triggerTurn: false, deliverAs: "followUp" },
+	});
+	expect(fake.sent[0].message.content).toContain("revision 3");
+	expect(fake.sent[0].message.content).toContain("1. Inspect\n2. Fix");
+	branch = [
+		{
+			type: "custom",
+			customType: PLAN_ENTRY,
+			data: { version: 1, active: true, revision: 1, text: "x".repeat(9_000) },
+		},
+	];
+	await fake.fire("session_start", { reason: "resume" }, ctx);
+	await fake.fire("session_compact", { reason: "manual", compactionEntry: {} }, ctx);
+	expect(fake.sent[1].message.content).toContain("[…clipped]");
+	expect(fake.sent[1].message.content.length).toBeLessThan(8_300);
+	branch = [
+		{ type: "custom", customType: PLAN_ENTRY, data: { version: 1, active: false, revision: 3, text: "1. Inspect" } },
+	];
+	await fake.fire("session_start", { reason: "resume" }, ctx);
+	await fake.fire("session_compact", { reason: "manual", compactionEntry: {} }, ctx);
+	expect(fake.sent).toHaveLength(2);
 });
 
 it("fails closed for an unknown persisted planning version", () => {

@@ -72,6 +72,7 @@ function register(percent = 10) {
 			return undefined;
 		},
 		getSettings: () => ({}),
+		getThinkingLevel: () => "off",
 	} as unknown as ExtensionAPI;
 	const notify = vi.fn();
 	registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);

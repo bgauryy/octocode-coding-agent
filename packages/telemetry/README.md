@@ -47,14 +47,14 @@ npm install @octocodeai/octocode-telemetry
 
 Telemetry describes what a program did while it was running. This package models that work using spans, attributes, events, statuses, and explicit context:
 
-| Concept | Plain-language meaning |
-|---|---|
-| **Span** | A timed record of one operation, such as loading an account or making an AI request. It begins before the work and ends when the work finishes. |
+| Concept                    | Plain-language meaning                                                                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Span**                   | A timed record of one operation, such as loading an account or making an AI request. It begins before the work and ends when the work finishes.                      |
 | **Parent and child spans** | Operations can contain smaller operations. A request span might contain a cache lookup and a database query. Together they form a tree showing where time was spent. |
-| **Attribute** | A named fact attached to a span, such as `provider: "openai"`, `cache.hit: true`, or `item_count: 12`. Attributes describe the operation and its result. |
-| **Event** | A named occurrence at a point during a span, such as `retry.scheduled` or `cache.lookup`. Events have no duration and may carry their own attributes. |
-| **Status** | The operation's outcome: `ok` or `error`. An error status may include an error name and message. |
-| **Context** | A handle identifying where new work belongs in the span tree. Starting a span from a context makes it a child of that context. |
+| **Attribute**              | A named fact attached to a span, such as `provider: "openai"`, `cache.hit: true`, or `item_count: 12`. Attributes describe the operation and its result.             |
+| **Event**                  | A named occurrence at a point during a span, such as `retry.scheduled` or `cache.lookup`. Events have no duration and may carry their own attributes.                |
+| **Status**                 | The operation's outcome: `ok` or `error`. An error status may include an error name and message.                                                                     |
+| **Context**                | A handle identifying where new work belongs in the span tree. Starting a span from a context makes it a child of that context.                                       |
 
 For example, loading an account could produce this telemetry:
 
@@ -73,52 +73,46 @@ A span is diagnostic data, not business state. An adapter translates these gener
 A `TelemetryContext` starts a span around a callback. The callback receives a `TelemetrySpan`, which is also the explicit parent context for child spans. Contexts optionally expose their adapter's `metrics?: TelemetryMetrics` and `propagation?: TelemetryPropagation` capabilities; child spans and extracted parents carry the same capabilities. A `TelemetryContext` adapter starts root spans; hosts retain this adapter. Invocation contexts and octocode-ai request options carry a `TelemetrySpan`, never the adapter. A tracing adapter that only implements `startSpan()` is still valid.
 
 ```typescript
-import {
-  NOOP_TELEMETRY_CONTEXT,
-  type TelemetryContext,
-} from '@octocodeai/octocode-telemetry';
+import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@octocodeai/octocode-telemetry";
 
-async function loadAccount(
-  accountId: string,
-  telemetryContext: TelemetryContext = NOOP_TELEMETRY_CONTEXT,
-) {
-  return telemetryContext.startSpan(
-    {
-      name: 'example.account.load',
-      attributes: { 'example.account.id': accountId },
-    },
-    async (span) => {
-      const account = await readAccount(accountId);
-      span.setAttributes({ 'example.account.found': account !== undefined });
-      return account;
-    },
-  );
+async function loadAccount(accountId: string, telemetryContext: TelemetryContext = NOOP_TELEMETRY_CONTEXT) {
+	return telemetryContext.startSpan(
+		{
+			name: "example.account.load",
+			attributes: { "example.account.id": accountId },
+		},
+		async (span) => {
+			const account = await readAccount(accountId);
+			span.setAttributes({ "example.account.found": account !== undefined });
+			return account;
+		},
+	);
 }
 ```
 
 Pass the callback span to lower-level work to create explicit nesting:
 
 ```typescript
-return telemetryContext.startSpan({ name: 'example.parent' }, async (parentSpan) => {
-  return parentSpan.startSpan({ name: 'example.child' }, async (childSpan) => {
-    childSpan.addEvent('example.cache.lookup', { 'example.cache.hit': true });
-    return performWork();
-  });
+return telemetryContext.startSpan({ name: "example.parent" }, async (parentSpan) => {
+	return parentSpan.startSpan({ name: "example.child" }, async (childSpan) => {
+		childSpan.addEvent("example.cache.lookup", { "example.cache.hit": true });
+		return performWork();
+	});
 });
 ```
 
 There is no public `end()` method. `startSpan()` owns settlement and keeps the span open until the callback's value or promise settles. For an expected failure represented by a normal return value, set the status explicitly:
 
 ```typescript
-return telemetryContext.startSpan({ name: 'example.save' }, async (span) => {
-  const result = await save();
-  if (!result.ok) {
-    span.setStatus({
-      status: 'error',
-      error: { name: 'SaveError', message: result.reason },
-    });
-  }
-  return result;
+return telemetryContext.startSpan({ name: "example.save" }, async (span) => {
+	const result = await save();
+	if (!result.ok) {
+		span.setStatus({
+			status: "error",
+			error: { name: "SaveError", message: result.reason },
+		});
+	}
+	return result;
 });
 ```
 
@@ -146,8 +140,8 @@ An adapter may also implement `TelemetryPropagation`. Expose it through `context
 
 ```typescript
 interface TelemetryPropagation {
-  inject(context: TelemetryContext): TelemetryCarrier | undefined;
-  extract(carrier: TelemetryCarrier | undefined): TelemetryContext;
+	inject(context: TelemetryContext): TelemetryCarrier | undefined;
+	extract(carrier: TelemetryCarrier | undefined): TelemetryContext;
 }
 type TelemetryCarrier = Record<string, string>;
 ```
@@ -157,12 +151,9 @@ A carrier is an opaque JSON-safe string map. Adapters own its format; W3C `trace
 ```typescript
 const caller = new InMemoryTelemetryContext();
 const provider = new InMemoryTelemetryContext();
-await caller.startSpan({ name: 'rpc.client' }, async (span) => {
-  const wire = JSON.stringify(caller.inject(span));
-  await provider.extract(JSON.parse(wire)).startSpan(
-    { name: 'rpc.server' },
-    (serverSpan) => handleRequest(serverSpan),
-  );
+await caller.startSpan({ name: "rpc.client" }, async (span) => {
+	const wire = JSON.stringify(caller.inject(span));
+	await provider.extract(JSON.parse(wire)).startSpan({ name: "rpc.server" }, (serverSpan) => handleRequest(serverSpan));
 });
 ```
 
@@ -172,11 +163,11 @@ A link relates work without changing its parent. Use `SpanOptions.links` when th
 
 ```typescript
 await telemetry.startSpan(
-  { name: 'activation', links: [{ context: firstGetter, attributes: { reason: 'trigger' } }] },
-  async (activation) => {
-    laterGetter.addLink({ context: activation });
-    await activate();
-  },
+	{ name: "activation", links: [{ context: firstGetter, attributes: { reason: "trigger" } }] },
+	async (activation) => {
+		laterGetter.addLink({ context: activation });
+		await activate();
+	},
 );
 ```
 
@@ -189,19 +180,21 @@ Link targets are `TelemetryContext` handles, including spans and extracted remot
 An adapter may implement `TelemetryMetrics` alongside `TelemetryContext` and `TelemetryPropagation`. Applications configure one adapter, not separate backends for each capability. Expose the shared capability through `context.metrics`; child spans retain it, so nested model calls can record metrics without a separate configuration option. The in-memory adapter also implements the factory methods directly:
 
 ```typescript
-const bytes = telemetry.counter('network.bytes', {
-  description: 'Encoded WebSocket bytes', unit: 'By',
+const bytes = telemetry.counter("network.bytes", {
+	description: "Encoded WebSocket bytes",
+	unit: "By",
 });
-bytes.add(encodedSize, { direction: 'out' });
+bytes.add(encodedSize, { direction: "out" });
 
-const active = telemetry.upDownCounter('calls.active');
+const active = telemetry.upDownCounter("calls.active");
 active.add(1);
 active.add(-1);
 
-const duration = telemetry.histogram('call.duration', {
-  unit: 'ms', boundaries: [1, 10, 100, 1000],
+const duration = telemetry.histogram("call.duration", {
+	unit: "ms",
+	boundaries: [1, 10, 100, 1000],
 });
-duration.record(elapsedMs, { method: 'read' }, currentSpan);
+duration.record(elapsedMs, { method: "read" }, currentSpan);
 ```
 
 Factories take an instrument name and optional `InstrumentOptions` (`description`, `unit`). Histograms additionally accept `HistogramOptions.boundaries`: callers supply finite, strictly increasing bucket hints. Backends own aggregation and may translate these hints. Callers are responsible for finite measurements and non-negative counter increments; up-down counters and histograms may use signed values. Histogram `record(value, attributes?, context?)` optionally correlates a measurement with a span, called an exemplar. Counter `add(value, attributes?)` has no context argument.
@@ -216,23 +209,28 @@ Use only low-cardinality attributes: bounded values such as direction or method,
 
 ```typescript
 const schema = defineTelemetrySchema({
-  version: 1,
-  spans: {},
-  metrics: {
-    'network.bytes': {
-      kind: 'counter', description: 'Encoded bytes', unit: 'By',
-      attributes: {
-        direction: {
-          type: 'string', required: true, values: ['in', 'out'],
-          description: 'Direction', cardinality: 'low',
-        },
-      },
-    },
-  },
+	version: 1,
+	spans: {},
+	metrics: {
+		"network.bytes": {
+			kind: "counter",
+			description: "Encoded bytes",
+			unit: "By",
+			attributes: {
+				direction: {
+					type: "string",
+					required: true,
+					values: ["in", "out"],
+					description: "Direction",
+					cardinality: "low",
+				},
+			},
+		},
+	},
 } as const);
 
 const metrics = createTypedMetrics(telemetry, [schema]);
-metrics.counter('network.bytes').add(encodedSize, { direction: 'out' });
+metrics.counter("network.bytes").add(encodedSize, { direction: "out" });
 ```
 
 Metric definitions use `kind: 'counter' | 'upDownCounter' | 'histogram'`; only histograms may declare `boundaries`. Metric attributes use the same scalar/array definitions as spans, but reject `cardinality: 'high'`. Omitting the cardinality annotation does not waive the low-cardinality policy. Unlike the typed span starter, the metric helper reads and retains schema instrument metadata at runtime. It performs no runtime attribute validation.
@@ -244,12 +242,9 @@ Metric definitions use `kind: 'counter' | 'upDownCounter' | 'histogram'`; only h
 Use `NOOP_TELEMETRY_CONTEXT` when telemetry is optional:
 
 ```typescript
-import { NOOP_TELEMETRY_CONTEXT } from '@octocodeai/octocode-telemetry';
+import { NOOP_TELEMETRY_CONTEXT } from "@octocodeai/octocode-telemetry";
 
-const result = await NOOP_TELEMETRY_CONTEXT.startSpan(
-  { name: 'example.operation' },
-  () => runOperation(),
-);
+const result = await NOOP_TELEMETRY_CONTEXT.startSpan({ name: "example.operation" }, () => runOperation());
 ```
 
 The no-op context:
@@ -265,17 +260,14 @@ The no-op context:
 `InMemoryTelemetryContext` is the backend-neutral reference implementation. It is useful for tests, local diagnostics, and applications that intentionally want process-local capture without an exporter:
 
 ```typescript
-import { InMemoryTelemetryContext } from '@octocodeai/octocode-telemetry';
+import { InMemoryTelemetryContext } from "@octocodeai/octocode-telemetry";
 
 const telemetry = new InMemoryTelemetryContext();
 
-await telemetry.startSpan(
-  { name: 'example.operation', attributes: { input: 'demo' } },
-  async (span) => {
-    span.addEvent('example.started');
-    span.setAttributes({ output_count: 3 });
-  },
-);
+await telemetry.startSpan({ name: "example.operation", attributes: { input: "demo" } }, async (span) => {
+	span.addEvent("example.started");
+	span.setAttributes({ output_count: 3 });
+});
 
 console.log(telemetry.getSpans());
 ```
@@ -301,7 +293,7 @@ Only settled spans are returned. A trace ID is the root's globally unique span I
 Rendering is a separate subpath, kept out of the root entry graph:
 
 ```typescript
-import { renderTrace } from '@octocodeai/octocode-telemetry/render';
+import { renderTrace } from "@octocodeai/octocode-telemetry/render";
 
 const page = await telemetry.findTraces({ errors: true, limit: 10 });
 for (const trace of page.traces) console.log(renderTrace(trace.spans));
@@ -315,28 +307,28 @@ for (const trace of page.traces) console.log(renderTrace(trace.spans));
 
 ```typescript
 import {
-  createTelemetryAdapterConformance,
-  type TelemetryAdapterFixture,
-} from '@octocodeai/octocode-telemetry/testing';
-import { describe, it } from 'vitest';
+	createTelemetryAdapterConformance,
+	type TelemetryAdapterFixture,
+} from "@octocodeai/octocode-telemetry/testing";
+import { describe, it } from "vitest";
 
 const conformance = createTelemetryAdapterConformance(async () => {
-  const adapter = createMyTelemetryAdapter();
-  return {
-    context: adapter.context,
-    getSpans: async () => adapter.normalizedSpans(),
-    async [Symbol.asyncDispose]() {
-      await adapter.close();
-    },
-  } satisfies TelemetryAdapterFixture;
+	const adapter = createMyTelemetryAdapter();
+	return {
+		context: adapter.context,
+		getSpans: async () => adapter.normalizedSpans(),
+		async [Symbol.asyncDispose]() {
+			await adapter.close();
+		},
+	} satisfies TelemetryAdapterFixture;
 });
 
 for (const group of new Set(conformance.map((testCase) => testCase.group))) {
-  describe(group, () => {
-    for (const testCase of conformance.filter((candidate) => candidate.group === group)) {
-      it(testCase.name, () => testCase.run());
-    }
-  });
+	describe(group, () => {
+		for (const testCase of conformance.filter((candidate) => candidate.group === group)) {
+			it(testCase.name, () => testCase.run());
+		}
+	});
 }
 ```
 
@@ -347,104 +339,90 @@ The suite checks capability identity on roots, child spans, extracted parents an
 The low-level span API intentionally accepts open names and attribute bags so adapters remain generic. Domain packages can define closed, serializable schemas and infer exact TypeScript types from them.
 
 ```typescript
-import {
-  createTypedSpanStarter,
-  defineTelemetrySchema,
-} from '@octocodeai/octocode-telemetry';
+import { createTypedSpanStarter, defineTelemetrySchema } from "@octocodeai/octocode-telemetry";
 
 export const EXAMPLE_TELEMETRY_SCHEMA = defineTelemetrySchema({
-  version: 1,
-  spans: {
-    'example.read': {
-      description: 'Read one resource',
-      parents: { kind: 'any' },
-      startAttributes: {
-        'example.resource': {
-          type: 'string',
-          required: true,
-          values: ['account', 'project'],
-          description: 'Resource kind',
-        },
-      },
-      endAttributes: {
-        'example.item_count': {
-          type: 'number',
-          description: 'Number of returned items',
-        },
-      },
-      events: {
-        'example.cache': {
-          description: 'Cache lookup result',
-          attributes: {
-            'example.cache.hit': {
-              type: 'boolean',
-              required: true,
-              description: 'Whether the cache contained the resource',
-            },
-          },
-        },
-      },
-      status: {
-        default: 'ok',
-        errorWhen: 'The read throws or returns an error result',
-      },
-    },
-  },
+	version: 1,
+	spans: {
+		"example.read": {
+			description: "Read one resource",
+			parents: { kind: "any" },
+			startAttributes: {
+				"example.resource": {
+					type: "string",
+					required: true,
+					values: ["account", "project"],
+					description: "Resource kind",
+				},
+			},
+			endAttributes: {
+				"example.item_count": {
+					type: "number",
+					description: "Number of returned items",
+				},
+			},
+			events: {
+				"example.cache": {
+					description: "Cache lookup result",
+					attributes: {
+						"example.cache.hit": {
+							type: "boolean",
+							required: true,
+							description: "Whether the cache contained the resource",
+						},
+					},
+				},
+			},
+			status: {
+				default: "ok",
+				errorWhen: "The read throws or returns an error result",
+			},
+		},
+	},
 } as const);
 
-const startSpan = createTypedSpanStarter(
-  telemetryContext,
-  [EXAMPLE_TELEMETRY_SCHEMA],
-);
+const startSpan = createTypedSpanStarter(telemetryContext, [EXAMPLE_TELEMETRY_SCHEMA]);
 ```
 
 The starter exposes one overload per span and checks names and attributes at compile time. Union-valued names must be narrowed before a call, preserving the relationship between each runtime name and its attribute schema. Its callback receives a child starter over the same schemas, already bound to the callback span:
 
 ```typescript
-await startSpan(
-  'example.read',
-  { 'example.resource': 'account' },
-  async (span, startChildSpan) => {
-    span.addEvent('example.cache', { 'example.cache.hit': true });
-    const accounts = await readAccounts();
-    span.setAttributes({ 'example.item_count': accounts.length });
+await startSpan("example.read", { "example.resource": "account" }, async (span, startChildSpan) => {
+	span.addEvent("example.cache", { "example.cache.hit": true });
+	const accounts = await readAccounts();
+	span.setAttributes({ "example.item_count": accounts.length });
 
-    await startChildSpan(
-      'example.read',
-      { 'example.resource': 'project' },
-      async (childSpan) => {
-        const projects = await readProjects();
-        childSpan.setAttributes({ 'example.item_count': projects.length });
-      },
-    );
+	await startChildSpan("example.read", { "example.resource": "project" }, async (childSpan) => {
+		const projects = await readProjects();
+		childSpan.setAttributes({ "example.item_count": projects.length });
+	});
 
-    return accounts;
-  },
-);
+	return accounts;
+});
 ```
 
 ### Start and Completion Attributes
 
 `startAttributes` and `endAttributes` describe when an attribute is normally known, not separate runtime storage:
 
-| Schema field | How values are recorded | Requiredness |
-|---|---|---|
+| Schema field      | How values are recorded                                                      | Requiredness                                                |
+| ----------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `startAttributes` | Passed in the typed starter's `attributes` argument when the span is created | Each definition explicitly sets `required: true` or `false` |
-| `endAttributes` | Added later through the schema-scoped span's `setAttributes()` method | Always optional |
+| `endAttributes`   | Added later through the schema-scoped span's `setAttributes()` method        | Always optional                                             |
 
 Both sets become ordinary attributes on the same backend span. There is no separate end-attribute payload or end callback. In the preceding example, `example.resource` is known when `example.read` starts, while `example.item_count` is known only after `readAccounts()` returns:
 
 ```typescript
 await startSpan(
-  'example.read',
-  { 'example.resource': 'account' }, // required start attribute
-  async (span) => {
-    const accounts = await readAccounts();
-    span.setAttributes({
-      'example.item_count': accounts.length, // optional completion attribute
-    });
-    return accounts;
-  },
+	"example.read",
+	{ "example.resource": "account" }, // required start attribute
+	async (span) => {
+		const accounts = await readAccounts();
+		span.setAttributes({
+			"example.item_count": accounts.length, // optional completion attribute
+		});
+		return accounts;
+	},
 ); // resolving the callback settles the span
 ```
 
@@ -457,12 +435,9 @@ Attributes do not end the span. Returning, resolving, throwing, or rejecting fro
 A starter can compose multiple independently versioned schemas:
 
 ```typescript
-import { AGENT_TELEMETRY_SCHEMAS } from '@octocodeai/octocode-agent-core';
+import { AGENT_TELEMETRY_SCHEMAS } from "@octocodeai/octocode-agent-core";
 
-const startAgentSpan = createTypedSpanStarter(
-  telemetryContext,
-  AGENT_TELEMETRY_SCHEMAS,
-);
+const startAgentSpan = createTypedSpanStarter(telemetryContext, AGENT_TELEMETRY_SCHEMAS);
 ```
 
 Inline schema arrays retain their tuple types automatically. Separately declared arrays should use `as const`. Literal duplicate span names across the array are rejected at compile time; schemas are not merged, inspected, or retained at runtime.
@@ -505,7 +480,7 @@ Package ownership is intentionally split:
 - `@octocodeai/octocode-agent-core` retains its existing agent-loop and session instrumentation and schemas.
 
 ```typescript
-import { AI_TELEMETRY_SCHEMA } from '@octocodeai/octocode-ai/models';
+import { AI_TELEMETRY_SCHEMA } from "@octocodeai/octocode-ai/models";
 ```
 
 The AI schema uses `pi.ai.*` names, kept from the upstream project. Adapters may translate them to backend conventions without changing the emitted vocabulary.
@@ -522,73 +497,73 @@ The package does not use `AsyncLocalStorage` or another runtime-specific ambient
 
 ### Core types and values
 
-| Export | Purpose |
-|---|---|
-| `TelemetryContext` | Starts callback-managed child spans and optionally exposes adapter metrics/propagation |
-| `TelemetrySpan` | Records attributes, events, and status; also acts as a child context |
-| `SpanOptions` | Span name, optional start attributes and links |
-| `SpanLink` | Context target and optional link attributes |
-| `TelemetryCarrier` | Opaque JSON-safe string map |
-| `TelemetryPropagation` | Optional adapter injection and extraction capability |
-| `NOOP_TELEMETRY_PROPAGATION` | Shared passive propagation for disabled telemetry |
-| `TelemetryMetrics` | Optional adapter instrument factories |
-| `TelemetryCounter` / `TelemetryUpDownCounter` | Instruments with `add()` |
-| `TelemetryHistogram` | Instrument with `record()` and optional exemplar context |
-| `InstrumentOptions` / `HistogramOptions` | Description, unit, and histogram boundary hints |
-| `NOOP_TELEMETRY_METRICS` | Shared passive metric instruments |
-| `RecordedTelemetryMeasurement` | Captured measurement and optional exemplar |
-| `SpanAttributes` / `AttributeValue` | Open adapter-level attribute bag and supported values |
-| `SpanStatus` | Explicit `ok` or `error` status |
-| `NOOP_TELEMETRY_CONTEXT` | Shared passive context for disabled telemetry |
-| `InMemoryTelemetryContext` | Reference adapter with deterministic process-local recording |
-| `RecordedTelemetrySpan` | Normalized captured span snapshot |
-| `RecordedTelemetryEvent` | Normalized captured event snapshot |
-| `RecordedTelemetryLink` | Captured target carrier and link attributes |
-| `TelemetryStore` | Settled trace discovery, trace retrieval, and metric queries |
-| `StoredSpan` / `StoredTrace` | Backend-independent timed span and trace snapshots |
-| `TraceQuery` / `MetricQuery` | Trace filters, pagination, and metric filters |
-| `StoredMetric` | Metric interval row with count, sum, minimum, and maximum |
+| Export                                        | Purpose                                                                                |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `TelemetryContext`                            | Starts callback-managed child spans and optionally exposes adapter metrics/propagation |
+| `TelemetrySpan`                               | Records attributes, events, and status; also acts as a child context                   |
+| `SpanOptions`                                 | Span name, optional start attributes and links                                         |
+| `SpanLink`                                    | Context target and optional link attributes                                            |
+| `TelemetryCarrier`                            | Opaque JSON-safe string map                                                            |
+| `TelemetryPropagation`                        | Optional adapter injection and extraction capability                                   |
+| `NOOP_TELEMETRY_PROPAGATION`                  | Shared passive propagation for disabled telemetry                                      |
+| `TelemetryMetrics`                            | Optional adapter instrument factories                                                  |
+| `TelemetryCounter` / `TelemetryUpDownCounter` | Instruments with `add()`                                                               |
+| `TelemetryHistogram`                          | Instrument with `record()` and optional exemplar context                               |
+| `InstrumentOptions` / `HistogramOptions`      | Description, unit, and histogram boundary hints                                        |
+| `NOOP_TELEMETRY_METRICS`                      | Shared passive metric instruments                                                      |
+| `RecordedTelemetryMeasurement`                | Captured measurement and optional exemplar                                             |
+| `SpanAttributes` / `AttributeValue`           | Open adapter-level attribute bag and supported values                                  |
+| `SpanStatus`                                  | Explicit `ok` or `error` status                                                        |
+| `NOOP_TELEMETRY_CONTEXT`                      | Shared passive context for disabled telemetry                                          |
+| `InMemoryTelemetryContext`                    | Reference adapter with deterministic process-local recording                           |
+| `RecordedTelemetrySpan`                       | Normalized captured span snapshot                                                      |
+| `RecordedTelemetryEvent`                      | Normalized captured event snapshot                                                     |
+| `RecordedTelemetryLink`                       | Captured target carrier and link attributes                                            |
+| `TelemetryStore`                              | Settled trace discovery, trace retrieval, and metric queries                           |
+| `StoredSpan` / `StoredTrace`                  | Backend-independent timed span and trace snapshots                                     |
+| `TraceQuery` / `MetricQuery`                  | Trace filters, pagination, and metric filters                                          |
+| `StoredMetric`                                | Metric interval row with count, sum, minimum, and maximum                              |
 
 ### Schema definitions and inference
 
-| Export | Purpose |
-|---|---|
-| `defineTelemetrySchema()` | Typed identity helper for serializable schema data |
-| `createTypedSpanStarter()` | Binds a parent context to one or more schema vocabularies |
-| `createTypedMetrics()` / `TypedTelemetryMetrics` | Binds metric names, kinds, metadata, and attributes to schemas |
+| Export                                                             | Purpose                                                                    |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `defineTelemetrySchema()`                                          | Typed identity helper for serializable schema data                         |
+| `createTypedSpanStarter()`                                         | Binds a parent context to one or more schema vocabularies                  |
+| `createTypedMetrics()` / `TypedTelemetryMetrics`                   | Binds metric names, kinds, metadata, and attributes to schemas             |
 | `TelemetryMetricDefinition` / `TelemetryMetricAttributeDefinition` | Serializable instrument metadata and low-cardinality attribute definitions |
-| `SchemaTelemetryCounter` / `SchemaTelemetryHistogram` | Schema-constrained recording methods |
-| `TypedSpanStarter` | Exact starter type with recursively child-bound callbacks |
-| `TelemetrySchemaDefinition` | Top-level schema shape |
-| `TelemetrySpanDefinition` | Span metadata, parents, attributes, events, and status rule |
-| `TelemetryAttributeType` | Supported scalar and array type names |
-| `TelemetryAttributeMetadata` | Description, sensitivity, and cardinality metadata |
-| `TelemetryAttributeDefinition` | Attribute type, allowed values, examples, and metadata |
-| `TelemetryStartAttributeDefinition` | Start attribute definition with requiredness |
-| `TelemetryEventAttributeDefinition` | Event attribute definition with requiredness |
-| `TelemetryEventDefinition` | Event description and attribute definitions |
-| `TelemetryParentDefinition` | Open, external-root, or finite schema-parent rule |
-| `TelemetrySchemaSpanName` | Union of declared span names |
-| `TelemetrySchemaSpanStartAttributes` | Exact inferred start attributes for one span |
-| `TelemetrySchemaSpanEndAttributes` | Optional inferred end attributes for one span |
-| `TelemetrySchemaSpanEventName` | Union of events declared by one span |
-| `TelemetrySchemaSpanEventAttributes` | Exact inferred attributes for one event |
-| `SchemaTelemetrySpan` | Span view restricted to one schema span |
-| `TelemetrySchemaSpanUnion` | Discriminated union of all spans in a schema |
-| `InferStartAttributes` | Required and optional values inferred from start definitions |
-| `InferOptionalAttributes` | Optional values inferred from end definitions |
-| `InferEventAttributes` | Required and optional values inferred from event definitions |
-| `InferRequiredAndOptionalAttributes` | Shared inference utility for definitions with requiredness |
-| `ExactTelemetryAttributes` | Rejects keys outside an expected attribute set |
+| `SchemaTelemetryCounter` / `SchemaTelemetryHistogram`              | Schema-constrained recording methods                                       |
+| `TypedSpanStarter`                                                 | Exact starter type with recursively child-bound callbacks                  |
+| `TelemetrySchemaDefinition`                                        | Top-level schema shape                                                     |
+| `TelemetrySpanDefinition`                                          | Span metadata, parents, attributes, events, and status rule                |
+| `TelemetryAttributeType`                                           | Supported scalar and array type names                                      |
+| `TelemetryAttributeMetadata`                                       | Description, sensitivity, and cardinality metadata                         |
+| `TelemetryAttributeDefinition`                                     | Attribute type, allowed values, examples, and metadata                     |
+| `TelemetryStartAttributeDefinition`                                | Start attribute definition with requiredness                               |
+| `TelemetryEventAttributeDefinition`                                | Event attribute definition with requiredness                               |
+| `TelemetryEventDefinition`                                         | Event description and attribute definitions                                |
+| `TelemetryParentDefinition`                                        | Open, external-root, or finite schema-parent rule                          |
+| `TelemetrySchemaSpanName`                                          | Union of declared span names                                               |
+| `TelemetrySchemaSpanStartAttributes`                               | Exact inferred start attributes for one span                               |
+| `TelemetrySchemaSpanEndAttributes`                                 | Optional inferred end attributes for one span                              |
+| `TelemetrySchemaSpanEventName`                                     | Union of events declared by one span                                       |
+| `TelemetrySchemaSpanEventAttributes`                               | Exact inferred attributes for one event                                    |
+| `SchemaTelemetrySpan`                                              | Span view restricted to one schema span                                    |
+| `TelemetrySchemaSpanUnion`                                         | Discriminated union of all spans in a schema                               |
+| `InferStartAttributes`                                             | Required and optional values inferred from start definitions               |
+| `InferOptionalAttributes`                                          | Optional values inferred from end definitions                              |
+| `InferEventAttributes`                                             | Required and optional values inferred from event definitions               |
+| `InferRequiredAndOptionalAttributes`                               | Shared inference utility for definitions with requiredness                 |
+| `ExactTelemetryAttributes`                                         | Rejects keys outside an expected attribute set                             |
 
 ### Testing subpath
 
-| Export | Purpose |
-|---|---|
-| `createTelemetryAdapterConformance()` | Creates runner-independent adapter conformance cases |
-| `TelemetryAdapterFixture` | Fresh context and normalized snapshot reader for one case |
-| `TelemetryAdapterFixtureFactory` | Creates isolated fixtures |
-| `TelemetryAdapterConformanceCase` | Grouped case that test runners execute |
+| Export                                | Purpose                                                   |
+| ------------------------------------- | --------------------------------------------------------- |
+| `createTelemetryAdapterConformance()` | Creates runner-independent adapter conformance cases      |
+| `TelemetryAdapterFixture`             | Fresh context and normalized snapshot reader for one case |
+| `TelemetryAdapterFixtureFactory`      | Creates isolated fixtures                                 |
+| `TelemetryAdapterConformanceCase`     | Grouped case that test runners execute                    |
 
 ## Development
 

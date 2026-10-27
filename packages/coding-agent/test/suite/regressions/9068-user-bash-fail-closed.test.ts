@@ -20,7 +20,7 @@ vi.mock("../../../src/core/output-guard.js", () => ({
 	},
 }));
 
-vi.mock("../../../src/modes/interactive/theme/theme.js", () => ({ theme: {} }));
+vi.mock("../../../src/theme/theme.js", () => ({ theme: {} }));
 
 vi.mock("../../../src/modes/interactive/components/bash-execution.js", () => ({
 	BashExecutionComponent: class {

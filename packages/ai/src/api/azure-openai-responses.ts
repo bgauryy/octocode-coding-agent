@@ -1,9 +1,10 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
+import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
-import { clampThinkingLevel } from "../models.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -90,6 +91,8 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 			stripResponsesStreamScratch(output);
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatAzureOpenAIError(error);
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}

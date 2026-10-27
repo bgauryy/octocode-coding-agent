@@ -2,7 +2,7 @@
  * The /settings selector: shows the current settings and applies each change to the session and the terminal UI.
  */
 
-import { TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../../../core/defaults.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../../core/http-dispatcher.ts";
@@ -10,8 +10,8 @@ import { SettingsSelectorComponent } from "../components/settings-selector.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { UserMessageComponent } from "../components/user-message.ts";
-import { SYSTEM_THEME_NAME } from "../theme/system-theme.ts";
-import { getAvailableThemes } from "../theme/theme.ts";
+import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
+import { getAvailableThemes } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the /settings selector. */
@@ -82,6 +82,7 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				quietStartup: host.settingsManager.getQuietStartup(),
 				clearOnShrink: host.settingsManager.getClearOnShrink(),
 				showTerminalProgress: host.settingsManager.getShowTerminalProgress(),
+				reduceMotion: host.settingsManager.getReduceMotion(),
 				tuiMode: host.ui.mode,
 				fullscreenExitOutput: host.settingsManager.getFullscreenExitOutput(),
 				fullscreenScrollbar: host.settingsManager.getFullscreenScrollbar(),
@@ -242,6 +243,10 @@ export function showSettingsSelector(host: SettingsSelectorHost): void {
 				},
 				onShowTerminalProgressChange: (enabled) => {
 					host.settingsManager.setShowTerminalProgress(enabled);
+				},
+				onReduceMotionChange: (value) => {
+					host.settingsManager.setReduceMotion(value);
+					animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
 				},
 				onTuiModeChange: (mode) => {
 					if (!host.switchTuiMode(mode)) {

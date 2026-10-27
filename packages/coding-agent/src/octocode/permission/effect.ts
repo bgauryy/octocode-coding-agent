@@ -103,7 +103,7 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 	}),
 	"agent.spawn": (request) => ({
 		effect: `starts ${first(request)}`,
-		undo: "stop it with /agents stop",
+		undo: "stop it with /agents kill <id>",
 		risk: "it acts on its own with the tools of its profile",
 	}),
 };

@@ -2,7 +2,7 @@ import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../../coding-agent/src/core/keybindings.ts";
 import { McpManagerView } from "../src/ui.ts";
-import { initTheme, theme } from "../../coding-agent/src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../../coding-agent/src/theme/theme.ts";
 import { stripAnsi } from "../../coding-agent/src/utils/ansi.ts";
 
 const ESCAPE = "\x1b";

@@ -1,6 +1,6 @@
 /** The contexts handed to extension handlers, tools and commands, and the UI context used without a UI. */
 
-import { type Theme, theme } from "../../../modes/interactive/theme/theme.ts";
+import { type Theme, theme } from "../../../theme/theme.ts";
 import type {
 	ExecuteToolOptions,
 	ExtensionCommandContext,

@@ -78,7 +78,7 @@ import type { BeforeAgentStartTrigger } from "./extensions/runner.ts";
 import type { CustomMessage } from "./messages.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
-import type { ResourceLoader } from "./resource-loader.ts";
+import type { ResourceLoader } from "./resource-loader/types.ts";
 import type { CompactionReason } from "./session-compaction.ts";
 import { exportSessionToJsonl } from "./session-export.ts";
 import type { SessionManager } from "./session-manager.ts";
@@ -240,10 +240,9 @@ export class AgentSession implements AgentSessionApi {
 	private async _checkCompaction(
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck = true,
-		toolResults: AgentMessage[] = [],
 		incoming: readonly AgentMessage[] = [],
 	): Promise<boolean> {
-		return checkCompaction(this._c.compactionCheck, assistantMessage, skipAbortedCheck, toolResults, incoming);
+		return checkCompaction(this._c.compactionCheck, assistantMessage, skipAbortedCheck, incoming);
 	}
 
 	/** Execute threshold or overflow compaction (see `SessionCompaction.runAuto`). */
@@ -251,8 +250,9 @@ export class AgentSession implements AgentSessionApi {
 		reason: "overflow" | "threshold",
 		willRetry: boolean,
 		targetModel?: Model<any>,
+		targetThinking?: ThinkingLevel,
 	): Promise<boolean> {
-		return this._c.compaction.runAuto(reason, willRetry, targetModel);
+		return this._c.compaction.runAuto(reason, willRetry, targetModel, targetThinking);
 	}
 
 	// Lifecycle and read-only state (documented on `AgentSessionApi`)
@@ -284,6 +284,7 @@ export class AgentSession implements AgentSessionApi {
 		this._unsubscribeAgent?.();
 		this._unsubscribeAgent = undefined;
 		this._listeners.clear();
+		this._c.tools.pendingMcp.dispose();
 		if (this._cacheWarmer) {
 			this._cacheWarmer.onWarmed = undefined;
 			this._cacheWarmer.cancel();
@@ -564,6 +565,7 @@ export class AgentSession implements AgentSessionApi {
 			sessionFile: this.sessionFile,
 			sessionId: this.sessionId,
 			contextUsage: this.getContextUsage(),
+			lengthRecoveries: this._run.lengthRecoveries,
 		});
 	}
 	async controlPlan(options: PlanOptions) {

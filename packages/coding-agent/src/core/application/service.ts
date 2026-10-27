@@ -26,7 +26,7 @@ import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { lifecycleEvent } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
-import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
+import { acceptApplicationEvent, createApplicationState, initialApplicationState, reserveReceipt } from "./state.ts";
 import { ApplicationActivities } from "./service/activities.ts";
 import { ApplicationDelivery } from "./service/delivery.ts";
 import { cloneDisplay } from "./normalize.ts";
@@ -327,8 +327,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		}
 		if (command.action === "abort" && command.runId !== this.state.getState().runId) throw new Error("Run changed");
 		const images = commandImages(command, this.transcript.assets, this.session);
-		if (this.state.getState().receipts.size >= 1000)
-			throw new Error("Command receipt capacity reached; start a new session");
+		reserveReceipt(this.state);
 		const receiptStore = this.receiptStore;
 		const recorded = receiptStore?.begin(command);
 		if (recorded && !recorded.fresh) return recorded.receipt;

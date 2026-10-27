@@ -27,17 +27,29 @@ Inline image display is enabled by default when the terminal supports it. `/sett
 
 ```json
 {
-  "terminal": {
-    "showImages": true,
-    "images": "auto",
-    "imageWidthCells": 60
-  }
+	"terminal": {
+		"showImages": true,
+		"images": "auto",
+		"imageWidthCells": 60
+	}
 }
 ```
 
 Automatic detection recognizes Kitty, including `TERM=xterm-kitty`, and checks interactive terminals with a graphics query during startup. Confirmed support repaints existing attachments as images. A negative reply falls back to text; a terminal that sends no replies retains the environment-based choice. Input remains available while detection runs.
 
 Set `terminal.images` to `"kitty"` or `"iterm2"` to force a known protocol, or `false` to disable graphics. Explicit settings take precedence over the `OCTOCODE_IMAGE_PROTOCOL` environment override, which accepts `kitty`, `iterm2`, `none`, or `auto`. Automatic detection leaves images off inside tmux/screen and Rex. iTerm2 inline images work in regular mode; fullscreen mode uses text placeholders. See the [TUI image reference](../../tui/README.md#image-capability-detection) for protocol and renderer details.
+
+## Reduced motion
+
+`terminal.reduceMotion` accepts `true`, `false` or `"auto"` (the default). While motion is reduced, spinners stay on their first frame, the working-line shimmer is plain and the banner's start-up sweep is skipped; elapsed times and retry countdowns still update once a second. `"auto"` reduces motion when `OCTOCODE_REDUCE_MOTION` is `1` or `true`; an explicit `true` or `false` overrides the environment. `/settings` exposes **Reduce motion** and applies a change immediately.
+
+```json
+{
+	"terminal": {
+		"reduceMotion": "auto"
+	}
+}
+```
 
 ## Runtime storage
 
@@ -105,11 +117,20 @@ Back up historical files before conversion. This command does not import or
 modify the Pi fallback directories. Use `octocode migrate --help` for the active
 configuration path.
 
+## Retries
+
+A failed model response that looks transient (overload, rate limit, server or network error) is retried up to `retry.maxRetries` times, waiting `retry.baseDelayMs` doubled for each attempt and never more than `retry.maxAgentDelayMs`. A rate limit (`429`, "rate limit", "too many requests") is treated differently, because the limit is a token bucket that refills while the session waits and every session on the same key shares it:
+
+- The retry waits at least as long as the provider's `retry-after` header asked, when the provider sent one (Anthropic Messages does; other providers fall back to the backoff), plus up to one second of spread. The wait is still capped by `retry.maxAgentDelayMs`.
+- A rate-limited response gets at least six retries even when `retry.maxRetries` is lower, within a total waiting window of three minutes. `retry.maxRetries: 0` and `retry.enabled: false` still turn retries off.
+- Retries wait on the same cancellable timer as before; Esc stops them.
+- After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to at most 30 seconds for each further rate-limit failure and starting over after a quiet minute, so the next launches do not meet the same limit.
+
 ## Compaction
 
 Automatic compaction is always enabled. `/compact` starts the same built-in summary flow manually. The CLI, SDK and RPC do not accept a custom summary focus or an automatic-compaction toggle. Legacy `compaction` settings, including per-model overrides, are ignored.
 
-The built-in policy reserves up to 16,384 tokens for summarization and responses and retains up to 20,000 recent tokens. For smaller context windows, those budgets shrink to one eighth and one quarter of the window respectively. The native context display and model-switch checks use the same policy.
+The built-in policy reserves room for summarization and responses and retains up to 20,000 recent tokens (one quarter of smaller windows). The reserve is the larger of 16,384 tokens (one eighth of smaller windows) and the active thinking budget plus 12,288 tokens of answer and safety room, capped at one sixth of the window, so a turn near the threshold keeps its thinking budget. For example, a 200,000-token window compacts at 183,616 tokens with thinking off and at 171,328 at `high`. The native context display and model-switch checks use the same policy.
 
 Summary requests reuse the session transcript and resolved cache preferences when possible. A failed cache-sharing summary falls back to standalone summarization. Actual cache hits are determined by the provider. Old tool results are cleared only after the known cache lifetime expires, only when enough space can be recovered, and only after saving a readable copy.
 
@@ -121,8 +142,8 @@ Set `cacheWarming` in the global `settings.json`: `"off"` disables refreshes, `"
 
 ```json
 {
-  "cacheWarming": "streaming",
-  "cacheRetention": "short"
+	"cacheWarming": "streaming",
+	"cacheRetention": "short"
 }
 ```
 

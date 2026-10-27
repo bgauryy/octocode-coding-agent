@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createToolHtmlRenderer } from "../../src/core/export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../../src/core/extensions/types.ts";
 import { ToolExecutionComponent } from "../../src/modes/interactive/components/tool-execution.ts";
-import { initTheme, theme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
 
 const ui = { requestRender: () => {} } as unknown as TUI;
@@ -35,6 +35,20 @@ describe("the reason line of a native tool row", () => {
 		).toEqual(["bash ls", "↳ list the folder"]);
 	});
 
+	it("hangs under the call's title, where the result gutter's `⎿` sits", () => {
+		const text = lines(row("bash", { command: "ls", reason: "list the folder" })).filter((line) => line.trim());
+		const gutter = "  ⎿  ";
+		expect(text[1].indexOf("↳")).toBe(gutter.indexOf("⎿") + 1);
+	});
+
+	it("is hidden when it says less than three words, such as a bare `Edit`", () => {
+		expect(lines(row("bash", { command: "ls", reason: "Edit" })).join("\n")).not.toContain("↳");
+		expect(lines(row("bash", { command: "ls", reason: "Edit file" })).join("\n")).not.toContain("↳");
+		expect(lines(row("bash", { command: "ls", reason: "Edit hello to hi." })).join("\n")).toContain(
+			"↳ Edit hello to hi.",
+		);
+	});
+
 	it("is hidden without a reason, and for a tool that is not native", () => {
 		expect(lines(row("bash", { command: "ls" })).join("\n")).not.toContain("↳");
 		expect(lines(row("bash", { command: "ls", reason: "  " })).join("\n")).not.toContain("↳");
@@ -57,8 +71,8 @@ describe("the reason line of a native tool row", () => {
 			expect(found).toHaveLength(1);
 			expect(visibleWidth(found[0])).toBeLessThanOrEqual(width);
 		}
-		const hostile = lines(row("bash", { command: "ls", reason: "one\n\u001b]0;title\u0007two" })).join("\n");
-		expect(hostile).toContain("↳ one two");
+		const hostile = lines(row("bash", { command: "ls", reason: "one\n\u001b]0;title\u0007two three" })).join("\n");
+		expect(hostile).toContain("↳ one two three");
 		expect(hostile).not.toContain("title");
 	});
 

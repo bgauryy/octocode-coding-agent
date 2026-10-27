@@ -13,8 +13,7 @@ import {
 	CustomEditor,
 	ExtensionSelectorComponent,
 } from "../../src/modes/interactive/components/index.ts";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
-import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import {
 	BOX_MIN_WIDTH,
 	decorateEditor,
@@ -54,7 +53,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		initTheme("dark", false);
 		const fake = fakePi();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { mode: "full", cycle: vi.fn() });
+		registerEditor(fake.pi, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const chat = new Container();
@@ -85,7 +84,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const fake = fakePi();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { mode: "full", cycle: cycle });
+		registerEditor(fake.pi, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
@@ -128,7 +127,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const fake = fakePi();
 		const cycle = vi.fn();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
-		registerEditor(fake.pi, { mode: "full", cycle: cycle });
+		registerEditor(fake.pi, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, input, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
@@ -157,7 +156,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const originalInput = vi.spyOn(original, "handleInput");
 		const factory: EditorFactory = vi.fn(() => original);
 		ctx.ui.setEditorComponent(factory);
-		registerEditor(fake.pi, { mode: "full", cycle: cycle });
+		registerEditor(fake.pi, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
 		expect(editor).toBe(original);
@@ -175,7 +174,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const fake = fakePi();
 		const cycle = vi.fn<(ctx: ExtensionContext) => void>();
 		const ctx = fakeCtx({ cwd: "/private/tmp/first" });
-		registerEditor(fake.pi, { mode: "full", cycle: cycle });
+		registerEditor(fake.pi, { cycle });
 		await fake.fire("session_start", {}, ctx);
 		const factory = ctx.ui.getEditorComponent()!;
 		const { tui, input, keys } = terminal();
@@ -196,7 +195,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const fake = fakePi();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
 		Reflect.set(ctx.ui, "theme", { fg: (_color: string, text: string) => text });
-		registerEditor(fake.pi, { mode: "full", cycle: vi.fn() });
+		registerEditor(fake.pi, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		const { tui, keys } = terminal();
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys) as CustomEditor;
@@ -220,7 +219,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const fake = fakePi();
 		const ctx = fakeCtx({ cwd: "/private/tmp/editor", ...options });
 		const install = vi.spyOn(ctx.ui, "setEditorComponent");
-		registerEditor(fake.pi, { mode: "full", cycle: vi.fn() });
+		registerEditor(fake.pi, { cycle: vi.fn() });
 		await fake.fire("session_start", {}, ctx);
 		expect(install).not.toHaveBeenCalled();
 		expect(ctx.ui.getEditorComponent()).toBeUndefined();
@@ -232,20 +231,15 @@ describe("Octocode prompt box", () => {
 	const tagged = { fg: (color: string, text: string) => `\x1b[${CODES[color] ?? 39}m${text}\x1b[39m` };
 	const painted = (code: number, text: string) => `\x1b[${code}m${text}\x1b[39m`;
 	const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m|\x1b_[^\x07]*\x07/g, "");
-	function boxed(mode: { value: PermissionMode } = { value: "full" }, hint = { value: true }) {
+	function boxed(hint = { value: true }) {
 		const { tui, input, keys } = terminal();
 		const editor = decorateEditor(
 			new CustomEditor(tui, editorTheme, keys, { embedWorkingStatus: true }),
-			{
-				get mode() {
-					return mode.value;
-				},
-			},
 			() => tagged,
 			() => hint.value,
 		);
 		tui.setFocus(editor);
-		return { editor, input, mode, hint };
+		return { editor, input, hint };
 	}
 	/** Column `x` of row `y` in the box at `width`, as a terminal reports a left click there. */
 	const click = (editor: CustomEditor, x: number, y: number, width = 60) => {
@@ -253,13 +247,14 @@ describe("Octocode prompt box", () => {
 		return editor.handleMouse({ type: "click", button: "left", x, y, width, height: 10 } as never);
 	};
 
-	it("draws a closed box with the idle label, the mode, and the hint while empty, every row exactly the width", () => {
+	it("draws a closed box with the idle label and the hint while empty, every row exactly the width", () => {
 		const { editor } = boxed();
 		const lines = editor.render(80);
 		const text = lines.map(plain);
 		expect(text[0]).toMatch(/^╭── octocode ─+╮$/);
 		expect(text[1]).toMatch(/^│ .*Ask about any code · \/ commands · @ files · ! shell · shift\+tab permission +│$/);
-		expect(text[2]).toMatch(/^╰─+ ⏵⏵ full ──╯$/);
+		// The footer is the one home of the permission mode: the bottom border stays a plain rule.
+		expect(text[2]).toMatch(/^╰─+╯$/);
 		expect(text.map((line) => visibleWidth(line))).toEqual([80, 80, 80]);
 		expect(lines[1]).toContain(painted(90, "Ask about any code").slice(0, -5));
 	});
@@ -272,17 +267,12 @@ describe("Octocode prompt box", () => {
 		expect(text.join("\n")).not.toContain("Ask about any code");
 	});
 
-	it("keeps the accent border across permission modes and uses Octocode’s colour for a ! command", () => {
-		const { editor, input, mode } = boxed({ value: "manual" });
+	it("keeps the accent border and uses Octocode’s colour for a ! command", () => {
+		const { editor, input } = boxed();
 		editor.borderColor = (text) => painted(36, text);
-		let lines = editor.render(60);
+		const lines = editor.render(60);
 		expect(lines[0].startsWith(painted(35, "╭─"))).toBe(true);
-		expect(plain(lines[2])).toContain("⏸ manual");
-		mode.value = "full";
-		lines = editor.render(60);
-		expect(lines[0].startsWith(painted(35, "╭─"))).toBe(true);
-		expect(lines[2]).toContain(painted(31, " ⏵⏵ full "));
-		expect(plain(lines[2])).toContain("⏵⏵ full");
+		expect(plain(lines[2])).toMatch(/^╰─+╯$/);
 		input("!ls");
 		expect(editor.render(60)[0].startsWith(painted(36, "╭─"))).toBe(true);
 		expect(plain(editor.render(60)[0])).toMatch(/^╭── ! shell ─+╮$/);

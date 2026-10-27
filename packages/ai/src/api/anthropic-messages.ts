@@ -8,11 +8,17 @@ import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { retryAfterMsFromError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { getCurrentTools, resolveTranscript, type TranscriptContext } from "../utils/transcript.ts";
 
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
-import { adjustMaxTokensForThinking, buildBaseOptions, clampMaxTokensToContext } from "./simple-options.ts";
+import {
+	adjustMaxTokensForThinking,
+	buildBaseOptions,
+	clampMaxTokensToContext,
+	thinkingBudgetForLevel,
+	thinkingBudgetReduction,
+} from "./simple-options.ts";
 import { assertRequestAuth, createClient, getAnthropicFederation } from "./anthropic-messages/client.ts";
 import { getAnthropicCompat } from "./anthropic-messages/compat.ts";
 import { buildParams } from "./anthropic-messages/params.ts";
@@ -35,6 +41,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
 	(async () => {
 		const output: AssistantMessage = createPendingAssistantMessage(model);
+		if (options?.thinkingBudgetReduction) output.thinkingBudget = options.thinkingBudgetReduction;
 
 		try {
 			let client: Anthropic;
@@ -178,6 +185,8 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -253,10 +262,20 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 
 	const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
 	const thinkingBudgetTokens = fitClaudeThinkingBudget(adjusted.thinkingBudget, maxTokens);
+	// Requested: the budget that fits the model's own output cap; a further cut came from the context clamp.
+	const reduction = thinkingBudgetReduction(
+		fitClaudeThinkingBudget(thinkingBudgetForLevel(options.reasoning, options.thinkingBudgets), model.maxTokens),
+		thinkingBudgetTokens,
+	);
 	// The API rejects a budget under its 1024-token minimum, and a turn this close to the context limit cannot hold one:
 	// answer without thinking rather than send a request that fails.
 	if (thinkingBudgetTokens === 0) {
-		return stream(model, context, { ...base, maxTokens, thinkingEnabled: false } satisfies AnthropicOptions);
+		return stream(model, context, {
+			...base,
+			maxTokens,
+			thinkingEnabled: false,
+			thinkingBudgetReduction: reduction,
+		} satisfies AnthropicOptions);
 	}
 
 	return stream(model, context, {
@@ -264,5 +283,6 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 		maxTokens,
 		thinkingEnabled: true,
 		thinkingBudgetTokens,
+		thinkingBudgetReduction: reduction,
 	} satisfies AnthropicOptions);
 };

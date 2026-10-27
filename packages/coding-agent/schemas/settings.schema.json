@@ -432,6 +432,19 @@
           "description": "Show OSC 9;4 terminal progress indicators.",
           "default": false
         },
+        "reduceMotion": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" follows OCTOCODE_REDUCE_MOTION (1 or true).",
+          "default": "auto"
+        },
         "hyperlinks": {
           "anyOf": [
             {

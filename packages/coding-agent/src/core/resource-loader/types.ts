@@ -1,4 +1,4 @@
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { EventBus } from "../event-bus.ts";
 import type { InlineExtension, LoadExtensionsResult } from "../extensions/types.ts";

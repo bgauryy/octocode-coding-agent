@@ -6,7 +6,7 @@ import type { CacheWarmingStatus } from "../cache-warmer.ts";
 import type { ToolDefinition, ToolInfo } from "../extensions/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
-import type { ResourceLoader } from "../resource-loader.ts";
+import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { CacheWarmingMode, SettingsManager } from "../settings-manager.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";

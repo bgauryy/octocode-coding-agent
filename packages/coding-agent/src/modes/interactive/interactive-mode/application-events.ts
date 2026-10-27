@@ -3,11 +3,12 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { FullContentReader, toolContent } from "../components/application-content.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { addToolExecution } from "./session-render.ts";
+import { TOOL_NOT_RUN } from "../../../core/application/interrupted-tools.ts";
 import { addApplicationUserMessage } from "./user-message-render.ts";
 
 type Host = Pick<
@@ -93,10 +94,9 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				if (!tool || !message.complete) continue;
 				tool.setArgsComplete();
 				if (message.status === "failed" || message.status === "aborted") {
-					tool.updateResult({
-						content: [{ type: "text", text: message.errorMessage ?? "Operation interrupted" }],
-						isError: true,
-					});
+					// The tools never ran: a failure shows its provider error once on the message, not on every row.
+					const text = message.status === "failed" ? TOOL_NOT_RUN : (message.errorMessage ?? "Operation interrupted");
+					tool.updateResult({ content: [{ type: "text", text }], isError: true });
 					host.pendingTools.delete(block.toolCallId);
 				}
 			}

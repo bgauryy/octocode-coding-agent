@@ -5,7 +5,7 @@ import {
 	toggleThinkingBlockVisibility,
 	updateThinkingBlockVisibility,
 } from "../../../src/modes/interactive/interactive-mode/view-state.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
 
@@ -42,13 +42,14 @@ describe("thinking visibility while a bash tool is running (#8611)", () => {
 			updateThinkingBlockVisibility() {
 				updateThinkingBlockVisibility(createFakeHost(fakeThis));
 			},
-			showStatus: vi.fn(),
+			footerDataProvider: { setExtensionStatus: vi.fn() },
 		};
 
 		expect(renderChat(chatContainer)).toContain("first");
 		toggleThinkingBlockVisibility(createFakeHost(fakeThis));
 
 		expect(fakeThis.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
+		expect(fakeThis.footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("notice", "Thinking blocks: hidden");
 		expect(chatContainer.children).toContain(component);
 		expect(renderChat(chatContainer)).toContain("first");
 	});

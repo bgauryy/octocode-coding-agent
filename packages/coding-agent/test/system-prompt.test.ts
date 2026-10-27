@@ -118,6 +118,17 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("- Be concise in your responses");
 	});
 
+	test("drops the core brevity floor when Octocode's Communication policy supplies it", () => {
+		const prompt = buildSystemPrompt({
+			cwd: "/tmp",
+			selectedTools: ["bash"],
+			sections: { octocode_communication: "# Communication\n- Lead with the result." },
+		});
+		expect(prompt).not.toContain("Be concise in your responses");
+		expect(prompt).not.toContain("Refer to files by their paths");
+		expect(prompt).toContain("Lead with the result.");
+	});
+
 	describe("empty tools", () => {
 		test("shows (none) for empty tools list", () => {
 			const prompt = buildSystemPrompt({
@@ -200,9 +211,9 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain(
-				"- When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
+				"- Resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
 			);
-			expect(prompt).toContain("the topic-to-page mapping for every Octocode subject is its docs/index.md");
+			expect(prompt).toContain("docs/index.md maps every Octocode topic to its page");
 		});
 	});
 

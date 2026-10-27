@@ -1,12 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
 const BG_RESET = "\x1b[49m";
+const OSC_ZONE = /\x1b\][^\x07]*\x07/g;
 
 describe("UserMessageComponent", () => {
 	test("keeps user message height stable while moving closing OSC markers off line end", () => {
@@ -54,5 +55,29 @@ describe("UserMessageComponent", () => {
 		component.invalidate();
 
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message after");
+	});
+
+	test("marks every row with an accent bar in the padding column and leaves the text where it was", () => {
+		initTheme("dark");
+		const bar = theme.fg("accent", "▎");
+
+		const lines = new UserMessageComponent("hello\n\nsecond").render(20);
+
+		expect(lines).toHaveLength(5);
+		for (const line of lines) {
+			expect(line).toContain(bar);
+			expect(stripAnsi(line.replace(OSC_ZONE, "")).startsWith("▎")).toBe(true);
+		}
+		expect(stripAnsi(lines[1])).toBe("▎hello              ");
+		expect(stripAnsi(lines[3])).toBe("▎second             ");
+		expect(lines[0]).toContain(OSC133_ZONE_START);
+	});
+
+	test("leaves a message without a padding column unmarked", () => {
+		initTheme("dark");
+
+		const lines = new UserMessageComponent("hello", undefined, 0).render(20);
+
+		expect(stripAnsi(lines[1])).toBe("hello               ");
 	});
 });

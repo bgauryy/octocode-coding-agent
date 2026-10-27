@@ -6,7 +6,7 @@ import {
 	type SettingsConfig,
 	SettingsSelectorComponent,
 } from "../src/modes/interactive/components/settings-selector.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
 
@@ -80,12 +80,12 @@ describe("SettingsSelectorComponent", () => {
 		list.handleInput("\r");
 		let output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toMatch(/ {4}system +Theme created from your terminal's colors\n {4}automatic +Use separate themes/);
-		expect(output).toContain("→ ✓ dark");
+		expect(output).toContain("› ✓ dark");
 
 		list.handleInput("\x1b[B");
 		output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toContain("  ✓ dark");
-		expect(output).toContain("→   light");
+		expect(output).toContain("›   light");
 	});
 
 	it("keeps a configured automatic theme marked while browsing", () => {
@@ -105,12 +105,12 @@ describe("SettingsSelectorComponent", () => {
 		list.handleInput("\r");
 		list.handleInput("\r");
 		let output = stripAnsi(list.render(120).join("\n"));
-		expect(output).toContain("→ ✓ light");
+		expect(output).toContain("› ✓ light");
 
 		list.handleInput("\x1b[B");
 		output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toContain("  ✓ light");
-		expect(output).toContain("→   other");
+		expect(output).toContain("›   other");
 	});
 
 	it("keeps the configured per-model thinking level marked while browsing", async () => {
@@ -133,12 +133,12 @@ describe("SettingsSelectorComponent", () => {
 		list.handleInput("\r");
 
 		let output = stripAnsi(list.render(120).join("\n"));
-		expect(output).toContain("→ ✓ medium");
+		expect(output).toContain("› ✓ medium");
 		expect(output).toContain("    (clear override)");
 
 		list.handleInput("\x1b[B");
 		output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toContain("  ✓ medium");
-		expect(output).toContain("→   high");
+		expect(output).toContain("›   high");
 	});
 });

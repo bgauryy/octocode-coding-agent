@@ -9,7 +9,7 @@ import {
 	Text,
 	type SlashCommand,
 } from "@octocodeai/octocode-tui";
-import { getSelectListTheme } from "../theme/theme.ts";
+import { getSelectListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint } from "./keybinding-hints.ts";
 

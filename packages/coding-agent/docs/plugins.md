@@ -6,11 +6,11 @@ A plugin packages components under one identity. It may contain skills, hooks, M
 
 Explicit local plugin configuration activates namespaced skills, supported Claude prompt commands, reviewed MCP server declarations and, with hook compatibility enabled, reviewed hooks. Other component activation is unfinished. Native [Octocode packages](packages.md) are supported and use a separate distribution contract.
 
-| Manifest | Reader behavior | Runtime activation |
-|---|---|---|
-| `.claude-plugin/plugin.json` | Preserves Claude identity and declarations | Skills; plain prompt commands; reviewed command, HTTP, prompt and configured-server MCP hooks; reviewed MCP servers |
-| `.codex-plugin/plugin.json` | Reads the legacy Codex format | Skills; reviewed command and MCP hooks; reviewed MCP server subset |
-| Root `plugin.json` | Reads portable identity; inline `extensions.com.openai` replaces the Codex overlay, otherwise the overlay supplies OpenAI settings | Skills; reviewed command and MCP hooks; reviewed MCP server subset |
+| Manifest                     | Reader behavior                                                                                                                    | Runtime activation                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `.claude-plugin/plugin.json` | Preserves Claude identity and declarations                                                                                         | Skills; plain prompt commands; reviewed command, HTTP, prompt and configured-server MCP hooks; reviewed MCP servers |
+| `.codex-plugin/plugin.json`  | Reads the legacy Codex format                                                                                                      | Skills; reviewed command and MCP hooks; reviewed MCP server subset                                                  |
+| Root `plugin.json`           | Reads portable identity; inline `extensions.com.openai` replaces the Codex overlay, otherwise the overlay supplies OpenAI settings | Skills; reviewed command and MCP hooks; reviewed MCP server subset                                                  |
 
 Readers check real-path containment, including symlinks. Component discovery currently normalizes skill directories, Claude command declarations, and hook file/inline references. Claude skills add to the default directory; explicit commands replace their default; Claude hooks merge with their default file. Nonempty explicit Codex hook declarations replace the default; an empty array falls back to `hooks/hooks.json`. Skills enter the native skill loader; reviewed hook declarations enter the existing command-hook dispatcher. Plain Claude commands also enter the prompt loader; other executable command features and components remain incomplete.
 
@@ -26,9 +26,7 @@ Add an absolute local path and the source protocol to the `plugins` array in Oct
 
 ```json
 {
-  "plugins": [
-    { "path": "/absolute/path/to/review-kit", "protocol": "claude" }
-  ]
+	"plugins": [{ "path": "/absolute/path/to/review-kit", "protocol": "claude" }]
 }
 ```
 

@@ -329,7 +329,7 @@ describe("MCP config", () => {
 		expect(getMcpToolExposure(config, "delete_repo")).toBe("hidden");
 		expect(getMcpToolExposure(config, "list_issues")).toBe("deferred");
 		// Only `*` is special.
-		expect(getMcpToolExposure({ command: "x", toolExposure: { "get_file.*": "direct" } }, "get_file_x")).toBe("auto");
+		expect(getMcpToolExposure({ command: "x", toolExposure: { "get_file.*": "hidden" } }, "get_file_x")).toBe("direct");
 	});
 
 	it("validates provider auth and accepts it only in the global mcp.json", () => {

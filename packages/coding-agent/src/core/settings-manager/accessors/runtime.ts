@@ -1,10 +1,10 @@
-import type { Model } from "@octocodeai/octocode-ai";
+import type { ModelThinkingLevel } from "@octocodeai/octocode-ai";
 import { type CachePreferences, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { builtInCompactionSettings } from "../../compaction/settings.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../../http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { CacheWarmingMode } from "../../settings-schema.ts";
-import type { RuntimeSettingsApi } from "../api/runtime.ts";
+import type { CompactionPolicyModel, RuntimeSettingsApi } from "../api/runtime.ts";
 import { CACHE_WARMING_MODES } from "../constants.ts";
 import { parseTimeoutSetting } from "../merge.ts";
 import { ModelSettingsAccessors } from "./model.ts";
@@ -15,16 +15,19 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		return true;
 	}
 
-	getCompactionReserveTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number {
-		return builtInCompactionSettings(model).reserveTokens;
+	getCompactionReserveTokens(model?: CompactionPolicyModel, thinkingLevel?: ModelThinkingLevel): number {
+		return this.getCompactionSettings(model, thinkingLevel).reserveTokens;
 	}
 
-	getCompactionKeepRecentTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number {
-		return builtInCompactionSettings(model).keepRecentTokens;
+	getCompactionKeepRecentTokens(model?: CompactionPolicyModel, thinkingLevel?: ModelThinkingLevel): number {
+		return this.getCompactionSettings(model, thinkingLevel).keepRecentTokens;
 	}
 
-	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }) {
-		return builtInCompactionSettings(model);
+	getCompactionSettings(model?: CompactionPolicyModel, thinkingLevel?: ModelThinkingLevel) {
+		return builtInCompactionSettings(
+			model,
+			thinkingLevel === undefined ? undefined : { level: thinkingLevel, budgets: this.settings.thinkingBudgets },
+		);
 	}
 
 	getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean } {

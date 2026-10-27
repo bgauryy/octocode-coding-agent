@@ -11,6 +11,8 @@ export interface SessionState {
 	readonly cwd: string;
 	readonly persist: boolean;
 	flushed: boolean;
+	/** Byte size of the session file after this state's last load or write; undefined until the file is known. */
+	fileSize: number | undefined;
 	persistenceFailure: Error | undefined;
 	fileEntries: FileEntry[];
 	readonly byId: Map<string, SessionEntry>;
@@ -27,6 +29,7 @@ export function createSessionState(cwd: string, sessionDir: string, persist: boo
 		cwd,
 		persist,
 		flushed: false,
+		fileSize: undefined,
 		persistenceFailure: undefined,
 		fileEntries: [],
 		byId: new Map(),

@@ -154,7 +154,7 @@ describe("feed shaping", () => {
 		]);
 		expect(entries.map((entry) => entry.kind)).toEqual(["event", "event", "event", "tools"]);
 		const group = entries[3];
-		expect(group.kind === "tools" && group.summary).toEqual({ total: 2, running: 1, failed: 1, done: 1 });
+		expect(group.kind === "tools" && group.summary).toEqual({ total: 2, running: 1, failed: 1, done: 1, notRun: 0 });
 		expect(group.kind === "tools" && group.id).toBe(4);
 	});
 

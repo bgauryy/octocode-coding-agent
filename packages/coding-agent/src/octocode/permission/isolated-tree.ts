@@ -2,6 +2,7 @@ import { AGENT_SCRATCH_ENV, SUBAGENT_ENV, TEAM_WORKSPACE_ENV, envFlag } from "..
 import { mutatedPaths } from "../shared/file-input.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
+import { shellPath } from "./file-access.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
@@ -45,15 +46,15 @@ export function isolatedTreeRefusal(
 	if (event.toolName === "debug" && input.action !== "terminate")
 		return refusal("Debugging (adapter paths and effects cannot be confined to this worktree)", main);
 	const scratch = env[AGENT_SCRATCH_ENV];
-	const intoMain = (file: string): boolean => {
-		const target = canonicalPath(resolveToolPath(cwd, file));
+	const intoMain = (file: string, fromShell = false): boolean => {
+		const target = canonicalPath(fromShell ? shellPath(cwd, file) : resolveToolPath(cwd, file));
 		return isWithin(target, main) && !(scratch && isWithin(target, canonicalPath(scratch)));
 	};
 	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
-		const found = mutatedPaths(event.toolName, input).find(intoMain);
+		const found = mutatedPaths(event.toolName, input).find((file) => intoMain(file));
 		return found === undefined ? undefined : refusal(`Changing ${found}`, main);
 	}
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
-	const found = shellMutation(optionalString(input.command) ?? "").writes.find(intoMain);
+	const found = shellMutation(optionalString(input.command) ?? "").writes.find((file) => intoMain(file, true));
 	return found === undefined ? undefined : refusal(`Changing ${found} from the shell`, main);
 }

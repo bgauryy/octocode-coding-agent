@@ -11,7 +11,7 @@ import { ExtensionEditorComponent } from "../components/extension-editor.ts";
 import { ExtensionInputComponent } from "../components/extension-input.ts";
 import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
-import { type Theme, theme } from "../theme/theme.ts";
+import { type Theme, theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the extension dialogs. */

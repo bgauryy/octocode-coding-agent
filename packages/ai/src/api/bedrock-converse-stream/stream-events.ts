@@ -6,10 +6,10 @@ import {
 	type ContentBlockStopEvent,
 	type ConverseStreamMetadataEvent,
 } from "@aws-sdk/client-bedrock-runtime";
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model, StopReason } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { type Block, REDACTED_THINKING_PLACEHOLDER } from "./types.ts";
 import { bedrockAnnotation } from "./rich-content.ts";
 import { outputFields, providerOutputText } from "../provider-output.ts";
@@ -132,7 +132,7 @@ export function handleContentBlockDelta(
 		stream.push({ type: "content_update", contentIndex: blocks.length - 1, partial: output });
 	} else if (delta?.toolUse && block?.type === "toolCall") {
 		block.partialJson = (block.partialJson || "") + (delta.toolUse.input || "");
-		block.arguments = parseStreamingJson(block.partialJson);
+		block.arguments = parseStreamingJsonThrottled(block.arguments, block.partialJson);
 		stream.push({ type: "toolcall_delta", contentIndex: index, delta: delta.toolUse.input || "", partial: output });
 	} else if (delta?.reasoningContent) {
 		let thinkingBlock = block;

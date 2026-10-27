@@ -6,7 +6,7 @@ import type { SessionEntry } from "../../../src/core/session-manager.ts";
 import type { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
 import { handleEvent } from "../../../src/modes/interactive/interactive-mode/agent-events.ts";
 import { renderSessionEntries } from "../../../src/modes/interactive/interactive-mode/session-render.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
 

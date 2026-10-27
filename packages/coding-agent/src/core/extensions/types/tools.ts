@@ -9,7 +9,7 @@ import type {
 import type { ConstrainedSamplingConfig } from "@octocodeai/octocode-ai";
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type { SourceInfo } from "../../source-info.ts";
 import type { ExtensionToolContext } from "./context.ts";
 

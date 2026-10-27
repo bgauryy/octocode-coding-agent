@@ -35,10 +35,8 @@ export function stageBinary(outDir, platform = currentPlatform()) {
 		join(outDir, "photon_rs_bg.wasm"),
 	);
 	mkdirSync(join(outDir, "theme"), { recursive: true });
-	for (const file of readdirSync(from("dist", "modes", "interactive", "theme")).filter((name) =>
-		name.endsWith(".json"),
-	))
-		copy(from("dist", "modes", "interactive", "theme", file), join(outDir, "theme", file));
+	for (const file of readdirSync(from("dist", "theme")).filter((name) => name.endsWith(".json")))
+		copy(from("dist", "theme", file), join(outDir, "theme", file));
 	copy(from("dist", "modes", "interactive", "assets"), join(outDir, "assets"));
 	// The whole folder: template.html, template.css, template.js and vendor/ are all read at export time.
 	copy(from("dist", "core", "export-html"), join(outDir, "export-html"));

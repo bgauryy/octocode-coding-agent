@@ -19,7 +19,7 @@ const SEPARATOR = "\n\n---\n\n";
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
 
 /** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
-const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
+export const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
 
 const statusWord = (token: string): ReportStatus | undefined => {
 	const word = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "").toLowerCase();

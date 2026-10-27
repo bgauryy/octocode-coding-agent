@@ -1,8 +1,9 @@
 import type { McpServerPreset } from "../../preset.ts";
 import { envFlag, MCP_ENV } from "../../../../coding-agent/src/octocode/shared/env.ts";
 import { projectTrustNow } from "../../../../coding-agent/src/octocode/shared/trust.ts";
-import { OCTOCODE_DIRECT_TOOLS, OCTOCODE_SERVER } from "./names.ts";
+import { OCTOCODE_DEFERRED_TOOLS, OCTOCODE_SERVER } from "./names.ts";
 import { octocodeLaunch } from "./launch.ts";
+import { literalConfigEnv } from "./literal.ts";
 import { prepareOctocodeSkillLaunch } from "./skill-paths.ts";
 import { defineOctocodeTool } from "./tools.ts";
 
@@ -13,8 +14,7 @@ export function octocodePreset(
 	return {
 		name: OCTOCODE_SERVER,
 		config: { command: "octocode-mcp", inheritEnv: true, enabled: envFlag(env, MCP_ENV, true) },
-		toolExposure: Object.fromEntries(OCTOCODE_DIRECT_TOOLS.map((name) => [name, "direct"])),
-		preferDeferred: true,
+		toolExposure: Object.fromEntries(OCTOCODE_DEFERRED_TOOLS.map((tool) => [tool, "deferred" as const])),
 		defineTool: defineOctocodeTool,
 		prepareLaunch(entry, cwd, trusted) {
 			if (entry.scope === "default") {
@@ -25,7 +25,8 @@ export function octocodePreset(
 					skillDirectories(),
 					trusted && projectTrustNow({ cwd, isProjectTrusted: () => trusted }) === true,
 				);
-				return { ...entry, config: { ...entry.config, ...launch } };
+				// The launch values are paths, not configuration: keep `${}` and `!` resolution away from them.
+				return { ...entry, config: { ...entry.config, ...launch, env: literalConfigEnv(launch.env) } };
 			}
 			return prepareOctocodeSkillLaunch(entry, cwd, skillDirectories(), env);
 		},

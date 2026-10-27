@@ -2,14 +2,15 @@ import { fileChanges } from "../shared/file-input.ts";
 import { Box, type Component, Text } from "@octocodeai/octocode-tui";
 import type { BashToolDetails } from "../../core/tools/index.ts";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { formatDuration } from "../shared/format.ts";
 import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../shared/render.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { contentText } from "../shared/util.ts";
-import { clip, expandKey, plural } from "../shared/render/text.ts";
+import { clip, expandKey, isInformativeReason, plural } from "../shared/render/text.ts";
 import type { RenderContext } from "../shared/render/types.ts";
 import { timingOf } from "../shared/render/rows.ts";
+import { stateMark } from "../../theme/status.ts";
 import { isRecord } from "../../utils/guards.ts";
 import type { VerificationReceipt } from "./bash-jobs/types.ts";
 
@@ -17,7 +18,6 @@ import type { VerificationReceipt } from "./bash-jobs/types.ts";
  * How the files tools draw: `Bash(cmd)` / `⎿  exit 0 · 12 lines` and the last lines, `File(edit a.ts)` /
  * `✓ edit a.ts +4 -1` with a short diff, and the background job report.
  */
-
 /** What a bash result keeps: Octocode's truncation fields and the background job. */
 export interface BashDetails extends BashToolDetails {
 	verification?: VerificationReceipt;
@@ -215,13 +215,13 @@ export function renderBashResult(
 	);
 }
 
-/** A finished background job: `● Job(bash-1: yarn build)` / `⎿  finished after 3s` and its output tail. */
+/** A finished background job: `✓ Job(bash-1: yarn build)` / `⎿  finished after 3s` and its output tail. */
 export function renderJobMessage(text: string, expanded: boolean, theme: Theme, outputPad = 1): Component {
 	const [head = "", ...rest] = text.split("\n");
 	const ok = / finished after /.test(head);
 	// Killed by the user or at shutdown: interrupted, not failed.
 	const stopped = !ok && / stopped \(/.test(head);
-	// "Background bash bash-1 finished after 3s: yarn build" → `● Job(bash-1: yarn build)` / `⎿ finished after 3s`.
+	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Job(bash-1: yarn build)` / `⎿ finished after 3s`.
 	const parts = /^Background bash (\S+) (.+?): (.*)$/.exec(head);
 	const context: RenderContext = { isPartial: false, isError: !ok, expanded, state: stopped ? { stopped: true } : {} };
 	const log = rest[0]?.startsWith("Log: ") ? rest.shift() : undefined;
@@ -312,18 +312,18 @@ export function renderFileCall(args: FileArgs, theme: Theme, context: RenderCont
 			`${query?.type ?? "…"} ${query?.path ?? ""}${query?.movePath ? ` → ${query.movePath}` : ""}${querySize(query)}`,
 			200,
 		);
-	const why = (query: (typeof queries)[number] | undefined) =>
-		context.expanded && typeof query?.reason === "string" && query.reason.trim()
-			? [theme.fg("dim", `  ↳ ${clip(query.reason, 200)}`)]
+	const why = (query: (typeof queries)[number] | undefined, indent = "") =>
+		context.expanded && isInformativeReason(query?.reason)
+			? [theme.fg("dim", `${indent}↳ ${clip(query.reason, 200)}`)]
 			: [];
-	// One change: File(edit src/a.ts · 2 edits). Several: File(3 changes) with a sub-line each.
+	// One change: File(edit src/a.ts · 2 edits), with the call's own reason line under it unless it has none. Several: File(3 changes) with a sub-line each.
 	if (queries.length <= 1)
 		return toolHeader(theme, context, "File", queries.length === 1 ? describe(queries[0]) : "", {
-			lines: why(queries[0]),
+			lines: isInformativeReason(args.reason) ? [] : why(queries[0]),
 		});
 	const lines = queries.flatMap((query) => [
 		`${theme.fg("accent", clip(query?.type ?? "…", 20))} ${theme.fg("mdCode", clip(query?.path ?? "", 200))}${theme.fg("dim", querySize(query))}`,
-		...why(query),
+		...why(query, "  "),
 	]);
 	return toolHeader(theme, context, "File", `${queries.length} changes`, { lines });
 }
@@ -358,8 +358,8 @@ export function renderFileResult(
 			: "";
 		const target = `${clip(outcome.type, 20)} ${theme.fg("mdCode", clip(outcome.path, 200))}`;
 		const head = outcome.ok
-			? `${theme.fg("success", "✓")} ${target}${counts}`
-			: `${theme.fg("error", "✗")} ${target}${theme.fg("error", `: ${clip(outcome.message, 300)}`)}`;
+			? `${stateMark(theme, "done")} ${target}${counts}`
+			: `${stateMark(theme, "failed")} ${target}${theme.fg("error", `: ${clip(outcome.message, 300)}`)}`;
 		heads.push(head);
 		details.push(head);
 		if (outcome.ok && outcome.diff) {

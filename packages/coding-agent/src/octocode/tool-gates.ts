@@ -13,6 +13,7 @@ import type { registerHooks } from "./hooks/register.ts";
 import { envFlag, SUBAGENT_ENV, TEAM_WORKSPACE_ENV } from "./shared/env.ts";
 import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import { snapshotLocalReads } from "./shared/local-reads.ts";
+import { browserMcpRequest } from "./web/browser-mcp.ts";
 
 import type { registerCollab } from "./team/tools.ts";
 import type { registerActivity } from "./ui/activity.ts";
@@ -73,6 +74,7 @@ export function registerToolGates(
 				permissionGate({
 					permission,
 					provenance,
+					network: (toolName, input) => browserMcpRequest(toolName, input),
 					replacement: {
 						definition: (name) => pi.getAllTools().find((tool) => tool.name === name),
 						refresh: (ctx) => sourcePolicy.refresh(ctx),

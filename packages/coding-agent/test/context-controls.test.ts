@@ -42,8 +42,10 @@ describe("session context controls", () => {
 		const report = session.getContextReport();
 		expect(report.capacity).toBe(32_000);
 		expect(report.catalogCapacity).toBe(200_000);
-		expect(report.reserve).toBe(4000);
-		expect(report.threshold).toBe(28_000);
+		// A sixth of the window: on a window this small the answer and safety room (12,288 tokens, before any thinking
+		// budget) already exceed window / 8, so the reserve is capped at window / 6.
+		expect(report.reserve).toBe(5333);
+		expect(report.threshold).toBe(26_667);
 		const prepared = await session.agent.prepareRequest?.({
 			model: session.model!,
 			thinkingLevel: session.thinkingLevel,

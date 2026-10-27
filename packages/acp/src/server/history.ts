@@ -6,7 +6,7 @@ import { SessionManager, type SessionInfo } from "../../../coding-agent/src/core
 import { createCustomMessage } from "../../../coding-agent/src/core/messages.ts";
 import { SettingsManager } from "../../../coding-agent/src/core/settings-manager.ts";
 import { normalizePath } from "../../../coding-agent/src/utils/paths.ts";
-import { toolContent } from "./events.ts";
+import { customMessageUpdates, toolContent } from "./events.ts";
 
 function sessionDir(cwd: string, override?: string): string | undefined {
 	const fromEnvironment = process.env[ENV_SESSION_DIR];
@@ -74,7 +74,12 @@ export function prepareHistoryReplay(path: string, id: string, client: AgentCont
 				continue;
 			}
 			if (message.role !== "user" && message.role !== "assistant" && message.role !== "custom") continue;
-			if (message.role === "custom" && !message.display) continue;
+			if (message.role === "custom") {
+				if (!message.display) continue;
+				for (const update of customMessageUpdates(message))
+					await client.notify(methods.client.session.update, { sessionId: id, update });
+				continue;
+			}
 			const blocks =
 				typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content;
 			for (const block of blocks) {

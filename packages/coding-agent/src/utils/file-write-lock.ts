@@ -27,18 +27,17 @@ function isLockHeld(error: unknown): boolean {
  */
 export function lockSyncWithRetry(
 	file: string,
-	options: { lockfilePath?: string; retryable?: (error: unknown) => boolean } = {},
+	options: { lockfilePath?: string; retryable?: (error: unknown) => boolean; attempts?: number } = {},
 ): () => void {
 	const retryable = options.retryable ?? isLockHeld;
+	const attempts = options.attempts ?? SYNC_LOCK_ATTEMPTS;
 	for (let attempt = 1; ; attempt++) {
 		try {
 			return lockfile.lockSync(file, { realpath: false, lockfilePath: options.lockfilePath });
 		} catch (error) {
-			if (!retryable(error) || attempt === SYNC_LOCK_ATTEMPTS) throw error;
-			const start = Date.now();
-			while (Date.now() - start < SYNC_LOCK_RETRY_DELAY_MS) {
-				// Sleep synchronously to avoid changing callers to async.
-			}
+			if (!retryable(error) || attempt >= attempts) throw error;
+			// Callers stay synchronous: block the thread without spinning the CPU.
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SYNC_LOCK_RETRY_DELAY_MS);
 		}
 	}
 }

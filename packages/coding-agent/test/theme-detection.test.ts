@@ -7,7 +7,7 @@ import {
 	getThemeByName,
 	parseAutoThemeSetting,
 	resolveThemeSetting,
-} from "../src/modes/interactive/theme/theme.ts";
+} from "../src/theme/theme.ts";
 
 afterEach(() => {
 	resetCapabilitiesCache();

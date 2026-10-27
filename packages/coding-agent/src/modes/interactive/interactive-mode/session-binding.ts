@@ -3,11 +3,11 @@
  * re-rendering after the session is replaced.
  */
 
-import { setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { MCP_STATUS_EVENT } from "../../../../../mcp/src/status.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
-import { setRegisteredThemes } from "../theme/theme.ts";
+import { setRegisteredThemes } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { showTreeNavigationResult } from "./session-navigation.ts";
 
@@ -147,6 +147,7 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 export function applyRuntimeSettings(host: SessionBindingHost): void {
 	setCapabilityOverrides(host.settingsManager.getTerminalCapabilityOverrides());
 	host.ensurePngTranscoder();
+	animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
 	configureHttpDispatcher(host.settingsManager.getHttpIdleTimeoutMs());
 	host.applyFullscreenScrollbarSetting();
 	if (host.renderer instanceof TuiAltScreen) {

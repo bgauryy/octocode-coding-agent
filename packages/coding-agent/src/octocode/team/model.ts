@@ -38,10 +38,12 @@ export interface MailDetails {
 	messages: Array<Pick<Message, "from" | "text" | "at"> & Partial<Message>>;
 }
 
-/** A message whose recipients left before reading it, for its sender. */
+/** A message whose recipients left before reading it, or before answering its question, for its sender. */
 export interface DeadLetter {
 	id: number;
 	recipients: string[];
+	/** The recipients that read it but left without answering a `replyRequired` question (the others never read it). */
+	read?: string[];
 	text: string;
 }
 

@@ -177,18 +177,23 @@ export class PeerLeases {
 
 	/** The first live lease of another package session that covers `file` (one spelling of the path is as good as another), or undefined. */
 	conflict(file: string): PeerLease | undefined {
-		const now = (this.options.now ?? Date.now)();
 		let key: string | undefined;
+		return this.first((row) => keysOverlap(row.pathKey, row.kind, (key ??= absoluteKey(file)), "file"));
+	}
+
+	/** The first live lease of another package session, whatever it covers, or undefined. */
+	any(): PeerLease | undefined {
+		return this.first(() => true);
+	}
+
+	private first(covers: (row: Row) => boolean): PeerLease | undefined {
+		const now = (this.options.now ?? Date.now)();
 		let self: string | undefined;
 		for (const database of this.databases(now)) {
 			const rows = database.active(now);
 			if (!rows) continue;
-			key ??= absoluteKey(file);
 			self ??= this.options.self?.();
-			const hit = rows.find(
-				(row) =>
-					!(self !== undefined && row.vendorSession === self) && keysOverlap(row.pathKey, row.kind, key!, "file"),
-			);
+			const hit = rows.find((row) => !(self !== undefined && row.vendorSession === self) && covers(row));
 			if (hit)
 				return {
 					id: hit.id,

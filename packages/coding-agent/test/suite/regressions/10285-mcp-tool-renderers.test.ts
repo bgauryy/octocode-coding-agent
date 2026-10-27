@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ToolRenderContext } from "../../../src/core/extensions/types.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import { createMcpExtension } from "../../../../mcp/src/index.ts";
-import { initTheme, theme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../../../src/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness } from "../harness.ts";
 

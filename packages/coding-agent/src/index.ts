@@ -260,8 +260,10 @@ export {
 	type SettingsCallbacks,
 	type SettingsConfig,
 	SettingsSelectorComponent,
+	// @deprecated: removed in the next release.
 	ShowImagesSelectorComponent,
 	SkillInvocationMessageComponent,
+	// @deprecated: removed in the next release.
 	ThemeSelectorComponent,
 	ThinkingSelectorComponent,
 	ToolExecutionComponent,
@@ -286,7 +288,7 @@ export {
 	type ThemeColor,
 	type ThemeStyle,
 	type ThemeToken,
-} from "./modes/interactive/theme/theme.ts";
+} from "./theme/theme.ts";
 // Clipboard utilities
 export { copyToClipboard } from "./utils/clipboard.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";

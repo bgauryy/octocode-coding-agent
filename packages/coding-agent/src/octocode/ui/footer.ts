@@ -2,23 +2,23 @@ import os from "node:os";
 import path from "node:path";
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { PERMISSION_ID, shortChip } from "../permission/mode.ts";
 import { formatCost, formatDuration, formatTokens, formatTokenUsage, newPromptTokens } from "../shared/format.ts";
 import { livePaint } from "../shared/render/status.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { STATUS } from "../shared/status.ts";
-import { autoCompactAt } from "../shared/tokens.ts";
+import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
 import {
 	addReply,
 	emptyTotals,
-	entryMessage,
 	modelLookup,
 	type Spend,
 	spendOf,
 	type UsageTotals,
 	unpricedModel,
 } from "../shared/util.ts";
+import { entrySpend, shortThinking } from "./footer/spend.ts";
 import { registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
 
 /**
@@ -56,9 +56,10 @@ type Paint = Pick<Theme, "fg" | "bold">;
 const OWN = { permission: PERMISSION_ID, ...STATUS } as const;
 const BAR_CELLS = 8;
 
-/** An 8-cell gauge and its colour: green under half, yellow to 80%, red above. */
+/** An 8-cell gauge and its colour: green under half, yellow to 80%, red above. Any use fills at least one cell. */
 export function contextBar(percent: number): { bar: string; color: Color } {
-	const filled = Math.min(BAR_CELLS, Math.max(0, Math.floor((percent / 100) * BAR_CELLS)));
+	const cells = Math.round((percent / 100) * BAR_CELLS);
+	const filled = Math.min(BAR_CELLS, Math.max(percent > 0 ? 1 : 0, cells));
 	return {
 		bar: "▰".repeat(filled) + "▱".repeat(BAR_CELLS - filled),
 		color: percent > 80 ? "error" : percent >= 50 ? "warning" : "success",
@@ -149,7 +150,8 @@ export function footerLines(
 	const model = plainRow(state.model ?? "no model");
 	const shortModel = plainRow(truncateToWidth(model, Math.max(1, Math.floor(width / 3)), "…"));
 	const context = state.context;
-	let ctx: Part = { text: "", priority: 60, keep: true };
+	// Context is a safety signal: it outranks the ephemeral status counters and shortens to `ctx 42%` before anything is dropped.
+	let ctx: Part = { text: "", priority: 93, keep: true };
 	if (context) {
 		const window = formatTokens(context.limit);
 		if (context.percent === null)
@@ -173,9 +175,15 @@ export function footerLines(
 				keep: true,
 				...(shortModel !== model ? { short: theme.fg("accent", shortModel) } : {}),
 			},
-			// The mode is what the user most needs on a narrow terminal: kept, shortened last after the model.
+			// The one home of the permission mode, with its shortcut: kept on a narrow terminal, shortened after the model.
 			{ text: status(OWN.permission), priority: 95, keep: true, short: shortChip(status(OWN.permission)) },
-			{ text: state.thinking ? theme.fg("muted", plainRow(state.thinking)) : "", priority: 30 },
+			// Kept ahead of the status counters (90): a short form first, then the counters give way.
+			{
+				text: state.thinking ? theme.fg("muted", `thinking ${plainRow(state.thinking)}`) : "",
+				priority: 91,
+				keep: true,
+				...(state.thinking ? { short: theme.fg("muted", shortThinking(plainRow(state.thinking))) } : {}),
+			},
 			ctx,
 			{ text: status(OWN.team), priority: 90, keep: true },
 			{ text: status(OWN.subagents), priority: 90, keep: true },
@@ -193,7 +201,8 @@ export function footerLines(
 						: "",
 				priority: 85,
 			},
-			{ text: status(OWN.speed) ? theme.fg("dim", status(OWN.speed)) : "", priority: 10 },
+			// The speed of the last run, beside its time: hidden while the next one works.
+			{ text: status(OWN.speed) && !state.running ? theme.fg("dim", status(OWN.speed)) : "", priority: 10 },
 			{ text: cost ? theme.fg("muted", cost) : "", priority: 40 },
 		],
 		theme,
@@ -209,8 +218,9 @@ export function footerLines(
 		`${theme.fg("text", dir)}${shownBranch ? ` ${theme.fg("muted", `⎇ ${shownBranch}`)}` : ""}`;
 	const usage = formatTokenUsage(state.usage);
 	// Cache reads are re-reads of the conversation on every request: listed in the breakdown, not in the total.
-	const total = `${formatTokens(newPromptTokens(state.usage) + state.usage.output)} tokens`;
-	const tokens = theme.fg("muted", total);
+	const spent = newPromptTokens(state.usage) + state.usage.output;
+	// Nothing spent yet (a fresh session): no `0 tokens` placeholder.
+	const tokens = spent > 0 || usage ? theme.fg("muted", `${formatTokens(spent)} tokens`) : "";
 	const others = [...statuses]
 		.filter(([key]) => !(Object.values(OWN) as string[]).includes(key))
 		.sort(([a], [b]) => a.localeCompare(b));
@@ -219,12 +229,16 @@ export function footerLines(
 			{ text: where(place), priority: 100, keep: true, short: where(plainRow(path.basename(state.cwd))) },
 			// Session names come from anywhere (RPC, other extensions); Octocode strips only newlines.
 			{ text: state.sessionName ? theme.fg("muted", plainRow(state.sessionName)) : "", priority: 50 },
-			{ text: usage ? `${tokens} ${theme.fg("dim", `(${usage})`)}` : tokens, short: tokens, priority: 80 },
 			{
-				text:
-					state.compactions !== undefined
-						? theme.fg("muted", `${state.compactions} compaction${state.compactions === 1 ? "" : "s"}`)
-						: "",
+				text: usage && tokens ? `${tokens} ${theme.fg("dim", `(${usage})`)}` : tokens,
+				...(tokens ? { short: tokens } : {}),
+				priority: 80,
+			},
+			{
+				// Shown once there is one: zero compactions is the normal state, not news.
+				text: state.compactions
+					? theme.fg("muted", `${state.compactions} compaction${state.compactions === 1 ? "" : "s"}`)
+					: "",
 				priority: 75,
 			},
 			// Keep the workspace entry point when counts no longer fit; location and active-work statuses still win.
@@ -266,6 +280,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 		version += 1;
 		repaint?.();
 	};
+	const addSummary = (entry: unknown, ctx: ExtensionContext) => add(entrySpend(entry), ctx);
 	const countCompactions = (ctx: ExtensionContext) => {
 		state.compactions = ctx.sessionManager.getEntries().filter((entry) => entry.type === "compaction").length;
 	};
@@ -280,7 +295,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 		state.model = model?.id;
 		state.thinking = model?.reasoning ? pi.getThinkingLevel() : undefined;
 		const usage = ctx.getContextUsage();
-		const limit = model ? autoCompactAt(model) : usage?.contextWindow;
+		const limit = model ? autoCompactAt(model, compactionThinking(pi)) : usage?.contextWindow;
 		state.context = limit
 			? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }
 			: undefined;
@@ -299,7 +314,7 @@ export function registerFooter(pi: ExtensionAPI): void {
 		state.runMs = undefined;
 		countCompactions(ctx);
 		state.usage = emptyTotals();
-		for (const entry of ctx.sessionManager.getEntries()) add(spendOf(entryMessage(entry)), ctx);
+		for (const entry of ctx.sessionManager.getEntries()) add(entrySpend(entry), ctx);
 		sample(ctx);
 		ctx.ui.setFooter((tui, theme, data) => {
 			repaint = () => tui.requestRender();
@@ -332,12 +347,17 @@ export function registerFooter(pi: ExtensionAPI): void {
 		if (event.message.role === "assistant") sample(ctx);
 		else if (spend) repaint?.();
 	});
-	pi.on("session_tree", refresh);
+	pi.on("session_tree", async (event, ctx) => {
+		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		addSummary(event.summaryEntry, ctx);
+		await refresh(event, ctx);
+	});
 	pi.on("model_select", refresh);
 	pi.on("thinking_level_select", refresh);
 	pi.on("session_compact", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		countCompactions(ctx);
+		addSummary(event.compactionEntry, ctx);
 		await refresh(event, ctx);
 	});
 	pi.on("agent_start", async (_event, ctx) => {

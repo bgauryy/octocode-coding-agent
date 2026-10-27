@@ -31,6 +31,8 @@ interface ProfileStats {
 	compactions: number;
 	/** Runs that reported their first-turn context size, and the sum of those sizes. */
 	cold: { runs: number; tokens: number };
+	/** Model requests of each run that recorded them (`details.requests`), in the order the runs came. */
+	requests: number[];
 }
 
 const emptyStats = (profile: string): ProfileStats => ({
@@ -49,6 +51,7 @@ const emptyStats = (profile: string): ProfileStats => ({
 	startupFailures: 0,
 	compactions: 0,
 	cold: { runs: 0, tokens: 0 },
+	requests: [],
 });
 
 interface Run {
@@ -105,6 +108,12 @@ function compactionsOf(details: Record<string, unknown>): number {
 	return isRecord(details.compactions) ? finiteOrZero(details.compactions.done) : 0;
 }
 
+/** The `fraction` quantile (nearest rank) of `values`, which are not empty. */
+function quantile(values: readonly number[], fraction: number): number {
+	const sorted = [...values].sort((a, b) => a - b);
+	return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+}
+
 /** Per-profile statistics of the subagent runs in session entries (`general` for a run with no role), most runs first. */
 export function agentStats(entries: readonly unknown[]): ProfileStats[] {
 	const byProfile = new Map<string, ProfileStats>();
@@ -143,6 +152,7 @@ export function agentStats(entries: readonly unknown[]): ProfileStats[] {
 			stats.cold.runs++;
 			stats.cold.tokens += details.firstTurnTokens;
 		}
+		if (typeof details.requests === "number" && details.requests >= 0) stats.requests.push(details.requests);
 	}
 	return [...byProfile.values()].sort((a, b) => b.runs - a.runs || a.profile.localeCompare(b.profile));
 }
@@ -158,12 +168,16 @@ function describe(stats: ProfileStats): string[] {
 		.join(", ");
 	const cold =
 		stats.cold.runs > 0 ? ` · cold start ${formatTokens(Math.round(stats.cold.tokens / stats.cold.runs))} avg` : "";
+	const requests =
+		stats.requests.length > 0
+			? ` · requests p50 ${quantile(stats.requests, 0.5)} · p95 ${quantile(stats.requests, 0.95)} · max ${Math.max(...stats.requests)}`
+			: "";
 	const cost = formatCost(stats) || (stats.runs > 0 && !stats.unpriced ? "≈$0" : "cost n/a");
 	return [
 		`${stats.profile} — ${plural(stats.runs, "run")} (${split})`,
 		`  outcomes: done ${outcomes.done} · partial ${outcomes.partial} · blocked ${outcomes.blocked} · failed ${outcomes.failed} · unknown ${outcomes.unknown} · outcome word ${compliance}${stats.trailing ? ` · trailing outcome ${stats.trailing}` : ""}`,
 		`  tokens: ${formatTokens(stats.tokens)} total · ${formatTokens(Math.round(stats.tokens / stats.runs))} avg${cold}`,
-		`  cost ${cost} · ${plural(stats.asks, "ask")} · ${plural(stats.startupFailures, "startup failure")} · ${plural(stats.compactions, "compaction")}`,
+		`  cost ${cost} · ${plural(stats.asks, "ask")} · ${plural(stats.startupFailures, "startup failure")} · ${plural(stats.compactions, "compaction")}${requests}`,
 	];
 }
 

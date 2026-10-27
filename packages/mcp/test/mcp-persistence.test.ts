@@ -48,22 +48,35 @@ describe("saveConfig", () => {
 		expect(getMcpToolExposure(server.entry.config, "localSearchCode", octocodePreset(() => [], {}).toolExposure)).toBe(
 			"deferred",
 		);
-		expect(saveConfig(state, server, { exposure: "auto" })).toBeUndefined();
+		expect(saveConfig(state, server, { exposure: "direct" })).toBeUndefined();
 		expect(JSON.parse(readFileSync(file, "utf8")).mcpServers.octocode).toEqual({ command: "octocode-mcp" });
 		expect(server.entry.config.exposure).toBeUndefined();
-		// Without an explicit exposure the Octocode server declares its local research tools directly again.
+		// Without an explicit exposure all Octocode tools are direct again.
 		expect(getMcpToolExposure(server.entry.config, "localSearchCode", octocodePreset(() => [], {}).toolExposure)).toBe(
 			"direct",
 		);
+		expect(getMcpToolExposure(server.entry.config, "ghSearchCode", octocodePreset(() => [], {}).toolExposure)).toBe(
+			"direct",
+		);
+	});
+
+	it("persists automatic exposure as an explicit opt-in", () => {
+		const { server, state, file } = setup({});
+		expect(saveConfig(state, server, { exposure: "auto" })).toBeUndefined();
+		expect(JSON.parse(readFileSync(file, "utf8")).mcpServers.octocode).toEqual({
+			command: "octocode-mcp",
+			exposure: "auto",
+		});
+		expect(server.entry.config.exposure).toBe("auto");
 	});
 
 	it("keeps explicit defaults in an override, as the file does", () => {
 		const { server, state, file } = setup({ override: undefined });
 		const overrideFile = join(file, "..", "override.json");
-		writeFileSync(overrideFile, JSON.stringify({ mcpServers: { octocode: { exposure: "direct" } } }));
+		writeFileSync(overrideFile, JSON.stringify({ mcpServers: { octocode: { exposure: "deferred" } } }));
 		server.entry = { ...server.entry, override: overrideFile, overrideScope: "project" };
-		expect(saveConfig(state, server, { exposure: "auto" })).toBeUndefined();
-		expect(JSON.parse(readFileSync(overrideFile, "utf8")).mcpServers.octocode).toEqual({ exposure: "auto" });
-		expect(server.entry.config.exposure).toBe("auto");
+		expect(saveConfig(state, server, { exposure: "direct" })).toBeUndefined();
+		expect(JSON.parse(readFileSync(overrideFile, "utf8")).mcpServers.octocode).toEqual({ exposure: "direct" });
+		expect(server.entry.config.exposure).toBe("direct");
 	});
 });

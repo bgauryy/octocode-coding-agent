@@ -18,15 +18,15 @@ This adapter targets **ACP v1 over stdio**. The official [protocol index](https:
 
 Both adapters use the official [TypeScript SDK](https://agentclientprotocol.com/libraries/typescript), pinned to `@agentclientprotocol/sdk` **2.0.2**, with typed `agent()`/`client()` handlers, `methods` and `ndJsonStream`. The default import supplies stable v1 schemas and validation. SDK 2 does not switch the wire protocol to ACP v2; see its [migration guide](https://github.com/agentclientprotocol/typescript-sdk/blob/v2.0.2/MIGRATION_STABLE_UNSTABLE.md). The integration does not use legacy connection classes or the unstable/v2 entry points.
 
-| Surface | Advertised and implemented behavior |
-| --- | --- |
-| Base protocol | Initialize, new session, text/resource-link prompts, ordered updates, permission requests and prompt cancellation |
-| Session capabilities | `loadSession: true`; `sessionCapabilities` includes `list`, `resume` and `close` |
-| Prompt capabilities | `image` and `embeddedContext`; supported formats and bounds are listed below |
-| MCP capabilities | Stdio plus `http` and `sse` for client-supplied MCP servers |
-| Authentication | Host-configured credentials; `authMethods: []`, no protocol authentication/logout flow |
-| Client filesystem, terminals and elicitation | Not requested by the agent; native host tools and permission policy own execution |
-| Optional mode/configuration, deletion, fork and remote ACP | Not exposed; see current limits below |
+| Surface                                                    | Advertised and implemented behavior                                                                               |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Base protocol                                              | Initialize, new session, text/resource-link prompts, ordered updates, permission requests and prompt cancellation |
+| Session capabilities                                       | `loadSession: true`; `sessionCapabilities` includes `list`, `resume` and `close`                                  |
+| Prompt capabilities                                        | `image` and `embeddedContext`; supported formats and bounds are listed below                                      |
+| MCP capabilities                                           | Stdio plus `http` and `sse` for client-supplied MCP servers                                                       |
+| Authentication                                             | Host-configured credentials; `authMethods: []`, no protocol authentication/logout flow                            |
+| Client filesystem, terminals and elicitation               | Not requested by the agent; native host tools and permission policy own execution                                 |
+| Optional mode/configuration, deletion, fork and remote ACP | Not exposed; see current limits below                                                                             |
 
 Capability negotiation is part of compatibility: clients must check the response before using optional methods. Missing capabilities do not mean support. Octocode's outbound client advertises no optional client filesystem, terminal or elicitation capabilities and checks `loadSession` before restoring a peer. The [initialization specification](https://agentclientprotocol.com/protocol/v1/initialization) owns these rules.
 
@@ -42,19 +42,19 @@ Prompts and session selection arrive over the protocol. Positional prompt text, 
 
 ## Supported behavior
 
-| Operation                    | Behavior                                                                                                                |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `initialize`                 | Reports supported ACP v1 through the pinned TypeScript SDK; a client that cannot use v1 must disconnect                 |
-| `session/new`                | New conversation in an isolated native worker; up to eight sessions per connection, including pending creations         |
-| `session/list`               | Lists stored conversations using their native persistent IDs, optionally filtered by cwd and paginated in groups of 50  |
-| `session/load`               | Restores a stored conversation in its original cwd and replays supported history before replying                        |
-| `session/resume`             | Restores the same context without replay; an idle session may be resumed on the same connection                                     |
-| `session/prompt`             | One active prompt per session; different sessions can run independently; response waits for the accepted turn to settle |
-| `session/update`             | Assistant text and tool lifecycle updates with bounded textual tool results                                             |
-| `session/request_permission` | Explicit native permission dialogs with single-use allow/reject choices                                                 |
-| `session/cancel`             | Cancels the turn and pending permission waits; an unresponsive worker is stopped after a bounded wait                   |
-| `session/close`              | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue                           |
-| Disconnect / stdin EOF / output failure | Stops the connection's workers and releases owned resources before the broker exits                           |
+| Operation                               | Behavior                                                                                                                |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `initialize`                            | Reports supported ACP v1 through the pinned TypeScript SDK; a client that cannot use v1 must disconnect                 |
+| `session/new`                           | New conversation in an isolated native worker; up to eight sessions per connection, including pending creations         |
+| `session/list`                          | Lists stored conversations using their native persistent IDs, optionally filtered by cwd and paginated in groups of 50  |
+| `session/load`                          | Restores a stored conversation in its original cwd and replays supported history before replying                        |
+| `session/resume`                        | Restores the same context without replay; an idle session may be resumed on the same connection                         |
+| `session/prompt`                        | One active prompt per session; different sessions can run independently; response waits for the accepted turn to settle |
+| `session/update`                        | Assistant text and tool lifecycle updates with bounded textual tool results                                             |
+| `session/request_permission`            | Explicit native permission dialogs with single-use allow/reject choices                                                 |
+| `session/cancel`                        | Cancels the turn and pending permission waits; an unresponsive worker is stopped after a bounded wait                   |
+| `session/close`                         | Cancels ongoing work, stops that session's worker and frees its slot; other sessions continue                           |
+| Disconnect / stdin EOF / output failure | Stops the connection's workers and releases owned resources before the broker exits                                     |
 
 The adapter does not replay a prompt after worker failure or timeout. Already streamed output can be partial; a failure does not imply that no tools ran. ACP owns disposable worker process trees. Shutdown allows ten seconds for native cleanup before forced termination; the existing tree helper also bounds its post-kill wait. Detached descendant discovery depends on platform process enumeration. Native transcript IDs identify sessions across connections; only active worker handles belong to the current connection. Load and resume require the transcript's original cwd and use the current client MCP definitions. Load replay includes user/assistant text, stored images, visible extension messages (including external API input), and bounded textual tool results. Hidden extension context, reasoning, binary tool results and compaction markers are not projected. Reloading or resuming an idle session on the same connection replaces its worker with the supplied MCP definitions; a busy session is refused without cancelling its work.
 

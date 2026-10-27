@@ -1,4 +1,4 @@
-import { clampThinkingLevel } from "../models.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type {
 	Api,
 	Model,
@@ -6,6 +6,7 @@ import type {
 	SamplingParams,
 	SimpleStreamOptions,
 	StreamOptions,
+	ThinkingBudgetReduction,
 	ThinkingBudgets,
 	ThinkingLevel,
 	TranscriptContext,
@@ -89,6 +90,11 @@ export function thinkingBudgetForLevel(reasoningLevel: ThinkingLevel, customBudg
 /** Cap a thinking budget so at least MIN_ANSWER_TOKENS remain under a shared response ceiling. */
 export function clampThinkingBudgetToAnswerRoom(thinkingBudget: number, ceiling: number): number {
 	return Math.min(thinkingBudget, Math.max(0, ceiling - MIN_ANSWER_TOKENS));
+}
+
+/** The reduction record for a request whose thinking budget shrank from `requested` to `sent`; undefined when it did not. */
+export function thinkingBudgetReduction(requested: number, sent: number): ThinkingBudgetReduction | undefined {
+	return sent < requested ? { requested, sent } : undefined;
 }
 
 export function adjustMaxTokensForThinking(

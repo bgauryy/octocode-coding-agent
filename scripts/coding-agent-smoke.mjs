@@ -76,7 +76,10 @@ assert.ok(
 	readdirSync(getBundledSkillsDir()).some((name) => existsSync(join(getBundledSkillsDir(), name, "SKILL.md"))),
 	"the bundled skills the agent lists by default are packaged",
 );
-for (const kind of ["research", "native"]) assert.ok(existsSync(getResearchCliInvocation(kind).prefix[0]), kind + " entry is packaged");
+for (const kind of ["research", "native"]) {
+	const invocation = getResearchCliInvocation(kind);
+	assert.ok(existsSync(invocation.prefix[0] ?? invocation.command), kind + " entry is packaged");
+}
 `
 		: ""
 }

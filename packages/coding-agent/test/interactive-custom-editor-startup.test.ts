@@ -9,7 +9,7 @@ import {
 } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { setCustomEditorComponent } from "../src/modes/interactive/interactive-mode/extension-chrome.ts";
 import { setupKeyHandlers } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
-import { getEditorTheme, initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 function createStartupHost() {

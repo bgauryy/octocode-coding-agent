@@ -19,6 +19,12 @@ export const HOOKS_COMPAT_ENV = "OCTOCODE_HOOKS_COMPAT";
 /** `0` keeps the Octocode MCP server unregistered for this session and its children. */
 export const MCP_ENV = "OCTOCODE_MCP";
 
+/**
+ * `0` keeps the built-in `browser` MCP server (chrome-devtools) unregistered for this process. The parent sets it for a
+ * subagent whose profile cannot use browser tools; the user's own `browser` server definition is unaffected.
+ */
+export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
+
 /** `0` turns automatic memory injection off for this process (`/memory auto off` turns it off everywhere). */
 export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
 

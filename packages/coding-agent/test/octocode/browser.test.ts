@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "../../src/core/extensions/index.ts";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import * as importedModule2 from "../../src/octocode/browser/render.ts";
 import * as importedModule4 from "../../src/octocode/browser/session.ts";
 import * as importedModule1 from "../../src/octocode/browser/tool.ts";

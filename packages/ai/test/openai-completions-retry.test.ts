@@ -90,6 +90,17 @@ describe("openai-completions provider retries", () => {
 		expect(mockState.requestOptions).toEqual([expect.objectContaining({ maxRetries: 0 })]);
 	});
 
+	it("copies the provider's retry-after onto the error message when retries are off", async () => {
+		mockState.requestErrors = [
+			Object.assign(new Error("rate limited"), { status: 429, headers: new Headers({ "retry-after": "7" }) }),
+		];
+
+		const result = await consume();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.retryAfterMs).toBe(7000);
+	});
+
 	it("honors provider retries while keeping SDK retries disabled", async () => {
 		vi.useFakeTimers();
 		mockState.requestErrors = [

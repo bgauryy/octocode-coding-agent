@@ -1,6 +1,7 @@
 import { parseApplicationMessage, type ApplicationMessage } from "@octocodeai/octocode-contacts";
 import { memo, useCallback } from "react";
 import { stamp } from "../model/format.ts";
+import { ErrorBoundary } from "../ui/ErrorBoundary.tsx";
 import { LongText } from "../ui/LongText.tsx";
 import { Badge, type BadgeTone, cx } from "../ui/primitives.tsx";
 import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
@@ -20,7 +21,7 @@ const BADGE_TONES: Record<Tone, BadgeTone> = {
 };
 
 /** Memoized on the event object; the interner keeps unchanged events identical, so only changed rows render. */
-export const ResultCard = memo(function ResultCard({ event, compact }: { event: FeedEvent; compact?: boolean }) {
+const ResultCardContent = memo(function ResultCardContent({ event, compact }: { event: FeedEvent; compact?: boolean }) {
 	const { api } = useLive();
 	const loadAsset = useCallback(
 		(id: string, signal?: AbortSignal) => {
@@ -113,5 +114,14 @@ export const ResultCard = memo(function ResultCard({ event, compact }: { event: 
 				</details>
 			)}
 		</article>
+	);
+});
+
+/** Each card renders inside its own error boundary, so one row that cannot render does not take down the feed. */
+export const ResultCard = memo(function ResultCard({ event, compact }: { event: FeedEvent; compact?: boolean }) {
+	return (
+		<ErrorBoundary label="This result">
+			<ResultCardContent event={event} compact={compact} />
+		</ErrorBoundary>
 	);
 });

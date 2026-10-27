@@ -1,5 +1,7 @@
 /** The tool definition registry a session builds from built-in, SDK and extension tools. */
 
+import { mcpNamespace } from "../../../../mcp/src/servers.ts";
+import { OCTOCODE_SERVER } from "../../../../mcp/src/presets/octocode/names.ts";
 import type { RegisteredTool, ToolDefinition } from "../extensions/index.ts";
 import { NATIVE_FEATURE_PATH } from "../native-tools.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo } from "../source-info.ts";
@@ -97,19 +99,54 @@ export function buildToolDefinitionRegistry(
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+/** Tools every role is given in the same form, declared first and in this order. */
+const ROLE_INVARIANT_TOOLS = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
+
 /**
- * The order tools are declared in: the given order, except that MCP tools (namespace `mcp__<server>`) come last,
- * sorted by namespace and then name. Their registration and activation order follows connection timing, which
- * would otherwise change the declared tools, and so the cached prompt prefix, between sessions of one configuration.
+ * Tools whose presence or declaration depends on the role (a read-only child lacks debug, a parent lacks tool_search
+ * when everything is loaded), declared last and in this order.
+ */
+const ROLE_VARIANT_TOOLS = ["backlog", "memory", "debug", "askUser", "agent", "skill", "tool_search"];
+
+/** The research server's namespace: every role that has MCP tools has these, so they come before other servers' tools. */
+const SHARED_MCP_NAMESPACE = mcpNamespace(OCTOCODE_SERVER);
+
+const rankIn = (list: readonly string[], name: string) => {
+	const index = list.indexOf(name);
+	return index < 0 ? undefined : index;
+};
+
+/**
+ * The order tools are declared in, so that a parent and its children declare the same bytes for as long as possible
+ * (the tool declarations lead the cached prompt prefix): role-invariant tools in a fixed order, then other tools in the
+ * given order, then MCP tools (namespace `mcp__<server>`) sorted by namespace, the research server first, and name, then
+ * role-variant tools. MCP registration and activation order follows connection timing, which would otherwise change the
+ * declared tools, and so the cached prefix, between sessions of one configuration.
  */
 export function orderToolNames(names: Iterable<string>, namespaceOf: (name: string) => string | undefined): string[] {
+	const first: Array<{ name: string; rank: number }> = [];
+	const last: Array<{ name: string; rank: number }> = [];
 	const others: string[] = [];
 	const mcp: Array<{ name: string; namespace: string }> = [];
 	for (const name of new Set(names)) {
+		const invariant = rankIn(ROLE_INVARIANT_TOOLS, name);
+		const variant = rankIn(ROLE_VARIANT_TOOLS, name);
 		const namespace = namespaceOf(name);
-		if (namespace?.startsWith("mcp__")) mcp.push({ name, namespace });
+		if (invariant !== undefined) first.push({ name, rank: invariant });
+		else if (variant !== undefined) last.push({ name, rank: variant });
+		else if (namespace?.startsWith("mcp__")) mcp.push({ name, namespace });
 		else others.push(name);
 	}
-	mcp.sort((a, b) => compareText(a.namespace, b.namespace) || compareText(a.name, b.name));
-	return [...others, ...mcp.map((tool) => tool.name)];
+	const shared = (namespace: string) => (namespace === SHARED_MCP_NAMESPACE ? 0 : 1);
+	mcp.sort(
+		(a, b) =>
+			shared(a.namespace) - shared(b.namespace) || compareText(a.namespace, b.namespace) || compareText(a.name, b.name),
+	);
+	const byRank = (a: { rank: number }, b: { rank: number }) => a.rank - b.rank;
+	return [
+		...first.sort(byRank).map((tool) => tool.name),
+		...others,
+		...mcp.map((tool) => tool.name),
+		...last.sort(byRank).map((tool) => tool.name),
+	];
 }

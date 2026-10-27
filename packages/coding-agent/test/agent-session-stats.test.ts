@@ -116,6 +116,28 @@ describe("AgentSession.getSessionStats", () => {
 		}
 	});
 
+	it("counts responses whose thinking budget was reduced, ignoring legacy and uncut ones", async () => {
+		const { session, sessionManager } = await createSession();
+		try {
+			sessionManager.appendMessage(createAssistantMessage("legacy", 10, 1));
+			sessionManager.appendMessage({
+				...createAssistantMessage("halved", 10, 2),
+				thinkingBudget: { requested: 16384, sent: 4096 },
+			});
+			sessionManager.appendMessage({
+				...createAssistantMessage("disabled", 10, 3),
+				thinkingBudget: { requested: 8192, sent: 0 },
+			});
+			sessionManager.appendMessage({
+				...createAssistantMessage("full", 10, 4),
+				thinkingBudget: { requested: 8192, sent: 8192 },
+			});
+			expect(session.getSessionStats().thinkingReduced).toBe(2);
+		} finally {
+			session.dispose();
+		}
+	});
+
 	it("exposes the current context usage alongside token totals", async () => {
 		const { session, sessionManager } = await createSession();
 

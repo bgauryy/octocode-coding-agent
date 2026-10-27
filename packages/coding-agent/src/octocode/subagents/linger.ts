@@ -1,5 +1,7 @@
 import type { ExtensionContext } from "../../core/extensions/index.ts";
 import type { Permission } from "../permission/ask.ts";
+import { getMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
+import { errorMessage } from "../../utils/guards.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import type { ReportStatus } from "../instructions/report.ts";
 import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
@@ -9,8 +11,9 @@ import type { AgentProfile } from "./profiles.ts";
 
 /**
  * Finished background runs that stay reachable: a message from the parent or the user resumes their saved conversation
- * as a new background run. Every run does for `OCTOCODE_SUBAGENT_LINGER_SECONDS`; a run that reported `blocked` does for
- * at least `BLOCKED_LINGER_SECONDS` even when that is 0, because it waits for an answer.
+ * as a new background run. Every run does for its profile's `linger` seconds, else `OCTOCODE_SUBAGENT_LINGER_SECONDS`; a run that reported `blocked`
+ * or ended with an unanswered `replyRequired` message to its parent does for at least `BLOCKED_LINGER_SECONDS` even
+ * when that is 0, because it waits for an answer.
  */
 
 interface LingeringRun {
@@ -25,6 +28,16 @@ interface LingeringRun {
 interface Resumption {
 	text: string;
 	message: string;
+}
+
+/**
+ * An identity without the MCP servers the model added: their configs may hold credentials, so they are never written to
+ * the parked record, and a resumed run takes the session's current ones. The skill snapshot stays: a resumed child keeps
+ * the inventory it was given.
+ */
+function withoutServers(identity: Run["identity"]): Run["identity"] {
+	const { mcpServers: _servers, ...rest } = identity;
+	return rest;
 }
 
 /** A per-call browser mode is the one permitted change to the loaded profile; all other drift retires the address. */
@@ -43,6 +56,9 @@ export class Lingering {
 	private readonly generations = new Map<string, number>();
 	private readonly profiles: () => Map<string, AgentProfile>;
 	private sessionId: string | undefined;
+	/** The latest context, for telling the user a parked-record write failed; the warning is given once until a write succeeds. */
+	private notifier: ExtensionContext | undefined;
+	private persistWarned = false;
 
 	/**
 	 * `launchSignal` joins the caller's signal with the one a permission change or shutdown aborts. `start` begins the
@@ -71,6 +87,7 @@ export class Lingering {
 		this.close();
 		const session = ctx.sessionManager.getSessionId();
 		this.sessionId = session;
+		this.notifier = ctx;
 		const profiles = this.profiles();
 		const savedWorkers = readParked(session, ctx.cwd);
 		if (savedWorkers.length === 0) return;
@@ -96,17 +113,40 @@ export class Lingering {
 		this.persist();
 	}
 
+	/**
+	 * Saves the parked addresses. Best effort: a failed write (a full disk, a read-only or symlinked folder) is told
+	 * once and never thrown, because callers run inside a report or a timer; the in-memory windows still work.
+	 */
 	private persist(): void {
 		if (!this.sessionId) return;
-		writeParked(
-			this.sessionId,
-			[...this.entries.values()].map(({ run, until, generation, ctx }): ParkedWorker => ({
-				until,
-				generation,
-				workspace: ctx.cwd,
-				run: { identity: run.identity, profile: run.profile, route: run.route, teamNote: run.teamNote },
-			})),
-		);
+		try {
+			writeParked(
+				this.sessionId,
+				[...this.entries.values()].map(({ run, until, generation, ctx }): ParkedWorker => ({
+					until,
+					generation,
+					workspace: ctx.cwd,
+					run: {
+						identity: withoutServers(run.identity),
+						profile: run.profile,
+						route: run.route,
+						teamNote: run.teamNote,
+					},
+				})),
+			);
+			this.persistWarned = false;
+		} catch (error) {
+			if (this.persistWarned) return;
+			this.persistWarned = true;
+			try {
+				this.notifier?.ui.notify(
+					`Subagent follow-up windows are kept in memory only: saving them failed (${errorMessage(error)}).`,
+					"warning",
+				);
+			} catch {
+				// Nothing more to tell: the windows still work in this session.
+			}
+		}
 	}
 
 	private hold(entry: LingeringRun): void {
@@ -140,12 +180,13 @@ export class Lingering {
 	}
 
 	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */
-	window(run: Run, ctx: ExtensionContext): (outcome?: ReportStatus) => string {
+	window(run: Run, ctx: ExtensionContext): (outcome?: ReportStatus, awaitsReply?: boolean) => string {
 		const session = this.runs.session;
-		return (outcome?: ReportStatus): string => {
-			const seconds = reachableSeconds(outcome);
+		return (outcome?: ReportStatus, awaitsReply = false): string => {
+			const seconds = reachableSeconds(outcome, process.env, run.profile?.linger, awaitsReply);
 			if (session !== this.runs.session || seconds === 0) return "";
 			this.sessionId ??= ctx.sessionManager.getSessionId();
+			this.notifier = ctx;
 			const id = run.identity.id;
 			this.forget(id);
 			const generation = (this.generations.get(id) ?? 0) + 1;
@@ -156,6 +197,8 @@ export class Lingering {
 			const stop = `type \`coordinate\` with action \`stop\` and id ${id} ends that`;
 			if (outcome === "blocked")
 				return `\n\n${id} is blocked and stays resumable for ${seconds} s: answer it with \`agent\` type \`message\` to ${id} and it continues this conversation; ${stop}.`;
+			if (awaitsReply)
+				return `\n\n${id} is waiting for your reply to its question and stays resumable for ${seconds} s: answer it with \`agent\` type \`message\` to ${id} (\`replyTo\` its question) and it continues this conversation; ${stop}.`;
 			return `\n\n${id} stays reachable for ${seconds} s: \`agent\` type \`message\` to it continues this conversation; ${stop}.`;
 		};
 	}
@@ -190,9 +233,12 @@ export class Lingering {
 			launchSignal.throwIfAborted();
 			if (this.entries.get(id) !== prior || this.generations.get(id) !== prior.generation || Date.now() >= prior.until)
 				throw new Error(`Subagent ${id} is no longer available to resume.`);
-			// Keep the saved conversation and model, but renew authorization from the parent's current policy.
+			// Keep the saved conversation, model and skill inventory, but renew authorization from the parent's current policy,
+			// and take the session's current MCP servers, as a new run would.
+			const servers = getMcpAddedServers(runs.pi.events);
 			const identity = {
-				...last.identity,
+				...withoutServers(last.identity),
+				...(Object.keys(servers).length > 0 ? { mcpServers: servers } : {}),
 				relay: ctx.hasUI,
 				permission: { mode: permission.mode, grants: [...new Set([...grants, ...permission.childGrants()])] },
 			};

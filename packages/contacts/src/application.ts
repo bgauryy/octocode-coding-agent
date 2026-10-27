@@ -110,6 +110,8 @@ const toolData = {
 	details: Type.Optional(Type.Unknown()),
 	usage: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 	full: Type.Optional(ApplicationAssetSchema),
+	/** With status "failed": the tool never ran because its model response failed. Older clients show it as failed. */
+	notRun: Type.Optional(Type.Literal(true)),
 };
 const ReceiptSchema = Type.Object({
 	id: Type.String(),
@@ -142,6 +144,8 @@ export const ApplicationActivitySchema = Type.Object({
 	entryId: Type.Optional(Type.String()),
 	data: Type.Optional(Type.Unknown()),
 	full: Type.Optional(ApplicationAssetSchema),
+	/** Set when the activity reports a failure; absent otherwise, so older clients still read it as neutral. */
+	outcome: Type.Optional(Type.Literal("failed")),
 });
 export type ApplicationActivity = Static<typeof ApplicationActivitySchema>;
 const activityState = {

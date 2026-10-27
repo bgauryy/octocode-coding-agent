@@ -9,10 +9,11 @@ import { archiveSearch, existingLibrary, writeSegment } from "../../src/octocode
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fencedParts } from "../../src/octocode/shared/fence.ts";
 import { processAlive, processStartTime } from "../../src/octocode/shared/process.ts";
-import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
+import { type AgentRuns, claimRun, MAX_SUBAGENTS_ENV, Slots } from "../../src/octocode/subagents/claim.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
+import { childStagger } from "../../src/octocode/subagents/stagger.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { createWorktree } from "../../src/octocode/subagents/worktree.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -326,9 +327,7 @@ describe("agent tool with a scripted pi child", () => {
 				durationMs: 250,
 			}),
 		);
-		expect(done).toMatch(
-			/^ {2}⎿ {2}Done \([a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · \d+(ms|\.\d+s|s) · faux\/model\)\n/,
-		);
+		expect(done).toMatch(/^ {2}⎿ {2}Done · [a-z]+-[a-z]+ · 1 tool call · \d+(ms|\.\d+s|s)\n/);
 		const partial = rendered(
 			s.agent.renderResult(
 				{ content: [{ type: "text", text: "working" }], details: { ...result.details, seconds: undefined } },
@@ -339,7 +338,7 @@ describe("agent tool with a scripted pi child", () => {
 		);
 		expect(partial).toContain("→ bash ls -la");
 		expect(partial).toContain("📷");
-		expect(partial).toMatch(/^ {2}⎿ {2}[a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · faux\/model\n/);
+		expect(partial).toMatch(/^ {2}⎿ {2}[a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · model\n/);
 		const failed = rendered(
 			s.agent.renderResult(
 				{ content: [{ type: "text", text: "Subagent x failed\ndetail" }] },
@@ -361,7 +360,7 @@ describe("agent tool with a scripted pi child", () => {
 					isError: false,
 				}),
 			),
-		).toMatch(/^● Agent · background/);
+		).toMatch(/^✓ Agent · background/);
 		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ Agent");
 	});
 
@@ -378,8 +377,13 @@ describe("agent tool with a scripted pi child", () => {
 			expect(modelArg(reportOf(fallback.content[0].text))).toBe("faux/model");
 			expect(fallback.details).toMatchObject({ model: "faux/model", fallback: "claude-haiku-5-5" });
 			expect(
-				rendered(s.agent.renderResult(fallback, { isPartial: false, expanded: false }, theme, { isError: false })),
-			).toContain("faux/model (claude-haiku-5-5 unavailable)");
+				rendered(
+					s.agent.renderResult(fallback, { isPartial: false, expanded: true }, theme, {
+						isError: false,
+						expanded: true,
+					}),
+				),
+			).toContain("model (claude-haiku-5-5 unavailable)");
 			// The explicit parameter beats the profile and is strict.
 			expect(modelArg(await run({ task: "report", profile: "scout", model: "other" }))).toBe("faux/other");
 			await expect(s.run({ task: "report", profile: "scout", model: "faux/mdoel" })).rejects.toThrow(
@@ -388,6 +392,36 @@ describe("agent tool with a scripted pi child", () => {
 		} finally {
 			profiles.delete("scout");
 			profiles.delete("absent");
+		}
+	});
+
+	it("names the model a failed child ran on, and for a refused credential tells the parent to pass this session's model", async () => {
+		profiles.set("scout", { name: "scout", description: "", prompt: "", model: "shared" });
+		try {
+			const refused = await s.run({ task: "auth error please", profile: "scout" });
+			expect(refused).toMatchObject({ isError: true, details: { status: "failed", model: "alt/shared" } });
+			const footer = fencedParts(refused.content[0].text)?.footer ?? "";
+			expect(footer).toContain("Ran on alt/shared (profile scout: shared).");
+			expect(footer).toContain('model: "faux/model"');
+			expect(footer).toContain("/providers");
+			expect(footer).not.toContain("narrower task");
+			await s.run({ task: "auth error please", profile: "scout", background: true });
+			await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+			const report = String(s.sent[0].message.content);
+			expect(report).toContain("Ran on alt/shared (profile scout: shared).");
+			expect(report).toContain('model: "faux/model"');
+			expect(report).not.toContain("narrower task");
+			// On this session's own model, switching to it cannot help: the credential is the fix.
+			const own = await s.run({ task: "auth error please" });
+			const ownFooter = fencedParts(own.content[0].text)?.footer ?? "";
+			expect(ownFooter).toContain("Ran on faux/model (this session's model).");
+			expect(ownFooter).toContain("/providers");
+			expect(ownFooter).not.toContain('model: "faux/model"');
+			// Any other failure keeps the usual advice and still names the model.
+			const down = await s.run({ task: "error please", model: "other" });
+			expect(fencedParts(down.content[0].text)?.footer).toContain("Ran on faux/other (model argument: other).");
+		} finally {
+			profiles.delete("scout");
 		}
 	});
 
@@ -592,6 +626,62 @@ describe("agent tool with a scripted pi child", () => {
 		await expect(s.run({ task: "report" })).resolves.toMatchObject({ details: { status: "done" } });
 	});
 
+	it("lets a child whose step a team interrupt stopped continue with the message, not end as cancelled", async () => {
+		const result = await s.run({ task: "interrupted" });
+		expect(result.isError).toBeUndefined();
+		expect(result.details).toMatchObject({ status: "done", outcome: "done" });
+		expect(result.content[0].text).toContain("switched to the interrupt's request");
+		expect(result.content[0].text).not.toContain("cancelled");
+	});
+
+	it("gives the slot and the name back when setup throws after the run is claimed", async () => {
+		process.env[MAX_SUBAGENTS_ENV] = "1";
+		const { events } = s.pi;
+		const registry = s.ctx.modelRegistry;
+		// Within one 2 s window: a leaked slot makes the next run wait forever instead.
+		const within = <T>(work: Promise<T>) =>
+			Promise.race([
+				work,
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("waited for a leaked slot")), 2_000)),
+			]);
+		try {
+			// After claimRun: reading the session's added MCP servers fails.
+			Object.assign(s.pi, {
+				events: {
+					...events,
+					emit: () => {
+						throw new Error("event bus broke");
+					},
+				},
+			});
+			await expect(s.run({ task: "report" })).rejects.toThrow("event bus broke");
+			expect(s.control.running()).toEqual([]);
+			Object.assign(s.pi, { events });
+			// Inside claimRun, after the name is taken: the child model's cache policy cannot be read.
+			Object.assign(s.ctx, {
+				modelRegistry: {
+					...registry,
+					getCachePolicy: () => {
+						throw new Error("settings broke");
+					},
+				},
+			});
+			await expect(s.run({ task: "report" })).rejects.toThrow("settings broke");
+			expect(s.control.running()).toEqual([]);
+			// The name it took is given back too, so it is not listed as running or avoided by later names.
+			const runs = { pi: s.pi, team: s.team, running: new Map(), slots: new Slots() } as unknown as AgentRuns;
+			const plan = { profile: undefined, route: { model: "faux/model" } };
+			expect(() => claimRun(runs, plan, { goal: "g" }, s.ctx)).toThrow("settings broke");
+			expect([...runs.running.keys()]).toEqual([]);
+			Object.assign(s.ctx, { modelRegistry: registry });
+			await expect(within(s.run({ task: "report" }))).resolves.toMatchObject({ details: { status: "done" } });
+		} finally {
+			Object.assign(s.pi, { events });
+			Object.assign(s.ctx, { modelRegistry: registry });
+			delete process.env[MAX_SUBAGENTS_ENV];
+		}
+	});
+
 	it("reports a background child that crashed while starting as failed (startup), with its cause in the details", async () => {
 		await s.run({ task: "startup plain", background: true });
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
@@ -625,6 +715,21 @@ describe("agent tool with a scripted pi child", () => {
 		}
 	});
 
+	it("staggers background children of one profile and model through the shared prefix gate, not foreground ones", async () => {
+		const stagger = vi.spyOn(childStagger, "run");
+		try {
+			await s.run({ task: "report from the background", background: true });
+			await s.run({ task: "report from the background", background: true });
+			await s.run({ task: "report back" });
+			await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
+			expect(stagger).toHaveBeenCalledTimes(2);
+			expect(stagger.mock.calls[0][0]).toBe(stagger.mock.calls[1][0]);
+			expect(stagger.mock.calls[0][0]).toContain("general");
+		} finally {
+			stagger.mockRestore();
+		}
+	});
+
 	it("runs in the background, delivers the answer as a message, and /agents kill stops one", async () => {
 		const started = await s.run({ task: "report from the background", background: true });
 		expect(started.content[0].text).toMatch(/^Started [a-z]+-[a-z]+ \(general: check things\) in the background/);
@@ -642,12 +747,10 @@ describe("agent tool with a scripted pi child", () => {
 		expect(answer.message.details).not.toHaveProperty("outcome");
 		expect(answer.message.details).toMatchObject({
 			status: "done",
-			summary: expect.stringMatching(/^Done \([a-z]+-[a-z]+ · 1 tool call · ↑100 ↓20 · ≈\$0\.01 · /),
+			summary: expect.stringMatching(/^Done · 1 tool call · /),
 		});
 		const shown = rendered(renderer(answer.message, { expanded: false }, theme));
-		expect(shown).toMatch(
-			/^ ● Agent\([a-z]+-[a-z]+ · check things\) · background · \S+\n {3}⎿ {2}Done \([a-z]+-[a-z]+ · 1 tool call/,
-		);
+		expect(shown).toMatch(/^ ✓ Agent\([a-z]+-[a-z]+ · check things\) · background · \S+\n {3}⎿ {2}Done · 1 tool call/);
 		expect(shown).toContain("report");
 
 		await s.run({ task: "error in background", background: true });
@@ -790,7 +893,9 @@ describe("agent tool with a scripted pi child", () => {
 			delete process.env.OCTOCODE_FAKE_GATE;
 		}
 		const { message } = reports()[0];
-		expect(String(message.content)).toMatch(/\nAsks to its parent: 2 asks \(1 answered in \d+s, 1 unanswered\)\.$/);
+		expect(String(message.content)).toMatch(/\nAsks to its parent: 2 asks \(1 answered in \d+s, 1 unanswered\)\./);
+		// An unanswered ask keeps the child resumable, and the report says it waits for a reply.
+		expect(String(message.content)).toMatch(/is waiting for your reply to its question and stays resumable for 600 s/);
 		expect(message.details.asks).toEqual([
 			{
 				id: first,

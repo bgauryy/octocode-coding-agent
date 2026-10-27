@@ -6,7 +6,6 @@ import { observeModelRequest } from "../telemetry.ts";
 import type {
 	AnyModel,
 	Api,
-	ApiStreamOptions,
 	AssistantImages,
 	AssistantMessageEventStream,
 	ClassifierApi,
@@ -21,6 +20,7 @@ import type {
 	Model,
 	ProviderRequestOptions,
 } from "../types.ts";
+import type { ApiStreamOptions } from "../types/options.ts";
 import {
 	assertChatModel,
 	assertClassifierInputSupported,

@@ -132,7 +132,11 @@ describe("registerTurnSetup", () => {
 			profiles: () => profiles,
 		});
 		expect(await run(fake, ["agent", "file", "web"])).toContain("Delegate browser interaction to `browser`");
+		expect(await run(fake, ["agent", "file", "web"])).toMatch(
+			/message that same agent for follow-ups.*instead of starting a new one/,
+		);
 		expect(await run(fake, ["agent", "file", "browser"])).not.toContain("Delegate browser interaction");
+		expect(await run(fake, ["agent", "file", "mcp__browser__run"])).not.toContain("Delegate browser interaction");
 		expect(await run(fake, ["file", "web"])).not.toContain("Delegate browser interaction");
 	});
 

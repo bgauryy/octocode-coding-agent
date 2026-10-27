@@ -95,6 +95,16 @@ export function parseJsonWithRepair<T>(json: string): T {
 	}
 }
 
+/** Longest prefix of the model's arguments echoed back in an error message. */
+export const MAX_ECHOED_ARGUMENTS_CHARS = 1500;
+
+/** The model's arguments text for an error message: the first {@link MAX_ECHOED_ARGUMENTS_CHARS} characters and the size of the rest. */
+export function describeReceivedArguments(received: string): string {
+	if (received.length <= MAX_ECHOED_ARGUMENTS_CHARS) return `Received arguments:\n${received}`;
+	const omitted = received.length - MAX_ECHOED_ARGUMENTS_CHARS;
+	return `Received arguments (first ${MAX_ECHOED_ARGUMENTS_CHARS} of ${received.length} characters; ${omitted} more omitted):\n${received.slice(0, MAX_ECHOED_ARGUMENTS_CHARS)}`;
+}
+
 /**
  * Parses the model's complete arguments text of a finished tool call.
  *
@@ -114,7 +124,7 @@ export function parseToolCallArguments(json: string | undefined): Pick<ToolCall,
 	} catch (error) {
 		return {
 			arguments: {},
-			argumentsError: `${error instanceof Error ? error.message : String(error)}\n\nReceived arguments:\n${json}`,
+			argumentsError: `${error instanceof Error ? error.message : String(error)}\n\n${describeReceivedArguments(json)}`,
 		};
 	}
 }
@@ -146,4 +156,41 @@ export function parseStreamingJson<T = Record<string, unknown>>(partialJson: str
 			}
 		}
 	}
+}
+
+/** Arguments are re-parsed on every delta up to this length; beyond it, only after enough growth. */
+const PARSE_EVERY_DELTA_UNTIL = 4096;
+const MIN_PARSE_GROWTH = 2048;
+/** Text length that each parsed arguments object was parsed from. */
+const parsedLengths = new WeakMap<object, number>();
+
+/**
+ * Streaming counterpart of {@link parseStreamingJson} that keeps the cost of a long argument linear.
+ *
+ * Parsing the whole accumulated text on every delta is quadratic, so past a few KB it returns `previous`
+ * (the object this function returned last for the same text) until the text has grown by an eighth
+ * (at least 2 KB). The previews therefore lag by a bounded amount; the finished call is parsed exactly
+ * with {@link parseToolCallArguments}.
+ *
+ * @param previous The arguments last returned for this call, if any
+ * @param partialJson The accumulated partial JSON
+ */
+export function parseStreamingJsonThrottled<T extends object = Record<string, unknown>>(
+	previous: T | undefined,
+	partialJson: string | undefined,
+): T {
+	const length = partialJson?.length ?? 0;
+	const parsedLength = previous === undefined ? undefined : parsedLengths.get(previous);
+	if (
+		previous !== undefined &&
+		parsedLength !== undefined &&
+		length >= parsedLength &&
+		length > PARSE_EVERY_DELTA_UNTIL &&
+		length - parsedLength < Math.max(MIN_PARSE_GROWTH, parsedLength / 8)
+	) {
+		return previous;
+	}
+	const parsed = parseStreamingJson<T>(partialJson);
+	if (typeof parsed === "object" && parsed !== null) parsedLengths.set(parsed, length);
+	return parsed;
 }

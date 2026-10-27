@@ -3,10 +3,10 @@ import type {
 	ResponseReasoningItem,
 	ResponseStreamEvent,
 } from "openai/resources/responses/responses.js";
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type { Api, AssistantMessage, Model, TextContent, ThinkingContent, ToolCall } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { parseStreamingJson, parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { appendGrammarToolInputJsonDelta, type GrammarToolInputJsonBuffer } from "../constrained-sampling.ts";
 import { mapStopReason, parseResponsesUsage } from "./response-result.ts";
 import { encodeTextSignatureV1 } from "./text-signature.ts";
@@ -271,7 +271,7 @@ export async function processResponsesStream<TApi extends Api>(
 			const slot = getSlot(event.output_index, "toolCall");
 			if (!slot || slot.block.partialJson === undefined) continue;
 			slot.block.partialJson += event.delta;
-			slot.block.arguments = parseStreamingJson(slot.block.partialJson);
+			slot.block.arguments = parseStreamingJsonThrottled(slot.block.arguments, slot.block.partialJson);
 			pushToolCallDelta(slot, event.delta);
 		} else if (event.type === "response.function_call_arguments.done") {
 			const slot = getSlot(event.output_index, "toolCall");

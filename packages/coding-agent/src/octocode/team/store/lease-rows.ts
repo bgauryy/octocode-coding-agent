@@ -1,11 +1,10 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../../agentdb/rows.ts";
-import { canonicalPath } from "../../shared/home/repo.ts";
 import { ancestorKeys, overlappingRequests } from "../lease-key.ts";
 import { type Lease, type LeaseRequest, toLease } from "../model.ts";
 import { LEASE_MS } from "./limits.ts";
-import { pathKey } from "./workspace.ts";
+import { canonicalIn, pathKey } from "./workspace.ts";
 
 /** The lease rows behind `TeamStore` (`store.ts`); each is described on the `TeamStore` method that runs it. */
 
@@ -49,8 +48,7 @@ export function refuseOverlap(workspace: string, requests: LeaseRequest[]): void
 		requests.map((request) => ({ ...request, key: pathKey(workspace, request.path) })),
 	);
 	if (overlap) {
-		const shown = (request: LeaseRequest) =>
-			path.relative(workspace, canonicalPath(path.resolve(workspace, request.path))) || ".";
+		const shown = (request: LeaseRequest) => path.relative(workspace, canonicalIn(workspace, request.path)) || ".";
 		throw new Error(
 			`Requested paths overlap: ${shown(overlap[0])} and ${shown(overlap[1])}. Nothing was locked; reserve the tree alone, or each path once.`,
 		);
@@ -73,7 +71,7 @@ export function writeLeases(
 	);
 	const touch = db.prepare("UPDATE leases SET reason = ?, expires_at = ? WHERE id = ?");
 	for (const request of requests) {
-		const relative = path.relative(workspace, canonicalPath(path.resolve(workspace, request.path))) || ".";
+		const relative = path.relative(workspace, canonicalIn(workspace, request.path)) || ".";
 		const key = pathKey(workspace, request.path);
 		const existing = find.get(workspace, owner, key, request.kind, now) as Row | undefined;
 		if (existing) touch.run(request.reason, now + LEASE_MS, num(existing.id));

@@ -31,6 +31,7 @@ import {
 	verificationLine,
 	verificationSchema,
 } from "./bash/verification.ts";
+import { recordShellMutation } from "./bash/mutation.ts";
 import { plural } from "../shared/render/text.ts";
 import { statusColor } from "../shared/render/status.ts";
 import { timedTool } from "../shared/render/rows.ts";
@@ -245,9 +246,10 @@ export function registerBashTool(
 				signal?.throwIfAborted();
 				current = ctx;
 				const settings = { ...settingsFor(ctx), type: params.type ?? "bash" };
-				const verification = params.verify
-					? beginVerification(params.command, ctx.cwd, ctx.sessionManager.getSessionId())
-					: undefined;
+				const sessionId = ctx.sessionManager?.getSessionId?.() ?? "standalone:bash";
+				// Before the receipt begins: a command that changes files makes older checks stale, and its own check starts after its writes.
+				await recordShellMutation(params.command, ctx.cwd, sessionId, settings.type === "powershell");
+				const verification = params.verify ? beginVerification(params.command, ctx.cwd, sessionId) : undefined;
 				if (params.background) {
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
 						env: bashSessionEnv(ctx),

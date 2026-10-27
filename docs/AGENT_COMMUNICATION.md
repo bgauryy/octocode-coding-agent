@@ -4,13 +4,13 @@ Internal Team mail, worker RPC, the native process API and ACP have distinct del
 
 ## External processes
 
-| Goal | Interface and owner | Lifecycle |
-| --- | --- | --- |
-| An editor or script launches Octocode | [Inbound ACP](../packages/coding-agent/docs/acp.md), `packages/acp/src/server/` | The client owns the broker; the broker owns one RPC worker per session. |
-| A local process talks to a running Octocode host | [Local session API](../packages/coding-agent/docs/session-api.md), `src/octocode/api/` | Discover an opted-in instance, guard its conversation ID, send and observe results. |
-| Octocode launches an external coding agent | Native `agent`, `type: "external"`, `transport: "acp"`; `src/octocode/external/` | The connection owns its peer process tree and returns each prompt's reply. |
-| Octocode attaches to an existing peer | Native `agent`, `type: "external"`, `transport: "octocode"` | Uses the peer's local API and an idle-only guarded message; disconnect does not terminate the peer host. |
-| An embedding host controls a native worker | [SDK/RPC](../packages/coding-agent/docs/sdk.md#process-clients), `src/modes/rpc/` | The host owns process lifetime, request correlation and explicit cancellation. |
+| Goal                                             | Interface and owner                                                                    | Lifecycle                                                                                                |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| An editor or script launches Octocode            | [Inbound ACP](../packages/coding-agent/docs/acp.md), `packages/acp/src/server/`        | The client owns the broker; the broker owns one RPC worker per session.                                  |
+| A local process talks to a running Octocode host | [Local session API](../packages/coding-agent/docs/session-api.md), `src/octocode/api/` | Discover an opted-in instance, guard its conversation ID, send and observe results.                      |
+| Octocode launches an external coding agent       | Native `agent`, `type: "external"`, `transport: "acp"`; `src/octocode/external/`       | The connection owns its peer process tree and returns each prompt's reply.                               |
+| Octocode attaches to an existing peer            | Native `agent`, `type: "external"`, `transport: "octocode"`                            | Uses the peer's local API and an idle-only guarded message; disconnect does not terminate the peer host. |
+| An embedding host controls a native worker       | [SDK/RPC](../packages/coding-agent/docs/sdk.md#process-clients), `src/modes/rpc/`      | The host owns process lifetime, request correlation and explicit cancellation.                           |
 
 ACP updates and local API events are observations, not Team-mail acknowledgments. A peer can answer an outbound ACP prompt; to initiate an independent message to a running Octocode host, it uses that host's enabled local API. Both directions retain native tool permission checks. A remote HTTP ACP service and A2A are not implemented by the local API.
 
@@ -48,13 +48,13 @@ stateDiagram-v2
 
 These are delivery stages, not a shared task state machine. Broadcast creates recipient delivery records; a reply is another message. Late rejection after model-context acknowledgment does not replay mail. Session generations prevent old callbacks acknowledging a new inbox. Dead-letter notices retry failed host acceptance, but acceptance does not prove the sender's model saw them. Mail retry currently uses the regular tick without exponential backoff. This is internal agent mail, not an email-provider integration.
 
-| Boundary | What an acknowledgment establishes | Recovery limit |
-| --- | --- | --- |
-| Team mail | Recipient model context contains the message | SQLite delivery records and retries; host-local membership/process checks |
-| Child RPC and reports | Protocol response or matching report recorded in the parent transcript | Pending report copies require a successful disk write |
-| Native process API | `accepted` means dispatched; `settled` means the run ended | An asynchronous failed handoff becomes `uncertain`; the same key cannot dispatch again. Keys and replay are session-memory scoped |
-| Inbound/outbound ACP | Protocol session, streamed updates and prompt stop reason | Client/editor transport and native session persistence; not Team delivery acknowledgment |
-| Application stream | A session/epoch cursor identifies ordered events | Bounded replay; coalesced full-text deltas identify their exact sequence range |
+| Boundary              | What an acknowledgment establishes                                     | Recovery limit                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Team mail             | Recipient model context contains the message                           | SQLite delivery records and retries; host-local membership/process checks                                                         |
+| Child RPC and reports | Protocol response or matching report recorded in the parent transcript | Pending report copies require a successful disk write                                                                             |
+| Native process API    | `accepted` means dispatched; `settled` means the run ended             | An asynchronous failed handoff becomes `uncertain`; the same key cannot dispatch again. Keys and replay are session-memory scoped |
+| Inbound/outbound ACP  | Protocol session, streamed updates and prompt stop reason              | Client/editor transport and native session persistence; not Team delivery acknowledgment                                          |
+| Application stream    | A session/epoch cursor identifies ordered events                       | Bounded replay; coalesced full-text deltas identify their exact sequence range                                                    |
 
 An uncertain native API send releases failed active ownership while retaining its key; actual session activity still prevents an idle-only send. A stale session callback cannot change the replacement session's receipt or audit stream. API acceptance, mail delivery, a completed model run and a completed backlog item are different facts. See the [entity model](ENTITIES.md) and [protocol RFC](RFC_COMMUNICATION_PROTOCOL.md).
 

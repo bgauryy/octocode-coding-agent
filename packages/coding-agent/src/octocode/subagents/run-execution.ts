@@ -5,18 +5,12 @@ import { USER_SENDER } from "../shared/messages.ts";
 import { firstLine } from "../shared/util.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import type { BackgroundRun } from "./command.ts";
+import { withStopFacts } from "./budget.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
-import {
-	FAILED_NEXT,
-	foregroundExtras,
-	PARTIAL_UNVERIFIED,
-	PERMISSION_STOP,
-	reportMessage,
-	stoppedError,
-} from "./report-text.ts";
+import { failedNext, foregroundExtras, PERMISSION_STOP, reportMessage, stoppedError } from "./report-text.ts";
 import { unavailableResult } from "./result-schema.ts";
 import type { RunDetails } from "./run-types.ts";
 import { stopFacts } from "./stop-facts.ts";
@@ -33,7 +27,7 @@ export function startBackground(
 	launch: (signal: AbortSignal) => Promise<Outcome>,
 	finish: () => Promise<string>,
 	piSession: string,
-	linger?: (outcome?: ReportStatus) => string,
+	linger?: (outcome?: ReportStatus, awaitsReply?: boolean) => string,
 ): void {
 	const { background, read } = runs;
 	const { identity } = run;
@@ -56,7 +50,7 @@ export function startBackground(
 	const shown = { task, goal: identity.goal ?? "", profile: identity.role ?? "" };
 	entry.done = (async () => {
 		try {
-			const outcome = await launch(controller.signal);
+			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 			const note = await finish();
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
@@ -80,10 +74,12 @@ export function startBackground(
 			const durationMs = Date.now() - details.startedAt;
 			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details, durationMs);
 			const alreadyRead = read.consume(identity.id);
-			const next = outcome.error ? `${FAILED_NEXT}${outcome.text ? PARTIAL_UNVERIFIED : ""}` : "";
+			const next = outcome.error ? failedNext(run.route, outcome.error, Boolean(outcome.text)) : "";
 			const notices = noticeLines(details).join("\n");
-			// A successful run that lingers stays reachable: the report says for how long and how to use or end it.
-			const reachable = outcome.error ? "" : (linger?.(reported) ?? "");
+			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent lingers whatever it reported.
+			const reachable = outcome.error
+				? ""
+				: (linger?.(reported, details.asks?.some((ask) => !ask.answer) === true) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
@@ -187,7 +183,7 @@ export async function runForeground(
 	runs.foreground.set(identity.id, entry);
 	let outcome: Outcome;
 	try {
-		outcome = await launch(controller.signal);
+		outcome = withStopFacts(await launch(controller.signal), details, runs.team);
 	} catch (error) {
 		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
@@ -205,7 +201,7 @@ export async function runForeground(
 		const text = reportMessage(
 			`Subagent ${identity.id} failed`,
 			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
-			[`${FAILED_NEXT}${outcome.text ? PARTIAL_UNVERIFIED : ""}`, note],
+			[failedNext(run.route, outcome.error, Boolean(outcome.text)), note],
 		);
 		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
 	}

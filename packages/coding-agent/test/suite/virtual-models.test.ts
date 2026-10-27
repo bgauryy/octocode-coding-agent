@@ -288,6 +288,27 @@ describe("AgentSession virtual models", () => {
 		expect(dispatched()).toEqual(["faux/large:high", "faux/small:off"]);
 	});
 
+	it("sizes the pre-request compaction threshold from the routed thinking level", async () => {
+		const toLargeHigh: Route = (_request, ctx) => ({
+			model: ctx.modelRegistry.find("faux", "large")!,
+			thinkingLevel: "high",
+		});
+		const { harness, dispatched } = await createRoutedHarness(toLargeHigh);
+		const levels: unknown[] = [];
+		const original = harness.settingsManager.getCompactionSettings.bind(harness.settingsManager);
+		harness.settingsManager.getCompactionSettings = (model, thinking) => {
+			if (model?.id === "large") levels.push(thinking);
+			return original(model, thinking);
+		};
+		harness.session.setThinkingLevel("low");
+		harness.setResponses([fauxAssistantMessage("answer")]);
+		await harness.session.prompt("hello");
+
+		expect(dispatched()).toEqual(["faux/large:high"]);
+		// The request's own threshold check ran at the routed level, not the session's `low`.
+		expect(levels[0]).toBe("high");
+	});
+
 	it("projects the session once per request under a virtual selection", async () => {
 		const { harness } = await createRoutedHarness();
 		harness.setResponses([

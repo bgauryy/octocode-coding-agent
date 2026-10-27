@@ -33,7 +33,13 @@ export function renderServersSection(servers: readonly McpServerListing[]): stri
 		.sort((a, b) => compareText(a.entry.name, b.entry.name));
 	if (!listed.length) return undefined;
 	return [
-		"MCP servers in this session. Active tool declarations contain their full descriptions and schemas. Load deferred tools with tool_search before calling them. Use mcp for status, tool contracts, connect, restart or stop.",
+		[
+			"MCP servers in this session. Active tool declarations contain their full descriptions and schemas.",
+			...(listed.some((server) => reachOf(server) === "tool_search")
+				? ["Load deferred tools with tool_search before calling them."]
+				: []),
+			"Use mcp for status, tool contracts, connect, restart or stop.",
+		].join(" "),
 		...listed.flatMap((server) => {
 			const namespace = mcpNamespace(server.entry.name);
 			const names = (tools: readonly McpListedTool[]) =>

@@ -17,7 +17,7 @@ import {
 	FirstTimeSetupComponent,
 	type FirstTimeSetupResult,
 } from "../modes/interactive/components/first-time-setup.ts";
-import { SYSTEM_THEME_NAME } from "../modes/interactive/theme/system-theme.ts";
+import { SYSTEM_THEME_NAME } from "../theme/system-theme.ts";
 import {
 	getTerminalTheme,
 	initTheme,
@@ -28,7 +28,7 @@ import {
 	setTerminalColors,
 	setTheme,
 	type Theme,
-} from "../modes/interactive/theme/theme.ts";
+} from "../theme/theme.ts";
 import { requestTerminalColors } from "../modes/interactive/theme/theme-controller.ts";
 
 const OFFICIAL_PACKAGE_NAME = "@octocodeai/octocodecode";

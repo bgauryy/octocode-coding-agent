@@ -3,6 +3,7 @@ import { estimateTokens } from "../../src/core/compaction/index.ts";
 import {
 	contextTokens,
 	needsDownshiftCompaction,
+	THRASH_MESSAGE,
 	THRASH_STREAK,
 	THRASH_TURNS,
 	ThrashBreaker,
@@ -199,8 +200,56 @@ describe("pacing wired into the session", () => {
 		context: { contextEntries: [] },
 	};
 
-	it("cancels an automatic compaction and stops the run once the context keeps refilling; a manual one still runs", async () => {
+	const trip = async (fire: (name: string, event?: unknown) => Promise<unknown>) => {
+		await fire("session_compact", { reason: "threshold" });
+		for (let i = 0; i < THRASH_STREAK; i++) {
+			await fire("turn_end", turnEnd);
+			await fire("session_compact", { reason: "threshold" });
+		}
+		await fire("turn_end", turnEnd);
+	};
+
+	it("refuses an automatic compaction as a visible failure without stopping the run while the context still fits the window", async () => {
+		// One token of a one-token window: above the threshold, but the prompt can still be sent.
 		const { ctx, fire, notes } = session(1);
+		await trip(fire);
+		expect(await fire("session_before_compact", beforeCompact("threshold"))).toEqual({
+			cancel: true,
+			failure: THRASH_MESSAGE,
+		});
+		expect(ctx.abort).not.toHaveBeenCalled();
+		expect(notes).toEqual([
+			{ customType: COMPACTION_NOTE_TYPE, data: { kind: "thrash-stop", reason: THRASH_MESSAGE } },
+		]);
+	});
+
+	it("clears once runs settle without a turn (a prompt dropped by the refusal counts)", async () => {
+		const { fire } = session(2);
+		await trip(fire);
+		// The run whose turn ended settles; then each new prompt is stopped by the refusal before its first turn.
+		await fire("agent_settled", { aborted: false });
+		for (let i = 0; i < THRASH_TURNS; i++) {
+			expect(await fire("session_before_compact", beforeCompact("threshold"))).toEqual({ cancel: true });
+			await fire("agent_settled", { aborted: true });
+		}
+		await expect(fire("session_before_compact", beforeCompact("threshold"))).resolves.not.toEqual({ cancel: true });
+	});
+
+	it("does not count a settled run twice when its turns already ended", async () => {
+		const { fire } = session(2);
+		await trip(fire);
+		// Each run settles after its one turn: three turns since the compaction, still within the refill window.
+		await fire("agent_settled", { aborted: false });
+		for (let i = 1; i < THRASH_TURNS; i++) {
+			await fire("turn_end", turnEnd);
+			await fire("agent_settled", { aborted: false });
+		}
+		expect(await fire("session_before_compact", beforeCompact("threshold"))).toEqual({ cancel: true });
+	});
+
+	it("cancels an automatic compaction and stops the run once the context keeps refilling past the window; a manual one still runs", async () => {
+		// Two tokens of a one-token window: the prompt cannot be sent, so the run stops.
+		const { ctx, fire, notes } = session(2);
 		await fire("session_compact", { reason: "threshold" });
 		for (let i = 0; i < THRASH_STREAK; i++) {
 			await fire("turn_end", turnEnd);

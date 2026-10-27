@@ -49,6 +49,21 @@ function describeProviderManaged(api: Api, history: Policy["cacheRetention"]): s
 	}
 }
 
+/** Whether the request carries Anthropic-style cache markers: Anthropic Messages, Bedrock Claude, OpenRouter Claude. */
+export function usesAnthropicMarkers(model: Model<Api>): boolean {
+	const openRouterClaude =
+		model.api === "openai-completions" &&
+		((model as Model<"openai-completions">).compat?.cacheControlFormat === "anthropic" ||
+			(model.provider === "openrouter" && /^~?anthropic\//.test(model.id)));
+	const bedrockClaude = model.api === "bedrock-converse-stream" && /anthropic[./]claude/i.test(model.id);
+	return model.api === "anthropic-messages" || bedrockClaude || openRouterClaude;
+}
+
+/** Whether a marker-based model accepts the one-hour tier (its compat does not turn long retention off). */
+export function supportsOneHourCache(model: Model<Api>): boolean {
+	return (model.compat as { supportsLongCacheRetention?: boolean } | undefined)?.supportsLongCacheRetention !== false;
+}
+
 /** Anthropic marker semantics, shared by Anthropic, Bedrock Claude and OpenRouter Claude. */
 function describeMarkers({ cacheRetention: history, instructionCacheRetention: instructions }: Policy, long: boolean) {
 	if (history === "none") return "No cache markers are sent, so nothing is written to the cache.";
@@ -96,15 +111,9 @@ export function describeCachePolicy(
 	subscription = false,
 ): string {
 	const { cacheRetention: history, instructionCacheRetention: instructions } = policy.options;
-	const openRouterClaude =
-		model.api === "openai-completions" &&
-		((model as Model<"openai-completions">).compat?.cacheControlFormat === "anthropic" ||
-			(model.provider === "openrouter" && /^~?anthropic\//.test(model.id)));
-	const bedrockClaude = model.api === "bedrock-converse-stream" && /anthropic[./]claude/i.test(model.id);
 	let effective: string;
-	if (model.api === "anthropic-messages" || bedrockClaude || openRouterClaude) {
-		const compat = model.compat as { supportsLongCacheRetention?: boolean } | undefined;
-		effective = describeMarkers(policy.options, compat?.supportsLongCacheRetention !== false);
+	if (usesAnthropicMarkers(model)) {
+		effective = describeMarkers(policy.options, supportsOneHourCache(model));
 	} else if (model.api === "openai-responses") {
 		effective = describeOpenAIResponses(model as Model<"openai-responses">, policy.options, subscription);
 	} else {

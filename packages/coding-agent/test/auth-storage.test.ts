@@ -1,4 +1,13 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import fs, {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CredentialStore, createModels, type Provider } from "@octocodeai/octocode-ai";
@@ -258,6 +267,51 @@ describe("AuthStorage", () => {
 		expect(lockSpy).toHaveBeenCalledTimes(2);
 		expect(update).toHaveBeenCalledTimes(1);
 		expect(release).toHaveBeenCalledTimes(1);
+	});
+
+	describe("atomic auth.json writes", () => {
+		const leftovers = () => readdirSync(tempDir).filter((name) => name.endsWith(".tmp"));
+
+		test("replaces the file by rename and keeps its mode (sync and async)", async () => {
+			writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
+			chmodSync(authJsonPath, 0o640);
+			const backend = new FileAuthStorageBackend(authJsonPath);
+			const inode = () => statSync(authJsonPath).ino;
+
+			let before = inode();
+			backend.withLock(() => ({ result: undefined, next: JSON.stringify({ a: 1 }) }));
+			expect(inode()).not.toBe(before);
+			expect(JSON.parse(readFileSync(authJsonPath, "utf-8"))).toEqual({ a: 1 });
+			expect(statSync(authJsonPath).mode & 0o777).toBe(
+				process.platform === "win32" ? statSync(authJsonPath).mode & 0o777 : 0o640,
+			);
+
+			before = inode();
+			await backend.withLockAsync(async () => ({ result: undefined, next: JSON.stringify({ a: 2 }) }));
+			expect(inode()).not.toBe(before);
+			expect(JSON.parse(readFileSync(authJsonPath, "utf-8"))).toEqual({ a: 2 });
+			expect(leftovers()).toEqual([]);
+		});
+
+		test("creates a missing file with mode 0600", () => {
+			const backend = new FileAuthStorageBackend(authJsonPath);
+			backend.withLock(() => ({ result: undefined, next: "{}" }));
+			if (process.platform !== "win32") expect(statSync(authJsonPath).mode & 0o777).toBe(0o600);
+		});
+
+		test("a failed write leaves the previous credentials intact and no temp file", () => {
+			writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
+			const backend = new FileAuthStorageBackend(authJsonPath);
+			vi.spyOn(fs, "writeFileSync").mockImplementation((target) => {
+				if (typeof target === "number") throw Object.assign(new Error("no space left"), { code: "ENOSPC" });
+			});
+			expect(() => backend.withLock(() => ({ result: undefined, next: JSON.stringify({ lost: true }) }))).toThrow(
+				"no space left",
+			);
+			vi.restoreAllMocks();
+			expect(JSON.parse(readFileSync(authJsonPath, "utf-8"))).toEqual({ anthropic: { type: "api_key", key: "old" } });
+			expect(leftovers()).toEqual([]);
+		});
 	});
 
 	describe("Windows EPERM on lock acquisition", () => {

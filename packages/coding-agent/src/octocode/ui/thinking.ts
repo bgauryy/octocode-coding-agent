@@ -1,7 +1,7 @@
 import { type Component, Container, type TUI } from "@octocodeai/octocode-tui";
 import { AssistantMessageComponent } from "../../modes/interactive/components/assistant-message.ts";
 
-type TranscriptRoot = Pick<TUI, "children" | "requestRender">;
+type TranscriptRoot = Pick<TUI, "children" | "requestRender"> & Partial<Pick<TUI, "mode">>;
 
 class ThinkingTranscript {
 	private hidden = false;
@@ -27,6 +27,8 @@ class ThinkingTranscript {
 			if (child instanceof AssistantMessageComponent) {
 				if (force || !this.seen.has(child)) {
 					child.setHideThinkingBlock(this.hidden);
+					// Only the fullscreen renderer turns on mouse reporting; elsewhere a click promise would be false.
+					child.setMouseHint(this.root.mode === "fullscreen");
 					this.seen.add(child);
 				}
 			} else if (child instanceof Container) {

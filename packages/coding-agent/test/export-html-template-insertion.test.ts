@@ -5,7 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { getExportTemplateDir } from "../src/config.ts";
 import { exportFromFile } from "../src/core/export-html/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 
 const dirs: string[] = [];
 afterEach(() => {

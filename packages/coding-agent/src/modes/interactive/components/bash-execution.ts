@@ -10,7 +10,8 @@ import {
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
-import { theme } from "../theme/theme.ts";
+import { STATE_COLOR } from "../../../theme/status.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
 import { truncateToVisualLines } from "./visual-truncate.ts";
@@ -51,9 +52,9 @@ export class BashExecutionComponent extends Container {
 
 		this.loader = new Loader(
 			ui,
-			(spinner) => theme.fg(this.colorKey, spinner),
+			(spinner) => theme.fg(STATE_COLOR.running, spinner),
 			(text) => theme.fg("muted", text),
-			`Running... (${keyText("tui.select.cancel")} to cancel)`, // Plain text for loader
+			`Running… (${keyText("tui.select.cancel")} to cancel)`, // Plain text for loader
 		);
 
 		// Bottom border
@@ -184,7 +185,7 @@ export class BashExecutionComponent extends Container {
 					);
 				} else {
 					statusParts.push(
-						`${theme.fg("muted", `... ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+						`${theme.fg("muted", `… ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
 					);
 				}
 			}

@@ -1,4 +1,10 @@
-import type { AssistantContent, ThinkingBudgets, ThinkingLevel, StreamOptions } from "../../types.ts";
+import type {
+	AssistantContent,
+	ThinkingBudgetReduction,
+	ThinkingBudgets,
+	ThinkingLevel,
+	StreamOptions,
+} from "../../types.ts";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
 
@@ -10,6 +16,8 @@ export interface BedrockOptions extends StreamOptions {
 	reasoning?: ThinkingLevel;
 	/* Custom token budgets per thinking level. Overrides default budgets. */
 	thinkingBudgets?: ThinkingBudgets;
+	/** Recorded on the response when `streamSimple()` reduced the requested thinking budget to fit the context. */
+	thinkingBudgetReduction?: ThinkingBudgetReduction;
 	/* Only supported by Claude 4.x models, see https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html#claude-messages-extended-thinking-tool-use-interleaved */
 	interleavedThinking?: boolean;
 	/**

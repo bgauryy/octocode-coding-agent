@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { GithubAuthOptions, GithubStatus } from "../../mcp/src/presets/octocode/github-auth.ts";
 import { handleGithubCommand } from "../src/modes/interactive/interactive-mode/github-command.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 vi.mock("../src/utils/open-browser.ts", () => ({ openBrowser: vi.fn() }));

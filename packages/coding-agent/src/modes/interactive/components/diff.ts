@@ -1,6 +1,6 @@
 import { backgroundAnsi, mixColors, visibleWidth } from "@octocodeai/octocode-tui";
 import * as Diff from "diff";
-import { getLanguageFromPath, highlightCode, theme } from "../theme/theme.ts";
+import { getLanguageFromPath, highlightCode, theme } from "../../../theme/theme.ts";
 
 /**
  * Parse diff line to extract prefix, line number, and content.

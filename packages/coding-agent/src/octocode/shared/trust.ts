@@ -148,6 +148,11 @@ function piDecided(cwd: string): boolean {
 /** Projects (by path and content) already told they are skipped, so every loader shares one notice. */
 const noticed = new Set<string>();
 
+/** Whether this session already told its user that project config is not loaded (a subagent's same notice adds nothing). */
+export function trustNoticeShown(): boolean {
+	return noticed.size > 0;
+}
+
 /**
  * Whether trust-gated project files may load. An undecided project is skipped with one notice pointing at
  * `/trust`, which shows exactly what would run and asks. Startup never opens a dialog: Octocode (checked against
@@ -160,7 +165,11 @@ export async function projectTrust(ctx: ProjectContext, home?: string): Promise<
 	const key = `${storeKey(ctx.cwd)}\0${sha}`;
 	if (!noticed.has(key)) {
 		noticed.add(key);
-		if (ctx.ui) notify(ctx.ui, `Project config not loaded (${files.length} files). Run /trust to review.`, "warning");
+		// A subagent has no /trust (it is registered in the main session only): the user decides there.
+		const next = envFlag(process.env, SUBAGENT_ENV)
+			? "The project is not trusted; the user can review it with /trust in the main session."
+			: "Run /trust to review.";
+		if (ctx.ui) notify(ctx.ui, `Project config not loaded (${files.length} files). ${next}`, "warning");
 	}
 	return false;
 }

@@ -126,7 +126,10 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // B89's skill line and `skill` tool and B90's required `reason` property on every tool schema took the old measurement
 // to 29_131; the Octocode research-workflow lines and the wider "Outside" wording, now counted because this test passes
 // the tool list, add 1_469.
-const MAIN_CEILING = 31_000;
+// 29_200 (measured 27_798 without entity fields): browsing moved to the built-in browser MCP server, whose tools defer
+// behind tool search, so the native `browser` schema (3_533) left the default request; the graph tools (about 12_000)
+// are deferred the same way.
+const MAIN_CEILING = 29_200;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -141,8 +144,9 @@ describe("prompt size", () => {
 		const size = await promptSize({ subagent: false });
 		console.log(`main session: ${size.total} chars (prompt ${size.prompt}); ${JSON.stringify(size.perTool)}`);
 		expect(size.prompt).toBeGreaterThan(0);
-		// Every native tool is active in the main session by default; specialist fallback remains covered elsewhere.
-		expect(size.perTool.browser).toBeGreaterThan(0);
+		// Browsing defaults to the browser MCP server; the native `browser` tool is opt-in, and the graph tools are deferred.
+		expect(size.perTool.browser).toBeUndefined();
+		expect(size.perTool.graphQuery).toBeUndefined();
 		expect(size.perTool.debug).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);

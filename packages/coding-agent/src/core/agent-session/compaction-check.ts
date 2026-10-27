@@ -21,7 +21,7 @@ import type { SessionInternals } from "./host.ts";
 export interface CompactionCheckHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	modelForMessage(message: AssistantMessage): Model<any> | undefined;
 	findPersistedMessageEntryId(message: AgentMessage): string | undefined;
-	omitRecoveryAttempt(message: AssistantMessage, toolResults?: AgentMessage[]): void;
+	omitRecoveryAttempt(message: AssistantMessage): void;
 	/** The session's `_runAutoCompaction`. */
 	runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean>;
 	emitSessionCompactFailed(event: Omit<SessionCompactFailedEvent, "type">): Promise<void>;
@@ -46,7 +46,6 @@ export interface CompactionCheckHost extends Pick<SessionInternals, "session" | 
  *
  * @param assistantMessage The assistant message to check
  * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
- * @param toolResults Tool results of the final attempt, omitted with it on overflow recovery
  * @param incoming Messages about to be appended (the pre-prompt path passes the incoming prompt); counted toward the threshold
  * @returns Whether the post-run loop should call `agent.continue()` for overflow recovery or queued messages
  */
@@ -54,12 +53,14 @@ export async function checkCompaction(
 	host: CompactionCheckHost,
 	assistantMessage: AssistantMessage,
 	skipAbortedCheck: boolean,
-	toolResults: AgentMessage[],
 	incoming: readonly AgentMessage[] = [],
 ): Promise<boolean> {
 	const { session, run } = host;
 	const messageModel = host.modelForMessage(assistantMessage);
-	const settings = session.settingsManager.getCompactionSettings(messageModel ?? session.model);
+	const settings = session.settingsManager.getCompactionSettings(
+		messageModel ?? session.model,
+		session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+	);
 	if (!settings.enabled) return false;
 
 	// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
@@ -145,7 +146,8 @@ export async function checkCompaction(
 
 		// Persistently omit the selected final attempt before post-run recovery compaction.
 		run.overflowRecoveryAttempted = true;
-		host.omitRecoveryAttempt(assistantMessage, toolResults);
+		if (!contextOverflow) run.lengthRecoveries++;
+		host.omitRecoveryAttempt(assistantMessage);
 		const retry = await host.runAutoCompaction("overflow", willRetry, messageModel);
 		if (retry) run.failedResponse = assistantMessage;
 		return retry;

@@ -37,6 +37,8 @@ export interface FilteringProxyOptions {
 	env?: NodeJS.ProcessEnv;
 	/** Opens the connection to a vetted address; a seam for tests. */
 	connect?: (address: string, port: number) => net.Socket;
+	/** Port to listen on (127.0.0.1); any free port by default. A taken port rejects with `EADDRINUSE`. */
+	port?: number;
 }
 
 export interface FilteringProxy {
@@ -45,6 +47,9 @@ export interface FilteringProxy {
 	readonly url: string;
 	close(): Promise<void>;
 }
+
+/** Chrome's `--proxy-bypass-list` value that removes its built-in loopback bypass, so loopback requests reach the proxy too. */
+export const PROXY_ALL_LOOPBACK = "<-loopback>";
 
 const CONNECT_TIMEOUT_MS = 30_000;
 /** Headers that describe one hop, not the message. */
@@ -355,7 +360,7 @@ export async function startFilteringProxy(options: FilteringProxyOptions = {}): 
 
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(0, "127.0.0.1", resolve);
+		server.listen(options.port ?? 0, "127.0.0.1", resolve);
 	});
 	server.unref();
 	const { port } = server.address() as net.AddressInfo;

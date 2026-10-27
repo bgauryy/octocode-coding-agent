@@ -24,17 +24,22 @@ import { findLastAssistantMessage } from "./messages.ts";
 export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"> {
 	limitsModel(): Model<any> | undefined;
 	getCallableTools(): AgentTool[];
+	/** Declared MCP tools whose server is still connecting. */
+	pendingToolNames(): ReadonlySet<string>;
 }
 
 /**
  * The error a call to an undeclared tool gets when the session knows the tool: a deferred tool is loaded with
  * `tool_search` (when it is active), any other registered tool is switched off for this session. Unknown names keep
- * the agent's default. Each text keeps the default's `Tool <name> not found` prefix, which consumers match.
+ * the agent's default. A declared MCP tool whose server is still connecting is retried shortly. Each text keeps the
+ * default's `Tool <name> not found` prefix, which consumers match.
  */
 export function unknownToolMessage(
 	session: Pick<SessionPublic, "getAllTools" | "getActiveToolNames">,
 	name: string,
+	pending: ReadonlySet<string> = new Set(),
 ): string | undefined {
+	if (pending.has(name)) return `Tool ${name} not found: its MCP server is still connecting. Retry in a moment.`;
 	const tool = session.getAllTools().find((candidate) => candidate.name === name);
 	if (!tool) return undefined;
 	const active = session.getActiveToolNames();
@@ -65,7 +70,8 @@ export class SessionToolCalls {
 		const agent = this.host.session.agent;
 		agent.beforeToolCall = (context, signal) => this._beforeToolCall(context, signal);
 		agent.afterToolCall = (context) => this._afterToolCall(context);
-		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name);
+		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name, this.host.pendingToolNames());
+		agent.pendingToolNames = () => this.host.pendingToolNames();
 	}
 
 	/** `tool_call` handlers. `parentToolCallId` is set for calls another tool made. */

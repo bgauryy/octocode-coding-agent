@@ -52,7 +52,7 @@ export function formatMcpConfigLocations(locations: ReturnType<typeof getMcpConf
 				`  ${file.scope}: ${file.path} (${file.exists ? "exists" : "not present"}${file.ignored ? "; ignored until trusted" : ""})`,
 		),
 		"Enable/disable/exposure updates the effective override when one exists; otherwise global changes save to the global file. --local writes a trusted workspace override. Existing project definitions are updated in place.",
-		"Enabled defaults to true; exposure defaults to auto. Use /mcp tools to inspect session tools and /reload after editing files.",
+		"Enabled defaults to true; exposure defaults to direct. Use /mcp tools to inspect session tools and /reload after editing files.",
 	].join("\n");
 }
 

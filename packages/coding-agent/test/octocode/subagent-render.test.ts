@@ -66,25 +66,39 @@ describe("subagent renderers", () => {
 		).toContain("Agent(audit auth token refresh · isolated)");
 	});
 
-	it("summarizes a finished run with and without a duration", () => {
-		expect(doneSummary(details(), 38_000)).toBe("Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · 38s)");
-		expect(doneSummary(details({ toolCalls: 1 }), undefined)).toBe("Done (general-0001 · 1 tool call · ↑1.5k ↓500)");
-		expect(doneSummary(details({ cacheRead: 1_200, cost: 0.12 }), 38_000)).toBe(
-			"Done (general-0001 · 2 tool calls · ↑300 +1.2k cached ↓500 · ≈$0.12 · 38s)",
+	it("summarizes a finished run briefly: outcome, tool calls and elapsed time, no zero count", () => {
+		expect(doneSummary(details(), 38_000)).toBe("Done · 2 tool calls · 38s");
+		expect(doneSummary(details({ toolCalls: 1 }), undefined)).toBe("Done · 1 tool call");
+		expect(doneSummary(details({ toolCalls: 0 }), 4_000)).toBe("Done · 4s");
+		expect(doneSummary(details(), 38_000, true)).toBe("Done · general-0001 · 2 tool calls · 38s");
+	});
+
+	it("moves tokens, cost and the model (without its provider) to the expanded summary", () => {
+		const run = (expanded: boolean) =>
+			rendered(
+				renderAgentResult(
+					{
+						content: [{ type: "text", text: "answer" }],
+						details: details({ cacheRead: 1_200, cost: 0.12, model: "anthropic/claude-haiku-5-5:low" }),
+					},
+					{ isPartial: false, expanded },
+					theme,
+					ctx({ expanded, durationMs: 38_000 }),
+				),
+			);
+		expect(run(false)).toContain("⎿  Done · general-0001 · 2 tool calls · 38s\n");
+		expect(run(false)).not.toContain("↑");
+		expect(run(false)).not.toContain("claude-haiku-5-5");
+		expect(run(true)).toContain(
+			"Done · general-0001 · 2 tool calls · 38s · ↑300 +1.2k cached ↓500 · ≈$0.12 · claude-haiku-5-5:low",
 		);
-		expect(doneSummary(details({ cost: 0.12, unpriced: true }), undefined)).toBe(
-			"Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · ≈$0.12 + n/a)",
-		);
+		expect(run(true)).not.toContain("anthropic/");
 	});
 
 	it("labels a run by the outcome its report names, Done when it names none", () => {
-		expect(doneSummary(details({ outcome: "done" }), 38_000)).toBe(
-			"Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · 38s)",
-		);
-		expect(doneSummary(details({ outcome: "partial" }), 38_000)).toBe(
-			"Partial (general-0001 · 2 tool calls · ↑1.5k ↓500 · 38s)",
-		);
-		expect(doneSummary(details({ outcome: "blocked" }), undefined)).toMatch(/^Blocked \(/);
+		expect(doneSummary(details({ outcome: "done" }), 38_000)).toBe("Done · 2 tool calls · 38s");
+		expect(doneSummary(details({ outcome: "partial" }), 38_000)).toBe("Partial · 2 tool calls · 38s");
+		expect(doneSummary(details({ outcome: "blocked" }), undefined)).toMatch(/^Blocked · /);
 		expect(
 			rendered(
 				renderAgentResult(
@@ -97,7 +111,7 @@ describe("subagent renderers", () => {
 					ctx(),
 				),
 			),
-		).toContain("⎿  Blocked (general-0001");
+		).toContain("⎿  Blocked · general-0001");
 	});
 
 	it("draws the call with its goal and tags, never the prompt or the profile", () => {
@@ -151,7 +165,7 @@ describe("subagent renderers", () => {
 				ctx({ durationMs: 90_000 }),
 			),
 		);
-		expect(finished).toContain("Done (general-0001 · 2 tool calls · ↑1.5k ↓500 · 1m30s)");
+		expect(finished).toContain("Done · general-0001 · 2 tool calls · 1m30s");
 		const bare = rendered(
 			renderAgentResult(
 				{ content: [{ type: "text", text: "Subagent failed\ndetail" }], details: undefined },

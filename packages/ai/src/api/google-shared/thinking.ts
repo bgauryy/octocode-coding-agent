@@ -1,5 +1,5 @@
 import { ThinkingLevel as GoogleSdkThinkingLevel, type ThinkingConfig } from "@google/genai";
-import { clampThinkingLevel } from "../../models.ts";
+import { clampThinkingLevel } from "../../models/model-helpers.ts";
 import type { Model, ThinkingLevel } from "../../types.ts";
 
 export type GoogleApiType = "google-generative-ai" | "google-vertex";

@@ -8,7 +8,7 @@ import {
 	Spacer,
 	TruncatedText,
 } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
 export type AuthSelectorProvider = {

@@ -288,6 +288,24 @@ describe("skills", () => {
 			expect(result).toContain("<location>/path/to/skill/SKILL.md</location>");
 		});
 
+		it("omits file paths when the skill tool loads skills by name", () => {
+			const skills: Skill[] = [
+				createTestSkill({
+					name: "test-skill",
+					description: "A test skill.",
+					filePath: "/path/to/skill/SKILL.md",
+					baseDir: "/path/to/skill",
+				}),
+			];
+
+			const result = formatSkillsForPrompt(skills, "skill");
+
+			expect(result).toContain("<name>test-skill</name>");
+			expect(result).toContain("<description>A test skill.</description>");
+			expect(result).not.toContain("<location>");
+			expect(result).not.toContain("/path/to/skill");
+		});
+
 		it("should include intro text before XML", () => {
 			const skills: Skill[] = [
 				createTestSkill({

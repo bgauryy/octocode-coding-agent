@@ -129,6 +129,23 @@ describe("noticeLines", () => {
 		);
 	});
 
+	it("leaves out the untrusted-project warning the main session already showed, and the heading when nothing else remains", () => {
+		const trust = {
+			level: "warning" as const,
+			text: "Project config not loaded (8 files). The project is not trusted; the user can review it with /trust in the main session.",
+			count: 1,
+		};
+		expect(noticeLines({ notices: { kept: [trust], more: 0 } }, true)).toEqual([]);
+		// A child that alone lacks project config (the main session loaded it) keeps its warning.
+		expect(noticeLines({ notices: { kept: [trust], more: 0 } }, false)).toEqual([
+			"Notices from the subagent (it has no screen):",
+			`- warning: ${trust.text}`,
+		]);
+		expect(
+			noticeLines({ notices: { kept: [trust, { level: "error", text: "boom", count: 1 }], more: 0 } }, true),
+		).toEqual(["Notices from the subagent (it has no screen):", "- error: boom"]);
+	});
+
 	it("says so when the rest could not be saved, instead of hiding that notices are missing", () => {
 		const lines = noticeLines({ notices: { kept: [], more: 2 } });
 		expect(lines.at(-1)).toBe("- +2 more notices, not saved");

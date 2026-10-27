@@ -1,6 +1,6 @@
 import { Container, type Focusable, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { SessionTreeNode } from "../../../core/session-manager.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { LabelInput, SearchLine, TreeHelp } from "./tree-selector/chrome.ts";
 import { TreeList } from "./tree-selector/tree-list.ts";

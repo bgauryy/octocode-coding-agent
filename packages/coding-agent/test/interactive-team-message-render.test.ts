@@ -9,7 +9,7 @@ import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../src/core/extensions/index.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { registerMessageRenderer } from "../src/octocode/team/tools/messages.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../src/octocode/shared/messages.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -55,7 +55,7 @@ async function attach(harness: Harness) {
 	subscribeToAgent(host);
 	return {
 		text: () => stripAnsi(chatContainer.render(100).join("\n")),
-		copies: () => stripAnsi(chatContainer.render(100).join("\n")).split("from sparkly-seahorse").length - 1,
+		copies: () => stripAnsi(chatContainer.render(100).join("\n")).split("sparkly-seahorse → you").length - 1,
 		unsubscribe: () => host.unsubscribe?.(),
 	};
 }

@@ -10,7 +10,7 @@ import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
 import { keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { type ThemeColor, theme } from "../theme/theme.ts";
+import { type ThemeColor, theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { SourcedPath } from "./types.ts";
@@ -140,7 +140,9 @@ export function showLoadedResources(
 					formatPath: (item) => host.formatDisplayPath(item.path),
 					formatPackagePath: (item) => host.getShortPath(item.path, item.sourceInfo),
 				});
-			const skillCompactList = () => formatCompactList(skills.map((skill) => skill.name));
+			// Names are rarely news and fill the screen at startup: collapsed shows a count, ctrl+o the list.
+			const skillCompactList = () =>
+				theme.fg("dim", `  ${skills.length} loaded (${keyText("app.tools.expand")} to list)`);
 			addLoadedSection("Skills", skillCompactList, skillList);
 		}
 
@@ -209,21 +211,18 @@ export function showLoadedResources(
 				diagnostics.flatMap((d) => (d.type === "collision" && d.collision ? [d.collision.name] : [])),
 			);
 			const others = diagnostics.filter((d) => !(d.type === "collision" && d.collision));
-			const full = () => `${theme.fg("warning", title)}\n${host.formatDiagnostics(diagnostics, sourceInfos)}`;
+			// One short line stands for the routine duplicates; anything else stays listed.
+			const duplicates = `${collisions.size} ${kind}${collisions.size === 1 ? " has" : "s have"} duplicates; first found is used (${keyText("app.tools.expand")} for paths)`;
 			const compact = () =>
 				[
 					theme.fg("warning", title),
-					...(collisions.size > 0
-						? [
-								theme.fg(
-									"dim",
-									`  ${collisions.size} ${kind}${collisions.size === 1 ? " is" : "s are"} defined more than once; the first found is used (${keyText("app.tools.expand")} for paths)`,
-								),
-							]
-						: []),
+					...(collisions.size > 0 ? [theme.fg("dim", `  ${duplicates}`)] : []),
 					...(others.length > 0 ? [host.formatDiagnostics(others, sourceInfos)] : []),
 				].join("\n");
-			host.loadedResourcesContainer.addChild(new ExpandableText(compact, full, host.getStartupExpansionState(), 0, 0));
+			const full = () => `${theme.fg("warning", title)}\n${host.formatDiagnostics(diagnostics, sourceInfos)}`;
+			const section = new ExpandableText(compact, full, host.getStartupExpansionState(), 0, 0);
+			section.setHangingIndent(true);
+			host.loadedResourcesContainer.addChild(section);
 			host.loadedResourcesContainer.addChild(new Spacer(1));
 		};
 		addDiagnostics("[Skill conflicts]", "skill", skillsResult.diagnostics);
@@ -247,18 +246,18 @@ export function showLoadedResources(
 
 		if (extensionDiagnostics.length > 0) {
 			const warningLines = () => host.formatDiagnostics(extensionDiagnostics, sourceInfos);
-			host.loadedResourcesContainer.addChild(
-				new ThemedText(() => `${theme.fg("warning", "[Extension issues]")}\n${warningLines()}`, 0, 0),
-			);
+			const issues = new ThemedText(() => `${theme.fg("warning", "[Extension issues]")}\n${warningLines()}`, 0, 0);
+			issues.setHangingIndent(true);
+			host.loadedResourcesContainer.addChild(issues);
 			host.loadedResourcesContainer.addChild(new Spacer(1));
 		}
 
 		const themeDiagnostics = themesResult.diagnostics;
 		if (themeDiagnostics.length > 0) {
 			const warningLines = () => host.formatDiagnostics(themeDiagnostics, sourceInfos);
-			host.loadedResourcesContainer.addChild(
-				new ThemedText(() => `${theme.fg("warning", "[Theme conflicts]")}\n${warningLines()}`, 0, 0),
-			);
+			const conflicts = new ThemedText(() => `${theme.fg("warning", "[Theme conflicts]")}\n${warningLines()}`, 0, 0);
+			conflicts.setHangingIndent(true);
+			host.loadedResourcesContainer.addChild(conflicts);
 			host.loadedResourcesContainer.addChild(new Spacer(1));
 		}
 	}

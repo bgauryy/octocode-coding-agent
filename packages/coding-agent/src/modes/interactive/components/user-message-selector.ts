@@ -1,5 +1,5 @@
 import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
 interface UserMessageItem {

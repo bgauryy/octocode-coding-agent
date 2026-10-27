@@ -7,13 +7,21 @@ import { describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { resolveReadPathAsync } from "../../src/core/tools/path-utils.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
-import { chipText, shortChip } from "../../src/octocode/permission/mode.ts";
+import { CHIPS, chipText, shortChip } from "../../src/octocode/permission/mode.ts";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { appKey, expandKey } from "../../src/octocode/shared/render/text.ts";
 import { hintText } from "../../src/octocode/ui/editor.ts";
 import { fakeCtx, theme } from "./fake-pi.ts";
 
 describe("native cleanup regressions", () => {
+	it("paints the permission chip by risk: manual muted, workspace accent, full warning (never error)", () => {
+		expect(Object.fromEntries(Object.entries(CHIPS).map(([mode, chip]) => [mode, chip.color]))).toEqual({
+			manual: "muted",
+			workspace: "accent",
+			full: "warning",
+		});
+	});
+
 	it("uses rebound and disabled keys in editor, permission and tool hints", () => {
 		const previous = getKeybindings();
 		const bindings = new KeybindingsManager({

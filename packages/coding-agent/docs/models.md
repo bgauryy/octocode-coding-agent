@@ -6,13 +6,13 @@ For a built-in provider, start with `/providers`, then choose a model with `/mod
 
 ## Choose a connection
 
-| What you have | Recommended setup |
-|---|---|
-| A supported subscription | Sign in through `/providers` |
-| A provider API key | Store it through `/providers` or set its environment variable |
-| A local GGUF model | Connect Octocode to the llama.cpp router |
-| An OpenAI-, Anthropic-, or Google-compatible endpoint | Add it to `models.json` |
-| A provider with a custom protocol or authentication flow | Build or install a provider extension |
+| What you have                                            | Recommended setup                                             |
+| -------------------------------------------------------- | ------------------------------------------------------------- |
+| A supported subscription                                 | Sign in through `/providers`                                  |
+| A provider API key                                       | Store it through `/providers` or set its environment variable |
+| A local GGUF model                                       | Connect Octocode to the llama.cpp router                      |
+| An OpenAI-, Anthropic-, or Google-compatible endpoint    | Add it to `models.json`                                       |
+| A provider with a custom protocol or authentication flow | Build or install a provider extension                         |
 
 Use `/model` to inspect the models available to this installation. Octocode starts with its bundled catalog. Set `OCTOCODE_MODEL_CATALOG_URL` to a compatible catalog service to enable remote catalog overlays; the fork does not default to Pi's service. Cached catalog data remains available offline. `octocode update --models` refreshes from the configured service.
 
@@ -54,16 +54,14 @@ Use `models.json` when an endpoint speaks an API Octocode already supports. This
 
 ```json
 {
-  "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "api": "openai-completions",
-      "apiKey": "ollama",
-      "models": [
-        { "id": "qwen2.5-coder:7b" }
-      ]
-    }
-  }
+	"providers": {
+		"ollama": {
+			"baseUrl": "http://localhost:11434/v1",
+			"api": "openai-completions",
+			"apiKey": "ollama",
+			"models": [{ "id": "qwen2.5-coder:7b" }]
+		}
+	}
 }
 ```
 
@@ -75,9 +73,9 @@ To route a built-in provider through a proxy, set only its `baseUrl`. Its models
 
 ```json
 {
-  "providers": {
-    "anthropic": { "baseUrl": "https://proxy.example.com/v1" }
-  }
+	"providers": {
+		"anthropic": { "baseUrl": "https://proxy.example.com/v1" }
+	}
 }
 ```
 
@@ -91,21 +89,19 @@ For a verified image-capable custom endpoint, set `"input": ["text", "image"]` i
 
 ```json
 {
-  "providers": {
-    "local-vision": {
-      "api": "openai-completions",
-      "baseUrl": "http://localhost:11434/v1",
-      "apiKey": "ollama",
-      "models": [
-        { "id": "your-installed-vision-model", "input": ["text", "image"] }
-      ]
-    },
-    "openai": {
-      "modelOverrides": {
-        "gpt-4o": { "input": ["text", "image"] }
-      }
-    }
-  }
+	"providers": {
+		"local-vision": {
+			"api": "openai-completions",
+			"baseUrl": "http://localhost:11434/v1",
+			"apiKey": "ollama",
+			"models": [{ "id": "your-installed-vision-model", "input": ["text", "image"] }]
+		},
+		"openai": {
+			"modelOverrides": {
+				"gpt-4o": { "input": ["text", "image"] }
+			}
+		}
+	}
 }
 ```
 
@@ -117,18 +113,18 @@ Use `inputLimits.images.resize` to control how Octocode encodes new image attach
 
 ```json
 {
-  "id": "vision-model",
-  "input": ["text", "image"],
-  "inputLimits": {
-    "images": {
-      "resize": {
-        "maxWidth": 1568,
-        "maxHeight": 1568,
-        "maxBytes": 524288,
-        "jpegQuality": 75
-      }
-    }
-  }
+	"id": "vision-model",
+	"input": ["text", "image"],
+	"inputLimits": {
+		"images": {
+			"resize": {
+				"maxWidth": 1568,
+				"maxHeight": 1568,
+				"maxBytes": 524288,
+				"jpegQuality": 75
+			}
+		}
+	}
 }
 ```
 
@@ -150,21 +146,21 @@ OpenAI-compatible APIs support free-form `samplingParams` model defaults and `sa
 
 ```json
 {
-  "id": "qwen-thinking-model",
-  "reasoning": true,
-  "samplingParams": {
-    "temperature": 1.0,
-    "top_p": 0.95
-  },
-  "samplingParamsByThinkingLevel": {
-    "off": {
-      "temperature": 0.7,
-      "top_p": 0.8
-    },
-    "high": {
-      "top_k": 20
-    }
-  }
+	"id": "qwen-thinking-model",
+	"reasoning": true,
+	"samplingParams": {
+		"temperature": 1.0,
+		"top_p": 0.95
+	},
+	"samplingParamsByThinkingLevel": {
+		"off": {
+			"temperature": 0.7,
+			"top_p": 0.8
+		},
+		"high": {
+			"top_k": 20
+		}
+	}
 }
 ```
 
@@ -176,14 +172,14 @@ Compatibility settings should describe verified differences in the endpoint's re
 
 Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Octocode includes TypeSafe's Jev model from these providers, Cloudflare's Clef and Clef Flash models from Workers AI, and OpenAI's GPT-6 Luna through the [Decisions API](https://developers.openai.com/api/docs/guides/decisions):
 
-| Provider | Model IDs | Authentication |
-|---|---|---|
-| `typesafe` | `jev-latest` | `TYPESAFE_API_KEY` |
-| `openrouter` | `typesafe/jev-1.13`, `~typesafe/jev-latest` | `OPENROUTER_API_KEY` or `/providers` |
+| Provider                | Model IDs                                                          | Authentication                                   |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------ |
+| `typesafe`              | `jev-latest`                                                       | `TYPESAFE_API_KEY`                               |
+| `openrouter`            | `typesafe/jev-1.13`, `~typesafe/jev-latest`                        | `OPENROUTER_API_KEY` or `/providers`             |
 | `cloudflare-workers-ai` | `typesafe/jev`, `@cf/cloudflare/clef`, `@cf/cloudflare/clef-flash` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
-| `vercel-ai-gateway` | `typesafe-ai/jev` | `AI_GATEWAY_API_KEY` |
-| `opencode` | `jev-1.13`, `jev-1.13-free` | `OPENCODE_API_KEY` |
-| `openai` | `gpt-6-luna` | `OPENAI_API_KEY` |
+| `vercel-ai-gateway`     | `typesafe-ai/jev`                                                  | `AI_GATEWAY_API_KEY`                             |
+| `opencode`              | `jev-1.13`, `jev-1.13-free`                                        | `OPENCODE_API_KEY`                               |
+| `openai`                | `gpt-6-luna`                                                       | `OPENAI_API_KEY`                                 |
 
 Chat models on a llama.cpp router are also listed as classifier models.
 

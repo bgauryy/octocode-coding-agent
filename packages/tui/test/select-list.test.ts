@@ -18,6 +18,21 @@ const visibleIndexOf = (line: string, text: string): number => {
 };
 
 describe("SelectList", () => {
+	it("marks the selected row with the shared cursor glyph", () => {
+		const list = new SelectList(
+			[
+				{ value: "a", label: "alpha" },
+				{ value: "b", label: "beta" },
+			],
+			5,
+			testTheme,
+		);
+		const rendered = list.render(40);
+
+		assert.ok(rendered[0].startsWith("› alpha"));
+		assert.ok(rendered[1].startsWith("  beta"));
+	});
+
 	it("normalizes multiline descriptions to single line", () => {
 		const items = [
 			{

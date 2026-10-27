@@ -6,7 +6,7 @@ import { showLoadedResources } from "../../../src/modes/interactive/interactive-
 import { rebindCurrentSession } from "../../../src/modes/interactive/interactive-mode/session-binding.ts";
 import { handleReloadCommand } from "../../../src/modes/interactive/interactive-mode/session-commands.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
 
 type LoadedResourcesResult<T> = { [K in keyof T]: T[K] } & { diagnostics: [] };

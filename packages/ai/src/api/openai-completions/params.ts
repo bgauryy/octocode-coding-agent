@@ -5,6 +5,7 @@ import type {
 	Message,
 	Model,
 	OpenAICompletionsCompat,
+	ThinkingBudgetReduction,
 	ThinkingTokenBudgetField,
 } from "../../types.ts";
 import { resolveCacheRetention, resolveInstructionCacheRetention } from "../../utils/cache-policy.ts";
@@ -18,7 +19,12 @@ import {
 } from "../../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "../constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
-import { clampThinkingBudgetToAnswerRoom, resolveSamplingParams, thinkingBudgetForLevel } from "../simple-options.ts";
+import {
+	clampThinkingBudgetToAnswerRoom,
+	resolveSamplingParams,
+	thinkingBudgetForLevel,
+	thinkingBudgetReduction,
+} from "../simple-options.ts";
 import { applyAnthropicCacheControl, getCompatCacheControl } from "./cache-control.ts";
 import { getCompat } from "./compat.ts";
 import { convertMessages } from "./messages.ts";
@@ -66,6 +72,7 @@ export function buildParams(
 		getDeclaredTools(context.messages),
 		compat.supportsOpenAIGrammarTools,
 	),
+	onThinkingBudgetReduced?: (reduction: ThinkingBudgetReduction) => void,
 ) {
 	const transcriptTools = resolveTranscriptTools(
 		context.messages,
@@ -145,6 +152,17 @@ export function buildParams(
 
 	const thinkingTokenBudgetField = resolveThinkingTokenBudgetField(compat);
 	const thinkingBudget = resolveClampedThinkingBudget(model, options, params);
+	if (thinkingTokenBudgetField && options?.reasoningEffort && model.reasoning) {
+		// Requested: the budget that fits the model's own output cap; a further cut came from the context-clamped ceiling.
+		const reduction = thinkingBudgetReduction(
+			clampThinkingBudgetToAnswerRoom(
+				thinkingBudgetForLevel(options.reasoningEffort, options.thinkingBudgets),
+				model.maxTokens,
+			),
+			thinkingBudget ?? 0,
+		);
+		if (reduction) onThinkingBudgetReduced?.(reduction);
+	}
 
 	if (compat.thinkingFormat === "zai" && model.reasoning) {
 		const zaiParams = params as Omit<typeof params, "reasoning_effort"> & {

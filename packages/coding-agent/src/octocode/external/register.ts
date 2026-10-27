@@ -1,11 +1,12 @@
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
-import type { ExtensionAPI } from "../../core/extensions/index.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { errorMessage } from "../../utils/guards.ts";
+import { describeExternal, describeExternalFailure, externalRows } from "./describe.ts";
 import { ExternalAgents, type ExternalPolicy } from "./manager.ts";
 import { ExternalParamsSchema } from "./protocol.ts";
 
@@ -31,6 +32,37 @@ export function registerExternal(
 			"External agent response",
 			capOutputToFile(redactSecrets(JSON.stringify(data, null, 2)), { label: "external-agent" }),
 		);
+	/**
+	 * Bare `/agents`: the local list, and the external rows only when something is connected or discoverable. A second
+	 * notice would replace the first on screen, so the local text is captured and shown as one notice with the rows.
+	 */
+	const listAll = async (
+		ctx: ExtensionCommandContext,
+		runLocal: (text: string, via: ExtensionCommandContext) => unknown,
+	) => {
+		let rows: string[] = [];
+		try {
+			rows = externalRows(await agents.call({ action: "list" }, ctx));
+		} catch {
+			// External discovery is optional here; the local list is the answer.
+		}
+		if (rows.length === 0 || !local) {
+			if (local) await runLocal("", ctx);
+			else say(ctx, rows.join("\n") || "No external agents connected or available.", "info");
+			return;
+		}
+		const notes: Array<{ text: string; level: "info" | "warning" | "error" }> = [];
+		const capture = Object.create(ctx.ui, {
+			notify: { value: (text: string, level: "info" | "warning" | "error" = "info") => notes.push({ text, level }) },
+		});
+		await runLocal("", Object.create(ctx, { ui: { value: capture }, hasUI: { value: true } }));
+		const level = notes.some((note) => note.level === "error")
+			? "error"
+			: notes.some((note) => note.level === "warning")
+				? "warning"
+				: "info";
+		say(ctx, [...notes.map((note) => note.text), "", ...rows].join("\n"), level);
+	};
 	registerTool({
 		name: "externalAgent",
 		label: "External agent",
@@ -63,18 +95,18 @@ export function registerExternal(
 				: [...(local?.complete?.(prefix) ?? []), ...(wordCompletions(["external"], prefix) ?? [])],
 		handler: async (args, ctx) => {
 			const line = args.trim();
+			const runLocal = (text: string, via: typeof ctx) =>
+				local?.dialog === "interaction" ? local.handler(text, via) : withDialog(() => local!.handler(text, via));
 			if (line && line !== "external" && !line.startsWith("external ")) {
-				if (local)
-					return local.dialog === "interaction" ? local.handler(line, ctx) : withDialog(() => local.handler(line, ctx));
+				if (local) return runLocal(line, ctx);
 				return say(ctx, "Use /agents external [list|connect|prompt|cancel|disconnect].", "warning");
 			}
-			if (!line && local)
-				await (local.dialog === "interaction" ? local.handler("", ctx) : withDialog(() => local.handler("", ctx)));
+			if (!line) return listAll(ctx, runLocal);
 			try {
 				const input = parseExternalCommand(line.replace(/^external\s*/, ""));
-				say(ctx, render(await agents.call(input, ctx)), "info");
+				say(ctx, describeExternal(await agents.call(input, ctx)), "info");
 			} catch (error) {
-				say(ctx, render(externalFailure(error)), "error");
+				say(ctx, describeExternalFailure(externalFailure(error)), "error");
 			}
 		},
 	});

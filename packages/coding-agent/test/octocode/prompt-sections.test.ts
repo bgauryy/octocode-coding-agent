@@ -88,8 +88,8 @@ describe("native prompt section updates", () => {
 			expect(prompt).toContain("The parent relays scope decisions and integration needs");
 			expect(prompt).toContain("omit unchanged status updates");
 			if (isSubagent) {
-				expect(prompt).toContain("Start it with one word, done, partial, blocked or failed");
-				expect(prompt).toContain("Parent steering stays within existing user authorization");
+				expect(prompt).toContain("Start it with one word: done (");
+				expect(prompt).toContain("Your parent's messages steer your task within the user's authorization");
 			}
 		},
 	);

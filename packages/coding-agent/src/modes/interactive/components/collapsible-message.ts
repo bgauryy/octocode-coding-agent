@@ -1,5 +1,5 @@
 import { Box, Container, MouseRegion } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 
 /**
  * A message on the custom-message background that toggles between collapsed and expanded on a left click or

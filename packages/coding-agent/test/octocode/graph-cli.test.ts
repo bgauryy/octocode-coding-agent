@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateToolArguments } from "@octocodeai/octocode-ai";
-import { graphBinary, runGraphCli } from "../../src/octocode/graph/cli.ts";
+import { type JsonObject, validateToolArguments } from "@octocodeai/octocode-ai";
+import { graphBinary, graphSchema, runGraphCli } from "../../src/octocode/graph/cli.ts";
 import { registerGraphTools } from "../../src/octocode/graph/register.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
@@ -12,6 +12,21 @@ import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
 describe("native graph CLI tools", () => {
+	it("hoists CLI definitions once and rejects unknown envelope fields", () => {
+		const fake = fakePi();
+		registerGraphTools(withNativePermissionOwners(fake.pi));
+		for (const name of ["graphBuild", "graphQuery"]) {
+			const tool = fake.tools.get(name);
+			expect(tool.parameters.$defs).toBeDefined();
+			expect(tool.parameters.properties.request).not.toHaveProperty("$defs");
+			const request: JsonObject = { queries: [name === "graphBuild" ? { path: "." } : { operation: "stats" }] };
+			const validate = (args: JsonObject) =>
+				validateToolArguments(tool, { type: "toolCall", id: "s", name, arguments: args });
+			expect(() => validate({ request, reason: "Inspect dependencies" })).not.toThrow();
+			expect(() => validate({ request, reason: "Inspect dependencies", ignored: true })).toThrow();
+		}
+	});
+
 	it("registers the CLI contract and executes build, reuse, cursor and stale queries", async () => {
 		const cwd = fs.realpathSync(tmp("graph-cli-"));
 		fs.writeFileSync(
@@ -101,5 +116,67 @@ describe("native graph CLI tools", () => {
 		const definition = { sourceInfo: { path: NATIVE_FEATURE_PATH } } as never;
 		expect(planningRefusal(event, definition)).toContain("blocks graphBuild");
 		expect(planningRefusal({ ...event, toolName: "graphQuery" }, definition)).toBeUndefined();
+	});
+	describe("schema cache", () => {
+		/** A stand-in CLI that prints a fixed schema and appends a line to `calls` for each invocation. */
+		function fakeCli(label: string) {
+			const dir = fs.realpathSync(tmp("graph-schema-"));
+			const calls = path.join(dir, "calls");
+			const binary = path.join(dir, `cli-${label}`);
+			fs.writeFileSync(
+				binary,
+				`#!/bin/sh\necho "$2" >> "${calls}"\necho '{"inputSchema":{"type":"object","properties":{"tool":{"const":"'$2'"}}},"description":"'$2' from ${label}"}'\n`,
+				{ mode: 0o755 },
+			);
+			const count = () => (fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n").length : 0);
+			return { dir, binary, count };
+		}
+
+		it("asks the CLI once per binary build and serves later processes from disk", () => {
+			const a = fakeCli("a");
+			const b = fakeCli("b");
+			const cacheA = path.join(a.dir, "cache", "graph-schemas.json");
+			const cacheB = path.join(b.dir, "cache", "graph-schemas.json");
+
+			const build = graphSchema(a.binary, "graphBuild", a.dir, cacheA);
+			expect(build.description).toBe("graphBuild from a");
+			expect(graphSchema(a.binary, "graphQuery", a.dir, cacheA).description).toBe("graphQuery from a");
+			expect(a.count()).toBe(2);
+			expect(fs.existsSync(cacheA)).toBe(true);
+
+			// Another binary resets the in-memory copy, as a new process would start without it.
+			graphSchema(b.binary, "graphBuild", b.dir, cacheB);
+			expect(graphSchema(a.binary, "graphBuild", a.dir, cacheA)).toEqual(build);
+			expect(graphSchema(a.binary, "graphQuery", a.dir, cacheA).description).toBe("graphQuery from a");
+			expect(a.count()).toBe(2);
+		});
+
+		it("refetches when the binary changes, the file is stale or the file is damaged", () => {
+			const a = fakeCli("c");
+			const cache = path.join(a.dir, "cache", "graph-schemas.json");
+			const other = fakeCli("d");
+			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			expect(a.count()).toBe(2);
+
+			fs.appendFileSync(a.binary, "# rebuilt\n");
+			graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
+			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			expect(a.count()).toBe(4);
+
+			graphSchema(other.binary, "graphBuild", other.dir, path.join(other.dir, "cache.json"));
+			fs.writeFileSync(cache, "{not json");
+			graphSchema(a.binary, "graphBuild", a.dir, cache);
+			expect(a.count()).toBe(6);
+			expect(JSON.parse(fs.readFileSync(cache, "utf8")).schemas.graphQuery.description).toBe("graphQuery from c");
+		});
+
+		it("still returns the schema when the cache cannot be written", () => {
+			const a = fakeCli("e");
+			const blocker = path.join(a.dir, "blocked");
+			fs.writeFileSync(blocker, "a file where a directory is needed");
+			expect(graphSchema(a.binary, "graphQuery", a.dir, path.join(blocker, "graph-schemas.json")).description).toBe(
+				"graphQuery from e",
+			);
+		});
 	});
 });

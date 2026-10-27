@@ -21,7 +21,7 @@ import {
 	showStatusIndicator,
 } from "../src/modes/interactive/interactive-mode/status-indicators.ts";
 import { stopInteractiveTui, switchTuiMode } from "../src/modes/interactive/interactive-mode/view-state.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const clipboardMocks = vi.hoisted(() => ({

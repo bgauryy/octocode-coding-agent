@@ -71,9 +71,10 @@ export class McpTimeoutError extends Error {
 	}
 }
 
+/** A request its caller's signal cancelled; `cause` is the signal's reason when it had one. */
 export class McpAbortError extends Error {
-	constructor(message = "MCP request aborted") {
-		super(message);
+	constructor(message = "MCP request aborted", reason?: unknown) {
+		super(message, reason === undefined ? undefined : { cause: reason });
 		this.name = "AbortError";
 	}
 }

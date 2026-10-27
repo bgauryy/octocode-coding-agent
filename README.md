@@ -62,17 +62,17 @@ Preparation saves tarballs, their checksums and the mapping digest in `candidate
 
 ## Packages
 
-| Directory | Responsibility |
-| --- | --- |
-| [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native Octocode features and SDK |
-| [acp](packages/acp/README.md) | Private inbound/outbound ACP integration, compiled into coding-agent |
-| [mcp](packages/mcp/README.md) | Private MCP client and host integration, compiled into coding-agent |
-| [agent](packages/agent/README.md) | Agent loop and tool execution |
-| [ai](packages/ai/README.md) | Provider APIs and model catalog |
-| [tui](packages/tui/README.md) | Terminal UI |
-| [webview](packages/webview/README.md) | Browser workspace, board, Markdown/code rendering and UI state |
-| [contacts](packages/contacts/README.md) | Shared entity contracts, schemas and workspace protocols |
-| [telemetry](packages/telemetry/README.md) | Telemetry contracts and adapters |
+| Directory                                       | Responsibility                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| [coding-agent](packages/coding-agent/README.md) | CLI, sessions, native Octocode features and SDK                      |
+| [acp](packages/acp/README.md)                   | Private inbound/outbound ACP integration, compiled into coding-agent |
+| [mcp](packages/mcp/README.md)                   | Private MCP client and host integration, compiled into coding-agent  |
+| [agent](packages/agent/README.md)               | Agent loop and tool execution                                        |
+| [ai](packages/ai/README.md)                     | Provider APIs and model catalog                                      |
+| [tui](packages/tui/README.md)                   | Terminal UI                                                          |
+| [webview](packages/webview/README.md)           | Browser workspace, board, Markdown/code rendering and UI state       |
+| [contacts](packages/contacts/README.md)         | Shared entity contracts, schemas and workspace protocols             |
+| [telemetry](packages/telemetry/README.md)       | Telemetry contracts and adapters                                     |
 
 ## Development
 

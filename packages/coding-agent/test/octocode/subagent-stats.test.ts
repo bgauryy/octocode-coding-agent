@@ -136,6 +136,20 @@ describe("agent stats", () => {
 		expect(renderStats(stats)).toContain("outcome word 50% · trailing outcome 1");
 	});
 
+	it("records each run's model requests (background and foreground) and shows p50, p95 and max", () => {
+		const runs = [4, 10, 20, 98].map((requests, index) =>
+			report({ id: `r${index}`, profile: "x", status: "done", requests }, `q${index}`),
+		);
+		const stats = agentStats([
+			...runs,
+			foreground({ id: "f", profile: "x", status: "done", requests: 7 }, usage(1, 1)),
+			report({ id: "n", profile: "x", status: "done" }, "none"),
+		]);
+		expect(stats[0].requests).toEqual([4, 10, 20, 98, 7]);
+		expect(renderStats(stats)).toContain("requests p50 10 · p95 98 · max 98");
+		expect(renderStats(agentStats([report({ id: "a", profile: "y", status: "done" }, "z")]))).not.toContain("requests");
+	});
+
 	it("shows cost n/a when nothing was priced", () => {
 		const text = renderStats(
 			agentStats([foreground({ id: "b", profile: "general", status: "done", unpriced: true }, usage(10, 10, 0, 0, 0))]),

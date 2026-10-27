@@ -7,6 +7,7 @@ import * as appends from "./session-manager/appends.ts";
 import { buildContextEntries, buildSessionProjection } from "./session-manager/context.ts";
 import { findSessionFileById, listAllSessions, listSessions } from "./session-manager/listing.ts";
 import * as persistence from "./session-manager/persistence.ts";
+import type { SessionRepair } from "./session-manager/repair.ts";
 import {
 	createSessionState,
 	getBranchEntries,
@@ -47,6 +48,7 @@ export {
 } from "./session-manager/context.ts";
 export { assertValidSessionId, migrateSessionEntries, parseSessionEntries } from "./session-manager/entries.ts";
 export { findMostRecentSession, getDefaultSessionDir, loadEntriesFromFile } from "./session-manager/storage.ts";
+export { repairSessionFile, type SessionRepair } from "./session-manager/repair.ts";
 export * from "./session-manager/types.ts";
 
 /**
@@ -82,6 +84,11 @@ export class SessionManager implements SessionManagerApi {
 
 	setSessionFile(sessionFile: string): void {
 		persistence.setSessionFile(this.state, sessionFile);
+	}
+
+	/** Cuts a torn final record off the file (a `.bak` keeps the original) and reloads it; undefined when nothing was torn. */
+	recover(): SessionRepair | undefined {
+		return persistence.recoverSession(this.state);
 	}
 
 	newSession(options?: NewSessionOptions): string | undefined {
@@ -253,8 +260,7 @@ export class SessionManager implements SessionManagerApi {
 	}
 
 	getHeader(): SessionHeader | null {
-		const h = this.state.fileEntries.find((e) => e.type === "session");
-		return h ? h : null;
+		return this.state.fileEntries.find((e) => e.type === "session") ?? null;
 	}
 
 	getEntryCount(): number {
@@ -269,13 +275,8 @@ export class SessionManager implements SessionManagerApi {
 		return buildSessionTree(this.getEntries(), this.state.labelsById, this.state.labelTimestampsById);
 	}
 
-	// Branching
-	// =========================================================================
-
 	branch(branchFromId: string): void {
-		if (!this.state.byId.has(branchFromId)) {
-			throw new Error(`Entry ${branchFromId} not found`);
-		}
+		if (!this.state.byId.has(branchFromId)) throw new Error(`Entry ${branchFromId} not found`);
 		this.state.leafId = branchFromId;
 	}
 
@@ -326,11 +327,7 @@ export class SessionManager implements SessionManagerApi {
 	static continueRecent(cwd: string, sessionDir?: string): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 		const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
-		const mostRecent = findMostRecentSession(dir, filterCwd ? cwd : undefined);
-		if (mostRecent) {
-			return new SessionManager(cwd, dir, mostRecent, true);
-		}
-		return new SessionManager(cwd, dir, undefined, true);
+		return new SessionManager(cwd, dir, findMostRecentSession(dir, filterCwd ? cwd : undefined) ?? undefined, true);
 	}
 
 	/** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */

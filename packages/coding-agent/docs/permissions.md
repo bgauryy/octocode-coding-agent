@@ -26,7 +26,7 @@ A hook that calls an MCP tool (`mcp_tool`, see [hooks](hooks.md)) passes the sam
 
 A subagent whose profile sets `readOnly: true` (the bundled `reviewer`, `researcher` and `browser`) runs with `OCTOCODE_SUBAGENT` and `OCTOCODE_READ_ONLY` in its environment. The permission gate refuses its changes in every mode, `full` included, before any dialog ([`permission/read-only-role.ts`](../src/octocode/permission/read-only-role.ts)):
 
-- `file`, `edit` and `write` may change only the child's scratch folder, `.octocode/tmp/`, and Markdown documents under `.octocode/` (not `.octocode/skills/`, which later sessions load).
+- `file`, `edit` and `write` may change only the child's scratch folder, `.octocode/tmp/`, and Markdown documents under `.octocode/`, except in the folders and files later sessions load as configuration (`skills/`, `agents/`, `prompts/`, `themes/`, `extensions/`, `hooks.json`, `settings.json`, `SYSTEM.md`, `APPEND_SYSTEM.md`; matched in any letter case). `graphBuild` is allowed: it writes only derived snapshots under `.octocode/graph/`.
 - `bash` is refused when the shell parser ([`permission/shell/mutation.ts`](../src/octocode/permission/shell/mutation.ts)) shows a change inside the workspace outside those places, or cannot tell where a command writes. PowerShell is allowed only for commands the read-only list recognizes.
 
 This is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen. MCP tools are not restricted by it. For the roles themselves see [native features](native-features.md#configuration).
@@ -39,11 +39,11 @@ The adapter reads the `permissions.deny`, `permissions.ask` and `permissions.all
 
 Current source locations are:
 
-| Scope | Location | Activation |
-|---|---|---|
-| User | `$CLAUDE_CONFIG_DIR/settings.json`, otherwise `~/.claude/settings.json` | Parsed when the compatibility flag is enabled |
-| Project | `<repository root>/.claude/settings.json` | Restrictions always apply; allow rules require native trust |
-| Project local | `<repository root>/.claude/settings.local.json` | Same local adapter trust rule |
+| Scope         | Location                                                                | Activation                                                  |
+| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| User          | `$CLAUDE_CONFIG_DIR/settings.json`, otherwise `~/.claude/settings.json` | Parsed when the compatibility flag is enabled               |
+| Project       | `<repository root>/.claude/settings.json`                               | Restrictions always apply; allow rules require native trust |
+| Project local | `<repository root>/.claude/settings.local.json`                         | Same local adapter trust rule                               |
 
 This reuses Octocode's repository-root discovery. Claude's working-directory, worktree and local-settings trust distinctions are not all reproduced. Unsupported `permissions` keys, including source mode and additional-directory settings, produce diagnostics and are not applied. Native mode remains in effect.
 
@@ -51,10 +51,10 @@ For example, this user configuration denies Bash calls and requires approval for
 
 ```json
 {
-  "permissions": {
-    "deny": ["Bash"],
-    "ask": ["WebFetch"]
-  }
+	"permissions": {
+		"deny": ["Bash"],
+		"ask": ["WebFetch"]
+	}
 }
 ```
 
@@ -70,16 +70,16 @@ The adapter uses a bounded syntax parser for command lists, pipelines, subshells
 
 Executable names can be statically unquoted. Argument spelling and redirect positions stay raw. The source-specific wrapper adapter has these tested boundaries:
 
-| Form | Current behavior |
-|---|---|
-| `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, `noglob` | Tested forms inspect the inner command; option support is bounded |
-| `command -v` or `command -V` | Lookup stays matched as the outer command |
-| Bare `xargs` | Inspects the inner command; flagged forms retain outer matching |
-| `NODE_ENV=value command` | Inner allow, deny and ask matching |
-| Other leading assignments | Inner deny/ask matching; no inner allowance |
-| `time -p command` | Inner deny/ask matching; no inner allowance |
-| `nice -n3`, spaced or long `stdbuf` options | Retain outer matching |
-| Exec wrappers and effectful `find` | An outer wildcard allowance cannot bypass the detected execution hazard; supported exact rules remain separate |
+| Form                                                                         | Current behavior                                                                                               |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, `noglob` | Tested forms inspect the inner command; option support is bounded                                              |
+| `command -v` or `command -V`                                                 | Lookup stays matched as the outer command                                                                      |
+| Bare `xargs`                                                                 | Inspects the inner command; flagged forms retain outer matching                                                |
+| `NODE_ENV=value command`                                                     | Inner allow, deny and ask matching                                                                             |
+| Other leading assignments                                                    | Inner deny/ask matching; no inner allowance                                                                    |
+| `time -p command`                                                            | Inner deny/ask matching; no inner allowance                                                                    |
+| `nice -n3`, spaced or long `stdbuf` options                                  | Retain outer matching                                                                                          |
+| Exec wrappers and effectful `find`                                           | An outer wildcard allowance cannot bypass the detected execution hazard; supported exact rules remain separate |
 
 Full wrapper-option and assignment support, control-flow/heredoc semantics and PowerShell parsing remain incomplete. Unsupported restricted syntax is refused with a diagnostic; this differs from upstream for some malformed or unsupported constructs.
 
@@ -89,14 +89,14 @@ With compatibility enabled, the permission owner checks recognized Bash redirect
 
 The shell adapter deliberately keeps these rule categories separate:
 
-| Rule | Effect on recognized shell targets |
-|---|---|
-| Path-scoped `Read` / `Edit` deny | Blocks the corresponding read / write target, including resolved symlink targets |
-| Bare `Read` / `Edit`, or `Read(*)` / `Edit(*)` | Does not cross-apply to shell targets |
-| Path-scoped file ask | Does not add a Bash approval request |
-| Path-scoped file allow | Covers that target; does not authorize the shell command itself |
-| Broad `Bash` / `Bash(*)` allow | Covers tested ordinary targets, including outside the workspace; matching file denies still win |
-| Scoped Bash allow | Still needs target approval or a matching file allowance |
+| Rule                                           | Effect on recognized shell targets                                                              |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Path-scoped `Read` / `Edit` deny               | Blocks the corresponding read / write target, including resolved symlink targets                |
+| Bare `Read` / `Edit`, or `Read(*)` / `Edit(*)` | Does not cross-apply to shell targets                                                           |
+| Path-scoped file ask                           | Does not add a Bash approval request                                                            |
+| Path-scoped file allow                         | Covers that target; does not authorize the shell command itself                                 |
+| Broad `Bash` / `Bash(*)` allow                 | Covers tested ordinary targets, including outside the workspace; matching file denies still win |
+| Scoped Bash allow                              | Still needs target approval or a matching file allowance                                        |
 
 Protected project paths still require approval in manual/workspace modes, including when a file allowance matches. Known writes into Octocode's state folder are refused in every mode. These checks share one original Bash permission request, including for typed shell commands; they do not manufacture separate file-tool hook events. Compatibility-off typed-command behavior is unchanged.
 
@@ -116,7 +116,6 @@ The pinned vendor replay exposes differences that remain explicit: interleaved r
 - Codex Starlark execution rules and sandbox profiles are not implemented by this Claude adapter.
 
 Keep source-specific settings separate. Consult [Claude permission rules](https://code.claude.com/docs/en/permissions) and [Codex execution rules](https://learn.chatgpt.com/docs/agent-configuration/rules) when porting policy, and validate actual allowed and denied effects against the target host before relying on a compatibility claim.
-
 
 ## Native planning
 

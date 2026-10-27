@@ -73,9 +73,7 @@ describe("AgentSession dynamic tool registration", () => {
 		});
 
 		const bashTool = session.agent.state.tools.find((tool) => tool.name === "bash")!;
-		expect(session.systemPrompt).toContain(
-			"You can inspect OCTOCODE_* environment variables for current model and session details.",
-		);
+		expect(session.systemPrompt).not.toContain("OCTOCODE_* environment variables");
 		await bashTool.execute("bash-env", { command: "printf ok" });
 		expect(sessionEnv).toMatchObject({
 			OCTOCODE_SESSION_ID: session.sessionId,

@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/render.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { validateFileInput } from "../../src/octocode/shared/file-input.ts";
 import { BASH_READER, FileGuard, LOCAL_FETCH_READER, returnedContent } from "../../src/octocode/files/tool/guard.ts";
 import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
@@ -17,6 +18,20 @@ import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakePermission, theme } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
+
+describe("file input shape", () => {
+	it("teaches the queries and patch forms when a call has neither, or both", () => {
+		const taught =
+			/file takes either queries \(an array, one object per change: \{type, path, reason, edits\|content\}\) or patch .*not both\. Wrap a single change as queries:\[\{\.\.\.\}\]\./;
+		// The flat form a small model tries first: one change's fields at the top level.
+		expect(() => validateFileInput({ type: "write", path: "a.txt", content: "x", reason: "r" })).toThrow(taught);
+		expect(() => validateFileInput({ patch: "*** Begin Patch\n*** End Patch", queries: [] })).toThrow(taught);
+		expect(() =>
+			validateFileInput({ queries: [{ type: "write", path: "a.txt", content: "x", reason: "r" }] }),
+		).not.toThrow();
+		expect(() => validateFileInput({ patch: "*** Begin Patch\n*** End Patch" })).not.toThrow();
+	});
+});
 
 describe("file tool", () => {
 	it("allows writing new files, requires existing files for edit/delete, and a read before changing an existing one", () => {
@@ -222,6 +237,27 @@ describe("file tool", () => {
 		// A missing file resolves through its real parent directory; an unresolvable one stays as given.
 		expect(canonicalPath(path.join(dir, "new.txt"))).toBe(path.join(fs.realpathSync.native(dir), "new.txt"));
 		expect(canonicalPath("/no/such/dir/x")).toBe("/no/such/dir/x");
+	});
+
+	it("applies `..` after a symlink, as the kernel does, not before", () => {
+		const root = fs.realpathSync.native(tmp());
+		fs.mkdirSync(path.join(root, "ws"));
+		fs.mkdirSync(path.join(root, "out/deep"), { recursive: true });
+		fs.symlinkSync(path.join(root, "out/deep"), path.join(root, "ws/rel"));
+		// `ws/rel/..` is `out`, not `ws`.
+		expect(canonicalPath(`${root}/ws/rel/../x`)).toBe(path.join(root, "out/x"));
+		expect(canonicalPath(`${root}/ws/rel/../../ws/a/../y`)).toBe(path.join(root, "ws/y"));
+		// A relative link target with `..` is read from the link's own folder, also for a dangling link.
+		fs.symlinkSync("../out/new/f.txt", path.join(root, "ws/dangling"));
+		expect(canonicalPath(path.join(root, "ws/dangling"))).toBe(path.join(root, "out/new/f.txt"));
+		fs.symlinkSync("rel/../moved", path.join(root, "ws/hop"));
+		expect(canonicalPath(path.join(root, "ws/hop"))).toBe(path.join(root, "out/moved"));
+		// A path with no symlinks collapses `..` as before.
+		expect(canonicalPath(`${root}/ws/../out/./deep/../z`)).toBe(path.join(root, "out/z"));
+		// A loop still ends.
+		fs.symlinkSync("loop2", path.join(root, "ws/loop1"));
+		fs.symlinkSync("loop1", path.join(root, "ws/loop2"));
+		expect(typeof canonicalPath(`${root}/ws/loop1/../q`)).toBe("string");
 	});
 
 	it("takes the digest of what Octocode read returned only when it is the whole file", () => {
@@ -1399,7 +1435,19 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		expect(single).toBe("● File(edit src/a.ts · 2 edits) · 1.2s");
+		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s");
+		// Expanded, a single change shows one reason line, under the title like the call's own: the per-change one only when the call has none.
+		const expandedSingle = (callArgs: object) =>
+			tool!
+				.renderCall(callArgs, theme, { lastComponent: undefined, expanded: true, isPartial: false })
+				.render(120)
+				.join("\n");
+		expect(expandedSingle({ reason: "Fix the loop bounds", queries: [args.queries[0]] })).toBe(
+			"✓ File(edit src/a.ts · 2 edits)",
+		);
+		expect(expandedSingle({ queries: [args.queries[0]] })).toBe(
+			"✓ File(edit src/a.ts · 2 edits)\n  ↳ Fix the off-by-one in the loop",
+		);
 		const diff = Array.from({ length: 30 }, (_, index) => `+${index} added line ${index}`).join("\n");
 		const result = {
 			content: [],

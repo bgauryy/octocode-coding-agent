@@ -24,12 +24,12 @@ Create `~/.octocode/octocodecode/extensions/hello.ts`:
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 
 export default function (octocode: ExtensionAPI) {
-  octocode.registerCommand("hello", {
-    description: "Show a greeting",
-    handler: async (name, ctx) => {
-      ctx.ui.notify(`Hello, ${name || "world"}!`, "info");
-    },
-  });
+	octocode.registerCommand("hello", {
+		description: "Show a greeting",
+		handler: async (name, ctx) => {
+			ctx.ui.notify(`Hello, ${name || "world"}!`, "info");
+		},
+	});
 }
 ```
 
@@ -133,15 +133,15 @@ flowchart TD
 
 The lifecycle involves these event groups:
 
-| Area | Events |
-|---|---|
-| Input preparation | `input`, `before_agent_start`, `user_input` |
-| Agent run | `agent_start`, `agent_end` |
-| Model turn | `turn_start`, `context`, `context_with_system`, `turn_end` |
-| Provider call | `before_provider_headers`, `before_provider_request`, `after_provider_response`, `provider_stream_event` |
-| Message lifecycle | `message_start`, `message_update`, `message_end` |
-| Tool execution | `tool_execution_start`, `tool_call`, `tool_execution_update`, `tool_result`, `tool_execution_end` |
-| Settlement | `agent_before_settle`, `agent_interrupted`, `agent_settled` |
+| Area              | Events                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| Input preparation | `input`, `before_agent_start`, `user_input`                                                              |
+| Agent run         | `agent_start`, `agent_end`                                                                               |
+| Model turn        | `turn_start`, `context`, `context_with_system`, `turn_end`                                               |
+| Provider call     | `before_provider_headers`, `before_provider_request`, `after_provider_response`, `provider_stream_event` |
+| Message lifecycle | `message_start`, `message_update`, `message_end`                                                         |
+| Tool execution    | `tool_execution_start`, `tool_call`, `tool_execution_update`, `tool_result`, `tool_execution_end`        |
+| Settlement        | `agent_before_settle`, `agent_interrupted`, `agent_settled`                                              |
 
 Octocode counts as busy while a run starts, including the compaction check and `before_agent_start`, so messages sent meanwhile go into the starting run. Message lifecycle events also cover user and tool-result messages; the diagram places only the assistant stream where it occurs in each model turn.
 
@@ -169,22 +169,22 @@ flowchart TD
 
 ### Choose an event by intent
 
-| Goal | Event |
-|---|---|
-| Inspect or transform user input at admission | `input` |
-| Gate a user item when it is selected for processing | `user_input` |
-| Change prompt sections, active tools, or add context before a run | `before_agent_start` |
-| Observe one low-level agent run | `agent_start`, `agent_end` |
-| Act after one model response and its tool calls | `turn_end` |
-| Filter conversation messages for one provider request | `context` |
-| Transform the complete transcript, including system messages | `context_with_system` |
-| Change request headers or the serialized provider payload | `before_provider_headers`, `before_provider_request` |
-| Observe provider response metadata or parsed stream events | `after_provider_response`, `provider_stream_event` |
-| Authorize or modify a tool call | `tool_call` |
-| Redact, annotate, or replace a tool result | `tool_result` |
-| Append final entries or request one last continuation | `agent_before_settle` |
-| Run notification work after automatic processing has stopped | `agent_settled` |
-| Initialize or release session-scoped resources | `session_start`, `session_shutdown` |
+| Goal                                                              | Event                                                |
+| ----------------------------------------------------------------- | ---------------------------------------------------- |
+| Inspect or transform user input at admission                      | `input`                                              |
+| Gate a user item when it is selected for processing               | `user_input`                                         |
+| Change prompt sections, active tools, or add context before a run | `before_agent_start`                                 |
+| Observe one low-level agent run                                   | `agent_start`, `agent_end`                           |
+| Act after one model response and its tool calls                   | `turn_end`                                           |
+| Filter conversation messages for one provider request             | `context`                                            |
+| Transform the complete transcript, including system messages      | `context_with_system`                                |
+| Change request headers or the serialized provider payload         | `before_provider_headers`, `before_provider_request` |
+| Observe provider response metadata or parsed stream events        | `after_provider_response`, `provider_stream_event`   |
+| Authorize or modify a tool call                                   | `tool_call`                                          |
+| Redact, annotate, or replace a tool result                        | `tool_result`                                        |
+| Append final entries or request one last continuation             | `agent_before_settle`                                |
+| Run notification work after automatic processing has stopped      | `agent_settled`                                      |
+| Initialize or release session-scoped resources                    | `session_start`, `session_shutdown`                  |
 
 <a id="agent_start--agent_end--agent_before_settle--agent_settled"></a>
 
@@ -196,20 +196,20 @@ Use `agent_before_settle` when an extension must append entries or request one f
 
 ## Choose an integration point
 
-| Capability | Main API |
-|---|---|
-| Observe or modify lifecycle behavior | `octocode.on()` |
-| Add a model-callable operation | `octocode.registerTool()` |
-| Add a `/` command | `octocode.registerCommand()` |
-| Add a shortcut or CLI flag | `octocode.registerShortcut()` or `octocode.registerFlag()` |
-| Send user or custom messages | `octocode.sendUserMessage()` or `octocode.sendMessage()` |
-| Persist non-context session data | `octocode.appendEntry()` |
-| Change active tools, model, or thinking level | Session control methods on `octocode` |
-| Add a model provider | `octocode.registerProvider()` |
-| Add an MCP server | `octocode.registerMcpServer()` |
-| Route each request to a model | [`octocode.registerVirtualModel()`](virtual-models.md) |
-| Add terminal rendering | Renderer registration and `ctx.ui` |
-| Communicate with another extension | `octocode.events` |
+| Capability                                    | Main API                                                   |
+| --------------------------------------------- | ---------------------------------------------------------- |
+| Observe or modify lifecycle behavior          | `octocode.on()`                                            |
+| Add a model-callable operation                | `octocode.registerTool()`                                  |
+| Add a `/` command                             | `octocode.registerCommand()`                               |
+| Add a shortcut or CLI flag                    | `octocode.registerShortcut()` or `octocode.registerFlag()` |
+| Send user or custom messages                  | `octocode.sendUserMessage()` or `octocode.sendMessage()`   |
+| Persist non-context session data              | `octocode.appendEntry()`                                   |
+| Change active tools, model, or thinking level | Session control methods on `octocode`                      |
+| Add a model provider                          | `octocode.registerProvider()`                              |
+| Add an MCP server                             | `octocode.registerMcpServer()`                             |
+| Route each request to a model                 | [`octocode.registerVirtualModel()`](virtual-models.md)     |
+| Add terminal rendering                        | Renderer registration and `ctx.ui`                         |
+| Communicate with another extension            | `octocode.events`                                          |
 
 Use the exported declarations in [`extensions/types.ts`](https://github.com/bgauryy/octocodecode/blob/main/packages/coding-agent/src/core/extensions/types.ts) for exact event, context, tool, and result types.
 
@@ -228,14 +228,14 @@ Events cover resource discovery, sessions, agent and message lifecycle, provider
 
 #### Understand handler composition
 
-| Pattern | Behavior |
-|---|---|
-| Notification | Return values are ignored. Use the event for observation only. |
-| In-place mutation | Later handlers see changes to values such as `before_provider_headers.headers`, `before_agent_start.systemPromptOptions`, and `tool_call.input`. |
+| Pattern                | Behavior                                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Notification           | Return values are ignored. Use the event for observation only.                                                                                                        |
+| In-place mutation      | Later handlers see changes to values such as `before_provider_headers.headers`, `before_agent_start.systemPromptOptions`, and `tool_call.input`.                      |
 | Chained transformation | Later handlers receive the value returned by earlier `input`, `context`, `context_with_system`, `message_end`, `tool_result`, and `before_provider_request` handlers. |
-| Gate | A handled input, blocked tool call, cancelled session operation, or handled `user_bash` command stops that operation's normal fallback path. |
-| Actionable boundary | Each `turn_end` or `agent_before_settle` handler sees the entries and continuation decision proposed so far. |
-| Last override | The last `cache_warming_decision` handler that returns an action wins. |
+| Gate                   | A handled input, blocked tool call, cancelled session operation, or handled `user_bash` command stops that operation's normal fallback path.                          |
+| Actionable boundary    | Each `turn_end` or `agent_before_settle` handler sees the entries and continuation decision proposed so far.                                                          |
+| Last override          | The last `cache_warming_decision` handler that returns an action wins.                                                                                                |
 
 Notification handlers should not perform slow work on a streaming event. Transform handlers should preserve fields they do not intentionally own, and gate handlers should fail closed when their safety decision cannot be made.
 
@@ -309,13 +309,13 @@ Registering a `direct` or `model-only` tool activates it; the other exposures ar
 
 ```typescript
 octocode.on("tool_call", async (event, ctx) => {
-  const hints = octocode.getAllTools().find((tool) => tool.name === event.toolName)?.annotations;
-  const needsApproval =
-    hints?.destructiveHint === true ||
-    (!hints?.readOnlyHint && ((hints?.destructiveHint ?? true) || (hints?.openWorldHint ?? true)));
-  if (needsApproval && !(await ctx.ui.confirm("Allow tool call?", event.toolName))) {
-    return { block: true, reason: `${event.toolName} was not approved` };
-  }
+	const hints = octocode.getAllTools().find((tool) => tool.name === event.toolName)?.annotations;
+	const needsApproval =
+		hints?.destructiveHint === true ||
+		(!hints?.readOnlyHint && ((hints?.destructiveHint ?? true) || (hints?.openWorldHint ?? true)));
+	if (needsApproval && !(await ctx.ui.confirm("Allow tool call?", event.toolName))) {
+		return { block: true, reason: `${event.toolName} was not approved` };
+	}
 });
 ```
 
@@ -333,14 +333,18 @@ Octocode records the initial prompt and tool set in the transcript's first syste
 
 A tool's `renderCall` and `renderResult` draw its calls in the interactive transcript and in HTML exports. `octocode.registerToolRenderer((toolName, next) => renderers)` chooses renderers for calls to any tool, including tools that are not registered yet, such as MCP tools in a resumed session before their server connected. `next()` returns what the remaining resolvers (in extension load order), then the registered tool, would use, so `next() ?? mine` only fills in.
 
+In the interactive transcript, a renderer that throws does not stop the terminal. The row shows the plain call or output and a warning that names the error, such as `renderResult failed: TypeError: …`, so check that line when a custom renderer falls back.
+
 ### MCP servers
 
 `octocode.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, `inheritEnv`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, and `timeout`.
 
 ```typescript
-octocode.registerMcpServer("jira", { url: "https://mcp.example.com/jira", exposure: "auto" });
+octocode.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
 octocode.unregisterMcpServer("jira");
 ```
+
+Registered servers default to direct tools with full descriptions and input schemas. Server instructions appear once in shared context. Set `exposure: "auto"` or `"deferred"` to opt into discovery; see [tool exposure](mcp.md#control-tool-exposure).
 
 Servers registered while the extension loads connect when the session starts, together with the `mcp.json` servers; servers registered later connect right away, and `octocode.unregisterMcpServer()` closes the connection and makes the server's tools unreachable. Registrations are not saved: register again on every load, for example based on the extension's own settings. A server in `mcp.json` with the same name takes precedence, and `/mcp` shows the override. Registering the same name again replaces the extension's earlier registration; names registered by another extension, invalid names, and invalid configs throw.
 
@@ -367,12 +371,12 @@ Session replacement invalidates the old context. Capture only plain data before 
 
 Choose storage based on how state participates in the conversation:
 
-| State | Storage |
-|---|---|
-| Tool state that follows the active branch | Tool-result `details` |
-| Durable data excluded from model context | `octocode.appendEntry()` |
+| State                                       | Storage                  |
+| ------------------------------------------- | ------------------------ |
+| Tool state that follows the active branch   | Tool-result `details`    |
+| Durable data excluded from model context    | `octocode.appendEntry()` |
 | Custom content stored and sent to the model | `octocode.sendMessage()` |
-| Data outside one session | External storage |
+| Data outside one session                    | External storage         |
 
 Reconstruct branch-sensitive state from `ctx.sessionManager.getBranch()` during `session_start`.
 Do not rebuild it from every file entry because abandoned branches represent alternative histories.
@@ -418,21 +422,20 @@ Use `ctx.shutdown()` to request an orderly process shutdown.
 
 The checked [extension examples](../examples/extensions/README.md) are the implementation reference; the README lists each one with the test that runs it. Start with the smallest example matching the behavior you need:
 
-| Goal | Start with | Why |
-|---|---|---|
-| Change how a tool call is displayed | `built-in-tool-renderer.ts`, `minimal-mode.ts` | Re-register a tool with custom `renderCall`/`renderResult` while delegating execution. |
-| Transform or gate user input | `input-transform-streaming.ts` | Uses `input` handlers and `streamingBehavior` to avoid slow work during steering. |
-| Request compaction from an extension | `trigger-compact.ts` | Calls `ctx.compact()` from a token threshold. |
-| React to turns with follow-up work | `git-merge-and-resolve.ts` | Runs after each turn and feeds results back to the agent. |
-| Register a virtual model | `jev-router.ts` | Routes between models and keeps phase state; see [virtual models](virtual-models.md). |
-| Restrict tools and track progress | `plan-mode/` | Selects tools, filters `bash`, and shows a progress widget. |
-| Delegate work to child processes | `subagent/` | Fixture only: native sessions provide the `agent` tool. |
-| Ship an extension with npm dependencies | `with-deps/` | Resolves modules from the extension's own `node_modules`. |
+| Goal                                    | Start with                                     | Why                                                                                    |
+| --------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Change how a tool call is displayed     | `built-in-tool-renderer.ts`, `minimal-mode.ts` | Re-register a tool with custom `renderCall`/`renderResult` while delegating execution. |
+| Transform or gate user input            | `input-transform-streaming.ts`                 | Uses `input` handlers and `streamingBehavior` to avoid slow work during steering.      |
+| Request compaction from an extension    | `trigger-compact.ts`                           | Calls `ctx.compact()` from a token threshold.                                          |
+| React to turns with follow-up work      | `git-merge-and-resolve.ts`                     | Runs after each turn and feeds results back to the agent.                              |
+| Register a virtual model                | `jev-router.ts`                                | Routes between models and keeps phase state; see [virtual models](virtual-models.md).  |
+| Restrict tools and track progress       | `plan-mode/`                                   | Selects tools, filters `bash`, and shows a progress widget.                            |
+| Delegate work to child processes        | `subagent/`                                    | Fixture only: native sessions provide the `agent` tool.                                |
+| Ship an extension with npm dependencies | `with-deps/`                                   | Resolves modules from the extension's own `node_modules`.                              |
 
 Use [Custom Providers](custom-provider.md) for model-service integrations, [Terminal UI](tui.md) for custom components, and [Octocode Packages](packages.md) to install or distribute extensions with other resources. Use the exported declarations for exact signatures, payloads, and result schemas; this guide focuses on lifecycle choices, composition, and durable implementation patterns.
 
 `session_before_compact` is observational: returned values are ignored and the preparation is an isolated snapshot. Compaction summaries, budgets and cut points are managed by the built-in implementation. Use `ctx.compact()` to request that flow; custom compaction boundary entries are rejected.
-
 
 ### Command aliases and manual summary focus
 

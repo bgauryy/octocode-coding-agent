@@ -622,7 +622,8 @@ it("pins a model-only accepted alias for the child catalog and actual MCP refere
 		expect(f.requests).toHaveLength(2);
 		const first = JSON.stringify(f.requests[0]),
 			second = JSON.stringify(f.requests[1]);
-		expect(first).toContain(fs.realpathSync(f.modelOnly));
+		// The catalog names skills; the `skill` tool returns the directory when one is loaded.
+		expect(first).toContain("<name>model-only</name>");
 		expect(first).not.toContain("UNACCEPTED_MODEL_BODY");
 		expect(second).toContain("REFERENCE_model-only");
 		expect(second).not.toContain("UNACCEPTED_MODEL_REFERENCE");

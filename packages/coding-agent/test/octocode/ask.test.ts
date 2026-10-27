@@ -250,7 +250,7 @@ describe("askUser", () => {
 				{ question: "Which extras?", answer: "Docs, Bench", custom: false },
 			],
 		});
-		expect(frames[0]).toContain("□ Scope");
+		expect(frames[0]).toContain("◇ Scope");
 		expect(frames[0]).toContain("✓ Submit");
 		expect(frames[2]).toContain("[x] Docs");
 		expect(frames[2]).toContain("Space/Enter toggle");
@@ -540,10 +540,10 @@ describe("askUser tool", () => {
 			},
 		};
 		expect(rendered(tool.renderResult(answered, {}, theme, {}))).toBe(
-			"  ⎿  ✓ Which scope? → Large\n     Declined the remaining questions",
+			"  ⎿  ✓ Which scope? → Large\n     ✗ Declined the remaining questions",
 		);
 		expect(rendered(tool.renderResult({ content: [], details: { cancelled: true, answers: [] } }, {}, theme, {}))).toBe(
-			"  ⎿  Declined",
+			"  ⎿  ✗ Declined",
 		);
 		expect(
 			rendered(tool.renderResult({ content: [{ type: "text", text: "No interactive user" }] }, {}, theme, {})),

@@ -1,5 +1,5 @@
 import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@octocodeai/octocode-tui";
-import { getSelectListTheme } from "../theme/theme.ts";
+import { getSelectListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
 const SHOW_IMAGES_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -9,6 +9,9 @@ const SHOW_IMAGES_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 
 /**
  * Component that renders a show images selector with borders
+ *
+ * @deprecated Unused by the interactive mode (the settings selector owns this choice). Kept exported for SDK
+ * consumers; it is removed in the next release.
  */
 export class ShowImagesSelectorComponent extends Container {
 	private selectList: SelectList;

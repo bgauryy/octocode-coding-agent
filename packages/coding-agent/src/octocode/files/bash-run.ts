@@ -240,7 +240,9 @@ export function foregroundOperations(
 					: undefined;
 			child.stdout?.on("data", read);
 			child.stderr?.on("data", read);
-			if (signal) signal.addEventListener("abort", stop, { once: true });
+			// An abort during `prepareTree` fired before this listener existed: stop the command now, not when it ends.
+			if (signal?.aborted) stop();
+			else signal?.addEventListener("abort", stop, { once: true });
 			try {
 				const code = await waiter.done;
 				if (signal?.aborted) throw new Error("aborted");

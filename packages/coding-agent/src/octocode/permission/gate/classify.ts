@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ExtensionContext, ToolCallEvent } from "../../../core/extensions/index.ts";
 import { readableHistory } from "../../shared/history.ts";
-import { resolveToolPath } from "../../shared/home.ts";
+import { resolveToolPath, workspaceOctocodeDir } from "../../shared/home.ts";
 import { isMcpToolName } from "../../../../../mcp/src/servers.ts";
 import { callReason } from "../../shared/reason.ts";
 import { optionalString } from "../../shared/util.ts";
@@ -39,6 +39,21 @@ export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">):
 	return reason ? { purpose: reason } : {};
 }
 
+/** `request` as this call's: its purpose, tool call, folder and nesting. */
+export function callRequest(
+	request: PermissionRequest,
+	event: ToolCallEvent,
+	ctx: Pick<ExtensionContext, "cwd">,
+): PermissionRequest {
+	return {
+		...request,
+		...(request.purpose === undefined ? reasonPurpose(event) : {}),
+		toolCallId: event.toolCallId,
+		cwd: ctx.cwd,
+		...(event.parentToolCallId ? { nested: true } : {}),
+	};
+}
+
 /** What a call is, as a permission request; undefined when no mode asks about it. */
 export function classify(
 	event: ToolCallEvent,
@@ -46,15 +61,7 @@ export function classify(
 	forceDestructive = false,
 ): PermissionRequest | undefined {
 	const request = classOf(event.toolName, event.input, ctx.cwd, forceDestructive);
-	return request
-		? {
-				...request,
-				...(request.purpose === undefined ? reasonPurpose(event) : {}),
-				toolCallId: event.toolCallId,
-				cwd: ctx.cwd,
-				...(event.parentToolCallId ? { nested: true } : {}),
-			}
-		: undefined;
+	return request ? callRequest(request, event, ctx) : undefined;
 }
 
 function classOf(
@@ -67,7 +74,7 @@ function classOf(
 		return {
 			action: "file.workspace",
 			title: "Build a workspace graph snapshot?",
-			what: [args(input), `Storage: ${path.join(cwd, ".octocode", "graph")}`],
+			what: [args(input), `Storage: ${path.join(workspaceOctocodeDir(cwd), "graph")}`],
 			grant: { key: "graphBuild", label: "derived graph snapshots in this workspace" },
 		};
 	const inRepo = (raw: string) => {

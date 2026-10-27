@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
 import { MCP_MANAGE_TOOL_NAME, type McpServerConfig, mcpNamespace, validateMcpServerConfig } from "./servers.ts";
+import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../coding-agent/src/core/resolve-config-value.ts";
 import { formatMcpTool, type McpToolListing } from "./inspection.ts";
 
 const INTENTS = ["list", "status", "tools", "connect", "restart", "stop", "add", "remove"] as const;
@@ -60,13 +61,36 @@ const ManageSchema = Type.Object({
 	config: Type.Optional(ConfigSchema),
 });
 
-/** What the user confirms: where the server runs or connects, and the names (never the values) of the env and headers it is given. */
+/**
+ * One line per header or environment variable, with its value verbatim (JSON-quoted, so control characters cannot
+ * forge dialog text). A `${VAR}` reference or a leading `!` is flagged: Octocode would read that host variable or run
+ * that command when it connects, and the user must see it before agreeing. Resolved values are never shown.
+ */
+function describeValues(label: string, record: Record<string, string> | undefined, expands: boolean): string {
+	const entries = Object.entries(record ?? {});
+	if (entries.length === 0) return "";
+	const lines = entries.map(([key, value]) => {
+		const notes: string[] = [];
+		if (expands && isCommandConfigValue(value)) notes.push("RUNS A SHELL COMMAND when the server starts");
+		else if (expands) {
+			const names = getConfigValueEnvVarNames(value);
+			if (names.length > 0)
+				notes.push(`READS host environment variable${names.length > 1 ? "s" : ""} ${names.join(", ")}`);
+		}
+		return `  ${key}: ${JSON.stringify(value)}${notes.length ? `  <- ${notes.join("; ")}` : ""}`;
+	});
+	return `\n${label}:\n${lines.join("\n")}`;
+}
+
+/** What the user confirms: where the server runs or connects, and the exact headers and environment it is given. */
 function describeNewServer(config: McpServerConfig): string {
 	const target = "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" ");
-	const names = (label: string, record: Record<string, string> | undefined) =>
-		record && Object.keys(record).length > 0 ? `\n${label}: ${Object.keys(record).join(", ")}` : "";
 	const cwd = "cwd" in config && config.cwd ? `\nWorking directory: ${config.cwd}` : "";
-	return `${target}${cwd}${"url" in config ? names("Headers", config.headers) : names("Environment variables", config.env)}`;
+	const values =
+		"url" in config
+			? describeValues("Headers", config.headers, config.literalHeaders !== true)
+			: describeValues("Environment variables", config.env, true);
+	return `${target}${cwd}${values}`;
 }
 
 const describe = (server: ManagedMcpServer): string =>

@@ -80,8 +80,25 @@ export class SessionBoundaries {
 		return undefined;
 	}
 
-	omitRecoveryAttempt(message: AssistantMessage, toolResults: AgentMessage[] = []): void {
+	/**
+	 * Persistently omit a failed attempt and its tool results from model context. The results are found in the
+	 * projected context, so the pair stays together whether the attempt comes from the current run or a resumed
+	 * session; an unpaired tool result fails the next request (#11227).
+	 */
+	omitRecoveryAttempt(message: AssistantMessage): void {
 		const { session } = this.host;
+		const toolCallIds = new Set(message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])));
+		// A context edit replaces the projected copy, so match it by source entry as well.
+		const entryId = this.findPersistedMessageEntryId(message);
+		const messages = session.agent.state.messages;
+		const index = messages.findIndex(
+			(m) => m === message || (entryId !== undefined && this._entryIdsByMessage.get(m) === entryId),
+		);
+		const toolResults: AgentMessage[] = [];
+		for (const m of index < 0 ? [] : messages.slice(index + 1)) {
+			if (m.role === "assistant") break;
+			if (m.role === "toolResult" && toolCallIds.has(m.toolCallId)) toolResults.push(m);
+		}
 		const targets = [message, ...toolResults];
 		const targetIds = targets.map((target) => this.findPersistedMessageEntryId(target));
 		const unresolvedProjectedTarget = targets.some(

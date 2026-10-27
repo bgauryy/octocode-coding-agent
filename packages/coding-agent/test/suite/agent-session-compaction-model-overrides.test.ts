@@ -76,7 +76,8 @@ describe("AgentSession built-in compaction policy", () => {
 			expect(preparations).toHaveLength(1);
 			expect(preparations[0]?.preparation.settings).toEqual({
 				enabled: true,
-				reserveTokens: 500,
+				// The session passes its thinking level, so the reserve is sized for answer room: a sixth of the window.
+				reserveTokens: Math.floor(4000 / 6),
 				keepRecentTokens: 1000,
 			});
 			expect(preparations[0]?.reason).toBe(

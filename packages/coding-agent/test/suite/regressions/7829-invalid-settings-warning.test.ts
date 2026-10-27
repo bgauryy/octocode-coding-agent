@@ -2,7 +2,7 @@ import { Container } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSessionRuntimeDiagnostic } from "../../../src/core/agent-session-services.ts";
 import * as startup from "../../../src/modes/interactive/interactive-mode/startup.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/theme/theme.ts";
 import { createHarness } from "../harness.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
 
@@ -41,7 +41,7 @@ describe("issue #7829 invalid settings warning", () => {
 			void startup.run(createFakeHost(context));
 
 			await vi.waitFor(() => {
-				expect(render(chatContainer)).toContain("Warning: Invalid settings file /tmp/settings.json: malformed JSON");
+				expect(render(chatContainer)).toContain("⚠ Invalid settings file /tmp/settings.json: malformed JSON");
 			});
 		} finally {
 			if (previousOffline === undefined) delete process.env.OCTOCODE_OFFLINE;

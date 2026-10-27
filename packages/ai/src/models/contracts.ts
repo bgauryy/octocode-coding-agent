@@ -15,7 +15,6 @@ import type { ModelsStore, ModelsStoreEntry } from "../models-store.ts";
 import type {
 	AnyModel,
 	Api,
-	ApiStreamOptions,
 	AssistantImages,
 	AssistantMessage,
 	AssistantMessageEventStream,
@@ -39,6 +38,7 @@ import type {
 	SimpleStreamOptions,
 	TranscriptContext,
 } from "../types.ts";
+import type { ApiStreamOptions } from "../types/options.ts";
 
 export interface ModelsPublication {
 	/** Provider-selected persisted catalog. Omit to leave storage unchanged; null deletes it. */

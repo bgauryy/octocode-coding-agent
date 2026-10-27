@@ -104,9 +104,7 @@ describe("createAgentSession session manager defaults", () => {
 			thinkingLevel: "high",
 		});
 		expect(session.sessionFile).toBeTruthy();
-		expect(session.systemPrompt).toContain(
-			"You can inspect OCTOCODE_* environment variables for current model and session details.",
-		);
+		expect(session.systemPrompt).not.toContain("OCTOCODE_* environment variables");
 
 		const bashTool = session.agent.state.tools.find((tool) => tool.name === "bash");
 		expect(bashTool).toBeTruthy();

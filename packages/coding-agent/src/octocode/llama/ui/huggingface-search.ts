@@ -1,8 +1,8 @@
 /** The Hugging Face model search of the llama.cpp manager's download screen. */
 
-import { Container, type Focusable, fuzzyFilter, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
+import { Container, type Focusable, fuzzyFilter, GLYPH, Input, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type { HuggingFaceModel } from "../huggingface.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 
@@ -73,7 +73,7 @@ export class HuggingFaceSearch extends Container implements Focusable {
 		for (let index = start; index < end; index++) {
 			const model = this.filteredResults[index];
 			if (!model) continue;
-			const prefix = index === this.selectedIndex ? "→ " : "  ";
+			const prefix = index === this.selectedIndex ? `${GLYPH.cursor} ` : "  ";
 			const details = `${compactCount(model.downloads)} downloads`;
 			this.resultsContainer.addChild(
 				new Text(

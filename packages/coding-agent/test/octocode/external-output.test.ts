@@ -136,14 +136,81 @@ describe("external agent command syntax", () => {
 		commands.register(fake.pi);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		await fake.commands.get("agents")!.handler("", ctx);
+		// Nothing external to list: the local list stands alone, with no second notice.
 		expect(local).toHaveBeenCalledWith("", ctx);
 		expect(external).toHaveBeenCalledWith({ action: "list" }, ctx);
+		expect(ctx.ui.notes).toEqual([]);
 		await fake.commands.get("agents")!.handler("kill local-1", ctx);
 		expect(local).toHaveBeenLastCalledWith("kill local-1", ctx);
 		expect(external).toHaveBeenCalledTimes(1);
 		await fake.commands.get("agents")!.handler("external cancel remote-1", ctx);
 		expect(external).toHaveBeenLastCalledWith({ action: "cancel", id: "remote-1" }, ctx);
 		expect([...fake.commands.keys()]).toEqual(["agents"]);
+	});
+
+	it("bare /agents shows the local list and, when something is connected, readable external rows in the same notice", async () => {
+		const fake = fakePi();
+		const commands = new Subcommands();
+		commands.add("agents", {
+			description: "Local agents",
+			handler: async (_args, ctx) => {
+				ctx.ui.notify("sly-crab · working · 15s", "info");
+			},
+		});
+		const external = vi.spyOn(ExternalAgents.prototype, "call").mockResolvedValue({
+			connections: [
+				{ id: "claude-1", transport: "acp", vendor: "claude", cwd: "/work/app", sessionId: "s", busy: true },
+			],
+			instances: [{ id: "inst-9", pid: 4242, cwd: "/work/other", protocol: 1 }],
+		});
+		registerExternal(fake.pi, commands, {
+			authorize: async () => undefined,
+			beforeSend: async () => undefined,
+			afterReceive: async () => undefined,
+			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
+			sender: () => "test",
+		});
+		commands.register(fake.pi);
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
+		await fake.commands.get("agents")!.handler("", ctx);
+		expect(external).toHaveBeenCalledOnce();
+		expect(ctx.ui.notes).toHaveLength(1);
+		const text = ctx.ui.notes[0].message;
+		expect(text).toContain("sly-crab · working · 15s");
+		expect(text).toContain("● claude-1 · acp claude · busy · /work/app");
+		expect(text).toContain("○ octocode inst-9 · pid 4242 · /work/other");
+		expect(text).not.toMatch(/untrusted|[{}"]/);
+	});
+
+	it("/agents external renders results as sentences, never JSON or the untrusted fence", async () => {
+		const fake = fakePi();
+		const commands = new Subcommands();
+		const external = vi.spyOn(ExternalAgents.prototype, "call");
+		registerExternal(fake.pi, commands, {
+			authorize: async () => undefined,
+			beforeSend: async () => undefined,
+			afterReceive: async () => undefined,
+			permission: () => async () => ({ outcome: { outcome: "cancelled" } }),
+			sender: () => "test",
+		});
+		commands.register(fake.pi);
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
+		const agents = fake.commands.get("agents")!;
+		external.mockResolvedValueOnce({ connections: [], instances: [] });
+		await agents.handler("external list", ctx);
+		external.mockResolvedValueOnce({ id: "x", reply: { text: `all done ${token}`, stopReason: "end_turn" } });
+		await agents.handler("external prompt x hello", ctx);
+		external.mockResolvedValueOnce({ disconnected: "x" });
+		await agents.handler("external disconnect x", ctx);
+		external.mockRejectedValueOnce(Object.assign(new Error("boom"), { execution: "uncertain" }));
+		await agents.handler("external cancel x", ctx);
+		expect(ctx.ui.notes.map((note) => note.message)).toEqual([
+			"No external agents connected or available.",
+			"x replied (end_turn):\nall done [redacted]",
+			"Disconnected x.",
+			"External agent error: boom\nExecution: uncertain",
+		]);
+		expect(ctx.ui.notes.map((note) => note.type)).toEqual(["info", "info", "info", "error"]);
 	});
 
 	it("supports discovery, connection and control without JSON", () => {

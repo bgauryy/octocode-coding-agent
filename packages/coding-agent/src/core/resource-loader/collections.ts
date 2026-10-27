@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { detectCapabilities, getTerminalColorMode } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { canonicalizePath, isLocalPath } from "../../utils/paths.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { isSkillEnabledBySettings, type PathMetadata } from "../package-manager.ts";

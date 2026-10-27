@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import lockfile from "proper-lockfile";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 
@@ -27,4 +28,28 @@ it("ignores an untrusted project's settings before trust is decided, such as whe
 it("keeps a trusted project's settings at startup", () => {
 	new ProjectTrustStore(agentDir).set(cwd, true);
 	expect(SettingsManager.createForStartup(cwd, agentDir).getSessionDir()).toBe("./.sessions");
+});
+
+it("starts untrusted instead of crashing when trust.json is corrupt", () => {
+	fs.writeFileSync(path.join(agentDir, "trust.json"), "{not json");
+	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+	try {
+		expect(SettingsManager.createForStartup(cwd, agentDir).getSessionDir()).toBeUndefined();
+		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("trust.json"));
+	} finally {
+		stderr.mockRestore();
+	}
+});
+
+it("starts from the saved decision while another process holds trust.json.lock", () => {
+	new ProjectTrustStore(agentDir).set(cwd, true);
+	const release = lockfile.lockSync(agentDir, {
+		realpath: false,
+		lockfilePath: path.join(agentDir, "trust.json.lock"),
+	});
+	try {
+		expect(SettingsManager.createForStartup(cwd, agentDir).getSessionDir()).toBe("./.sessions");
+	} finally {
+		release();
+	}
 });

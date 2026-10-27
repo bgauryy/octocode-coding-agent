@@ -7,13 +7,15 @@ import { SHELL_TOOLS } from "./shell.ts";
 import { readOnlyCommand } from "./shell/read-only.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
+import { shellPath } from "./file-access.ts";
 
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
  * investigate and report, and this refuses what would change the repository whatever mode the session is in. It
  * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/tmp/` and to Markdown docs under
- * `.octocode/` (not `.octocode/skills/`, which later sessions load): a task names its output path only in its text, so
- * the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
+ * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
+ * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
+ * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
  * refuses what the parse shows as a change inside the workspace (`shell/mutation.ts`); it is not a sandbox, so a
  * program that writes by itself (`node script.js`) is not seen.
  */
@@ -22,14 +24,42 @@ import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
 export const readOnlyRole = (env: NodeJS.ProcessEnv = process.env): boolean =>
 	envFlag(env, SUBAGENT_ENV) && envFlag(env, READ_ONLY_ENV);
 
-/** Whether a read-only child may write `file`: its scratch folder, `.octocode/tmp/`, or a Markdown doc under `.octocode/`. */
-function mayWrite(file: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
-	const target = canonicalPath(resolveToolPath(cwd, file));
+/**
+ * Entries directly under `.octocode/` that a later session loads as profiles, skills, prompts, themes, extensions,
+ * hooks, settings or system prompts (project loaders in `core/` and `shared/home.ts`); compared lower-cased, because
+ * the folder is read case-insensitively on macOS and Windows. A file planted there would run or steer a later session.
+ */
+const LOADED_BY_LATER_SESSIONS = new Set(
+	[
+		"skills",
+		"agents",
+		"prompts",
+		"themes",
+		"extensions",
+		"npm",
+		"git",
+		"hooks.json",
+		"settings.json",
+		"system.md",
+		"append_system.md",
+	].map((name) => name.toLowerCase()),
+);
+
+/**
+ * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/tmp/`, a topic's
+ * `.octocode/<topic>/tmp/`, or a Markdown doc under `.octocode/` outside the folders later sessions load.
+ */
+function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
 	const scratch = env[AGENT_SCRATCH_ENV];
 	if (scratch && isWithin(target, canonicalPath(scratch))) return true;
-	const { dir, tmp, skills } = workspacePaths(cwd);
+	const { dir, tmp } = workspacePaths(cwd);
 	if (isWithin(target, canonicalPath(tmp))) return true;
-	return target.endsWith(".md") && isWithin(target, canonicalPath(dir)) && !isWithin(target, canonicalPath(skills));
+	if (!isWithin(target, canonicalPath(dir))) return false;
+	const [entry = "", second] = path.relative(canonicalPath(dir), target).split(path.sep);
+	if (LOADED_BY_LATER_SESSIONS.has(entry.toLowerCase())) return false;
+	// A skill keeps its run scratch (ledgers, probes) in `.octocode/<topic>/tmp/`.
+	if (second?.toLowerCase() === "tmp") return true;
+	return target.toLowerCase().endsWith(".md");
 }
 
 const refusal = (what: string): string =>
@@ -43,15 +73,13 @@ export function readOnlyRoleRefusal(
 ): string | undefined {
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
-	if (event.toolName === "graphBuild")
-		return "Graph snapshot creation is refused in this role; use graphQuery on an existing snapshot.";
 	if (event.toolName === "debug" && input.action !== "terminate")
 		return refusal("Debugging (the adapter can execute code)");
 	if (event.toolName === "file" || event.toolName === "edit" || event.toolName === "write") {
 		const files = mutatedPaths(event.toolName, input);
 		if (event.toolName === "file" && files.length === 0 && (input.patch !== undefined || input.queries !== undefined))
 			return refusal("A file change that names no readable path");
-		const outside = files.find((file) => !mayWrite(file, cwd, env));
+		const outside = files.find((file) => !mayWrite(canonicalPath(resolveToolPath(cwd, file)), cwd, env));
 		return outside === undefined ? undefined : refusal(`Changing ${outside}`);
 	}
 	if (!SHELL_TOOLS.has(event.toolName)) return undefined;
@@ -61,8 +89,8 @@ export function readOnlyRoleRefusal(
 	const effect = shellMutation(command);
 	const root = workspaceRoot(cwd) ?? path.resolve(cwd);
 	const changed = effect.writes.find((file) => {
-		const target = canonicalPath(resolveToolPath(cwd, file));
-		return isWithin(target, canonicalPath(root)) && !mayWrite(file, cwd, env);
+		const target = canonicalPath(shellPath(cwd, file));
+		return isWithin(target, canonicalPath(root)) && !mayWrite(target, cwd, env);
 	});
 	if (changed !== undefined) return refusal(`Changing ${changed} from the shell`);
 	if (effect.opaque.length > 0) return refusal(`\`${effect.opaque[0]}\``);

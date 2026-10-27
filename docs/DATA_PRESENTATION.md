@@ -34,16 +34,16 @@ The SDK and filesystem-capable coding-agent runtime belong in a Node.js/Bun host
 
 ## Data contracts
 
-| Contract | What it represents | Presentation implications |
-| --- | --- | --- |
-| `AgentMessage` / `ToolResultMessage` | Transcript messages, content, errors, details, and usage | Reconstruct history from messages and session entries, not ANSI output. |
-| `AgentToolResult<T>` | Model-facing `content`, typed `details`, optional `structuredContent`, usage, error and termination metadata | Tool execution stays independent of its renderer. |
-| `AgentEvent` | Message and tool execution lifecycle | Discriminated event union, but tool arguments and results still contain `any`. |
-| `AgentSessionEvent` | Agent events plus session lifecycle and nested-call metadata | Reuse for in-process observers; preserve `parentToolCallId` when displaying nested tools. |
-| `JsonAgentSessionEvent` | The JSON/RPC event projection | Streaming updates differ from in-process updates. |
-| `RpcCommand` / `RpcResponse` / `RpcSessionState` | Commands, correlated responses, and state queries | Commands and asynchronous events are distinct streams within the same JSONL transport. |
-| `RpcExtensionUIRequest` / `RpcExtensionUIResponse` | Select, confirm, input, editor, notifications, status, and widget requests | Render dialogs in the host and answer using the request ID. |
-| `ToolRenderers` / `ToolRenderContext` | Terminal rendering callbacks and display state | These are TUI contracts, not portable web components. |
+| Contract                                           | What it represents                                                                                           | Presentation implications                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `AgentMessage` / `ToolResultMessage`               | Transcript messages, content, errors, details, and usage                                                     | Reconstruct history from messages and session entries, not ANSI output.                   |
+| `AgentToolResult<T>`                               | Model-facing `content`, typed `details`, optional `structuredContent`, usage, error and termination metadata | Tool execution stays independent of its renderer.                                         |
+| `AgentEvent`                                       | Message and tool execution lifecycle                                                                         | Discriminated event union, but tool arguments and results still contain `any`.            |
+| `AgentSessionEvent`                                | Agent events plus session lifecycle and nested-call metadata                                                 | Reuse for in-process observers; preserve `parentToolCallId` when displaying nested tools. |
+| `JsonAgentSessionEvent`                            | The JSON/RPC event projection                                                                                | Streaming updates differ from in-process updates.                                         |
+| `RpcCommand` / `RpcResponse` / `RpcSessionState`   | Commands, correlated responses, and state queries                                                            | Commands and asynchronous events are distinct streams within the same JSONL transport.    |
+| `RpcExtensionUIRequest` / `RpcExtensionUIResponse` | Select, confirm, input, editor, notifications, status, and widget requests                                   | Render dialogs in the host and answer using the request ID.                               |
+| `ToolRenderers` / `ToolRenderContext`              | Terminal rendering callbacks and display state                                                               | These are TUI contracts, not portable web components.                                     |
 
 RPC contracts are declared in [`rpc-types.ts`](../packages/coding-agent/src/modes/rpc/rpc-types.ts). TypeScript types are not runtime validation: the transport parses JSON and uses type assertions, with selected checks. A public network gateway needs its own validated boundary, authentication, and session ownership; the local stdio protocol is not an HTTP server.
 
@@ -81,15 +81,15 @@ Register the UI listener before sending a command that may ask a question. Rende
 
 ## What is portable today
 
-| Capability | Existing support | Remaining work for another interface |
-| --- | --- | --- |
-| Chat, thinking, tool progress, errors, usage | Typed session events and JSON/RPC projection | Host state reconstruction and native visual components. |
-| Tool-specific data | Generic result details and structured output | Validate/narrow details for the selected tool; there is no exhaustive tool-name-to-result type map. |
-| Basic dialogs and notifications | RPC UI request/response protocol and typed client methods | Host dialog rendering, cancellation, and timeout behavior. |
-| String widgets and status | RPC transports strings/lines | These remain presentation text; they are not semantic card/table descriptions. |
-| Custom components, headers, footers, editors | TUI callback APIs | Separate host implementations; RPC ignores or does not support several component-based APIs. |
-| Session history | SessionManager and transcript messages | Render stored fields; transient execution metadata may not be available after reload. |
-| HTML export | Existing export implementation | Static export is not a live web interface. |
+| Capability                                   | Existing support                                          | Remaining work for another interface                                                                |
+| -------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Chat, thinking, tool progress, errors, usage | Typed session events and JSON/RPC projection              | Host state reconstruction and native visual components.                                             |
+| Tool-specific data                           | Generic result details and structured output              | Validate/narrow details for the selected tool; there is no exhaustive tool-name-to-result type map. |
+| Basic dialogs and notifications              | RPC UI request/response protocol and typed client methods | Host dialog rendering, cancellation, and timeout behavior.                                          |
+| String widgets and status                    | RPC transports strings/lines                              | These remain presentation text; they are not semantic card/table descriptions.                      |
+| Custom components, headers, footers, editors | TUI callback APIs                                         | Separate host implementations; RPC ignores or does not support several component-based APIs.        |
+| Session history                              | SessionManager and transcript messages                    | Render stored fields; transient execution metadata may not be available after reload.               |
+| HTML export                                  | Existing export implementation                            | Static export is not a live web interface.                                                          |
 
 The [extension API](../packages/coding-agent/src/core/extensions/types.ts) mixes execution registration with optional terminal renderers. Tool execution does not require calling those renderers, but their `Theme`, `Component`, and `TUI` types bind presentation to the terminal.
 
@@ -130,16 +130,16 @@ The data/presentation regressions have passing checks. Remaining global failures
 
 Latest full isolated test results, before the concurrent provider-test updates:
 
-| Suite | Passed | Failed | Skipped | Result |
-| --- | ---: | ---: | ---: | --- |
-| Repository scripts | 29 | 0 | 0 | Passed |
-| Agent core | 91 | 0 | 0 | Passed |
-| AI/provider tests | 1,614 | 4 | 861 | Missing catalog entries in four provider tests |
-| Codemode | 223 | 3 | 0 | Bun worker-lifetime assertions |
-| Coding-agent standard suite | 2,773 | 1 | 50 | Configured GitHub Copilot default `gpt-5.4` absent from generated catalog |
-| MCP | 45 | 0 | 0 | Passed |
-| Telemetry | 47 | 0 | 0 | Passed |
-| Native features (run separately) | 2,546 | 0 | 16 | Passed |
+| Suite                            | Passed | Failed | Skipped | Result                                                                    |
+| -------------------------------- | -----: | -----: | ------: | ------------------------------------------------------------------------- |
+| Repository scripts               |     29 |      0 |       0 | Passed                                                                    |
+| Agent core                       |     91 |      0 |       0 | Passed                                                                    |
+| AI/provider tests                |  1,614 |      4 |     861 | Missing catalog entries in four provider tests                            |
+| Codemode                         |    223 |      3 |       0 | Bun worker-lifetime assertions                                            |
+| Coding-agent standard suite      |  2,773 |      1 |      50 | Configured GitHub Copilot default `gpt-5.4` absent from generated catalog |
+| MCP                              |     45 |      0 |       0 | Passed                                                                    |
+| Telemetry                        |     47 |      0 |       0 | Passed                                                                    |
+| Native features (run separately) |  2,546 |      0 |      16 | Passed                                                                    |
 
 The standard coding-agent suite's failure prevents its chained native command from running in `./test.sh`, so the native suite was run explicitly. All 11 filesystem failures from the first run disappeared after installing `fd`. The eight failures in this full run also existed in the baseline run and were not hidden or skipped to produce a passing result. Follow-up results after concurrent changes are recorded separately below.
 

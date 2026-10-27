@@ -3,7 +3,7 @@ import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { AgentSession } from "../agent-session.ts";
 import type { LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "../extensions/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
-import type { ResourceLoader } from "../resource-loader.ts";
+import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 

@@ -294,7 +294,10 @@ export function ToolContent({
 	const path = [...ancestors, toolCallId];
 	const nested = tools.filter((item) => item.parentToolCallId === toolCallId);
 	return (
-		<section className={`content-tool${tool?.status === "failed" ? " is-failed" : ""}`} aria-label={`Tool ${name}`}>
+		<section
+			className={`content-tool${tool?.status === "failed" && !tool.notRun ? " is-failed" : ""}`}
+			aria-label={`Tool ${name}`}
+		>
 			<header>
 				<strong>{name}</strong>
 				<span>

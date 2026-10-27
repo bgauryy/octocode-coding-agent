@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../agentdb/rows.ts";
-import { canonicalPath } from "../shared/home/repo.ts";
 import { DAY_MS, MINUTE_MS } from "../shared/util.ts";
+import { canonicalIn } from "./store/workspace.ts";
 
 /** Who changed which file, kept a day in the team database, for `coordinate changes`. */
 
@@ -35,7 +35,7 @@ export class EditLog {
 	record(agent: string, tool: string, files: string[], now = Date.now()): void {
 		const insert = this.db.prepare("INSERT INTO edits (workspace, path, agent, tool, at) VALUES (?, ?, ?, ?, ?)");
 		for (const file of files) {
-			const relative = path.relative(this.workspace, canonicalPath(path.resolve(this.workspace, file)));
+			const relative = path.relative(this.workspace, canonicalIn(this.workspace, file));
 			if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
 			insert.run(this.workspace, relative.split(path.sep).join("/"), agent, tool, now);
 		}

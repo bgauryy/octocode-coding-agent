@@ -167,7 +167,7 @@ export function loadMcpConfig(options: {
 	};
 }
 
-/** Settings `/mcp` changes. `enabled: true` and `exposure: "auto"` are the defaults and remove the key. */
+/** Settings `/mcp` changes. `enabled: true` and `exposure: "direct"` are the defaults and remove the key. */
 export interface McpServerConfigPatch {
 	enabled?: boolean;
 	exposure?: McpExposure;

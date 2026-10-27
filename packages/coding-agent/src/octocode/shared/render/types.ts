@@ -1,5 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 
 /** Renderer state kept per tool row (`context.state`). */
 export interface ToolRow {
@@ -13,6 +13,13 @@ export interface ToolRow {
 	waits?: string;
 	/** The call was interrupted (Esc, a kill, a requested stop), not failed: drawn `◼` in the warning colour. */
 	stopped?: boolean;
+	/** When the row first drew running: a finish after it visibly spun is news and flashes once (see `rowMark`). */
+	spunAt?: number;
+	/** When the row first drew as finished: the flash of its `✓` counts from here. */
+	settledAt?: number;
+	/** The state the row's animation subscription paints, and how to end it (see `rowMark`). */
+	marking?: string;
+	unmark?: () => void;
 }
 
 /** The part of Octocode's ToolRenderContext these helpers read. */

@@ -1,5 +1,6 @@
 import type { BashCommand, BashSyntax } from "./bash-types.ts";
 import { bashCandidates } from "./bash-wrappers.ts";
+import { wrappedCommand } from "./shell/words.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -182,9 +183,11 @@ export function bashSyntax(source: string): BashSyntax {
 					),
 				};
 				result.commands.push(command);
-				const readerIndex = bashCandidates(command, "deny").executables.find((index) =>
-					/^(?:tee|cat|head|tail|wc)$/.test(command.tokens[index]?.literal ?? ""),
-				);
+				// `sudo tee f` and `env cat f` run the program after their options: the same targets.
+				const literals = command.tokens.map((token) => token.literal);
+				const readerIndex = bashCandidates(command, "deny")
+					.executables.flatMap((index) => [index, wrappedCommand(literals, index) ?? index])
+					.find((index) => /^(?:tee|cat|head|tail|wc)$/.test(command.tokens[index]?.literal ?? ""));
 				if (readerIndex !== undefined) {
 					const reader = command.tokens[readerIndex].literal!;
 					const kind = reader === "tee" ? "write" : "read";

@@ -2,9 +2,7 @@
 	"navigation": [
 		{
 			"title": "Octocode",
-			"items": [
-				{ "title": "Runtime references", "path": "index.md" }
-			]
+			"items": [{ "title": "Runtime references", "path": "index.md" }]
 		}
 	]
 }

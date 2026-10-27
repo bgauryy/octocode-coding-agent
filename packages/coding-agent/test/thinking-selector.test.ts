@@ -2,7 +2,7 @@ import { setKeybindings } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { ThinkingSelectorComponent } from "../src/modes/interactive/components/thinking-selector.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("thinking selector", () => {
@@ -29,10 +29,10 @@ describe("thinking selector", () => {
 				.find((line) => line.includes(level));
 
 		expect(selector.getSelectList().getSelectedItem()?.label).toBe("✓ medium");
-		expect(getLevelRow("medium")?.startsWith("→ ✓ medium")).toBe(true);
+		expect(getLevelRow("medium")?.startsWith("› ✓ medium")).toBe(true);
 		selector.handleInput("\x1b[B");
 		expect(getLevelRow("medium")?.startsWith("  ✓ medium")).toBe(true);
-		expect(getLevelRow("high")?.startsWith("→   high")).toBe(true);
+		expect(getLevelRow("high")?.startsWith("›   high")).toBe(true);
 	});
 
 	it("uses the configured save binding", () => {

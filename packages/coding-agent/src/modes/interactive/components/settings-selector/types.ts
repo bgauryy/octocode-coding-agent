@@ -11,7 +11,7 @@ import type {
 	TuiMode,
 	WarningSettings,
 } from "../../../../core/settings-manager.ts";
-import type { ThemeAppearance } from "../../theme/theme.ts";
+import type { ThemeAppearance } from "../../../../theme/theme.ts";
 
 export interface SettingsConfig {
 	cachePreferences?: CachePreferences;
@@ -49,6 +49,7 @@ export interface SettingsConfig {
 	defaultProjectTrust: DefaultProjectTrust;
 	clearOnShrink: boolean;
 	showTerminalProgress: boolean;
+	reduceMotion: boolean | "auto";
 	tuiMode: TuiMode;
 	fullscreenExitOutput: FullscreenExitOutput;
 	fullscreenScrollbar: ScrollViewScrollbar;
@@ -91,6 +92,7 @@ export interface SettingsCallbacks {
 	onDefaultProjectTrustChange: (defaultProjectTrust: DefaultProjectTrust) => void;
 	onClearOnShrinkChange: (enabled: boolean) => void;
 	onShowTerminalProgressChange: (enabled: boolean) => void;
+	onReduceMotionChange: (value: boolean | "auto") => void;
 	onTuiModeChange: (mode: TuiMode) => void;
 	onFullscreenExitOutputChange: (output: FullscreenExitOutput) => void;
 	onFullscreenScrollbarChange: (mode: ScrollViewScrollbar) => void;

@@ -8,7 +8,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { keyText } from "../keybinding-hints.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "../session-selector-search.ts";
 import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./session-tree.ts";

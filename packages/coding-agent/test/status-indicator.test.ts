@@ -7,9 +7,10 @@ import {
 	CompactionStatusIndicator,
 	IdleStatus,
 	RetryStatusIndicator,
+	setRunClock,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
-import { getEditorTheme, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("status indicators", () => {
@@ -38,11 +39,40 @@ describe("status indicators", () => {
 			return lines;
 		};
 		const [, detail] = at(1000);
-		expect(stripAnsi(detail)).toMatch(/Writing the summary +esc to interrupt$/);
+		expect(stripAnsi(detail)).toMatch(/^ \S Writing the summary \(\d+s · esc to interrupt\)$/);
 		expect(stripAnsi(detail)).not.toContain("Main");
 		expect(at(1000)[1]).not.toBe(at(1600)[1]);
 		indicator.dispose();
 		setKeybindings(previousKeybindings);
+	});
+
+	it("counts the whole run from the run clock and clips the detail, never the time", () => {
+		initTheme("octocode-dark");
+		const previousKeybindings = getKeybindings();
+		setKeybindings(new KeybindingsManager());
+		vi.useFakeTimers({ now: 1_000_000 });
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		setRunClock(1_000_000 - 62_000);
+		const indicator = new WorkingStatusIndicator(tui, `Running subagent ${"goal ".repeat(40)}`);
+		try {
+			expect(stripAnsi(indicator.render(120)[1])).toMatch(
+				/^ \S Running subagent goal .*… \(1m02s · esc to interrupt\)$/,
+			);
+			// Narrow: the interrupt hint goes first, then the detail shrinks; the time stays last.
+			expect(stripAnsi(indicator.render(32)[1])).toMatch(/\(1m02s\)$/);
+			expect(stripAnsi(indicator.render(60)[1])).toMatch(/\(1m02s · esc to interrupt\)$/);
+			for (const width of [10, 20, 32, 60, 120])
+				expect(visibleWidth(indicator.render(width)[1])).toBeLessThanOrEqual(width);
+			vi.advanceTimersByTime(3_000);
+			expect(stripAnsi(indicator.render(120)[1])).toContain("(1m05s");
+			// The clock repaints once a second even when nothing else does.
+			expect(tui.requestRender).toHaveBeenCalled();
+		} finally {
+			indicator.dispose();
+			setRunClock(undefined);
+			setKeybindings(previousKeybindings);
+		}
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it("draws the detail plain when the indicator does not animate", () => {
@@ -87,9 +117,10 @@ describe("status indicators", () => {
 		editor.setWorkingStatusIndicator(indicator);
 
 		const topBorder = editor.render(20)[0];
-		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
+		expect(stripAnsi(topBorder)).toBe("── ⠋ Working (0s) ──");
 		expect(visibleWidth(topBorder)).toBe(20);
 		expect(topBorder).toContain(theme.fg("muted", "Working"));
+		expect(topBorder).toContain(theme.fg("dim", " (0s"));
 		expect(topBorder).toContain(theme.fg("thinkingHigh", "⠋"));
 		indicator.dispose();
 	});
@@ -117,7 +148,8 @@ describe("status indicators", () => {
 					expect(visibleWidth(editor.render(width)[0])).toBe(width);
 				}
 			}
-			vi.advanceTimersByTime(1000);
+			// The shared clock ticks on its own cadence: allow a frame past the second.
+			vi.advanceTimersByTime(1100);
 			expect(stripAnsi(editor.render(120)[0])).toContain("Retrying (1/3) in 2s");
 			editor.setWorkingStatusIndicator(undefined);
 			expect(stripAnsi(editor.render(120)[0])).toBe("─".repeat(120));

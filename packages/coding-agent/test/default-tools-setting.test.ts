@@ -116,15 +116,16 @@ describe("defaultTools setting", () => {
 	});
 
 	it.each([
-		{ defaults: undefined, options: {}, expected: ["browser", "debug", "web"] },
+		// Browsing defaults to the built-in browser MCP server; the native `browser` tool is opt-in (`+browser`).
+		{ defaults: undefined, options: {}, expected: ["debug", "web"] },
 		{ defaults: ["-browser"], options: {}, expected: ["debug", "web"] },
-		{ defaults: ["-debug"], options: {}, expected: ["browser", "web"] },
+		{ defaults: ["-debug"], options: {}, expected: ["web"] },
 		{ defaults: ["+browser"], options: {}, expected: ["browser", "debug", "web"] },
-		{ defaults: ["-web"], options: {}, expected: ["browser", "debug"] },
+		{ defaults: ["-web"], options: {}, expected: ["debug"] },
 		{ defaults: undefined, options: { excludeTools: ["browser", "web"] }, expected: ["debug"] },
 		{ defaults: undefined, options: { tools: ["file"] }, expected: [] },
 	])(
-		"activates browser and debug by default and preserves selections through startup: %j",
+		"activates debug by default, native browser on request, and preserves selections through startup: %j",
 		async ({ defaults, options, expected }) => {
 			const session = await createSession(defaults, options, [], true);
 			try {

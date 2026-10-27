@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { describe, expect, test } from "vitest";
 import * as sessionRender from "../src/modes/interactive/interactive-mode/session-render.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "../shared/env.ts";
 import { promptTitle } from "../shared/locks.ts";
@@ -36,7 +37,7 @@ const FOCUS_OFF = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
 const BEL = "\x07";
-const MARK = "●";
+const MARK = GLYPH.live;
 /** Without focus reports: a run this long with no keypress counts as "the user stepped away". */
 const AWAY_MS = 30_000;
 /** No two notifications within this window (a prompt right after an answer, back-to-back dialogs). */

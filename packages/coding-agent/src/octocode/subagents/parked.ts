@@ -12,6 +12,7 @@ export interface ParkedWorker {
 	until: number;
 	generation: number;
 	workspace: string;
+	/** Its identity never holds MCP server configs (they may carry credentials): a resume takes the session's current ones. */
 	run: Pick<Run, "identity" | "profile" | "route" | "teamNote">;
 }
 

@@ -85,8 +85,10 @@ const firstNonEmpty = (...groups: Facts[][]): Facts[] => groups.find((group) => 
  * The model a tier resolves to among `available`, or undefined to stay on the parent's. Works for any list: one model,
  * a few, or a router's hundreds. Candidates call tools, hold `MIN_SUBAGENT_CONTEXT`, take images when the parent does,
  * are not deprecated, cost less than the parent, and are their family's current generation; ones not much older than
- * the parent come first, then the parent's lab, then its provider (its auth and endpoint are proven). `small` is the
- * cheapest; `medium` the dearest between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price.
+ * the parent come first. The parent's provider ranks before its lab: only that provider's auth and endpoint are proven
+ * (another provider counts as available once a key is configured, even an expired one). So the order is the parent's
+ * provider and lab, its provider, its lab elsewhere, then anything. `small` is the cheapest; `medium` the dearest
+ * between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price.
  */
 export function resolveTier(
 	tier: ModelTier,
@@ -124,7 +126,8 @@ export function resolveTier(
 	const fresh = recent.length > 0 ? recent : eligible;
 	const sameLab = top.lab ? fresh.filter((model) => model.lab === top.lab) : [];
 	const sameProvider = fresh.filter((model) => model.ref.provider === own.provider);
-	const pool = firstNonEmpty(sameLab, sameProvider, fresh).sort((a, b) => a.price! - b.price!);
+	const ownLab = sameProvider.filter((model) => sameLab.includes(model));
+	const pool = firstNonEmpty(ownLab, sameProvider, sameLab, fresh).sort((a, b) => a.price! - b.price!);
 	if (tier === "small") return pool[0]?.ref;
 	const band = pool.filter(
 		(model) => model.price! <= top.price! * MEDIUM_MAX_SHARE && model.price! >= top.price! * MEDIUM_MIN_SHARE,

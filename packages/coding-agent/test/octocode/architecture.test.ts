@@ -62,6 +62,7 @@ const ALLOWED: Record<string, string[]> = {
 	permission: ["shared", "plan"],
 	debug: ["shared"],
 	skill: ["shared"],
+	graph: ["shared"],
 };
 
 describe("source layout", () => {

@@ -67,11 +67,11 @@ export function registerFileTool(
 				name: "file",
 				label: "File",
 				description:
-					"Create, edit or delete files; outside paths need approval in manual/workspace modes. Batch each file’s replacements in one query. Queries continue after failures; patch validates all operations first and stops on execution failure. Neither mode rolls back earlier changes. " +
-					"Read existing files first: a file that already exists but was not read in this session is refused with a read-first error, so check it before editing it. Writes/deletes refuse stale content; edits require current matches (unique unless replaceAll), with a whitespace/punctuation fallback when exact matching fails. Stale single-match edits require an exact LF-normalized anchor. Inspect every outcome.",
+					"Create, edit or delete files; it does not read them. Pass queries (one object per change: type, path, reason, plus edits or content) or a Codex-style patch string, not both; put all of one file's replacements in one query. Queries continue after a failed item; a patch validates everything first and stops at the first failure; neither rolls back. " +
+					"Read an existing file in this session before changing it (an unread file is refused with a read-first error); edits need exact text that matches once (or replaceAll), and writes/deletes refuse stale content. Paths outside the workspace need approval. Inspect every outcome.",
 				promptSnippet: "Create, edit or delete files (guarded)",
 				promptGuidelines: [
-					"Use file for authored changes; batch related files when useful. After a formatter or generator rewrites files, inspect its changes.",
+					"Use file, not shell redirection or sed -i, for authored changes: it refuses stale edits and checkpoints each change for /rewind. Batch related files in one call. After a formatter or generator rewrites files, inspect its changes.",
 				],
 				parameters: Params,
 				prepareArguments: renameReasoning,

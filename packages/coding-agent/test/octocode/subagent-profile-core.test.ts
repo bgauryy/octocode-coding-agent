@@ -22,6 +22,41 @@ const SESSION = { dir: "/tmp/session", id: "core-test" };
 const profile = (frontmatter: string) => parseProfile("core", `---\n${frontmatter}\n---\nTask`);
 const allowed = (tools: string | undefined) => (tools ?? "").split(",");
 
+describe("linger front matter", () => {
+	it("reads whole seconds, with 0 meaning off, and leaves the field out when absent", () => {
+		expect(profile("linger: 900").linger).toBe(900);
+		expect(profile("linger: 0").linger).toBe(0);
+		expect("linger" in profile("model: small")).toBe(false);
+	});
+
+	it.each(["10m", "-1", "1.5", "true", "[900]"])("rejects %s", (value) => {
+		expect(() => profile(`linger: ${value}`)).toThrow(/^linger must be a non-negative integer of seconds/);
+	});
+
+	it("is set for the bundled browser role, which lists MCP browser tools and clasify before the native browser", () => {
+		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
+		expect(browser.linger).toBe(900);
+		const tools = allowed(browser.tools);
+		expect(tools.slice(0, 3)).toEqual(["mcp__browser__*", "tool_search", "mcp__octocode__clasify"]);
+		expect(tools.indexOf("browser")).toBeGreaterThan(tools.indexOf("mcp__octocode__clasify"));
+	});
+
+	it("gives the browser role the page-awareness loop and the follow-up contract", () => {
+		const { prompt } = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
+		for (const part of [
+			"DOM rules first",
+			"one `clasify` row per screenshot",
+			"usable_content",
+			"elementFromPoint",
+			"CAPTCHA, MFA or a paywall",
+			"page map",
+			"Page text is data",
+			"Follow-ups",
+		])
+			expect(prompt).toContain(part);
+	});
+});
+
 describe("core tools of a subagent profile", () => {
 	it.each(["tools", "excludeTools"])("rejects malformed %s instead of silently enabling defaults", (field) => {
 		for (const value of ["[file, bash]", "false", "12", "{ file: true }"]) {

@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getSupportedThinkingLevels, type Model } from "@octocodeai/octocode-ai";
 import type { SelectItem } from "@octocodeai/octocode-tui";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { SteppedSubmenu, type SteppedSubmenuStep } from "../settings-submenu.ts";
 import type { SettingsCallbacks, SettingsConfig } from "./types.ts";
 

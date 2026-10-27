@@ -9,7 +9,7 @@ import { FullContentReader } from "../src/modes/interactive/components/applicati
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { SkillInvocationMessageComponent } from "../src/modes/interactive/components/skill-invocation-message.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
-import { getMarkdownTheme, initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { getMarkdownTheme, initTheme } from "../src/theme/theme.ts";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
@@ -60,7 +60,7 @@ function fixture(messages: AgentMessage[] = []) {
 		isInitialized: true,
 		getMarkdownTransformers: () => [],
 		getMarkdownThemeWithSettings: getMarkdownTheme,
-		hiddenThinkingLabel: "Thinking...",
+		hiddenThinkingLabel: "Thinking…",
 		hideThinkingBlock: false,
 		outputPad: 1,
 		pendingTools: new Map(),

@@ -8,7 +8,7 @@ import { type Container, type EditorComponent, hyperlink, type TUI } from "@octo
 import { getShareViewerUrl } from "../../config.ts";
 import type { AgentSession } from "../../core/agent-session.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
-import { theme } from "./theme/theme.ts";
+import { theme } from "../../theme/theme.ts";
 
 interface SessionShareContext {
 	session: AgentSession;

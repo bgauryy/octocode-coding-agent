@@ -14,7 +14,7 @@ import { classifyPowerShell } from "../shared/winhelper.ts";
 import type { Permission } from "./ask.ts";
 import type { AskReason } from "./mode.ts";
 import type { PermissionRequest } from "./request.ts";
-import { args, CHANGE_TOOLS, classify, reasonPurpose } from "./gate/classify.ts";
+import { args, callRequest, CHANGE_TOOLS, classify, reasonPurpose } from "./gate/classify.ts";
 
 /**
  * The permission step of the `tool_call` pipeline, after the invariants and the PreToolUse hooks. A provenance hit
@@ -48,6 +48,11 @@ interface PermissionGateOptions {
 	};
 	/** Whether a PowerShell command is `shell.destructive`; the Windows helper's parse by default (replaceable in tests). */
 	powershell?: (command: string) => Promise<boolean>;
+	/**
+	 * The request for a call whose class depends on the hosts it reaches (a browser MCP navigation to a private address),
+	 * resolved before the call runs; undefined leaves the call to `classify`.
+	 */
+	network?: (toolName: string, input: Record<string, unknown>) => Promise<PermissionRequest | undefined>;
 	/** The environment that says whether this is a read-only subagent (`OCTOCODE_READ_ONLY`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
 	replacement?: {
@@ -105,7 +110,8 @@ export function permissionGate(options: PermissionGateOptions) {
 			const forceDestructive =
 				(event.toolName === "powershell" || (event.toolName === "bash" && input.type === "powershell")) &&
 				(await powershell(optionalString(input.command) ?? ""));
-			const request = classify(event, ctx, forceDestructive);
+			const network = await options.network?.(event.toolName, input);
+			const request = network ? callRequest(network, event, ctx) : classify(event, ctx, forceDestructive);
 			const hit = provenance.check(event, ctx);
 			const reasons: AskReason[] = [
 				...(hit ? (["provenance"] as const) : []),

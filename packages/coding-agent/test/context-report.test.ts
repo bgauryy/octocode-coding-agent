@@ -61,7 +61,7 @@ it("uses the latest physical route's capacity and reserve in a virtual context r
 		});
 		await session.setModel(session.modelRuntime.getModel("router", "auto")!);
 		const report = session.getContextReport();
-		expect(report).toMatchObject({ capacity: 64_000, catalogCapacity: null, reserve: 8000, threshold: 56_000 });
+		expect(report).toMatchObject({ capacity: 64_000, catalogCapacity: null, reserve: 10_666, threshold: 53_334 });
 		expect(renderContextReport(report)).toContain("Select a physical model with /model");
 		expect(() => session.setContextWindow(32_000)).toThrow("Select a physical model");
 	} finally {

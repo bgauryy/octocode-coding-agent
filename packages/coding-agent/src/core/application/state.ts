@@ -82,3 +82,23 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 		}
 	}
 }
+
+const RECEIPT_LIMIT = 1000;
+const RECEIPT_KEEP = 500;
+
+/**
+ * Make room for one more command receipt. At the limit the oldest settled receipts go (they only serve repeated-id
+ * idempotency) until `RECEIPT_KEEP` remain; receipts of commands still running are never dropped.
+ */
+export function reserveReceipt(store: ApplicationStateStore): void {
+	const { receipts } = store.getState();
+	if (receipts.size < RECEIPT_LIMIT) return;
+	const kept = new Map(receipts);
+	for (const [id, { receipt }] of receipts) {
+		if (kept.size <= RECEIPT_KEEP) break;
+		if (receipt.status !== "accepted") kept.delete(id);
+	}
+	if (kept.size >= RECEIPT_LIMIT)
+		throw new Error("Command receipt capacity reached; too many commands are still running");
+	store.setState({ receipts: kept });
+}

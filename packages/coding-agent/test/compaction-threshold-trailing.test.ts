@@ -16,7 +16,6 @@ import { createTestResourceLoader } from "./utilities.ts";
 type CheckCompaction = (
 	assistantMessage: AssistantMessage,
 	skipAbortedCheck?: boolean,
-	toolResults?: AgentMessage[],
 	incoming?: readonly AgentMessage[],
 ) => Promise<boolean>;
 
@@ -118,7 +117,7 @@ describe("threshold compaction counts content after the last response", () => {
 			content: [{ type: "text", text: "y".repeat(3_000) }],
 			timestamp: Date.now(),
 		};
-		await run(assistant, false, [], [prompt]);
+		await run(assistant, false, [prompt]);
 		expect(compacted).toHaveBeenCalledWith("threshold", false, session.model);
 	});
 
@@ -126,7 +125,7 @@ describe("threshold compaction counts content after the last response", () => {
 		session.agent.state.messages = [assistant];
 		const { run, compacted } = check();
 		const prompt: AgentMessage = { role: "user", content: "hello", timestamp: Date.now() };
-		await run(assistant, false, [], [prompt]);
+		await run(assistant, false, [prompt]);
 		expect(compacted).not.toHaveBeenCalled();
 	});
 });

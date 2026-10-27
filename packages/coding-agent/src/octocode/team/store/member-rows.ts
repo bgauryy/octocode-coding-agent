@@ -78,7 +78,10 @@ export function processOf(db: DatabaseSync, id: string): ProcessIdentity | undef
 	return row ? { pid: num(row.pid), started: optionalString(row.started) } : undefined;
 }
 
-/** Deletes the row, releases the leases and dead-letters the unread mail of `id`; the one place a member is dropped. */
+/**
+ * Deletes the row, releases the leases and dead-letters the unread mail of `id`, and its read but unanswered
+ * `replyRequired` questions, so their askers are told; the one place a member is dropped.
+ */
 function retire(db: DatabaseSync, id: string, now: number): void {
 	db.prepare("DELETE FROM agents WHERE id = ?").run(id);
 	db.prepare("DELETE FROM leases WHERE owner = ?").run(id);
@@ -86,6 +89,10 @@ function retire(db: DatabaseSync, id: string, now: number): void {
 		now,
 		id,
 	);
+	db.prepare(
+		`UPDATE deliveries SET dead_at = ? WHERE recipient = ? AND delivered_at IS NOT NULL AND completed_at IS NULL
+       AND dead_at IS NULL AND message IN (SELECT id FROM messages WHERE reply_required = 1)`,
+	).run(now, id);
 }
 
 /** `join`'s write, run in its transaction: takes the name unless a running process other than this one holds it. */

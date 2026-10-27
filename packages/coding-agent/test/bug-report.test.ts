@@ -14,7 +14,7 @@ import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { reportBug } from "../src/modes/interactive/bug-report.ts";
 import { ExtensionEditorComponent } from "../src/modes/interactive/components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "../src/modes/interactive/components/extension-selector.ts";
-import { getEditorTheme, initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
 
 beforeAll(() => initTheme("dark"));
 

@@ -1,5 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 
 /**
  * Dynamic border component that adjusts to viewport width.

@@ -9,7 +9,7 @@ import type {
 	OverlayOptions,
 	TUI,
 } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type { ReadonlyFooterDataProvider } from "../../footer-data-provider.ts";
 import type { KeybindingsManager } from "../../keybindings.ts";
 

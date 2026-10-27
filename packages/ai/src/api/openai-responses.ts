@@ -1,7 +1,7 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { resolveCacheRetention } from "../utils/cache-policy.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
@@ -9,7 +9,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { failStreamTask } from "./lazy.ts";
 import { getClientApiKey, headersToRecord } from "../utils/headers.ts";
 import { requestJsonEventStream } from "../utils/json-event-stream.ts";
-import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { retryAfterMsFromError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript } from "../utils/transcript.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { assertResponsesStreamCompleted, stripResponsesStreamScratch } from "./openai-responses-shared/finalize.ts";
@@ -111,6 +111,8 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			output.errorMessage = errorMessage.includes("subscription_sharing_usage_limit_exceeded")
 				? `${errorMessage}\nCheck your ChatGPT usage: ${CHATGPT_USAGE_URL}`
 				: errorMessage;
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}

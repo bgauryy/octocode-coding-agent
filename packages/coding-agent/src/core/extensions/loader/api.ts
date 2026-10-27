@@ -46,6 +46,17 @@ export function createExtensionAPI(
 		}
 		runtime.assertActive();
 	};
+	const assertToolShape = (tool: ToolDefinition) => {
+		if (typeof tool.parameters !== "object" || tool.parameters === null || Array.isArray(tool.parameters)) {
+			throw new Error(
+				`Tool "${tool.name}" registered by extension "${extension.path}" must define an object parameter schema.`,
+			);
+		}
+	};
+	const storeTool = (tool: ToolDefinition) => {
+		assertToolShape(tool);
+		extension.tools.set(tool.name, { definition: tool, sourceInfo: extension.sourceInfo });
+	};
 	const applyRuntimeChange = (change: () => void) => {
 		if (state === "loading") pendingRuntimeChanges.push(change);
 		else change();
@@ -84,15 +95,16 @@ export function createExtensionAPI(
 
 		registerTool(tool: ToolDefinition): void {
 			assertActive();
-			if (typeof tool.parameters !== "object" || tool.parameters === null || Array.isArray(tool.parameters)) {
-				throw new Error(
-					`Tool "${tool.name}" registered by extension "${extension.path}" must define an object parameter schema.`,
-				);
-			}
-			extension.tools.set(tool.name, {
-				definition: tool,
-				sourceInfo: extension.sourceInfo,
-			});
+			storeTool(tool);
+			runtime.refreshTools();
+		},
+
+		registerTools(tools: readonly ToolDefinition[]): void {
+			assertActive();
+			// Validate all before storing any, so one bad definition leaves the registry as it was.
+			for (const tool of tools) assertToolShape(tool);
+			if (tools.length === 0) return;
+			for (const tool of tools) storeTool(tool);
 			runtime.refreshTools();
 		},
 

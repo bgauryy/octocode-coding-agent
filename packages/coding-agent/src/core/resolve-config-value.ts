@@ -6,8 +6,9 @@
 import { execSync, spawnSync } from "child_process";
 import { getShellConfig } from "../utils/shell.ts";
 
-// Cache for shell command results (persists for process lifetime)
-const commandResultCache = new Map<string, string | undefined>();
+// Successful shell command results are cached briefly so rotating tokens (gcloud, keychains) refresh; failures never are.
+const COMMAND_RESULT_TTL_MS = 5 * 60_000;
+const commandResultCache = new Map<string, { value: string; expiresAt: number }>();
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_VAR_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
 
@@ -131,7 +132,7 @@ export function isConfigValueConfigured(config: string, env?: Record<string, str
 
 /**
  * Resolve a config value (API key, header value, etc.) to an actual value.
- * - If starts with "!", executes the rest as a shell command and uses stdout (cached)
+ * - If starts with "!", executes the rest as a shell command and uses stdout (successes cached for a few minutes, failures never)
  * - Interpolates "$ENV_VAR" or "${ENV_VAR}" references with the named environment variable
  * - In non-command values, "$$" escapes a literal "$" and "$!" escapes a literal "!"
  * - Otherwise treats the value as a literal
@@ -200,12 +201,14 @@ function executeCommandUncached(commandConfig: string): string | undefined {
 }
 
 function executeCommand(commandConfig: string): string | undefined {
-	if (commandResultCache.has(commandConfig)) {
-		return commandResultCache.get(commandConfig);
-	}
+	const cached = commandResultCache.get(commandConfig);
+	if (cached && cached.expiresAt > Date.now()) return cached.value;
+	commandResultCache.delete(commandConfig);
 
 	const result = executeCommandUncached(commandConfig);
-	commandResultCache.set(commandConfig, result);
+	if (result !== undefined) {
+		commandResultCache.set(commandConfig, { value: result, expiresAt: Date.now() + COMMAND_RESULT_TTL_MS });
+	}
 	return result;
 }
 

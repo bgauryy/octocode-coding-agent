@@ -1,7 +1,8 @@
 import { assertImageRequestPayload } from "../../utils/image-input.ts";
+import { retryAfterMsFromError } from "../../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../../utils/assistant-message.ts";
 import type { GoogleGenAI, GenerateContentParameters } from "@google/genai";
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type {
 	AssistantMessage,
 	Model,
@@ -224,6 +225,8 @@ export function streamGoogle<T extends GoogleApiType>(
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatProviderError(normalizeProviderError(error));
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}

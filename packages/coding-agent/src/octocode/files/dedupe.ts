@@ -26,7 +26,7 @@ interface ReadIndex {
 const resultKey = (tool: string, inputKey: string, text: string) => `${tool}\0${inputKey}\0${sha256(text)}`;
 
 /** JSON tool inputs compare independently of property order; deep equality still verifies each candidate. */
-function argumentsKey(input: Record<string, unknown>): string {
+export function argumentsKey(input: Record<string, unknown>): string {
 	try {
 		return JSON.stringify(input, (_key, value: unknown) =>
 			isRecord(value)

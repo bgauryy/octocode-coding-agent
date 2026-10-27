@@ -185,6 +185,23 @@ describe("model purposes", () => {
 		expect(resolveTier("small", [parent, all[5]], parent, catalog)?.id).toBe("mini-old");
 	});
 
+	it("keeps a purpose on the parent's provider, whose auth is proven, before a cheaper same-lab model elsewhere", () => {
+		const parent = m("a", "anthropic/claude-opus", 4, 20);
+		const ownHaiku = m("a", "anthropic/claude-haiku", 0.1, 0.5);
+		const otherHaiku = m("b", "anthropic/claude-haiku", 0.08, 0.4);
+		const ownSonnet = m("a", "anthropic/claude-sonnet", 2, 10);
+		const otherSonnet = m("b", "anthropic/claude-sonnet", 1.9, 9);
+		expect(resolveTier("small", [parent, otherHaiku, ownHaiku], parent)).toBe(ownHaiku);
+		expect(resolveTier("medium", [parent, otherSonnet, ownSonnet, otherHaiku], parent)).toBe(ownSonnet);
+		// The parent's provider without a same-lab candidate still comes before another provider.
+		const ownOther = m("a", "other/cheap", 0.2, 1);
+		expect(resolveTier("small", [parent, otherHaiku, ownOther], parent)).toBe(ownOther);
+		// Another provider only when the parent's has no cheaper candidate: same lab first.
+		const foreign = m("c", "other/cheapest", 0.01, 0.05);
+		expect(resolveTier("small", [parent, foreign, otherHaiku], parent)).toBe(otherHaiku);
+		expect(resolveTier("small", [parent, foreign], parent)).toBe(foreign);
+	});
+
 	it("never makes medium a near-copy of the parent", () => {
 		const near = m("p", "near", 3.5, 18);
 		expect(resolveTier("medium", [opus, near, haiku], opus)).toBeUndefined();

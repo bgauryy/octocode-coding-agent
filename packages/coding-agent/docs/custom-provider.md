@@ -6,13 +6,13 @@ Provider extensions run inside Octocode and can inspect credentials, prompts, to
 
 ## Choose the smallest integration
 
-| Requirement | Use |
-|---|---|
-| Add models behind a supported API | [`models.json`](models.md#configure-a-compatible-endpoint) |
-| Change an existing provider endpoint or headers | `models.json` or a small provider extension |
-| Discover models dynamically | A provider with `refreshModels` |
-| Add a `/providers` flow | A provider with native or legacy OAuth configuration |
-| Implement an unsupported wire protocol | A provider with `stream` or `streamSimple` |
+| Requirement                                     | Use                                                        |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| Add models behind a supported API               | [`models.json`](models.md#configure-a-compatible-endpoint) |
+| Change an existing provider endpoint or headers | `models.json` or a small provider extension                |
+| Discover models dynamically                     | A provider with `refreshModels`                            |
+| Add a `/providers` flow                         | A provider with native or legacy OAuth configuration       |
+| Implement an unsupported wire protocol          | A provider with `stream` or `streamSimple`                 |
 
 A provider extension is an [extension](extensions.md), so it follows the same loading, trust, reload, and error behavior.
 
@@ -37,12 +37,12 @@ Register only the fields that should change. This keeps the provider's built-in 
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 
 export default function (octocode: ExtensionAPI) {
-  octocode.registerProvider("anthropic", {
-    baseUrl: "https://gateway.example.com/anthropic",
-    headers: {
-      "X-Gateway-Key": "$GATEWAY_API_KEY",
-    },
-  });
+	octocode.registerProvider("anthropic", {
+		baseUrl: "https://gateway.example.com/anthropic",
+		headers: {
+			"X-Gateway-Key": "$GATEWAY_API_KEY",
+		},
+	});
 }
 ```
 
@@ -56,24 +56,24 @@ When a service implements a supported protocol but has its own model catalog, re
 import type { ExtensionAPI } from "@octocodeai/octocodecode";
 
 export default function (octocode: ExtensionAPI) {
-  octocode.registerProvider("acme", {
-    name: "Acme AI",
-    baseUrl: "https://api.acme.example/v1",
-    apiKey: "$ACME_API_KEY",
-    api: "openai-completions",
-    models: [
-      {
-        type: "chat",
-        id: "acme-chat",
-        name: "Acme Chat",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 128000,
-        maxTokens: 8192,
-      },
-    ],
-  });
+	octocode.registerProvider("acme", {
+		name: "Acme AI",
+		baseUrl: "https://api.acme.example/v1",
+		apiKey: "$ACME_API_KEY",
+		api: "openai-completions",
+		models: [
+			{
+				type: "chat",
+				id: "acme-chat",
+				name: "Acme Chat",
+				reasoning: false,
+				input: ["text"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 128000,
+				maxTokens: 8192,
+			},
+		],
+	});
 }
 ```
 
@@ -85,35 +85,35 @@ A mixed-operation provider can register non-chat models and their implementation
 
 ```typescript
 octocode.registerProvider("media-tools", {
-  apiKey: "$MEDIA_TOOLS_API_KEY",
-  models: [
-    {
-      type: "image",
-      id: "image-v1",
-      name: "Image V1",
-      api: "media-images",
-      baseUrl: "https://media.example.com/v1",
-      input: ["text"],
-      output: ["image"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      type: "classifier",
-      id: "classifier-v1",
-      name: "Classifier V1",
-      api: "media-classifier",
-      baseUrl: "https://media.example.com/v1",
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 64000,
-    },
-  ],
-  images: {
-    "media-images": { generateImages: async (model, context, options) => result },
-  },
-  classifiers: {
-    "media-classifier": { classify: async (model, context, options) => result },
-  },
+	apiKey: "$MEDIA_TOOLS_API_KEY",
+	models: [
+		{
+			type: "image",
+			id: "image-v1",
+			name: "Image V1",
+			api: "media-images",
+			baseUrl: "https://media.example.com/v1",
+			input: ["text"],
+			output: ["image"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		},
+		{
+			type: "classifier",
+			id: "classifier-v1",
+			name: "Classifier V1",
+			api: "media-classifier",
+			baseUrl: "https://media.example.com/v1",
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 64000,
+		},
+	],
+	images: {
+		"media-images": { generateImages: async (model, context, options) => result },
+	},
+	classifiers: {
+		"media-classifier": { classify: async (model, context, options) => result },
+	},
 });
 ```
 

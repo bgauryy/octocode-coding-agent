@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Inbox } from "../../src/octocode/team/inbox.ts";
+import { deadLetterText } from "../../src/octocode/team/routing.ts";
 import type { Member } from "@octocodeai/octocode-contacts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -208,6 +209,30 @@ describe("team resource bounds", () => {
 			inbox.deliver(s.store, s.id, send);
 			expect(pending).toHaveBeenCalledTimes(1);
 			expect(send).toHaveBeenCalledTimes(1);
+		} finally {
+			s.close();
+		}
+	});
+
+	it("dead-letters a read but unanswered question when its recipient leaves, then prunes it once the asker is told", () => {
+		const s = setup();
+		try {
+			s.store.save(member("departing", Date.now()));
+			const question = s.store.send("peer", ["departing"], "which option?", { replyRequired: true }).id!;
+			const fyi = s.store.send("peer", ["departing"], "fyi", { replyRequired: false }).id!;
+			s.store.ack("departing", [question, fyi]);
+			expect(s.store.deadLetters("peer")).toEqual([]);
+			s.store.remove("departing");
+			expect(s.store.deadLetters("peer")).toEqual([
+				{ id: question, recipients: ["departing"], read: ["departing"], text: "which option?" },
+			]);
+			expect(deadLetterText(s.store.deadLetters("peer")[0])).toContain("was read but not answered");
+			const later = Date.now() + 25 * 3_600_000;
+			s.store.renew(s.id, later);
+			expect(s.store.replyTarget(question)).toBeDefined();
+			s.store.markNotified(s.store.deadLetters("peer"), later);
+			s.store.renew(s.id, later + 60_000);
+			expect(s.store.replyTarget(question)).toBeUndefined();
 		} finally {
 			s.close();
 		}

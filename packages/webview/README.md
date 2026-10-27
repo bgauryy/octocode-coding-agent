@@ -45,6 +45,6 @@ When disconnected, the page identifies cached session data beside agent controls
 
 ## Visual design and safety
 
-Visual tokens and layout rules live in `src/styles.ts`. They share the Octocode palette with the terminal themes (`coding-agent/src/modes/interactive/theme/octocode-*.json`): purple accent and GitHub-like neutrals, in one light and one dark palette. Colors identify status, always paired with an icon shape; tags and metadata stay neutral. Reduced motion and forced colors are respected.
+Visual tokens and layout rules live in `src/styles.ts`. They share the Octocode palette with the terminal themes (`coding-agent/src/theme/octocode-*.json`): purple accent and GitHub-like neutrals, in one light and one dark palette. Colors identify status, always paired with an icon shape; tags and metadata stay neutral. Reduced motion and forced colors are respected.
 
 Static backlog exports remain self-contained and offline. Live pages communicate through the routes and command schemas owned by contacts. Rich text is parsed, sanitized to an allowlist, and converted to React elements through a second allowlist; nothing renders through `innerHTML` or `dangerouslySetInnerHTML`, and code blocks cannot execute commands. React DOM contains sink code paths this page never uses, so `test/security.test.ts` keeps every HTML sink out of this package's source and runs the offline export on hostile data with each sink and network API trapped.

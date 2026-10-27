@@ -40,9 +40,11 @@ export function patchChanges(patch: string, reason: string): PatchChange[] {
 		};
 	});
 }
+/** Names both accepted forms and how to wrap one change, so a model that sent a flat `{type, path, ...}` can fix the call. */
+const FILE_INPUT_SHAPE =
+	"file takes either queries (an array, one object per change: {type, path, reason, edits|content}) or patch (a Codex apply_patch string), not both. Wrap a single change as queries:[{...}].";
 export function validateFileInput(input: Record<string, unknown>): void {
-	if ((input.patch !== undefined) === (input.queries !== undefined))
-		throw new Error("Provide exactly one of queries or patch");
+	if ((input.patch !== undefined) === (input.queries !== undefined)) throw new Error(FILE_INPUT_SHAPE);
 	if (input.patch !== undefined && typeof input.patch !== "string") throw new Error("Patch must be a string");
 	if (input.queries !== undefined && !Array.isArray(input.queries)) throw new Error("Queries must be an array");
 }

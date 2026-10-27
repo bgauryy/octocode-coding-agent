@@ -12,12 +12,12 @@ Start an installed Octocode with `OCTOCODE_HOOKS=1 octocode`. From the repositor
 
 The startup flags control two separate capabilities:
 
-| `OCTOCODE_HOOKS` | `OCTOCODE_HOOKS_COMPAT` | Behavior |
-|---|---|---|
-| Unset or `0` | Unset or `0` | Executable hooks and source permission rules are off |
-| `1` | Unset or `0` | Supported hook files use Octocode's shared native behavior |
-| Unset or `0` | `1` | The [Claude permission-rule preview](permissions.md) applies; executable hooks stay off |
-| `1` | `1` | Source permission rules and supported source-specific hooks apply |
+| `OCTOCODE_HOOKS` | `OCTOCODE_HOOKS_COMPAT` | Behavior                                                                                |
+| ---------------- | ----------------------- | --------------------------------------------------------------------------------------- |
+| Unset or `0`     | Unset or `0`            | Executable hooks and source permission rules are off                                    |
+| `1`              | Unset or `0`            | Supported hook files use Octocode's shared native behavior                              |
+| Unset or `0`     | `1`                     | The [Claude permission-rule preview](permissions.md) applies; executable hooks stay off |
+| `1`              | `1`                     | Source permission rules and supported source-specific hooks apply                       |
 
 Execution still requires valid configuration and applicable project or plugin approval. Native extensions and skill discovery have their own loaders and do not depend on these flags.
 
@@ -109,20 +109,20 @@ Save this configuration in `<repository-root>/.octocode/hooks.json`:
 
 ```json
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"console.log('Project hooks are active')\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  }
+	"hooks": {
+		"SessionStart": [
+			{
+				"matcher": "startup",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node -e \"console.log('Project hooks are active')\"",
+						"timeout": 5
+					}
+				]
+			}
+		]
+	}
 }
 ```
 
@@ -132,15 +132,15 @@ Start with hooks enabled, trust the native project configuration, and inspect `/
 
 Octocode reads these files in order when the session starts:
 
-| Order | Scope | Location |
-|---|---|---|
-| 1 | User | `~/.claude/settings.json` |
-| 2 | User | `~/.codex/hooks.json` |
-| 3 | User | `<Octocode home>/hooks.json` |
-| 4 | Trusted project | `<repository-root>/.claude/settings.json` |
-| 5 | Trusted project | `<repository-root>/.claude/settings.local.json` |
-| 6 | Trusted project | `<repository-root>/.codex/hooks.json` |
-| 7 | Trusted project | `<repository-root>/.octocode/hooks.json` |
+| Order | Scope           | Location                                        |
+| ----- | --------------- | ----------------------------------------------- |
+| 1     | User            | `~/.claude/settings.json`                       |
+| 2     | User            | `~/.codex/hooks.json`                           |
+| 3     | User            | `<Octocode home>/hooks.json`                    |
+| 4     | Trusted project | `<repository-root>/.claude/settings.json`       |
+| 5     | Trusted project | `<repository-root>/.claude/settings.local.json` |
+| 6     | Trusted project | `<repository-root>/.codex/hooks.json`           |
+| 7     | Trusted project | `<repository-root>/.octocode/hooks.json`        |
 
 Octocode home defaults to `~/.octocode/octocodecode/`; `OCTOCODE_HOME` overrides it. `OCTOCODE_CODING_AGENT_DIR` changes core configuration, not this native hook path. In legacy mode, Claude/Codex user paths remain relative to the user's home. In the source-profile preview, a non-empty `CODEX_HOME` relocates Codex user JSON and TOML discovery to that existing directory. An invalid override reports a diagnostic and skips Codex user sources without falling back; project paths remain unchanged. This local diagnostic differs from Codex aborting startup for an invalid home. Project paths use the repository root even when the session starts in a subdirectory.
 
@@ -152,24 +152,24 @@ Any loaded file with `disableAllHooks: true` disables all loaded hooks, includin
 
 ## Supported contract
 
-| Event | Profiles | Behavior |
-|---|---|---|
-| `PreToolUse` | Native, Claude, Codex | Denies calls, supplies context and applies supported source-profile rewrites before normal permission checks. |
-| `PostToolUse` | Native, Claude, Codex | Native/Claude append feedback; Codex can replace results. Successful file queries are handled individually. |
-| `PostToolUseFailure` | Claude preview | Observes failures and can add context. |
-| `PostToolBatch` | Claude preview | Observes the completed batch once; blocking prevents the next model request. |
-| `SessionStart` | Native, Claude, Codex | Supplies context for the next prompt, including after compaction. |
-| `SessionEnd` | Claude, Codex preview | Observes supported termination reasons within a separate cleanup deadline. |
-| `Interrupt` | Codex preview | Observes an explicitly interrupted main turn after cancellation; cannot continue it. |
-| `SubagentStart` / `SubagentStop` | Claude, Codex preview | Supply child context and gate child completion when child hooks are enabled. |
-| `UserPromptSubmit` | Claude, Codex preview | Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed. |
-| `PreCompact` | Native, Claude, Codex | Native is observational; supported source-profile vetoes reach the compaction owner. |
-| `PostCompact` | Claude, Codex preview | Claude observes; Codex can stop continuation after compaction. |
-| `Stop` | Native, Claude, Codex | Can request continuation; explicit source-profile termination takes precedence. |
-| `StopFailure` | Claude preview | Observes final error settlement; output cannot control the run. |
-| `Notification` | Native, Claude | Background observer; cannot block. Explicit Claude `async: true` can defer context as described above. |
-| `PreMessageSend` | Native only | Octocode message gate; can deny or ask before sending. |
-| `PostMessageReceive` | Native only | Observes delivery; cannot rewrite messages or request a reply. |
+| Event                            | Profiles              | Behavior                                                                                                      |
+| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `PreToolUse`                     | Native, Claude, Codex | Denies calls, supplies context and applies supported source-profile rewrites before normal permission checks. |
+| `PostToolUse`                    | Native, Claude, Codex | Native/Claude append feedback; Codex can replace results. Successful file queries are handled individually.   |
+| `PostToolUseFailure`             | Claude preview        | Observes failures and can add context.                                                                        |
+| `PostToolBatch`                  | Claude preview        | Observes the completed batch once; blocking prevents the next model request.                                  |
+| `SessionStart`                   | Native, Claude, Codex | Supplies context for the next prompt, including after compaction.                                             |
+| `SessionEnd`                     | Claude, Codex preview | Observes supported termination reasons within a separate cleanup deadline.                                    |
+| `Interrupt`                      | Codex preview         | Observes an explicitly interrupted main turn after cancellation; cannot continue it.                          |
+| `SubagentStart` / `SubagentStop` | Claude, Codex preview | Supply child context and gate child completion when child hooks are enabled.                                  |
+| `UserPromptSubmit`               | Claude, Codex preview | Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed.        |
+| `PreCompact`                     | Native, Claude, Codex | Native is observational; supported source-profile vetoes reach the compaction owner.                          |
+| `PostCompact`                    | Claude, Codex preview | Claude observes; Codex can stop continuation after compaction.                                                |
+| `Stop`                           | Native, Claude, Codex | Can request continuation; explicit source-profile termination takes precedence.                               |
+| `StopFailure`                    | Claude preview        | Observes final error settlement; output cannot control the run.                                               |
+| `Notification`                   | Native, Claude        | Background observer; cannot block. Explicit Claude `async: true` can defer context as described above.        |
+| `PreMessageSend`                 | Native only           | Octocode message gate; can deny or ask before sending.                                                        |
+| `PostMessageReceive`             | Native only           | Observes delivery; cannot rewrite messages or request a reply.                                                |
 
 Matcher groups accept `matcher` and `hooks`. In the default runtime, matchers use whole-name regular expressions; an absent/empty matcher or `*` matches all. Invalid patterns match nothing and produce diagnostics. Tool aliases support common names such as `Bash` and `Edit|Write`; matching an alias does not guarantee a full upstream payload translation.
 
@@ -201,26 +201,26 @@ Checked against the official [Claude reference](https://code.claude.com/docs/en/
 
 Upstream differences that matter: Codex defaults most command timeouts to 600 seconds, supports inline TOML, emits `apply_patch` with patch text, includes model/turn metadata, and gives explicit Stop termination priority across hooks. Its PreCompact hook can stop compaction. Claude supports additional handler transports, input rewriting and common permission metadata. Neither host's whole contract is implemented here; use the following local behavior when deciding whether a script can migrate.
 
-| Boundary | Octocode behavior | Migration consequence |
-|---|---|---|
-| JSON configuration | Accepts nested event → matcher group → command handler; ignores unrelated top-level settings | Basic command entries can migrate. Successful parsing alone does not prove semantic compatibility. |
-| Discovery and trust | Only the seven paths above; native project fingerprint approval | No managed-policy, plugin manifest, skill-frontmatter or inline TOML import. Host trust decisions are not imported. |
-| Command fields | `type`, `command`, `timeout`, `failClosed`; `statusMessage` accepted but not displayed | `commandWindows`, `command_windows`, `additionalContextLimit`, `async`, `if`, `args` and other handler fields reject the entry. |
-| Timeouts | Default 60 seconds; maximum 600 | Set an explicit supported timeout when migrating. |
-| Matchers | Whole-name JavaScript regex; aliases also match | Partial/unanchored patterns are not portable. A nonempty Stop matcher matches no names and prevents execution; omit it. |
-| Common input | `session_id`, `transcript_path`, `cwd`, `hook_event_name` | No `permission_mode`, `model`, `turn_id`, prompt or agent metadata. Missing transcript is an empty string; an existing transcript is Octocode's format. |
-| Shell input | Native `bash` becomes `Bash`; input is otherwise retained | Check every field used by the script, not just `tool_input.command`. |
-| File input | Native `file` becomes one Edit/Write/MultiEdit/Delete dispatch per query | No Codex `apply_patch` input or patch-text conversion. `Delete` is a local alias. All queries retain the parent `tool_use_id`. |
-| Other tool input | Matching aliases can exist while payload retains its native name and arguments | A matched name is not a translated schema. Legacy `edit`/`write`/`read` rename `path` only; other fields retain their native spelling. |
-| Successful tool output | `tool_response` is flattened text; partial file batches dispatch only successful queries | Scripts expecting a structured result or exit-code field need adaptation. |
-| Gate decisions | Denial and `ask` supported; `allow` cannot bypass permissions | `updatedInput` is ignored. No input mutation or permission-policy replacement. |
-| Common output | `systemMessage` and `suppressOutput` ignored; `hookEventName` is not validated | Missing or mismatched event tags do not reject results. Unknown JSON fields can be silently ignored. |
-| `continue: false` | Stops Stop continuation; on PreToolUse it blocks that call; SessionStart/PreCompact dispatchers discard the block | No general whole-turn stop contract. In particular, PreCompact cannot veto compaction. |
-| Stop aggregation | Explicit `continue: false` wins over `decision: "block"`, within one output or across commands | Fixed in this audit; exit 2 and block decisions otherwise request continuation, subject to the existing loop cap. |
-| Session start source | Startup/reload → `startup`; new → `clear`; resume → `resume`; fork → `fork` (the native profile keeps `resume`); compaction → `compact` | Claude and Codex hooks matching `fork` run for an Octocode fork. |
-| Start context | Delivered as hidden data on a following prompt; waiting is bounded | Do not assume upstream developer-message priority or identical delivery timing after compaction. |
-| Environment | Adds `CLAUDE_PROJECT_DIR`; inherits the launching process environment | Does not provision plugin root/data directories or a `CLAUDE_ENV_FILE` persistence mechanism. |
-| Extensions and mods | Native TypeScript extension API and Octocode package resources | Claude Mods and Claude/Codex plugin APIs are not interchangeable with this runtime. |
+| Boundary               | Octocode behavior                                                                                                                       | Migration consequence                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JSON configuration     | Accepts nested event → matcher group → command handler; ignores unrelated top-level settings                                            | Basic command entries can migrate. Successful parsing alone does not prove semantic compatibility.                                                      |
+| Discovery and trust    | Only the seven paths above; native project fingerprint approval                                                                         | No managed-policy, plugin manifest, skill-frontmatter or inline TOML import. Host trust decisions are not imported.                                     |
+| Command fields         | `type`, `command`, `timeout`, `failClosed`; `statusMessage` accepted but not displayed                                                  | `commandWindows`, `command_windows`, `additionalContextLimit`, `async`, `if`, `args` and other handler fields reject the entry.                         |
+| Timeouts               | Default 60 seconds; maximum 600                                                                                                         | Set an explicit supported timeout when migrating.                                                                                                       |
+| Matchers               | Whole-name JavaScript regex; aliases also match                                                                                         | Partial/unanchored patterns are not portable. A nonempty Stop matcher matches no names and prevents execution; omit it.                                 |
+| Common input           | `session_id`, `transcript_path`, `cwd`, `hook_event_name`                                                                               | No `permission_mode`, `model`, `turn_id`, prompt or agent metadata. Missing transcript is an empty string; an existing transcript is Octocode's format. |
+| Shell input            | Native `bash` becomes `Bash`; input is otherwise retained                                                                               | Check every field used by the script, not just `tool_input.command`.                                                                                    |
+| File input             | Native `file` becomes one Edit/Write/MultiEdit/Delete dispatch per query                                                                | No Codex `apply_patch` input or patch-text conversion. `Delete` is a local alias. All queries retain the parent `tool_use_id`.                          |
+| Other tool input       | Matching aliases can exist while payload retains its native name and arguments                                                          | A matched name is not a translated schema. Legacy `edit`/`write`/`read` rename `path` only; other fields retain their native spelling.                  |
+| Successful tool output | `tool_response` is flattened text; partial file batches dispatch only successful queries                                                | Scripts expecting a structured result or exit-code field need adaptation.                                                                               |
+| Gate decisions         | Denial and `ask` supported; `allow` cannot bypass permissions                                                                           | `updatedInput` is ignored. No input mutation or permission-policy replacement.                                                                          |
+| Common output          | `systemMessage` and `suppressOutput` ignored; `hookEventName` is not validated                                                          | Missing or mismatched event tags do not reject results. Unknown JSON fields can be silently ignored.                                                    |
+| `continue: false`      | Stops Stop continuation; on PreToolUse it blocks that call; SessionStart/PreCompact dispatchers discard the block                       | No general whole-turn stop contract. In particular, PreCompact cannot veto compaction.                                                                  |
+| Stop aggregation       | Explicit `continue: false` wins over `decision: "block"`, within one output or across commands                                          | Fixed in this audit; exit 2 and block decisions otherwise request continuation, subject to the existing loop cap.                                       |
+| Session start source   | Startup/reload → `startup`; new → `clear`; resume → `resume`; fork → `fork` (the native profile keeps `resume`); compaction → `compact` | Claude and Codex hooks matching `fork` run for an Octocode fork.                                                                                        |
+| Start context          | Delivered as hidden data on a following prompt; waiting is bounded                                                                      | Do not assume upstream developer-message priority or identical delivery timing after compaction.                                                        |
+| Environment            | Adds `CLAUDE_PROJECT_DIR`; inherits the launching process environment                                                                   | Does not provision plugin root/data directories or a `CLAUDE_ENV_FILE` persistence mechanism.                                                           |
+| Extensions and mods    | Native TypeScript extension API and Octocode package resources                                                                          | Claude Mods and Claude/Codex plugin APIs are not interchangeable with this runtime.                                                                     |
 
 Outside the source-profile preview, unsupported events include `UserPromptSubmit`, `PermissionRequest`, `PostToolUseFailure`, `PostCompact`, `SubagentStart`, `SubagentStop`, `SessionEnd` and `Interrupt`; the parser reports them. The supported-event table above is the complete allowlist, not a sample. `PreMessageSend` and `PostMessageReceive` are Octocode-specific.
 

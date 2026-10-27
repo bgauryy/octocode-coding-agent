@@ -1,6 +1,6 @@
 # @octocodeai/octocode-mcp (private workspace)
 
-This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and Octocode default preset. The client lives in `src/client/`; the host integration lives beside it, with the default preset in `src/presets/octocode/`.
+This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and Octocode default presets. The client lives in `src/client/`; the host integration lives beside it, with the default presets in `src/presets/octocode/` (research) and `src/presets/browser/` (the `@octocodeai/octocode-chrome-devtools` browser server).
 
 The protocol client can run without an agent session and does not depend on the official MCP SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-host-sources.mjs` compiles its sources into coding-agent's `dist/mcp/`. The temporary compilation tree is removed after each build. Source maps point to the original files and the MCP SDK license ships with the host.
 
@@ -9,6 +9,8 @@ The workspace is not published or installed as a runtime dependency. Public cons
 The package provides a transport-neutral client core, stdio, Streamable HTTP and legacy HTTP+SSE transports, and an in-memory testing transport.
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
+
+The host declares connected tools directly by default, with full descriptions and input schemas plus shared server instructions once. Explicit `auto`, `deferred`, `hidden`, and per-tool settings remain available; the Octocode preset uses it too, except for five rarely used research tools (`ghSearchHistory`, `ghGetHistoryItem`, `clasify`, `artifactSearch`, `ghSearchRepo`) that its per-tool defaults (`toolExposure` on the preset) defer behind `tool_search`; a server `exposure` or tool setting in `mcp.json` wins.
 
 ## Usage
 
@@ -92,9 +94,7 @@ const connect = () => {
 	const client = new McpClient({ name: "my-client", version: "1.0.0" });
 	return {
 		client,
-		connected: client.connect(
-			new StreamableHttpTransport({ url: serverUrl, authProvider: adaptOAuthProvider(oauth) }),
-		),
+		connected: client.connect(new StreamableHttpTransport({ url: serverUrl, authProvider: adaptOAuthProvider(oauth) })),
 	};
 };
 

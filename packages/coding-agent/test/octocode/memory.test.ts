@@ -474,7 +474,9 @@ describe("memory tool", () => {
 	it("is read-only in a subagent", async () => {
 		const { tool, subcommands } = setup(true);
 		expect(tool.parameters.properties.op.enum).toEqual(["search", "get", "list"]);
-		expect(tool.description).toContain("report anything worth remembering to your parent");
+		// The description is the same for every role (it leads the cached prefix); the limit is in the guideline and the refusal.
+		expect(tool.description).toBe(setup(false).tool.description);
+		expect(tool.description).not.toMatch(/subagent|parent/i);
 		expect(tool.promptSnippet).toBe("Search and read durable notes from earlier sessions");
 		expect(tool.promptGuidelines.join(" ")).toMatch(/^Memory is read-only here/);
 		expect(tool.promptGuidelines.join(" ")).not.toMatch(/Prefer updating/);

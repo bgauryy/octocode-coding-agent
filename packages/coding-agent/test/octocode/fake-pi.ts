@@ -43,7 +43,13 @@ export function fakePi() {
 	let activeTools: string[] | undefined;
 	const pi = {
 		getSettings: () => ({}),
+		getThinkingLevel: () => "off",
 		registerTool: (tool: { name: string }) => tools.set(tool.name, tool),
+		registerToolBatches: [] as string[][],
+		registerTools(batch: Array<{ name: string }>) {
+			this.registerToolBatches.push(batch.map((tool) => tool.name));
+			for (const tool of batch) tools.set(tool.name, tool);
+		},
 		registerCommand: (name: string, command: unknown) => commands.set(name, command),
 		registerMessageRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		registerEntryRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
@@ -59,8 +65,16 @@ export function fakePi() {
 		sendMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
 		sendUserMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
 		appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
+		// As the real host: registration activates only direct and model-only tools, and not those with `defaultActive: false`.
 		getActiveTools: () =>
-			activeTools ?? [...tools.values()].filter((tool) => tool.defaultActive !== false).map((tool) => tool.name),
+			activeTools ??
+			[...tools.values()]
+				.filter(
+					(tool) =>
+						tool.defaultActive !== false &&
+						(tool.exposure === undefined || ["direct", "model-only"].includes(tool.exposure)),
+				)
+				.map((tool) => tool.name),
 		getAllTools: () => [...tools.values()],
 		setActiveTools: (names: string[]) => {
 			activeTools = [...names];

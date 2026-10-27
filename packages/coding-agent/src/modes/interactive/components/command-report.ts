@@ -1,6 +1,6 @@
 import { getKeybindings, Markdown, Text, type Component } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 
 /** Scrollable read-only overlay that does not append content to the conversation. */
 export class CommandReport implements Component {

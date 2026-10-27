@@ -8,6 +8,7 @@ import { type Component, Container, Spacer, TuiAltScreen } from "@octocodeai/oct
 import { APP_NAME } from "../../../config.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { SessionImportFileNotFoundError, SessionImportInvalidError } from "../../../core/agent-session-runtime.ts";
+import { NothingToCompactError } from "../../../core/agent-session/compaction-control.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../../core/trust-manager.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
@@ -16,7 +17,8 @@ import { DynamicBorder } from "../components/dynamic-border.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { TrustSelectorComponent } from "../components/trust-selector.ts";
 import { shareSession } from "../session-share.ts";
-import { setRegisteredThemes, theme } from "../theme/theme.ts";
+import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
+import { noticeLine } from "./display.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
@@ -76,7 +78,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 	reloadBox.addChild(new Spacer(1));
 	reloadBox.addChild(
 		new ThemedText(
-			() => theme.fg("muted", "Reloading keybindings, extensions, skills, prompts, themes, and context files..."),
+			() => theme.fg("muted", "Reloading keybindings, extensions, skills, prompts, themes, and context files…"),
 			1,
 			0,
 		),
@@ -375,11 +377,9 @@ export async function handleClearCommand(host: SessionCommandsHost, previousName
 	host.clearStatusIndicator();
 	try {
 		const result = await host.runtimeHost.newSession(previousName ? { previousName } : undefined);
-		if (result.cancelled) {
-			return;
-		}
+		if (result.cancelled) return;
 		host.chatContainer.addChild(new Spacer(1));
-		host.chatContainer.addChild(new ThemedText(() => theme.fg("accent", "✓ New session started"), 1, 1));
+		host.chatContainer.addChild(noticeLine("success", "New session started", host.outputPad));
 		host.ui.requestRender();
 	} catch (error: unknown) {
 		await host.handleFatalRuntimeError("Failed to create session", error);
@@ -392,7 +392,8 @@ export async function handleCompactCommand(host: SessionCommandsHost, customInst
 
 	try {
 		await getApplicationPort(host.session).invoke("compact", { customInstructions });
-	} catch {
-		// Ignore, will be emitted as an event
+	} catch (error) {
+		// Failures are emitted as events; an empty session is not one.
+		if (error instanceof NothingToCompactError) host.showStatus(error.notice);
 	}
 }

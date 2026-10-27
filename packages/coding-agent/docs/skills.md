@@ -44,11 +44,11 @@ Use relative paths from the skill directory when referring to bundled files. Oct
 
 Run `/skills` (or `/skills list`) to inspect all discovered skills, including disabled ones: it shows load state, model/user invocation eligibility, source, and file path. Select a row to insert a loaded skill's command, see details, or change its state. `/skills <search>` keeps the quick picker for loaded, user-invocable skills.
 
-| Command | Effect |
-| --- | --- |
-| `/skills info <name-or-path>` | Show source, state, and exact file |
+| Command                          | Effect                                                             |
+| -------------------------------- | ------------------------------------------------------------------ |
+| `/skills info <name-or-path>`    | Show source, state, and exact file                                 |
 | `/skills disable <name-or-path>` | Save an exclusion in user or trusted project settings, then reload |
-| `/skills enable <name-or-path>` | Save an inclusion in the same scope, then reload |
+| `/skills enable <name-or-path>`  | Save an inclusion in the same scope, then reload                   |
 
 Use the exact path when names collide. A session-only or synthetic skill cannot be persisted with these commands. The commands change Octocode settings only; a shared skill file may have a different enable state in Claude, Codex, or OpenCode. `/skills list` may show an enabled skill as “not loaded” when its file is invalid, another skill won the same-name collision, or automatic skill loading is off; inspect startup diagnostics before assuming it reached the model. `octocode config` remains the broader terminal manager for skills and other resources.
 
@@ -139,16 +139,16 @@ Project skills can instruct the model to run scripts or modify files. Review unf
 
 Skill files may declare the following portable fields and invocation extensions. Informational fields remain in the file; the loader retains the name, description and invocation controls.
 
-| Field | Purpose |
-|---|---|
-| `name` | Command and display name |
-| `description` | Routing description shown to the model |
-| `license` | Informational license name or bundled license file; not enforced by the loader |
-| `compatibility` | Informational environment requirements; not checked by the loader |
-| `metadata` | Informational key-value metadata; not retained in the loaded skill record |
-| `allowed-tools` | Portable experimental metadata; Octocode does not apply a permission grant |
-| `disable-model-invocation` | Omit the skill from the model’s advertised list |
-| `user-invocable` | Set `false` to disable user command discovery and expansion |
+| Field                      | Purpose                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `name`                     | Command and display name                                                       |
+| `description`              | Routing description shown to the model                                         |
+| `license`                  | Informational license name or bundled license file; not enforced by the loader |
+| `compatibility`            | Informational environment requirements; not checked by the loader              |
+| `metadata`                 | Informational key-value metadata; not retained in the loaded skill record      |
+| `allowed-tools`            | Portable experimental metadata; Octocode does not apply a permission grant     |
+| `disable-model-invocation` | Omit the skill from the model’s advertised list                                |
+| `user-invocable`           | Set `false` to disable user command discovery and expansion                    |
 
 Names use lowercase letters, numbers, and hyphens, with no leading, trailing, or consecutive hyphens. They can contain at most 64 characters; descriptions can contain at most 1024.
 

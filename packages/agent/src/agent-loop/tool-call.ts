@@ -149,6 +149,52 @@ export async function runToolCall(toolCall: AgentToolCall, options: RunToolCallO
 	return finalizeExecutedToolCall(context, assistantMessage, preparation, executed, options, signal);
 }
 
+/** How long a tool may keep running after an abort before the loop stops waiting for it. */
+const ABORT_GRACE_MS = 50;
+
+const ABANDONED = Symbol("abandoned");
+
+/**
+ * Resolve with the operation's outcome, or with {@link ABANDONED} once `signal` has been aborted for
+ * {@link ABORT_GRACE_MS}. A tool that honors the signal settles inside the grace period and keeps its own
+ * result; one that ignores it is abandoned. The abandoned promise stays observed so a later rejection
+ * is never unhandled.
+ */
+function raceAbort<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T | typeof ABANDONED> {
+	void operation.catch(() => {});
+	if (!signal) return operation;
+	return new Promise<T | typeof ABANDONED>((resolve, reject) => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const cleanup = () => {
+			signal.removeEventListener("abort", onAbort);
+			if (timer !== undefined) clearTimeout(timer);
+		};
+		const onAbort = () => {
+			timer = setTimeout(() => {
+				cleanup();
+				resolve(ABANDONED);
+			}, ABORT_GRACE_MS);
+		};
+		operation.then(
+			(value) => {
+				cleanup();
+				resolve(value);
+			},
+			(error: unknown) => {
+				cleanup();
+				reject(error);
+			},
+		);
+		if (signal.aborted) onAbort();
+		else signal.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
+/**
+ * Execute a prepared call. An abort ends the call within a short grace period even when the tool ignores
+ * the signal: the call then reports "Operation aborted" and the tool keeps running in the background,
+ * with its late result, updates and errors discarded.
+ */
 export async function executePreparedToolCall(
 	prepared: PreparedToolCall,
 	signal: AbortSignal | undefined,
@@ -160,13 +206,18 @@ export async function executePreparedToolCall(
 	const elapsed = () => Math.round(performance.now() - startedAt);
 
 	try {
-		const result = await prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
-			if (!acceptingUpdates) return;
-			updateEvents.push(Promise.resolve(onUpdate(partialResult)));
-		});
+		const execution = (async () =>
+			prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
+				if (!acceptingUpdates) return;
+				updateEvents.push(Promise.resolve(onUpdate(partialResult)));
+			}))();
+		const result = await raceAbort(execution, signal);
 		const durationMs = elapsed();
 		acceptingUpdates = false;
 		await Promise.all(updateEvents);
+		if (result === ABANDONED) {
+			return { result: createErrorToolResult("Operation aborted"), isError: true, durationMs };
+		}
 		return { result, isError: result.isError === true, durationMs };
 	} catch (error) {
 		const durationMs = elapsed();

@@ -1,4 +1,4 @@
-import { Box, Text } from "@octocodeai/octocode-tui";
+import { animationClock, Box, MOTION, Text } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../../core/extensions/index.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultBlock } from "../../shared/render.ts";
@@ -23,12 +23,12 @@ async function withStatus<T>(ctx: ExtensionContext, label: string, work: () => P
 	};
 	show();
 	// RPC clients get the label once; only the TUI repaints the time.
-	const timer = ctx.mode === "tui" ? setInterval(show, 1_000) : undefined;
-	timer?.unref?.();
+	const unsubscribe =
+		ctx.mode === "tui" ? animationClock.subscribe(show, { everyMs: MOTION.tickMs, kind: "info" }) : undefined;
 	try {
 		return await work();
 	} finally {
-		if (timer) clearInterval(timer);
+		unsubscribe?.();
 		try {
 			ctx.ui.setStatus(STATUS.hooks, undefined);
 		} catch {

@@ -15,6 +15,15 @@ import type { McpExtensionState } from "./state.ts";
 import { createMcpToolDefinition } from "./tool-definition.ts";
 import { createMcpToolName } from "./tools.ts";
 
+type ToolDefinitions = Array<Parameters<McpExtensionState["definitions"]["set"]>[1]>;
+
+/** One registry refresh for the whole batch; a host without `registerTools` gets one `registerTool` per definition. */
+function registerAll(pi: McpExtensionState["pi"], definitions: ToolDefinitions): void {
+	if (definitions.length === 0) return;
+	if (typeof pi.registerTools === "function") pi.registerTools(definitions);
+	else for (const definition of definitions) pi.registerTool(definition);
+}
+
 export function registerTools(state: McpExtensionState, connection: McpServerConnection): void {
 	const { pi, toolOwners, serverTools, definitions, registeredMetadata, cachedDefinitions } = state;
 	const server = connection.entry.name;
@@ -32,6 +41,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		const requested = state.toolExposure(entry, tool);
 		return requested === "auto" ? automaticExposure : requested;
 	};
+	const batch: ToolDefinitions = [];
+	const demoted: string[] = [];
 	const previous = serverTools.get(server) ?? new Set<string>();
 	const current = new Set<string>();
 	// Like Codex, all tools whose names sanitize to the same name get the hash suffix, so which
@@ -58,7 +69,7 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		if (cached) {
 			if (definitions.get(name) !== cached) {
 				definitions.set(name, cached);
-				pi.registerTool(cached);
+				batch.push(cached);
 			}
 			continue;
 		}
@@ -89,8 +100,8 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		registeredMetadata.set(name, structuredClone(metadata));
 		cachedDefinitions.set(name, definition);
 		definitions.set(definition.name, definition);
-		pi.registerTool(definition);
-		if (wasDirect && exposure !== "direct") pi.setActiveTools(pi.getActiveTools().filter((active) => active !== name));
+		batch.push(definition);
+		if (wasDirect && exposure !== "direct") demoted.push(name);
 	}
 	serverTools.set(server, current);
 	// Tools cannot be unregistered, so tools the server dropped are re-registered as hidden. When
@@ -100,9 +111,11 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		if (!current.has(name) && definition) {
 			const hidden = { ...definition, exposure: "hidden" as const };
 			definitions.set(name, hidden);
-			pi.registerTool(hidden);
+			batch.push(hidden);
 		}
 	}
+	registerAll(pi, batch);
+	if (demoted.length > 0) pi.setActiveTools(pi.getActiveTools().filter((active) => !demoted.includes(active)));
 	if (connection.tools.some((tool) => resolvedExposure(tool.name) === "deferred")) {
 		activateDiscovery(pi);
 	}
@@ -111,14 +124,16 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 /** Make a disabled server's tools unreachable. */
 export function hideTools(state: McpExtensionState, server: string): void {
 	state.resetAutomaticExposure(server);
+	const batch: ToolDefinitions = [];
 	for (const name of state.serverTools.get(server) ?? []) {
 		const definition = state.definitions.get(name);
 		if (definition && definition.exposure !== "hidden") {
 			const hidden = { ...definition, exposure: "hidden" as const };
 			state.definitions.set(name, hidden);
-			state.pi.registerTool(hidden);
+			batch.push(hidden);
 		}
 	}
+	registerAll(state.pi, batch);
 	state.serverTools.set(server, new Set());
 }
 
@@ -129,7 +144,7 @@ export function ensureDiscoveryActive(state: McpExtensionState, ctx: ExtensionCo
 	const needsSearch = state.servers.some(
 		(server) =>
 			isEnabled(server) &&
-			[...configuredExposures(server.entry)].some(
+			[...configuredExposures(server.entry, state.preset(server.entry)?.toolExposure)].some(
 				(exposure) => (exposure === "auto" ? state.automaticExposure(server.entry) : exposure) === "deferred",
 			),
 	);

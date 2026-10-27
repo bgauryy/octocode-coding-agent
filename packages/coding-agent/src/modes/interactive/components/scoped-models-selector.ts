@@ -11,7 +11,7 @@ import {
 	Text,
 } from "@octocodeai/octocode-tui";
 import { getModelSearchText } from "../model-search.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 import {

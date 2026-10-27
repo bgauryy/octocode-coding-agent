@@ -162,8 +162,9 @@ describe("installed MCP and skills through the native SDK", () => {
 						turns.push(context);
 						const names = getCurrentTools(context.messages).map((tool) => tool.name);
 						expect(names).toEqual(expect.arrayContaining(["file", "agent", "archive"]));
-						// Native sessions activate `browser` by default (docs/native-features.md); the browser role keeps it too.
-						expect(names).toContain("browser");
+						// Browsing defaults to the browser MCP server (docs/native-features.md); only the browser role keeps native `browser`.
+						if (role === "browser") expect(names).toContain("browser");
+						else expect(names).not.toContain("browser");
 						if (role === "browser") expect(names).not.toContain("bash");
 						const reader = names.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
 						expect(reader).toBeDefined();
@@ -215,9 +216,10 @@ describe("installed MCP and skills through the native SDK", () => {
 				]);
 				await session.prompt("Load the research skill and its references.");
 				const servers = getMcpSessionStatus(resourceLoader.getEventBus());
-				expect(servers).toEqual([expect.objectContaining({ name: "octocode", state: "connected", enabled: true })]);
-				expect(servers[0].toolCount).toBeGreaterThan(0);
-				expect(servers[0].source).toBe(owner === "native" ? "built-in octocode" : path.join(agentDir, "mcp.json"));
+				const octocode = servers.find((server) => server.name === "octocode")!;
+				expect(octocode).toEqual(expect.objectContaining({ state: "connected", enabled: true }));
+				expect(octocode.toolCount).toBeGreaterThan(0);
+				expect(octocode.source).toBe(owner === "native" ? "built-in octocode" : path.join(agentDir, "mcp.json"));
 				const infoOutput = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 				try {
 					await session.prompt("/status");

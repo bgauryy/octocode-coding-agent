@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
-import { anthropicOAuth } from "../src/auth/oauth/anthropic.ts";
 import { githubCopilotOAuth } from "../src/auth/oauth/github-copilot.ts";
 import { kimiCodingOAuth } from "../src/auth/oauth/kimi-coding.ts";
 import { openaiChatGPTOAuth } from "../src/auth/oauth/openai-chatgpt.ts";
@@ -30,22 +29,10 @@ describe.sequential("OAuthAuth adapters", () => {
 	});
 
 	it("identifies only subscription-backed OAuth flows as subscriptions", () => {
-		for (const oauth of [
-			anthropicOAuth,
-			openaiChatGPTOAuth,
-			openaiCodexOAuth,
-			githubCopilotOAuth,
-			kimiCodingOAuth,
-			xaiOAuth,
-		]) {
+		for (const oauth of [openaiChatGPTOAuth, openaiCodexOAuth, githubCopilotOAuth, kimiCodingOAuth, xaiOAuth]) {
 			expect(oauth.isSubscription).toBe(true);
 		}
 		expect(openRouterOAuth.isSubscription).not.toBe(true);
-	});
-
-	it("anthropic toAuth derives the api key from the access token", async () => {
-		const auth = await anthropicOAuth.toAuth({ type: "oauth", access: "token", refresh: "r", expires: 0 });
-		expect(auth).toEqual({ apiKey: "token" });
 	});
 
 	it("OpenAI exposes ChatGPT OAuth alongside API-key auth", () => {
@@ -97,22 +84,6 @@ describe.sequential("OAuthAuth adapters", () => {
 			expires: 0,
 		});
 		expect(individual.baseUrl).toBe("https://api.individual.githubcopilot.com");
-	});
-
-	it("anthropic refresh exchanges the refresh token and returns a typed credential", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => jsonResponse({ access_token: "new-access", refresh_token: "new-refresh", expires_in: 3600 })),
-		);
-
-		const refreshed = await anthropicOAuth.refresh(
-			{ type: "oauth", access: "old", refresh: "old-r", expires: 0 },
-			neverAbortedSignal,
-		);
-		expect(refreshed.type).toBe("oauth");
-		expect(refreshed.access).toBe("new-access");
-		expect(refreshed.refresh).toBe("new-refresh");
-		expect(refreshed.expires).toBeGreaterThan(Date.now());
 	});
 
 	it("github-copilot refresh preserves the enterprise domain", async () => {

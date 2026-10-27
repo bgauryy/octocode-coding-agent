@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import type { MessageRef } from "../files/reads.ts";
+import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { isRecord } from "../../utils/guards.ts";
@@ -51,11 +52,12 @@ export function noticeContextUsage(
 	pi: Pick<ExtensionAPI, "sendMessage">,
 	ctx: Pick<ExtensionContext, "model" | "getContextUsage">,
 	messages: readonly Pick<MessageRef, "message">[],
+	thinking?: CompactionThinking,
 ): void {
 	const model = ctx.model;
 	const tokens = ctx.getContextUsage()?.tokens;
 	if (!model || model.contextWindow <= 0 || typeof tokens !== "number") return;
-	const limit = autoCompactAt(model);
+	const limit = autoCompactAt(model, thinking);
 	const band = noticeBand(tokens, limit);
 	if (band === undefined) return;
 	const last = lastNoticedBand(messages);

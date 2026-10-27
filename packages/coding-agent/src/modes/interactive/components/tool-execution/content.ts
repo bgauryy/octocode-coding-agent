@@ -4,13 +4,15 @@ import { ApplicationAssets } from "../../../../core/application/assets.ts";
 import { normalizeApplicationContent } from "../../../../core/application/normalize.ts";
 import { formatToolCallWithArgs } from "../../../../core/tools/render-utils.ts";
 import { sanitizeTerminalText } from "../../../../octocode/shared/sanitize.ts";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { ContentAttachmentComponent, contentText } from "../application-content.ts";
 import { keyHint } from "../keybinding-hints.ts";
 import { reasonRow } from "./reason.ts";
 import type { ToolExecutionResult } from "./types.ts";
 
 interface GenericToolDisplay {
+	/** The row's painted state mark. */
+	mark: string;
 	toolName: string;
 	toolCallId: string;
 	args: unknown;
@@ -37,7 +39,7 @@ export class GenericToolContent extends Container {
 		this.assets.clear();
 		this.addChild(
 			new Text(
-				formatToolCallWithArgs(sanitizeTerminalText(display.toolName), display.args, theme, display.expanded),
+				`${display.mark} ${formatToolCallWithArgs(sanitizeTerminalText(display.toolName), display.args, theme, display.expanded)}`,
 				display.outputPad,
 				1,
 				display.background,
@@ -100,7 +102,7 @@ export class GenericToolContent extends Container {
 		if (omitted)
 			this.addChild(
 				new Text(
-					`${theme.fg("muted", `... (${omitted} more lines)`)} ${keyHint("app.tools.expand", "to expand")}`,
+					`${theme.fg("muted", `… (${omitted} more lines)`)} ${keyHint("app.tools.expand", "to expand")}`,
 					display.outputPad,
 					0,
 					display.background,

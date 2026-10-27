@@ -3,7 +3,7 @@ import { BUILTIN_SLASH_COMMANDS, getBuiltinCommand, parseSlashCommand } from "..
 import { CommandSelectorComponent } from "../src/modes/interactive/components/command-selector.ts";
 import { getSlashCommands } from "../src/modes/interactive/interactive-mode/autocomplete.ts";
 import { setupEditorSubmitHandler } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { NATIVE_FEATURE_PATH } from "../src/core/native-tools.ts";
 

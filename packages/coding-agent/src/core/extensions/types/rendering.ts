@@ -1,7 +1,7 @@
 /** Message and entry rendering, and command registration. */
 
 import type { AutocompleteItem, Component } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { CustomEntry } from "../../session-manager.ts";
 import type { SourceInfo } from "../../source-info.ts";

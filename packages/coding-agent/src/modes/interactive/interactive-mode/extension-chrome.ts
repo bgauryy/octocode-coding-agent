@@ -8,7 +8,7 @@ import type { EditorFactory, ExtensionWidgetOptions } from "../../../core/extens
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { keyText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { getEditorTheme, type Theme, theme } from "../theme/theme.ts";
+import { getEditorTheme, type Theme, theme } from "../../../theme/theme.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

@@ -43,7 +43,6 @@ export interface RunLoopHost extends Pick<
 	checkCompaction(
 		assistantMessage: AssistantMessage,
 		skipAbortedCheck?: boolean,
-		toolResults?: AgentMessage[],
 		incoming?: readonly AgentMessage[],
 	): Promise<boolean>;
 	waitForIdle(): Promise<void>;
@@ -110,8 +109,9 @@ export class SessionRunLoop {
 		run.failedResponse = undefined;
 		this.host.models.recordSelection();
 		// The run records the loadout in the transcript; restored tools that did not register by now
-		// are dropped, so a tool that never registers does not stay pending.
-		this.host.tools.clearPendingToolNames();
+		// are dropped, so a tool that never registers does not stay pending. MCP tools of servers that
+		// are still connecting stay pending until their server registers them or settles.
+		this.host.tools.settlePendingToolNames();
 		try {
 			if (run.agentRunAbortRequested) return;
 			await session.agent.prompt(messages);
@@ -152,7 +152,7 @@ export class SessionRunLoop {
 		// The starting message is sent below, so do not call agent.continue() here.
 		const lastAssistant = findLastAssistantMessage(session.agent.state.messages);
 		if (lastAssistant) {
-			await this.host.checkCompaction(lastAssistant, false, [], incomingMessages(trigger));
+			await this.host.checkCompaction(lastAssistant, false, incomingMessages(trigger));
 		}
 
 		const selectedToolsBefore = tools.baseSystemPromptOptions.selectedTools;
@@ -207,9 +207,7 @@ export class SessionRunLoop {
 	private async _handlePostAgentRun(): Promise<boolean> {
 		const { session, run, retry } = this.host;
 		const message = run.lastAssistantMessage;
-		const toolResults = run.lastAssistantToolResults;
 		run.lastAssistantMessage = undefined;
-		run.lastAssistantToolResults = [];
 		if (run.agentRunAbortRequested) {
 			retry.finishCancelled();
 			return false;
@@ -230,7 +228,7 @@ export class SessionRunLoop {
 			retry.finishFailed(message);
 		}
 
-		if (await this.host.checkCompaction(message, true, toolResults)) {
+		if (await this.host.checkCompaction(message, true)) {
 			return !run.agentRunAbortRequested;
 		}
 

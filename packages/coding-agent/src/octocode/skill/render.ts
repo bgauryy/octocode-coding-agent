@@ -1,5 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { toolHeader } from "../shared/render.ts";
 import type { RenderContext } from "../shared/render/types.ts";
 

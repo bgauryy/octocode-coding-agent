@@ -5,7 +5,7 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import type { TreeSelectorComponent } from "../src/modes/interactive/components/tree-selector.ts";
 import { showTreeSelector } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { assistantMsg, userMsg } from "./utilities.ts";
 

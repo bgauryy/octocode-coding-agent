@@ -41,8 +41,10 @@ const APP_KEYBINDINGS = {
 		defaultKeys: process.platform === "win32" ? [] : "ctrl+z",
 		description: "Suspend to background",
 	},
+	// shift+tab belongs to app.permission.cycle, which the native editor handles before editor actions. Plain shift+t
+	// is indistinguishable from typing "T" in legacy terminals, so the modifier pair mirrors app.model.cycleBackward.
 	"app.thinking.cycle": {
-		defaultKeys: "shift+tab",
+		defaultKeys: windowsKeybindings ? "alt+t" : "shift+ctrl+t",
 		description: "Cycle thinking level",
 	},
 	"app.thinking.save": {

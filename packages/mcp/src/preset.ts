@@ -9,6 +9,8 @@ export interface McpServerPreset {
 	preferDeferred?: boolean;
 	prepareLaunch?: (entry: McpServerEntry, cwd: string, trusted: boolean) => McpServerEntry;
 	defineTool?: typeof createMcpToolDefinition;
+	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown, so it must be idempotent. */
+	dispose?: () => void | Promise<void>;
 }
 
 export function findMcpPreset(

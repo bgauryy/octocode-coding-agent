@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME } from "../config.ts";
@@ -163,10 +163,13 @@ function writeTrustFile(path: string, data: TrustFile, legacy: Record<string, un
 	atomicWriteFileSync(path, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
+/** Writers wait up to about two seconds for a peer (many processes can start at once); readers never lock. */
+const TRUST_LOCK_ATTEMPTS = 100;
+
 function acquireTrustLockSync(path: string): () => void {
 	const trustDir = dirname(path);
 	mkdirSync(trustDir, { recursive: true });
-	return lockSyncWithRetry(trustDir, { lockfilePath: `${path}.lock` });
+	return lockSyncWithRetry(trustDir, { lockfilePath: `${path}.lock`, attempts: TRUST_LOCK_ATTEMPTS });
 }
 
 function withTrustFileLock<T>(path: string, fn: () => T): T {
@@ -210,10 +213,16 @@ export function hasTrustRequiringProjectResources(cwd: string): boolean {
 	}
 }
 
+/** Store problems already reported in this process (one warning per problem, however many stores read it). */
+const warnedMessages = new Set<string>();
+
 export class ProjectTrustStore {
 	private trustPath: string;
+	private readonly onWarning: (message: string) => void;
 
-	constructor(agentDir: string) {
+	/** `onWarning` receives a store problem that was treated as "no decision"; the default prints it once to stderr. */
+	constructor(agentDir: string, onWarning?: (message: string) => void) {
+		this.onWarning = onWarning ?? ((message) => process.stderr.write(`${message}\n`));
 		this.trustPath = join(resolvePath(agentDir), "trust.json");
 	}
 
@@ -221,11 +230,17 @@ export class ProjectTrustStore {
 		return this.getEntry(cwd)?.decision ?? null;
 	}
 
+	/**
+	 * Writers replace the file by atomic rename, so a read needs no lock: it sees the old or the new content. An
+	 * unreadable or invalid store is "no decision" (never trust) with a warning, so startup does not fail on it.
+	 */
 	getEntry(cwd: string): ProjectTrustStoreEntry | null {
-		return withTrustFileLock(this.trustPath, () => {
-			const data = readTrustFile(this.trustPath);
-			return findNearestTrustEntry(data, cwd);
-		});
+		try {
+			return findNearestTrustEntry(readTrustFile(this.trustPath), cwd);
+		} catch (error) {
+			this.warnOnce(`${errorMessage(error)}. Treating ${cwd} as having no saved trust decision.`);
+			return null;
+		}
 	}
 
 	set(cwd: string, decision: ProjectTrustDecision): void {
@@ -234,7 +249,7 @@ export class ProjectTrustStore {
 
 	setMany(decisions: ProjectTrustUpdate[]): void {
 		withTrustFileLock(this.trustPath, () => {
-			const { data, legacy } = readTrustFileEntries(this.trustPath);
+			const { data, legacy } = this.readForWrite();
 			for (const { path, decision } of decisions) {
 				const key = normalizeCwd(path);
 				if (decision === null) {
@@ -245,5 +260,23 @@ export class ProjectTrustStore {
 			}
 			writeTrustFile(this.trustPath, data, legacy);
 		});
+	}
+
+	/** A corrupt store would block every later decision: keep it as `trust.json.bak` and start empty. */
+	private readForWrite(): ReturnType<typeof readTrustFileEntries> {
+		try {
+			return readTrustFileEntries(this.trustPath);
+		} catch (error) {
+			const backup = `${this.trustPath}.bak`;
+			copyFileSync(this.trustPath, backup);
+			this.warnOnce(`${errorMessage(error)}. Saved a copy as ${backup} and started a new trust store.`);
+			return { data: {}, legacy: {} };
+		}
+	}
+
+	private warnOnce(message: string): void {
+		if (warnedMessages.has(message)) return;
+		warnedMessages.add(message);
+		this.onWarning(message);
 	}
 }

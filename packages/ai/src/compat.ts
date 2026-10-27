@@ -42,7 +42,6 @@ export type { BuiltinProvider } from "./providers/all.ts";
 import { createFauxCore, type FauxProviderRegistration, type RegisterFauxProviderOptions } from "./providers/faux.ts";
 import type {
 	Api,
-	ApiStreamOptions,
 	AssistantMessage,
 	AssistantMessageEventStream,
 	Context,
@@ -54,6 +53,7 @@ import type {
 	StreamOptions,
 	TranscriptContext,
 } from "./types.ts";
+import type { ApiStreamOptions } from "./types/options.ts";
 import { normalizeContext } from "./utils/transcript.ts";
 
 type ApiStreamFunction = (

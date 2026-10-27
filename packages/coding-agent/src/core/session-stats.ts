@@ -26,18 +26,25 @@ export interface SessionStats {
 	cost: number;
 	contextUsage?: ContextUsage;
 	cache: CacheMetrics;
+	/** Assistant responses whose thinking budget was reduced (or disabled) to fit the context. */
+	thinkingReduced: number;
+	compaction: {
+		/** Truncated responses recovered by compacting and retrying since the session object was created. */
+		lengthRecoveries: number;
+	};
 }
 
 /** Message counts, token and cost totals, and cache metrics of the session file's entries. */
 export function computeSessionStats(
 	sessionManager: SessionManager,
-	session: Pick<SessionStats, "sessionFile" | "sessionId" | "contextUsage">,
+	session: Pick<SessionStats, "sessionFile" | "sessionId" | "contextUsage"> & { lengthRecoveries?: number },
 ): SessionStats {
 	let userMessages = 0;
 	let assistantMessages = 0;
 	let toolResults = 0;
 	let totalMessages = 0;
 	let toolCalls = 0;
+	let thinkingReduced = 0;
 	const usageTotals = createUsageTotals();
 
 	for (const entry of sessionManager.getEntries()) {
@@ -63,6 +70,9 @@ export function computeSessionStats(
 				toolCalls += assistantMsg.content.filter((c) => c.type === "toolCall").length;
 			}
 			addUsageToTotals(usageTotals, assistantMsg.usage);
+			if (assistantMsg.thinkingBudget && assistantMsg.thinkingBudget.sent < assistantMsg.thinkingBudget.requested) {
+				thinkingReduced++;
+			}
 		}
 	}
 
@@ -84,6 +94,8 @@ export function computeSessionStats(
 		cost: usageTotals.cost,
 		cache: computeCacheMetrics(sessionManager.getEntries()),
 		contextUsage: session.contextUsage,
+		thinkingReduced,
+		compaction: { lengthRecoveries: session.lengthRecoveries ?? 0 },
 	};
 }
 

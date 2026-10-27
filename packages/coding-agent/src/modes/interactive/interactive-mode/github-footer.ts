@@ -1,6 +1,8 @@
+import { GLYPH } from "@octocodeai/octocode-tui";
 import type { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { type GithubStatus, runGithubAuth } from "../../../../../mcp/src/presets/octocode/github-auth.ts";
-import { theme } from "../theme/theme.ts";
+import { STATE_COLOR } from "../../../theme/status.ts";
+import { theme } from "../../../theme/theme.ts";
 
 type Host = {
 	footerDataProvider: Pick<FooterDataProvider, "setGithubStatusText">;
@@ -14,13 +16,15 @@ export function updateGithubFooter(host: Host, status?: GithubStatus): void {
 	const unknown = !status || status.verification === "unverified";
 	const account = status?.username?.replace(/[^a-zA-Z0-9-]/g, "");
 	const text = verified
-		? `GitHub ✓${account ? ` @${account}` : ""} · /github status`
+		? `GitHub ${GLYPH.done}${account ? ` @${account}` : ""} · /github status`
 		: unknown
 			? "GitHub ? verification unavailable · /github status"
 			: status?.verification === "invalid"
-				? "GitHub ✗ credential rejected · /github status"
-				: "GitHub ✗ signed out · /github login";
-	host.footerDataProvider.setGithubStatusText(theme.fg(verified ? "success" : unknown ? "warning" : "error", text));
+				? `GitHub ${GLYPH.failed} credential rejected · /github status`
+				: `GitHub ${GLYPH.failed} signed out · /github login`;
+	host.footerDataProvider.setGithubStatusText(
+		theme.fg(verified ? STATE_COLOR.done : unknown ? STATE_COLOR.waiting : STATE_COLOR.failed, text),
+	);
 	host.ui.requestRender();
 }
 

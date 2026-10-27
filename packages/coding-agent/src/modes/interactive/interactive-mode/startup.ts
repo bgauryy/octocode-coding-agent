@@ -15,7 +15,7 @@ import { checkForNewOctocodeVersion } from "../../../utils/version-check.ts";
 import { createChatViewport } from "../chat-viewport.ts";
 import { formatKeyText, keyHint, keyText, rawKeyHint } from "../components/keybinding-hints.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
-import { onThemeChange, theme } from "../theme/theme.ts";
+import { onThemeChange, theme } from "../../../theme/theme.ts";
 import { refreshGithubFooter } from "./github-footer.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";

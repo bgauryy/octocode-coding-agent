@@ -245,9 +245,10 @@ description: project
 Project skill`,
 			);
 
-			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string; vars?: Record<string, string> };
+			const baseTheme = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+				vars?: Record<string, string>;
+			};
 			baseTheme.name = "collision-theme";
 			const userThemePath = join(agentDir, "themes", "collision.json");
 			const projectThemePath = join(cwd, ".octocode", "themes", "collision.json");
@@ -597,9 +598,9 @@ description: Project skill
 Project skill content`,
 			);
 			writeFileSync(join(promptsDir, "project.md"), "Project prompt");
-			const themeData = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string };
+			const themeData = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+			};
 			themeData.name = "project-theme";
 			writeFileSync(join(themesDir, "project.json"), JSON.stringify(themeData, null, 2));
 			const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
@@ -942,9 +943,9 @@ description: Package prompt
 ---
 Package prompt content`,
 			);
-			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string };
+			const baseTheme = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+			};
 			writeFileSync(
 				join(packageThemesDir, "package-theme.json"),
 				JSON.stringify({ ...baseTheme, name: "package-theme" }),

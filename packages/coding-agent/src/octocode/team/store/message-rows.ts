@@ -91,7 +91,7 @@ export function deadLetters(
 ): DeadLetter[] {
 	const rows = db
 		.prepare(
-			`SELECT m.id, m.body, d.recipient FROM deliveries d JOIN messages m ON m.id = d.message
+			`SELECT m.id, m.body, d.recipient, d.delivered_at FROM deliveries d JOIN messages m ON m.id = d.message
          WHERE m.workspace = ? AND m.sender = ? AND d.dead_at IS NOT NULL AND d.notified_at IS NULL ORDER BY m.id, d.recipient LIMIT ?`,
 		)
 		.all(workspace, sender, limit) as Row[];
@@ -100,6 +100,7 @@ export function deadLetters(
 		const id = num(row.id);
 		const letter = letters.get(id) ?? { id, recipients: [], text: String(row.body) };
 		letter.recipients.push(String(row.recipient));
+		if (row.delivered_at !== null) letter.read = [...(letter.read ?? []), String(row.recipient)];
 		letters.set(id, letter);
 	}
 	return [...letters.values()];

@@ -19,7 +19,7 @@ import { BorderedLoader } from "./components/bordered-loader.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { createShareTrailingEntries } from "./session-share.ts";
-import { theme } from "./theme/theme.ts";
+import { theme } from "../../theme/theme.ts";
 
 interface BugReportContext {
 	session: AgentSession;

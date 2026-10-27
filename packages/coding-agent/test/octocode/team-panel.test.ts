@@ -4,6 +4,7 @@ import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contacts/team";
 import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
+import { collapsedRows, shownWorking } from "../../src/octocode/team/panel-compact.ts";
 import { describeMembers } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -28,6 +29,51 @@ const member = (id: string, extra: Partial<Member> = {}): Member => ({
 });
 
 describe("agents panel", () => {
+	it("shows a subagent that joined moments ago as working, without changing its stored status", () => {
+		const fresh = member("general-1a2b", { parentId: "me-0001", joinedAt: NOW - 1_000 });
+		expect(fresh.status).toBe("idle");
+		expect(shownWorking(fresh, NOW)).toBe(true);
+		// Later, or once it has worked, its stored status speaks again; a top-level session never gets the grace.
+		expect(shownWorking({ ...fresh, joinedAt: NOW - 5_000 }, NOW)).toBe(false);
+		expect(shownWorking({ ...fresh, toolCalls: 2 }, NOW)).toBe(false);
+		expect(shownWorking(member("peer-1a2b", { joinedAt: NOW - 1_000 }), NOW)).toBe(false);
+		const rows = widgetLines([member("me-0001"), fresh], "me-0001", NOW, theme, 120).join("\n");
+		expect(rows).toContain("working");
+		expect(rows).not.toContain("idle");
+	});
+
+	it("bounds six working agents by the terminal height and keeps their names distinct", () => {
+		const agents = ["a1f3", "b2e4", "c3d5", "d4c6", "e5b7", "f6a8"].map((hash) =>
+			member(`researcher-${hash}`, {
+				parentId: "main",
+				status: "working",
+				goal: "Investigate the flaky tests ".repeat(4),
+				model: "provider/a-very-long-model-name",
+				activity: "reading files",
+			}),
+		);
+		const terminalRows = 24;
+		for (const width of [40, 80]) {
+			const rows = widgetLines(agents, "main", NOW, theme, width, [], terminalRows);
+			// Bound: a third of the terminal (8 of 24 rows): the header plus one row per agent fits.
+			expect(rows.length).toBeLessThanOrEqual(Math.floor(terminalRows / 3));
+			expect(rows.every((row) => visibleWidth(row) <= width)).toBe(true);
+			for (const agent of agents) expect(rows.filter((row) => row.includes(agent.id))).toHaveLength(1);
+		}
+	});
+
+	it("reserves at least eight cells for a name beside a long state", () => {
+		const rows = widgetLines(
+			[member("researcher-a1f3", { parentId: "main", status: "working", pending: 12, locks: ["a", "b"] })],
+			"main",
+			NOW,
+			theme,
+			24,
+		);
+		expect(rows[1]).toMatch(/researc/);
+		expect(rows.every((row) => visibleWidth(row) <= 24)).toBe(true);
+	});
+
 	it("keeps identity and state visible when a long goal and model cannot fit", () => {
 		const rows = widgetLines(
 			[
@@ -45,17 +91,21 @@ describe("agents panel", () => {
 		);
 		expect(rows[1]).toContain("research-a");
 		expect(rows[1]).toContain("working");
-		expect(rows.join(" ").replace(/\s+/g, " ")).toMatch(/provider\/a-very-long-model-name/);
-		expect(rows.join("\n")).toContain("age 1m");
+		// One head row (name, state, elapsed) and one detail row; no `age`/`model` labels.
+		expect(rows).toHaveLength(3);
+		expect(rows[1]).toMatch(/^ ⠋ research-a · working · 1m$/);
+		expect(rows.join("\n")).not.toMatch(/\b(age|model)\b/);
 		expect(rows.every((row) => visibleWidth(row) <= 48)).toBe(true);
 	});
 
-	it("shows unknown model explicitly and updates age from the member's join time", () => {
+	it("narrow layout: elapsed time follows the member's join time and an idle agent's second row is its goal", () => {
 		const agents = [member("research-a", { parentId: "main", goal: "Inspect ".repeat(20) })];
-		const before = widgetLines(agents, "main", NOW, theme, 32).join("\n");
-		const after = widgetLines(agents, "main", NOW + 5_000, theme, 32).join("\n");
-		expect(before).toContain("age 1m · model unknown");
-		expect(after).toContain("age 1m05s · model unknown");
+		const before = widgetLines(agents, "main", NOW, theme, 32);
+		const after = widgetLines(agents, "main", NOW + 5_000, theme, 32);
+		expect(before[1]).toBe(" ○ research-a · idle · 1m");
+		expect(after[1]).toBe(" ○ research-a · idle · 1m05s");
+		expect(before[2]).toMatch(/^ {3}Inspect Inspect/);
+		expect(before).toHaveLength(3);
 	});
 
 	const team = [
@@ -113,14 +163,14 @@ describe("agents panel", () => {
 
 	it("shows the header totals, model, state, age, tools and what each agent is doing now, working first", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 200);
-		expect(lines[0]).toBe(" agents  2 working · 1 idle · ≈$0.04");
+		expect(lines[0]).toBe(" agents · 2 working · 1 idle · ≈$0.04");
 		const squash = (line: string | undefined) => line!.replace(/ +/g, " ");
 		expect(squash(lines[1])).toBe(
-			" ● researcher-3fa9 · Find where tools register · claude-opus-4-5 · working · 2m14s · ↑12k ↓3k · 12 tool calls · ≈$0.04 localSearch registerTool",
+			" ⠋ researcher-3fa9 · Find where tools register · claude-opus-4-5 · working · 2m14s · ↑12k ↓3k · 12 tool calls · ≈$0.04 localSearch registerTool",
 		);
 		// A grandchild sits under its parent, indented; one without a goal leaves its cell empty, one without usage its tokens.
 		expect(squash(lines[2])).toBe(
-			" ● └ general-77aa · · claude-haiku-4-5 · working · 5s · · 1 tool call bash yarn test",
+			" ⠋ └ general-77aa · · claude-haiku-4-5 · working · 5s · · 1 tool call bash yarn test",
 		);
 		expect(squash(lines[3])).toBe(
 			" ○ reviewer-a1b2 · Review the diff · gpt-5 · idle · 45s · ↑4k ↓1k · 3 tool calls · · ✉ 1 waiting 1 lock",
@@ -131,18 +181,61 @@ describe("agents panel", () => {
 		expect(lines.join("\n")).not.toMatch(/anthropic\//);
 	});
 
-	it("drops cost, tools and flags first, then shortens the goal, keeping model, time and tokens on narrow terminals", () => {
+	it("drops cost, tools, flags and finally tokens before squeezing the activity, then shortens the goal", () => {
 		const medium = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		expect(medium.every((line) => visibleWidth(line) <= 120)).toBe(true);
 		expect(medium[1]).not.toContain("$0.04");
 		expect(medium[1]).not.toContain("12 tool calls");
 		expect(medium[1]).toContain("Find where tools register");
-		expect(medium[1]).toContain("localSearch");
+		expect(medium[1]).toContain("localSearch registerTool");
 		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 90);
 		expect(narrow.every((line) => visibleWidth(line) <= 90)).toBe(true);
-		for (const kept of ["claude-opus-4-5", "working", "2m14s", "↑12k ↓3k"]) expect(narrow[1]).toContain(kept);
+		for (const kept of ["claude-opus-4-5", "working", "2m14s"]) expect(narrow[1]).toContain(kept);
+		expect(narrow[1]).not.toContain("↑12k");
 		expect(narrow[1]).not.toContain("Find where tools register");
 		expect(narrow[1]).toMatch(/Find where[^·]*…/);
+		expect(narrow[1]).toContain("localSearch");
+	});
+
+	it("keeps a long activity readable at 120 columns by dropping tokens, not by cutting it to a stub", () => {
+		const busy = member("glowing-prawn", {
+			parentId: "main-aaaaaa",
+			status: "working",
+			goal: "ask parent a color, sleep, report",
+			model: "guy-provider/claude-haiku-5-5",
+			joinedAt: NOW - 5_000,
+			input: 275,
+			cacheRead: 58_400,
+			output: 135,
+			activity: "Running shell: sleep 25",
+		});
+		const row = widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 120)[1];
+		expect(row).toContain("Running shell: sleep 25");
+		expect(row).not.toContain("cached");
+		// With room (200 columns) the tokens stay.
+		expect(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200)[1]).toContain("cached");
+	});
+
+	it("keeps a finished agent as a final done row for ten seconds, after the live ones", () => {
+		const gone = member("sly-crab", { parentId: "main-aaaaaa", status: "working", joinedAt: NOW - 24_000 });
+		const finished = [{ member: gone, at: NOW - 9_000 }];
+		const main = member("main-aaaaaa");
+		const live = member("wobbly-siphon", { parentId: "main-aaaaaa", status: "working" });
+		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
+		expect(lines[0]).toBe(" agents · 1 working · 1 done");
+		expect(lines[1]).toContain("wobbly-siphon");
+		expect(lines[2]).toMatch(/^ ✓ sly-crab +· done +· 15s/);
+		expect(lines[2]).not.toContain("working");
+		// The elapsed time stays the run's length while the row is shown (ten seconds after it left, inclusive).
+		const later = widgetLines([main, live], "main-aaaaaa", NOW + 1_000, theme, 120, [], undefined, finished);
+		expect(later[2]).toMatch(/done +· +15s/);
+		// Then the row is gone; a lone finished agent keeps the panel for those ten seconds only.
+		expect(widgetLines([main, live], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toHaveLength(2);
+		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(2);
+		expect(widgetLines([main], "main-aaaaaa", NOW + 1_001, theme, 120, [], undefined, finished)).toEqual([]);
+		// Collapsed to one row per agent (few terminal rows) it still reads done.
+		const [row] = collapsedRows([{ member: gone, depth: 0, doneAt: NOW - 9_000 }], NOW, theme, 120);
+		expect(row).toBe(" ✓ sly-crab · done · 15s");
 	});
 
 	it("shows cache reads apart from new tokens and marks a model without pricing in the row and the header", () => {
@@ -164,7 +257,7 @@ describe("agents panel", () => {
 		const lines = widgetLines([member("main-aaaaaa"), priced, free], "main-aaaaaa", NOW, theme, 200).map((line) =>
 			line.replace(/ +/g, " "),
 		);
-		expect(lines[0]).toBe(" agents 2 idle · ≈$2.28 + n/a");
+		expect(lines[0]).toBe(" agents · 2 idle · ≈$2.28 + n/a");
 		expect(lines[1]).toBe(" ○ researcher-3fa9 · idle · 1m · ↑72k +1.1M cached ↓35k · 2 tool calls · ≈$2.28");
 		expect(lines[2]).toBe(" ○ general-77aa · idle · 1m · ↑4k ↓500 · 1 tool call · cost n/a");
 	});

@@ -12,43 +12,43 @@ Use `/providers` to connect an AI account or save an API key, then `/model` to c
 
 Every compatibility alias appears in the second column. Aliases preserve the canonical command's arguments, permissions and cleanup; they do not add another implementation.
 
-| Command | Aliases | Purpose |
-| --- | --- | --- |
-| `/agents [operation]` | `/list-agents`, `/peers` | List, message or control local and external agents; requires native features |
-| `/btw [question]` | — | Ask a tool-free side question outside conversation history; no argument reopens the side thread; `--clear` discards it |
-| `/bug [description]` | `/feedback` | Run the bug-report flow, including its consent steps |
-| `/changelog` | `/release-notes` | View changelog entries |
-| `/clone` | — | Duplicate the session at its current position |
-| `/compact [instructions]` | — | Compact context, optionally adding focus for this manual summary |
-| `/context [all\|size\|reset\|tokens]` | — | Inspect context usage; `size` selects a session budget, `32k` sets one directly, and `reset` restores the model limit |
-| `/copy` | — | Copy the last assistant message to the clipboard |
-| `/debug` | — | Save terminal and session diagnostics; this is separate from the optional debugger tool |
-| `/diff [path]` | — | Inspect staged, unstaged and untracked repository changes |
-| `/effort [level]` | `/thinking` | Inspect or change the coordinator’s reasoning effort |
-| `/export [path]` | — | Export the session as HTML, or JSONL when the destination uses `.jsonl` |
-| `/fork` | — | Create a new session from a selected historical user message |
-| `/github [status\|login\|logout]` | — | Manage GitHub code-search access; GitHub Copilot AI access is configured through `/providers` |
-| `/help [search]` | — | Find commands in the terminal picker |
-| `/import <path>` | — | Import and resume a JSONL session |
-| `/keys` | — | Show keyboard shortcuts |
-| `/providers [provider\|pi]` | `/login` | View AI provider status and models; sign in, add/replace an API key, remove a saved credential, or use Pi configuration |
-| `/logout` | — | Select provider credentials to remove |
-| `/model [provider/model]` | `/models` | Select this chat’s model from provider groups; Ctrl+S saves a default |
-| `/modelsettings` | — | Configure keyboard model shortcuts; inspect the native catalog, prices and agent routing; access local-model controls |
-| `/new [previous-name]` | `/clear`, `/reset` | Start a fresh session; optionally name the previous session after a successful switch |
-| `/permissions [operation]` | `/allowed-tools` | Inspect or change native permissions and the independent planning constraint |
-| `/plan [description]` | — | Enter native planning and optionally submit a task; see planning controls below |
-| `/queue` | — | Edit, remove or reorder queued messages |
-| `/quit` | `/exit` | Shut down and clean up the session |
-| `/reload` | — | Reload keybindings, extensions, skills, prompts, themes and context files |
-| `/rename <name>` | — | Set the current session's display name |
-| `/resume [all\|query]` | `/continue` | Browse saved sessions; native lookup supports a query or `all` directories |
-| `/settings` | `/config` | Open settings; direct `key=value` setters are not supported |
-| `/share` | — | Share the session through the existing private GitHub gist flow |
-| `/skills [search\|list\|info\|enable\|disable]` | — | Inspect discovered skills, enable or disable them, or select a loaded skill command |
-| `/status` | `/usage`, `/cost`, `/stats` | Show session statistics, usage, native activity, skills and MCP status; not subscription quotas |
-| `/tree` | — | Navigate branches of the current session |
-| `/trust [project\|config\|off]` | — | Manage project resource trust and native configuration trust |
+| Command                                         | Aliases                     | Purpose                                                                                                                 |
+| ----------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `/agents [operation]`                           | `/list-agents`, `/peers`    | List, message or control local and external agents; requires native features                                            |
+| `/btw [question]`                               | —                           | Ask a tool-free side question outside conversation history; no argument reopens the side thread; `--clear` discards it  |
+| `/bug [description]`                            | `/feedback`                 | Run the bug-report flow, including its consent steps                                                                    |
+| `/changelog`                                    | `/release-notes`            | View changelog entries                                                                                                  |
+| `/clone`                                        | —                           | Duplicate the session at its current position                                                                           |
+| `/compact [instructions]`                       | —                           | Compact context, optionally adding focus for this manual summary                                                        |
+| `/context [all\|size\|reset\|tokens]`           | —                           | Inspect context usage; `size` selects a session budget, `32k` sets one directly, and `reset` restores the model limit   |
+| `/copy`                                         | —                           | Copy the last assistant message to the clipboard                                                                        |
+| `/debug`                                        | —                           | Save terminal and session diagnostics; this is separate from the optional debugger tool                                 |
+| `/diff [path]`                                  | —                           | Inspect staged, unstaged and untracked repository changes                                                               |
+| `/effort [level]`                               | `/thinking`                 | Inspect or change the coordinator’s reasoning effort                                                                    |
+| `/export [path]`                                | —                           | Export the session as HTML, or JSONL when the destination uses `.jsonl`                                                 |
+| `/fork`                                         | —                           | Create a new session from a selected historical user message                                                            |
+| `/github [status\|login\|logout]`               | —                           | Manage GitHub code-search access; GitHub Copilot AI access is configured through `/providers`                           |
+| `/help [search]`                                | —                           | Find commands in the terminal picker                                                                                    |
+| `/import <path>`                                | —                           | Import and resume a JSONL session                                                                                       |
+| `/keys`                                         | —                           | Show keyboard shortcuts                                                                                                 |
+| `/providers [provider\|pi]`                     | `/login`                    | View AI provider status and models; sign in, add/replace an API key, remove a saved credential, or use Pi configuration |
+| `/logout`                                       | —                           | Select provider credentials to remove                                                                                   |
+| `/model [provider/model]`                       | `/models`                   | Select this chat’s model from provider groups; Ctrl+S saves a default                                                   |
+| `/modelsettings`                                | —                           | Configure keyboard model shortcuts; inspect the native catalog, prices and agent routing; access local-model controls   |
+| `/new [previous-name]`                          | `/clear`, `/reset`          | Start a fresh session; optionally name the previous session after a successful switch                                   |
+| `/permissions [operation]`                      | `/allowed-tools`            | Inspect or change native permissions and the independent planning constraint                                            |
+| `/plan [description]`                           | —                           | Enter native planning and optionally submit a task; see planning controls below                                         |
+| `/queue`                                        | —                           | Edit, remove or reorder queued messages                                                                                 |
+| `/quit`                                         | `/exit`                     | Shut down and clean up the session                                                                                      |
+| `/reload`                                       | —                           | Reload keybindings, extensions, skills, prompts, themes and context files                                               |
+| `/rename <name>`                                | —                           | Set the current session's display name                                                                                  |
+| `/resume [all\|query]`                          | `/continue`                 | Browse saved sessions; native lookup supports a query or `all` directories                                              |
+| `/settings`                                     | `/config`                   | Open settings; direct `key=value` setters are not supported                                                             |
+| `/share`                                        | —                           | Share the session through the existing private GitHub gist flow                                                         |
+| `/skills [search\|list\|info\|enable\|disable]` | —                           | Inspect discovered skills, enable or disable them, or select a loaded skill command                                     |
+| `/status`                                       | `/usage`, `/cost`, `/stats` | Show session statistics, usage, native activity, skills and MCP status; not subscription quotas                         |
+| `/tree`                                         | —                           | Navigate branches of the current session                                                                                |
+| `/trust [project\|config\|off]`                 | —                           | Manage project resource trust and native configuration trust                                                            |
 
 `/agents`, `/permissions` and `/plan` require native features. `/modelsettings`, `/resume`, `/status` and `/trust` combine terminal controls with native handlers when available. Without native features, `/resume` opens the basic session selector. In a native SDK/headless session, `/modelsettings` prints the catalog and agent-routing report; model selection remains an SDK API operation.
 
@@ -58,16 +58,16 @@ See [session workflows](native-features.md#session-workflow-commands) for side-q
 
 These eight commands extend the native inventory. `/web` is a compatibility alias for `/octocode`.
 
-| Command | Arguments and purpose |
-| --- | --- |
-| `/api` | Inspect the local session API; `on [http]` starts it, `off` stops it |
-| `/archive [segment]` | List compacted-history segments or show one segment's file path |
-| `/backlog` | Deprecated for opening the live workspace; retained for task-board operations listed below |
-| `/hooks` | Inspect hook enablement, loaded definitions, sources and diagnostics; no arguments |
-| `/jobs` | List background shell jobs; `kill <id>` stops one |
-| `/memory` | Browse durable memories; accepts `list`, `search <words>`, `add [title — body]`, `auto on`, `auto off`, `last` |
-| `/rewind [turns]` | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
-| `/octocode [backlogs]` | Open the live workspace on Activity, or its task board with `backlogs`; `/web` is the compatibility alias |
+| Command                | Arguments and purpose                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/api`                 | Inspect the local session API; `on [http]` starts it, `off` stops it                                                |
+| `/archive [segment]`   | List compacted-history segments or show one segment's file path                                                     |
+| `/backlog`             | Deprecated for opening the live workspace; retained for task-board operations listed below                          |
+| `/hooks`               | Inspect hook enablement, loaded definitions, sources and diagnostics; no arguments                                  |
+| `/jobs`                | List background shell jobs; `kill <id>` stops one                                                                   |
+| `/memory`              | Browse durable memories; accepts `list`, `search <words>`, `add [title — body]`, `auto on`, `auto off`, `last`      |
+| `/rewind [turns]`      | Restore checkpointed file changes from the last N turns on this branch; default 1; does not rewind the conversation |
+| `/octocode [backlogs]` | Open the live workspace on Activity, or its task board with `backlogs`; `/web` is the compatibility alias           |
 
 See [native features](native-features.md), [hooks](hooks.md), [permissions](permissions.md), and the [backlog view](native-features.md#backlog-view) for feature-specific behavior.
 
@@ -75,10 +75,10 @@ See [native features](native-features.md), [hooks](hooks.md), [permissions](perm
 
 These commands appear when their bundled extension is enabled. They have no built-in aliases; a configured replacement extension can supply different behavior.
 
-| Command | Extension | Purpose |
-| --- | --- | --- |
-| `/mcp [operation]` | `builtin:mcp` | Manage servers, inspect tools/configuration, authenticate, reconnect, and control exposure |
-| `/llama` | `builtin:llama.cpp` | Open the llama.cpp model manager; interactive terminal only |
+| Command            | Extension           | Purpose                                                                                    |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------ |
+| `/mcp [operation]` | `builtin:mcp`       | Manage servers, inspect tools/configuration, authenticate, reconnect, and control exposure |
+| `/llama`           | `builtin:llama.cpp` | Open the llama.cpp model manager; interactive terminal only                                |
 
 The bundled `tool-search` extension supplies tools, not a slash command. See [MCP](mcp.md) and [models](models.md).
 
@@ -86,15 +86,15 @@ The bundled `tool-search` extension supplies tools, not a slash command. See [MC
 
 All aliases accept the same operations as their canonical command. These are arguments after the command, not additional slash-command aliases.
 
-| Command family | Supported forms |
-| --- | --- |
-| `/skills` | No argument opens the manager; `list [search]` lists sources and load states, `info <name-or-path>` inspects a skill, `enable <name-or-path>` and `disable <name-or-path>` save settings and reload; other text searches loaded skill commands |
-| `/agents` | No argument lists agents; `tell <agent\|all> <message>`, `interrupt <id> <message>`, `kill <id>`, `merge <id>`, `stats`, `external ...` |
-| `/agents external` | `list`, `connect octocode <instanceId>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; a JSON object can supply advanced connection options |
-| `/permissions` | No argument shows status; `manual`, `workspace`, `full`, `grants`, `grants clear`, `log`, `plan`, `plan off` |
-| `/plan` | No argument enters or shows planning; a description enters and submits it; `--show` only inspects; `--off` leaves; `--approve <revision>` approves the current revision and requests implementation |
-| `/backlog` | `web`, `tui`, `add <title>`, `do <id>`, `export`, `html`, `<id>`, `<id> <backlog\|todo\|ongoing\|done>`, `<id> delete`; transitions still require their normal metadata and deletion requires interactive confirmation |
-| `/mcp` | No argument opens the terminal manager or reports status in other hosts; `list`, `config`, `tools [server] [tool]`, `enable <server> [--local]`, `disable <server> [--local]`, `exposure <server> <auto\|deferred\|direct\|hidden> [--local]`, `login [server]`, `logout [server]`, `reconnect [server\|all]` |
+| Command family     | Supported forms                                                                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/skills`          | No argument opens the manager; `list [search]` lists sources and load states, `info <name-or-path>` inspects a skill, `enable <name-or-path>` and `disable <name-or-path>` save settings and reload; other text searches loaded skill commands                                                                |
+| `/agents`          | No argument lists agents; `tell <agent\|all> <message>`, `interrupt <id> <message>`, `kill <id>`, `merge <id>`, `stats`, `external ...`                                                                                                                                                                       |
+| `/agents external` | `list`, `connect octocode <instanceId>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; a JSON object can supply advanced connection options                                                                                                             |
+| `/permissions`     | No argument shows status; `manual`, `workspace`, `full`, `grants`, `grants clear`, `log`, `plan`, `plan off`                                                                                                                                                                                                  |
+| `/plan`            | No argument enters or shows planning; a description enters and submits it; `--show` only inspects; `--off` leaves; `--approve <revision>` approves the current revision and requests implementation                                                                                                           |
+| `/backlog`         | `web`, `tui`, `add <title>`, `do <id>`, `export`, `html`, `<id>`, `<id> <backlog\|todo\|ongoing\|done>`, `<id> delete`; transitions still require their normal metadata and deletion requires interactive confirmation                                                                                        |
+| `/mcp`             | No argument opens the terminal manager or reports status in other hosts; `list`, `config`, `tools [server] [tool]`, `enable <server> [--local]`, `disable <server> [--local]`, `exposure <server> <auto\|deferred\|direct\|hidden> [--local]`, `login [server]`, `logout [server]`, `reconnect [server\|all]` |
 
 ## Skills, prompts and user extensions
 
@@ -102,21 +102,21 @@ These commands depend on loaded resources and are separate from the 45 built-in 
 
 The currently installed research package supplies these 14 bundled skill commands. Resource selection and collision rules can change their availability or invocation names; they have no fixed built-in aliases.
 
-| Skill command | Skill command |
-| --- | --- |
+| Skill command               | Skill command                    |
+| --------------------------- | -------------------------------- |
 | `/octocode-agentic-prompts` | `/octocode-agents-communication` |
-| `/octocode-architect` | `/octocode-brainstorming` |
-| `/octocode-chrome-devtools` | `/octocode-clean-agentic-code` |
-| `/octocode-documentation` | `/octocode-eval-benchmark` |
-| `/octocode-research` | `/octocode-rfc-generator` |
-| `/octocode-roast` | `/octocode-scraping` |
-| `/octocode-skills` | `/octocode-workflows` |
+| `/octocode-architect`       | `/octocode-brainstorming`        |
+| `/octocode-chrome-devtools` | `/octocode-clean-agentic-code`   |
+| `/octocode-documentation`   | `/octocode-eval-benchmark`       |
+| `/octocode-research`        | `/octocode-rfc-generator`        |
+| `/octocode-roast`           | `/octocode-scraping`             |
+| `/octocode-skills`          | `/octocode-workflows`            |
 
-| Resource | Invocation and collisions |
-| --- | --- |
-| [Skill](skills.md) | `/name [arguments]`; `/skill:name` is an explicit fallback. Collisions use qualified names; duplicate skills supplied by an SDK override can use `/skill:name:1`. |
-| [Prompt template](prompt-templates.md) | `/name [arguments]`; reserved or duplicate names receive `/prompt:name` or a numbered form. |
-| [Extension](extensions.md) | Its registered name and declared aliases; conflicts receive resolved names such as `/clear:1`. Discovery reports the actual spellings. |
+| Resource                               | Invocation and collisions                                                                                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Skill](skills.md)                     | `/name [arguments]`; `/skill:name` is an explicit fallback. Collisions use qualified names; duplicate skills supplied by an SDK override can use `/skill:name:1`. |
+| [Prompt template](prompt-templates.md) | `/name [arguments]`; reserved or duplicate names receive `/prompt:name` or a numbered form.                                                                       |
+| [Extension](extensions.md)             | Its registered name and declared aliases; conflicts receive resolved names such as `/clear:1`. Discovery reports the actual spellings.                            |
 
 `/octocode ...` is a migration message, not an executable alias. It points to direct commands such as `/agents external ...` and `/mcp reconnect octocode`; it does not perform the requested operation. Optional example extensions are not built-in commands.
 
@@ -130,20 +130,21 @@ In the terminal, `!<command>` runs a shell command and includes its result in co
 
 Shell commands run outside the conversation. `octocode config` manages resource configuration; `/config` is the in-session settings alias. `--continue` resumes the previous session; `/continue` opens the saved-session browser. Use `octocode --help` for all flags and their short aliases, and `octocode <command> --help` for subcommand options.
 
-| Shell command | Purpose |
-| --- | --- |
-| `octocode` | Start the agent; accepts options, file attachments and prompts |
-| `octocode install <source> [-l]` | Install an extension/package source and record it in settings |
-| `octocode remove <source> [-l]` | Remove a source from settings |
-| `octocode update [source\|self]` | Update packages, the executable or model catalogs |
-| `octocode list` | List configured installed sources |
-| `octocode config [-l]` | Open resource enablement configuration |
-| `octocode auth <command>` | Retrieve credentials or check provider readiness |
-| `octocode mcp <command>` | Configure MCP, inspect status or authenticate |
-| `octocode completion <bash\|zsh\|fish>` | Print shell-completion setup |
-| `octocode migrate` | Convert historical configuration in the active Octocode home/project |
-| `octocode research <args...>` | Delegate to the installed research CLI |
-| `octocode native <args...>` | Delegate to the installed native CLI |
+| Shell command                           | Purpose                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `octocode`                              | Start the agent; accepts options, file attachments and prompts                             |
+| `octocode install <source> [-l]`        | Install an extension/package source and record it in settings                              |
+| `octocode remove <source> [-l]`         | Remove a source from settings                                                              |
+| `octocode update [source\|self]`        | Update packages, the executable or model catalogs                                          |
+| `octocode list`                         | List configured installed sources                                                          |
+| `octocode config [-l]`                  | Open resource enablement configuration                                                     |
+| `octocode auth <command>`               | Retrieve credentials or check provider readiness                                           |
+| `octocode models discover`              | Compare vendor model IDs with the local catalog; see [model discovery](model-discovery.md) |
+| `octocode mcp <command>`                | Configure MCP, inspect status or authenticate                                              |
+| `octocode completion <bash\|zsh\|fish>` | Print shell-completion setup                                                               |
+| `octocode migrate`                      | Convert historical configuration in the active Octocode home/project                       |
+| `octocode research <args...>`           | Delegate to the installed research CLI                                                     |
+| `octocode native <args...>`             | Delegate to the installed native CLI                                                       |
 
 The separate `octocode-api` executable exposes `completion`, `list`, `status`, `send`, `watch`, `abort`, and `external`. Its session operations accept `--to <id>` where applicable. Run it with no arguments to print usage; see the [session API](../README.md#session-api). Delegated research/native command sets belong to their installed packages.
 
@@ -151,19 +152,19 @@ The separate `octocode-api` executable exposes `completion`, `list`, `status`, `
 
 Aliases use the canonical handler and prompt unchanged. Most commands perform host actions without asking the model anything. Configuration, memory and resource changes can affect later normal turns.
 
-| Command or operation | Model behavior and instruction contract | Regression coverage |
-| --- | --- | --- |
-| `/btw <question>` | Separate, tool-free request. The current question is preserved exactly in a JSON field; conversation and side-thread text are reference data. The serialized input budget includes escaping, and older context is trimmed first. The prompt requires uncertainty when evidence is missing and forbids claiming actions it cannot perform. | [Prompt bounds and reference framing](../test/side-question-prompt.test.ts), [concurrency, privacy, usage and cancellation](../test/side-questions.test.ts) |
-| `/compact [instructions]` | Additional focus supplements the checkpoint/recovery requirements for this manual request. Shared, standalone and turn-prefix paths retain it; automatic summaries do not inherit it. Summaries distinguish completed work, pending work and assumptions. | [Shared/fallback requests and focus cache isolation](../test/octocode/compaction-shared-summary.test.ts), [summary failures](../test/compaction-summary-reasoning.test.ts), [session compaction](../test/suite/agent-session-compaction.test.ts) |
-| `/plan [description]`, `/plan --approve <revision>` | Planning adds a system instruction to research, identify assumptions and propose proportionate steps with verification. Host gates enforce the read-only constraint independently of the prompt. Approval sends the exact saved plan and revision, even if its original assistant message was compacted away. Slash-prefixed task text is not dispatched as another command. | [Persistence, stale approvals, tool gates and request content](../test/octocode/planning.test.ts), [native SDK registration and enforcement](../test/octocode/native-command-sdk.test.ts) |
-| `/bug [description]` | The consent flow can request a tool-free report. It treats the transcript as evidence, separates observed failures from hypotheses, forbids invented reproduction/checks, and excludes secrets. Unusable or tool-calling responses are rejected before submission. | [Summary request and failure handling](../test/bug-report-summary.test.ts), [consent flow](../test/bug-report.test.ts) |
-| `/tree` | Navigation can request a branch summary. It shares the summarization system instruction, including the reference-data boundary and distinction between observed results and assumptions. Navigation itself need not call a model. | [Branch summaries](../test/branch-summarization.test.ts), [extension summaries](../test/branch-summary-extensions.test.ts), [terminal navigation](../test/interactive-mode-tree-navigation.test.ts) |
-| `/backlog do <id>` | Sends the task's saved context and comments, requires a fresh read of all pages before acting, and requires verification before completion. Saved task text does not grant additional permissions. Other backlog operations use host controls. | [Task handoff, version checks and delivery](../test/octocode/workspace-handoff.test.ts), [backlog command operations](../test/octocode/backlog.test.ts) |
-| `/agents tell`, `/agents interrupt`, `/agents external prompt` | Forwards the user's message to the selected agent through existing permission and delivery controls. These operations do not supply a separate summarization or planning prompt. Other agent operations use host controls. | [Team controls](../test/octocode/team-tools.test.ts), [external agent manager](../test/octocode/external-manager.test.ts) |
+| Command or operation                                           | Model behavior and instruction contract                                                                                                                                                                                                                                                                                                                                      | Regression coverage                                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/btw <question>`                                              | Separate, tool-free request. The current question is preserved exactly in a JSON field; conversation and side-thread text are reference data. The serialized input budget includes escaping, and older context is trimmed first. The prompt requires uncertainty when evidence is missing and forbids claiming actions it cannot perform.                                    | [Prompt bounds and reference framing](../test/side-question-prompt.test.ts), [concurrency, privacy, usage and cancellation](../test/side-questions.test.ts)                                                                                      |
+| `/compact [instructions]`                                      | Additional focus supplements the checkpoint/recovery requirements for this manual request. Shared, standalone and turn-prefix paths retain it; automatic summaries do not inherit it. Summaries distinguish completed work, pending work and assumptions.                                                                                                                    | [Shared/fallback requests and focus cache isolation](../test/octocode/compaction-shared-summary.test.ts), [summary failures](../test/compaction-summary-reasoning.test.ts), [session compaction](../test/suite/agent-session-compaction.test.ts) |
+| `/plan [description]`, `/plan --approve <revision>`            | Planning adds a system instruction to research, identify assumptions and propose proportionate steps with verification. Host gates enforce the read-only constraint independently of the prompt. Approval sends the exact saved plan and revision, even if its original assistant message was compacted away. Slash-prefixed task text is not dispatched as another command. | [Persistence, stale approvals, tool gates and request content](../test/octocode/planning.test.ts), [native SDK registration and enforcement](../test/octocode/native-command-sdk.test.ts)                                                        |
+| `/bug [description]`                                           | The consent flow can request a tool-free report. It treats the transcript as evidence, separates observed failures from hypotheses, forbids invented reproduction/checks, and excludes secrets. Unusable or tool-calling responses are rejected before submission.                                                                                                           | [Summary request and failure handling](../test/bug-report-summary.test.ts), [consent flow](../test/bug-report.test.ts)                                                                                                                           |
+| `/tree`                                                        | Navigation can request a branch summary. It shares the summarization system instruction, including the reference-data boundary and distinction between observed results and assumptions. Navigation itself need not call a model.                                                                                                                                            | [Branch summaries](../test/branch-summarization.test.ts), [extension summaries](../test/branch-summary-extensions.test.ts), [terminal navigation](../test/interactive-mode-tree-navigation.test.ts)                                              |
+| `/backlog do <id>`                                             | Sends the task's saved context and comments, requires a fresh read of all pages before acting, and requires verification before completion. Saved task text does not grant additional permissions. Other backlog operations use host controls.                                                                                                                               | [Task handoff, version checks and delivery](../test/octocode/workspace-handoff.test.ts), [backlog command operations](../test/octocode/backlog.test.ts)                                                                                          |
+| `/agents tell`, `/agents interrupt`, `/agents external prompt` | Forwards the user's message to the selected agent through existing permission and delivery controls. These operations do not supply a separate summarization or planning prompt. Other agent operations use host controls.                                                                                                                                                   | [Team controls](../test/octocode/team-tools.test.ts), [external agent manager](../test/octocode/external-manager.test.ts)                                                                                                                        |
 
-The other **38 commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/providers`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
+**The remaining commands have no command-owned model request**: `/api`, `/archive`, `/changelog`, `/clone`, `/context`, `/copy`, `/debug`, `/diff`, `/effort`, `/export`, `/fork`, `/github`, `/help`, `/hooks`, `/import`, `/jobs`, `/keys`, `/llama`, `/providers`, `/logout`, `/mcp`, `/memory`, `/model`, `/modelsettings`, `/new`, `/permissions`, `/queue`, `/quit`, `/reload`, `/rename`, `/resume`, `/rewind`, `/settings`, `/share`, `/skills`, `/status`, `/trust`, and `/octocode`. In particular, `/context` reports estimates or changes the session context budget without sending prompt text, and `/diff` reads repository changes without an LLM; their owners are covered by [context report tests](../test/context-report.test.ts) and [repository diff tests](../test/octocode/repository-diff.test.ts).
 
-[Dispatch tests](../test/slash-command-dispatch.test.ts) compare all 13 aliases with their canonical handler's arguments and effects. [Collision tests](../test/command-aliases.test.ts) cover extensions, prompts and skills. The native SDK test checks all 15 native registrations and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
+[Dispatch tests](../test/slash-command-dispatch.test.ts) compare every alias in the shared metadata with its canonical handler's arguments and effects. [Collision tests](../test/command-aliases.test.ts) cover extensions, prompts and skills. The native SDK test checks every native command registration and both bundled extension command registrations. Loaded skill bodies and user prompt templates remain separate, source-specific instructions; their argument expansion and collision handling are tested, but this audit is not a quality evaluation of every third-party resource.
 
 Offline tests verify request construction, routing, state and enforcement. They do not prove that every live model will follow a prompt, or replace manual terminal/browser acceptance testing.
 

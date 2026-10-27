@@ -31,8 +31,7 @@ export function saveConfig(
 			return `Could not update ${entry.override ?? entry.source}: ${errorMessage(error)}`;
 		}
 	}
-	// The session's copy changes as the file does: a default removes its key (an explicit `auto`
-	// would disable the `octocode` server's direct/deferred split until reload).
+	// Keep the session and file consistent: defaults remove their keys, while overrides retain them.
 	const config = { ...entry.config };
 	applyMcpServerPatch(config, patch, entry.override !== undefined);
 	server.entry = { ...entry, config };

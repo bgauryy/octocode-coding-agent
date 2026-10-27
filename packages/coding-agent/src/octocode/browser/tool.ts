@@ -27,7 +27,9 @@ export function registerBrowserTool(pi: ExtensionAPI, browser: BrowserTool): voi
 			{
 				name: "browser",
 				label: "Browser",
-				defaultActive: true,
+				// Browsing defaults to the built-in browser MCP server (`mcp__browser__*`); this tool is enabled with `--tools +browser`
+				// or `defaultTools`, and the browser specialist selects it for visible persistent-profile sessions.
+				defaultActive: false,
 				description:
 					"Drive one Chrome session (JavaScript pages, forms, logins); headless unless visible mode is on. One action per call:\n" +
 					"navigate(url), tab(url | index): snapshot = page text + numbered elements\n" +

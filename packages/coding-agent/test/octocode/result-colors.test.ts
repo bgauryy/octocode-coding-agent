@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initTheme, theme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../../src/theme/theme.ts";
 import { resultBlock } from "../../src/octocode/shared/render.ts";
 
 describe("result state colors", () => {

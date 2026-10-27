@@ -11,14 +11,16 @@ import { formatCacheWarmingUsage } from "../../../core/cache-warmer.ts";
 import { getPromptCacheTtlMs } from "../../../core/cache-warmer/economics.ts";
 import { type SessionEntry, sessionEntryToContextMessages, type UsageEntry } from "../../../core/session-manager.ts";
 import { hasTrustRequiringProjectResources } from "../../../core/trust-manager.ts";
-import { formatTokens } from "../components/footer.ts";
+import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
 import { ThemedText } from "../components/themed-text.ts";
 import { ToolExecutionComponent } from "../components/tool-execution.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { toolContent } from "../components/application-content.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
+import { noticeLine } from "./display.ts";
 import { isCustomSessionEntry, isCompactionCostNotice, isUsageSessionEntry } from "./helpers.ts";
+import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
 import type { CompactionCostNotice, RenderSessionItem } from "./types.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -127,18 +129,9 @@ export function renderSessionItems(
 				if (content.type === "toolCall") {
 					const component = addToolExecution(host, content.name, content.id, content.arguments, parent);
 
-					if (message.stopReason === "aborted" || message.stopReason === "error") {
-						let errorMessage: string;
-						if (message.stopReason === "aborted") {
-							const retryAttempt = host.session.retryAttempt;
-							errorMessage =
-								retryAttempt > 0
-									? `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`
-									: "Operation aborted";
-						} else {
-							errorMessage = message.errorMessage || "Error";
-						}
-						component.updateResult({ content: [{ type: "text", text: errorMessage }], isError: true });
+					const toolText = stoppedToolText(message.stopReason, host.session.retryAttempt);
+					if (toolText !== undefined) {
+						component.updateResult({ content: [{ type: "text", text: toolText }], isError: true });
 					} else {
 						renderedPendingTools.set(content.id, component);
 					}
@@ -214,13 +207,13 @@ export function addCompactionCostNotice(host: SessionRenderHost, notice: Compact
 
 	const { usage } = notice;
 	const tokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-	const cost = usage.cost.total >= 0.01 ? ` (~$${usage.cost.total.toFixed(2)})` : "";
+	const cost = usage.cost.total >= 0.01 ? ` (${formatCost({ cost: usage.cost.total, unpriced: false })})` : "";
 	const label = notice.kind === "compaction" ? "Compaction" : "Branch summary";
 	// A summary that shared the session's prompt cache read its prefix from it; a standalone summary reads nothing.
 	const cached = usage.cacheRead > 0 ? `, ${formatTokens(usage.cacheRead)} read from cache` : "";
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		new ThemedText(() => theme.fg("warning", `${label}: ${formatTokens(tokens)} tokens billed${cached}${cost}`), 1, 0),
+		noticeLine("warning", `${label}: ${formatTokens(tokens)} tokens billed${cached}${cost}`, host.outputPad),
 	);
 }
 
@@ -262,7 +255,7 @@ export function maybeShowThinkingDropNotice(host: SessionRenderHost, message: As
 	const noun = droppedCount === 1 ? "thinking block" : "thinking blocks";
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		new ThemedText(() => theme.fg("warning", `Anthropic dropped ${droppedCount} ${noun} (details in session)`), 1, 0),
+		noticeLine("warning", `Anthropic dropped ${droppedCount} ${noun} (details in session)`, host.outputPad),
 	);
 }
 
@@ -291,11 +284,11 @@ function historyTtlMs(host: SessionRenderHost, message: AssistantMessage): numbe
 function addCacheMissNotice(host: SessionRenderHost, miss: CacheMiss, message: AssistantMessage): void {
 	if (miss.missedTokens < 20_000 && miss.missedCost < 0.1) return;
 
-	const cost = miss.missedCost >= 0.01 ? ` (~$${miss.missedCost.toFixed(2)})` : "";
+	const cost = miss.missedCost >= 0.01 ? ` (${formatCost({ cost: miss.missedCost, unpriced: false })})` : "";
 	const reBilled = `${formatTokens(miss.missedTokens)} tokens re-billed${cost}`;
 	const label = cacheMissLabel(miss, historyTtlMs(host, message));
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", `${label}: ${reBilled}`), 1, 0));
+	host.chatContainer.addChild(noticeLine("warning", `${label}: ${reBilled}`, host.outputPad));
 }
 
 export function renderInitialMessages(host: SessionRenderHost): void {
@@ -324,14 +317,10 @@ function renderProjectTrustWarningIfNeeded(host: SessionRenderHost): void {
 		host.chatContainer.addChild(new Spacer(1));
 	}
 	host.chatContainer.addChild(
-		new ThemedText(
-			() =>
-				theme.fg(
-					"warning",
-					`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart octocode.`,
-				),
-			1,
-			0,
+		noticeLine(
+			"warning",
+			`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart octocode.`,
+			host.outputPad,
 		),
 	);
 }

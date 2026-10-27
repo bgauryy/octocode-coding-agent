@@ -13,7 +13,7 @@ import {
 	RetryStatusIndicator,
 } from "../components/status-indicator.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 

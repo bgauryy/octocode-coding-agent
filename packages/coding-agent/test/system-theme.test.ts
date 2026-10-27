@@ -1,17 +1,13 @@
 import { colorToOklch, colorToRgb, parseColor, type RgbColor, rgbColor } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	generateSystemThemeColors,
-	type SystemThemeInput,
-	wcagContrast,
-} from "../src/modes/interactive/theme/system-theme.ts";
+import { generateSystemThemeColors, type SystemThemeInput, wcagContrast } from "../src/theme/system-theme.ts";
 import {
 	getAvailableThemes,
 	getThemeByName,
 	getThemeExportColors,
 	setTerminalColors,
 	type ThemeToken,
-} from "../src/modes/interactive/theme/theme.ts";
+} from "../src/theme/theme.ts";
 
 const rgb = (hex: string): RgbColor => colorToRgb(parseColor(hex));
 const lightness = ({ r, g, b }: RgbColor) => colorToOklch(rgbColor(r, g, b)).l;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { retryProviderRequest } from "../src/utils/provider-retry.ts";
+import { retryAfterMsFromError, retryProviderRequest } from "../src/utils/provider-retry.ts";
 
 function providerError(status: number | undefined, headers?: Record<string, string>): Error {
 	return Object.assign(new Error(`Provider error: ${status}`), {
@@ -85,5 +85,42 @@ describe("provider request retries", () => {
 		await expect(result).rejects.toMatchObject({ name: "AbortError" });
 		expect(request).toHaveBeenCalledTimes(1);
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe("retryAfterMsFromError", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("reads retry-after-ms before retry-after", () => {
+		expect(retryAfterMsFromError(providerError(429, { "retry-after-ms": "1500", "retry-after": "9" }))).toBe(1500);
+	});
+
+	it("converts retry-after seconds and HTTP dates", () => {
+		expect(retryAfterMsFromError(providerError(429, { "retry-after": "12" }))).toBe(12_000);
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		expect(retryAfterMsFromError(providerError(429, { "retry-after": "Thu, 01 Jan 2026 00:00:30 GMT" }))).toBe(30_000);
+	});
+
+	it("returns undefined without a usable header or for non-provider errors", () => {
+		expect(retryAfterMsFromError(providerError(429))).toBeUndefined();
+		expect(retryAfterMsFromError(providerError(429, { "retry-after": "0" }))).toBeUndefined();
+		expect(retryAfterMsFromError(providerError(429, { "retry-after": "soon" }))).toBeUndefined();
+		expect(retryAfterMsFromError(new Error("plain"))).toBeUndefined();
+		expect(retryAfterMsFromError("429")).toBeUndefined();
+	});
+});
+
+describe("retryAfterMsFromError beyond fetch headers", () => {
+	it("reads AWS SDK errors' raw response headers", () => {
+		const error = Object.assign(new Error("throttled"), { $response: { headers: { "retry-after": "3" } } });
+		expect(retryAfterMsFromError(error)).toBe(3000);
+	});
+
+	it("reads Google's RetryInfo delay from a headers-less SDK error", () => {
+		const message = JSON.stringify({ error: { details: [{ retryDelay: "0.5s" }] } });
+		expect(retryAfterMsFromError(Object.assign(new Error(message), { status: 429 }))).toBe(500);
 	});
 });

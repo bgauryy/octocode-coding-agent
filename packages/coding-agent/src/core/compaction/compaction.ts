@@ -113,10 +113,10 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = builtInCompaction
 // ============================================================================
 
 /**
- * Check if compaction should trigger based on context usage.
+ * Check if compaction should trigger based on context usage. A window of 0 or less is unknown, so there is no threshold.
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
-	if (!settings.enabled) return false;
+	if (!settings.enabled || !(contextWindow > 0)) return false;
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 

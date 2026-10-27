@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { getBundledSkillsDir } from "../config.ts";
 import { resolveExtensionFactories } from "./resource-loader/builtins.ts";
-import type { Theme } from "../modes/interactive/theme/theme.ts";
+import type { Theme } from "../theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
 export type { ResourceCollision, ResourceDiagnostic } from "./diagnostics.ts";

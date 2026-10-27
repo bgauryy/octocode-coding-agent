@@ -16,7 +16,7 @@ import type {
 	ToolDefinition,
 } from "../extensions/index.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
-import type { ResourceLoader } from "../resource-loader.ts";
+import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionEntry, SessionManager } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { SourceInfo } from "../source-info.ts";

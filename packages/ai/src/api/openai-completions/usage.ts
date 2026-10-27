@@ -1,4 +1,4 @@
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model, StopReason } from "../../types.ts";
 
 export function parseChunkUsage(

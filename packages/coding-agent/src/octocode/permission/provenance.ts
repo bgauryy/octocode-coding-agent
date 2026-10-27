@@ -1,4 +1,5 @@
 import type { ToolCallEvent, ToolResultEvent } from "../../core/extensions/index.ts";
+import { browserMcpUrls } from "../shared/browser-mcp.ts";
 import { formatAgo } from "../shared/format.ts";
 import { readPaths, resolveToolPath, tildePath } from "../shared/home.ts";
 import { isMcpToolName } from "../../../../mcp/src/servers.ts";
@@ -244,6 +245,8 @@ class Provenance {
 		if (toolName === "externalAgent" && input.action === "prompt") return [str(input.text) ?? ""];
 		if (toolName === "web") return [url, str(input.query)].filter((value): value is string => value !== undefined);
 		if (toolName === "browser" && url && (input.action === "navigate" || input.action === "tab")) return [url];
+		const opened = browserMcpUrls(toolName, input);
+		if (opened.length > 0) return opened;
 		const command = SHELL_TOOLS.has(toolName) ? str(input.command) : undefined;
 		return command && isNetworkCommand(command) ? [command] : [];
 	}

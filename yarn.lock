@@ -560,6 +560,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@octocodeai/octocode-chrome-devtools@npm:0.2.0":
+  version: 0.2.0
+  resolution: "@octocodeai/octocode-chrome-devtools@npm:0.2.0"
+  bin:
+    octocode-chrome-devtools: bin/octocode-chrome-devtools.mjs
+  checksum: 10c0/f6b0d3bb74b212ea53a2af5386a71bfd0328af61b33540db4906dc6b6921650d1ce857015c5a064f1f0513fe3632cda042880b0feece3d60ebdd5bfd3b76d850
+  languageName: node
+  linkType: hard
+
 "@octocodeai/octocode-contacts@npm:1.3.0, @octocodeai/octocode-contacts@workspace:packages/contacts":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-contacts@workspace:packages/contacts"
@@ -678,6 +687,7 @@ __metadata:
     "@octocodeai/octocode-acp": "workspace:*"
     "@octocodeai/octocode-agent-core": "npm:1.3.0"
     "@octocodeai/octocode-ai": "npm:1.3.0"
+    "@octocodeai/octocode-chrome-devtools": "npm:0.2.0"
     "@octocodeai/octocode-contacts": "npm:1.3.0"
     "@octocodeai/octocode-mcp": "workspace:*"
     "@octocodeai/octocode-native": "link:../../../octocode/packages/octocode-native"

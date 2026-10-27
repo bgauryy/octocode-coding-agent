@@ -91,6 +91,10 @@ export interface ChildProgress {
 	compactions?: Compactions;
 	/** Its warnings and errors so far, sent when a new one arrives. */
 	notices?: ChildNotices;
+	/** Model requests it has made so far (assistant replies, compaction summaries not counted); sent with each reply. */
+	requests?: number;
+	/** Its first model reply started (sent once per run), so the provider has written the prompt cache for its prefix. */
+	responding?: boolean;
 }
 
 /**
@@ -103,8 +107,12 @@ export interface ChildState {
 	/** `agent_settled` arrived: the child leaves on its own once its input is closed. */
 	settledSeen: boolean;
 	toolsRunning: number;
+	/** Assistant replies (model requests) seen so far in this run. */
+	requests: number;
 	/** A model turn, reply or tool call was seen: the child got past its startup, so a crash after it is no startup failure. */
 	turnSeen: boolean;
+	/** The first model reply was seen, streaming or ended. */
+	responded: boolean;
 	/** The answer is in and the child holds for its background jobs. */
 	settling: boolean;
 	/** While busy (tools running, or settling after the answer), the child is hung only past this moment. */
@@ -127,7 +135,9 @@ export function newChildState(): ChildState {
 		running: false,
 		settledSeen: false,
 		toolsRunning: 0,
+		requests: 0,
 		turnSeen: false,
+		responded: false,
 		settling: false,
 		busyUntil: 0,
 		jobsMs: 0,
@@ -159,7 +169,11 @@ export type ChildEffect =
 	 */
 	| { kind: "incoming"; role: unknown; job?: string }
 	/** An assistant reply ended: the report tracker reads its text. */
-	| { kind: "answer"; text: string | undefined; stopReason: unknown; errorMessage: unknown };
+	| { kind: "answer"; text: string | undefined; stopReason: unknown; errorMessage: unknown }
+	/** The first model reply of the run started (streamed, whole, or implied by a tool call): the provider has written the prompt cache for the prefix. */
+	| { kind: "responding" }
+	/** An assistant reply ended: `count` replies so far in this run; `continues`: it asked for tools, so the child goes on. */
+	| { kind: "request"; count: number; continues: boolean };
 
 export function parseEvent(line: string): Record<string, unknown> | undefined {
 	try {
@@ -300,7 +314,11 @@ export function reduceEvent(
 	}
 	if (type === "agent_start") state.running = true;
 	if (type === "turn_start" || type === "message_update" || type === "tool_execution_start") state.turnSeen = true;
-	if (type === "message_end" && isRecord(event.message) && event.message.role === "assistant") state.turnSeen = true;
+	const ended = type === "message_end" && isRecord(event.message) && event.message.role === "assistant";
+	state.turnSeen ||= ended;
+	const replying = ended || type === "message_update" || type === "tool_execution_start";
+	if (replying && !state.responded) effects.push({ kind: "responding" });
+	state.responded ||= replying;
 	if (type === "compaction_start") {
 		state.lastActivity = "compacting its context";
 		progress({ compacting: true });
@@ -363,13 +381,15 @@ export function reduceEvent(
 		return [...effects, { kind: "incoming", role: message.role, ...(job ? { job } : {}) }];
 	}
 	addUsage(state.usage, message.usage);
+	state.requests += 1;
 	delete state.notices.lastError;
 	state.thought.reset();
 	for (const step of replySteps(message)) progress({ step });
-	progress({ reply: message, thinking: "" });
+	progress({ reply: message, thinking: "", requests: state.requests });
 	state.settling = message.stopReason !== "toolUse";
 	if (state.settling) state.busyUntil = now + Math.max(state.jobsMs, limits.busyMs) + limits.idleMs;
 	state.lastActivity = state.settling ? "answered; settling" : "model turn";
+	effects.push({ kind: "request", count: state.requests, continues: message.stopReason === "toolUse" });
 	effects.push({
 		kind: "answer",
 		text: assistantText(message),

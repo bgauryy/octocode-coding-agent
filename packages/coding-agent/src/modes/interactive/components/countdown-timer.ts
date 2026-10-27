@@ -2,11 +2,12 @@
  * Reusable countdown timer for dialog components.
  */
 
-import type { TUI } from "@octocodeai/octocode-tui";
+import { animationClock, MOTION, type TUI } from "@octocodeai/octocode-tui";
 
 export class CountdownTimer {
-	private intervalId: ReturnType<typeof setInterval> | undefined;
+	private unsubscribe: (() => void) | undefined;
 	private remainingSeconds: number;
+	private readonly deadline: number;
 	private tui: TUI | undefined;
 	private onTick: (seconds: number) => void;
 	private onExpire: () => void;
@@ -15,25 +16,30 @@ export class CountdownTimer {
 		this.tui = tui;
 		this.onTick = onTick;
 		this.onExpire = onExpire;
+		this.deadline = Date.now() + timeoutMs;
 		this.remainingSeconds = Math.ceil(timeoutMs / 1000);
 		this.onTick(this.remainingSeconds);
 
-		this.intervalId = setInterval(() => {
-			this.remainingSeconds--;
-			this.onTick(this.remainingSeconds);
-			this.tui?.requestRender();
+		this.unsubscribe = animationClock.subscribe(
+			(now) => {
+				// From the deadline, not by counting ticks: the shared clock's ticks are not exactly a second apart.
+				const remaining = Math.max(0, Math.ceil((this.deadline - now) / 1000));
+				if (remaining === this.remainingSeconds) return;
+				this.remainingSeconds = remaining;
+				this.onTick(this.remainingSeconds);
+				this.tui?.requestRender();
 
-			if (this.remainingSeconds <= 0) {
-				this.dispose();
-				this.onExpire();
-			}
-		}, 1000);
+				if (this.remainingSeconds <= 0) {
+					this.dispose();
+					this.onExpire();
+				}
+			},
+			{ everyMs: MOTION.tickMs, kind: "info" },
+		);
 	}
 
 	dispose(): void {
-		if (this.intervalId) {
-			clearInterval(this.intervalId);
-			this.intervalId = undefined;
-		}
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
 	}
 }

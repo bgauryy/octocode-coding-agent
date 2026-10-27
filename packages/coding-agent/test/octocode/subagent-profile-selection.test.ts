@@ -17,6 +17,7 @@ import {
 	loadProfiles,
 	parseProfile,
 	profileReach,
+	profileSelectsTool,
 } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
@@ -188,5 +189,17 @@ describe("the spawn grant for a session", () => {
 			);
 		}
 		expect(asked).toHaveLength(5);
+	});
+});
+
+describe("read-only bundled roles and graph tools", () => {
+	it("keep graphBuild: the permission gate allows it because it writes only derived snapshots", () => {
+		const roles = loadProfiles(tmp(), tmp(), false, {});
+		for (const name of ["researcher", "reviewer"]) {
+			const profile = roles.get(name);
+			expect(profile?.readOnly, name).toBe(true);
+			for (const tool of ["graphBuild", "graphQuery"])
+				expect(profileSelectsTool(profile, tool, ["graphBuild", "graphQuery"]), `${name} ${tool}`).toBe(true);
+		}
 	});
 });

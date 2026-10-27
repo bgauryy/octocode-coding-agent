@@ -1,5 +1,8 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkingStatusIndicator } from "../../src/modes/interactive/components/status-indicator.ts";
+import { initTheme } from "../../src/theme/theme.ts";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 import { titledDialog, withDialog } from "../../src/octocode/shared/locks.ts";
 import { Thought, thoughtGist } from "../../src/octocode/shared/thought.ts";
 import { Activity, callTarget, registerActivity, shortToolName } from "../../src/octocode/ui/activity.ts";
@@ -13,27 +16,26 @@ describe("Activity: consequential calls", () => {
 		activity.start(0);
 		activity.toolStart("1", "bash", { command: "brew upgrade bun" }, 0);
 		activity.consequential("shell", "brew upgrade bun " + "x".repeat(200), false, 0);
-		expect(activity.describe(18_000)).toMatch(/^shell: brew upgrade bun .* · 18s$/);
-		expect(visibleWidth(activity.describe(18_000)!)).toBeLessThanOrEqual(70);
-		expect(activity.describe()).not.toContain("18s");
+		expect(activity.describe()).toMatch(/^shell: brew upgrade bun x+…$/);
+		expect(visibleWidth(activity.describe()!)).toBeLessThanOrEqual(70);
 		activity.toolEnd("1", 20_000);
-		expect(activity.describe(20_000)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 	});
 	it("shows one line per consequential call while its tool runs, at most one a second, bursts collapsed into +n", () => {
 		const activity = new Activity();
 		activity.start(0);
 		activity.toolStart("1", "bash", { command: "make" }, 0);
 		activity.consequential("shell", "make", false, 0);
-		expect(activity.describe(0)).toBe("shell: make");
+		expect(activity.describe()).toBe("shell: make");
 		// Inside the window the line keeps the first call and counts the rest.
 		activity.consequential("shell", "ls", false, 300);
 		activity.consequential("web", "https://example.com", false, 600);
-		expect(activity.describe(700)).toBe("shell: make +2");
+		expect(activity.describe()).toBe("shell: make +2");
 		// After the window the next call takes the line.
 		activity.consequential("web", "https://example.com", false, 1_000);
-		expect(activity.describe(1_000)).toBe("web: https://example.com");
+		expect(activity.describe()).toBe("web: https://example.com");
 		activity.toolEnd("1", 1_100);
-		expect(activity.describe(1_100)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 	});
 
 	it("marks a ⚠ call with the warning, and lets it replace a quiet line inside the window", () => {
@@ -42,10 +44,10 @@ describe("Activity: consequential calls", () => {
 		activity.toolStart("1", "bash", { command: "x" }, 0);
 		activity.consequential("shell", "ls", false, 0);
 		activity.consequential("shell.destructive", "rm -rf build", true, 100);
-		expect(activity.describe(100)).toBe("⚠ shell.destructive: rm -rf build");
+		expect(activity.describe()).toBe("⚠ shell.destructive: rm -rf build");
 		// A quiet call does not push a ⚠ line out.
 		activity.consequential("shell", "ls", false, 200);
-		expect(activity.describe(200)).toBe("⚠ shell.destructive: rm -rf build +1");
+		expect(activity.describe()).toBe("⚠ shell.destructive: rm -rf build +1");
 	});
 
 	it("reports nothing back from consequential", () => {
@@ -65,18 +67,18 @@ describe("Activity: consequential calls", () => {
 		activity.checking("2", true, 10);
 		activity.consequential("shell.destructive", "rm -rf build", true, 10);
 		activity.checking("2", false, 20);
-		expect(activity.describe(20)).toBe("⚠ shell.destructive: rm -rf build");
+		expect(activity.describe()).toBe("⚠ shell.destructive: rm -rf build");
 		activity.toolEnd("2", 30);
-		expect(activity.describe(30)).toBe("Running bash sleep 9");
+		expect(activity.describe()).toBe("Running bash sleep 9");
 		// A line whose call is another one stays until that one ends.
 		activity.checking("1", true, 2_000);
 		activity.consequential("shell", "sleep 9", false, 2_000);
 		activity.checking("1", false, 2_000);
 		activity.toolStart("3", "read", {}, 2_100);
 		activity.toolEnd("3", 2_200);
-		expect(activity.describe(2_200)).toBe("shell: sleep 9");
+		expect(activity.describe()).toBe("shell: sleep 9");
 		activity.toolEnd("1", 2_300);
-		expect(activity.describe(2_300)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 	});
 
 	it("forgets the line when the run ends", () => {
@@ -87,53 +89,88 @@ describe("Activity: consequential calls", () => {
 		activity.end();
 		activity.start(5_000);
 		activity.toolStart("2", "bash", { command: "y" }, 5_000);
-		expect(activity.describe(5_000)).toBe("Running bash y");
+		expect(activity.describe()).toBe("Running bash y");
+	});
+});
+
+describe("Activity: the working-line vocabulary", () => {
+	/** Each state of a run and the words the working line shows for it (docs: RFC naming, one verb per state). */
+	const states: ReadonlyArray<readonly [string, (activity: Activity) => void, string]> = [
+		["model streaming reasoning", (a) => a.stream("thinking_delta", 1), "Thinking"],
+		["model streaming text", (a) => a.stream("text_delta", 1), "Writing"],
+		["a tool running", (a) => a.toolStart("1", "bash", { command: "yarn test" }, 1), "Running Bash"],
+		["an Octocode tool running", (a) => a.toolStart("1", "mcp__octocode__localSearch", {}, 1), "Running localSearch"],
+		[
+			"a subagent running",
+			(a) => a.toolStart("1", "agent", { input: { goal: "review the footer" } }, 1),
+			"Running subagent review the footer",
+		],
+		[
+			"a permission ask pending",
+			(a) => {
+				a.toolStart("1", "bash", { command: "rm -rf build" }, 1);
+				a.promptStart(undefined, 2);
+			},
+			"Waiting for you",
+		],
+	];
+
+	it.each(states)("%s reads %j", (_state, enter, words) => {
+		const activity = new Activity();
+		activity.start(0);
+		enter(activity);
+		expect(activity.working()).toBe(words);
+	});
+
+	it("never shows a permission class or an agent id", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.toolStart("1", "bash", { command: "rm -rf build" }, 0);
+		activity.consequential("shell.destructive", "rm -rf build", true, 0);
+		expect(activity.working()).toBe("⚠ Running Bash: rm -rf build");
+		expect(activity.working()).not.toMatch(/shell\.destructive|general-/);
 	});
 });
 
 describe("Activity", () => {
 	it("describes model phases, parallel tools, nested calls and user prompts", () => {
 		const activity = new Activity();
-		expect(activity.describe(0)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 		activity.start(0);
-		expect(activity.describe(0)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 		activity.stream("thinking_delta", 0);
-		expect(activity.describe(1_000)).toBe("Thinking");
-		expect(activity.describe(5_000)).toBe("Thinking · 5s");
 		expect(activity.describe()).toBe("Thinking");
 		activity.stream("text_delta", 5_000);
-		expect(activity.describe(6_000)).toBe("Writing");
-		expect(activity.describe(9_000)).toBe("Writing · 4s");
+		expect(activity.describe()).toBe("Writing");
 		activity.stream("toolcall_start", 9_000);
-		expect(activity.describe(9_000)).toBe("Preparing tool calls");
+		expect(activity.describe()).toBe("Preparing tool calls");
 		activity.stream("done", 9_000);
 		activity.messageDone(9_000);
-		expect(activity.describe(9_000)).toBeUndefined();
-		// A long wait for the model's first token is named and timed.
-		expect(activity.describe(12_000)).toBe("Waiting for model · 3s");
+		expect(activity.describe()).toBeUndefined();
+		// Octocode's own "Working" covers the wait for the first token on the stored line.
 		expect(activity.describe()).toBeUndefined();
 
 		activity.toolStart("1", "bash", { command: "yarn test\nmore" }, 10_000);
-		expect(activity.describe(10_500)).toBe("Running bash yarn test");
+		expect(activity.describe()).toBe("Running bash yarn test");
 		activity.toolStart("2", "mcp__octocode__localSearch", { path: "/repo" }, 11_000);
 		activity.toolStart("3", "mcp__octocode__localSearch", {}, 11_000);
-		expect(activity.describe(13_000)).toBe("Running 3 tools: bash · localSearch ×2 · 3s");
+		expect(activity.describe()).toBe("Running 3 tools: bash · localSearch ×2");
 		expect(activity.ticking()).toBe(true);
 		activity.promptStart("Pick one", 13_000);
-		expect(activity.describe(14_000)).toBe("Waiting for you: Pick one");
+		expect(activity.describe()).toBe("Waiting for you: Pick one");
 		activity.promptEnd();
 		activity.toolEnd("1", 14_000);
 		activity.toolEnd("2", 14_000);
 		activity.toolEnd("unknown", 14_000);
-		expect(activity.describe(14_000)).toBe("Running localSearch · 3s");
+		expect(activity.describe()).toBe("Running localSearch");
 		activity.toolEnd("3", 15_000);
-		expect(activity.describe(15_000)).toBeUndefined();
-		// Waiting for the model again: still a step whose time grows.
+		expect(activity.describe()).toBeUndefined();
+		// Waiting for the model again: the run is still under way.
 		expect(activity.ticking()).toBe(true);
 		activity.promptStart(undefined, 15_000);
-		expect(activity.describe(15_000)).toBe("Waiting for you");
+		expect(activity.describe()).toBe("Waiting for you");
 		activity.end();
-		expect(activity.describe(15_000)).toBeUndefined();
+		expect(activity.describe()).toBeUndefined();
 		// A message ending after the run ended does not revive it.
 		activity.messageDone(16_000);
 		expect(activity.phase).toBe("idle");
@@ -163,7 +200,7 @@ describe("Activity", () => {
 		expect(long.gist).toBeUndefined();
 		long.add(" Next thought. Then");
 		expect(long.gist).toBe("Next thought.");
-		expect(activity.describe(3_000)).toBe("Thinking: Checking the lock order. · 3s");
+		expect(activity.describe()).toBe("Thinking: Checking the lock order.");
 		activity.stream("thinking_start", 4_000);
 		expect(activity.describe()).toBe("Thinking");
 	});
@@ -175,7 +212,7 @@ describe("Activity", () => {
 		const activity = new Activity();
 		activity.start(0);
 		activity.toolStart("1", "bash", { command: "echo \u001b[31mred" }, 0);
-		expect(activity.describe(0)).not.toContain("\u001b");
+		expect(activity.describe()).not.toContain("\u001b");
 	});
 
 	it("names what batched calls and agents work on, redacted", () => {
@@ -214,9 +251,9 @@ describe("Activity", () => {
 			{ queries: [{ pattern: "x".repeat(200), path: "src" }, {}, {}] },
 			0,
 		);
-		const line = activity.describe(125_000)!;
-		// The clipped target keeps the count of the other queries and the elapsed time, within the width.
-		expect(line).toMatch(/^Running localSearch x+… \+2 · 2m05s$/);
+		const line = activity.describe()!;
+		// The clipped target keeps the count of the other queries, within the width.
+		expect(line).toMatch(/^Running localSearch x+… \+2$/);
 		expect(line.length).toBeLessThanOrEqual(70);
 	});
 
@@ -225,20 +262,20 @@ describe("Activity", () => {
 		activity.start(0);
 		for (const [id, name] of ["bash", "web", "web", "file", "agent"].entries())
 			activity.toolStart(String(id), name, {}, 0);
-		expect(activity.describe(3_000)).toBe("Running 5 tools: bash · web ×2 +2 · 3s");
+		expect(activity.describe()).toBe("Running 5 tools: bash · web ×2 +2");
 		activity.end();
 		activity.start(0);
 		activity.promptStart(`Which ${"very ".repeat(30)}long question?`, 0);
-		expect(activity.describe(3_000, 2)!.length).toBeLessThanOrEqual(70);
-		expect(activity.describe(3_000, 2)).toMatch(/… \(\+2 queued\) · 3s$/);
+		expect(activity.describe(2)!.length).toBeLessThanOrEqual(70);
+		expect(activity.describe(2)).toMatch(/… \(\+2 queued\)$/);
 		activity.promptEnd();
 		activity.stream("thinking_delta", 0, `${"Weighing ".repeat(20)}options. Next`);
-		expect(activity.describe(3_000)!.length).toBeLessThanOrEqual(70);
+		expect(activity.describe()!.length).toBeLessThanOrEqual(70);
 	});
 });
 
 describe("registerActivity", () => {
-	it("clears activity and its clock on settlement, ignoring late streaming events", async () => {
+	it("clears activity on settlement, ignoring late streaming events", async () => {
 		vi.useFakeTimers();
 		try {
 			const fake = fakePi();
@@ -251,7 +288,7 @@ describe("registerActivity", () => {
 			await fake.emit("agent_start", {}, ctx);
 			await fake.emit("message_update", update, ctx);
 			expect((ctx.ui as { working?: string }).working).toContain("Thinking");
-			expect(vi.getTimerCount()).toBe(1);
+			expect(vi.getTimerCount()).toBe(0);
 			await fake.emit("agent_settled", { outcome: "aborted" }, ctx);
 			await fake.emit("message_update", update, ctx);
 			vi.advanceTimersByTime(10_000);
@@ -292,19 +329,19 @@ describe("registerActivity", () => {
 			{ toolCallId: "a/1", parentToolCallId: "a", toolName: "web", args: {} },
 			ctx,
 		);
-		expect(ui.working).toBe("Running bash sleep 9");
+		expect(ui.working).toBe("Running Bash");
 		vi.advanceTimersByTime(3_000);
-		expect(ui.working).toBe("Running bash sleep 9 · 3s");
+		expect(ui.working).toBe("Running Bash");
 		await fake.emit("ui_prompt_start", { title: "Continue?" }, ctx);
 		expect(ui.working).toBe("Waiting for you: Continue?");
 		await fake.emit("ui_prompt_end", {}, ctx);
 		await fake.emit("tool_execution_end", { toolCallId: "a/1", parentToolCallId: "a" }, ctx);
-		expect(ui.working).toBe("Running bash sleep 9 · 3s");
+		expect(ui.working).toBe("Running Bash");
 		await fake.emit("tool_execution_end", { toolCallId: "a" }, ctx);
 		expect(ui.working).toBe("Waiting for model");
 		await fake.emit("agent_settled", {}, ctx);
 		expect(ui.working).toBeUndefined();
-		// The team hears state changes only, never the ticking elapsed time.
+		// The team hears state changes only, and keeps the command the working line leaves to the tool row.
 		expect(lines).toEqual([
 			"Thinking",
 			undefined,
@@ -313,6 +350,33 @@ describe("registerActivity", () => {
 			"Running bash sleep 9",
 			undefined,
 		]);
+		await fake.emit("session_shutdown", {}, ctx);
+	});
+
+	it("starts the run clock the working line counts from at agent_start and ends it at settlement", async () => {
+		initTheme("dark", false);
+		vi.useFakeTimers({ now: 5_000 });
+		const fake = fakePi();
+		registerActivity(fake.pi, { workingLine: true });
+		const ctx = fakeCtx({ cwd: "/x" });
+		await fake.emit("agent_start", {}, ctx);
+		vi.setSystemTime(5_000 + 62_000);
+		// An indicator created mid-run (after a retry or compaction) still shows the whole run's time.
+		const tui = { requestRender: vi.fn() } as never;
+		const midRun = new WorkingStatusIndicator(tui, "Working");
+		expect(stripAnsi(midRun.render(80)[1])).toContain("(1m02s");
+		midRun.dispose();
+		await fake.emit("agent_settled", {}, ctx);
+		const after = new WorkingStatusIndicator(tui, "Working");
+		expect(stripAnsi(after.render(80)[1])).toContain("(0s");
+		after.dispose();
+		const child = fakePi();
+		registerActivity(child.pi, { workingLine: false });
+		await child.emit("agent_start", {}, ctx);
+		vi.setSystemTime(5_000 + 70_000);
+		const alone = new WorkingStatusIndicator(tui, "Working");
+		expect(stripAnsi(alone.render(80)[1])).toContain("(0s");
+		alone.dispose();
 		await fake.emit("session_shutdown", {}, ctx);
 	});
 
@@ -384,12 +448,10 @@ describe("registerActivity", () => {
 		await fake.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: { command: "ls" } }, ctx);
 		await fake.emit("tool_execution_start", { toolCallId: "b", toolName: "web", args: {} }, ctx);
 		control.checking("a", true);
-		expect(ui.working).toBe("Checking bash ls");
-		vi.advanceTimersByTime(2_000);
-		expect(ui.working).toBe("Checking bash ls · 2s");
+		expect(ui.working).toBe("Checking Bash");
 		control.checking("a", false);
 		control.checking("missing", true);
-		expect(ui.working).toBe("Running 2 tools: bash · web · 2s");
+		expect(ui.working).toBe("Running 2 tools: Bash · Web");
 		let close!: () => void;
 		const open = withDialog(
 			() =>
@@ -415,24 +477,73 @@ describe("Activity: the working line stays within its columns", () => {
 		["ASCII", "build the project with a very long command line that goes on and on past the limit"],
 		["CJK", "漢字のとても長い説明文がここにあって端末の幅を超えてしまうほど長く続きます".repeat(2)],
 		["emoji", "🚀🔥✨".repeat(30)],
-	])("keeps %s detail inside 70 columns, with the elapsed time at the end", (_name, detail) => {
+	])("keeps %s detail inside 70 columns", (_name, detail) => {
 		const activity = new Activity();
 		activity.start(0);
 		activity.toolStart("1", "bash", { command: detail }, 0);
-		const line = activity.describe(125_000)!;
-		expect(visibleWidth(line)).toBeLessThanOrEqual(70);
-		expect(line.endsWith(" · 2m05s")).toBe(true);
+		expect(visibleWidth(activity.describe()!)).toBeLessThanOrEqual(70);
 	});
 
 	it("leaves a short ASCII line exactly as written", () => {
 		const activity = new Activity();
 		activity.start(0);
 		activity.toolStart("1", "bash", { command: "make test" }, 0);
-		expect(activity.describe(0)).toBe("Running bash make test");
+		expect(activity.describe()).toBe("Running bash make test");
 	});
 });
 
-it("shows only activity details, preserves tool timing, and clears timers on settlement", async () => {
+describe("Activity: the working line", () => {
+	it("names one tool without repeating the command its row shows, and drops permission ids", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.toolStart("1", "bash", { command: "sleep 6; echo done" }, 0);
+		activity.consequential("shell", "sleep 6; echo done", false, 0);
+		expect(activity.working()).toBe("Running Bash");
+		activity.toolStart("2", "mcp__octocode__localSearch", { queries: [{ pattern: "x" }, {}] }, 0);
+		expect(activity.working()).toBe("Running 2 tools: Bash · localSearch");
+		activity.toolEnd("1", 1);
+		expect(activity.working()).toBe("Running localSearch +1");
+	});
+
+	it("says a warned call's target once, with its warning", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.toolStart("1", "bash", { command: "rm -rf build" }, 0);
+		activity.consequential("shell.destructive", "rm -rf build", true, 0);
+		expect(activity.working()).toBe("⚠ Running Bash: rm -rf build");
+	});
+
+	it("shows a subagent call with its goal, not the spawn permission sentence", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.toolStart("1", "agent", { goal: "Audit the TUI footer" }, 0);
+		activity.consequential("agent.spawn", "general may edit files in the repository and run shell commands", true, 0);
+		const line = activity.working()!;
+		expect(line).toBe("⚠ Running subagent Audit the TUI footer");
+		expect(line).not.toContain("agent.spawn");
+	});
+
+	it("covers every phase, carries no clock, and falls back to waiting for the model", () => {
+		const activity = new Activity();
+		expect(activity.working()).toBeUndefined();
+		activity.start(0);
+		expect(activity.working()).toBe("Waiting for model");
+		activity.stream("thinking_delta", 0, "Checking the lock order. Then");
+		expect(activity.working()).toBe("Thinking: Checking the lock order.");
+		activity.stream("text_delta", 0);
+		expect(activity.working()).toBe("Writing");
+		activity.stream("toolcall_start", 0);
+		expect(activity.working()).toBe("Preparing tool calls");
+		activity.promptStart("Pick one", 0);
+		expect(activity.working(1)).toBe("Waiting for you: Pick one (+1 queued)");
+		activity.promptEnd();
+		activity.toolStart("1", "bash", {}, 0);
+		activity.checking("1", true, 0);
+		expect(activity.working()).toBe("Checking Bash");
+	});
+});
+
+it("shows only activity details, never a step clock, and keeps no timers", async () => {
 	vi.useFakeTimers();
 	vi.setSystemTime(0);
 	const fake = fakePi();
@@ -449,7 +560,7 @@ it("shows only activity details, preserves tool timing, and clears timers on set
 	expect(ui.working).not.toMatch(/Main|tokens|\n/);
 	await fake.emit("tool_execution_start", { toolCallId: "b", toolName: "bash", args: { command: "sleep 10" } }, ctx);
 	vi.advanceTimersByTime(5_000);
-	expect(ui.working).toBe("Running bash sleep 10 · 5s");
+	expect(ui.working).toBe("Running Bash");
 	await fake.emit("agent_start", {}, ctx);
 	expect(ui.working).not.toContain("Main");
 	ctx.sessionManager.getEntries = () => [{ type: "compaction" }] as never;

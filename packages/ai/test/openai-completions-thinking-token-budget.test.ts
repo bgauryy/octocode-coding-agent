@@ -143,6 +143,20 @@ describe("openai-completions thinking token budget", () => {
 		expect(params.thinking_token_budget).toBe(4096 - 1024);
 	});
 
+	it("records the requested and sent budget on the response only when the clamp cut it", async () => {
+		const run = (options: { thinkingBudgets: ThinkingBudgets; maxTokens?: number }) =>
+			streamSimple(
+				vllmModel(),
+				{ messages: [{ role: "user", content: "Hi", timestamp: Date.now() }] },
+				{ apiKey: "test", reasoning: "high", ...options },
+			).result();
+		expect((await run({ thinkingBudgets: { high: 8192 }, maxTokens: 4096 })).thinkingBudget).toEqual({
+			requested: 8192,
+			sent: 4096 - 1024,
+		});
+		expect((await run({ thinkingBudgets: { high: 2048 }, maxTokens: 4096 })).thinkingBudget).toBeUndefined();
+	});
+
 	it.each(["thinking_budget", "thinking_budget_tokens"] as const)(
 		"sends %s when thinkingTokenBudgetField is set",
 		async (field) => {

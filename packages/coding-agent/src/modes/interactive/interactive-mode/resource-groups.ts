@@ -2,9 +2,11 @@
  * Groups loaded resources by scope and package source, and formats resource diagnostics such as name collisions.
  */
 
+import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
-import { theme } from "../theme/theme.ts";
+import { STATE_COLOR } from "../../../theme/status.ts";
+import { theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { ScopeGroup, ScopeGroupFormatOptions, ScopeGroupName, SourcedPath } from "./types.ts";
 
@@ -160,7 +162,7 @@ export function formatDiagnostics(
 		lines.push(
 			theme.fg(
 				"dim",
-				`    ${theme.fg("success", "✓")} ${formatPathWithSource(host, first.winnerPath, findSourceInfoForPath(first.winnerPath, sourceInfos))}`,
+				`    ${theme.fg(STATE_COLOR.done, GLYPH.done)} ${formatPathWithSource(host, first.winnerPath, findSourceInfoForPath(first.winnerPath, sourceInfos))}`,
 			),
 		);
 		for (const d of collisionList) {
@@ -168,7 +170,7 @@ export function formatDiagnostics(
 				lines.push(
 					theme.fg(
 						"dim",
-						`    ${theme.fg("warning", "✗")} ${formatPathWithSource(host, d.collision.loserPath, findSourceInfoForPath(d.collision.loserPath, sourceInfos))} (skipped)`,
+						`    ${theme.fg(STATE_COLOR.stopped, GLYPH.stopped)} ${formatPathWithSource(host, d.collision.loserPath, findSourceInfoForPath(d.collision.loserPath, sourceInfos))} (skipped)`,
 					),
 				);
 			}

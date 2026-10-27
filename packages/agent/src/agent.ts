@@ -19,16 +19,12 @@ import {
 import { runAgentLoop, runAgentLoopContinue, runFailureMessage } from "./agent-loop.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
-	AfterToolCallContext,
-	AfterToolCallResult,
 	AgentContext,
 	AgentEvent,
 	AgentLoopConfig,
 	AgentLoopTurnUpdate,
 	AgentMessage,
 	AgentState,
-	BeforeToolCallContext,
-	BeforeToolCallResult,
 	FinishTurn,
 	PrepareNextTurnContext,
 	PrepareRequest,
@@ -70,16 +66,12 @@ export class Agent {
 	public onPayload?: SimpleStreamOptions["onPayload"];
 	public onResponse?: SimpleStreamOptions["onResponse"];
 	public onProviderStreamEvent?: SimpleStreamOptions["onProviderStreamEvent"];
-	public beforeToolCall?: (
-		context: BeforeToolCallContext,
-		signal?: AbortSignal,
-	) => Promise<BeforeToolCallResult | undefined>;
-	public afterToolCall?: (
-		context: AfterToolCallContext,
-		signal?: AbortSignal,
-	) => Promise<AfterToolCallResult | undefined>;
+	public beforeToolCall?: AgentOptions["beforeToolCall"];
+	public afterToolCall?: AgentOptions["afterToolCall"];
 	/** Error text for a call to an undeclared tool; see `AgentLoopConfig.unknownToolMessage`. */
 	public unknownToolMessage?: (toolName: string) => string | undefined;
+	/** Declared tools that are not executable yet; see `AgentContext.pendingToolNames`. */
+	public pendingToolNames?: () => ReadonlySet<string>;
 	public finishTurn?: FinishTurn;
 	public prepareRequest?: PrepareRequest;
 	public prepareInput?: PrepareInput;
@@ -117,6 +109,7 @@ export class Agent {
 		this.beforeToolCall = runtimeOptions.beforeToolCall;
 		this.afterToolCall = runtimeOptions.afterToolCall;
 		this.unknownToolMessage = runtimeOptions.unknownToolMessage;
+		this.pendingToolNames = runtimeOptions.pendingToolNames;
 		this.finishTurn = runtimeOptions.finishTurn;
 		this.prepareRequest = runtimeOptions.prepareRequest;
 		this.prepareInput = runtimeOptions.prepareInput;
@@ -326,6 +319,7 @@ export class Agent {
 		return {
 			messages: this._state.messages.slice(),
 			tools: this._state.tools.slice(),
+			pendingToolNames: this.pendingToolNames,
 		};
 	}
 

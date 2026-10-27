@@ -17,19 +17,28 @@ export function indexSessionEntries(
 	let leafId: string | null = null;
 	for (const entry of fileEntries) {
 		if (entry.type === "session") continue;
-		byId.set(entry.id, entry);
+		indexSessionEntry(entry, byId, labelsById, labelTimestampsById);
 		leafId = entry.id;
-		if (entry.type === "label") {
-			if (entry.label) {
-				labelsById.set(entry.targetId, entry.label);
-				labelTimestampsById.set(entry.targetId, entry.timestamp);
-			} else {
-				labelsById.delete(entry.targetId);
-				labelTimestampsById.delete(entry.targetId);
-			}
-		}
 	}
 	return leafId;
+}
+
+/** Add one entry to the entry and label indexes; a later label entry for the same target replaces an earlier one. */
+export function indexSessionEntry(
+	entry: SessionEntry,
+	byId: Map<string, SessionEntry>,
+	labelsById: Map<string, string>,
+	labelTimestampsById: Map<string, string>,
+): void {
+	byId.set(entry.id, entry);
+	if (entry.type !== "label") return;
+	if (entry.label) {
+		labelsById.set(entry.targetId, entry.label);
+		labelTimestampsById.set(entry.targetId, entry.timestamp);
+	} else {
+		labelsById.delete(entry.targetId);
+		labelTimestampsById.delete(entry.targetId);
+	}
 }
 
 /**

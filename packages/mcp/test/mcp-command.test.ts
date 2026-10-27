@@ -57,6 +57,7 @@ describe("pi mcp", () => {
 		expect(await runMcpCommand(["list", "--json"], options)).toBe(0);
 		expect(JSON.parse(output.join("\n")).servers).toMatchObject([
 			{ name: "octocode", state: "disabled", scope: "default" },
+			{ name: "browser", scope: "default" },
 		]);
 		expect(await runMcpCommand(["enable", "octocode"], options)).toBe(0);
 		expect(readConfig(join(agentDir, "mcp.json"))).toEqual({ mcpServers: { octocode: { enabled: true } } });
@@ -65,12 +66,12 @@ describe("pi mcp", () => {
 	it("lists servers with their state, tools, and errors, and fails while anything is wrong", async () => {
 		const { exitCode, output, agentDir } = await run(["list"], servers);
 		expect(exitCode).toBe(1);
-		expect(output).toContain("fixture: connected, 1 tool (auto, global) · enabled\n");
+		expect(output).toContain("fixture: connected, 1 tool (direct, global) · enabled\n");
 		expect(output).toContain("  tools: echo");
 		expect(output).toContain(
-			`broken: failed (auto, global) · enabled\n  pi-test-missing-mcp-server\n  source: ${join(agentDir, "mcp.json")}\n  spawn pi-test-missing-mcp-server ENOENT`,
+			`broken: failed (direct, global) · enabled\n  pi-test-missing-mcp-server\n  source: ${join(agentDir, "mcp.json")}\n  spawn pi-test-missing-mcp-server ENOENT`,
 		);
-		expect(output).toContain("parked: disabled (auto, global)");
+		expect(output).toContain("parked: disabled (direct, global)");
 		expect(output).toContain("config error: ");
 		expect(output).toContain('server "bad" needs either "command"');
 
@@ -135,7 +136,7 @@ describe("pi mcp", () => {
 		expect(report.servers).toHaveLength(1);
 		expect(report.servers[0]).toMatchObject({
 			name: "fixture",
-			toolDetails: [{ name: "echo", exposure: "auto", inputSchema: { type: "object" } }],
+			toolDetails: [{ name: "echo", exposure: "direct", inputSchema: { type: "object" } }],
 		});
 		expect((await run(["tools", "fixture", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
 		expect((await run(["tools", "unknown"], { fixture: servers.fixture })).exitCode).toBe(1);
@@ -188,7 +189,7 @@ describe("pi mcp", () => {
 		expect((await run(["exposure", "broken", "direct"], undefined, initial.agentDir)).exitCode).toBe(0);
 		expect((await run(["enable", "broken"], undefined, initial.agentDir)).exitCode).toBe(0);
 		expect(readConfig(join(initial.agentDir, "mcp.json"))).toEqual({
-			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" }, exposure: "direct" } },
+			mcpServers: { broken: { command: "never-launch-this", env: { TOKEN: "secret" } } },
 		});
 		const before = readFileSync(join(initial.agentDir, "mcp.json"), "utf8");
 		expect((await run(["exposure", "broken", "invalid"], undefined, initial.agentDir)).exitCode).toBe(1);

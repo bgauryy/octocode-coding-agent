@@ -4,8 +4,10 @@
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { getToolListError, type TuiMode } from "../core/settings-manager.ts";
+import { isValidThinkingLevel, VALID_THINKING_LEVELS } from "../core/thinking-level.ts";
 
 export { printHelp } from "./args/help.ts";
+export { isValidThinkingLevel, VALID_THINKING_LEVELS };
 
 export type Mode = "text" | "json" | "rpc" | "acp";
 
@@ -55,12 +57,6 @@ export interface Args {
 	/** Unknown flags (potentially extension flags) - map of flag name to value */
 	unknownFlags: Map<string, boolean | string>;
 	diagnostics: Array<{ type: "warning" | "error"; message: string }>;
-}
-
-export const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-
-export function isValidThinkingLevel(level: string): level is ThinkingLevel {
-	return VALID_THINKING_LEVELS.includes(level as ThinkingLevel);
 }
 
 export function normalizeSessionName(value: string): string | undefined {

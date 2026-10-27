@@ -67,7 +67,7 @@ export class OAuthCallbackServer {
 		const path = options.path ?? "/callback";
 		// oxlint-disable-next-line prefer-const -- assigned once the server binds; the request handler created earlier reads it
 		let instance: OAuthCallbackServer | undefined;
-		const server = createServer((request, response) => instance?.handle(request.url ?? "/", response));
+		const server = createServer((request, response) => instance?.dispatch(request.url ?? "/", response));
 		await new Promise<void>((resolve, reject) => {
 			server.once("error", reject);
 			server.listen(options.port ?? 0, host, () => {
@@ -115,15 +115,35 @@ export class OAuthCallbackServer {
 
 	private reply(response: ServerResponse, status: number, page: OAuthCallbackPage): void {
 		if (this.renderPage) {
+			const html = this.renderPage(page);
 			response.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-			response.end(this.renderPage(page));
+			response.end(html);
 		} else {
 			response.writeHead(status, { "content-type": "text/plain; charset=utf-8" }).end(plainText(page));
 		}
 	}
 
+	/** Answer one request. A request from any local process must never throw out of the server's listener. */
+	private dispatch(rawUrl: string, response: ServerResponse): void {
+		try {
+			this.handle(rawUrl, response);
+		} catch {
+			// Not `reply`: a failing page renderer may be the cause.
+			if (response.headersSent) response.destroy();
+			else response.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("Bad request");
+		}
+	}
+
 	private handle(rawUrl: string, response: ServerResponse): void {
-		const url = new URL(rawUrl, this.redirectUrl);
+		// Only an origin-form target (`/path?query`) is expected; `//host` and `*` are other forms.
+		const url =
+			rawUrl.startsWith("/") && !rawUrl.startsWith("//") && URL.canParse(rawUrl, this.redirectUrl)
+				? new URL(rawUrl, this.redirectUrl)
+				: undefined;
+		if (!url) {
+			this.reply(response, 400, { ok: false, message: "Bad request" });
+			return;
+		}
 		if (!this.paths.includes(url.pathname)) {
 			this.reply(response, 404, { ok: false, message: "Not found" });
 			return;

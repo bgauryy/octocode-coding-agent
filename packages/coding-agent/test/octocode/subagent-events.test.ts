@@ -27,6 +27,19 @@ const reply = (stopReason: string, text = "answer") => ({
 });
 
 describe("reduceEvent", () => {
+	it("reports the first model reply starting once, from a stream or a whole reply", () => {
+		const responding = (effects: ChildEffect[]) => effects.filter((effect) => effect.kind === "responding").length;
+		const streamed = newChildState();
+		expect(responding(reduce(streamed, { type: "turn_start" }))).toBe(0);
+		const stream = { type: "message_update", assistantMessageEvent: { type: "text_delta" } };
+		expect(responding(reduce(streamed, stream))).toBe(1);
+		expect(responding(reduce(streamed, stream))).toBe(0);
+		expect(responding(reduce(streamed, reply("stop")))).toBe(0);
+		expect(responding(reduce(newChildState(), reply("stop")))).toBe(1);
+		// A tool call implies a reply came before it.
+		expect(responding(reduce(newChildState(), { type: "tool_execution_start", toolName: "bash", args: {} }))).toBe(1);
+	});
+
 	it("counts usage receipts once without counting the compaction result a second time", () => {
 		const state = newChildState();
 		const usage = { ...reply("stop").message.usage, cacheWrite: 4, cacheWrite1h: 2, reasoning: 1 };
@@ -348,5 +361,39 @@ describe("reduceEvent: notices", () => {
 		const [first] = state.notices.kept;
 		expect(first.text).toContain("\\u{1b}");
 		expect(first.text).toHaveLength("bad\\u{1b}[31m ".length + 2_000);
+	});
+});
+
+describe("reduceEvent: model requests", () => {
+	const requests = (effects: ChildEffect[]) => effects.flatMap((effect) => (effect.kind === "request" ? [effect] : []));
+
+	it("counts one request per assistant reply, whatever its stop reason, and reports it with the reply", () => {
+		const state = newChildState();
+		const first = reduce(state, reply("toolUse"));
+		expect(requests(first)).toEqual([{ kind: "request", count: 1, continues: true }]);
+		expect(progress(first).find((update) => update.reply)?.requests).toBe(1);
+		expect(requests(reduce(state, reply("error")))).toEqual([{ kind: "request", count: 2, continues: false }]);
+		expect(requests(reduce(state, reply("stop")))).toEqual([{ kind: "request", count: 3, continues: false }]);
+		expect(state.requests).toBe(3);
+	});
+
+	it("does not count compactions, usage receipts, tool results, user messages or nested calls", () => {
+		const state = newChildState();
+		reduce(state, { type: "compaction_start", reason: "threshold" });
+		reduce(state, { type: "compaction_end", result: { summary: "s", tokensBefore: 10 } });
+		reduce(state, {
+			type: "entry_appended",
+			entry: { id: "u1", type: "usage", kind: "compaction", usage: reply("stop").message.usage },
+		});
+		reduce(state, { type: "message_end", message: { role: "user", content: "hi" } });
+		reduce(state, { type: "message_end", message: { role: "toolResult", toolCallId: "t", content: [] } });
+		reduce(state, { ...reply("toolUse"), parentToolCallId: "outer" });
+		expect(state.requests).toBe(0);
+	});
+
+	it("starts again at zero for a new run (a resumed child is a new process with a new state)", () => {
+		const state = newChildState();
+		reduce(state, reply("toolUse"));
+		expect(newChildState().requests).toBe(0);
 	});
 });

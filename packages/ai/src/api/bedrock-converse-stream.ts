@@ -1,4 +1,5 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
+import { retryAfterMsFromError } from "../utils/provider-retry.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
 import { BedrockRuntimeClient, ConversationRole, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
@@ -18,6 +19,8 @@ import {
 	buildBaseOptions,
 	clampMaxTokensToContext,
 	clampReasoning,
+	thinkingBudgetForLevel,
+	thinkingBudgetReduction,
 } from "./simple-options.ts";
 import { resolveLayeredCacheRetention } from "../utils/cache-policy.ts";
 import { fitClaudeThinkingBudget } from "./anthropic-messages/thinking-budget.ts";
@@ -60,6 +63,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 
 	(async () => {
 		const output: AssistantMessage = createPendingAssistantMessage(model, "bedrock-converse-stream");
+		if (options.thinkingBudgetReduction) output.thinkingBudget = options.thinkingBudgetReduction;
 
 		const blocks = output.content as Block[];
 
@@ -195,6 +199,8 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			}
 			output.stopReason = options.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = formatBedrockError(error);
+			const retryAfterMs = retryAfterMsFromError(error);
+			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;
 			if (output.stopReason === "error") {
 				appendBedrockFailureDiagnostic(output, error, responseRequestId);
 			}
@@ -239,15 +245,26 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 
 		const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
 		const thinkingBudget = fitClaudeThinkingBudget(adjusted.thinkingBudget, maxTokens);
+		// Requested: the budget that fits the model's own output cap; a further cut came from the context clamp.
+		const reduction = thinkingBudgetReduction(
+			fitClaudeThinkingBudget(thinkingBudgetForLevel(options.reasoning, options.thinkingBudgets), model.maxTokens),
+			thinkingBudget,
+		);
 		// Budget-based Claude requires at least 1024 thinking tokens. If they cannot fit, answer without thinking.
 		if (thinkingBudget === 0) {
-			return stream(model, context, { ...base, maxTokens, reasoning: undefined } satisfies BedrockOptions);
+			return stream(model, context, {
+				...base,
+				maxTokens,
+				reasoning: undefined,
+				thinkingBudgetReduction: reduction,
+			} satisfies BedrockOptions);
 		}
 
 		return stream(model, context, {
 			...base,
 			maxTokens,
 			reasoning: options.reasoning,
+			thinkingBudgetReduction: reduction,
 			thinkingBudgets: {
 				...options.thinkingBudgets,
 				[clampReasoning(options.reasoning)!]: thinkingBudget,

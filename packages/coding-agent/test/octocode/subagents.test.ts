@@ -11,6 +11,7 @@ import { LOCAL_RESEARCH_TOOLS } from "../../../mcp/src/presets/octocode/names.ts
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { addUsage, emptyUsage } from "../../src/octocode/shared/util.ts";
 import { maxSubagents, Slots, subagentLimitError } from "../../src/octocode/subagents/claim.ts";
+import { FAILED_NEXT, failedNext } from "../../src/octocode/subagents/report-text.ts";
 import { assistantText } from "../../src/octocode/subagents/events.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
@@ -339,8 +340,9 @@ describe("subagents", () => {
 		expect(profile.prompt).toContain("headless");
 		expect(profile.prompt).toContain("persistent");
 		expect(buildAgentArgs(profile, undefined, SESSION)).toContain("builtin:mcp");
+		// Read-only roles also drop the debugger, which their permission layer refuses.
 		for (const name of ["researcher", "reviewer", "implementer"])
-			expect(profiles.get(name)?.excludeTools, name).toBe("browser");
+			expect(profiles.get(name)?.excludeTools, name).toBe(name === "implementer" ? "browser" : "browser,debug");
 	});
 
 	it("sets visible Chrome only for headless=false and clears inherited browser mode", () => {
@@ -356,14 +358,51 @@ describe("subagents", () => {
 		expect(profile.headless).toBe(true);
 	});
 
-	it("caps running subagents at OCTOCODE_MAX_SUBAGENTS, default 3", () => {
-		expect(maxSubagents({})).toBe(3);
+	it("caps running subagents at OCTOCODE_MAX_SUBAGENTS, default 6", () => {
+		expect(maxSubagents({})).toBe(6);
 		expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: "5" })).toBe(5);
 		for (const bad of ["0", "-1", "2.5", "many", ""])
-			expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: bad }), bad).toBe(3);
+			expect(maxSubagents({ OCTOCODE_MAX_SUBAGENTS: bad }), bad).toBe(6);
 		const refusal = subagentLimitError(["a", "b", "c"], 3);
 		expect(refusal).toContain("3 subagents are already running (a, b, c)");
 		expect(refusal).toContain("OCTOCODE_MAX_SUBAGENTS");
+	});
+
+	it("runs six subagents at once by default and makes the seventh wait for a freed slot", async () => {
+		const saved = process.env.OCTOCODE_MAX_SUBAGENTS;
+		delete process.env.OCTOCODE_MAX_SUBAGENTS;
+		try {
+			const slots = new Slots();
+			for (let i = 0; i < 6; i++) expect(slots.tryTake(), `slot ${i + 1}`).toBe(true);
+			let seventh = false;
+			const waiting = slots.take(undefined).then(() => {
+				seventh = true;
+			});
+			await Promise.resolve();
+			expect(seventh).toBe(false);
+			slots.give();
+			await waiting;
+			expect(seventh).toBe(true);
+		} finally {
+			if (saved === undefined) delete process.env.OCTOCODE_MAX_SUBAGENTS;
+			else process.env.OCTOCODE_MAX_SUBAGENTS = saved;
+		}
+	});
+
+	it("advises waiting or running fewer at once after a provider rate limit, not a narrower task", () => {
+		const route = { model: "a/claude-haiku", parent: "a/claude-opus", via: "profile researcher: small" };
+		for (const error of [
+			"Error: 429 Quota or rate limit exceeded",
+			"Too Many Requests",
+			"overloaded_error: Overloaded",
+		]) {
+			const text = failedNext(route, error, false);
+			expect(text, error).not.toContain(FAILED_NEXT);
+			expect(text, error).toContain("OCTOCODE_MAX_SUBAGENTS");
+			expect(text, error).toMatch(/wait/i);
+			expect(text, error).toContain("Ran on a/claude-haiku");
+		}
+		expect(failedNext(route, "tool crashed", false)).toContain(FAILED_NEXT);
 	});
 
 	it("makes a call past the limit wait for a slot, first come first served, and lets it give up", async () => {

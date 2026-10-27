@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Api, KnownProvider, Model } from "@octocodeai/octocode-ai";
-import { isValidThinkingLevel } from "../../cli/args.ts";
+import { isValidThinkingLevel } from "../thinking-level.ts";
 import { defaultModelPerProvider } from "./default-models.ts";
 
 /*

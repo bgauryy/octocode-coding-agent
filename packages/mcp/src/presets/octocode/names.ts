@@ -3,9 +3,8 @@ import { mcpNamespace } from "../../servers.ts";
 export const OCTOCODE_SERVER = "octocode";
 
 /**
- * Octocode research tools declared to the model whatever runs the `octocode` server: every local reader and search,
- * and the names older servers use for the same jobs. The server's GitHub and package tools wait for tool_search
- * (the preset’s `preferDeferred` policy).
+ * Local reader and search names, including older aliases, used for research roles and routing. The legacy
+ * DIRECT_TOOLS name is retained; exposure of the full catalog follows the shared MCP defaults and configuration.
  */
 export const OCTOCODE_DIRECT_TOOLS: readonly string[] = [
 	"localFetch",
@@ -20,7 +19,20 @@ export const OCTOCODE_DIRECT_TOOLS: readonly string[] = [
 	"lspGetSemantics",
 ];
 
-/** Whether an `octocode` tool is declared directly by default (the user's exposure settings still win). */
+/**
+ * Research tools that few sessions use and whose schemas are large: the preset defers them behind `tool_search` unless the
+ * user's `mcp.json` sets the server's `exposure` or the tool's `toolExposure`. The local readers and searches, and the
+ * GitHub file and code readers, stay declared.
+ */
+export const OCTOCODE_DEFERRED_TOOLS: readonly string[] = [
+	"ghSearchHistory",
+	"ghGetHistoryItem",
+	"clasify",
+	"artifactSearch",
+	"ghSearchRepo",
+];
+
+/** Whether a tool belongs to the local reader/search group, regardless of its configured exposure. */
 export const isOctocodeDirectTool = (toolName: string): boolean => OCTOCODE_DIRECT_TOOLS.includes(toolName);
 
 /** Octocode's tools are the ones of the server `OCTOCODE_SERVER`. */
@@ -30,14 +42,13 @@ export const OCTOCODE_TOOL_PREFIX = `${mcpNamespace(OCTOCODE_SERVER)}__`;
 export const isOctocodeTool = (name: string): boolean => name.startsWith(OCTOCODE_TOOL_PREFIX);
 
 /**
- * Local research names in the current server and the supported legacy catalog: the ones core declares directly, plus
- * `localBinaryInspect`, which is local but waits for tool_search.
+ * Local research names in the current server and the supported legacy catalog, including binary inspection.
  */
 export const LOCAL_RESEARCH_TOOLS = [...OCTOCODE_DIRECT_TOOLS, "localBinaryInspect"].map(
 	(name) => `${OCTOCODE_TOOL_PREFIX}${name}`,
 );
 
-/** Whether an Octocode tool (full name) is declared to the model by default; the others are discovered through tool_search. */
+/** Legacy helper for the local reader/search group; it does not resolve exposure. */
 export const isDirectResearchTool = (name: string): boolean =>
 	isOctocodeTool(name) && isOctocodeDirectTool(name.slice(OCTOCODE_TOOL_PREFIX.length));
 

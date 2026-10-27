@@ -140,6 +140,9 @@ export interface ExtensionAPI {
 		tool: ToolDefinition<TParams, TDetails, TState>,
 	): void;
 
+	/** Register a catalog of tools with one registry refresh instead of one per tool; all are validated first. */
+	registerTools<TDetails = unknown>(tools: readonly ToolDefinition<TSchema, TDetails>[]): void;
+
 	// =========================================================================
 	// Command, Shortcut, Flag Registration
 	// =========================================================================

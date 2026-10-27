@@ -6,88 +6,33 @@
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"paths": {
-			"@octocodeai/octocode-telemetry": [
-				"./packages/telemetry/src/index.ts"
-			],
-			"@octocodeai/octocode-telemetry/testing": [
-				"./packages/telemetry/src/testing/index.ts"
-			],
-			"@octocodeai/octocode-telemetry/render": [
-				"./packages/telemetry/src/render.ts"
-			],
-			"@octocodeai/octocode-ai": [
-				"./packages/ai/src/index.ts"
-			],
-			"@octocodeai/octocode-ai/oauth": [
-				"./packages/ai/src/oauth.ts"
-			],
-			"@octocodeai/octocode-ai/*": [
-				"./packages/ai/src/*.ts",
-				"./packages/ai/src/providers/*.ts"
-			],
-			"@octocodeai/octocode-ai/dist/*": [
-				"./packages/ai/src/*"
-			],
-			"@octocodeai/octocode-agent-core": [
-				"./packages/agent/src/index.ts"
-			],
-			"@octocodeai/octocodecode": [
-				"./packages/coding-agent/src/index.ts"
-			],
-			"@octocodeai/octocodecode/hooks": [
-				"./packages/coding-agent/src/core/hooks/index.ts"
-			],
-			"@octocodeai/octocodecode/*": [
-				"./packages/coding-agent/src/*"
-			],
-			"typebox": [
-				"./node_modules/typebox"
-			],
-			"@octocodeai/octocode-tui": [
-				"./packages/tui/src/index.ts"
-			],
-			"@octocodeai/octocode-tui/*": [
-				"./packages/tui/src/*"
-			],
-			"@octocodeai/octocode-contacts": [
-				"./packages/contacts/src/index.ts"
-			],
-			"@octocodeai/octocode-contacts/*": [
-				"./packages/contacts/src/*.ts"
-			],
-			"@octocodeai/octocode-webview": [
-				"./packages/webview/src/index.ts"
-			],
-			"@octocodeai/octocode-webview/*": [
-				"./packages/webview/src/*.ts"
-			],
-			"@octocodeai/octocodecode/mcp": [
-				"./packages/mcp/src/client/index.ts"
-			],
-			"@octocodeai/octocodecode/mcp/oauth": [
-				"./packages/mcp/src/client/oauth/index.ts"
-			],
-			"@octocodeai/octocodecode/mcp/testing": [
-				"./packages/mcp/src/client/testing/index.ts"
-			],
-			"@octocodeai/octocode-mcp": [
-				"./packages/mcp/src/client/index.ts"
-			],
-			"@octocodeai/octocode-mcp/oauth": [
-				"./packages/mcp/src/client/oauth/index.ts"
-			],
-			"@octocodeai/octocode-mcp/testing": [
-				"./packages/mcp/src/client/testing/index.ts"
-			],
-			"@octocodeai/octocode-mcp/host": [
-				"./packages/mcp/src/index.ts"
-			],
-			"@octocodeai/octocode-acp/server": [
-				"./packages/acp/src/server/acp-mode.ts"
-			],
-			"@octocodeai/octocode-acp/client": [
-				"./packages/acp/src/client/client.ts"
-			]
+			"@octocodeai/octocode-telemetry": ["./packages/telemetry/src/index.ts"],
+			"@octocodeai/octocode-telemetry/testing": ["./packages/telemetry/src/testing/index.ts"],
+			"@octocodeai/octocode-telemetry/render": ["./packages/telemetry/src/render.ts"],
+			"@octocodeai/octocode-ai": ["./packages/ai/src/index.ts"],
+			"@octocodeai/octocode-ai/oauth": ["./packages/ai/src/oauth.ts"],
+			"@octocodeai/octocode-ai/*": ["./packages/ai/src/*.ts", "./packages/ai/src/providers/*.ts"],
+			"@octocodeai/octocode-ai/dist/*": ["./packages/ai/src/*"],
+			"@octocodeai/octocode-agent-core": ["./packages/agent/src/index.ts"],
+			"@octocodeai/octocodecode": ["./packages/coding-agent/src/index.ts"],
+			"@octocodeai/octocodecode/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+			"@octocodeai/octocodecode/*": ["./packages/coding-agent/src/*"],
+			"typebox": ["./node_modules/typebox"],
+			"@octocodeai/octocode-tui": ["./packages/tui/src/index.ts"],
+			"@octocodeai/octocode-tui/*": ["./packages/tui/src/*"],
+			"@octocodeai/octocode-contacts": ["./packages/contacts/src/index.ts"],
+			"@octocodeai/octocode-contacts/*": ["./packages/contacts/src/*.ts"],
+			"@octocodeai/octocode-webview": ["./packages/webview/src/index.ts"],
+			"@octocodeai/octocode-webview/*": ["./packages/webview/src/*.ts"],
+			"@octocodeai/octocodecode/mcp": ["./packages/mcp/src/client/index.ts"],
+			"@octocodeai/octocodecode/mcp/oauth": ["./packages/mcp/src/client/oauth/index.ts"],
+			"@octocodeai/octocodecode/mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],
+			"@octocodeai/octocode-mcp": ["./packages/mcp/src/client/index.ts"],
+			"@octocodeai/octocode-mcp/oauth": ["./packages/mcp/src/client/oauth/index.ts"],
+			"@octocodeai/octocode-mcp/testing": ["./packages/mcp/src/client/testing/index.ts"],
+			"@octocodeai/octocode-mcp/host": ["./packages/mcp/src/index.ts"],
+			"@octocodeai/octocode-acp/server": ["./packages/acp/src/server/acp-mode.ts"],
+			"@octocodeai/octocode-acp/client": ["./packages/acp/src/client/client.ts"]
 		}
 	},
 	"include": [
@@ -96,7 +41,5 @@
 		"packages/coding-agent/scripts/source-resolver.ts",
 		"packages/coding-agent/examples/**/*"
 	],
-	"exclude": [
-		"**/dist/**"
-	]
+	"exclude": ["**/dist/**"]
 }

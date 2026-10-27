@@ -1,3 +1,5 @@
+import { animationClock } from "../tokens/clock.ts";
+import { MOTION, SPINNER } from "../tokens/design.ts";
 import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
 
@@ -8,17 +10,18 @@ export interface LoaderIndicatorOptions {
 	intervalMs?: number;
 }
 
-const DEFAULT_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const DEFAULT_INTERVAL_MS = 80;
+const DEFAULT_FRAMES: readonly string[] = SPINNER.braille;
+const DEFAULT_INTERVAL_MS: number = MOTION.spinnerMs;
 
 /**
- * Loader component that updates with an optional spinning animation.
+ * Loader component that updates with an optional spinning animation, driven by the shared animation clock: in reduced
+ * motion it shows its first frame and does not animate.
  */
 export class Loader extends Text {
 	private frames = [...DEFAULT_FRAMES];
-	private intervalMs = DEFAULT_INTERVAL_MS;
+	private intervalMs: number = DEFAULT_INTERVAL_MS;
 	private currentFrame = 0;
-	private intervalId: NodeJS.Timeout | null = null;
+	private unsubscribe: (() => void) | undefined;
 	private ui: TUI | null = null;
 	private renderIndicatorVerbatim = false;
 	private spinnerColorFn: (str: string) => string;
@@ -50,10 +53,8 @@ export class Loader extends Text {
 	}
 
 	stop(): void {
-		if (this.intervalId) {
-			clearInterval(this.intervalId);
-			this.intervalId = null;
-		}
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
 	}
 
 	setMessage(message: string): void {
@@ -79,19 +80,26 @@ export class Loader extends Text {
 		if (this.frames.length <= 1) {
 			return;
 		}
-		this.intervalId = setInterval(() => {
-			this.currentFrame = (this.currentFrame + 1) % this.frames.length;
-			this.updateDisplay();
-		}, this.intervalMs);
+		this.unsubscribe = animationClock.subscribe(
+			() => {
+				// Called once more when motion is reduced or resumed: repaint without advancing then.
+				if (!animationClock.isReducedMotion()) this.currentFrame = (this.currentFrame + 1) % this.frames.length;
+				this.updateDisplay();
+			},
+			{ everyMs: this.intervalMs, kind: "decor" },
+		);
 	}
 
-	/** Whether the indicator animates; a static one (a single frame, or none) never schedules a redraw. */
+	/**
+	 * Whether the indicator animates; a static one (a single frame, or none, or reduced motion) never schedules a redraw
+	 * of its own.
+	 */
 	protected isAnimated(): boolean {
-		return this.frames.length > 1;
+		return this.frames.length > 1 && !animationClock.isReducedMotion();
 	}
 
 	protected getRenderedIndicator(): string {
-		const frame = this.frames[this.currentFrame] ?? "";
+		const frame = this.frames[animationClock.isReducedMotion() ? 0 : this.currentFrame] ?? "";
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 	}
 

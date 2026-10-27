@@ -11,12 +11,13 @@ import { computeCacheWaste } from "../../../core/cache-stats.ts";
 import { formatCacheWarmingStatus } from "../../../core/cache-warmer.ts";
 import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { getUsageCostBreakdown } from "../../../core/usage-totals.ts";
+import { formatTokens } from "../../../octocode/shared/format.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../components/dynamic-border.ts";
-import { formatTokens } from "../components/footer.ts";
 import { formatKeyText, keyDisplayText } from "../components/keybinding-hints.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
+import { noticeLine } from "./display.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the informational slash commands. */
@@ -26,6 +27,7 @@ type InfoCommandsHost = Pick<
 	| "getAppKeyDisplay"
 	| "getMarkdownThemeWithSettings"
 	| "keybindings"
+	| "outputPad"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
@@ -76,6 +78,9 @@ export function handleSessionCommand(host: InfoCommandsHost): void {
 		}
 		info += `${theme.fg("dim", "Output:")} ${stats.tokens.output.toLocaleString()}\n`;
 		info += `${theme.fg("dim", "Total:")} ${stats.tokens.total.toLocaleString()}\n`;
+		if (stats.thinkingReduced > 0) {
+			info += `${theme.fg("dim", "Thinking budget reduced:")} ${stats.thinkingReduced} requests\n`;
+		}
 
 		const conversationCache = stats.cache.conversation;
 		info += `${theme.fg("dim", "Conversation cache hits:")} ${conversationCache.hitRate === null ? "Unknown" : `${(conversationCache.hitRate * 100).toFixed(1)}%`} (${conversationCache.requests} requests)\n`;
@@ -214,7 +219,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 | Key | Action |
 |-----|--------|
 | \`${submit}\` | Send message |
-| \`${newLine}\` | New line${process.platform === "win32" ? " (Ctrl+Enter on Windows Terminal)" : ""} |
+| \`${newLine}\` | New line${process.platform === "win32" ? " (ctrl+enter on Windows Terminal)" : ""} |
 | \`${deleteWordBackward}\` | Delete word backwards |
 | \`${deleteWordForward}\` | Delete word forwards |
 | \`${deleteToLineStart}\` | Delete to start of line |
@@ -298,8 +303,7 @@ export function handleDebugCommand(host: InfoCommandsHost): void {
 	fs.writeFileSync(debugLogPath, debugData);
 
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(
-		new ThemedText(() => `${theme.fg("accent", "✓ Debug log written")}\n${theme.fg("muted", debugLogPath)}`, 1, 1),
-	);
+	host.chatContainer.addChild(noticeLine("success", "Debug log written", host.outputPad));
+	host.chatContainer.addChild(new ThemedText(() => `  ${theme.fg("muted", debugLogPath)}`, host.outputPad, 0));
 	host.ui.requestRender();
 }

@@ -12,7 +12,7 @@ import type {
 	ProjectTrustContext,
 } from "../../../core/extensions/index.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../theme/theme.ts";
+import { getAvailableThemesWithPaths, getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 

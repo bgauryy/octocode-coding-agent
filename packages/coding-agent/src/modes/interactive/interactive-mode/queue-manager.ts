@@ -4,6 +4,7 @@
  */
 
 import { getApplicationPort } from "../../../core/application/index.ts";
+import { plural } from "../../../octocode/shared/render/text.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import type { QueuedInput } from "../../../core/agent-session.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -119,8 +120,6 @@ export function moveQueueItem(host: QueueManagerHost, item: QueueItem, direction
 	if (moved) changed(host);
 	return moved;
 }
-
-const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /**
  * Alt+Up: put the last queued message back in the editor, ahead of the current draft, and leave every other queued

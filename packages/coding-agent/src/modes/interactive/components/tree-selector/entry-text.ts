@@ -1,5 +1,5 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import type { ToolCallInfo } from "./types.ts";
 
 /** Get searchable text content from a node */

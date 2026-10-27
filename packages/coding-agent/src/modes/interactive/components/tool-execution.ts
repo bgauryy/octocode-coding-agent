@@ -14,9 +14,11 @@ import {
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
 
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import { rowMark, uiStateOf } from "../../../octocode/shared/render/motion.ts";
+import { phaseOf } from "../../../octocode/shared/render/rows.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
-import { theme } from "../theme/theme.ts";
-import { createResultFallback, formatToolExecution } from "./tool-execution/fallback.ts";
+import { theme } from "../../../theme/theme.ts";
+import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
 import { GenericToolContent } from "./tool-execution/content.ts";
 import { reasonRow } from "./tool-execution/reason.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
@@ -198,12 +200,9 @@ export class ToolExecutionComponent extends Container {
 	override render(width: number): string[] {
 		try {
 			return this.renderContent(width);
-		} catch {
-			return new Text(
-				`Tool renderer failed; showing plain output.\n${this.formatToolExecution()}`,
-				this.outputPad,
-				0,
-			).render(width);
+		} catch (error) {
+			const text = rendererFailureText(error, this.toolName, this.args, this.getTextOutput(), this.expanded);
+			return new Text(text, this.outputPad, 0).render(width);
 		}
 	}
 
@@ -279,9 +278,10 @@ export class ToolExecutionComponent extends Container {
 					this.callRendererComponent = component;
 					renderContainer.addChild(this.createResultRegion(component));
 					hasContent = true;
-				} catch {
+				} catch (error) {
 					this.callRendererComponent = undefined;
-					renderContainer.addChild(this.createResultRegion(this.createCallFallback()));
+					const fallback = rendererFailure("renderCall", error, this.createCallFallback());
+					renderContainer.addChild(this.createResultRegion(fallback));
 					hasContent = true;
 				}
 			}
@@ -311,18 +311,20 @@ export class ToolExecutionComponent extends Container {
 						this.resultRendererComponent = component;
 						renderContainer.addChild(this.createResultRegion(component));
 						hasContent = true;
-					} catch {
+					} catch (error) {
 						this.resultRendererComponent = undefined;
-						const component = this.createResultFallback();
-						if (component) {
-							renderContainer.addChild(this.createResultRegion(component));
-							hasContent = true;
-						}
+						const fallback = rendererFailure("renderResult", error, this.createResultFallback());
+						renderContainer.addChild(this.createResultRegion(fallback));
+						hasContent = true;
 					}
 				}
 			}
 		} else {
+			// A tool without a renderer wears the same mark as every other row.
+			const context = this.getRenderContext(undefined);
+			const mark = rowMark(theme, context, this.rendererState, uiStateOf(phaseOf(context)));
 			this.contentText.update({
+				mark,
 				toolName: this.toolName,
 				toolCallId: this.toolCallId,
 				args: this.args,
@@ -390,9 +392,5 @@ export class ToolExecutionComponent extends Container {
 
 	private getTextOutput(): string {
 		return getRenderedTextOutput(this.result, this.showImages);
-	}
-
-	private formatToolExecution(): string {
-		return formatToolExecution(this.toolName, this.args, this.getTextOutput(), this.expanded);
 	}
 }

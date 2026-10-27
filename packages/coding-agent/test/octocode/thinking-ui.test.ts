@@ -1,7 +1,7 @@
 import { Container } from "@octocodeai/octocode-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../../src/modes/interactive/components/index.ts";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import { thinkingTranscript } from "../../src/octocode/ui/thinking.ts";
 
 beforeEach(() => initTheme("dark", false));

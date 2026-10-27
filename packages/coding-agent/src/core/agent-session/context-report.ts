@@ -27,7 +27,10 @@ export function contextReport(session: AgentSession): ContextReport {
 	const projection = session.sessionManager.buildSessionProjection();
 	const system = getCurrentSystemMessage(projection.messages);
 	const tools = getCurrentTools(projection.messages);
-	const settings = session.settingsManager.getCompactionSettings(session.routedModel?.model ?? session.model);
+	const settings = session.settingsManager.getCompactionSettings(
+		session.routedModel?.model ?? session.model,
+		session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+	);
 	const usage = session.getContextUsage();
 	const measured = estimateProjectedContextTokens(projection, session.sessionManager.getBranch());
 	const contributors: ContextContributor[] = [];

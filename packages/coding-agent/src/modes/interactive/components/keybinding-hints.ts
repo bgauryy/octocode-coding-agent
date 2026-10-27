@@ -3,7 +3,7 @@
  */
 
 import { getKeybindings, type Keybinding, type KeyId } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 
 interface KeyTextFormatOptions {
 	capitalize?: boolean;

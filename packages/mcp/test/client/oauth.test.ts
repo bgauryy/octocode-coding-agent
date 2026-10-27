@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { connect } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { McpClient, StreamableHttpTransport } from "../../src/client/index.ts";
 import {
@@ -654,6 +655,44 @@ describe("OAuthCallbackServer pages", () => {
 			expect(await response.text()).toBe("Authorization complete. You may close this window.");
 			expect((await pending).code).toBe("abc");
 		} finally {
+			await callback.close();
+		}
+	});
+
+	it("answers 400 to a malformed request target instead of throwing out of the listener", async () => {
+		const callback = await OAuthCallbackServer.listen({
+			renderPage: (page) => {
+				if (!page.ok && page.message === "Missing authorization code") throw new Error("renderer failed");
+				return page.ok ? "<p>ok</p>" : `<p>${page.message}</p>`;
+			},
+		});
+		const uncaught: Error[] = [];
+		const onUncaught = (error: Error) => uncaught.push(error);
+		process.on("uncaughtException", onUncaught);
+		try {
+			const { port } = new URL(callback.redirectUrl);
+			const raw = (target: string) =>
+				new Promise<string>((resolve, reject) => {
+					const socket = connect(Number(port), "127.0.0.1", () =>
+						socket.write(`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`),
+					);
+					let data = "";
+					socket.on("data", (chunk) => (data += chunk));
+					socket.on("error", reject);
+					socket.on("close", () => resolve(data.split("\r\n")[0] ?? ""));
+				});
+			const pending = callback.waitForCallback("s1");
+			pending.catch(() => undefined);
+			expect(await raw("//[")).toContain(" 400 ");
+			expect(await raw("//host/callback?state=s1&code=x")).toContain(" 400 ");
+			// A renderer that throws on one page does not take the process down either.
+			expect(await raw("/callback?state=s1")).toContain(" 400 ");
+			await expect(pending).rejects.toThrow("did not include an authorization code");
+			// The server still answers afterwards.
+			expect(await raw("/callback?state=none")).toContain(" 400 ");
+			expect(uncaught).toEqual([]);
+		} finally {
+			process.off("uncaughtException", onUncaught);
 			await callback.close();
 		}
 	});

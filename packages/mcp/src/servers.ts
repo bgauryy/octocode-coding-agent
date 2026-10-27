@@ -37,7 +37,7 @@ export const isMcpToolName = (name: string): boolean => name.startsWith("mcp__")
  * - `direct`: tools are declared to the model like any other tool.
  * - `hidden`: tools are registered but unreachable.
  */
-export const DEFAULT_MCP_EXPOSURE = "auto";
+export const DEFAULT_MCP_EXPOSURE = "direct";
 
 export const MCP_EXPOSURES = ["auto", "deferred", "direct", "hidden"] as const;
 export type McpExposure = (typeof MCP_EXPOSURES)[number];
@@ -49,7 +49,7 @@ const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = {
 };
 
 interface McpServerConfigBase {
-	/** Default: `auto`. */
+	/** Default: `direct`. */
 	exposure?: McpExposure;
 	/**
 	 * What the server offers, in a sentence. The `mcp_servers` system prompt section lists the server

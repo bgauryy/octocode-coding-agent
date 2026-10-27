@@ -11,7 +11,7 @@ This repository is a coding agent fork of [Pi](https://github.com/earendil-works
 - `packages/ai/`: provider adapters, model data, authentication primitives and model APIs.
 - `packages/tui/`: terminal components, input and rendering; no application dependency.
 - `packages/acp/src/`: inbound ACP broker and outbound client in a private workspace compiled into coding-agent. `server/` owns protocol/session translation and `client/` owns peer connections and capture; native execution, permissions, persistence and the local API stay in coding-agent.
-- `packages/mcp/src/`: the single MCP owner in a private workspace compiled into coding-agent: protocol client and transports in `client/`, configuration, registry, lifecycle and tool exposure at the root. `presets/octocode/` supplies the default server and its research presentation; it has no separate connection or registry.
+- `packages/mcp/src/`: the single MCP owner in a private workspace compiled into coding-agent: protocol client and transports in `client/`, configuration, registry, lifecycle and tool exposure at the root. `presets/octocode/` supplies the default research server and its presentation, and `presets/browser/` the default browser server backed by `@octocodeai/octocode-chrome-devtools`; presets have no separate connection or registry.
 - `packages/telemetry/`: telemetry contracts and schema utilities; hosts decide collection and export.
 - `packages/contacts/`: shared serializable contracts and schemas; no database, provider, DOM or permission implementation.
 - `packages/webview/`: browser state, transport and rendering; execution, authentication and authorization remain in the coding-agent host.

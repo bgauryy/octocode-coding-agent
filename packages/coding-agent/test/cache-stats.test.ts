@@ -269,6 +269,25 @@ describe("cacheMissLabel", () => {
 		expect(cacheMissLabel({ ...miss, fullMiss: true }, 60 * 60_000)).toBe("Full cache miss");
 	});
 
+	it("reports the provider's own reason ahead of any inferred cause", () => {
+		const reported = { ...miss, apiReason: "tools_changed", modelChanged: true, promptChanged: true };
+		expect(cacheMissLabel(reported, 5 * 60_000)).toBe("History cache miss: provider reports tools changed");
+		expect(cacheMissLabel({ ...reported, fullMiss: true })).toBe("Full cache miss: provider reports tools changed");
+	});
+
+	it("reads the reason from the cache_miss diagnostic on the reply", () => {
+		const previous = assistant({ cacheRead: 90_000, cacheWrite: 1_000, timestamp: 1_000 });
+		const missed = assistant({ cacheWrite: 92_000, cost: { cacheWrite: 0.345 }, timestamp: 2_000 });
+		const reported = {
+			...missed,
+			diagnostics: [
+				{ type: "cache_miss", timestamp: 2_000, details: { reason: "system_changed", missedInputTokens: 90_000 } },
+			],
+		};
+		expect(detectCacheMiss([entry(previous)], reported, models)?.apiReason).toBe("system_changed");
+		expect(detectCacheMiss([entry(previous)], missed, models)?.apiReason).toBeUndefined();
+	});
+
 	it("names a model switch first, then an instruction or tool update", () => {
 		expect(cacheMissLabel({ ...miss, modelChanged: true, promptChanged: true }, 60 * 60_000)).toBe(
 			"Cache miss after model switch",

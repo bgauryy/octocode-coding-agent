@@ -3,7 +3,7 @@ import type {
 	BetaRawMessageStreamEvent as RawMessageStreamEvent,
 	BetaRefusalStopDetails as RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type {
 	AssistantMessage,
 	Model,
@@ -15,7 +15,9 @@ import type {
 	UnsupportedContent,
 } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { parseStreamingJson, parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
+import { cacheMissDiagnostic } from "./cache-diagnostics.ts";
 import { fromClaudeCodeName } from "./claude-code.ts";
 import { providerOutputText } from "../provider-output.ts";
 import { anthropicAnnotation, anthropicNativeFields, anthropicNativeOutput } from "./rich-content.ts";
@@ -44,6 +46,8 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 	const blocks = output.content as Block[];
 	if (event.type === "message_start") {
 		output.responseId = event.message.id;
+		const cacheMiss = cacheMissDiagnostic(event.message.diagnostics);
+		if (cacheMiss) appendAssistantMessageDiagnostic(output, cacheMiss);
 		const transformations = event.message.input_transformations;
 		if (Array.isArray(transformations)) state.inputTransformations = transformations;
 		const responseModel = event.message.model;
@@ -163,7 +167,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			const block = blocks[index];
 			if (block && block.type === "toolCall") {
 				block.partialJson += event.delta.partial_json;
-				block.arguments = parseStreamingJson(block.partialJson);
+				block.arguments = parseStreamingJsonThrottled(block.arguments, block.partialJson);
 				stream.push({
 					type: "toolcall_delta",
 					contentIndex: index,
@@ -174,7 +178,7 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 				const native = state.nativeToolInputs?.get(event.index);
 				if (native) {
 					native.json += event.delta.partial_json;
-					native.fields.input = parseStreamingJson(native.json);
+					native.fields.input = parseStreamingJsonThrottled(native.fields.input as object | undefined, native.json);
 					block.text = providerOutputText(native.type, native.fields).text;
 					stream.push({ type: "content_update", contentIndex: index, partial: output });
 				}
@@ -204,9 +208,15 @@ export function handleAnthropicStreamEvent(event: RawMessageStreamEvent, state: 
 			}
 		}
 	} else if (event.type === "content_block_stop") {
+		const native = state.nativeToolInputs?.get(event.index);
 		state.nativeToolInputs?.delete(event.index);
 		const index = blocks.findIndex((b) => b.index === event.index);
 		const block = blocks[index];
+		if (native && block?.type === "text") {
+			// Streaming previews are throttled; the finished input is rendered exactly.
+			native.fields.input = parseStreamingJson(native.json);
+			block.text = providerOutputText(native.type, native.fields).text;
+		}
 		if (block) {
 			delete (block as any).index;
 			if (block.type === "text") {

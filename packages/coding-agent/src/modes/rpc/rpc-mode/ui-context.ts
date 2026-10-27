@@ -5,7 +5,7 @@ import type {
 	ExtensionWidgetOptions,
 	WorkingIndicatorOptions,
 } from "../../../core/extensions/index.ts";
-import { type Theme, theme } from "../../interactive/theme/theme.ts";
+import { type Theme, theme } from "../../../theme/theme.ts";
 import type { RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "../rpc-types.ts";
 
 /** Writes one protocol object to stdout. */

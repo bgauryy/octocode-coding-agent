@@ -1,6 +1,8 @@
 import {
+	animationClock,
 	type Component,
 	Loader,
+	MOTION,
 	mixColors,
 	shimmerText,
 	type TUI,
@@ -8,7 +10,8 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
-import { theme } from "../theme/theme.ts";
+import { formatDuration } from "../../../octocode/shared/format.ts";
+import { theme } from "../../../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
@@ -19,6 +22,17 @@ const SHIMMER_MAX_CHARS = 120;
 function interruptKey(): string {
 	return keyText("app.interrupt").replace(/^escape$/, "esc");
 }
+
+/** When the current run began, so a working line created mid-run (after a retry or a compaction) keeps the run's clock. */
+let runStartedAt: number | undefined;
+
+/** Start (`at`) or end (`undefined`) the run clock the working line counts from. */
+export function setRunClock(at: number | undefined): void {
+	runStartedAt = at;
+}
+
+/** Room the detail keeps before the time and hint are given up one by one. */
+const MIN_DETAIL_COLUMNS = 12;
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
@@ -53,6 +67,9 @@ export class StatusIndicator extends Loader {
 
 export class WorkingStatusIndicator extends StatusIndicator {
 	private workingMessage: string;
+	private readonly createdAt = Date.now();
+	/** Repaints once a second while the spinner is still, so the run clock advances (an animated spinner repaints anyway). */
+	private unsubscribeClock: (() => void) | undefined;
 
 	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions, colorFn?: (text: string) => string) {
 		super(
@@ -64,6 +81,12 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			indicator,
 		);
 		this.workingMessage = message;
+		this.unsubscribeClock = animationClock.subscribe(
+			() => {
+				if (!this.isAnimated()) ui.requestRender();
+			},
+			{ everyMs: MOTION.tickMs, kind: "info" },
+		);
 	}
 
 	override setMessage(message: string): void {
@@ -71,14 +94,43 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		super.setMessage(message);
 	}
 
-	override render(width: number): string[] {
+	override dispose(): void {
+		this.unsubscribeClock?.();
+		this.unsubscribeClock = undefined;
+		super.dispose();
+	}
+
+	/** The whole run's elapsed time, in the one duration format. */
+	private elapsed(): string {
+		return formatDuration(Date.now() - (runStartedAt ?? this.createdAt));
+	}
+
+	/**
+	 * `<spinner> <detail> (12s · esc to interrupt)`. The clock sits right after the detail, so a narrow terminal clips the
+	 * detail, never the time; the interrupt hint goes first when even that does not fit.
+	 */
+	private compose(width: number, paint: (detail: string) => string, withHint: boolean): string {
 		const detail = this.workingMessage.replace(/[\r\n]+/g, " ");
-		let line = ` ${this.getRenderedIndicator()} ${this.paintDetail(detail)}`;
-		const key = interruptKey();
-		const hint = key ? `${theme.fg("muted", key)}${theme.fg("dim", " to interrupt")}` : "";
-		const gap = width - visibleWidth(line) - visibleWidth(hint) - 1;
-		if (hint && gap >= 4) line += `${" ".repeat(gap)}${hint}`;
-		return ["", truncateToWidth(line, Math.max(0, width), "…")];
+		const prefix = ` ${this.getRenderedIndicator()} `;
+		const key = withHint ? interruptKey() : "";
+		const paintedSuffix = (hint: boolean) =>
+			theme.fg("dim", ` (${this.elapsed()}`) +
+			(hint ? theme.fg("dim", " · ") + theme.fg("muted", key) + theme.fg("dim", " to interrupt") : "") +
+			theme.fg("dim", ")");
+		let suffix = paintedSuffix(Boolean(key));
+		if (key && width - visibleWidth(prefix) - visibleWidth(suffix) < MIN_DETAIL_COLUMNS) suffix = paintedSuffix(false);
+		const room = Math.max(0, width - visibleWidth(prefix) - visibleWidth(suffix));
+		const shown = visibleWidth(detail) <= room ? paint(detail) : paint(truncateToWidth(detail, room, "…"));
+		return truncateToWidth(`${prefix}${shown}${suffix}`, Math.max(0, width), "…");
+	}
+
+	override render(width: number): string[] {
+		return ["", this.compose(width, (detail) => this.paintDetail(detail), true)];
+	}
+
+	override renderInBorder(width: number): string {
+		const line = this.compose(width + 1, (detail) => theme.fg("muted", detail), false);
+		return truncateToWidth(line.slice(1).trimEnd(), width, "");
 	}
 
 	/**
@@ -140,8 +192,8 @@ export class CompactionStatusIndicator extends StatusIndicator {
 		const cancelHint = `(${interruptKey()} to cancel)`;
 		const label =
 			reason === "manual"
-				? `Compacting context... ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
+				? `Compacting context… ${cancelHint}`
+				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting… ${cancelHint}`;
 		super(
 			"compaction",
 			ui,

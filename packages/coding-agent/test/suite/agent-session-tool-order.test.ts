@@ -52,16 +52,47 @@ describe("declared tool order", () => {
 });
 
 describe("orderToolNames", () => {
-	const namespaces: Record<string, string> = { mcp__b__x: "mcp__b", mcp__a__y: "mcp__a", mcp__a__x: "mcp__a" };
+	const namespaces: Record<string, string> = {
+		mcp__b__x: "mcp__b",
+		mcp__a__y: "mcp__a",
+		mcp__a__x: "mcp__a",
+		mcp__octocode__lspSearch: "mcp__octocode",
+		mcp__octocode__localFetch: "mcp__octocode",
+	};
 	const namespaceOf = (name: string) => namespaces[name];
 
 	it("keeps other tools in order, then MCP tools by namespace and name, without duplicates", () => {
 		expect(orderToolNames(["read", "mcp__b__x", "bash", "mcp__a__y", "mcp__a__x", "read"], namespaceOf)).toEqual([
-			"read",
 			"bash",
+			"read",
 			"mcp__a__x",
 			"mcp__a__y",
 			"mcp__b__x",
 		]);
+	});
+
+	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
+		const invariant = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
+		const variant = ["backlog", "memory", "debug", "askUser", "agent", "skill", "tool_search"];
+		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
+		const arrivals = [
+			[...variant, ...invariant, ...octocode, "mcp__a__x"],
+			[...octocode, "mcp__a__x", ...invariant.slice().reverse(), ...variant.slice().reverse()],
+		];
+		for (const names of arrivals)
+			expect(orderToolNames(names, namespaceOf)).toEqual([...invariant, ...octocode, "mcp__a__x", ...variant]);
+	});
+
+	it("gives a child and its parent the same declaration prefix up to the first role-variant tool", () => {
+		const shared = ["bash", "file", "web", "archive", "graphBuild", "graphQuery", "mcp"];
+		const octocode = ["mcp__octocode__localFetch", "mcp__octocode__lspSearch"];
+		// The parent also has debug, the browser server, askUser and a skill tool; a read-only child has tool_search.
+		const parent = orderToolNames(
+			["skill", "debug", "askUser", "agent", "memory", "backlog", ...octocode, "mcp__a__x", ...shared],
+			namespaceOf,
+		);
+		const child = orderToolNames(["tool_search", "agent", "memory", "backlog", ...octocode, ...shared], namespaceOf);
+		expect(parent.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
+		expect(child.slice(0, shared.length + octocode.length)).toEqual([...shared, ...octocode]);
 	});
 });

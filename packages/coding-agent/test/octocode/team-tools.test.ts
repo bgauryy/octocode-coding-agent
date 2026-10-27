@@ -261,6 +261,9 @@ describe("team tools on a fake Octocode", () => {
 		expect(properties.replyRequired.description).toContain("a request you need answered");
 		expect(send.description).toMatch(/lingering child resumes on a message/);
 		expect(send.description).not.toContain("cannot receive");
+		// The same text serves a parent and a child (a child cannot start tasks), so it names no role.
+		expect(send.description).not.toMatch(/start a new task|your child/);
+		expect(properties.interrupt.description).not.toContain("your child");
 	});
 
 	it("refuses a lock call whose own paths overlap, and reserves nothing", async () => {
@@ -335,7 +338,9 @@ describe("team tools on a fake Octocode", () => {
 			details: {
 				messages: [
 					{
+						id: 133,
 						from: "reviewer-1a2b",
+						sender: { role: "reviewer", goal: "audit auth token refresh" },
 						text: "first\nsecond",
 						replyRequired: true,
 						at: Date.parse("2026-01-01T10:00:00Z"),
@@ -344,8 +349,10 @@ describe("team tools on a fake Octocode", () => {
 			},
 		};
 		const collapsed = rendered(renderer(message, { expanded: false }, theme));
-		expect(collapsed).toContain("from reviewer-1a2b");
-		expect(collapsed).toContain("reply requested");
+		expect(collapsed).toMatch(/^ ✉ reviewer-1a2b → you · #133 · \d\d:\d\d(:\d\d)? · reply requested$/m);
+		// The sender's role and goal are on its Agent row, not repeated here.
+		expect(collapsed).not.toContain("audit auth token refresh");
+		expect(collapsed).not.toContain("from ");
 		expect(collapsed).toMatch(/first\n\s*second/);
 		expect(rendered(renderer(message, { expanded: true }, theme))).toMatch(/first\n\s*second/);
 		expect(
@@ -353,7 +360,7 @@ describe("team tools on a fake Octocode", () => {
 				renderer({ details: { messages: [{ from: "x", text: "bad\u001b[31mred" }] } }, { expanded: false }, theme),
 			),
 		).toContain("badred");
-		expect(rendered(renderer({}, { expanded: false }, theme))).toContain("from agent");
+		expect(rendered(renderer({}, { expanded: false }, theme))).toContain("agent → you");
 		// Details that are not a batch (another writer, a damaged entry) show the text the model got.
 		expect(rendered(renderer({ content: "plain text", details: { from: "x" } }, { expanded: false }, theme))).toContain(
 			"plain text",
@@ -395,12 +402,18 @@ describe("team tools on a fake Octocode", () => {
 			"○ Send(→ x · reply to #41)",
 		);
 		expect(rendered(send.renderCall({}, theme, {}))).toBe("○ Send");
+		// Queueing is instant: a duration under a second is not shown, a slower send keeps its time.
+		const done = { isPartial: false, durationMs: 24 };
+		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, done))).toMatch(/^✓ Send\(→ x\)$/);
+		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, { ...done, durationMs: 1_500 }))).toMatch(
+			/^✓ Send\(→ x\) · 1\.5s$/,
+		);
 		const delivered = {
 			content: [{ type: "text", text: "Queued message #42 for b." }],
 			details: { id: 42, to: ["b"] },
 		};
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: false }))).toBe(
-			"  ⎿  Queued #42 (ctrl+o to expand)",
+			'  ⎿  Queued #42 · "hello" (ctrl+o to expand)',
 		);
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: true }), 1_000)).toBe(
 			`  ⎿  Queued #42\n     hello\n     ${"x".repeat(500)}`,
@@ -530,17 +543,29 @@ describe("AgentsView", () => {
 			expect(lines).not.toContain("main-9999");
 			expect(lines).not.toContain("researcher-8888");
 			expect(lines).not.toContain("#4");
-			// The widget counts the agents; the footer does not repeat them.
-			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
+			// The widget counts the agents; the footer names this session, which peers address, and does not repeat them.
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 			vi.advanceTimersByTime(1_000);
 			expect(requestRender).toHaveBeenCalled();
 
+			// Both subagents leave: each keeps a final `✓ done` row for ten seconds, then the widget goes.
 			members = [peer("me-0001", "working", null), ...otherSession];
 			vi.advanceTimersByTime(1_000);
+			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
+			const done = widget.render(120).join("\n");
+			expect(done).toContain("2 done");
+			expect(done).toMatch(/✓ reviewer-1a2b .* · done · /);
+			expect(done).toMatch(/✓ tester-3c4d .* · done · /);
+			expect(done).not.toContain("working");
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
+			vi.advanceTimersByTime(11_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
-			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 
-			members = [peer("me-0001", "working", null), peer("reviewer-1a2b", "idle")];
+			members = [
+				peer("me-0001", "working", null),
+				{ ...(peer("reviewer-1a2b", "idle") as object), updatedAt: Date.now() } as never,
+			];
 			vi.advanceTimersByTime(1_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			view.stop(ctx);
@@ -590,9 +615,10 @@ describe("AgentsView", () => {
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(false);
 			view = { members: [peer("me-0001", "working", null), peer("reviewer-1a2b")], traffic: [] };
 			vi.advanceTimersByTime(1_000);
-			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
+			expect(ctx.ui.statuses.get("octocode-team")).toBe("main: me-0001");
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			agents.stop(ctx);
+			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 		} finally {
 			vi.useRealTimers();
 		}

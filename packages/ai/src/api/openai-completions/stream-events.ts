@@ -1,7 +1,7 @@
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.js";
 import type { AssistantMessage, Model, TextContent, ThinkingContent, ToolCall } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { appendGrammarToolInputJsonDelta, type GrammarToolInputJsonBuffer } from "../constrained-sampling.ts";
 import {
 	appendOpenAIReasoningDetail,
@@ -302,7 +302,7 @@ export function createCompletionsChunkProcessor(
 					if (toolCall.function?.arguments) {
 						delta = toolCall.function.arguments;
 						block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
-						block.arguments = parseStreamingJson(block.partialArgs);
+						block.arguments = parseStreamingJsonThrottled(block.arguments, block.partialArgs);
 					} else if (toolCall.custom?.input) {
 						const nextInput = getCustomToolCallInput(block) + toolCall.custom.input;
 						delta = appendCustomToolCallInput(block, nextInput, false) ?? "";

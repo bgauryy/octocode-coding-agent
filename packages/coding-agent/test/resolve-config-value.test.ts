@@ -61,7 +61,7 @@ describe("resolveConfigValue", () => {
 		},
 	);
 
-	test("caches successful and failed commands until explicitly cleared", () => {
+	test("caches successful commands until cleared and never caches failures", () => {
 		const counterFile = join(tempDir, "counter");
 		writeFileSync(counterFile, "0");
 		const escapedPath = counterFile.replace(/\\/g, "/").replace(/"/g, '\\"');
@@ -78,7 +78,32 @@ describe("resolveConfigValue", () => {
 		const failure = `!sh -c 'count=$(cat "${escapedPath}"); echo $((count + 1)) > "${escapedPath}"; exit 1'`;
 		expect(resolveConfigValue(failure)).toBeUndefined();
 		expect(resolveConfigValue(failure)).toBeUndefined();
-		expect(readFileSync(counterFile, "utf-8").trim()).toBe("3");
+		expect(readFileSync(counterFile, "utf-8").trim()).toBe("4");
+	});
+
+	test("recovers after a transient command failure instead of staying unresolved", () => {
+		const flag = join(tempDir, "ready");
+		const command = `!sh -c 'test -f "${flag.replace(/\\/g, "/")}" && echo token || exit 1'`;
+		expect(resolveConfigValue(command)).toBeUndefined();
+		writeFileSync(flag, "");
+		expect(resolveConfigValue(command)).toBe("token");
+	});
+
+	test("re-runs a successful command once its cache entry expires", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			const counterFile = join(tempDir, "ttl-counter");
+			writeFileSync(counterFile, "0");
+			const escapedPath = counterFile.replace(/\\/g, "/").replace(/"/g, '\\"');
+			const command = `!sh -c 'count=$(cat "${escapedPath}"); echo $((count + 1)) > "${escapedPath}"; echo token-$((count + 1))'`;
+			expect(resolveConfigValue(command)).toBe("token-1");
+			vi.setSystemTime(Date.now() + 60_000);
+			expect(resolveConfigValue(command)).toBe("token-1");
+			vi.setSystemTime(Date.now() + 10 * 60_000);
+			expect(resolveConfigValue(command)).toBe("token-2");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	test("does not cache environment values", () => {

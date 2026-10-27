@@ -132,6 +132,30 @@ describe("summarization retries on context overflow", () => {
 		expect(streamFn).toHaveBeenCalledTimes(1);
 	});
 
+	it("rejects a cancelled (aborted) summary response instead of returning its partial text", async () => {
+		const controller = new AbortController();
+		const streamFn = vi.fn(async () => {
+			controller.abort();
+			return {
+				result: async () => response({ content: [{ type: "text", text: "## Goal\npartial" }], stopReason: "aborted" }),
+			};
+		});
+		await expect(
+			generateSummaryWithUsage(
+				history,
+				model,
+				undefined,
+				"key",
+				undefined,
+				controller.signal,
+				undefined,
+				undefined,
+				undefined,
+				streamFn as never,
+			),
+		).rejects.toThrow(/Summarization was cancelled/);
+	});
+
 	it("keeps a tool result with its call when trimming the turn prefix", async () => {
 		const call = {
 			role: "assistant",

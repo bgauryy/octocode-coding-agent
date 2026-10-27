@@ -1,7 +1,7 @@
 import { Container, getKeybindings, Spacer, Text } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../../config.ts";
-import { SYSTEM_THEME_NAME } from "../theme/system-theme.ts";
-import { theme } from "../theme/theme.ts";
+import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
 

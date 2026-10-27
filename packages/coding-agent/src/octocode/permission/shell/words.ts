@@ -243,6 +243,36 @@ export function words(segment: string): string[] {
 	return tokens;
 }
 
+/**
+ * The index of the command a wrapper line really runs, given the literal words and the index of the first one: past
+ * wrappers (`sudo -u root`, `env -i A=1`, `exec`, `nohup`, `time`), their options, option values and leading operands.
+ * Undefined when an unresolved word (`$CMD`) stands where the command should be; `literals.length` when nothing follows.
+ */
+export function wrappedCommand(literals: ReadonlyArray<string | undefined>, start: number): number | undefined {
+	let at = start;
+	let wrapper: string | undefined;
+	let operands = 0;
+	while (at < literals.length) {
+		const token = literals[at];
+		if (token === undefined) return wrapper === undefined ? at : undefined;
+		if (WRAPPERS.has(base(token))) {
+			wrapper = base(token);
+			operands = LEADING_OPERANDS[wrapper] ?? 0;
+			// `command -v rm` only looks a command up.
+			if (wrapper === "command" && ["-v", "-V"].includes(literals[at + 1] ?? "")) return at;
+			at++;
+		} else if (wrapper === undefined) break;
+		else if (/^\w+=/.test(token)) at++;
+		else if (token.startsWith("-") && at + 1 < literals.length) {
+			at += OPTION_ARGS[wrapper]?.has(token) ? 2 : 1;
+		} else if (operands > 0 && at + 1 < literals.length) {
+			operands--;
+			at++;
+		} else break;
+	}
+	return at;
+}
+
 /** For a shell command: the script it runs from `-c`, or whether it reads its script from standard input. */
 export function shellScript(tokens: string[]): { script?: string; stdin: boolean } {
 	for (let at = 1; at < tokens.length; at++) {

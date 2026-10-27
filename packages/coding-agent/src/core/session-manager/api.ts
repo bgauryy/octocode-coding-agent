@@ -10,11 +10,18 @@ import type {
 	SessionTreeNode,
 	UsageEntry,
 } from "./types.ts";
+import type { SessionRepair } from "./repair.ts";
 
 /** Instance surface of `SessionManager`; static factories stay on the class. */
 export interface SessionManagerApi {
 	/** Switch to a different session file (used for resume and branching) */
 	setSessionFile(sessionFile: string): void;
+
+	/**
+	 * Repair a session whose final record is torn (the file does not end in a newline), which blocks every later write:
+	 * copy it to a `.bak`, truncate it to the last complete line and reload it. Returns undefined when nothing was torn.
+	 */
+	recover(): SessionRepair | undefined;
 
 	newSession(options?: NewSessionOptions): string | undefined;
 

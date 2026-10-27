@@ -1,15 +1,21 @@
-import type { Model } from "@octocodeai/octocode-ai";
+import type { Model, ModelThinkingLevel } from "@octocodeai/octocode-ai";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
-import type { builtInCompactionSettings } from "../../compaction/settings.ts";
+import type { builtInCompactionSettings, CompactionModel } from "../../compaction/settings.ts";
 import type { CacheWarmingMode, Settings } from "../../settings-schema.ts";
+
+/** The model fields the compaction policy reads. */
+export type CompactionPolicyModel = Pick<Model<string>, "provider" | "id"> &
+	Pick<CompactionModel, "contextWindow" | "reasoning" | "compat">;
 
 /** Compaction, branch summaries, retries, request timeouts and prompt caching. */
 export interface RuntimeSettingsApi {
 	getCompactionEnabled(): boolean;
-	getCompactionReserveTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number;
-	getCompactionKeepRecentTokens(model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number }): number;
+	/** `thinkingLevel` is the session's: with it the reserve also fits the thinking budget (never below the default). */
+	getCompactionReserveTokens(model?: CompactionPolicyModel, thinkingLevel?: ModelThinkingLevel): number;
+	getCompactionKeepRecentTokens(model?: CompactionPolicyModel, thinkingLevel?: ModelThinkingLevel): number;
 	getCompactionSettings(
-		model?: Pick<Model<string>, "provider" | "id"> & { contextWindow?: number },
+		model?: CompactionPolicyModel,
+		thinkingLevel?: ModelThinkingLevel,
 	): ReturnType<typeof builtInCompactionSettings>;
 	getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean };
 	getBranchSummarySkipPrompt(): boolean;

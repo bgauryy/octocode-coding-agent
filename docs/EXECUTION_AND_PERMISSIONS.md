@@ -24,14 +24,14 @@ flowchart TD
 
 [Tool gates](../packages/coding-agent/src/octocode/tool-gates.ts), [permission decisions](../packages/coding-agent/src/octocode/permission/gate.ts) and [session execution](../packages/coding-agent/src/core/agent-session/tool-calls.ts) own this order. File review, resolved network targets, uploads and child profiles need information only their effect owner has, so they perform additional checks there. Replacements are validated and rechecked before commit.
 
-| Route | Authorization and cancellation |
-| --- | --- |
+| Route                | Authorization and cancellation                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Model or nested tool | Same pre-call checks. Nested deadlines reach permission hooks through `ctx.signal`; an aborted approval prevents execution. A handler that ignores cancellation may still delay return. |
-| File mutation | Permission review plus current read coverage, path identity, reservations and expected content at commit. |
-| Debugger | Every action except termination uses process authorization; restricted child roles refuse debugging. |
-| User `!command` | Typed input is consent; destructive actions, source policy and hook decisions can still require approval or refuse it. Hook input rewrites are unsupported on this route. |
-| ACP client | Typed native requests become single-use ACP decisions; invalid, late or cancelled responses do not grant approval. |
-| Hook MCP call | Normally runs the permission step without recursively running tool hooks. A trusted `PermissionRequest` hook has an explicit exemption so it can answer the pending decision. |
+| File mutation        | Permission review plus current read coverage, path identity, reservations and expected content at commit.                                                                               |
+| Debugger             | Every action except termination uses process authorization; restricted child roles refuse debugging.                                                                                    |
+| User `!command`      | Typed input is consent; destructive actions, source policy and hook decisions can still require approval or refuse it. Hook input rewrites are unsupported on this route.               |
+| ACP client           | Typed native requests become single-use ACP decisions; invalid, late or cancelled responses do not grant approval.                                                                      |
+| Hook MCP call        | Normally runs the permission step without recursively running tool hooks. A trusted `PermissionRequest` hook has an explicit exemption so it can answer the pending decision.           |
 
 The [permission reference](../packages/coding-agent/docs/permissions.md) owns modes and grants. `full` is permissive; role guards, source policy and filesystem invariants remain separate checks. Shell parsing, MCP annotations and provenance are policy inputs, **not OS confinement**. Trusted extensions and configured hooks execute with host privileges.
 

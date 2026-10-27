@@ -2,7 +2,7 @@
 
 `@octocodeai/octocodecode` embeds Octocode in a Node.js or Bun process. It provides direct TypeScript access to the agent, sessions, tools, models, and resources used by the command-line application.
 
-Use the SDK for in-process TypeScript integration. For an isolated subprocess, use `octocode --mode rpc`; the [RPC types](../src/modes/rpc/rpc-types.ts) define its messages and the [RPC client](../src/modes/rpc/rpc-client.ts) demonstrates the protocol.
+Use the SDK for in-process TypeScript integration. For an isolated subprocess, use `octocode --mode rpc`; the [RPC reference](rpc.md) lists its commands and records, the [RPC types](../src/modes/rpc/rpc-types.ts) define its messages and the [RPC client](../src/modes/rpc/rpc-client.ts) demonstrates the protocol.
 
 ```typescript
 import { createAgentSession } from "@octocodeai/octocodecode";
@@ -10,15 +10,15 @@ import { createAgentSession } from "@octocodeai/octocodecode";
 const { session } = await createAgentSession();
 
 try {
-  await session.bindExtensions({});
-  await session.prompt("What files are in the current directory?");
-  console.log(session.getLastAssistantText());
+	await session.bindExtensions({});
+	await session.prompt("What files are in the current directory?");
+	console.log(session.getLastAssistantText());
 } finally {
-  try {
-    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
-  } finally {
-    session.dispose();
-  }
+	try {
+		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+	} finally {
+		session.dispose();
+	}
 }
 ```
 
@@ -50,7 +50,7 @@ Use an in-memory manager when the host does not want session files:
 import { createAgentSession, SessionManager } from "@octocodeai/octocodecode";
 
 const { session } = await createAgentSession({
-  sessionManager: SessionManager.inMemory(),
+	sessionManager: SessionManager.inMemory(),
 });
 ```
 
@@ -80,15 +80,15 @@ Subscribe before prompting when the host needs streamed output:
 
 ```typescript
 const unsubscribe = session.subscribe((event) => {
-  if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-    process.stdout.write(event.assistantMessageEvent.delta);
-  }
+	if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+		process.stdout.write(event.assistantMessageEvent.delta);
+	}
 });
 
 try {
-  await session.prompt("Explain this repository");
+	await session.prompt("Explain this repository");
 } finally {
-  unsubscribe();
+	unsubscribe();
 }
 ```
 
@@ -132,7 +132,7 @@ A named entry with `builtin: true` supplies the code of a `builtin:<name>` exten
 
 The default resource loader includes `tool_search` and MCP. A custom loader with `nativeFeatures: false` can supply `createToolSearchExtension()` and `createMcpExtension()` explicitly. `createMcpExtension({ presets: [octocodePreset()] })` opts into the Octocode default; both factories and the `McpServerPreset` type are exported from `@octocodeai/octocodecode`. Presets supply default configuration, exposure, launch and presentation policies while the host owns every connection. Omitting presets leaves only configured and extension-registered servers. The low-level client is exported separately from `@octocodeai/octocodecode/mcp`; see the [client API reference](../../mcp/README.md).
 
-MCP defaults to automatic exposure: small catalogs are direct, and large catalogs use discovery when the provider supports incremental tool loading. Explicit `deferred` exposure activates `tool_search`. Discovered tools are called natively through the session pipeline.
+MCP defaults to direct exposure: connected tools supply full descriptions and input schemas without discovery, and the server section includes shared instructions once. Explicit `auto` opts into the catalog-size heuristic; explicit `deferred` exposure activates `tool_search`. Discovered tools are called natively through the session pipeline.
 
 MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Connections may continue in the background; calls wait for the servers they need. On shutdown, emit `session_shutdown` before disposing the session, as in the opening example. See [MCP](mcp.md) for configuration and lifecycle.
 
@@ -164,7 +164,6 @@ Queued messages are owned by `AgentSession`: `getQueuedInputs()` lists them in d
 - [Extensions](extensions.md), [Skills](skills.md), and [Prompt Templates](prompt-templates.md) document resources supplied through a `ResourceLoader`.
 - [Extension fixtures](../examples/extensions/README.md) demonstrate API behavior used in regression tests.
 - [`CreateAgentSessionOptions`](../src/core/sdk.ts) and [`AgentSession`](../src/core/agent-session.ts) define the current SDK surface.
-
 
 ## Session workflow operations
 

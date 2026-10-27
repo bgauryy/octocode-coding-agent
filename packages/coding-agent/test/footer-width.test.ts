@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 type AssistantUsage = {
@@ -25,6 +25,7 @@ function createSession(options: {
 	compactionUsage?: AssistantUsage;
 	toolUsage?: AssistantUsage;
 	usingSubscription?: boolean;
+	contextPercent?: number;
 	routedModel?: { model: { id: string }; thinkingLevel?: string };
 }): AgentSession {
 	const usage = options.usage;
@@ -82,7 +83,7 @@ function createSession(options: {
 			getSessionName: () => options.sessionName,
 			getCwd: () => "/tmp/project",
 		},
-		getContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),
+		getContextUsage: () => ({ contextWindow: 200_000, percent: options.contextPercent ?? 12.3 }),
 		routedModel: options.routedModel,
 		modelRuntime: {
 			isUsingSubscription: () => options.usingSubscription ?? false,
@@ -237,17 +238,17 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 
 		const statsLine = stripAnsi(footer.render(120)[1]);
-		expect(statsLine).toContain("$1.250");
+		expect(statsLine).toContain("≈$1.25");
 	});
 
 	it("updates cached usage totals after an entry is appended", () => {
 		const usage = { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.5 } };
 		const session = createSession({ sessionName: "", usage });
 		const footer = new FooterComponent(session, createFooterData(1));
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.500");
+		expect(stripAnsi(footer.render(120)[1])).toContain("≈$0.50");
 
 		session.sessionManager.getEntries().push({ type: "message", message: { role: "assistant", usage } } as never);
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.000");
+		expect(stripAnsi(footer.render(120)[1])).toContain("≈$1.00");
 	});
 
 	it("shows the latest cache hit rate when cache usage is present", () => {
@@ -281,14 +282,14 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 (sub)");
+		expect(stripAnsi(footer.render(120)[1])).toContain("≈$1.23 (sub)");
 	});
 
 	it("marks explicitly identified subscription auth", () => {
 		const session = createSession({ sessionName: "", provider: "anthropic", usingSubscription: true });
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 (sub)");
+		expect(stripAnsi(footer.render(120)[1])).toContain("≈$0.00 (sub)");
 	});
 
 	it("does not mark generic OAuth sign-in as a subscription", () => {
@@ -306,8 +307,43 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 		const stats = stripAnsi(footer.render(120)[1]);
 
-		expect(stats).toContain("$1.234");
+		expect(stats).toContain("≈$1.23");
 		expect(stats).not.toContain("(sub)");
+	});
+});
+
+describe("footer text conventions", () => {
+	const colorOf = (line: string) => line.match(/\x1b\[[0-9;]*m(?=[^\x1b]*\d+\.\d%\/200k)/)?.[0];
+
+	it("formats tokens like the Octocode footer and joins the session name with a middle dot", () => {
+		const usage = { input: 12_400, output: 2_000, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } };
+		const output = new FooterComponent(createSession({ sessionName: "demo", usage }), createFooterData(1))
+			.render(120)
+			.map(stripAnsi);
+
+		expect(output[0]).toContain("/tmp/project (main) · demo");
+		expect(output[1]).toContain("↑12.4k ↓2k");
+		expect(output.join("")).not.toContain("•");
+	});
+
+	it("truncates with an ellipsis, not three dots", () => {
+		const lines = new FooterComponent(createSession({ sessionName: "a-long-session-name" }), createFooterData(1))
+			.render(14)
+			.map(stripAnsi);
+
+		expect(lines[0]).toMatch(/…$/);
+		expect(lines.join("")).not.toContain("...");
+	});
+
+	it("colours context by the Octocode thresholds: plain below 50, warning from 50, error above 80", () => {
+		const paint = (contextPercent: number) =>
+			colorOf(
+				new FooterComponent(createSession({ sessionName: "", contextPercent }), createFooterData(1)).render(120)[1],
+			);
+		const [low, mid, high] = [paint(49.9), paint(50), paint(80.1)];
+
+		expect(paint(80)).toBe(mid);
+		expect(new Set([low, mid, high]).size).toBe(3);
 	});
 });
 

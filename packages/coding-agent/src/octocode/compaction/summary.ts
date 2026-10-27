@@ -309,6 +309,8 @@ export async function writeSummary(
 					pi.getThinkingLevel(),
 					stream,
 				));
+			// A cancelled compaction saves nothing, so a summary that returned after the cancel is not kept either.
+			if (event.signal.aborted) return undefined;
 			// Kept until the same input is summarized again: a failure after this call must not make the next turn pay again.
 			paidSummary = {
 				key,

@@ -13,7 +13,7 @@ import { FooterComponent } from "../components/footer.ts";
 import { createMermaidMarkdownTransformer } from "../components/mermaid.ts";
 import { IdleStatus } from "../components/status-indicator.ts";
 import { ProgramStatusReporter } from "../program-status-reporter.ts";
-import { getEditorTheme, setRegisteredThemes, theme } from "../theme/theme.ts";
+import { getEditorTheme, setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { InteractiveThemeController } from "../theme/theme-controller.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "../tui-renderer.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -59,8 +59,8 @@ export function createInteractiveModeHost(
 		workingVisible: true,
 		workingIndicatorOptions: undefined,
 		defaultWorkingMessage: "Working",
-		defaultHiddenThinkingLabel: "Thinking...",
-		hiddenThinkingLabel: "Thinking...",
+		defaultHiddenThinkingLabel: "Thinking…",
+		hiddenThinkingLabel: "Thinking…",
 
 		lastSigintTime: 0,
 		lastEscapeTime: 0,

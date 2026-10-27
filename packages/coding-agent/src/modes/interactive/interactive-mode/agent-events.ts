@@ -10,6 +10,7 @@ import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
 import { addToolExecution } from "./session-render.ts";
+import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
 import { applicationRenderer } from "./application-events.ts";
 
 const applicationDriven = new WeakSet<object>();
@@ -237,15 +238,9 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			if (event.message.role === "user") break;
 			if (host.streamingComponent && event.message.role === "assistant") {
 				host.streamingMessage = event.message;
-				let errorMessage: string | undefined;
-				if (host.streamingMessage.stopReason === "aborted") {
-					const retryAttempt = host.session.retryAttempt;
-					errorMessage =
-						retryAttempt > 0
-							? `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`
-							: "Operation aborted";
-					host.streamingMessage.errorMessage = errorMessage;
-				}
+				const stopReason = host.streamingMessage.stopReason;
+				const toolText = stoppedToolText(stopReason, host.session.retryAttempt);
+				if (stopReason === "aborted") host.streamingMessage.errorMessage = toolText;
 				host.streamingComponent.updateMessage(
 					getApplicationPort(host.session).normalizeMessage(host.streamingMessage),
 					false,
@@ -259,15 +254,10 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 					host.pendingTools.set(content.id, component);
 				}
 
-				if (host.streamingMessage.stopReason === "aborted" || host.streamingMessage.stopReason === "error") {
-					if (!errorMessage) {
-						errorMessage = host.streamingMessage.errorMessage || "Error";
-					}
+				if (toolText !== undefined) {
+					// The tools never ran: a failure shows its provider error once on the message, not on every row.
 					for (const [, component] of host.pendingTools.entries()) {
-						component.updateResult({
-							content: [{ type: "text", text: errorMessage }],
-							isError: true,
-						});
+						component.updateResult({ content: [{ type: "text", text: toolText }], isError: true });
 					}
 					host.pendingTools.clear();
 					host.maybeSuggestBugReport(host.streamingMessage);

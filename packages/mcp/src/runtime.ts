@@ -158,11 +158,21 @@ export class McpServerConnection implements McpToolCaller {
 		},
 	};
 
-	/** Connect again with fresh credentials, for example after signing in. */
+	/**
+	 * Cancel a connect in progress, for example a hung one that a reconnect replaces. Its callers see the failure;
+	 * a later `getClient()` or `reconnect()` starts a new attempt.
+	 */
+	abortOpening(): void {
+		this.openingAbort?.abort();
+	}
+
+	/** Connect again with fresh credentials, for example after signing in. A connect still in progress is cancelled. */
 	async reconnect(): Promise<void> {
 		this.stopped = false;
-		this.backoff.reset();
+		this.abortOpening();
 		await this.opening?.catch(() => undefined);
+		// After the cancelled attempt, whose failure counted against the backoff.
+		this.backoff.reset();
 		if (this.client) await this.dropClient(this.client);
 		await this.getClient();
 	}
@@ -173,7 +183,7 @@ export class McpServerConnection implements McpToolCaller {
 	 */
 	async stop(): Promise<void> {
 		this.stopped = true;
-		this.openingAbort?.abort();
+		this.abortOpening();
 		await Promise.all([this.opening?.catch(() => undefined), this.retiring.closeRetiredClients()]);
 		await Promise.all([this.client && this.dropClient(this.client), this.retiring.closeRetiredClients()]);
 		this.withdrawCatalog();

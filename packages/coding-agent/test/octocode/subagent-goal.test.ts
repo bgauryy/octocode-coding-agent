@@ -125,7 +125,7 @@ describe("the agent tool's goal", () => {
 		const shown = rendered(s.renderers.get("octocode-agent-result")(s.sent[0].message, { expanded: false }, theme));
 		expect(shown).toContain(`Agent(${id} · ${GOAL})`);
 		expect(shown.split("\n")[0]).not.toContain("reviewer");
-		expect(shown).toContain(`Done (${id} · 1 tool call`);
+		expect(shown).toContain("Done · 1 tool call");
 	});
 
 	it("names a live agent with a similar goal in the launch result, and nothing for an unrelated goal", async () => {
@@ -245,12 +245,14 @@ describe("a subagent's usage", () => {
 		const result = await s.run({ goal: GOAL, task: "unpriced answer" });
 		expect(result.details).toMatchObject({ input: 400, cacheRead: 300, output: 20, cost: 0, unpriced: true });
 		const done = rendered(
-			s.agent.renderResult(result, { isPartial: false, expanded: false }, theme, {
+			s.agent.renderResult(result, { isPartial: false, expanded: true }, theme, {
 				isError: false,
+				expanded: true,
 				durationMs: 250,
 			}),
 		);
-		expect(done).toMatch(/Done \([a-z]+-[a-z]+ · 0 tool calls · ↑100 \+300 cached ↓20 · cost n\/a · /);
+		// Tokens and cost are in the expanded summary; the collapsed row is outcome, tool calls and time.
+		expect(done).toMatch(/Done · [a-z]+-[a-z]+ · 250ms · ↑100 \+300 cached ↓20 · cost n\/a/);
 	});
 });
 

@@ -1,6 +1,6 @@
 import { assertImageRequestPayload } from "../utils/image-input.ts";
 import { createPendingAssistantMessage } from "../utils/assistant-message.ts";
-import { clampThinkingLevel } from "../models.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type { AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";

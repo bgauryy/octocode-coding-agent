@@ -1,7 +1,7 @@
 import { Container, type SettingItem, SettingsList } from "@octocodeai/octocode-tui";
 import { SETTINGS_DEFAULTS } from "../../../../core/settings-defaults.ts";
 import type { WarningSettings } from "../../../../core/settings-manager.ts";
-import { getSettingsListTheme } from "../../theme/theme.ts";
+import { getSettingsListTheme } from "../../../../theme/theme.ts";
 
 /**
  * A submenu component for selecting from a list of options.

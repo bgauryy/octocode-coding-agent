@@ -1,9 +1,12 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
-import type { TuiMouseEvent } from "@octocodeai/octocode-tui";
-import { describe, expect, test } from "vitest";
+import { animationClock, getKeybindings, setKeybindings, type TuiMouseEvent } from "@octocodeai/octocode-tui";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { resetThinkingSpans } from "../src/modes/interactive/components/reasoning-label.ts";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { setToolInterruptShown } from "../src/core/application/interrupted-tools.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -34,12 +37,20 @@ function createAssistantMessage(
 }
 
 describe("AssistantMessageComponent", () => {
+	const previousKeybindings = getKeybindings();
+	beforeEach(() => {
+		setKeybindings(new KeybindingsManager());
+		resetThinkingSpans();
+	});
+	afterEach(() => setKeybindings(previousKeybindings));
+
 	test("ends the thinking indicator when answer text arrives and preserves reasoning", () => {
 		initTheme("dark");
 		const message = createAssistantMessage([{ type: "thinking", thinking: "Inspect the test results." }]);
 		const component = new AssistantMessageComponent();
 		component.updateContent(message, true);
-		expect(stripAnsi(component.render(60).join("\n"))).toContain("▾ Thinking…");
+		expect(stripAnsi(component.render(60).join("\n"))).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking…/);
+		expect(stripAnsi(component.render(60).join("\n"))).not.toContain("▾ Thinking…");
 		const answer = { ...message, content: [...message.content, { type: "text" as const, text: "Tests passed." }] };
 		component.updateContent(answer, true);
 		const rendered = stripAnsi(component.render(60).join("\n"));
@@ -49,7 +60,205 @@ describe("AssistantMessageComponent", () => {
 		expect(rendered).toContain("Tests passed.");
 		component.updateContent(answer, false);
 		component.setHideThinkingBlock(true);
-		expect(stripAnsi(component.render(60).join("\n"))).toContain("▸ Reasoning · click to expand");
+		const hidden = stripAnsi(component.render(60).join("\n"));
+		expect(hidden).toContain("▸ Reasoning (ctrl+t)");
+		expect(hidden).not.toContain("click");
+		expect(hidden).not.toContain("Toggle reasoning");
+	});
+
+	describe("live reasoning label", () => {
+		afterEach(() => {
+			animationClock.setReducedMotion(false);
+			vi.useRealTimers();
+		});
+
+		function streaming(requestRender: () => void): AssistantMessageComponent {
+			initTheme("dark");
+			const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking…", 1, [], {
+				requestRender,
+			});
+			component.updateContent(createAssistantMessage([{ type: "thinking", thinking: "Inspect it." }]), true);
+			return component;
+		}
+
+		test("animates only while the block streams", () => {
+			vi.useFakeTimers({ now: 1_000 });
+			const requestRender = vi.fn();
+			const component = streaming(requestRender);
+			expect(animationClock.isRunning()).toBe(true);
+			const first = component.render(60).join("\n");
+			vi.advanceTimersByTime(80);
+			const second = component.render(60).join("\n");
+			expect(second).not.toBe(first);
+			expect(stripAnsi(second)).toContain("Thinking…");
+			expect(requestRender).toHaveBeenCalled();
+
+			const answered = createAssistantMessage([
+				{ type: "thinking", thinking: "Inspect it." },
+				{ type: "text", text: "Done." },
+			]);
+			component.updateContent(answered, false);
+			expect(animationClock.isRunning()).toBe(false);
+			const calls = requestRender.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(requestRender.mock.calls.length).toBe(calls);
+			expect(stripAnsi(component.render(60).join("\n"))).toMatch(/▾ Reasoning/);
+		});
+
+		test("dispose and a later non-streaming update both release the clock", () => {
+			vi.useFakeTimers({ now: 1_000 });
+			const component = streaming(vi.fn());
+			expect(animationClock.isRunning()).toBe(true);
+			component.dispose();
+			expect(animationClock.isRunning()).toBe(false);
+		});
+
+		test("stops asking for frames once nothing draws the label", () => {
+			vi.useFakeTimers({ now: 1_000 });
+			const requestRender = vi.fn();
+			streaming(requestRender);
+			vi.advanceTimersByTime(2_500);
+			expect(animationClock.isRunning()).toBe(false);
+		});
+
+		test("reduced motion shows the first frame and a plain label", () => {
+			vi.useFakeTimers({ now: 1_000 });
+			animationClock.setReducedMotion(true);
+			const component = streaming(vi.fn());
+			const first = component.render(60).join("\n");
+			vi.advanceTimersByTime(80);
+			expect(component.render(60).join("\n")).toBe(first);
+			expect(stripAnsi(first)).toContain("⠋ Thinking…");
+			expect(animationClock.isRunning()).toBe(false);
+		});
+	});
+
+	describe("reasoning duration and hidden stub", () => {
+		afterEach(() => vi.useRealTimers());
+
+		/** Reasoning that streams for `durationMs`; the answer starts `gapMs` after its last token. */
+		function streamedReasoning(durationMs: number, gapMs = 0): AssistantMessageComponent {
+			vi.useFakeTimers({ now: 1_000 });
+			const component = new AssistantMessageComponent();
+			const message = createAssistantMessage([{ type: "thinking", thinking: "First thought." }]);
+			component.updateContent(message, true);
+			vi.setSystemTime(1_000 + durationMs);
+			const grown = createAssistantMessage([{ type: "thinking", thinking: "First thought. Second thought." }]);
+			component.updateContent(grown, true);
+			vi.setSystemTime(1_000 + durationMs + gapMs);
+			const answered = createAssistantMessage([
+				{ type: "thinking", thinking: "First thought. Second thought." },
+				{ type: "text", text: "Done." },
+			]);
+			component.updateContent(answered, false);
+			return component;
+		}
+
+		test("labels a finished block with how long the model reasoned", () => {
+			initTheme("dark");
+			const component = streamedReasoning(4_000);
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
+			component.setHideThinkingBlock(true);
+			const lines = stripAnsi(component.render(80).join("\n")).split("\n");
+			expect(lines.filter((line) => line.includes("Reasoning"))).toEqual([
+				expect.stringContaining("▸ Reasoning · 4s (ctrl+t)"),
+			]);
+			expect(lines.join("\n")).not.toContain("Toggle reasoning");
+			expect(lines.join("\n")).not.toContain("click");
+		});
+
+		test("measures to the start of the next block, not to the last token", () => {
+			initTheme("dark");
+			// The thought's last token came at +2s; the answer began at +3s, which ends the reasoning.
+			const component = streamedReasoning(2_000, 1_000);
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▾ Reasoning · 3s");
+		});
+
+		test("keeps the time when the transcript rebuilds the message's component", () => {
+			initTheme("dark");
+			streamedReasoning(4_000);
+			// Same message id, as the application port reuses it: a fresh component first sees it complete.
+			const rebuilt = new AssistantMessageComponent(
+				createAssistantMessage([
+					{ type: "thinking", thinking: "First thought. Second thought." },
+					{ type: "text", text: "Done." },
+				]),
+			);
+			expect(stripAnsi(rebuilt.render(80).join("\n"))).toContain("▾ Reasoning · 4s");
+		});
+
+		test("omits the time when unknown (a resumed block) or under a second", () => {
+			initTheme("dark");
+			const resumed = new AssistantMessageComponent(
+				createAssistantMessage([
+					{ type: "thinking", thinking: "Old thought." },
+					{ type: "text", text: "Done." },
+				]),
+			);
+			expect(stripAnsi(resumed.render(80).join("\n"))).toMatch(/▾ Reasoning\s*\n/);
+			const brief = streamedReasoning(100);
+			expect(stripAnsi(brief.render(80).join("\n"))).toMatch(/▾ Reasoning\s*\n/);
+		});
+
+		test("offers a click only where the terminal reports the mouse", () => {
+			initTheme("dark");
+			const component = streamedReasoning(4_000);
+			component.setHideThinkingBlock(true);
+			component.setMouseHint(true);
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Reasoning · 4s (ctrl+t or click)");
+			component.setMouseHint(false);
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Reasoning · 4s (ctrl+t)");
+		});
+	});
+
+	describe("an interrupted turn says one thing", () => {
+		afterEach(() => setToolInterruptShown(false));
+
+		const stopped = (errorMessage: string | undefined, stopReason: "aborted" | "error" = "aborted") => ({
+			...createAssistantMessage([], { stopReason }),
+			errorMessage,
+		});
+
+		test.each(["This operation was aborted", "Request was aborted", "Request was aborted.", undefined])(
+			"maps the runtime's abort wording %s to Interrupted",
+			(wording) => {
+				initTheme("dark");
+				const component = new AssistantMessageComponent(stopped(wording));
+				const rendered = stripAnsi(component.render(60).join("\n"));
+				expect(rendered).toContain("Interrupted");
+				expect(rendered).not.toMatch(/aborted|Operation/);
+			},
+		);
+
+		test("an abort reported as an error is still an interrupt, not an Error line", () => {
+			initTheme("dark");
+			const rendered = stripAnsi(
+				new AssistantMessageComponent(stopped("This operation was aborted", "error")).render(60).join("\n"),
+			);
+			expect(rendered).toContain("Interrupted");
+			expect(rendered).not.toContain("Error:");
+		});
+
+		test("keeps a specific message and real errors as they are", () => {
+			initTheme("dark");
+			expect(
+				stripAnsi(new AssistantMessageComponent(stopped("Aborted after 2 retry attempts")).render(60).join("\n")),
+			).toContain("Aborted after 2 retry attempts");
+			expect(
+				stripAnsi(new AssistantMessageComponent(stopped("503 overloaded", "error")).render(60).join("\n")),
+			).toContain("Error: 503 overloaded");
+		});
+
+		test("says nothing when a tool row already shows the abort", () => {
+			initTheme("dark");
+			setToolInterruptShown(true);
+			const component = new AssistantMessageComponent(stopped("This operation was aborted"));
+			expect(stripAnsi(component.render(60).join("\n")).trim()).toBe("");
+			// Decided once: a later run does not bring the line back to this message.
+			setToolInterruptShown(false);
+			component.updateContent(stopped("This operation was aborted"), false);
+			expect(stripAnsi(component.render(60).join("\n")).trim()).toBe("");
+		});
 	});
 
 	test("adds OSC 133 zone markers to assistant messages without tool calls", () => {
@@ -155,7 +364,7 @@ describe("AssistantMessageComponent", () => {
 			]),
 			false,
 			undefined,
-			"Thinking...",
+			"Thinking…",
 			1,
 		);
 		const lines = component.render(80).map((line) => stripAnsi(line));
@@ -173,7 +382,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const calls: string[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "The result is $x^2$." }]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, "Thinking…", 1, [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "assistant", isStreaming: false, availableWidth: 78 });
@@ -193,7 +402,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const streamingStates: boolean[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "partial" }]);
-		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking…", 1, [
 			(markdown, context) => {
 				streamingStates.push(context.isStreaming);
 				return context.isStreaming ? markdown : `${markdown} transformed`;
@@ -215,7 +424,7 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "answer" }]),
 			false,
 			undefined,
-			"Thinking...",
+			"Thinking…",
 			1,
 			[
 				(markdown, context) => {
@@ -238,7 +447,7 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "still visible" }]),
 			false,
 			undefined,
-			"Thinking...",
+			"Thinking…",
 			1,
 			[
 				(markdown) => {
@@ -266,7 +475,7 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, "Thinking…", 1, [
 			(markdown, { messageType }) => {
 				return `${messageType}:${markdown}`;
 			},
@@ -286,7 +495,7 @@ describe("AssistantMessageComponent", () => {
 
 		const paddedComponent = new UserMessageComponent("hello", undefined, 1);
 		const paddedLines = paddedComponent.render(40).map((line) => stripAnsi(line));
-		expect(paddedLines.some((line) => line.startsWith(" hello"))).toBe(true);
+		expect(paddedLines.some((line) => line.startsWith("▎hello"))).toBe(true);
 
 		const unpaddedComponent = new UserMessageComponent("hello", undefined, 0);
 		const unpaddedLines = unpaddedComponent.render(40).map((line) => stripAnsi(line));

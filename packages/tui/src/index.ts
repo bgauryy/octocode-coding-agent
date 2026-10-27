@@ -37,6 +37,9 @@ export {
 	type TextStyle,
 } from "./colors.ts";
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
+// Design tokens and the shared animation clock
+export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
+export { breathe, ELLIPSIS, GLYPH, MOTION, SEPARATOR, SPINNER, settle, type UiState } from "./tokens/design.ts";
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";

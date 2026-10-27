@@ -7,7 +7,7 @@ import {
 	setTerminalColors,
 	type ThemeAppearance,
 	theme,
-} from "../src/modes/interactive/theme/theme.ts";
+} from "../src/theme/theme.ts";
 import { InteractiveThemeController } from "../src/modes/interactive/theme/theme-controller.ts";
 
 const DARK: TerminalColors = { foreground: { r: 248, g: 248, b: 242 }, background: { r: 40, g: 42, b: 54 } };

@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "../../../core/extensions/index.ts";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../../theme/theme.ts";
 import type { ColorToken } from "./types.ts";
 
 /** What `statusColor` painted, by its output, so the footer can repaint it in the live theme (`livePaint`). */

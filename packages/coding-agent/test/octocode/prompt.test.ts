@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { octocodePrompt } from "../../src/octocode/instructions/policy.ts";
+
+const role = (name: string) =>
+	readFileSync(new URL(`../../src/octocode/instructions/roles/${name}.md`, import.meta.url), "utf8");
 
 describe("prompt", () => {
 	it("prefers Octocode MCP for research without contradicting Octocode read/bash guidance or naming its tools", () => {
@@ -9,13 +13,10 @@ describe("prompt", () => {
 			canDelegate: true,
 		});
 		expect(root).toContain(
-			"Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it, here or outside this repository",
+			"Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it, here (instead of ls, rg, grep or find in bash) and in GitHub or package registries outside this repository (instead of answering from memory).",
 		);
-		// Triggers for local and external research.
-		expect(root).toMatch(/Here: where something is defined or used, who calls it/);
-		expect(root).toMatch(
-			/Outside: GitHub repositories, code and history, and package registries \(npm, PyPI and others\): how a dependency or library behaves/,
-		);
+		// The server's own instructions route each question to a tool; the prompt only points at them.
+		expect(root).toContain("The mcp_servers section routes each question to a tool.");
 		// A missing or refusing server has a stated recovery.
 		expect(root).toContain(
 			"If an Octocode tool is unavailable, say so and use permitted bash search (`rg`, `fd`, `sed -n`).",
@@ -32,10 +33,8 @@ describe("prompt", () => {
 			}),
 		).toContain("If an Octocode tool is unavailable, say so.");
 		expect(root).toContain("A permission refusal is not a reason to retry through another tool.");
-		// Octocode wins over Octocode's generic "Use bash for file operations like ls, rg, find" for code search only.
-		expect(root).toContain(
-			"Use it instead of ls, rg, grep or find in bash; this overrides the general rule to use bash for them.",
-		);
+		// The core prompt emits no bash-search rule when Octocode search tools exist, so nothing here refers to an override.
+		expect(root).not.toContain("this overrides the general rule");
 		expect(root).toContain(
 			"Use `localFetch` for a file you will edit. Use bash for builds, tests, git and running commands.",
 		);
@@ -107,7 +106,7 @@ describe("prompt", () => {
 			writer,
 			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: false, readOnlyRole: true }),
 		]) {
-			expect(prompt.match(/Send the blocker as SBAR via `agent` type `message` to your parent/g)).toHaveLength(1);
+			expect(prompt.match(/send it to your parent with `agent` type `message`/g)).toHaveLength(1);
 			expect(prompt).not.toContain("replyTo");
 		}
 		expect(writer).toContain("a Markdown doc in your scratch folder");
@@ -139,7 +138,7 @@ describe("prompt", () => {
 		});
 		// A read-only role keeps `file`: it saves its scratch evidence and the report its task names, and nothing else.
 		expect(reader).toContain(
-			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside `.octocode/skills/`. Run only read-only commands. Call only read-only MCP tools.",
+			"- Investigate and report; do not modify repository source. Write reports and evidence only in your scratch folder, `.octocode/tmp/`, or Markdown files under `.octocode/` outside `.octocode/skills/`. Run only read-only commands. If a check would write, name the exact command for your parent and mark what it would settle as unverified. Call only read-only MCP tools.",
 		);
 		expect(reader).toContain("a Markdown doc in your scratch folder");
 		// It limits only the writers this agent has: the browser specialist has `file` and MCP but no shell.
@@ -199,7 +198,9 @@ describe("prompt", () => {
 				canWrite,
 				readOnlyRole: !canWrite,
 			});
-			expect(child.match(/Start it with one word, done, partial, blocked or failed,/g)).toHaveLength(1);
+			expect(
+				child.match(/Start it with one word: done \(.+?\), partial \(.+?\), blocked \(.+?\) or failed \(.+?\), then/g),
+			).toHaveLength(1);
 			// A message is mid-task contact: approval and blockers go through `agent` with type `message`, never "report to the parent".
 			expect(child).not.toMatch(/[Rr]eport [^.]*to the parent/);
 			expect(child).toContain(
@@ -220,7 +221,7 @@ describe("prompt", () => {
 			expect(prompt.match(/smallest complete change|[Ii]nvestigate (and report|without edits)/g)).toHaveLength(1);
 			expect(prompt.match(/run a hypothesis test: compare the likely cause with its strongest rival/g)).toHaveLength(1);
 			expect(prompt).toContain("match detail to the task");
-			expect(prompt).toContain("never as a template for every reply");
+			expect(prompt).toContain("use a format below only when it fits");
 			expect(prompt).toContain("run the deciding check");
 			// One definition per protocol; roles and other sections only name it.
 			expect(prompt.match(/Result or report: give the answer first/g)).toHaveLength(1);
@@ -236,8 +237,7 @@ describe("prompt", () => {
 		expect(reader).toContain("For code questions: read affected code and callers before concluding");
 		expect(reader).not.toContain("after editing");
 		const child = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true });
-		expect(child).toContain("Send the blocker as SBAR via `agent` type `message` to your parent");
-		expect(child).toContain("recommend a choice when needed");
+		expect(child).toContain("send it to your parent with `agent` type `message` (`replyRequired` true, SBAR)");
 		expect(child).toContain(
 			"For partial or blocked work, include current state, evidence, blockers and the next action",
 		);
@@ -268,10 +268,10 @@ describe("prompt", () => {
 			"do not re-research them. Research the code you change or rely on, and anything the user asks you to verify.";
 		for (const octocode of [true, false]) {
 			const root = octocodePrompt({ octocode, profiles: [], canDelegate: true });
-			expect(root).toContain(`${scope} Give a delegate the same scope.`);
+			expect(root).toContain(`${scope} In a delegated task, say which facts are settled and what to verify.`);
 			const child = octocodePrompt({ octocode, profiles: [], canDelegate: false });
 			expect(child).toContain(scope);
-			expect(child).not.toContain("Give a delegate the same scope");
+			expect(child).not.toContain("In a delegated task, say which facts");
 			// The retired scope ("Research only when verification is requested") contradicted the research-first routing.
 			expect(root).not.toContain("Research only when");
 		}
@@ -289,59 +289,24 @@ describe("prompt", () => {
 		expect(withoutAgent).not.toContain("`agent`");
 	});
 
-	it("routes questions to the Octocode tools the agent can reach, and only those", () => {
-		const all = [
-			"artifactSearch",
-			"astSearch",
-			"ghGetFileContent",
-			"ghGetHistoryItem",
-			"ghSearchCode",
-			"ghSearchHistory",
-			"ghSearchRepo",
-			"ghStructure",
-			"localFetch",
-			"localSearch",
-			"lspSearch",
-			"structureSearch",
-		];
-		const full = octocodePrompt({ octocode: true, profiles: [], canDelegate: true, octocodeTools: all });
-		expect(full).toContain("- Choose the Octocode tool by the question and chain them:");
-		expect(full).toContain(
-			"  - Unknown location: `structureSearch` for layout, `localSearch` with `matchString` for text (literal unless `regexEngine` is set), then `localFetch` on the hit lines.",
-		);
-		expect(full).toContain("`astSearch`.");
-		expect(full).toContain(
-			"`lspSearch` anchored at the path, name and line a search returned; a text match is not a reference.",
-		);
-		expect(full).toContain(
-			"  - GitHub: `ghSearchRepo` or `ghSearchCode` to locate; `ghStructure` to browse; `ghGetFileContent` at the returned commitSha; `ghSearchHistory`, then `ghGetHistoryItem` for when and why code changed.",
-		);
-		expect(full).toContain(
-			"`artifactSearch` for the release and its repository, then read that source at the release ref.",
-		);
-		// The browser specialist reaches only local readers: no GitHub, package or outside-research lines.
-		const local = octocodePrompt({
-			octocode: true,
-			profiles: [],
-			canDelegate: false,
-			readOnlyRole: true,
-			canShell: false,
-			octocodeTools: ["astSearch", "localFetch", "localSearch", "lspSearch", "structureSearch"],
-		});
-		expect(local).toContain("`lspSearch`");
-		expect(local).not.toMatch(/GitHub|artifactSearch|ghSearch|Outside:/);
-		// A renamed or missing tool drops out instead of being named.
-		const renamed = octocodePrompt({
+	it("leaves tool-by-tool Octocode routing to the server and routes only the native graph tools", () => {
+		const prompt = octocodePrompt({
 			octocode: true,
 			profiles: [],
 			canDelegate: true,
-			octocodeTools: ["localFetch", "codeSearch"],
+			graphTools: ["graphQuery", "graphBuild"],
 		});
-		expect(renamed).not.toMatch(/structureSearch|localSearch|codeSearch|Choose the Octocode tool/);
-		// Without Octocode there are no workflows, whatever the list says.
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: true, octocodeTools: all })).not.toContain(
-			"lspSearch",
+		// The server's instructions and tool descriptions own which tool answers which question.
+		expect(prompt).not.toMatch(
+			/Choose the Octocode tool|structureSearch|localSearch|lspSearch|ghSearch|artifactSearch|astSearch/,
 		);
+		expect(prompt).toContain(
+			"`graphQuery` on an existing snapshot; create or refresh it with `graphBuild` when writes are permitted",
+		);
+		// The browser specialist has no GitHub tools, and the shared bullet still names none of them.
+		expect(
+			octocodePrompt({ octocode: true, profiles: [], canDelegate: false, readOnlyRole: true, canShell: false }),
+		).not.toMatch(/structureSearch|ghSearch|artifactSearch/);
 	});
 
 	it("names the Octocode tools tool_search loads, only when Octocode is reachable", () => {
@@ -382,6 +347,54 @@ describe("prompt", () => {
 		expect(writer).not.toContain("Commit or push only when the user asks.");
 		expect(root).toContain("Write each task as a task contract");
 		expect(writer).not.toContain("task contract");
+	});
+
+	it("makes the main session the coordinator and gives every child decision a channel that can be answered", () => {
+		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		expect(root).toContain("You coordinate your subagents");
+		// A foreground child's messages reach the parent only after its report (docs/native-features.md).
+		expect(root).toContain("Start a child in the background when it may need your decisions");
+		expect(root).toContain("Answer a child's request only within the user's authorization; otherwise ask the user.");
+		// Model and thinking follow the reasoning a task needs, within the user's budget.
+		expect(root).toMatch(/`small`[^.]*lookups[^.]*`medium`[^.]*this session's model/);
+		expect(root).toContain("budget");
+		for (const child of [
+			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true }),
+			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: false, readOnlyRole: true }),
+		]) {
+			expect(child).toContain("If it blocks completion, finish with `blocked` and the question");
+			// B141: a child that ends with an unanswered question stays resumable; the prompt names no duration.
+			expect(child).toContain(
+				"stays resumable, and its parent's reply continues this conversation, so do not poll for it",
+			);
+			expect(child).toContain("`done`, `partial` and `failed` end the conversation");
+			expect(child).not.toContain("You coordinate");
+		}
+		// A resume keeps the run's browser mode, so a visible session needs a new task.
+		expect(role("browser")).toContain("start the task again with headless=false");
+		expect(role("browser")).not.toContain("resume the task");
+		expect(role("implementer")).toContain("ask your parent as the Subagent section describes");
+		expect(role("implementer")).not.toContain("leave browser work to a browser profile");
+	});
+
+	it("answers questions without editing, scales delegation and ranks AGENTS.md files, each in one condition-bound line", () => {
+		const root = octocodePrompt({ octocode: false, profiles: [], canDelegate: true });
+		const writer = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, canWrite: true });
+		const reader = octocodePrompt({ octocode: false, profiles: [], canDelegate: false, readOnlyRole: true });
+		const inquiry = "When the user asks how, why or what, answer from evidence without editing";
+		for (const prompt of [root, writer]) expect(prompt.match(new RegExp(inquiry, "g"))).toHaveLength(1);
+		expect(reader).not.toContain(inquiry);
+		for (const prompt of [root, writer, reader])
+			expect(prompt).toContain("a deeper file wins over a shallower one, and direct user instructions win over both");
+		expect(root).toContain("Scale delegation to the task: none for a lookup or small change");
+		expect(root).toContain(
+			"Delegate output-heavy triage (a full suite's failures, wide searches) so only the answer reaches your context",
+		);
+		expect(writer).not.toContain("Scale delegation");
+	});
+
+	it("does not declare the debugger to read-only roles, whose permission layer refuses it", () => {
+		for (const name of ["researcher", "reviewer"]) expect(role(name)).toMatch(/^excludeTools: browser,debug$/m);
 	});
 
 	it("leaves the bash output recipe to the bash tool", () => {

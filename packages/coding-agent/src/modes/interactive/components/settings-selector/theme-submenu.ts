@@ -7,8 +7,8 @@ import {
 	Spacer,
 	Text,
 } from "@octocodeai/octocode-tui";
-import { SYSTEM_THEME_NAME } from "../../theme/system-theme.ts";
-import { getSettingsListTheme, parseAutoThemeSetting, type ThemeAppearance, theme } from "../../theme/theme.ts";
+import { SYSTEM_THEME_NAME } from "../../../../theme/system-theme.ts";
+import { getSettingsListTheme, parseAutoThemeSetting, type ThemeAppearance, theme } from "../../../../theme/theme.ts";
 import { SelectSubmenu } from "../settings-submenu.ts";
 import type { SettingsCallbacks } from "./types.ts";
 

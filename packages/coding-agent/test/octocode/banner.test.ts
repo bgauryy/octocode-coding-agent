@@ -1,6 +1,13 @@
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
-import { BANNER_HEIGHT, type BannerPaint, bannerLines, FULL_WIDTH, glowAt } from "../../src/octocode/ui/banner.ts";
+import {
+	BANNER_HEIGHT,
+	COMPACT_BANNER_HEIGHT,
+	type BannerPaint,
+	bannerLines,
+	FULL_WIDTH,
+	glowAt,
+} from "../../src/octocode/ui/banner.ts";
 
 const plain: BannerPaint = { fg: (_color, text) => text };
 
@@ -62,16 +69,17 @@ describe('banner "OCTOCODE CODE"', () => {
 		expect(glowAt(0.5, undefined)).toBe(0);
 	});
 
-	it("falls back to a compact 2-row font, then plain text, keeping the height and the width", () => {
+	it("falls back to a compact 2-row font, then plain text, at one shorter height and within the width", () => {
 		const compact = bannerLines(plain, 80);
-		expect(compact).toHaveLength(BANNER_HEIGHT);
+		expect(compact).toHaveLength(COMPACT_BANNER_HEIGHT);
+		expect(COMPACT_BANNER_HEIGHT).toBeLessThan(BANNER_HEIGHT);
 		const art = compact.filter((line) => line.trim() !== "").slice(0, 2);
 		expect(art[0]).toBe("█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀");
 		expect(art[1]).toBe("█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄");
 		const tiny = bannerLines(plain, 30, { version: "1.0.0" });
-		expect(tiny).toHaveLength(BANNER_HEIGHT);
+		expect(tiny).toHaveLength(COMPACT_BANNER_HEIGHT);
 		expect(tiny.join("\n")).toContain("OCTOCODE CODE");
-		for (const width of [4, 20, 49, 50, 80, 103, 104, 200]) {
+		for (const width of [4, 20, 49, 50, 80, FULL_WIDTH - 1, FULL_WIDTH, 200]) {
 			for (const shine of [undefined, 0.3]) {
 				const lines = bannerLines(
 					plain,
@@ -79,7 +87,8 @@ describe('banner "OCTOCODE CODE"', () => {
 					{ version: "1.0.0", hints: ["/octocode help", "ctrl+o expand"] },
 					shine,
 				);
-				expect(lines, `width ${width}`).toHaveLength(BANNER_HEIGHT);
+				// The height changes only where the art does, so a resize inside a size class never redraws the scrollback.
+				expect(lines, `width ${width}`).toHaveLength(width >= FULL_WIDTH ? BANNER_HEIGHT : COMPACT_BANNER_HEIGHT);
 				expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 			}
 		}

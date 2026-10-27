@@ -77,6 +77,13 @@ export const TerminalSettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.terminal.showTerminalProgress,
 		}),
 	),
+	reduceMotion: Type.Optional(
+		Type.Union([Type.Boolean(), Type.Literal("auto")], {
+			description:
+				'Freeze spinners, shimmer and glow; elapsed times still tick. "auto" follows OCTOCODE_REDUCE_MOTION (1 or true).',
+			default: SETTINGS_DEFAULTS.terminal.reduceMotion,
+		}),
+	),
 	hyperlinks: Type.Optional(Type.Union([Type.Boolean(), Type.Literal("auto")])),
 	images: Type.Optional(
 		Type.Union([Type.Literal("kitty"), Type.Literal("iterm2"), Type.Literal("auto"), Type.Literal(false)]),

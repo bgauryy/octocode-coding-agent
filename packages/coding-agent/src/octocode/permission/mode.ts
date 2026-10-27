@@ -227,28 +227,28 @@ export const PERMISSION_ID = "octocode-permission";
 /** The order the editor shortcut cycles modes in, from the default (no routine asks) to the strictest. */
 export const PERMISSION_CYCLE: readonly PermissionMode[] = ["full", "workspace", "manual"];
 
-/** The chip per mode: its text, its short form for a narrow footer, and its theme colour. */
-export const CHIPS: Record<PermissionMode, { text: string; short: string; color: "accent" | "muted" | "error" }> = {
+/** The chip per mode: its text, its short form for a narrow footer, and its theme colour: manual is quiet, workspace is the identity colour, full is a risky mode (warning, never error: it is a choice, not a failure). */
+export const CHIPS: Record<PermissionMode, { text: string; short: string; color: "accent" | "muted" | "warning" }> = {
 	manual: {
 		get text() {
 			return `⏸ permission: manual · ${shortcutText("app.permission.cycle")}`;
 		},
 		short: "⏸ manual",
-		color: "accent",
+		color: "muted",
 	},
 	workspace: {
 		get text() {
 			return `permission: workspace · ${shortcutText("app.permission.cycle")}`;
 		},
 		short: "workspace",
-		color: "muted",
+		color: "accent",
 	},
 	full: {
 		get text() {
 			return `⏵⏵ permission: full · ${shortcutText("app.permission.cycle")}`;
 		},
 		short: "⏵⏵ full",
-		color: "error",
+		color: "warning",
 	},
 };
 

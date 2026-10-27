@@ -1,8 +1,9 @@
 import { Box, type Component, Container } from "@octocodeai/octocode-tui";
 import type { AgentToolResult, MessageRenderer, ToolRenderResultOptions } from "../../core/extensions/index.ts";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
+import { trustNoticeShown } from "../shared/trust.ts";
 import { presentAgentReport } from "./presentation.ts";
 import {
 	formatCost,
@@ -13,8 +14,10 @@ import {
 	toolCallCount,
 } from "../shared/format.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
-import { contentText } from "../shared/util.ts";
+import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { noticeText } from "./events.ts";
+import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
+import { agentState, headerOverride } from "./render-state.ts";
 
 /**
  * How the `agent` tool and a background subagent's report message are drawn: `● Agent(goal · model) · 38s`, then live
@@ -26,13 +29,14 @@ import type { RunDetails, ResultDetails } from "./run-types.ts";
 import { bodyLines, clip, plural } from "../shared/render/text.ts";
 import type { RenderContext } from "../shared/render/types.ts";
 import { ReportView } from "../shared/render/report.ts";
+import { displayReport } from "./report-display.ts";
 import { timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "../../utils/guards.ts";
 
-/** The model a run is on: its `provider/id`, marked as the parent's when the profile's preference was unavailable. */
+/** The model a run is on without its provider (`claude-haiku-5-5:low`), marked as the parent's when the profile's preference was unavailable. */
 function modelLabel(details: Pick<RunDetails, "model" | "fallback">): string {
-	if (!details.fallback) return details.model ?? "";
-	return `${details.model ?? "parent model"} (${details.fallback} unavailable)`;
+	const model = details.model?.slice(details.model.lastIndexOf("/") + 1);
+	return details.fallback ? `${model ?? "parent model"} (${details.fallback} unavailable)` : (model ?? "");
 }
 
 /** `2 denied`: tool calls the child had no one to approve (empty when none). */
@@ -63,13 +67,24 @@ export function compactionNote(details: Pick<RunDetails, "compactions">): string
 }
 
 /**
+ * The untrusted-project warning (`shared/trust.ts`). A subagent inherits its parent's trust decision, so when this session
+ * showed the same warning the report need not repeat it; a child that alone lacks config (an isolated worktree whose
+ * files differ) keeps it.
+ */
+const TRUST_NOTICE = /^Project config not loaded \(\d+ files?\)\./;
+
+/**
  * What the child's extensions said that a person would have read on screen (warnings, errors, the latest compaction
  * failure), one line each and whole, identical repeats folded with a count. Notices past the inline page end in one line
  * naming the file that holds every notice. Text of the child: callers place it with the child's own words, never among
  * the parent's.
  */
-export function noticeLines(details: Pick<RunDetails, "compactions" | "notices">): string[] {
-	const { kept = [], more = 0, file } = details.notices ?? {};
+export function noticeLines(
+	details: Pick<RunDetails, "compactions" | "notices">,
+	shown: boolean = trustNoticeShown(),
+): string[] {
+	const { more = 0, file } = details.notices ?? {};
+	const kept = (details.notices?.kept ?? []).filter((notice) => !(shown && TRUST_NOTICE.test(notice.text)));
 	const failure = details.compactions?.error;
 	const rest = file
 		? `+${more} more notices; every notice, whole, is in ${shortPath(file)} (read it, or search it)`
@@ -111,28 +126,58 @@ type Progress = Pick<
 	| "compactions"
 >;
 
-/** `inky-kraken · 4 tool calls · ↑12k (80% cached) ↓2k · ≈$0.12`, then `extra` (a duration), then the model. */
-function runStats(details: Progress, ...extra: string[]): string {
+/** `inky-kraken · 4 tool calls · ↑12k (80% cached) ↓2k · ≈$0.12 · model` while a run works (no tool calls yet: none named). */
+function runStats(details: Progress): string {
 	return [
 		details.id,
-		toolCallCount(details.toolCalls),
+		details.toolCalls > 0 ? toolCallCount(details.toolCalls) : "",
 		deniedLabel(details),
 		compactionLabel(details),
 		formatTokenUsage(details),
 		formatCost(details),
-		...extra,
 		modelLabel(details),
 	]
 		.filter(Boolean)
 		.join(" · ");
 }
 
+/** What the expanded summary adds to a finished run's row: compactions, tokens, cost and model. */
+function finishedStats(
+	totals: Parameters<typeof formatTokenUsage>[0] & Parameters<typeof formatCost>[0],
+	details: Pick<RunDetails, "model" | "fallback" | "compactions">,
+): string {
+	return [compactionLabel(details), formatTokenUsage(totals), formatCost(totals), modelLabel(details)]
+		.filter(Boolean)
+		.join(" · ");
+}
+
+/** A background report's usage as run totals (what `RunDetails` carries directly). */
+function usageTotals(details: Partial<ResultDetails>) {
+	const totals = emptyTotals();
+	addReply(totals, details.usage, details.unpriced === true);
+	return totals;
+}
+
 export const capitalize = (text: string): string => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
-/** `Done (inky-kraken · 4 tool calls · ↑12k (80% cached) ↓2k · ≈$0.12 · 38s · provider/id)`; `Blocked (…)` when the report says so. */
-export function doneSummary(details: Progress & Pick<RunDetails, "outcome">, durationMs: number | undefined): string {
-	const label = details.outcome ? capitalize(details.outcome) : "Done";
-	return `${label} (${runStats(details, durationMs === undefined ? "" : formatDuration(durationMs, true))})`;
+/**
+ * `Done · 4 tool calls · 38s`; `Blocked · …` when the report says so. `named` adds the agent id after the outcome for a
+ * row whose header does not carry it. Tokens, cost and model go to the expanded view (`finishedStats`).
+ */
+export function doneSummary(
+	details: Pick<RunDetails, "id" | "toolCalls" | "denied" | "outcome">,
+	durationMs: number | undefined,
+	named = false,
+): string {
+	return [
+		details.outcome ? capitalize(details.outcome) : "Done",
+		named ? details.id : "",
+		details.toolCalls > 0 ? toolCallCount(details.toolCalls) : "",
+		deniedLabel(details),
+		durationMs === undefined ? "" : formatDuration(durationMs, true),
+	]
+		.filter(Boolean)
+		.join(" · ");
 }
 
 interface AgentArgs {
@@ -172,8 +217,19 @@ function runLabel(args: AgentArgs): string {
 		.join(" · ");
 }
 
+/** A launch under a second is routine: the row's clock would only be mistaken for the run's. */
+const LAUNCH_SHOWN_MS = 1_000;
+
 export function renderAgentCall(args: AgentArgs, theme: Theme, context: RenderContext): Component {
-	return toolHeader(theme, context, "Agent", runLabel(args), args.background ? { meta: "background" } : {});
+	// The result's renderer says when the run needs the user (`◇`) or its report is a failure (`✗`).
+	const state = sharedRowState(context);
+	const mark = state ? { state } : {};
+	if (!args.background) return toolHeader(theme, context, "Agent", runLabel(args), mark);
+	const quick = context.durationMs !== undefined && context.durationMs < LAUNCH_SHOWN_MS;
+	return toolHeader(theme, quick ? { ...context, durationMs: undefined } : context, "Agent", runLabel(args), {
+		meta: "background",
+		...mark,
+	});
 }
 
 export function renderAgentResult(
@@ -208,6 +264,7 @@ export function renderAgentResult(
 			prefaceLabel: "prompt",
 			preface: promptPreface(theme, task, undefined),
 		});
+	shareRowState(context, headerOverride(agentState(details)));
 	if (isPartial) {
 		// Live progress: counts, then the latest steps (the header carries the running clock).
 		const lines = [
@@ -245,7 +302,8 @@ export function renderAgentResult(
 		});
 	}
 	return reportBlock(theme, context, {
-		summary: doneSummary(details, context.durationMs),
+		summary: doneSummary(details, context.durationMs, true),
+		stats: finishedStats(details, details),
 		report: body,
 		preface: promptPreface(theme, task, body.trim() ? "Report" : undefined),
 		...timingOf(result.details),
@@ -259,15 +317,17 @@ export function renderAgentResult(
 function reportBlock(
 	theme: Theme,
 	context: RenderContext,
-	options: { summary: string; report: string; preface: string[]; stopped?: boolean },
+	options: { summary: string; stats?: string; report: string; preface: string[]; stopped?: boolean },
 ): Component {
 	const expanded = context.expanded === true;
-	const hasReport = options.report.trim() !== "";
+	// The summary row already names the outcome: the report drawn under it leads with its content.
+	const shown = displayReport(options.report, expanded);
+	const hasReport = shown.text.trim() !== "" || shown.earlier > 0;
 	const container = new Container();
 	// The summary row stays as it is: the prompt hint goes after the report, so a long summary is never clipped for it.
 	container.addChild(
 		resultBlock(theme, context, {
-			summary: options.summary,
+			summary: expanded && options.stats ? `${options.summary} · ${options.stats}` : options.summary,
 			lines: [],
 			// With a report, the prompt hint follows the report; without one it is the row's own hint line.
 			...(hasReport && !expanded ? { max: 0 } : { prefaceLabel: "prompt", preface: options.preface }),
@@ -276,7 +336,7 @@ function reportBlock(
 	);
 	if (hasReport)
 		container.addChild(
-			new ReportView(theme, options.report, expanded, options.preface.length > 0 ? "prompt" : undefined),
+			new ReportView(theme, shown.text, expanded, options.preface.length > 0 ? "prompt" : undefined, shown.earlier),
 		);
 	return container;
 }
@@ -305,14 +365,17 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 			context,
 			"Agent",
 			[details.id ?? "background", details.goal && clip(details.goal, GOAL_ROW_CHARS)].filter(Boolean).join(" · "),
-			details.durationMs === undefined
-				? { meta: "background" }
-				: { meta: "background", durationMs: details.durationMs },
+			{
+				meta: "background",
+				state: agentState(details),
+				...(details.durationMs === undefined ? {} : { durationMs: details.durationMs }),
+			},
 		),
 	);
 	box.addChild(
 		reportBlock(theme, context, {
 			summary: presentation.summary,
+			stats: finishedStats(usageTotals(details), details),
 			report,
 			stopped,
 			preface: promptPreface(theme, details.task, report.trim() ? "Report" : undefined),

@@ -65,7 +65,7 @@ export interface FormatSkillsOptions {
  * (they can only be invoked explicitly via /skill:name commands).
  *
  * `fileReadTool` names the tool that loads skill files: `skill` is the dedicated tool that loads a skill by name and
- * returns its directory; `indirect` names none, for a reader that is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
+ * returns its directory, so its entries omit `<location>` paths; `indirect` names none, for a reader that is reachable only through another tool. The entries fit `options.budgetChars` (see {@link SKILLS_PROMPT_BUDGET_CHARS}).
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
@@ -85,6 +85,7 @@ export function formatSkillsForPrompt(
 	const { entries, undescribed, unlisted } = fitSkillEntries(
 		visibleSkills,
 		options.budgetChars ?? SKILLS_PROMPT_BUDGET_CHARS,
+		fileReadTool !== "skill",
 	);
 	const lines = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
@@ -119,7 +120,7 @@ export function formatSkillsForPrompt(
 	return lines.join("\n");
 }
 
-function skillEntry(skill: Skill, withDescription: boolean): string {
+function skillEntry(skill: Skill, withDescription: boolean, withLocation: boolean): string {
 	const description = skill.description?.trim();
 	const shown =
 		description && description.length > SKILL_PROMPT_DESCRIPTION_CHARS
@@ -129,7 +130,7 @@ function skillEntry(skill: Skill, withDescription: boolean): string {
 		"  <skill>",
 		`    <name>${escapeXml(skill.name)}</name>`,
 		...(withDescription && shown ? [`    <description>${escapeXml(shown)}</description>`] : []),
-		`    <location>${escapeXml(skill.filePath)}</location>`,
+		...(withLocation ? [`    <location>${escapeXml(skill.filePath)}</location>`] : []),
 		"  </skill>",
 	].join("\n");
 }
@@ -138,9 +139,10 @@ function skillEntry(skill: Skill, withDescription: boolean): string {
 function fitSkillEntries(
 	skills: readonly Skill[],
 	budget: number,
+	withLocation: boolean,
 ): { entries: string[]; undescribed: number; unlisted: string[] } {
-	const full = skills.map((skill) => skillEntry(skill, true));
-	const bare = skills.map((skill) => skillEntry(skill, false));
+	const full = skills.map((skill) => skillEntry(skill, true, withLocation));
+	const bare = skills.map((skill) => skillEntry(skill, false, withLocation));
 	const entries = [...full];
 	let size = entries.reduce((sum, entry) => sum + entry.length + 1, 0);
 	let undescribed = 0;

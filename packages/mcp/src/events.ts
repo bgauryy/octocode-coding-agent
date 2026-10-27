@@ -5,7 +5,14 @@ import { presetEntries } from "./preset.ts";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
-import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
+import {
+	DISCOVERY_WAIT_MS,
+	reconnect,
+	reconnectSignedIn,
+	startConnection,
+	waitForDirectServers,
+	waitForServers,
+} from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
@@ -104,9 +111,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				throw new Error(`MCP tool "${request.server}/${request.tool}" is not available`);
 			await request.authorize({ toolName, input: request.input });
 			callSignal.throwIfAborted();
-			const client = await connection.getClient();
-			callSignal.throwIfAborted();
-			return client.callTool(request.tool, request.input, { signal: callSignal, timeoutMs: connection.timeoutMs });
+			// Through the connection's request path like the model's calls: expired-session retry, sign-in marking and
+			// retiring-client accounting.
+			return connection.callTool(request.tool, request.input, { signal: callSignal, timeoutMs: connection.timeoutMs });
 		});
 		state.configuredEntries = loaded.servers;
 		const registered = state.registeredServers();
@@ -204,7 +211,17 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			const owner = state.toolOwners.get(event.toolName)?.split("\0", 1)[0];
 			waiting = readyServers.filter((server) => server.entry.name === owner);
 		}
-		await waitForServers(state, waiting, ctx.signal);
+		if (reach === undefined) {
+			await waitForServers(state, waiting, ctx.signal);
+			return;
+		}
+		// Discovery must not hang on one slow server: search what is connected and say which servers are still connecting.
+		const pending = await waitForServers(state, waiting, ctx.signal, DISCOVERY_WAIT_MS);
+		if (pending.length > 0 && !ctx.signal?.aborted)
+			ctx.ui.notify(
+				`MCP servers still connecting: ${pending.map((server) => server.entry.name).join(", ")}. Tool search covers the connected servers only; search again once they connect.`,
+				"info",
+			);
 	});
 
 	// Pick up sign-ins done outside the session, such as `pi mcp login` run by the agent.
@@ -267,6 +284,10 @@ export function registerSessionEvents(state: McpExtensionState): void {
 		const closing = state.connections();
 		state.servers = [];
 		state.emitChange();
-		await Promise.all([...state.backgroundActions, ...closing.map((connection) => connection.close())]);
+		await Promise.all([
+			...state.backgroundActions,
+			...closing.map((connection) => connection.close()),
+			...(state.options.presets ?? []).map((preset) => preset.dispose?.()),
+		]);
 	});
 }

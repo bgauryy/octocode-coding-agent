@@ -118,6 +118,7 @@ export class ApplicationStream {
 					toolName: event.toolName,
 					...(hint ? { hint } : {}),
 					text: event.text ?? previous?.text ?? "",
+					notRun: event.notRun,
 					status:
 						event.type === "tool.completed"
 							? event.failed

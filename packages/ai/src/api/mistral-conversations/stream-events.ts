@@ -1,4 +1,4 @@
-import { calculateCost } from "../../models.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
 import type {
 	AssistantMessage,
 	Model,
@@ -9,7 +9,7 @@ import type {
 	ToolCall,
 } from "../../types.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import { parseStreamingJson, parseToolCallArguments } from "../../utils/json-parse.ts";
+import { parseStreamingJsonThrottled, parseToolCallArguments } from "../../utils/json-parse.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 import { deriveMistralToolCallId } from "./tool-call-ids.ts";
 import type { MistralCompletionEvent } from "./types.ts";
@@ -202,7 +202,7 @@ export async function consumeChatStream(
 					? toolCall.function.arguments
 					: JSON.stringify(toolCall.function.arguments || {});
 			block.partialArgs = (block.partialArgs || "") + argsDelta;
-			block.arguments = parseStreamingJson<ToolCall["arguments"]>(block.partialArgs);
+			block.arguments = parseStreamingJsonThrottled<ToolCall["arguments"]>(block.arguments, block.partialArgs);
 			stream.push({
 				type: "toolcall_delta",
 				contentIndex: toolBlocksByKey.get(key)!,

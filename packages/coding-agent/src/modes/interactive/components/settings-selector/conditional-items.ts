@@ -131,4 +131,14 @@ export function addConditionalItems(
 		currentValue: config.showTerminalProgress ? "true" : "false",
 		values: ["true", "false"],
 	});
+
+	// Reduce motion (insert after terminal-progress)
+	const terminalProgressIndex = items.findIndex((item) => item.id === "terminal-progress");
+	items.splice(terminalProgressIndex + 1, 0, {
+		id: "reduce-motion",
+		label: "Reduce motion",
+		description: "Freeze spinners and shimmer; elapsed times still update (auto follows OCTOCODE_REDUCE_MOTION)",
+		currentValue: String(config.reduceMotion),
+		values: ["auto", "true", "false"],
+	});
 }

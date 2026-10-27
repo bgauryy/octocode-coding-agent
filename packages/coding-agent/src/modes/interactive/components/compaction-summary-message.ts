@@ -1,6 +1,6 @@
 import type { MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
-import { getMarkdownTheme } from "../theme/theme.ts";
+import { getMarkdownTheme } from "../../../theme/theme.ts";
 import { SummaryMessageComponent } from "./summary-message.ts";
 
 /** A compaction message, collapsed to its token count until expanded. */

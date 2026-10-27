@@ -16,6 +16,18 @@ import type { SessionInternals, SessionPublic } from "./host.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
+/** A manual compaction had nothing to summarize. The message stays the SDK/RPC error text; interactive mode shows it as a status. */
+export class NothingToCompactError extends Error {
+	/** The short, friendly line a UI shows instead of the error. */
+	readonly notice: string;
+
+	constructor(message: string, notice: string) {
+		super(message);
+		this.notice = notice;
+		this.name = "NothingToCompactError";
+	}
+}
+
 /** What Pi's default compaction summary needs; the session passes itself or a test double. */
 export interface DefaultCompactionHost {
 	readonly session: Pick<SessionPublic, "sessionManager" | "settingsManager" | "agent">;
@@ -120,6 +132,29 @@ export class SessionCompaction {
 		}
 	}
 
+	/**
+	 * Overflow recovery hid the failed attempt and then could not compact: report it, as a failed recovery would be,
+	 * instead of ending the run without an explanation.
+	 */
+	private async _recoveryNotStarted(cause: string): Promise<void> {
+		const errorMessage = `Context overflow recovery failed: ${cause}. Try reducing context or switching to a larger-context model.`;
+		this.host.emit({
+			type: "compaction_end",
+			reason: "overflow",
+			result: undefined,
+			aborted: false,
+			willRetry: false,
+			errorMessage,
+		});
+		await this.emitSessionCompactFailed({
+			reason: "overflow",
+			errorMessage,
+			aborted: false,
+			willRetry: false,
+			fromExtension: false,
+		});
+	}
+
 	private _clearManualCompactionState(): void {
 		this._compactionAbortController = undefined;
 		this.host.resolveIdleWaitIfIdle();
@@ -129,6 +164,21 @@ export class SessionCompaction {
 		const customInstructions = validateCompactionInstructions(options?.customInstructions);
 		const { session } = this.host;
 		await session.abort("internal");
+		// Nothing to summarize is an answer, not a failure: it throws before any compaction event, so no frontend reports it.
+		const model = session.model;
+		const settings = model
+			? session.settingsManager.getCompactionSettings(
+					model,
+					session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+				)
+			: undefined;
+		const pathEntries = session.sessionManager.getBranch();
+		const preparation = settings && prepareCompaction(pathEntries, settings);
+		if (settings && !preparation) {
+			throw pathEntries[pathEntries.length - 1]?.type === "compaction"
+				? new NothingToCompactError("Already compacted", "Already compacted")
+				: new NothingToCompactError("Nothing to compact (session too small)", "Nothing to compact yet");
+		}
 		// A local reference: a later clear (or a listener error) must not leave the catch without its signal.
 		const controller = new AbortController();
 		this._compactionAbortController = controller;
@@ -137,22 +187,8 @@ export class SessionCompaction {
 		let compactionResult: CompactionResult;
 
 		try {
-			const model = session.model;
-			if (!model) {
+			if (!model || !settings || !preparation) {
 				throw new Error(formatNoModelSelectedMessage());
-			}
-
-			const settings = session.settingsManager.getCompactionSettings(model);
-			const pathEntries = session.sessionManager.getBranch();
-
-			const preparation = prepareCompaction(pathEntries, settings);
-			if (!preparation) {
-				// Check why we can't compact
-				const lastEntry = pathEntries[pathEntries.length - 1];
-				if (lastEntry?.type === "compaction") {
-					throw new Error("Already compacted");
-				}
-				throw new Error("Nothing to compact (session too small)");
 			}
 			// Only a compaction that runs replaces the cached prefix; "nothing to compact" keeps the warm entry.
 			this.host.cacheWarmer?.cancel();
@@ -225,12 +261,21 @@ export class SessionCompaction {
 	 *
 	 * @param reason Automatic trigger selected by `_checkCompaction()`
 	 * @param willRetry Whether to continue the interrupted turn after overflow compaction
+	 * @param targetThinking The thinking level of the request being prepared, when routing chose it
 	 * @returns Whether the post-run loop should call `agent.continue()`
 	 */
-	async runAuto(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean> {
+	async runAuto(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		targetModel?: Model<any>,
+		targetThinking?: ThinkingLevel,
+	): Promise<boolean> {
 		const { session } = this.host;
 		const model = targetModel ?? session.model;
-		const settings = session.settingsManager.getCompactionSettings(model);
+		const settings = session.settingsManager.getCompactionSettings(
+			model,
+			targetThinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+		);
 		const failureKey = JSON.stringify([session.sessionManager.getSessionId(), model?.provider, model?.id]);
 		if (this._autoCompactionFailures.key !== failureKey) this._autoCompactionFailures = { key: failureKey, count: 0 };
 		if (this._autoCompactionFailures.count >= 3) {
@@ -251,12 +296,14 @@ export class SessionCompaction {
 
 		try {
 			if (!model) {
+				if (willRetry) await this._recoveryNotStarted("no model is selected");
 				return false;
 			}
 
 			const pathEntries = session.sessionManager.getBranch();
 			const preparation = prepareCompaction(pathEntries, settings);
 			if (!preparation) {
+				if (willRetry) await this._recoveryNotStarted("nothing in the context can be summarized");
 				return false;
 			}
 			this.host.cacheWarmer?.cancel();

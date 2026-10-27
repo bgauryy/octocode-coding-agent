@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../src/core/trust-manager.ts";
 
@@ -36,6 +37,49 @@ describe("ProjectTrustStore", () => {
 		expect(store.get(childDir)).toBe(true);
 	});
 
+	it("treats a corrupt store as no decision, warns once, and never grants trust", () => {
+		writeFileSync(join(agentDir, "trust.json"), "{not json");
+		const warnings: string[] = [];
+		const store = new ProjectTrustStore(agentDir, (message) => warnings.push(message));
+
+		expect(store.get(cwd)).toBeNull();
+		expect(store.get(cwd)).toBeNull();
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("trust.json");
+	});
+
+	it("treats a store with an invalid value as no decision", () => {
+		writeFileSync(join(agentDir, "trust.json"), JSON.stringify({ [realpathSync(cwd)]: "yes" }));
+		const warnings: string[] = [];
+		expect(new ProjectTrustStore(agentDir, (message) => warnings.push(message)).get(cwd)).toBeNull();
+		expect(warnings).toHaveLength(1);
+	});
+
+	it("reads without the lock while a peer holds trust.json.lock", () => {
+		const store = new ProjectTrustStore(agentDir, () => {});
+		store.set(cwd, true);
+		const release = lockfile.lockSync(agentDir, { realpath: false, lockfilePath: join(agentDir, "trust.json.lock") });
+		try {
+			expect(store.get(cwd)).toBe(true);
+		} finally {
+			release();
+		}
+	});
+
+	it("keeps a corrupt store as trust.json.bak when a decision is saved", () => {
+		writeFileSync(join(agentDir, "trust.json"), "{not json");
+		const store = new ProjectTrustStore(agentDir, () => {});
+		store.set(cwd, false);
+		expect(readFileSync(join(agentDir, "trust.json.bak"), "utf-8")).toBe("{not json");
+		expect(store.get(cwd)).toBe(false);
+	});
+
+	it("does not create a backup for a healthy store", () => {
+		const store = new ProjectTrustStore(agentDir, () => {});
+		store.set(cwd, true);
+		expect(existsSync(join(agentDir, "trust.json.bak"))).toBe(false);
+	});
+
 	it("ignores fingerprinted { sha, trusted } entries written by earlier builds, and keeps them on write", () => {
 		// Stored keys are canonical paths (macOS tmpdir is a symlink).
 		const project = realpathSync(cwd);
@@ -44,7 +88,8 @@ describe("ProjectTrustStore", () => {
 			join(agentDir, "trust.json"),
 			JSON.stringify({ [project]: { sha: "abc", trusted: true }, [parent]: { sha: "def", trusted: false } }),
 		);
-		const store = new ProjectTrustStore(agentDir);
+		const warnings: string[] = [];
+		const store = new ProjectTrustStore(agentDir, (message) => warnings.push(message));
 		// They approved specific config files, not the project: no core decision either way.
 		expect(store.get(cwd)).toBeNull();
 		const other = join(tempDir, "other");
@@ -59,7 +104,10 @@ describe("ProjectTrustStore", () => {
 			[realpathSync(other)]: true,
 		});
 		writeFileSync(join(agentDir, "trust.json"), JSON.stringify({ [project]: { trusted: "yes" } }));
-		expect(() => store.get(cwd)).toThrow(/must be true, false, or null/);
+		// A malformed entry is reported and ignored, never trusted.
+		expect(warnings).toEqual([]);
+		expect(store.get(cwd)).toBeNull();
+		expect(warnings).toEqual([expect.stringMatching(/must be true, false, or null/)]);
 	});
 
 	it("detects trust-requiring project resources", () => {

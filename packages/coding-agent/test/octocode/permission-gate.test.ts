@@ -213,6 +213,11 @@ describe("permission gate", () => {
 			"a/b/.husky/pre-push",
 			".husky/pre-commit",
 			".git/config",
+			"vendor/lib/.git/config",
+			".gitmodules",
+			".npmrc",
+			"packages/app/.npmrc",
+			".mcp.json",
 			".github/workflows/ci.yml",
 			"pkg/.github/workflows/x.yml",
 			".vscode/tasks.json",
@@ -230,10 +235,22 @@ describe("permission gate", () => {
 			"docs/envrc.md",
 			"src/hooks/pre.ts",
 			"x.envrc.bak",
+			"docs/npmrc.md",
+			"src/gitmodules.ts",
 			".github/workflows-notes.md",
 		]) {
 			expect(runsLater(path.join(root, file), root), file).toBe(false);
 		}
+		// The names are folded: `.CLAUDE` is the folder Claude Code loads on a case-insensitive filesystem.
+		for (const file of [
+			".CLAUDE/settings.json",
+			".Octocode/hooks.json",
+			".PI/x",
+			".Git/config",
+			".HUSKY/pre-commit",
+			".GitHub/Workflows/ci.yml",
+		])
+			expect(runsLater(path.join(root, file), root), file).toBe(true);
 	});
 
 	it("runs a catastrophic command in full and audits it as shell.destructive, and asks in workspace and manual", async () => {

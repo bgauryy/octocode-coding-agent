@@ -22,7 +22,7 @@ const bashSchema = Type.Object({
 
 export const bashToolSystemPromptContribution = {
 	snippet: "Execute bash commands (ls, grep, find, etc.)",
-	guidelines: ["You can inspect OCTOCODE_* environment variables for current model and session details."],
+	guidelines: [],
 } as const;
 
 export type BashToolInput = Static<typeof bashSchema>;

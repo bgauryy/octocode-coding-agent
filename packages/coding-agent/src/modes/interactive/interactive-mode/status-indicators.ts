@@ -9,7 +9,7 @@ import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
 import { ThemedText } from "../components/themed-text.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -159,6 +159,9 @@ export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolSt
 	host.ui.requestRender();
 }
 
+/** The message each status line shows; the coalesced last line updates its entry in place. */
+const statusLineMessages = new WeakMap<ThemedText, { message: string }>();
+
 /**
  * Show a status message in the chat.
  *
@@ -169,17 +172,21 @@ export function showStatus(host: StatusIndicatorsHost, message: string): void {
 	const children = host.chatContainer.children;
 	const last = children.length > 0 ? children[children.length - 1] : undefined;
 	const secondLast = children.length > 1 ? children[children.length - 2] : undefined;
+	host.lastStatusMessage = message;
 
-	if (last && secondLast && last === host.lastStatusText && secondLast === host.lastStatusSpacer) {
-		host.lastStatusMessage = message;
+	const lastLine = host.lastStatusText && statusLineMessages.get(host.lastStatusText);
+	if (last && secondLast && last === host.lastStatusText && secondLast === host.lastStatusSpacer && lastLine) {
+		lastLine.message = message;
 		host.lastStatusText.invalidate();
 		host.ui.requestRender();
 		return;
 	}
 
 	const spacer = new Spacer(1);
-	host.lastStatusMessage = message;
-	const text = new ThemedText(() => theme.fg("dim", host.lastStatusMessage), 1, 0);
+	// Each line reads its own message, so a later status or an invalidation never rewrites an earlier line.
+	const line = { message };
+	const text = new ThemedText(() => theme.fg("dim", line.message), 1, 0);
+	statusLineMessages.set(text, line);
 	host.chatContainer.addChild(spacer);
 	host.chatContainer.addChild(text);
 	host.lastStatusSpacer = spacer;

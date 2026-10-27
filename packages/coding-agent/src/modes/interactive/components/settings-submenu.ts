@@ -10,7 +10,7 @@ import {
 	Spacer,
 	Text,
 } from "@octocodeai/octocode-tui";
-import { getSelectListTheme, theme } from "../theme/theme.ts";
+import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,

@@ -1,5 +1,13 @@
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
-import { resetCapabilitiesCache, setCapabilities, Text, type TUI, type TuiMouseEvent } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	MOTION,
+	resetCapabilitiesCache,
+	setCapabilities,
+	Text,
+	type TUI,
+	type TuiMouseEvent,
+} from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
@@ -7,7 +15,7 @@ import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import { type BashOperations, createBashTool, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function createBaseToolDefinition(name = "custom_tool"): ToolDefinition {
@@ -86,12 +94,34 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "image", data: TINY_JPEG, mimeType: "image/jpeg" }], isError: false });
 
 		await vi.waitFor(() => expect(component.render(120).join("\n")).toContain(";iVBORw0KGgo"));
-		const rendered = component.render(120).join("\n");
-		expect(rendered).not.toContain("cGFydGlhbA==");
+		// The row's mark flashes for a moment as the call finishes; compare once it has settled.
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			vi.setSystemTime(Date.now() + MOTION.flashMs + 1);
+			component.invalidate();
+			const rendered = component.render(120).join("\n");
+			expect(rendered).not.toContain("cGFydGlhbA==");
 
-		// Invalidation reuses the converted Image, so the Kitty image ID stays the same.
-		component.invalidate();
-		expect(component.render(120).join("\n")).toBe(rendered);
+			// Invalidation reuses the converted Image, so the Kitty image ID stays the same.
+			component.invalidate();
+			expect(component.render(120).join("\n")).toBe(rendered);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test("marks a tool without a renderer like every other row: pending, spinner, then done or failed", () => {
+		const draw = (component: ToolExecutionComponent) => stripAnsi(component.render(120).join("\n"));
+		const pending = new ToolExecutionComponent("mcp_x", "a", {}, {}, undefined, createFakeTui(), process.cwd());
+		expect(draw(pending)).toContain("○ mcp_x");
+		pending.markExecutionStarted();
+		expect(draw(pending)).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] mcp_x/);
+		pending.updateResult({ content: [{ type: "text", text: "bad" }], isError: true });
+		expect(draw(pending)).toContain("✗ mcp_x");
+		expect(animationClock.isRunning()).toBe(false);
+		const restored = new ToolExecutionComponent("mcp_x", "b", {}, {}, undefined, createFakeTui(), process.cwd());
+		restored.updateResult({ content: [{ type: "text", text: "ok" }], isError: false });
+		expect(draw(restored)).toContain("✓ mcp_x");
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {
@@ -233,18 +263,18 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
 	});
 
-	// Issue #9628: keep short durations precise and make long shell durations readable.
+	// Issue #9628: short durations stay precise; long ones use the one shared duration format (octocode/shared/format.ts).
 	test.each([
-		{ ms: 0, formatted: "0.0s" },
+		{ ms: 0, formatted: "0ms" },
+		{ ms: 850, formatted: "850ms" },
 		{ ms: 4_200, formatted: "4.2s" },
-		{ ms: 59_900, formatted: "59.9s" },
-		{ ms: 59_999, formatted: "60.0s" },
-		{ ms: 60_000, formatted: "1m 0s" },
-		{ ms: 90_900, formatted: "1m 30s" },
-		{ ms: 1_592_200, formatted: "26m 32s" },
-		{ ms: 3_599_999, formatted: "59m 59s" },
-		{ ms: 3_600_000, formatted: "1h 0m 0s" },
-		{ ms: 7_384_900, formatted: "2h 3m 4s" },
+		{ ms: 59_900, formatted: "1m" },
+		{ ms: 60_000, formatted: "1m" },
+		{ ms: 90_900, formatted: "1m31s" },
+		{ ms: 1_592_200, formatted: "26m32s" },
+		{ ms: 3_599_999, formatted: "1h" },
+		{ ms: 3_600_000, formatted: "1h" },
+		{ ms: 7_384_900, formatted: "2h03m" },
 	])("bash renderer formats $ms ms as $formatted while running and after completion", ({ ms, formatted }) => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);

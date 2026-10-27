@@ -45,6 +45,11 @@ function scalarText(value: unknown): string | undefined {
 		: undefined;
 }
 
+/** A tool whose model response failed before it ran: neither a success nor a failure of its own. */
+function isNotRun(event: WorkspaceEvent): boolean {
+	return record(event.details).status === "not_run";
+}
+
 function isFailed(event: WorkspaceEvent): boolean {
 	return event.outcome === "failed" || FAILED_STATUSES.includes(String(record(event.details).status));
 }
@@ -53,6 +58,7 @@ function isFailed(event: WorkspaceEvent): boolean {
 export function activityCard(event: FeedEvent): ActivityCard {
 	const details = record(event.details);
 	const failed = isFailed(event);
+	const notRun = isNotRun(event);
 	const structured = event.type === "agent.result";
 	const prose = event.type === "message" || event.type === "agent.progress";
 	const [firstLine, ...rest] = event.type.startsWith("tool.") ? toolHeadline(event) : event.text.split("\n");
@@ -61,15 +67,17 @@ export function activityCard(event: FeedEvent): ActivityCard {
 		failed,
 		tone: failed
 			? "danger"
-			: event.type.endsWith(".result")
-				? "success"
-				: event.type.startsWith("tool.")
-					? "tool"
-					: event.type.startsWith("agent.")
-						? "agent"
-						: "neutral",
-		label: failed ? "Needs attention" : (LABELS[event.type] ?? event.type),
-		status: scalarText(details.status),
+			: notRun
+				? "neutral"
+				: event.type.endsWith(".result")
+					? "success"
+					: event.type.startsWith("tool.")
+						? "tool"
+						: event.type.startsWith("agent.")
+							? "agent"
+							: "neutral",
+		label: failed ? "Needs attention" : notRun ? "Not run" : (LABELS[event.type] ?? event.type),
+		status: notRun ? "not run" : scalarText(details.status),
 		title: prose
 			? event.type === "message"
 				? event.message?.role === "user"
@@ -121,6 +129,7 @@ interface ToolSummary {
 	running: number;
 	failed: number;
 	done: number;
+	notRun: number;
 }
 const isTool = (event: WorkspaceEvent) => event.type.startsWith("tool.");
 
@@ -138,7 +147,13 @@ export function groupFeed(source: readonly FeedEvent[], showEmbedded = false): F
 				kind: "tools",
 				id: run[0].id,
 				events: run,
-				summary: { total: run.length, running, failed: run.filter(isFailed).length, done: run.length - running },
+				summary: {
+					total: run.length,
+					running,
+					failed: run.filter(isFailed).length,
+					done: run.length - running,
+					notRun: run.filter(isNotRun).length,
+				},
 			});
 			i = end;
 		} else {
@@ -187,7 +202,7 @@ export interface TerminalEntry {
 	at: number;
 	command: string;
 	output: string;
-	status: "running" | "done" | "failed";
+	status: "running" | "done" | "failed" | "not run";
 }
 /** Tool events as a chronological transcript: the first line names the command, the rest is its output. */
 export function terminalEntries(events: readonly FeedEvent[]): TerminalEntry[] {
@@ -199,7 +214,13 @@ export function terminalEntries(events: readonly FeedEvent[]): TerminalEntry[] {
 			at: event.at,
 			command: hint ? `${name} ${hint}` : name,
 			output: output.join("\n"),
-			status: isFailed(event) ? "failed" : event.type === "tool.start" ? "running" : "done",
+			status: isFailed(event)
+				? "failed"
+				: isNotRun(event)
+					? "not run"
+					: event.type === "tool.start"
+						? "running"
+						: "done",
 		};
 	});
 }

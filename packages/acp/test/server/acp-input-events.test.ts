@@ -85,8 +85,13 @@ describe("ACP event projection", () => {
 			display: true,
 			timestamp: 1,
 		};
+		// Text from a child, a peer or an API client is agent-side content, never the user's words.
 		expect(projector.update({ type: "message_end", message })).toEqual([
-			{ sessionUpdate: "user_message_chunk", content: { type: "text", text: message.content } },
+			{
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: message.content },
+				_meta: { "octocode/customType": "octocode-external" },
+			},
 		]);
 		expect(projector.update({ type: "message_end", message: { ...message, display: false } })).toEqual([]);
 	});

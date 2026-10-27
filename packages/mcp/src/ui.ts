@@ -19,7 +19,7 @@ import type { KeybindingsManager } from "../../coding-agent/src/core/keybindings
 import { AuthUrlComponent } from "../../coding-agent/src/modes/interactive/components/auth-url.ts";
 import { frame, renderClipped, runInView } from "../../coding-agent/src/modes/interactive/components/framed-view.ts";
 import { keyHint } from "../../coding-agent/src/modes/interactive/components/keybinding-hints.ts";
-import { getSelectListTheme, type Theme } from "../../coding-agent/src/modes/interactive/theme/theme.ts";
+import { getSelectListTheme, type Theme } from "../../coding-agent/src/theme/theme.ts";
 
 export interface McpMenu {
 	title: string;

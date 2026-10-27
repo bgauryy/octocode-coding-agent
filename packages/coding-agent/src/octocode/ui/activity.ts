@@ -1,7 +1,7 @@
 import { fileChanges } from "../shared/file-input.ts";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
-import { formatDuration } from "../shared/format.ts";
+import { setRunClock } from "../../modes/interactive/components/status-indicator.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { clipColumns, queryTarget } from "../shared/render/text.ts";
 import { isRecord } from "../../utils/guards.ts";
@@ -22,17 +22,12 @@ interface RunningTool {
 	checkingSince?: number;
 }
 
-const TICK_MS = 1_000;
 /** A consequential call's line is replaced at most this often; calls inside the window count into it (`+3`). */
 const ACTION_LINE_MS = 1_000;
-/** Elapsed time shows once a step has taken this long. */
-const SHOW_ELAPSED_MS = 2_000;
 /** Octocode's working line wraps, and a wrap moves the editor: every line stays within this many columns. */
 const LINE_MAX = 70;
 /** The working line's budget: wide enough for any terminal row, which the renderer clips. */
 const WORKING_LINE_MAX = 240;
-/** Room kept for a ` · 12m34s` tail, so the clipped detail does not shift as the time grows. */
-const TAIL_ROOM = 9;
 /** A parallel batch names this many tools, then counts the rest. */
 const BATCH_NAMES = 2;
 
@@ -63,8 +58,32 @@ export function callTarget(name: string, args: unknown): { hint: string; more: n
 /** `head` then `detail` clipped to the columns LINE_MAX leaves, then `tail`; `sep` joins head and a non-empty detail. */
 function fitWithin(head: string, sep: string, detail: string, tail: string, lineMax = LINE_MAX): string {
 	if (!detail) return `${head}${tail}`;
-	const room = lineMax - visibleWidth(head) - visibleWidth(sep) - Math.max(visibleWidth(tail), TAIL_ROOM);
+	const room = lineMax - visibleWidth(head) - visibleWidth(sep) - visibleWidth(tail);
 	return `${head}${sep}${clipColumns(detail, Math.max(room, 12))}${tail}`;
+}
+
+/** A tool as its row titles it: `Bash`, `File`, `localSearch`; the `agent` tool is a subagent. */
+function toolLabel(name: string): string {
+	if (name === "agent") return "subagent";
+	return /^[a-z]+$/.test(name) ? `${name[0].toUpperCase()}${name.slice(1)}` : name;
+}
+
+/** The first `BATCH_NAMES` distinct tool names of a parallel batch with their counts (`web ×2`). */
+function batchNames(running: readonly RunningTool[], label: (tool: RunningTool) => string): string {
+	const counts = new Map<string, number>();
+	for (const tool of running) counts.set(label(tool), (counts.get(label(tool)) ?? 0) + 1);
+	return [...counts]
+		.slice(0, BATCH_NAMES)
+		.map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+		.join(" · ");
+}
+
+/** ` +2` for the calls of a batch beyond the names shown, or nothing. */
+function batchRest(running: readonly RunningTool[]): string {
+	const counts = new Map<string, number>();
+	for (const tool of running) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
+	const shown = [...counts].slice(0, BATCH_NAMES).reduce((sum, [, count]) => sum + count, 0);
+	return running.length > shown ? ` +${running.length - shown}` : "";
 }
 
 /**
@@ -169,57 +188,83 @@ export class Activity {
 	}
 
 	/**
-	 * One line for the state, or undefined when there is nothing beyond Octocode's own "Working". `now` adds the elapsed time
-	 * of a long step; without it the line only changes when the state does (the team panel stores it).
+	 * One line for the state, or undefined when there is nothing to say (the team panel stores it). It carries no clock:
+	 * the line changes only when the state does. `lineMax` budgets it: the stored line keeps `LINE_MAX`.
 	 */
-	/**
-	 * `lineMax` budgets the line: the stored activity other sessions list keeps `LINE_MAX`; the working line passes
-	 * the room it has, and its renderer clips to the terminal.
-	 */
-	describe(now?: number, queuedDialogs = 0, lineMax = LINE_MAX): string | undefined {
+	describe(queuedDialogs = 0, lineMax = LINE_MAX): string | undefined {
 		const fitLine = (head: string, sep: string, detail: string, tail: string) =>
 			fitWithin(head, sep, detail, tail, lineMax);
 		if (this.phase === "idle") return undefined;
-		const since = (at: number) =>
-			now !== undefined && now - at >= SHOW_ELAPSED_MS ? ` · ${formatDuration(now - at)}` : "";
 		if (this.prompt) {
 			const queued = queuedDialogs > 0 ? ` (+${queuedDialogs} queued)` : "";
-			return fitLine("Waiting for you", ": ", this.prompt.title, `${queued}${since(this.prompt.at)}`);
+			return fitLine("Waiting for you", ": ", this.prompt.title, queued);
 		}
 		if (this.action && this.tools.size > 0)
 			return fitLine(
 				`${this.action.warn ? "⚠ " : ""}${this.action.head}`,
 				": ",
 				this.action.text,
-				`${this.action.more > 0 ? ` +${this.action.more}` : ""}${since(this.action.at)}`,
+				this.action.more > 0 ? ` +${this.action.more}` : "",
 			);
 		const running = [...this.tools.values()];
-		const call = (verb: string, tool: RunningTool, at: number) =>
-			fitLine(`${verb} ${tool.name}`, " ", tool.hint, `${tool.more > 0 ? ` +${tool.more}` : ""}${since(at)}`);
+		const call = (verb: string, tool: RunningTool) =>
+			fitLine(`${verb} ${tool.name}`, " ", tool.hint, tool.more > 0 ? ` +${tool.more}` : "");
 		const checking = running.find((tool) => tool.checkingSince !== undefined);
-		if (checking) return call("Checking", checking, checking.checkingSince!);
-		if (running.length === 1) return call("Running", running[0], running[0].startedAt);
-		if (running.length > 1) {
-			const counts = new Map<string, number>();
-			for (const tool of running) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
-			const shown = [...counts].slice(0, BATCH_NAMES);
-			const names = shown.map(([name, count]) => (count > 1 ? `${name} ×${count}` : name)).join(" · ");
-			const rest = running.length - shown.reduce((sum, [, count]) => sum + count, 0);
+		if (checking) return call("Checking", checking);
+		if (running.length === 1) return call("Running", running[0]);
+		if (running.length > 1)
 			return fitLine(
 				`Running ${running.length} tools`,
 				": ",
-				names,
-				`${rest > 0 ? ` +${rest}` : ""}${since(Math.min(...running.map((tool) => tool.startedAt)))}`,
+				batchNames(running, (tool) => tool.name),
+				batchRest(running),
 			);
-		}
-		if (this.phase === "thinking") return fitLine("Thinking", ": ", this.thought.gist ?? "", since(this.phaseAt));
-		if (this.phase === "writing") return `Writing${since(this.phaseAt)}`;
-		if (this.phase === "calling") return `Preparing tool calls${since(this.phaseAt)}`;
-		// Before the first token (after a prompt or tool results): Octocode's bare "Working" until the wait is long enough to time.
-		return since(this.phaseAt) ? `Waiting for model${since(this.phaseAt)}` : undefined;
+		if (this.phase === "thinking") return fitLine("Thinking", ": ", this.thought.gist ?? "", "");
+		if (this.phase === "writing") return "Writing";
+		if (this.phase === "calling") return "Preparing tool calls";
+		return undefined;
 	}
 
-	/** Whether a step is under way whose elapsed time grows (worth a repaint every second). */
+	/**
+	 * The working line: what the agent is doing, with no clock (the indicator shows the run's elapsed time in a fixed
+	 * place). A single tool is named without its command, which its own row already shows; a subagent shows its goal;
+	 * permission class ids (`shell`, `agent.spawn`) stay out of it. A ⚠ call keeps its warning and its target.
+	 */
+	working(queuedDialogs = 0): string | undefined {
+		if (this.phase === "idle") return undefined;
+		const fit = (head: string, sep: string, detail: string, tail = "") =>
+			fitWithin(head, sep, detail, tail, WORKING_LINE_MAX);
+		if (this.prompt) {
+			const queued = queuedDialogs > 0 ? ` (+${queuedDialogs} queued)` : "";
+			return fit("Waiting for you", ": ", this.prompt.title, queued);
+		}
+		const running = [...this.tools.values()];
+		const warn = this.action?.warn && running.length > 0 ? this.action : undefined;
+		const mark = warn ? "⚠ " : "";
+		const one = (verb: string, tool: RunningTool) => {
+			const more = tool.more > 0 ? ` +${tool.more}` : "";
+			if (tool.name === "agent") return fit(`${mark}${verb} ${toolLabel(tool.name)}`, " ", tool.hint, more);
+			return warn && running.length === 1
+				? fit(`${mark}${verb} ${toolLabel(tool.name)}${more}`, ": ", warn.text)
+				: `${mark}${verb} ${toolLabel(tool.name)}${more}`;
+		};
+		const checking = running.find((tool) => tool.checkingSince !== undefined);
+		if (checking) return one("Checking", checking);
+		if (running.length === 1) return one("Running", running[0]);
+		if (running.length > 1)
+			return fit(
+				`${mark}Running ${running.length} tools`,
+				": ",
+				batchNames(running, (tool) => toolLabel(tool.name)),
+				batchRest(running),
+			);
+		if (this.phase === "thinking") return fit("Thinking", ": ", this.thought.gist ?? "");
+		if (this.phase === "writing") return "Writing";
+		if (this.phase === "calling") return "Preparing tool calls";
+		return "Waiting for model";
+	}
+
+	/** Whether a run is under way (the working line shows). */
 	ticking(): boolean {
 		return this.phase !== "idle";
 	}
@@ -232,8 +277,8 @@ export class Activity {
 
 /**
  * Feed `Activity` from Octocode's events. `onChange` hears the line without elapsed time whenever it changes (the team panel
- * shows it to the parent and teammates). The TUI shows the activity detail and updates elapsed time once a second;
- * settlement clears the display.
+ * shows it to the parent and teammates). The TUI shows the activity detail; its working indicator counts the run's
+ * elapsed time from the clock started here. Settlement clears the display.
  */
 interface ActivityControl {
 	activity: Activity;
@@ -251,22 +296,18 @@ export function registerActivity(
 	let ctx: ExtensionContext | undefined;
 	let shown: string | undefined;
 	let reported: string | undefined;
-	let timer: NodeJS.Timeout | undefined;
 	/** Repaints when interactions queue behind an open dialog; held per session. */
 	let unsubscribe: (() => void) | undefined;
 
 	const paint = () => {
-		const line = activity.describe(undefined, dialogsWaiting());
+		const line = activity.describe(dialogsWaiting());
 		if (line !== reported) {
 			reported = line;
 			options.onChange?.(line);
 		}
-		// Only the TUI draws a working line: RPC's setWorkingMessage is a no-op, so nothing there needs a repaint timer.
+		// Only the TUI draws a working line (its indicator counts the run's time itself): RPC's setWorkingMessage is a no-op.
 		if (!options.workingLine || !ctx?.hasUI || ctx.mode !== "tui") return;
-		const now = Date.now();
-		// The working line has the terminal's width; its renderer clips, so the detail is not cut to the stored line's budget.
-		const detail = activity.describe(now, dialogsWaiting(), WORKING_LINE_MAX) ?? "Waiting for model";
-		const working = activity.ticking() ? detail : undefined;
+		const working = activity.ticking() ? activity.working(dialogsWaiting()) : undefined;
 		if (working !== shown) {
 			shown = working;
 			try {
@@ -275,16 +316,10 @@ export function registerActivity(
 				// The session was replaced.
 			}
 		}
-		if (activity.ticking() && !timer) {
-			timer = setInterval(paint, TICK_MS);
-			timer.unref?.();
-		} else if (!activity.ticking() && timer) {
-			clearInterval(timer);
-			timer = undefined;
-		}
 	};
 	const stop = () => {
 		activity.end();
+		setRunClock(undefined);
 		paint();
 	};
 
@@ -304,7 +339,9 @@ export function registerActivity(
 	pi.on("agent_start", async (_event, next) => {
 		ctx = next;
 
-		activity.start(Date.now());
+		const now = Date.now();
+		activity.start(now);
+		if (options.workingLine) setRunClock(now);
 		paint();
 	});
 	pi.on("message_update", async (event) => {

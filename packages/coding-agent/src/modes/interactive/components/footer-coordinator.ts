@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { ELLIPSIS, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 
 /** Coordinator identity never competes with token totals for the last few footer columns. */
@@ -17,7 +17,7 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 	const lines =
 		visibleWidth(combined) <= width
 			? [combined]
-			: [truncateToWidth(identity, width), truncateToWidth(`Model · ${selection}`, width)];
+			: [truncateToWidth(identity, width, ELLIPSIS), truncateToWidth(`Model · ${selection}`, width, ELLIPSIS)];
 	const routed = session.routedModel;
 	if (routed) {
 		const provider = routed.model.provider ? `${routed.model.provider}/` : "";
@@ -25,6 +25,7 @@ export function coordinatorFooterLines(session: AgentSession, width: number): st
 			truncateToWidth(
 				`Latest route · ${provider}${routed.model.id} · thinking ${routed.thinkingLevel ?? "off"}`,
 				width,
+				ELLIPSIS,
 			),
 		);
 	}

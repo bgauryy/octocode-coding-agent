@@ -35,6 +35,7 @@ describe("turn_end", () => {
 			},
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
+			getThinkingLevel: () => "off",
 			sendMessage,
 		} as unknown as ExtensionAPI;
 		const guard = { restore: vi.fn(), forget: vi.fn() };
@@ -120,6 +121,7 @@ describe("turn_end", () => {
 			},
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
+			getThinkingLevel: () => "off",
 		} as unknown as ExtensionAPI;
 		registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const decide = handlers.get("cache_warming_decision")!;
@@ -178,6 +180,7 @@ describe("context edits", () => {
 			},
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
+			getThinkingLevel: () => "off",
 		} as unknown as ExtensionAPI;
 		registerCompaction(pi, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const model = {

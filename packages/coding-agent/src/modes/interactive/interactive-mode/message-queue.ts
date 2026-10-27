@@ -6,7 +6,7 @@
 import { Spacer, TruncatedText } from "@octocodeai/octocode-tui";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { recallLastQueuedMessage } from "./queue-manager.ts";

@@ -10,6 +10,7 @@ import { sha256 } from "../../utils/atomic-file.ts";
 import { canonicalPath } from "../shared/home/repo.ts";
 import { CHARS_PER_TOKEN } from "../../core/compaction/tokens.ts";
 import { isRecord } from "../../utils/guards.ts";
+import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { cutText, isStaleSessionError } from "../shared/util.ts";
 
@@ -275,6 +276,7 @@ export function deliverRestoredFiles(
 	pending: readonly WorkedFile[],
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
 	total: number,
+	thinking?: CompactionThinking,
 ): PendingRestore | undefined {
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
 		try {
@@ -282,7 +284,7 @@ export function deliverRestoredFiles(
 				ctx.sessionManager.buildSessionProjection(),
 				ctx.sessionManager.getBranch(),
 			).tokens;
-			const remaining = ctx.model.contextWindow - reserveTokensFor(ctx.model) - tokens;
+			const remaining = ctx.model.contextWindow - reserveTokensFor(ctx.model, thinking) - tokens;
 			total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
 		} catch {
 			return undefined;

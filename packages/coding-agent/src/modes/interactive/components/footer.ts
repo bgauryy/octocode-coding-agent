@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
+import { type Component, ELLIPSIS, SEPARATOR, truncateToWidth } from "@octocodeai/octocode-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ContextUsage } from "../../../core/extensions/types.ts";
@@ -10,7 +10,8 @@ import {
 	customMessageUsage,
 	type UsageTotals,
 } from "../../../core/usage-totals.ts";
-import { theme } from "../theme/theme.ts";
+import { formatCost, formatTokens } from "../../../octocode/shared/format.ts";
+import { theme } from "../../../theme/theme.ts";
 import { coordinatorFooterLines } from "./footer-coordinator.ts";
 
 /**
@@ -23,17 +24,6 @@ function sanitizeStatusText(text: string): string {
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
-}
-
-/**
- * Format token counts for compact footer display.
- */
-export function formatTokens(count: number): string {
-	if (count < 1000) return count.toString();
-	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
-	if (count < 1000000) return `${Math.round(count / 1000)}k`;
-	if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
-	return `${Math.round(count / 1000000)}M`;
 }
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
@@ -169,7 +159,7 @@ export class FooterComponent implements Component {
 		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
 		if (sessionName) {
-			pwd = `${pwd} • ${sessionName}`;
+			pwd = `${pwd}${SEPARATOR}${sessionName}`;
 		}
 
 		// Build stats line
@@ -187,8 +177,8 @@ export class FooterComponent implements Component {
 			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
 			: false;
 		if (usageTotals.cost || usingSubscription) {
-			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
+			const money = formatCost({ cost: usageTotals.cost, unpriced: false }) || "≈$0.00";
+			statsParts.push(usingSubscription ? `${money} (sub)` : money);
 		}
 
 		// Colorize context percentage based on usage
@@ -198,27 +188,27 @@ export class FooterComponent implements Component {
 			contextPercent === "?"
 				? `?/${formatTokens(contextWindow)}${autoIndicator}`
 				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
-		if (contextPercentValue > 90) {
+		if (contextPercentValue > 80) {
 			contextPercentStr = theme.fg("error", contextPercentDisplay);
-		} else if (contextPercentValue > 70) {
+		} else if (contextPercentValue >= 50) {
 			contextPercentStr = theme.fg("warning", contextPercentDisplay);
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
 		statsParts.push(contextPercentStr);
 		if (areExperimentalFeaturesEnabled()) {
-			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
+			statsParts.push(`${theme.fg("dim", "·")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
 
-		const statsLine = truncateToWidth(statsParts.join(" "), width);
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
+		const statsLine = truncateToWidth(statsParts.join(" "), width, ELLIPSIS);
+		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", ELLIPSIS));
 		const lines = [
 			pwdLine,
 			theme.fg("dim", statsLine),
 			...coordinatorFooterLines(this.session, width).map((line) => theme.fg("dim", line)),
 		];
 		const githubStatus = this.footerData.getGithubStatusText?.();
-		if (githubStatus) lines.push(truncateToWidth(githubStatus, width));
+		if (githubStatus) lines.push(truncateToWidth(githubStatus, width, ELLIPSIS));
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();
@@ -228,7 +218,7 @@ export class FooterComponent implements Component {
 				.map(([, text]) => sanitizeStatusText(text));
 			const statusLine = sortedStatuses.join(" ");
 			// Truncate to terminal width with dim ellipsis for consistency with footer style
-			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "...")));
+			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", ELLIPSIS)));
 		}
 
 		return lines;

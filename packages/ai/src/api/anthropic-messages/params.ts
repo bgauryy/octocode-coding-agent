@@ -13,6 +13,7 @@ import { getCurrentTools, getInitialSystemMessage, type TranscriptContext } from
 import { transformMessages } from "../transform-messages.ts";
 import { getAnthropicCompat, getLayeredCacheControl, shouldUseServerSideFallbackBeta } from "./compat.ts";
 import { addHistoryLookbackBreakpoint, countCacheBreakpoints } from "./cache-breakpoints.ts";
+import { buildCacheDiagnosticsParam } from "./cache-diagnostics.ts";
 import { convertMessages, insertThinkingLevelMessages, normalizeToolCallId } from "./convert.ts";
 import { convertTools, DEFERRED_TOOL_PLACEHOLDER } from "./tools.ts";
 import type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./types.ts";
@@ -143,6 +144,8 @@ export function buildParams(
 		stream: true,
 		...(betaFeatures.length > 0 ? { betas: betaFeatures } : {}),
 	};
+	const cacheDiagnostics = buildCacheDiagnosticsParam(model, context, options?.env);
+	if (cacheDiagnostics) params.diagnostics = cacheDiagnostics;
 
 	const promptBlocks = (splitSystem ?? [initialSystemText]).map((text) => ({
 		type: "text" as const,

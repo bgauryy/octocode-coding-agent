@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-export function validateLocalDependencies(packageDirectory) {
+/**
+ * Entry files the host loads from a local dependency that ships no `bin`: `@octocodeai/octocode-native` is a library
+ * whose resolver returns the platform binary (`getNativeBinaryPath`).
+ */
+const LIBRARY_ENTRIES = { "@octocodeai/octocode-native": ["bin/resolve-binary.cjs"] };
+
+export function validateLocalDependencies(packageDirectory, libraryEntries = LIBRARY_ENTRIES) {
 	const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));
 	const local = Object.entries(manifest.dependencies ?? {}).filter(([, specifier]) => /^(file|link):/.test(specifier));
 	for (const [name, specifier] of local) {
@@ -22,7 +28,8 @@ export function validateLocalDependencies(packageDirectory) {
 		if (!installedDirectory || realpathSync(installedDirectory) !== realpathSync(expectedDirectory)) {
 			throw new Error(`Local dependency ${name} is not installed from ${expectedDirectory}; run yarn install`);
 		}
-		const bins = typeof dependency.bin === "string" ? [dependency.bin] : Object.values(dependency.bin ?? {});
+		const declared = typeof dependency.bin === "string" ? [dependency.bin] : Object.values(dependency.bin ?? {});
+		const bins = declared.length > 0 ? declared : (libraryEntries[name] ?? []);
 		if (bins.length === 0) throw new Error(`Local dependency ${name} declares no CLI executable`);
 		for (const bin of bins) {
 			const entry = resolve(expectedDirectory, bin);

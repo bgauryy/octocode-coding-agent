@@ -101,10 +101,10 @@ export class ApplicationProjection {
 				...(nested.length ? { tools: nested } : {}),
 				...(embedded ? { embedded } : {}),
 				...(tool.hint ? { hint: tool.hint } : {}),
-				outcome: tool.status === "failed" ? "failed" : undefined,
+				outcome: tool.status === "failed" && !tool.notRun ? "failed" : undefined,
 				details: {
 					toolCallId: tool.toolCallId,
-					status: tool.status,
+					status: tool.notRun ? "not_run" : tool.status,
 					...(tool.details === undefined ? {} : { result: tool.details }),
 				},
 			};
@@ -135,6 +135,7 @@ export class ApplicationProjection {
 					at: activity.at,
 					type: "session.activity",
 					text: activity.text,
+					...(activity.outcome === "failed" ? { outcome: "failed" } : {}),
 					sessionId: snapshot?.sessionId,
 					activity,
 				}),

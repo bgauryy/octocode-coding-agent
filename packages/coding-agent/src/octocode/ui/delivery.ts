@@ -1,3 +1,4 @@
+import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { notify } from "../shared/commands.ts";
 import { plural } from "../shared/render/text.ts";
@@ -158,7 +159,7 @@ export class Delivery {
 		try {
 			ctx.ui.setStatus(
 				STATUS.queued,
-				this.waiting.size > 0 ? statusColor(ctx, "accent", `✉ ${this.waiting.size} queued`) : undefined,
+				this.waiting.size > 0 ? statusColor(ctx, "accent", `${GLYPH.message} ${this.waiting.size} queued`) : undefined,
 			);
 		} catch {
 			// The session was replaced.

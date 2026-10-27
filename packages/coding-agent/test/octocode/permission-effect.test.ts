@@ -5,6 +5,7 @@ import { Permission } from "../../src/octocode/permission/ask.ts";
 import { AUDIT_CEILING, type AuditEntry, AuditLog, isRoutine } from "../../src/octocode/permission/audit.ts";
 import {
 	auditLines,
+	computeCard,
 	lastSentence,
 	NO_REASON,
 	transcriptPurpose,
@@ -394,5 +395,12 @@ describe("the matrix", () => {
 				"allow",
 			]);
 		}
+	});
+});
+
+describe("agent.spawn card", () => {
+	it("names the command that stops the agent", async () => {
+		const card = await computeCard({ action: "agent.spawn", title: "Start an agent?", what: ["general"] });
+		expect(card.undo).toBe("stop it with /agents kill <id>");
 	});
 });

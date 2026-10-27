@@ -1,3 +1,4 @@
+import type { ImageContent, TextContent } from "@octocodeai/octocode-ai";
 import type { SessionNotification, StopReason, ToolCallContent } from "@agentclientprotocol/sdk";
 import type { RpcEvent } from "../../../coding-agent/src/modes/rpc/rpc-client.ts";
 
@@ -7,6 +8,32 @@ const TRUNCATED = "\n[Tool output truncated for ACP.]";
 
 function chunk(text: string): Update[] {
 	return text ? [{ sessionUpdate: "agent_message_chunk", content: { type: "text", text } }] : [];
+}
+
+/**
+ * A displayed custom message (a subagent report, team mail, a hook or external notice) as agent-side content. Its text
+ * comes from a child, a peer or an API client, never from the user, so it is not a `user_message_chunk`; `_meta` names
+ * its custom type for clients that label it.
+ */
+export function customMessageUpdates(message: {
+	customType: string;
+	content: string | Array<TextContent | ImageContent>;
+}): Update[] {
+	const blocks =
+		typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content;
+	const updates: Update[] = [];
+	for (const block of blocks) {
+		if (block.type === "text" && !block.text) continue;
+		updates.push({
+			sessionUpdate: "agent_message_chunk",
+			content:
+				block.type === "text"
+					? { type: "text", text: block.text }
+					: { type: "image", data: block.data, mimeType: block.mimeType },
+			_meta: { "octocode/customType": message.customType },
+		});
+	}
+	return updates;
 }
 
 /** Only project visible textual content; details, raw output and binary payloads never cross this adapter. */
@@ -58,17 +85,7 @@ export class AcpEventProjector {
 			}
 			case "message_end": {
 				const message = event.message;
-				if (message.role === "custom" && message.display) {
-					const blocks =
-						typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content;
-					return blocks.map((block) => ({
-						sessionUpdate: "user_message_chunk",
-						content:
-							block.type === "text"
-								? { type: "text", text: block.text }
-								: { type: "image", data: block.data, mimeType: block.mimeType },
-					}));
-				}
+				if (message.role === "custom") return message.display ? customMessageUpdates(message) : [];
 				if (message.role !== "assistant") return [];
 				const updates: Update[] = [];
 				for (const [index, block] of message.content.entries()) {

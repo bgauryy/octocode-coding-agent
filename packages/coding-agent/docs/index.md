@@ -10,7 +10,9 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Configuration and Pi compatibility](configuration.md)
 - [Permissions and source-rule compatibility](permissions.md)
 - [Agent instructions and subagent roles](instructions.md)
+- [Settings reference](settings.md)
 - [Environment variables](environment-variables.md)
+- [CLI modes: text, JSON, RPC and ACP](cli.md)
 - [Prompt caching](prompt-caching.md)
 
 ## Models and providers
@@ -38,6 +40,7 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 - [Keybindings](keybindings.md)
 - [Terminal UI](tui.md)
 - [SDK](sdk.md)
+- [RPC mode: control a headless session over stdin and stdout](rpc.md)
 - [Agent Client Protocol: expose Octocode to editors and connect to peers](acp.md)
 - [Local session API: send messages to running agents](session-api.md)
 
@@ -53,13 +56,13 @@ Start with the [agent guide](../README.md) and [repository setup](../../../READM
 
 ## Package references
 
-| Package | Reference |
-| --- | --- |
-| coding-agent | [CLI, sessions, native features and SDK](../README.md) |
-| agent | [Agent loop, events and tool execution](../../agent/README.md) |
-| ai | [Provider APIs, authentication and model catalog](../../ai/README.md) |
-| tui | [Terminal components and rendering](../../tui/README.md) |
-| webview | [Browser state, transport and rendering](../../webview/README.md) |
-| contacts | [Shared serializable contracts and schemas](../../contacts/README.md) |
-| MCP client API | [Private MCP workspace and public client API](../../mcp/README.md) |
-| telemetry | [Telemetry contracts and schemas](../../telemetry/README.md) |
+| Package        | Reference                                                             |
+| -------------- | --------------------------------------------------------------------- |
+| coding-agent   | [CLI, sessions, native features and SDK](../README.md)                |
+| agent          | [Agent loop, events and tool execution](../../agent/README.md)        |
+| ai             | [Provider APIs, authentication and model catalog](../../ai/README.md) |
+| tui            | [Terminal components and rendering](../../tui/README.md)              |
+| webview        | [Browser state, transport and rendering](../../webview/README.md)     |
+| contacts       | [Shared serializable contracts and schemas](../../contacts/README.md) |
+| MCP client API | [Private MCP workspace and public client API](../../mcp/README.md)    |
+| telemetry      | [Telemetry contracts and schemas](../../telemetry/README.md)          |

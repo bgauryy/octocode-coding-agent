@@ -6,6 +6,7 @@ import type { ToolCallEvent } from "../../src/core/extensions/index.ts";
 import { registerFileTool } from "../../src/octocode/files/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
+import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV, AGENT_SCRATCH_ENV } from "../../src/octocode/shared/env.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
@@ -75,10 +76,59 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 
 		expect(await attempt("file", write(path.join(scratch, "report.md"), "findings"))).toBeUndefined();
 		expect(await attempt("file", write(".octocode/review/notes.md", "notes"))).toBeUndefined();
+		// A skill's run folder under `.octocode/<skill>/tmp/` is scratch: ledgers and probes there are not docs.
+		expect(
+			await attempt("file", write(".octocode/octocode-brainstorming/tmp/run-1/ledger-A.jsonl", "{}")),
+		).toBeUndefined();
+		expect(await attempt("file", write(".octocode/review/data.json", "{}"))).toMatch(/read-only role/);
+		expect(await attempt("file", write(".octocode/skills/tmp/x.json", "{}"))).toMatch(/read-only role/);
 		if (mode === "full") {
 			expect(fs.readFileSync(path.join(scratch, "report.md"), "utf8")).toBe("findings");
 			expect(read(".octocode/review/notes.md")).toBe("notes");
 		}
+	});
+
+	it("refuses Markdown in folders a later session loads as profiles, prompts or settings, in any letter case", async () => {
+		const { attempt, read } = child(mode);
+		for (const file of [
+			".octocode/agents/evil.md",
+			".octocode/Agents/evil.md",
+			".octocode/agents/tmp/evil.md",
+			".octocode/prompts/p.md",
+			".octocode/themes/t.md",
+			".octocode/extensions/e.md",
+			".octocode/SYSTEM.md",
+			".octocode/APPEND_SYSTEM.md",
+			".octocode/settings.json",
+			".octocode/skills/x/SKILL.md",
+		])
+			expect(await attempt("file", write(file)), file).toMatch(/read-only role/);
+		expect(await attempt("bash", { command: "echo x > .octocode/agents/evil.md" })).toMatch(/read-only role/);
+		expect(read(".octocode/agents/evil.md")).toBeUndefined();
+		expect(await attempt("file", write(".octocode/review/notes.md"))).toBeUndefined();
+		expect(await attempt("file", write(".octocode/tmp/agents/x/report.md"))).toBeUndefined();
+		expect(await attempt("file", write(".octocode/topic/tmp/run/ledger.jsonl", "{}"))).toBeUndefined();
+	});
+
+	it("resolves `..` after a symlink for shell writes: a link outside the workspace can lead back into it", async () => {
+		const { attempt, cwd, read } = child(mode);
+		const outside = fs.realpathSync(tmp());
+		fs.symlinkSync(path.join(cwd, "src"), path.join(outside, "lnk"));
+		// Lexically `<outside>/y.ts`; for the shell `<outside>/lnk/..` is the workspace root.
+		expect(await attempt("bash", { command: `echo x > ${outside}/lnk/../y.ts` })).toMatch(/read-only role/);
+		expect(read("y.ts")).toBeUndefined();
+		// The other direction: a link inside the workspace that leads out is outside, so the write is not the role's concern.
+		fs.mkdirSync(path.join(outside, "inner"));
+		fs.symlinkSync(path.join(outside, "inner"), path.join(cwd, "rel"));
+		expect(await attempt("bash", { command: "echo x > rel/../z.ts" })).toBeUndefined();
+	});
+
+	it("allows `graphBuild`, which writes only derived snapshots under `.octocode/graph/`", async () => {
+		const { cwd } = child(mode);
+		const env = { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1" };
+		const event = { toolName: "graphBuild", input: { request: { queries: [{ path: "." }] } } };
+		expect(readOnlyRoleRefusal(event, cwd, env)).toBeUndefined();
+		expect(readOnlyRoleRefusal({ toolName: "debug", input: { action: "launch" } }, cwd, env)).toMatch(/read-only role/);
 	});
 
 	it("refuses mutating bash commands and allows scratch writes and reads", async () => {
@@ -94,6 +144,14 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 			"sh -c 'echo changed > src/a.ts'",
 			"git checkout -- src",
 			"echo changed > $TARGET",
+			"env rm src/a.ts",
+			"env FOO=1 tee src/a.ts",
+			"sudo -u root rm src/a.ts",
+			"exec rm src/a.ts",
+			"nohup nice -n 5 rm src/a.ts",
+			"sudo env time rm src/a.ts",
+			"git -C . checkout -- src",
+			"git -c user.name=x commit -m x",
 		])
 			expect(await attempt("bash", { command }), command).toMatch(/read-only role/);
 		expect(read("src/a.ts")).toBe("original");

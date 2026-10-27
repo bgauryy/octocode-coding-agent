@@ -1,7 +1,9 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "../../core/extensions/index.ts";
 import { withDialog } from "../shared/locks.ts";
+import { STATE_COLOR, stateMark, type UiState } from "../../theme/status.ts";
 import { resultBlock, toolHeader } from "../shared/render.ts";
+import { shareRowState, sharedRowState } from "../shared/row-mark.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
 import { showAskDialog } from "./dialog.ts";
 import { clip, plural } from "../shared/render/text.ts";
@@ -167,7 +169,11 @@ export function registerAskUser(pi: ExtensionAPI): void {
 					.map((q) => clip(String(q?.header ?? ""), 24))
 					.filter(Boolean)
 					.join(", ");
-				return toolHeader(theme, context, "Ask", headers);
+				// The question is open on screen until the user answers: it waits on them (`◇`, breathing). Once answered the header
+				// is its phase's `✓`; a declined or interrupted question was recorded by `renderResult`.
+				const open = context.isPartial && context.executionStarted;
+				const state = sharedRowState(context) ?? (open ? "waiting" : undefined);
+				return toolHeader(theme, context, "Ask", headers, state ? { state } : {});
 			},
 			renderResult(result, _options, theme, context) {
 				const details = result.details as Partial<AskResult> | undefined;
@@ -175,20 +181,27 @@ export function registerAskUser(pi: ExtensionAPI): void {
 				// Every answer is shown, collapsed or not: the user just gave them and there are at most four.
 				const lines = answers.map(
 					(entry) =>
-						`${theme.fg("success", "✓")} ${theme.fg("muted", clip(String(entry.question), 120))} ${theme.fg("dim", "→")} ${clip(String(entry.answer), 200)}`,
+						`${stateMark(theme, "done")} ${theme.fg("muted", clip(String(entry.question), 120))} ${theme.fg("dim", "→")} ${clip(String(entry.answer), 200)}`,
 				);
-				if (details?.cancelled)
+				// Declined or unavailable: `✗`; interrupted: `◼`. The same state marks the header.
+				const refused: UiState | undefined = !details?.cancelled
+					? undefined
+					: details.reason === "aborted"
+						? "stopped"
+						: "failed";
+				shareRowState(context, refused);
+				if (refused)
 					lines.push(
-						theme.fg(
-							"warning",
-							details.reason === "unavailable"
+						`${stateMark(theme, refused)} ${theme.fg(
+							STATE_COLOR[refused],
+							details?.reason === "unavailable"
 								? "Unavailable"
-								: details.reason === "aborted"
+								: details?.reason === "aborted"
 									? "Interrupted"
 									: lines.length > 0
 										? "Declined the remaining questions"
 										: "Declined",
-						),
+						)}`,
 					);
 				const fallback =
 					lines.length === 0

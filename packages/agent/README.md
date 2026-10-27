@@ -23,18 +23,18 @@ const model = models.getModel("anthropic", "claude-sonnet-4-6");
 if (!model) throw new Error("Model not found");
 
 const agent = new Agent({
-  initialState: {
-    systemPrompt: "You are a helpful assistant.",
-    model,
-  },
-  streamFn: models.streamSimple.bind(models),
+	initialState: {
+		systemPrompt: "You are a helpful assistant.",
+		model,
+	},
+	streamFn: models.streamSimple.bind(models),
 });
 
 agent.subscribe((event) => {
-  if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-    // Stream just the new text chunk
-    process.stdout.write(event.assistantMessageEvent.delta);
-  }
+	if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+		// Stream just the new text chunk
+		process.stdout.write(event.assistantMessageEvent.delta);
+	}
 });
 
 await agent.prompt("Hello!");
@@ -45,6 +45,7 @@ await agent.prompt("Hello!");
 ### AgentMessage vs LLM Message
 
 The agent works with `AgentMessage`, a flexible type that can include:
+
 - Standard LLM messages (`user`, `assistant`, `toolResult`)
 - Custom app-specific message types via declaration merging
 
@@ -121,6 +122,8 @@ The `beforeToolCall` hook runs after `tool_execution_start` and validated argume
 
 A call to a tool the request did not declare never reaches the hooks; it gets the error `Tool <name> not found`. Set `unknownToolMessage(name)` (an `Agent` field, constructor option or loop config) to return a different error text, for example how to load the tool; return `undefined` to keep the default.
 
+Tools the host has declared but cannot execute yet, such as tools of a server that is still connecting, can be named by `pendingToolNames()` (an `Agent` field, constructor option or `AgentContext` field). The loop does not declare them removed while they are absent from `tools`; when the host drops the name they are declared removed as usual.
+
 Tools, blocked `beforeToolCall` results, and `afterToolCall` overrides can return `terminate: true` to hint that the automatic follow-up LLM call should be skipped. The loop only stops early when every finalized tool result in that batch sets `terminate: true`. Mixed batches continue normally.
 
 Throw `AgentToolExecutionError(message, result)` when a rejected tool execution must retain structured `details` or output. The loop preserves that result and marks it as an error. Ordinary exceptions expose their message with empty details.
@@ -133,7 +136,7 @@ When you use the `Agent` class, assistant `message_end` processing is treated as
 
 ```typescript
 agent.prepareRequest = async ({ context }) => ({
-  context: { ...context, messages: await session.loadModelContext() },
+	context: { ...context, messages: await session.loadModelContext() },
 });
 ```
 
@@ -143,9 +146,9 @@ agent.prepareRequest = async ({ context }) => ({
 
 ```typescript
 agent.finishTurn = async ({ message }) => {
-  if (message.stopReason === "error" || message.stopReason === "aborted") return;
-  if (shouldEndRun(message)) return { action: "end" };
-  return needsAnotherResponse(message) ? { action: "continue" } : undefined;
+	if (message.stopReason === "error" || message.stopReason === "aborted") return;
+	if (shouldEndRun(message)) return { action: "end" };
+	return needsAnotherResponse(message) ? { action: "continue" } : undefined;
 };
 ```
 
@@ -190,18 +193,18 @@ await agent.continue(); // Uses the queued message only because the tail is assi
 
 ### Event Types
 
-| Event | Description |
-|-------|-------------|
-| `agent_start` | Agent begins processing |
-| `agent_end` | Final event for the run. Awaited subscribers for this event still count toward settlement |
-| `turn_start` | New turn begins (one LLM call + tool executions) |
-| `turn_end` | Turn completes with assistant message and tool results |
-| `message_start` | Any message begins (user, assistant, toolResult) |
-| `message_update` | **Assistant only.** Includes `assistantMessageEvent` with delta |
-| `message_end` | Message completes |
-| `tool_execution_start` | Tool begins |
-| `tool_execution_update` | Tool streams progress |
-| `tool_execution_end` | Tool completes |
+| Event                   | Description                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| `agent_start`           | Agent begins processing                                                                   |
+| `agent_end`             | Final event for the run. Awaited subscribers for this event still count toward settlement |
+| `turn_start`            | New turn begins (one LLM call + tool executions)                                          |
+| `turn_end`              | Turn completes with assistant message and tool results                                    |
+| `message_start`         | Any message begins (user, assistant, toolResult)                                          |
+| `message_update`        | **Assistant only.** Includes `assistantMessageEvent` with delta                           |
+| `message_end`           | Message completes                                                                         |
+| `tool_execution_start`  | Tool begins                                                                               |
+| `tool_execution_update` | Tool streams progress                                                                     |
+| `tool_execution_end`    | Tool completes                                                                            |
 
 `Agent.subscribe()` listeners are awaited in registration order. `agent_end` means no more loop events will be emitted, but `await agent.waitForIdle()` and `await agent.prompt(...)` only settle after awaited `agent_end` listeners finish.
 
@@ -287,14 +290,14 @@ const agent = new Agent({
 
 ```typescript
 interface AgentState {
-  model: Model<any>;
-  thinkingLevel: ThinkingLevel;
-  tools: AgentTool<any>[];
-  messages: AgentMessage[];
-  readonly isStreaming: boolean;
-  readonly streamingMessage?: AgentMessage;
-  readonly pendingToolCalls: ReadonlySet<string>;
-  readonly errorMessage?: string;
+	model: Model<any>;
+	thinkingLevel: ThinkingLevel;
+	tools: AgentTool<any>[];
+	messages: AgentMessage[];
+	readonly isStreaming: boolean;
+	readonly streamingMessage?: AgentMessage;
+	readonly pendingToolCalls: ReadonlySet<string>;
+	readonly errorMessage?: string;
 }
 ```
 
@@ -308,8 +311,8 @@ To change the prompt mid-conversation, append a system message with `content` (a
 
 ```typescript
 await agent.prompt([
-  { role: "system", content: "", sections: { skills: "<skills>...</skills>" }, timestamp: Date.now() },
-  { role: "user", content: "Continue", timestamp: Date.now() },
+	{ role: "system", content: "", sections: { skills: "<skills>...</skills>" }, timestamp: Date.now() },
+	{ role: "user", content: "Continue", timestamp: Date.now() },
 ]);
 ```
 
@@ -326,9 +329,7 @@ During streaming, `agent.state.streamingMessage` contains the current partial as
 await agent.prompt("Hello");
 
 // With images
-await agent.prompt("What's in this image?", [
-  { type: "image", data: base64Data, mimeType: "image/jpeg" }
-]);
+await agent.prompt("What's in this image?", [{ type: "image", data: base64Data, mimeType: "image/jpeg" }]);
 
 // AgentMessage directly
 await agent.prompt({ role: "user", content: "Hello", timestamp: Date.now() });
@@ -347,7 +348,7 @@ agent.toolExecution = "sequential";
 agent.beforeToolCall = async ({ toolCall }) => undefined;
 agent.afterToolCall = async ({ toolCall, result }) => undefined;
 agent.prepareRequest = async ({ context }) => ({
-  context: { ...context, messages: await loadCanonicalMessages() },
+	context: { ...context, messages: await loadCanonicalMessages() },
 });
 agent.finishTurn = async () => undefined;
 agent.state.messages = newMessages; // top-level array is copied
@@ -362,17 +363,17 @@ agent.reset();
 agent.sessionId = "session-123";
 
 agent.thinkingBudgets = {
-  minimal: 128,
-  low: 512,
-  medium: 1024,
-  high: 2048,
+	minimal: 128,
+	low: 512,
+	medium: 1024,
+	high: 2048,
 };
 ```
 
 ### Control
 
 ```typescript
-agent.abort();           // Cancel current operation
+agent.abort(); // Cancel current operation
 await agent.waitForIdle(); // Wait for completion
 ```
 
@@ -382,10 +383,10 @@ An abort during a tool batch still lets the loop issue one more request, which r
 
 ```typescript
 const unsubscribe = agent.subscribe(async (event, signal) => {
-  if (event.type === "agent_end") {
-    // Final barrier work for the run
-    await flushSessionState(signal);
-  }
+	if (event.type === "agent_end") {
+		// Final barrier work for the run
+		await flushSessionState(signal);
+	}
 });
 unsubscribe();
 ```
@@ -400,16 +401,16 @@ agent.followUpMode = "one-at-a-time";
 
 // While agent is running tools
 agent.steer({
-  role: "user",
-  content: "Stop! Do this instead.",
-  timestamp: Date.now(),
+	role: "user",
+	content: "Stop! Do this instead.",
+	timestamp: Date.now(),
 });
 
 // After the agent finishes its current work
 agent.followUp({
-  role: "user",
-  content: "Also summarize the result.",
-  timestamp: Date.now(),
+	role: "user",
+	content: "Also summarize the result.",
+	timestamp: Date.now(),
 });
 
 const steeringMode = agent.steeringMode;
@@ -423,6 +424,7 @@ agent.clearAllQueues();
 Use clearSteeringQueue, clearFollowUpQueue, or clearAllQueues to drop queued messages.
 
 When steering messages are detected after a turn completes:
+
 1. All tool calls from the current assistant message have already finished
 2. Steering messages are injected
 3. The LLM responds on the next turn
@@ -435,9 +437,9 @@ Extend `AgentMessage` via declaration merging:
 
 ```typescript
 declare module "@octocodeai/octocode-agent-core" {
-  interface CustomAgentMessages {
-    notification: { role: "notification"; text: string; timestamp: number };
-  }
+	interface CustomAgentMessages {
+		notification: { role: "notification"; text: string; timestamp: number };
+	}
 }
 
 // Now valid
@@ -448,11 +450,12 @@ Handle custom types in `convertToLlm`:
 
 ```typescript
 const agent = new Agent({
-  streamFn: models.streamSimple.bind(models),
-  convertToLlm: (messages) => messages.flatMap(m => {
-    if (m.role === "notification") return []; // Filter out
-    return [m];
-  }),
+	streamFn: models.streamSimple.bind(models),
+	convertToLlm: (messages) =>
+		messages.flatMap((m) => {
+			if (m.role === "notification") return []; // Filter out
+			return [m];
+		}),
 });
 ```
 
@@ -464,30 +467,30 @@ Define tools using `AgentTool`:
 import { Type } from "typebox";
 
 const readFileTool: AgentTool = {
-  name: "read_file",
-  label: "Read File",  // For UI display
-  description: "Read a file's contents",
-  parameters: Type.Object({
-    path: Type.String({ description: "File path" }),
-  }),
-  // Override execution mode for this tool (optional).
-  // "sequential" forces the entire batch to run one at a time.
-  // "parallel" allows concurrent execution with other tool calls.
-  // If omitted, the global toolExecution config applies.
-  executionMode: "sequential",
-  execute: async (toolCallId, params, signal, onUpdate) => {
-    const content = await fs.readFile(params.path, "utf-8");
+	name: "read_file",
+	label: "Read File", // For UI display
+	description: "Read a file's contents",
+	parameters: Type.Object({
+		path: Type.String({ description: "File path" }),
+	}),
+	// Override execution mode for this tool (optional).
+	// "sequential" forces the entire batch to run one at a time.
+	// "parallel" allows concurrent execution with other tool calls.
+	// If omitted, the global toolExecution config applies.
+	executionMode: "sequential",
+	execute: async (toolCallId, params, signal, onUpdate) => {
+		const content = await fs.readFile(params.path, "utf-8");
 
-    // Optional: stream progress
-    onUpdate?.({ content: [{ type: "text", text: "Reading..." }], details: {} });
+		// Optional: stream progress
+		onUpdate?.({ content: [{ type: "text", text: "Reading..." }], details: {} });
 
-    // Optional: add `terminate: true` here to skip the automatic follow-up LLM call
-    // when every finalized tool result in the batch does the same.
-    return {
-      content: [{ type: "text", text: content }],
-      details: { path: params.path, size: content.length },
-    };
-  },
+		// Optional: add `terminate: true` here to skip the automatic follow-up LLM call
+		// when every finalized tool result in the batch does the same.
+		return {
+			content: [{ type: "text", text: content }],
+			details: { path: params.path, size: content.length },
+		};
+	},
 };
 
 agent.state.tools = [readFileTool];
@@ -499,12 +502,12 @@ agent.state.tools = [readFileTool];
 
 ```typescript
 execute: async (toolCallId, params, signal, onUpdate) => {
-  if (!fs.existsSync(params.path)) {
-    throw new Error(`File not found: ${params.path}`);
-  }
-  // Return content only on success
-  return { content: [{ type: "text", text: "..." }] };
-}
+	if (!fs.existsSync(params.path)) {
+		throw new Error(`File not found: ${params.path}`);
+	}
+	// Return content only on success
+	return { content: [{ type: "text", text: "..." }] };
+};
 ```
 
 Thrown errors are caught by the agent and reported to the LLM as tool errors with `isError: true`.
@@ -525,12 +528,12 @@ Proxy servers send `content_update` with `{ contentIndex, content }`, where `con
 import { Agent, streamProxy } from "@octocodeai/octocode-agent-core";
 
 const agent = new Agent({
-  streamFn: (model, context, options) =>
-    streamProxy(model, context, {
-      ...options,
-      authToken: "...",
-      proxyUrl: "https://your-server.com",
-    }),
+	streamFn: (model, context, options) =>
+		streamProxy(model, context, {
+			...options,
+			authToken: "...",
+			proxyUrl: "https://your-server.com",
+		}),
 });
 ```
 
@@ -544,28 +547,28 @@ For direct control without the Agent class:
 import { agentLoop, agentLoopContinue } from "@octocodeai/octocode-agent-core";
 
 const context: AgentContext = {
-  messages: [{ role: "system", content: "You are helpful.", timestamp: Date.now() }],
-  tools: [],
+	messages: [{ role: "system", content: "You are helpful.", timestamp: Date.now() }],
+	tools: [],
 };
 
 const config: AgentLoopConfig = {
-  model: getBuiltinModel("openai", "gpt-4o"),
-  convertToLlm: (msgs) => msgs.filter(m => ["user", "assistant", "toolResult"].includes(m.role)),
-  toolExecution: "parallel",  // overridden by per-tool executionMode if set
-  beforeToolCall: async ({ toolCall, args, context }) => undefined,
-  afterToolCall: async ({ toolCall, result, isError, context }) => undefined,
+	model: getBuiltinModel("openai", "gpt-4o"),
+	convertToLlm: (msgs) => msgs.filter((m) => ["user", "assistant", "toolResult"].includes(m.role)),
+	toolExecution: "parallel", // overridden by per-tool executionMode if set
+	beforeToolCall: async ({ toolCall, args, context }) => undefined,
+	afterToolCall: async ({ toolCall, result, isError, context }) => undefined,
 };
 
 const userMessage = { role: "user", content: "Hello", timestamp: Date.now() };
 
 const streamFn = models.streamSimple.bind(models);
 for await (const event of agentLoop([userMessage], context, config, undefined, streamFn)) {
-  console.log(event.type);
+	console.log(event.type);
 }
 
 // Continue from existing context
 for await (const event of agentLoopContinue(context, config, undefined, streamFn)) {
-  console.log(event.type);
+	console.log(event.type);
 }
 ```
 

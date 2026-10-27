@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
-import { visibleWidth } from "@octocodeai/octocode-tui";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatAgo, formatDuration, formatSpan } from "../../src/octocode/shared/format.ts";
 import { recordCheck } from "../../src/octocode/shared/locks.ts";
 import { resultBlock, toolHeader } from "../../src/octocode/shared/render.ts";
@@ -22,13 +22,21 @@ const row = (overrides: Record<string, unknown> = {}) => ({
 	...overrides,
 });
 
-afterEach(() => vi.useRealTimers());
+// Still marks by default: the rows below pin text. "tool row motion" turns motion back on.
+beforeEach(() => animationClock.setReducedMotion(true));
+afterEach(() => {
+	vi.useRealTimers();
+	stopRowTimers();
+	animationClock.setReducedMotion(false);
+});
 
 describe("format helpers", () => {
 	it.each([
 		[0, "0ms"],
 		[850, "850ms"],
 		[1_200, "1.2s"],
+		[2_000, "2s"],
+		[5_960, "6s"],
 		[9_400, "9.4s"],
 		[59_000, "59s"],
 		[65_000, "1m05s"],
@@ -91,22 +99,37 @@ describe("toolHeader", () => {
 		expect(rendered(toolHeader(theme, row(), "Bash", "ls"))).toBe("○ Bash(ls)");
 	});
 
+	it("draws running and done with different glyphs, so the phase reads without colour", () => {
+		vi.useFakeTimers();
+		try {
+			const running = rendered(toolHeader(theme, row({ executionStarted: true }), "Bash", "ls"));
+			const done = rendered(
+				toolHeader(theme, row({ executionStarted: true, isPartial: false, durationMs: 5 }), "Bash", "ls"),
+			);
+			expect(running).toBe("⠋ Bash(ls) · 0ms");
+			expect(done).toBe("✓ Bash(ls) · 5ms");
+			expect(running[0]).not.toBe(done[0]);
+		} finally {
+			stopRowTimers();
+		}
+	});
+
 	it("ticks while running and stops the ticker on the final result", () => {
 		vi.useFakeTimers();
 		const context = row({ executionStarted: true });
 		const header = toolHeader(theme, context, "Bash", "sleep 2");
-		expect(rendered(header)).toBe("● Bash(sleep 2) · 0ms");
+		expect(rendered(header)).toBe("⠋ Bash(sleep 2) · 0ms");
 		expect(context.state.ticking).toBe(true);
 		vi.advanceTimersByTime(2_100);
 		expect(context.invalidate).toHaveBeenCalledTimes(2);
 		const doneContext = { ...context, isPartial: false, durationMs: 1_900 };
 		const done = toolHeader(theme, { ...doneContext, lastComponent: header }, "Bash", "sleep 2");
 		expect(done).toBe(header);
-		expect(rendered(done)).toBe("● Bash(sleep 2) · 1.9s");
+		expect(rendered(done)).toBe("✓ Bash(sleep 2) · 1.9s");
 		expect(context.state.ticking).toBe(false);
 		vi.advanceTimersByTime(5_000);
 		expect(context.invalidate).toHaveBeenCalledTimes(2);
-		expect(rendered(toolHeader(theme, doneContext, "Bash", "sleep 2"))).toBe("● Bash(sleep 2) · 1.9s");
+		expect(rendered(toolHeader(theme, doneContext, "Bash", "sleep 2"))).toBe("✓ Bash(sleep 2) · 1.9s");
 	});
 
 	it("ticks only the newest running row: an older row drops its time once and never ticks again", async () => {
@@ -116,13 +139,13 @@ describe("toolHeader", () => {
 			toolHeader(theme, older, "Bash", "build");
 			vi.advanceTimersByTime(1_100);
 			expect(older.invalidate).toHaveBeenCalledTimes(1);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("● Bash(build) · 1.1s");
+			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build) · 1.1s");
 			const newer = row({ executionStarted: true });
 			toolHeader(theme, newer, "Read", "a.ts");
 			await Promise.resolve();
 			// One redraw to drop the time while the row still sits above the new one; then it stays put.
 			expect(older.invalidate).toHaveBeenCalledTimes(2);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("● Bash(build)");
+			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build)");
 			vi.advanceTimersByTime(3_000);
 			expect(older.invalidate).toHaveBeenCalledTimes(2);
 			expect(newer.invalidate).toHaveBeenCalledTimes(3);
@@ -130,7 +153,7 @@ describe("toolHeader", () => {
 			toolHeader(theme, { ...newer, isPartial: false, durationMs: 3_000 }, "Read", "a.ts");
 			vi.advanceTimersByTime(3_000);
 			expect(older.invalidate).toHaveBeenCalledTimes(2);
-			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("● Bash(build)");
+			expect(rendered(toolHeader(theme, older, "Bash", "build"))).toBe("⠋ Bash(build)");
 		} finally {
 			stopRowTimers();
 			vi.useRealTimers();
@@ -141,11 +164,11 @@ describe("toolHeader", () => {
 		vi.useFakeTimers();
 		try {
 			const context = row({ executionStarted: true, toolCallId: "call-wait" });
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("○ Bash(ls) · waiting");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
 			vi.advanceTimersByTime(5_000);
 			// Nothing to tick while waiting.
 			expect(context.invalidate).not.toHaveBeenCalled();
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("○ Bash(ls) · waiting");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
 			const run = timed(async (_id: string) => {
 				await new Promise((resolve) => setTimeout(resolve, 2_000));
 				return { content: [] };
@@ -153,13 +176,13 @@ describe("toolHeader", () => {
 			const done = run("call-wait");
 			// The run's start redraws the row at once.
 			expect(context.invalidate).toHaveBeenCalledTimes(1);
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("● Bash(ls) · 0ms");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("⠋ Bash(ls) · 0ms");
 			await vi.advanceTimersByTimeAsync(2_000);
 			await done;
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("● Bash(ls) · 2.0s");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("⠋ Bash(ls) · 2s");
 			// Octocode's duration (the run only) matches the live clock.
 			expect(rendered(toolHeader(theme, { ...context, isPartial: false, durationMs: 2_000 }, "Bash", "ls"))).toBe(
-				"● Bash(ls) · 2.0s",
+				"✓ Bash(ls) · 2s",
 			);
 		} finally {
 			stopRowTimers();
@@ -181,7 +204,7 @@ describe("toolHeader", () => {
 		const context = row({ executionStarted: true, toolCallId: "call-lock" });
 		toolHeader(theme, context, "T", "x");
 		const pending = tool.execute("call-lock", {} as never, undefined, undefined, {} as never);
-		expect(rendered(toolHeader(theme, context, "T", "x"))).toMatch(/^● T\(x\) · \d+ms$/);
+		expect(rendered(toolHeader(theme, context, "T", "x"))).toMatch(/^⠋ T\(x\) · \d+ms$/);
 		await pending;
 		stopRowTimers();
 	});
@@ -236,7 +259,7 @@ describe("toolHeader", () => {
 
 	it("shows native duration immediately for restored rows without a result-driven redraw", async () => {
 		const context = row({ isPartial: false, durationMs: 42 });
-		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("● Read(a.ts) · 42ms");
+		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("✓ Read(a.ts) · 42ms");
 		resultBlock(theme, context, { summary: "Read 3 lines" });
 		await Promise.resolve();
 		expect(context.invalidate).not.toHaveBeenCalled();
@@ -244,8 +267,8 @@ describe("toolHeader", () => {
 
 	it("does not invent completed durations when Octocode has no recorded timing", () => {
 		const context = row({ isPartial: false, state: { startedAt: Date.now() - 5_000, durationMs: 42 } });
-		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("● Read(a.ts)");
-		expect(rendered(toolHeader(theme, { ...context, durationMs: 0 }, "Read", "a.ts"))).toBe("● Read(a.ts) · 0ms");
+		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("✓ Read(a.ts)");
+		expect(rendered(toolHeader(theme, { ...context, durationMs: 0 }, "Read", "a.ts"))).toBe("✓ Read(a.ts) · 0ms");
 	});
 });
 
@@ -289,11 +312,49 @@ describe("resultBlock", () => {
 		);
 	});
 
-	it("previews the tail with the hint first", () => {
+	it("draws the gutter once per block: wrapped body lines hang under the text", () => {
+		const words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima";
+		const wrapped = rendered(resultBlock(theme, { expanded: true }, { summary: "", body: words }), 30).split("\n");
+		expect(wrapped.length).toBeGreaterThan(1);
+		expect(wrapped[0].startsWith("  ⎿  alpha")).toBe(true);
+		for (const line of wrapped.slice(1)) expect(line.startsWith("     ")).toBe(true);
+		expect(wrapped.join("\n").match(/⎿/g)).toHaveLength(1);
+		const withSummary = rendered(
+			resultBlock(theme, { expanded: true }, { summary: "done", body: `${words}\n${words}` }),
+			30,
+		);
+		expect(withSummary.match(/⎿/g)).toHaveLength(1);
+	});
+
+	it.each(["MCP request aborted", "This operation was aborted", "Operation aborted"])(
+		"draws an aborted call as interrupted, not as an error: %s",
+		(summary) => {
+			const text = rendered(resultBlock(theme, { isError: true }, { summary }));
+			expect(text).toContain(summary);
+			expect(text).not.toContain("Error:");
+		},
+	);
+
+	it("still draws other MCP failures as errors", () => {
+		for (const summary of ["MCP request timed out after 60000ms", "MCP connection closed"])
+			expect(rendered(resultBlock(theme, { isError: true }, { summary }))).toContain(`Error: ${summary}`);
+	});
+
+	it("breaks a long error on word boundaries", () => {
+		const summary = "Path '/nonexistent-xyz' is outside allowed directories";
+		const text = rendered(resultBlock(theme, { isError: true }, { summary, max: 0 }), 30);
+		const words = new Set(`Error: ${summary} (${expandKey()} to expand)`.split(" "));
+		for (const word of text.replace("⎿", " ").split(/\s+/).filter(Boolean)) expect(words.has(word), word).toBe(true);
+		expect(text.split("\n").length).toBeGreaterThan(1);
+	});
+
+	it("previews the tail with a hint that counts the earlier lines, first", () => {
 		const long = Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n");
 		expect(
 			rendered(resultBlock(theme, row({ isPartial: false }), { summary: "exit 0", body: long, tail: true, max: 2 })),
-		).toBe(["  ⎿  exit 0", `     … +18 lines (${expandKey()} to expand)`, "     line 18", "     line 19"].join("\n"));
+		).toBe(
+			["  ⎿  exit 0", `     … +18 earlier lines (${expandKey()} to expand)`, "     line 18", "     line 19"].join("\n"),
+		);
 	});
 
 	it("wraps an error summary whole under the gutter instead of clipping it", () => {
@@ -405,7 +466,7 @@ describe("resultBlock colouring", () => {
 		} as never;
 		const body = Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n");
 		const text = rendered(resultBlock(counting, row({ isPartial: false }), { summary: "exit 0", body, tail: true }));
-		expect(text).toContain("… +995 lines");
+		expect(text).toContain("… +995 earlier lines");
 		expect(painted).toBeLessThan(10);
 		expect(
 			rendered(
@@ -416,7 +477,7 @@ describe("resultBlock colouring", () => {
 					tail: true,
 				}),
 			),
-		).toContain("… +48 lines");
+		).toContain("… +48 earlier lines");
 	});
 });
 
@@ -459,7 +520,7 @@ describe("timingOf", () => {
 		expect(header).not.toContain("queued");
 		const slowQueue = { state: {} as ToolRow, isPartial: false, executionStarted: true };
 		resultBlock(theme, slowQueue, { summary: "ok", ...timingOf({ durationMs: 10, queuedMs: 2000 }) });
-		expect(rendered(toolHeader(theme, slowQueue, "Tool", "x"))).toContain("queued 2.0s");
+		expect(rendered(toolHeader(theme, slowQueue, "Tool", "x"))).toContain("queued 2s");
 	});
 });
 
@@ -556,6 +617,16 @@ describe("interrupted rows and expandable prefaces", () => {
 		expect(failed).toContain("Error: exit 1");
 	});
 
+	it("draws a call whose model response failed as ◼ not run in the warning colour, not as a failure", async () => {
+		const state: ToolRow = {};
+		const context = { isPartial: false, isError: true, executionStarted: true, state, invalidate: vi.fn() };
+		const body = rendered(resultBlock(colored, context, { summary: "Not run: the model response failed" }));
+		expect(body).toContain("<warning>Not run: the model response failed");
+		expect(body).not.toContain("Error:");
+		await Promise.resolve();
+		expect(rendered(toolHeader(colored, context, "Bash", "ls") as never)).toContain("<warning>◼");
+	});
+
 	it("counts a preface apart from hidden body lines and shows it only when expanded", () => {
 		const preface = ["Prompt", "line 1", "line 2"];
 		const collapsed = rendered(
@@ -594,5 +665,101 @@ describe("interrupted rows and expandable prefaces", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("tool row motion", () => {
+	beforeEach(() => animationClock.setReducedMotion(false));
+
+	it("repaints a running row from the animation clock: its mark changes 80 ms apart", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(10_000);
+		const context = row({ executionStarted: true });
+		const first = rendered(toolHeader(theme, context, "Bash", "ls"))[0];
+		expect(animationClock.isRunning()).toBe(true);
+		vi.advanceTimersByTime(MOTION.spinnerMs);
+		expect(context.invalidate).toHaveBeenCalled();
+		const second = rendered(toolHeader(theme, context, "Bash", "ls"))[0];
+		expect(second).not.toBe(first);
+	});
+
+	it("lets go of the clock once a finished row's flash is over, and writes nothing while idle", () => {
+		vi.useFakeTimers();
+		const context = row({ executionStarted: true });
+		toolHeader(theme, context, "Bash", "ls");
+		// The user saw it spin.
+		vi.advanceTimersByTime(MOTION.spinnerMs);
+		const done = { ...context, isPartial: false, durationMs: 5 };
+		expect(rendered(toolHeader(theme, done, "Bash", "ls"))).toBe("✓ Bash(ls) · 5ms");
+		// The flash moves for a moment: the row still subscribes.
+		expect(animationClock.isRunning()).toBe(true);
+		vi.advanceTimersByTime(MOTION.flashMs + MOTION.glowFrameMs);
+		toolHeader(theme, done, "Bash", "ls");
+		expect(animationClock.isRunning()).toBe(false);
+		const calls = context.invalidate.mock.calls.length;
+		vi.advanceTimersByTime(5_000);
+		expect(context.invalidate).toHaveBeenCalledTimes(calls);
+	});
+
+	it("does not flash a row first drawn finished (a restored session) or a finished row that still waits", () => {
+		const restored = row({ isPartial: false, durationMs: 5 });
+		toolHeader(theme, restored, "Read", "a.ts");
+		expect(animationClock.isRunning()).toBe(false);
+		const blocked = row({ isPartial: false });
+		expect(rendered(toolHeader(theme, blocked, "Agent", "x", { state: "waiting" }))).toMatch(/^◇ Agent\(x\)/);
+		expect(animationClock.isRunning()).toBe(false);
+	});
+
+	it("does not flash a row a transcript rebuild draws running and finished in one pass", () => {
+		vi.useFakeTimers();
+		const context = row({ executionStarted: true });
+		toolHeader(theme, context, "Bash", "ls");
+		const done = { ...context, isPartial: false, durationMs: 5 };
+		expect(rendered(toolHeader(theme, done, "Bash", "ls"))).toBe("✓ Bash(ls) · 5ms");
+		expect(animationClock.isRunning()).toBe(false);
+		// Nor on any later redraw.
+		vi.advanceTimersByTime(MOTION.spinnerMs);
+		toolHeader(theme, done, "Bash", "ls");
+		expect(animationClock.isRunning()).toBe(false);
+	});
+
+	it("flashes only the newest finished row, cutting an older flash short", () => {
+		vi.useFakeTimers();
+		const older = row({ executionStarted: true });
+		const newer = row({ executionStarted: true });
+		toolHeader(theme, older, "Bash", "a");
+		toolHeader(theme, newer, "Bash", "b");
+		vi.advanceTimersByTime(MOTION.spinnerMs);
+		const olderDone = { ...older, isPartial: false, durationMs: 5 };
+		toolHeader(theme, olderDone, "Bash", "a");
+		const newerDone = { ...newer, isPartial: false, durationMs: 5 };
+		toolHeader(theme, newerDone, "Bash", "b");
+		// The older row repaints once, settled, and lets go; the newer one still glows.
+		vi.advanceTimersByTime(MOTION.glowFrameMs);
+		expect(rendered(toolHeader(theme, olderDone, "Bash", "a"))).toBe("✓ Bash(a) · 5ms");
+		vi.advanceTimersByTime(MOTION.flashMs + MOTION.glowFrameMs);
+		toolHeader(theme, newerDone, "Bash", "b");
+		expect(animationClock.isRunning()).toBe(false);
+	});
+
+	it("breathes a row that waits for its checks or approval, then spins when its run begins", () => {
+		vi.useFakeTimers();
+		const context = row({ executionStarted: true, toolCallId: "call-breathe" });
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
+		vi.advanceTimersByTime(MOTION.glowFrameMs);
+		expect(context.invalidate).toHaveBeenCalled();
+		// Only an approved, running call has a spinner.
+		void timed(async (_id: string) => ({ content: [] }))("call-breathe");
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))[0]).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+	});
+
+	it("freezes the spinner in reduced motion, keeping only the one-second elapsed clock", () => {
+		vi.useFakeTimers();
+		animationClock.setReducedMotion(true);
+		const context = row({ executionStarted: true });
+		const first = rendered(toolHeader(theme, context, "Bash", "ls"));
+		vi.advanceTimersByTime(MOTION.tickMs + 50);
+		expect(context.invalidate).toHaveBeenCalledTimes(1);
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))[0]).toBe(first[0]);
 	});
 });

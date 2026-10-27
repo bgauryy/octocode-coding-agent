@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { GLYPH } from "@octocodeai/octocode-tui";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import { runningPid } from "../agentdb/liveness.ts";
@@ -39,7 +40,7 @@ function title({ info, parentPrompt }: ListedSession): string {
 /** `● name-or-first-prompt · cwd · branch · 2h ago · ≈$1.84 · 7 files · 12 messages · 3f9a2c`, `(current)` for this session. */
 function sessionLine(row: ListedSession, current: string | undefined, all: boolean, now = Date.now()): string {
 	const { info, extra } = row;
-	const parts = [`${live(row) ? "●" : "○"} ${title(row)}`];
+	const parts = [`${live(row) ? GLYPH.live : GLYPH.pending} ${title(row)}`];
 	if (all) parts.push(shownLine(path.basename(info.cwd) || info.cwd || "?", 40));
 	if (extra?.branch) parts.push(shownLine(extra.branch, 40));
 	parts.push(`${shortDuration(now - info.modified.getTime())} ago`);
@@ -164,7 +165,7 @@ export function registerSessionsCommand(
 						"\n",
 					),
 				);
-			const picked = await ctx.ui.select(`Sessions — ${scope} (● running)`, lines);
+			const picked = await ctx.ui.select(`Sessions — ${scope} (${GLYPH.live} running)`, lines);
 			const row = picked === undefined ? undefined : rows[lines.indexOf(picked)];
 			if (!row) return;
 			// Octocode owns session names and can only rename the session it has open.

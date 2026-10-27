@@ -13,7 +13,7 @@ import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
 import { sessionLineage, setSessionLineage } from "../shared/archive.ts";
 import { notify } from "../shared/commands.ts";
 import { CACHE_RETENTION_ENV } from "../shared/env.ts";
-import { reserveTokensFor } from "../shared/tokens.ts";
+import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "../shared/turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
 import { cacheClock, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
@@ -22,6 +22,7 @@ import { noticeContextUsage } from "./context-notice.ts";
 import { type ContextEntry, parts } from "./images.ts";
 import {
 	contextTokens,
+	fitsWindow,
 	needsDownshiftCompaction,
 	THRASH_MESSAGE,
 	ThrashBreaker,
@@ -84,6 +85,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 			pi,
 			ctx,
 			event.context.contextEntries.flatMap((entry) => entry.messages.map((message) => ({ message }))),
+			compactionThinking(pi),
 		);
 		const current = ctx.sessionManager.getSessionId();
 		if (current !== session) {
@@ -102,6 +104,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 		return { entries: [...event.entries, ...recovery] };
 	});
 	pi.on("agent_before_settle", async (event) => (tooLarge.shouldRetry(event.outcome) ? { continue: true } : undefined));
+	pi.on("agent_settled", async () => thrash.runSettled());
 	// The files worked on in the summarized part, most recent first, come back after the compaction.
 	let restoreCandidates: WorkedFile[] = [];
 	let restoreBudget = RESTORE_TOTAL_CHARS;
@@ -109,6 +112,10 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	pi.on("session_before_compact", async (event, ctx) => {
 		if (event.reason !== "manual" && thrash.tripped()) {
 			recordCompactionNote(pi, "thrash-stop", THRASH_MESSAGE);
+			// While the context still fits the window, the run (and a prompt about to be sent) goes on; the refusal is a
+			// failure, which the session reports as the compaction's error.
+			if (event.reason !== "overflow" && fitsWindow(ctx, toolDefinitionChars(pi)))
+				return { cancel: true, failure: THRASH_MESSAGE };
 			if (ctx.hasUI) notify(ctx.ui, THRASH_MESSAGE, "error");
 			ctx.abort("internal");
 			return { cancel: true };
@@ -165,7 +172,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 	// Switching to a model whose window the context does not fit compacts first, on the previous model: the next
 	// request on the new one would fail, and only the previous model can still read the whole history.
 	pi.on("model_select", async (event, ctx) => {
-		const reserve = reserveTokensFor(event.model);
+		const reserve = reserveTokensFor(event.model, compactionThinking(pi));
 		if (
 			!needsDownshiftCompaction(event.previousModel, event.model, contextTokens(ctx, toolDefinitionChars(pi)), reserve)
 		)
@@ -186,7 +193,7 @@ export function registerCompaction(pi: ExtensionAPI, guard: FileGuard, isSubagen
 		guard.restore(contextReads(ctx));
 		const pending = restoreCandidates;
 		restoreCandidates = [];
-		pendingRestore = deliverRestoredFiles(pi, pending, ctx, restoreBudget);
+		pendingRestore = deliverRestoredFiles(pi, pending, ctx, restoreBudget, compactionThinking(pi));
 	});
 	pi.on("session_compact_failed", async () => archive.discard());
 	// The restored files count as read from the first model call that carries them (Octocode may hold the message until the

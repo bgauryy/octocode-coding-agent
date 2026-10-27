@@ -41,7 +41,7 @@ describe("footer", () => {
 	it("shows the model, context, mode and running work first, and where you are second", () => {
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 170);
 		expect(top).toMatch(
-			/^claude-opus-5-5 · ⏸ permission: manual · Shift\+Tab · high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
+			/^claude-opus-5-5 · ⏸ permission: manual · Shift\+Tab · thinking high · ctx ▰▰▰▱▱▱▱▱ 42% of 200k · agents 1\/2 ↑1k ↓2k · 1 bash job +58 tok\/s · ≈\$0\.84$/,
 		);
 		expect(bottom).toBe("~/code/app ⎇ main · fix login · 15.5k tokens (↑12.4k ↓3.1k) · mcp 3/3 · lint ok");
 		expect(visibleWidth(top)).toBe(170);
@@ -49,11 +49,20 @@ describe("footer", () => {
 
 	it("colours context by how full it is", () => {
 		expect(contextBar(30)).toEqual({ bar: "▰▰▱▱▱▱▱▱", color: "success" });
+		// Any use shows: 3% is not an empty gauge.
+		expect(contextBar(3).bar).toBe("▰▱▱▱▱▱▱▱");
+		expect(contextBar(0).bar).toBe("▱▱▱▱▱▱▱▱");
+		expect(contextBar(100).bar).toBe("▰▰▰▰▰▰▰▰");
 		expect(contextBar(65).color).toBe("warning");
 		expect(contextBar(91).color).toBe("error");
 		painted.length = 0;
 		footerLines({ ...state, context: { percent: 91, limit: 200_000 } }, "main", statuses, recording, 160);
 		expect(painted.some(([color, text]) => color === "error" && text.includes("91%"))).toBe(true);
+	});
+
+	it("shows the last run's speed only between runs", () => {
+		expect(footerLines(state, "main", statuses, theme, 200)[0]).toContain("58 tok/s");
+		expect(footerLines({ ...state, running: true }, "main", statuses, theme, 200)[0]).not.toContain("tok/s");
 	});
 
 	it("draws a session name without its escape sequences", () => {
@@ -99,6 +108,7 @@ describe("footer", () => {
 		const long = { ...state, model: "provider/".repeat(40) };
 		const busy = new Map([...statuses, ["octocode-team", "agents ".repeat(40)]]);
 		const [normal] = footerLines(long, null, statuses, theme, 170);
+		// The footer is the one home of the mode: its full chip names the shortcut while there is room.
 		expect(normal).toContain("permission: manual · Shift+Tab");
 		for (const width of [75, 40, 26, 20, 10]) {
 			const lines = footerLines(long, null, busy, theme, width);
@@ -125,7 +135,8 @@ describe("footer", () => {
 			120,
 		);
 		expect(top).toBe("claude-opus-5-5 · ctx ? of 200k");
-		expect(bottom).toBe("~/code/app · 0 tokens");
+		// Nothing spent and no compaction yet: no zero counters.
+		expect(bottom).toBe("~/code/app");
 	});
 
 	it("drops the least important parts first on narrow terminals, never the model, context, permission mode or running work", () => {
@@ -171,7 +182,8 @@ describe("footer line 1 work statuses", () => {
 		expect(wide).toContain("2 subagents");
 		expect(wide).toContain("✉ 2 queued");
 		expect(bottom).not.toContain("queued");
-		const [narrow] = footerLines(state, "main", work, theme, 90);
+		// 110, not 90: context and thinking now outrank the queued counter, which needs the extra cells (footer audit F2).
+		const [narrow] = footerLines(state, "main", work, theme, 110);
 		expect(narrow).toContain("✉ 2 queued");
 		expect(narrow).not.toContain("tok/s");
 	});
@@ -204,6 +216,26 @@ describe("footer line 1 work statuses", () => {
 	it("gives a long branch a third of the row", () => {
 		const branch = `feature/${"x".repeat(80)}`;
 		expect(footerLines(state, branch, new Map(), theme, 240)[1]).toContain(`${branch.slice(0, 79)}…`);
+	});
+});
+
+describe("footer under a busy status row", () => {
+	const busy = new Map([
+		["octocode-permission", "⏸ permission: manual · Shift+Tab"],
+		["octocode-team", "agents 3/6 ↑12k ↓34k"],
+		["octocode-subagents", "3 background agents"],
+		["octocode-bash", "2 bash jobs"],
+		["octocode-queued", "✉ 2 queued"],
+		["octocode-hooks", "hook running 12s"],
+	]);
+	it("keeps the context percentage and thinking level ahead of ephemeral status counters at 80 and 120 columns", () => {
+		for (const width of [80, 120]) {
+			const lines = footerLines({ ...state, thinking: "medium", running: true }, "main", busy, theme, width);
+			expect(lines[0], `ctx at ${width}`).toContain("ctx");
+			expect(lines[0], `ctx percent at ${width}`).toContain("42%");
+			expect(lines[0], `thinking at ${width}`).toMatch(/\b(medium|med)\b/);
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+		}
 	});
 });
 
@@ -249,9 +281,9 @@ describe("footer wiring", () => {
 			data,
 		);
 		const [initialTop, bottom] = component.render(120) as string[];
-		expect(initialTop).toMatch(/^model-x · medium · ctx ▱{8} 11% of 87\.5k +≈\$0\.15$/);
+		expect(initialTop).toMatch(/^model-x · thinking medium · ctx ▰▱{7} 12% of 83\.3k +≈\$0\.15$/);
 		// ↑ is the whole prompt (uncached, cache reads and writes), with the share read from cache.
-		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · 0 compactions · mcp 1/1");
+		expect(bottom).toBe("/work/app ⎇ main · 1.8k tokens (↑1.5k +3k cached ↓250) · mcp 1/1");
 		percent = 64;
 		await fake.emit(
 			"message_end",
@@ -260,7 +292,8 @@ describe("footer wiring", () => {
 		);
 		expect(renders).toBe(1);
 		const [top] = component.render(120) as string[];
-		expect(top).toContain("73%");
+		// 64k of the 83.3k limit: medium thinking enlarges the compaction reserve to a sixth of the 100k window.
+		expect(top).toContain("77%");
 		expect(top).toContain("≈$0.16");
 		// A rename (/name, or the automatic title) shows at once.
 		const name = "auth flow";
@@ -474,6 +507,35 @@ describe("footer wiring", () => {
 	});
 });
 
+describe("summary usage", () => {
+	const usage = (input: number, output: number, total: number) => ({ input, output, cacheRead: 0, cost: { total } });
+	it("counts compaction and branch summary spend on replay and as they happen", async () => {
+		const fake = importedModule1.fakePi();
+		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as any;
+		ctx.sessionManager.getEntries = () => [
+			{ type: "message", message: { role: "assistant", usage: usage(1_000, 100, 0.1) } },
+			{ type: "compaction", usage: usage(2_000, 200, 0.2) },
+			{ type: "branch_summary", usage: usage(500, 50, 0.05) },
+			{ type: "compaction" },
+		];
+		importedModule2.registerFooter(fake.pi);
+		await fake.emit("session_start", {}, ctx);
+		const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+			getGitBranch: () => null,
+			getExtensionStatuses: () => new Map(),
+			onBranchChange: () => () => {},
+		});
+		const rendered = () => component.render(200).join("\n");
+		expect(rendered()).toContain("3.9k tokens");
+		expect(rendered()).toContain("≈$0.35");
+		await fake.emit("session_compact", { compactionEntry: { type: "compaction", usage: usage(1_000, 100, 0.1) } }, ctx);
+		expect(rendered()).toContain("5k tokens");
+		expect(rendered()).toContain("≈$0.45");
+		await fake.emit("session_tree", { summaryEntry: { type: "branch_summary", usage: usage(100, 10, 0.01) } }, ctx);
+		expect(rendered()).toContain("≈$0.46");
+	});
+});
+
 describe("run metrics", () => {
 	it("records wall time through tool waits and compaction without duplicating the live activity clock", async () => {
 		vi.useFakeTimers();
@@ -512,7 +574,7 @@ describe("run metrics", () => {
 			expect(vi.getTimerCount()).toBe(0);
 			entries = [];
 			await fake.emit("session_start", {}, ctx);
-			expect(rendered()).toContain("0 compactions");
+			expect(rendered()).not.toContain("compaction");
 			expect(rendered()).not.toContain("last run");
 		} finally {
 			vi.useRealTimers();

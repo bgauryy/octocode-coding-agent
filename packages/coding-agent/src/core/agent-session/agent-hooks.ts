@@ -5,7 +5,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentContext, AgentMessage, PrepareNextTurnContext } from "@octocodeai/octocode-agent-core";
+import type {
+	AgentContext,
+	AgentMessage,
+	PrepareNextTurnContext,
+	ThinkingLevel,
+} from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, SystemMessage, TextContent } from "@octocodeai/octocode-ai/compat";
@@ -27,18 +32,35 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 	readonly inputs: SessionInputQueue;
 	readonly tools: SessionToolLoadout;
 	expandMentionSkills(text: string, expandedPaths: Set<string>): TextContent[];
-	runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean>;
+	runAutoCompaction(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		targetModel?: Model<any>,
+		targetThinking?: ThinkingLevel,
+	): Promise<boolean>;
 }
 
-/** Whether `projection`, the current session projection, exceeds the compaction threshold of `model`. */
-function exceedsCompactionThreshold(host: AgentHooksHost, model: Model<any>, projection: SessionProjection): boolean {
+/**
+ * Whether `projection`, the current session projection, exceeds the compaction threshold of `model` at `thinking`
+ * (default: the session's routed or selected level).
+ */
+function exceedsCompactionThreshold(
+	host: AgentHooksHost,
+	model: Model<any>,
+	projection: SessionProjection,
+	thinking?: ThinkingLevel,
+): boolean {
 	if (model.contextWindow <= 0) return false;
 	const { session } = host;
 	// The estimate also counts tools the transcript does not declare yet: this request will.
 	const tokens =
 		estimateProjectedContextTokens(projection, session.sessionManager.getBranch()).tokens +
 		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations);
-	return shouldCompact(tokens, model.contextWindow, session.settingsManager.getCompactionSettings(model));
+	const settings = session.settingsManager.getCompactionSettings(
+		model,
+		thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+	);
+	return shouldCompact(tokens, model.contextWindow, settings);
 }
 
 async function compactBeforeNextAssistantResponse(host: AgentHooksHost, context: AgentContext): Promise<AgentContext> {
@@ -185,8 +207,10 @@ export function installAgentRequestProjection(host: AgentHooksHost): void {
 		}
 		// The route stands: the router already decided this request. The state entry does not change
 		// the projection.
-		if (exceedsCompactionThreshold(host, route.model, projection)) {
-			await host.runAutoCompaction("threshold", false, route.model);
+		// The threshold is sized for this request's route: its model and thinking level.
+		const routeThinking = route.thinkingLevel ?? thinkingLevel;
+		if (exceedsCompactionThreshold(host, route.model, projection, routeThinking)) {
+			await host.runAutoCompaction("threshold", false, route.model, routeThinking);
 			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
 			// wraps runs twice for this request and must give the same answer for the same input.
 			({ previous, context } = await prepare());

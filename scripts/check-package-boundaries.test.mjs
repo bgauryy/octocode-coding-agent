@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { checkPackageBoundaries, scanPackageBoundaries } from "./check-package-boundaries.mjs";
+import { HOST_IMPORT_BASELINE } from "./host-import-baseline.mjs";
+import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
 const packages = {
 	contacts: { name: "@app/contacts" },
@@ -61,9 +64,52 @@ test("accepts private implementation imports within the same host compilation", 
 				{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts"] },
 			],
 			{ host: [], mcp: [] },
+			{ mcp: ["host/src/config.ts"] },
 		),
 		[],
 	);
+});
+
+test("a hosted workspace cannot reach host files outside its baseline", () => {
+	const sources = [
+		{ package: "mcp", path: "src/index.ts", imports: ["../../host/src/config.ts", "../../host/src/core/secret.ts"] },
+		{ package: "mcp", path: "src/deep/leaf.ts", imports: ["../../../host/src/core/other.js"] },
+	];
+	const issues = checkPackageBoundaries(
+		privatePackages,
+		sources,
+		{ host: [], mcp: [] },
+		{ mcp: ["host/src/config.ts"] },
+	);
+	assert.deepEqual(issues, [
+		"hosted workspace reaches host internals: mcp/src/index.ts -> host/src/core/secret.ts (not in HOST_IMPORT_BASELINE)",
+		"hosted workspace reaches host internals: mcp/src/deep/leaf.ts -> host/src/core/other.js (not in HOST_IMPORT_BASELINE)",
+	]);
+	assert.equal(
+		checkPackageBoundaries(privatePackages, sources.slice(0, 1), { host: [], mcp: [] }, {}).length,
+		2,
+		"a hosted workspace without a baseline entry may not import any host file",
+	);
+	assert.deepEqual(
+		checkPackageBoundaries(
+			privatePackages,
+			[{ package: "host", path: "src/index.ts", imports: ["../../host/src/core/secret.ts", "../../mcp/src/index.ts"] }],
+			{ host: [], mcp: [] },
+			{},
+		),
+		[],
+		"the host may import its own files and its hosted workspaces",
+	);
+});
+
+test("the committed host import baseline lists only existing host files of hosted workspaces", () => {
+	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+	for (const [name, files] of Object.entries(HOST_IMPORT_BASELINE)) {
+		const manifest = JSON.parse(readFileSync(join(root, "packages", name, "package.json"), "utf8"));
+		assert.equal(manifest.octocodeSource?.host, "coding-agent", `${name} must be a hosted workspace`);
+		assert.deepEqual([...files].sort(), files, `${name} baseline must stay sorted`);
+		for (const file of files) assert.ok(existsSync(join(root, "packages", file)), `${file} no longer exists`);
+	}
 });
 
 test("a private implementation cannot hide an outward import or an external cycle", () => {
@@ -152,4 +198,40 @@ test("the filesystem gate detects deferred crossing imports without treating exa
 		"forbidden import: contacts/src/example.ts -> webview",
 		"undeclared import: contacts/src/example.ts -> webview",
 	]);
+});
+
+test("a layer cannot import the layer above it unless its baseline lists the file", () => {
+	const rules = [
+		{
+			name: "core-must-not-import-modes",
+			from: "host/src/core/",
+			to: "host/src/modes/",
+			baseline: ["host/src/core/old.ts"],
+		},
+	];
+	const source = (path) => ({ package: "host", path, imports: ["../modes/view.ts"] });
+	assert.deepEqual(
+		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/core/old.ts")], { host: [] }, {}, rules),
+		[],
+	);
+	assert.deepEqual(
+		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/core/new.ts")], { host: [] }, {}, rules),
+		["core-must-not-import-modes: host/src/core/new.ts -> host/src/modes/view.ts (not in its baseline)"],
+	);
+	assert.deepEqual(
+		checkPackageBoundaries({ host: { name: "@app/host" } }, [source("src/other/new.ts")], { host: [] }, {}, rules),
+		[],
+		"a file outside the layer is not constrained",
+	);
+});
+
+test("the committed layer baselines list only existing, sorted files inside their layer", () => {
+	const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+	for (const rule of LAYER_RULES) {
+		assert.deepEqual([...rule.baseline].sort(), rule.baseline, `${rule.name} baseline must stay sorted`);
+		for (const file of rule.baseline) {
+			assert.ok(file.startsWith(rule.from), `${file} is outside ${rule.from}`);
+			assert.ok(existsSync(join(root, "packages", file)), `${file} no longer exists`);
+		}
+	}
 });

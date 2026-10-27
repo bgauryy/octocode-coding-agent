@@ -6,12 +6,12 @@ Octocode keeps reusable instructions longer than growing conversation history wh
 
 Use `/providers` to enter a key through the existing secret input. For environment-based authentication, set the variable for the provider you use; never put keys in prompts.
 
-| Provider | Provider ID | API-key variable | Instruction / history policy |
-|---|---|---|---|
-| OpenAI | `openai` | `OPENAI_API_KEY` | 12h / implicit 30m on models declaring explicit prompt-cache support |
-| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | 1h / 5m where long retention is supported |
-| Grok | `xai` | `XAI_API_KEY` | Automatic provider-managed caching; no configurable TTL is assumed |
-| OpenCode | `opencode`, `opencode-go` | `OPENCODE_API_KEY` | Claude: 1h instructions and 5m history, with Anthropic lifetimes declared for warming; other Anthropic-protocol models: 5m markers without `ttl`; Responses: `prompt_cache_key` and session headers, no TTL fields; Chat Completions and Google: session-routed implicit caching. Every request carries a stable `x-opencode-session` |
+| Provider  | Provider ID               | API-key variable    | Instruction / history policy                                                                                                                                                                                                                                                                                                          |
+| --------- | ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI    | `openai`                  | `OPENAI_API_KEY`    | 12h / implicit 30m on models declaring explicit prompt-cache support                                                                                                                                                                                                                                                                  |
+| Anthropic | `anthropic`               | `ANTHROPIC_API_KEY` | 1h / 5m where long retention is supported                                                                                                                                                                                                                                                                                             |
+| Grok      | `xai`                     | `XAI_API_KEY`       | Automatic provider-managed caching; no configurable TTL is assumed                                                                                                                                                                                                                                                                    |
+| OpenCode  | `opencode`, `opencode-go` | `OPENCODE_API_KEY`  | Claude: 1h instructions and 5m history, with Anthropic lifetimes declared for warming; other Anthropic-protocol models: 5m markers without `ttl`; Responses: `prompt_cache_key` and session headers, no TTL fields; Chat Completions and Google: session-routed implicit caching. Every request carries a stable `x-opencode-session` |
 
 OpenCode dispatches each model through its catalog API: Anthropic Messages, OpenAI Responses, Chat Completions or Google. An OpenAI-compatible endpoint alone does not establish support for 12h fields. Custom models can declare capabilities in `models.json`; only enable capabilities the endpoint actually supports. Amazon Bedrock Claude models send one-hour cache points for long retention; set `compat.supportsLongCacheRetention: false` on a Bedrock model whose region or profile rejects the `ttl` field.
 
@@ -19,19 +19,19 @@ Official references: [OpenAI prompt caching](https://developers.openai.com/api/d
 
 ### Retention per layer
 
-The two layers are *instructions* (tools plus the leading system prompt) and *history* (the messages). The defaults are long instructions and short history. What each choice becomes on the wire:
+The two layers are _instructions_ (tools plus the leading system prompt) and _history_ (the messages). The defaults are long instructions and short history. What each choice becomes on the wire:
 
-| Provider | Instructions | History | Notes |
-|---|---|---|---|
-| Anthropic, Bedrock Claude, OpenRouter Claude | `ttl: "1h"` (2× write) for `long`, 5m (1.25×) for `short` | 5m, or 1h for `long` | 1h is Anthropic's maximum; it pays off once a session idles longer than 5 minutes |
-| OpenAI GPT-5.6 and later (explicit mode) | 12h (2.5× write) for `long`, 30m for `short` | implicit 30m; `long` requests 12h | No 1h tier exists. `none` for both layers sends explicit mode with no breakpoint: no caching at all, not even the automatic cache |
-| Older OpenAI models | Provider default; `24h` when `long` and the endpoint supports it | same | Implicit caching only: there is no separate instruction lifetime |
-| Azure OpenAI, Codex, Mistral | Provider-managed | same | A routing key is sent unless history is `none`; the retention preference is ignored |
-| xAI Grok | Automatic | same | No TTL is exposed; the routing key or `x-grok-conv-id` is sent |
-| Google Gemini | Implicit | same | No cache field is sent; explicit caches cannot hold request-time tools. Through OpenCode, hits need the session header and come in blocks of about 4k tokens, so shorter prompts read nothing (measured October 2026) |
-| Other OpenAI-compatible endpoints | Provider-managed | same | The routing key goes out with `long` where the endpoint supports it |
+| Provider                                     | Instructions                                                     | History                           | Notes                                                                                                                                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic, Bedrock Claude, OpenRouter Claude | `ttl: "1h"` (2× write) for `long`, 5m (1.25×) for `short`        | 5m, or 1h for `long`              | 1h is Anthropic's maximum; it pays off once a session idles longer than 5 minutes                                                                                                                                     |
+| OpenAI GPT-5.6 and later (explicit mode)     | 12h (2.5× write) for `long`, 30m for `short`                     | implicit 30m; `long` requests 12h | No 1h tier exists. `none` for both layers sends explicit mode with no breakpoint: no caching at all, not even the automatic cache                                                                                     |
+| Older OpenAI models                          | Provider default; `24h` when `long` and the endpoint supports it | same                              | Implicit caching only: there is no separate instruction lifetime                                                                                                                                                      |
+| Azure OpenAI, Codex, Mistral                 | Provider-managed                                                 | same                              | A routing key is sent unless history is `none`; the retention preference is ignored                                                                                                                                   |
+| xAI Grok                                     | Automatic                                                        | same                              | No TTL is exposed; the routing key or `x-grok-conv-id` is sent                                                                                                                                                        |
+| Google Gemini                                | Implicit                                                         | same                              | No cache field is sent; explicit caches cannot hold request-time tools. Through OpenCode, hits need the session header and come in blocks of about 4k tokens, so shorter prompts read nothing (measured October 2026) |
+| Other OpenAI-compatible endpoints            | Provider-managed                                                 | same                              | The routing key goes out with `long` where the endpoint supports it                                                                                                                                                   |
 
-`/cache` reports the same mapping for the active model, including "no caching at all" for explicit OpenAI `none`, the 24h tier on older OpenAI models, and "provider-managed" for the providers above. It states what Octocode sends; the provider's cached-token usage fields remain the only proof of a hit.
+`/status` reports the same mapping for the active model under Cache Warming, including "no caching at all" for explicit OpenAI `none`, the 24h tier on older OpenAI models, and "provider-managed" for the providers above. It states what Octocode sends; the provider's cached-token usage fields remain the only proof of a hit.
 
 ### OpenCode model APIs
 
@@ -49,8 +49,8 @@ Use `/settings` to save instruction and history retention, or add these fields t
 
 ```json
 {
-  "instructionCacheRetention": "long",
-  "cacheRetention": "short"
+	"instructionCacheRetention": "long",
+	"cacheRetention": "short"
 }
 ```
 
@@ -58,21 +58,21 @@ The same optional fields work on a provider, model definition, or `modelOverride
 
 ```json
 {
-  "providers": {
-    "anthropic": {
-      "apiKey": "$ANTHROPIC_API_KEY",
-      "cacheRetention": "long"
-    },
-    "openai": {
-      "apiKey": "$OPENAI_API_KEY",
-      "instructionCacheRetention": "long",
-      "cacheRetention": "short"
-    }
-  }
+	"providers": {
+		"anthropic": {
+			"apiKey": "$ANTHROPIC_API_KEY",
+			"cacheRetention": "long"
+		},
+		"openai": {
+			"apiKey": "$OPENAI_API_KEY",
+			"instructionCacheRetention": "long",
+			"cacheRetention": "short"
+		}
+	}
 }
 ```
 
-Priority, highest first: request options, environment, model override, model definition, provider, session overrides, trusted project settings, global settings, application defaults. At each level, `cacheRetention` controls both layers unless that level also supplies `instructionCacheRetention`. An instruction-only value changes only instructions. Effective history `none` disables optional writes for both layers. Settings keep `short` instructions with `long` history as configured. Anthropic Messages, Bedrock Converse and Anthropic-format chat completions require 1h entries before 5m ones, so those adapters send that history at 5m and `/cache` says so; OpenAI Responses sends it as configured (a 12h history breakpoint after 30m instructions). Invalid values are rejected without echoing their contents.
+Priority, highest first: request options, environment, model override, model definition, provider, session overrides, trusted project settings, global settings, application defaults. At each level, `cacheRetention` controls both layers unless that level also supplies `instructionCacheRetention`. An instruction-only value changes only instructions. Effective history `none` disables optional writes for both layers. Settings keep `short` instructions with `long` history as configured. Anthropic Messages, Bedrock Converse and Anthropic-format chat completions require 1h entries before 5m ones, so those adapters send that history at 5m and `/status` says so; OpenAI Responses sends it as configured (a 12h history breakpoint after 30m instructions). Invalid values are rejected without echoing their contents.
 
 `/status` shows the requested preferences, their sources, effective durations, and unsupported-policy fallbacks. Changing a direct provider's endpoint clears its direct-only cache capabilities; explicitly declare verified `compat` capabilities for a proxy. Remote catalog refresh uses the same capability rules as the bundled catalog. Unknown models remain selectable with conservative request fields.
 
@@ -125,6 +125,14 @@ Subsequent system-prompt changes are incremental conversation updates rather tha
 
 An isolated subagent (`isolate: true`) runs in its own git worktree, but its system prompt keeps the working directory and the `AGENTS.md` paths of the main checkout, so every isolated child of one profile builds a byte-identical leading prompt. The child's task names its real worktree. Tools, permissions and file access use the real worktree directory; only the prompt text names the main checkout.
 
+### Idle gaps and the history tier
+
+The default history retention is `short` (5 minutes). A session that pauses longer than that between requests finds its history cache expired and pays a full rewrite for the next turn, which dominates the cost of sessions with long pauses. Once a session has sent a request more than 5 minutes after its previous one, Octocode requests the one-hour tier for the history (the instructions already use it) for the rest of that session. A session that never pauses keeps 5-minute writes.
+
+This applies only when nobody chose a history retention: a value from `settings.json`, a provider or model entry in `models.json`, `OCTOCODE_CACHE_RETENTION`, a request option, or `cacheRetention: "none"`/`"short"` set anywhere keeps its meaning. Subagents receive their parent's resolved retention through the environment, so they stay at 5 minutes. It applies only to Anthropic-style markers (Anthropic Messages, Bedrock Claude, OpenRouter Claude) on models that accept a one-hour tier (`compat.supportsLongCacheRetention` is not `false`) and with long instructions, so the history breakpoint never follows a shorter one. OpenAI explicit-cache models are unchanged: their long tier is 12 hours at a higher write price. The switch is per process and is not stored; `/status` shows the configured preference, not the temporary tier. The first request of a session, including one after a resume, never counts as an idle gap. The gap is measured between request starts, so a tool run longer than 5 minutes counts as idle, which matches what the provider saw.
+
+A 1h write costs twice the input rate and a 5m write 1.25 times, so the switch pays off when the rewrite it avoids is common; gaps longer than one hour gain nothing.
+
 ### Second instruction block
 
 The leading system prompt can go out as two instruction blocks, each with its own breakpoint and the instruction retention. The first block holds the sections that depend only on the tool set (preamble, tools, rules, docs). The second starts at the first section after `docs` that is present (`addendum`, `project_context`, `skills`, `cwd`, then custom sections such as `octocode`) and holds that section and every later one. Sessions and subagents that share a tool set but differ in project context then still read the first block from cache. The two blocks concatenate to exactly the single-block prompt.
@@ -143,6 +151,11 @@ Token costs are provider-specific catalog estimates. Cached input contributes to
 
 A bounded live OpenAI check on 2026-10-21 used the catalog's `gpt-5.6-luna`: the first request reported 1,769 tokens written with a 12h lifetime, and an immediate repeat reported 1,776 cached tokens read. The two requests cost approximately $0.000935 by catalog pricing. This confirms accepted controls and immediate reuse, not a measured 12-hour idle hit. Anthropic, Grok and OpenCode were checked against docs and offline adapter tests, not live credentials.
 
+### Provider-reported miss reasons
+
+Set `OCTOCODE_CACHE_DIAGNOSTICS=on` (also `1` or `true`) to ask the Anthropic API why a request could not reuse the previous request's prefix. Every request then carries `diagnostics.previous_message_id` (the id of the conversation's previous Anthropic reply, `null` on the first request), and the API reports the earliest divergence: `model_changed`, `system_changed`, `tools_changed` or `messages_changed`, with the approximate input tokens that would have been read. The reply records it as a `cache_miss` diagnostic, and a counted miss in the transcript and `/status` then reads `History cache miss: provider reports tools changed` instead of an inferred cause. `previous_message_not_found`, `unavailable` and a still-pending comparison record nothing.
+
+The field is sent only to `api.anthropic.com` with the `anthropic` provider; Bedrock, Vertex, OpenCode and other gateways never receive it, because the feature exists on the Claude API alone and a gateway may reject an unknown body field. It is off by default and has been verified against the SDK types and the [documented response format](https://platform.claude.com/docs/en/build-with-claude/cache-diagnostics), not against a live account. Fingerprints are retained only briefly, so the comparison is useful between closely spaced requests. A miss after an idle gap longer than the cache lifetime reports no divergence (the request matched; the entry had expired), which separates an expired entry from a changed prefix.
 
 ### Refresh controls and measurements
 

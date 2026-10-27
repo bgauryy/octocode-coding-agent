@@ -4,6 +4,7 @@ confidence: medium
 question: What is the smallest entity model that supports composed work, useful history, and multiple interfaces?
 next: Use the live backlog board and validate additional entity resolvers only when a workflow needs them.
 ---
+
 # Entities and composition
 
 ## Summary
@@ -26,41 +27,41 @@ The first implementation includes epic/task/bug/research types, parent hierarchy
 
 These are responsibilities inside the existing application, not a request for a new module or table per row. Paths below are relative to `packages/coding-agent/src/` unless stated otherwise.
 
-| Collections / concepts | Owner | What deserves identity or storage |
-| --- | --- | --- |
-| `backlogs` | `octocode/backlog/` | Durable work items; child `comments`, `completions`, and `links`; append-only `audits`. Owns hierarchy, claims, state changes, and history. |
-| Application events and dispatch | `core/application/` | Shared session projection and dispatch; local terminal capability and serializable browser capability. |
-| `commands`, `receipts`, transport | `octocode/workspace/` | Authenticated host adapter and durable delivery; delegates execution to the application port and existing team/backlog owners. |
-| Browser views and state | `packages/webview/` | Rendering and interaction, with no database or agent execution imports. |
-| Shared contracts | `packages/contacts/` | Entity schemas, records, and workspace protocols shared by host and UI. |
-| `sessions`, `entries` | `core/session-manager.ts`, `core/agent-session.ts` | Durable conversation tree and session lifecycle. The SQL session index enriches the transcript; it does not replace it. |
-| `agents`, `profiles`, `runs`, `reports` | `octocode/subagents/`; presence in `octocode/team/` | Profiles are definitions; agents are executors; runs are attempts; reports are results. Presence is a temporary view. Preserve each distinction without four new stores. |
-| `messages`, `deliveries` | `octocode/team/` | One team message has many recipient deliveries. Delivered and answered are separate facts. Transcript messages remain session entries. |
-| `memories` | `octocode/memory/` | Reusable knowledge with scope, provenance, and existing trust/deduplication rules. |
-| `files`, `artifacts`, `checkpoints`, `jobs` | `octocode/files/` and producing modules | Files are references, artifacts are produced outputs, checkpoints support recovery, jobs track shell execution. No generic file catalog is needed. |
-| `repositories`, `workspaces`, `leases`, `edits` | `octocode/shared/home.ts`, `octocode/team/`, worktree owner | Scope values, concrete checkouts, temporary reservations, and observed edits. A reservation is not task ownership. |
-| `questions`, `approvals`, `audits`, `hooks` | `octocode/ask/`, `permission/`, `hooks/` | Preserve distinct interaction and authorization rules. A message or link never grants permission. |
-| `tools`, `toolCalls` | Agent loop, core, native/MCP adapters | Capability definitions versus executions. Nested calls retain their parent call identity. |
-| `connections`, `receipts`, `tabs`, `downloads` | `octocode/api/`, `external/`, `browser/`, RPC and MCP adapters | Scoped execution resources; preserve their existing expiry and recovery behavior. Credentials are never reference metadata. |
-| `models`, `providers`, `settings`, `skills` | AI package and core resource/configuration owners | Configuration and capability definitions; record resolved versions on executions when needed. |
-| `traces`, `metrics`, boards, feeds, counters | Telemetry and presentation owners | Diagnostics or computed projections. They do not become authoritative work records. |
+| Collections / concepts                          | Owner                                                          | What deserves identity or storage                                                                                                                                        |
+| ----------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `backlogs`                                      | `octocode/backlog/`                                            | Durable work items; child `comments`, `completions`, and `links`; append-only `audits`. Owns hierarchy, claims, state changes, and history.                              |
+| Application events and dispatch                 | `core/application/`                                            | Shared session projection and dispatch; local terminal capability and serializable browser capability.                                                                   |
+| `commands`, `receipts`, transport               | `octocode/workspace/`                                          | Authenticated host adapter and durable delivery; delegates execution to the application port and existing team/backlog owners.                                           |
+| Browser views and state                         | `packages/webview/`                                            | Rendering and interaction, with no database or agent execution imports.                                                                                                  |
+| Shared contracts                                | `packages/contacts/`                                           | Entity schemas, records, and workspace protocols shared by host and UI.                                                                                                  |
+| `sessions`, `entries`                           | `core/session-manager.ts`, `core/agent-session.ts`             | Durable conversation tree and session lifecycle. The SQL session index enriches the transcript; it does not replace it.                                                  |
+| `agents`, `profiles`, `runs`, `reports`         | `octocode/subagents/`; presence in `octocode/team/`            | Profiles are definitions; agents are executors; runs are attempts; reports are results. Presence is a temporary view. Preserve each distinction without four new stores. |
+| `messages`, `deliveries`                        | `octocode/team/`                                               | One team message has many recipient deliveries. Delivered and answered are separate facts. Transcript messages remain session entries.                                   |
+| `memories`                                      | `octocode/memory/`                                             | Reusable knowledge with scope, provenance, and existing trust/deduplication rules.                                                                                       |
+| `files`, `artifacts`, `checkpoints`, `jobs`     | `octocode/files/` and producing modules                        | Files are references, artifacts are produced outputs, checkpoints support recovery, jobs track shell execution. No generic file catalog is needed.                       |
+| `repositories`, `workspaces`, `leases`, `edits` | `octocode/shared/home.ts`, `octocode/team/`, worktree owner    | Scope values, concrete checkouts, temporary reservations, and observed edits. A reservation is not task ownership.                                                       |
+| `questions`, `approvals`, `audits`, `hooks`     | `octocode/ask/`, `permission/`, `hooks/`                       | Preserve distinct interaction and authorization rules. A message or link never grants permission.                                                                        |
+| `tools`, `toolCalls`                            | Agent loop, core, native/MCP adapters                          | Capability definitions versus executions. Nested calls retain their parent call identity.                                                                                |
+| `connections`, `receipts`, `tabs`, `downloads`  | `octocode/api/`, `external/`, `browser/`, RPC and MCP adapters | Scoped execution resources; preserve their existing expiry and recovery behavior. Credentials are never reference metadata.                                              |
+| `models`, `providers`, `settings`, `skills`     | AI package and core resource/configuration owners              | Configuration and capability definitions; record resolved versions on executions when needed.                                                                            |
+| `traces`, `metrics`, boards, feeds, counters    | Telemetry and presentation owners                              | Diagnostics or computed projections. They do not become authoritative work records.                                                                                      |
 
 Keep shared code limited to reference values and genuinely reused utilities. The application composition root connects owners. UI adapters consume data and invoke owner operations; they do not update SQL themselves. Run/result data types live in `subagents/run-types.ts`, with compatibility exports from `subagents/render.ts`.
 
 ### Backlogs: small at capture, useful at completion
 
-| Fields | Requirement |
-| --- | --- |
-| `title` | Required to capture an item. |
-| `type` | `task` by default; `epic`, `bug`, or `research` when useful. An epic groups work toward a larger goal. Use `epic` instead of the previously proposed `plan` type; keep `plan` as optional approach text. |
-| `reason`, `goal` | Why this matters and what success looks like. Required before starting or completing new work; optional for human capture. Existing agent creation still requires a goal. |
-| `state` | Existing `backlog`, `todo`, `ongoing`, `done`. |
-| `parentId` | Optional single parent in the same repository. No cycles. Any item may contain smaller work; `epic` identifies a larger outcome, not a separate storage model. |
-| `priority`, `tags`, `body`, `paths`, `evidence`, `plan` | Existing optional planning details. `paths` describes intended scope, including directories; completion `files` records actual related files. |
-| `dependsOn` | Optional array of scoped backlog references; empty by default. Names prerequisites, not children. |
-| `links` | Optional typed relationships. Existing `from` remains provenance, separate from hierarchy. |
-| `comments`, `audits`, `completions` | Child collections, loaded in detail/history views rather than embedded in every board card. |
-| IDs, claim, authors, times, `version` | Supplied or managed by the runtime. Do not ask users to fill these in. |
+| Fields                                                  | Requirement                                                                                                                                                                                              |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`                                                 | Required to capture an item.                                                                                                                                                                             |
+| `type`                                                  | `task` by default; `epic`, `bug`, or `research` when useful. An epic groups work toward a larger goal. Use `epic` instead of the previously proposed `plan` type; keep `plan` as optional approach text. |
+| `reason`, `goal`                                        | Why this matters and what success looks like. Required before starting or completing new work; optional for human capture. Existing agent creation still requires a goal.                                |
+| `state`                                                 | Existing `backlog`, `todo`, `ongoing`, `done`.                                                                                                                                                           |
+| `parentId`                                              | Optional single parent in the same repository. No cycles. Any item may contain smaller work; `epic` identifies a larger outcome, not a separate storage model.                                           |
+| `priority`, `tags`, `body`, `paths`, `evidence`, `plan` | Existing optional planning details. `paths` describes intended scope, including directories; completion `files` records actual related files.                                                            |
+| `dependsOn`                                             | Optional array of scoped backlog references; empty by default. Names prerequisites, not children.                                                                                                        |
+| `links`                                                 | Optional typed relationships. Existing `from` remains provenance, separate from hierarchy.                                                                                                               |
+| `comments`, `audits`, `completions`                     | Child collections, loaded in detail/history views rather than embedded in every board card.                                                                                                              |
+| IDs, claim, authors, times, `version`                   | Supplied or managed by the runtime. Do not ask users to fill these in.                                                                                                                                   |
 
 `reason` is the user-facing name for existing `why`. Keep one stored meaning; adapt the name at the boundary and reject conflicting aliases. Do not add a second competing column.
 
@@ -94,11 +95,11 @@ Expose `dependsOn` as a convenient array in commands and read models. Persist ea
 
 ```json
 {
-  "id": "B22",
-  "type": "task",
-  "title": "Build the Kanban view",
-  "parentId": "B20",
-  "dependsOn": [{"resource":"backlogs","repositoryKey":"repo-a","id":"B21"}]
+	"id": "B22",
+	"type": "task",
+	"title": "Build the Kanban view",
+	"parentId": "B20",
+	"dependsOn": [{ "resource": "backlogs", "repositoryKey": "repo-a", "id": "B21" }]
 }
 ```
 
@@ -118,9 +119,9 @@ Use a discriminated union of owner-specific references, with plural resource nam
 
 ```json
 [
-  {"relation":"depends_on","target":{"resource":"backlogs","repositoryKey":"repo-a","id":"B12"}},
-  {"relation":"related","target":{"resource":"sessions","namespace":"local","id":"session-123"}},
-  {"relation":"evidence","target":{"resource":"files","repositoryKey":"repo-a","path":"src/router.ts"}}
+	{ "relation": "depends_on", "target": { "resource": "backlogs", "repositoryKey": "repo-a", "id": "B12" } },
+	{ "relation": "related", "target": { "resource": "sessions", "namespace": "local", "id": "session-123" } },
+	{ "relation": "evidence", "target": { "resource": "files", "repositoryKey": "repo-a", "path": "src/router.ts" } }
 ]
 ```
 
@@ -136,13 +137,13 @@ Finishing asks for **a quick summary and related files**. The runtime supplies i
 
 ```json
 {
-  "operationKey": "board-completion-1",
-  "summary": "Added searchable backlog columns and task details.",
-  "files": [
-    {"path":"src/board.ts","role":"changed"},
-    {"path":"test/board.test.ts","role":"reviewed"}
-  ],
-  "verification":{"status":"passed","summary":"Board tests passed."}
+	"operationKey": "board-completion-1",
+	"summary": "Added searchable backlog columns and task details.",
+	"files": [
+		{ "path": "src/board.ts", "role": "changed" },
+		{ "path": "test/board.test.ts", "role": "reviewed" }
+	],
+	"verification": { "status": "passed", "summary": "Board tests passed." }
 }
 ```
 
@@ -213,13 +214,13 @@ The event feed is a bounded recent projection (up to 200 events and roughly 256 
 
 ## Necessity review and rollout
 
-| Decision | Reason |
-| --- | --- |
-| Add type, parentage, completions, and scoped links | Directly supports plans, traceable results, and the requested composition. |
-| Reuse existing reason/goal, stages, stores, session history, claims, and memory | Avoids competing sources of truth and migration work without product value. |
-| Keep rich planning, lessons, file revisions, and execution links optional | Useful when available; unnecessary friction for routine tasks. |
-| Defer archive/blocking, broad resolvers, and durable execution expansion | Each needs its own lifecycle and compatibility proof; none is a prerequisite for basic hierarchy and result recording. |
-| Reject a universal entity table, universal states, mandatory templates, and a new files database | These combine unlike responsibilities or duplicate existing data. |
+| Decision                                                                                         | Reason                                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Add type, parentage, completions, and scoped links                                               | Directly supports plans, traceable results, and the requested composition.                                             |
+| Reuse existing reason/goal, stages, stores, session history, claims, and memory                  | Avoids competing sources of truth and migration work without product value.                                            |
+| Keep rich planning, lessons, file revisions, and execution links optional                        | Useful when available; unnecessary friction for routine tasks.                                                         |
+| Defer archive/blocking, broad resolvers, and durable execution expansion                         | Each needs its own lifecycle and compatibility proof; none is a prerequisite for basic hierarchy and result recording. |
+| Reject a universal entity table, universal states, mandatory templates, and a new files database | These combine unlike responsibilities or duplicate existing data.                                                      |
 
 Contracts live in [contacts `backlogs.ts`](../packages/contacts/src/backlogs.ts); the existing store owns transactions and lifecycle checks. The [local server](../packages/coding-agent/src/octocode/workspace/server.ts), agent tool, and terminal commands call that store. Additive `backlog_completions` and `backlog_links` tables retain results and relationships. Do not convert `from` into parentage or fabricate completions for existing done items; label those results as unrecorded.
 
@@ -231,19 +232,19 @@ This direction is consistent with small [issue creation forms](https://linear.ap
 
 Acceptance checks for the implementation:
 
-| Given / when | Observable result |
-| --- | --- |
-| Human captures a title | Saved with defaults and no planning questionnaire. |
+| Given / when                                                  | Observable result                                                                              |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Human captures a title                                        | Saved with defaults and no planning questionnaire.                                             |
 | Writers create/reparent children or dependencies concurrently | No hierarchy cycles, combined waiting deadlocks, cross-repository parents, or partial history. |
-| Dependencies are omitted, cleared, or replaced | Existing edges stay unchanged, clear, or replace atomically; no duplicate source of truth. |
-| A prerequisite finishes or reopens | Readiness updates; downstream history remains intact and affected work is flagged. |
-| Item needs several agents, sessions, and files | Multiple links/files work without duplicating the item or overwriting earlier context. |
-| Completion retries or a write fails | One result, or no partial state transition. |
-| Work is reopened or corrected | Prior goals/results remain readable; current state is clear. |
-| Parent has unfinished descendants | Closing is refused with the outstanding work identified. |
-| Target expires or an agent name is reused | No link resolves to an unrelated record. |
-| Older writer modifies upgraded data | Proven compatible behavior or explicit refusal, never silent loss of meaning. |
-| Tool, terminal, and web show an item | Same state, hierarchy, result, and permissions; safe rendering. |
+| Dependencies are omitted, cleared, or replaced                | Existing edges stay unchanged, clear, or replace atomically; no duplicate source of truth.     |
+| A prerequisite finishes or reopens                            | Readiness updates; downstream history remains intact and affected work is flagged.             |
+| Item needs several agents, sessions, and files                | Multiple links/files work without duplicating the item or overwriting earlier context.         |
+| Completion retries or a write fails                           | One result, or no partial state transition.                                                    |
+| Work is reopened or corrected                                 | Prior goals/results remain readable; current state is clear.                                   |
+| Parent has unfinished descendants                             | Closing is refused with the outstanding work identified.                                       |
+| Target expires or an agent name is reused                     | No link resolves to an unrelated record.                                                       |
+| Older writer modifies upgraded data                           | Proven compatible behavior or explicit refusal, never silent loss of meaning.                  |
+| Tool, terminal, and web show an item                          | Same state, hierarchy, result, and permissions; safe rendering.                                |
 
 Source review: [backlog store](../packages/coding-agent/src/octocode/backlog/store.ts), [snapshot](../packages/coding-agent/src/octocode/backlog/snapshot.ts), [database schema](../packages/coding-agent/src/octocode/agentdb/schema.ts), [team contracts](../packages/coding-agent/src/octocode/team/model.ts), [run/report contracts](../packages/coding-agent/src/octocode/subagents/render.ts), and [session manager](../packages/coding-agent/src/core/session-manager.ts). Run relevant backlog/storage/consumer tests and the repository check when implementing these contracts.
 
@@ -262,14 +263,14 @@ Archive/blocking metadata, automatic memory promotion, cross-repository dependen
 
 These are design-review judgments for the local workspace, not measured usability scores or a certification of every subsystem.
 
-| Area | Before this UI pass | Now | Basis and remaining limit |
-| --- | --- | --- | --- |
-| Entity composition | 8/10 | 8/10 | Separate comments, audit history, relationships, and command receipts; cross-repository references remain outside scope. |
-| Agent/web/terminal boundary | 8/10 | 8/10 | Shared report data and session operations; permission prompts still require the terminal. |
-| Board and navigation | 8/10 | 8/10 | Board, table, tree, attention, agents, activity, audit; no drag-and-drop ordering. |
-| Output readability | 5/10 | 8/10 | Semantic result cards, summaries, files, explicit failure labels, filters, and pause/resume. Skills appear through their tool/message events; there is no separate skill-run entity. |
-| Frontend maintainability | 5/10 | 6/10 | Typed Zustand store and reproducible browser bundle; much of the existing renderer is still inline JavaScript. |
-| Accessibility | 6/10 | 7/10 | Text accompanies color, focus indicators, keyboard controls, reduced-motion styling, theme-aware form fields; no complete screen-reader or WCAG audit. |
+| Area                        | Before this UI pass | Now  | Basis and remaining limit                                                                                                                                                            |
+| --------------------------- | ------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Entity composition          | 8/10                | 8/10 | Separate comments, audit history, relationships, and command receipts; cross-repository references remain outside scope.                                                             |
+| Agent/web/terminal boundary | 8/10                | 8/10 | Shared report data and session operations; permission prompts still require the terminal.                                                                                            |
+| Board and navigation        | 8/10                | 8/10 | Board, table, tree, attention, agents, activity, audit; no drag-and-drop ordering.                                                                                                   |
+| Output readability          | 5/10                | 8/10 | Semantic result cards, summaries, files, explicit failure labels, filters, and pause/resume. Skills appear through their tool/message events; there is no separate skill-run entity. |
+| Frontend maintainability    | 5/10                | 6/10 | Typed Zustand store and reproducible browser bundle; much of the existing renderer is still inline JavaScript.                                                                       |
+| Accessibility               | 6/10                | 7/10 | Text accompanies color, focus indicators, keyboard controls, reduced-motion styling, theme-aware form fields; no complete screen-reader or WCAG audit.                               |
 
 ### Library decision
 

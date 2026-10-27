@@ -6,13 +6,13 @@ See [interface architecture](INTERFACE_ARCHITECTURE.md) for current application 
 
 ## Library decisions
 
-| Library | Installed | Decision |
-| --- | --- | --- |
-| highlight.js | 11.12.0 | Updated from 10.7.3; use the supported core import and selected languages only. |
-| Marked | 18.1.1 | Updated from 18.0.11; keep Markdown parsing separate from sanitization. |
-| DOMPurify | 3.4.17 | Already the latest registry release checked; retain strict tag/attribute restrictions. |
-| Zustand | 5.0.15 | Latest checked is 5.0.16, but repository package quarantine blocks it. Do not bypass that policy. |
-| jsdom (tests only) | 30.1.3 | Executes the actual page in regression tests; does not ship in the browser bundle. |
+| Library            | Installed | Decision                                                                                          |
+| ------------------ | --------- | ------------------------------------------------------------------------------------------------- |
+| highlight.js       | 11.12.0   | Updated from 10.7.3; use the supported core import and selected languages only.                   |
+| Marked             | 18.1.1    | Updated from 18.0.11; keep Markdown parsing separate from sanitization.                           |
+| DOMPurify          | 3.4.17    | Already the latest registry release checked; retain strict tag/attribute restrictions.            |
+| Zustand            | 5.0.15    | Latest checked is 5.0.16, but repository package quarantine blocks it. Do not bypass that policy. |
+| jsdom (tests only) | 30.1.3    | Executes the actual page in regression tests; does not ship in the browser bundle.                |
 
 Versions were checked against the npm registry. highlight.js also identifies 11.12.0 in its [official releases](https://highlightjs.org/news). Dependencies are pinned; regenerate the browser bundle after changes and run the package build, tests, browser-import check, and generated-bundle check.
 
@@ -24,19 +24,19 @@ For this app, retain the existing DOM renderer with Zustand. [Radix](https://www
 
 ## Flow review
 
-| Flow | Evidence and outcome |
-| --- | --- |
-| Capture and edit work | Title-first editor; optional relationships/details; completion evidence remains explicit. Unsaved editor drafts now survive navigation within a tab. |
-| Stale edits | Restored drafts keep their original version. The host rejects conflicting saves; the UI explains how to copy changes and discard the old draft before editing current data. |
-| Comments | Stored as separate backlog-linked entities; tab-local drafts survive navigation. Posting a comment does not contact an agent. |
-| Message an agent | Recipient required; empty/whitespace messages rejected locally. Draft and request ID survive navigation; only accepted requests clear the draft. |
-| Start/delegate/stop | Existing authenticated host operations and durable receipts remain authoritative. Accepted requests are not presented as completed work. Permissions still belong to the host. |
-| Observe results | Markdown is default; code supports language labels, highlighting, copy, wrap and source inspection. Cached result nodes preserve inspection state and focused controls across appended events. |
-| Live updates | Identical event snapshots retain stable state; pause/resume remains available. Only retained event cards are cached. Session changes clear drafts and old cached results. |
-| Completion and relationships | Existing host tests cover goal/reason requirements, completion records, dependency rules and version conflicts. The UI does not invent completion percentages for agents. |
-| Audit and recovery | Per-item audit, workspace history and explicit request receipts remain available. Existing host tests cover authorization, deduplication and failure behavior. |
-| Keyboard dialogs | Disabled controls are excluded from focus wrapping. Browser checks verified Shift+Tab containment, Escape, restored draft and return focus. |
-| Rich-text security | Rendered-page tests verify scripts/images/event attributes and executable links stay inert; Markdown and highlighted code pass through the sanitizer. |
+| Flow                         | Evidence and outcome                                                                                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capture and edit work        | Title-first editor; optional relationships/details; completion evidence remains explicit. Unsaved editor drafts now survive navigation within a tab.                                           |
+| Stale edits                  | Restored drafts keep their original version. The host rejects conflicting saves; the UI explains how to copy changes and discard the old draft before editing current data.                    |
+| Comments                     | Stored as separate backlog-linked entities; tab-local drafts survive navigation. Posting a comment does not contact an agent.                                                                  |
+| Message an agent             | Recipient required; empty/whitespace messages rejected locally. Draft and request ID survive navigation; only accepted requests clear the draft.                                               |
+| Start/delegate/stop          | Existing authenticated host operations and durable receipts remain authoritative. Accepted requests are not presented as completed work. Permissions still belong to the host.                 |
+| Observe results              | Markdown is default; code supports language labels, highlighting, copy, wrap and source inspection. Cached result nodes preserve inspection state and focused controls across appended events. |
+| Live updates                 | Identical event snapshots retain stable state; pause/resume remains available. Only retained event cards are cached. Session changes clear drafts and old cached results.                      |
+| Completion and relationships | Existing host tests cover goal/reason requirements, completion records, dependency rules and version conflicts. The UI does not invent completion percentages for agents.                      |
+| Audit and recovery           | Per-item audit, workspace history and explicit request receipts remain available. Existing host tests cover authorization, deduplication and failure behavior.                                 |
+| Keyboard dialogs             | Disabled controls are excluded from focus wrapping. Browser checks verified Shift+Tab containment, Escape, restored draft and return focus.                                                    |
+| Rich-text security           | Rendered-page tests verify scripts/images/event attributes and executable links stay inert; Markdown and highlighted code pass through the sanitizer.                                          |
 
 The interaction approach follows [Fluent's agent guidance](https://fluent2.microsoft.design/responsible-AI): make status and next steps understandable and allow explicit steering. Dialog behavior is checked against the [WAI modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
 
@@ -78,13 +78,13 @@ The feed keeps at most 200 events, so it is not virtualized. No authoritative it
 
 **Verification.** All results are from this run:
 
-| Check | Result |
-| --- | --- |
-| Webview tests: model, live model, component, page flows, security, state, stream, transport | 60 passed |
-| Host backlog/workspace tests (four files) | 41 passed |
-| Repository script tests | 25 passed |
-| Browser smoke, bundle freshness, package boundaries, Biome | Passed |
-| Repository `tsc --noEmit` | Reports only two errors in `coding-agent/src/octocode/hooks/register.ts`; that file had uncommitted changes before this work, and the errors remain with this change's `tsconfig.json` edit reverted |
+| Check                                                                                       | Result                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Webview tests: model, live model, component, page flows, security, state, stream, transport | 60 passed                                                                                                                                                                                            |
+| Host backlog/workspace tests (four files)                                                   | 41 passed                                                                                                                                                                                            |
+| Repository script tests                                                                     | 25 passed                                                                                                                                                                                            |
+| Browser smoke, bundle freshness, package boundaries, Biome                                  | Passed                                                                                                                                                                                               |
+| Repository `tsc --noEmit`                                                                   | Reports only two errors in `coding-agent/src/octocode/hooks/register.ts`; that file had uncommitted changes before this work, and the errors remain with this change's `tsconfig.json` edit reverted |
 
 Real Chrome (headless, driven over the DevTools Protocol) rendered:
 
@@ -131,13 +131,13 @@ Not verified: screen-reader announcements with VoiceOver or NVDA, touch interact
 
 **Verification.**
 
-| Check | Result |
-| --- | --- |
-| Webview tests | 83 passed |
-| Contacts tests | 4 passed |
+| Check                                                                | Result    |
+| -------------------------------------------------------------------- | --------- |
+| Webview tests                                                        | 83 passed |
+| Contacts tests                                                       | 4 passed  |
 | Application port, nested tool calls and the new end-to-end tool test | 17 passed |
-| Workspace, API and backlog host tests | 72 passed |
-| Repository script tests | 25 passed |
-| Browser smoke, bundle freshness, boundaries, Biome | Passed |
+| Workspace, API and backlog host tests                                | 72 passed |
+| Repository script tests                                              | 25 passed |
+| Browser smoke, bundle freshness, boundaries, Biome                   | Passed    |
 
 Repository `tsc` still reports only the two pre-existing `hooks/register.ts` errors. Real Chrome against a mock host using the real frame shapes showed settled workspace calls, hints on both paths, `octocode/localSearch`, a rendered diff, one progress card per agent and no placeholder messages. Native Octocode tools (file, agent, web, browser, MCP) were reviewed from source and covered by unit tests on their real formats; only the built-in tools ran in the end-to-end session.

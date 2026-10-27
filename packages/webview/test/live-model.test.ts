@@ -196,7 +196,7 @@ describe("render efficiency", () => {
 		]);
 		expect(feed.map((entry) => entry.kind)).toEqual(["event", "tools", "event"]);
 		const group = feed[1];
-		expect(group.kind === "tools" && group.summary).toEqual({ total: 4, running: 1, failed: 1, done: 3 });
+		expect(group.kind === "tools" && group.summary).toEqual({ total: 4, running: 1, failed: 1, done: 3, notRun: 0 });
 		expect(groupFeed([{ id: 1, at: 1, type: "tool.result", text: "solo" }])[0].kind).toBe("event");
 	});
 });
@@ -315,7 +315,7 @@ describe("tool calls as the host really sends them", () => {
 			{ id: 4, at: 4, command: "bash", output: "", status: "running" },
 		]);
 		expect(groupFeed([...events].reverse()).find((entry) => entry.kind === "tools")).toMatchObject({
-			summary: { total: 3, running: 2, failed: 1, done: 1 },
+			summary: { total: 3, running: 2, failed: 1, done: 1, notRun: 0 },
 		});
 	});
 

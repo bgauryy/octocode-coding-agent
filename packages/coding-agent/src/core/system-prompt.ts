@@ -98,6 +98,7 @@ function buildRules(
 	deferredTools: string[],
 	toolGuidelines: Record<string, string[]>,
 	promptGuidelines: string[],
+	includeFloor: boolean,
 ): string {
 	const rules: string[] = [];
 	const seen = new Set<string>();
@@ -116,9 +117,11 @@ function buildRules(
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
-	// Always added: sessions without an `octocode` section need them as their only floor; with it, Octocode's Communication policy refines, not replaces, these.
-	addRule("Be concise in your responses");
-	addRule("Refer to files by their paths");
+	// The floor for sessions without Octocode's Communication policy, which says the same with more detail.
+	if (includeFloor) {
+		addRule("Be concise in your responses");
+		addRule("Refer to files by their paths");
+	}
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
 
@@ -157,13 +160,18 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		const tools =
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
 		promptSections.tools = tools;
-		promptSections.rules = buildRules(declaredTools, deferredTools, toolGuidelines, promptGuidelines);
+		promptSections.rules = buildRules(
+			declaredTools,
+			deferredTools,
+			toolGuidelines,
+			promptGuidelines,
+			!customSections.octocode_communication,
+		);
 		promptSections.docs = `Octocode documentation (read only when the user asks about Octocode itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: ${getReadmePath()}
-- Additional docs: ${getDocsPath()}; the topic-to-page mapping for every Octocode subject is its docs/index.md
+- Additional docs: ${getDocsPath()}; docs/index.md maps every Octocode topic to its page
 - Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
-- When reading Octocode docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When working on Octocode topics, read the docs and examples that define the behavior, and follow .md cross-references that resolve a task dependency before implementing; read a complete section when its conditions or exceptions affect the change.`;
+- Resolve docs/... under Additional docs and examples/... under Examples, not the current working directory. Read the docs and examples that define the behavior, follow .md cross-references a task depends on, and read a whole section when its conditions or exceptions matter.`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;

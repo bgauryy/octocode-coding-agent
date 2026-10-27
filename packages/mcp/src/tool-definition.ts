@@ -23,9 +23,32 @@ import {
 } from "./tools.ts";
 
 const OUTPUT_PREVIEW_LINES = 5;
+
+const declaresReason = (schema: Record<string, unknown>): boolean => {
+	const properties = schema.properties;
+	return typeof properties === "object" && properties !== null && "reason" in properties;
+};
+
+/**
+ * Every native tool takes a required `reason`, so models add one to MCP calls too; a server schema that forbids extra
+ * keys then rejects the call. The server never sees the key, so dropping it changes no request it could accept.
+ */
+const dropReason = <T>(args: T): T => {
+	if (typeof args !== "object" || args === null || Array.isArray(args) || !("reason" in args)) return args;
+	const { reason: _reason, ...rest } = args as Record<string, unknown>;
+	return rest as T;
+};
+export interface PreparedMcpCall {
+	args: Record<string, unknown>;
+	/** Applied to the server's result before `convertResult`. */
+	review?: (result: CallToolResult) => CallToolResult;
+}
+
 export interface McpToolPresentation extends ToolRenderers {
 	label?: string;
 	outputSchema?: TSchema;
+	/** Rewrites the arguments just before the server call (the model-facing schema is unchanged) and may review the raw result. */
+	prepareCall?: (args: Record<string, unknown>, ctx: ExtensionContext) => PreparedMcpCall | Promise<PreparedMcpCall>;
 	convertResult: (result: CallToolResult, ctx: ExtensionContext) => Promise<AgentToolResult<McpToolDetails>>;
 }
 
@@ -53,6 +76,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 			? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
 			: description,
 		parameters: toParameters(tool.inputSchema),
+		...(declaresReason(tool.inputSchema) ? {} : { prepareArguments: dropReason }),
 		...(options.presentation
 			? options.presentation.outputSchema
 				? { outputSchema: options.presentation.outputSchema }
@@ -65,7 +89,9 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 		),
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const client = await options.getClient();
-			const result = await client.callTool(tool.name, (params ?? {}) as Record<string, unknown>, {
+			const requested = (params ?? {}) as Record<string, unknown>;
+			const call = (await options.presentation?.prepareCall?.(requested, ctx)) ?? { args: requested };
+			const reply = await client.callTool(tool.name, call.args, {
 				signal,
 				timeoutMs: options.timeoutMs,
 				onProgress: (progress) => {
@@ -74,6 +100,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 					onUpdate?.({ content: [{ type: "text", text }], details: { server, tool: tool.name } });
 				},
 			});
+			const result = call.review ? call.review(reply) : reply;
 			return options.presentation
 				? options.presentation.convertResult(result, ctx)
 				: convertMcpResult(server, tool.name, result);

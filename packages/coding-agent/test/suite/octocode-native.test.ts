@@ -131,6 +131,15 @@ it("runs native tools and releases team resources across a real session reload",
 					}),
 					{ stopReason: "toolUse" },
 				),
+				// An edit with no passing check since would make the run continue once with a verification note.
+				fauxAssistantMessage(
+					fauxToolCall("bash", {
+						command: `grep -q "updated ${run}" run-${run}.txt`,
+						verify: true,
+						reason: "Verify the edit",
+					}),
+					{ stopReason: "toolUse" },
+				),
 				(context) => {
 					prompts.push(getCurrentSystemPrompt(context.messages));
 					return fauxAssistantMessage(`completed ${run}`);

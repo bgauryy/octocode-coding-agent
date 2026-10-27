@@ -30,12 +30,12 @@ octocode -e npm:@example/octocode-tools
 
 ## Choose a source
 
-| Source | Example | Behavior |
-|---|---|---|
-| npm | `npm:@example/octocode-tools@1.0.0` | Installed under the Octocode npm directory |
-| git | `git:github.com/example/octocode-tools@v1` | Cloned and reconciled to the selected ref |
-| URL | `https://github.com/example/octocode-tools` | Treated as a git source |
-| Local | `./octocode-tools` | Loaded from the resolved path without copying |
+| Source | Example                                     | Behavior                                      |
+| ------ | ------------------------------------------- | --------------------------------------------- |
+| npm    | `npm:@example/octocode-tools@1.0.0`         | Installed under the Octocode npm directory    |
+| git    | `git:github.com/example/octocode-tools@v1`  | Cloned and reconciled to the selected ref     |
+| URL    | `https://github.com/example/octocode-tools` | Treated as a git source                       |
+| Local  | `./octocode-tools`                          | Loaded from the resolved path without copying |
 
 Versioned npm specifications are pinned. Git tags and commits are also pinned; package updates reconcile the checkout but do not move a configured ref.
 
@@ -60,13 +60,13 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 
 ```json
 {
-  "name": "my-octocode-package",
-  "octocode": {
-    "extensions": ["./src/extension.ts"],
-    "skills": ["./resources/skills"],
-    "prompts": ["./resources/prompts/*.md"],
-    "themes": ["./resources/themes/*.json"]
-  }
+	"name": "my-octocode-package",
+	"octocode": {
+		"extensions": ["./src/extension.ts"],
+		"skills": ["./resources/skills"],
+		"prompts": ["./resources/prompts/*.md"],
+		"themes": ["./resources/themes/*.json"]
+	}
 }
 ```
 
@@ -99,14 +99,14 @@ The object form in settings narrows which resources load from a package:
 
 ```json
 {
-  "packages": [
-    {
-      "source": "npm:@example/octocode-tools",
-      "extensions": ["extensions/*.ts", "!extensions/legacy.ts"],
-      "skills": [],
-      "prompts": ["prompts/review.md"]
-    }
-  ]
+	"packages": [
+		{
+			"source": "npm:@example/octocode-tools",
+			"extensions": ["extensions/*.ts", "!extensions/legacy.ts"],
+			"skills": [],
+			"prompts": ["prompts/review.md"]
+		}
+	]
 }
 ```
 

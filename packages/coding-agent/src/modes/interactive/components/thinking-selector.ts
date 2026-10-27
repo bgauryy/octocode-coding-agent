@@ -11,7 +11,7 @@ import {
 	Spacer,
 	Text,
 } from "@octocodeai/octocode-tui";
-import { getSelectListTheme, theme } from "../theme/theme.ts";
+import { getSelectListTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 

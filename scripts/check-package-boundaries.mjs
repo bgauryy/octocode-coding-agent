@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sourceWorkspaceGroups } from "./source-workspaces.mjs";
+import { HOST_IMPORT_BASELINE } from "./host-import-baseline.mjs";
+import { LAYER_RULES } from "./layer-import-baseline.mjs";
 import { moduleSpecifiers } from "./module-specifiers.mjs";
 
 export const PACKAGE_POLICY = {
@@ -17,7 +19,13 @@ export const PACKAGE_POLICY = {
 	webview: ["contacts"],
 };
 
-export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY) {
+export function checkPackageBoundaries(
+	packages,
+	sources,
+	policy = PACKAGE_POLICY,
+	hostImportBaseline = HOST_IMPORT_BASELINE,
+	layerRules = LAYER_RULES,
+) {
 	const { hosts, issues } = sourceWorkspaceGroups(packages);
 	const unit = (name) => hosts.get(name) ?? name;
 	const names = new Map(Object.entries(packages).map(([dir, manifest]) => [manifest.name, dir]));
@@ -42,15 +50,28 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 			let target = names.get(
 				specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0],
 			);
+			let reached = specifier;
 			if (specifier.startsWith(".")) {
-				const resolved = path.posix
-					.normalize(path.posix.join(source.package, path.posix.dirname(source.path), specifier))
-					.split("/")[0];
+				reached = path.posix.normalize(path.posix.join(source.package, path.posix.dirname(source.path), specifier));
+				const resolved = reached.split("/")[0];
 				if (packages[resolved] && resolved !== source.package) {
 					target = resolved;
 					if (unit(source.package) !== unit(target))
 						issues.push(`relative package import: ${source.package}/${source.path} -> ${specifier}`);
 				}
+			}
+			// A layer may not reach the layer above it, except through files its baseline already lists.
+			for (const rule of layerRules) {
+				if (`${source.package}/${source.path}`.startsWith(rule.from) && reached.startsWith(rule.to))
+					if (!rule.baseline.includes(`${source.package}/${source.path}`))
+						issues.push(`${rule.name}: ${source.package}/${source.path} -> ${reached} (not in its baseline)`);
+			}
+			// A hosted workspace compiles into its host, but may only reach host files already in the baseline.
+			if (target && target === unit(source.package) && target !== source.package) {
+				if (!(hostImportBaseline[source.package] ?? []).includes(reached.replace(/\.js$/, ".ts")))
+					issues.push(
+						`hosted workspace reaches host internals: ${source.package}/${source.path} -> ${reached} (not in HOST_IMPORT_BASELINE)`,
+					);
 			}
 			if (!target || unit(target) === unit(source.package)) continue;
 			edges.get(unit(source.package)).add(unit(target));

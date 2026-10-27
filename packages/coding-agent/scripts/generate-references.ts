@@ -7,6 +7,16 @@ import { CompatSchemasByApi } from "@octocodeai/octocode-ai/providers/compat-sch
 import { ModelInputLimitsSchema } from "@octocodeai/octocode-ai/providers/model-schema";
 import type { TSchema } from "typebox";
 import { ModelsJsonSchemas } from "../src/core/model-config.ts";
+import { SettingsSchema } from "../src/core/settings-schema.ts";
+import { RpcCommandSchema } from "../src/modes/rpc/rpc-command-schema.ts";
+import { rpcCommandDescriptions, rpcIntro, rpcProtocol } from "./reference-pages/rpc.ts";
+import {
+	settingDefaults,
+	settingDescriptions,
+	settingsGroups,
+	settingsIntro,
+	settingsPrivacyNote,
+} from "./reference-pages/settings.ts";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 const generatedComment =
@@ -34,6 +44,16 @@ interface ReferenceSection {
 	links?: Readonly<Record<string, string>>;
 	/** Top-level fields listed without their nested fields. */
 	collapsed?: readonly string[];
+	/** Restrict the table to these top-level fields. */
+	fields?: readonly string[];
+	/** Restrict the table to the top-level fields no other section lists. */
+	rest?: true;
+	/** Descriptions for fields whose schema has none, keyed by dotted path. */
+	descriptions?: Readonly<Record<string, string>>;
+	/** Defaults for fields whose schema declares none, keyed by dotted path. */
+	defaults?: Readonly<Record<string, unknown>>;
+	/** Markdown placed after the intro, instead of a schema table; a function runs at render time. */
+	body?: string | (() => string);
 }
 
 interface ReferenceArtifact {
@@ -101,6 +121,32 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			})),
 		],
 	},
+	{
+		path: "docs/settings.md",
+		title: "Settings",
+		intro: settingsIntro,
+		sections: [
+			...settingsGroups.map(({ heading, intro, fields, rest }) => ({
+				heading,
+				intro,
+				schema: SettingsSchema,
+				fields,
+				rest,
+				descriptions: settingDescriptions,
+				defaults: settingDefaults,
+			})),
+			{ heading: "Telemetry and privacy", body: settingsPrivacyNote },
+		],
+	},
+	{
+		path: "docs/rpc.md",
+		title: "RPC Mode",
+		intro: rpcIntro,
+		sections: [
+			{ heading: "Protocol", body: rpcProtocol },
+			{ heading: "Commands", body: rpcCommandTable },
+		],
+	},
 ];
 
 function referenceType(schema: ReferenceSchema): string {
@@ -129,15 +175,25 @@ function documentedObject(schema: ReferenceSchema): { suffix: string; schema: Re
 
 const escapeTableText = (text: string) => text.replaceAll("|", "\\|").replaceAll("<", "&lt;");
 
-function referenceRows(schema: ReferenceSchema, section: ReferenceSection, prefix = ""): string[] {
+function referenceRows(
+	schema: ReferenceSchema,
+	section: ReferenceSection,
+	prefix = "",
+	names?: readonly string[],
+): string[] {
 	const rows: string[] = [];
 	for (const [name, field] of Object.entries(schema.properties ?? {})) {
+		if (names && !names.includes(name)) continue;
 		const path = `${prefix}${name}`;
 		const link = prefix === "" ? section.links?.[name] : undefined;
 		const type = escapeTableText(referenceType(field));
 		const typeText = /^[a-z]+$/.test(type) ? type : `\`${type}\``;
-		const defaultText = field.default === undefined ? "" : `\`${escapeTableText(JSON.stringify(field.default))}\``;
-		const description = [schema.required?.includes(name) ? "Required." : undefined, field.description]
+		const fieldDefault = field.default ?? section.defaults?.[path];
+		const defaultText = fieldDefault === undefined ? "" : `\`${escapeTableText(JSON.stringify(fieldDefault))}\``;
+		const description = [
+			schema.required?.includes(name) ? "Required." : undefined,
+			field.description ?? section.descriptions?.[path],
+		]
 			.filter((text) => text !== undefined)
 			.join(" ");
 		rows.push(
@@ -150,13 +206,35 @@ function referenceRows(schema: ReferenceSchema, section: ReferenceSection, prefi
 	return rows;
 }
 
+/** One row per RPC command: its fields (`?` marks optional ones) and the description from `rpcCommandDescriptions`. */
+function rpcCommandTable(): string {
+	const rows = RpcCommandSchema.anyOf.map((member) => {
+		const schema = member as unknown as ReferenceSchema;
+		const properties = Object.entries(schema.properties ?? {});
+		const name = String(properties.find(([key]) => key === "type")?.[1].const);
+		const description = rpcCommandDescriptions[name];
+		if (description === undefined) throw new Error(`rpc.ts has no description for RPC command "${name}"`);
+		const fields = properties
+			.filter(([key]) => key !== "type" && key !== "id")
+			.map(([key, field]) => `\`${key}${schema.required?.includes(key) ? "" : "?"}\`: ${referenceType(field)}`);
+		return `| \`${name}\` | ${fields.map(escapeTableText).join("<br>")} | ${escapeTableText(description)} |`;
+	});
+	return ["| Command | Fields | Description |", "|---|---|---|", ...rows].join("\n");
+}
+
 function renderReference(artifact: ReferenceArtifact): string {
 	const blocks = [`# ${artifact.title}`, `<!-- ${generatedComment} -->`, artifact.intro];
+	const listed = new Set(artifact.sections.flatMap((section) => section.fields ?? []));
 	for (const section of artifact.sections) {
 		blocks.push(section.heading.startsWith("#") ? section.heading : `## ${section.heading}`);
 		if (section.intro) blocks.push(section.intro);
+		if (typeof section.body === "function") blocks.push(section.body());
+		else if (section.body) blocks.push(section.body);
 		if (section.schema) {
-			const rows = referenceRows(section.schema, section);
+			const names = section.rest
+				? Object.keys((section.schema as ReferenceSchema).properties ?? {}).filter((name) => !listed.has(name))
+				: section.fields;
+			const rows = referenceRows(section.schema, section, "", names);
 			blocks.push(["| Field | Type | Default | Description |", "|---|---|---|---|", ...rows].join("\n"));
 		}
 	}

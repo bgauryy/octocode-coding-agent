@@ -75,6 +75,9 @@ describe("regression #2860: replaced session callbacks", () => {
 							extensionFactory(pi);
 						},
 					],
+					// The default MCP host declares the octocode tool contracts directly; they would fill the context
+					// and trigger usage notices that this session-replacement test does not measure.
+					disabledBuiltinExtensions: ["mcp"],
 					noSkills: true,
 					noPromptTemplates: true,
 					noThemes: true,

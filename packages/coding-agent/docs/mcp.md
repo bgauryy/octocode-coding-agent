@@ -1,6 +1,6 @@
 # MCP servers
 
-MCP adds server-hosted tools to Octocode. This host supports tools, not MCP resources or prompts. The built-in `octocode` research server uses the same connection path as other servers.
+MCP adds server-hosted tools to Octocode. This host supports tools, not MCP resources or prompts. The built-in `octocode` research server and the built-in `browser` server use the same connection path as other servers.
 
 ## Quick setup
 
@@ -70,7 +70,7 @@ flowchart TB
     D --> R["Tool call result in conversation"]
 ```
 
-The `mcp_servers` system section includes server names, states, descriptions, reachable tool names, **and the server's full instructions when it has reachable tools**. Direct tool declarations include the full description and input schema (and output schema when supplied). Deferred tools appear by name until `tool_search` loads their contract. Tool results enter conversation history after a call.
+The `mcp_servers` system section includes server names, states, descriptions, reachable tool names, **and the server's full instructions once per server when it has reachable tools**. By default, tools are directly callable: their declarations include the full description and input schema (and output schema when supplied). Explicitly deferred tools appear by name until `tool_search` loads their contract. Discovery guidance appears only when deferred tools are reachable. Tool results enter conversation history after a call.
 
 The integration does **not** put raw `mcp.json`, commands, environment values, headers, or tokens into agent context. Server-provided descriptions and instructions do reach it: do not put secrets there. Disabled, disconnected, or hidden-only servers contribute no instructions. [Prompt caching](prompt-caching.md) and [catalog refresh](mcp-reference.md#connections-and-caching) have more detail.
 
@@ -78,12 +78,12 @@ The integration does **not** put raw `mcp.json`, commands, environment values, h
 
 Each tool is named `mcp__<server>__<tool>`. Set `exposure` on a server or `toolExposure` for individual tools:
 
-| Value            | What the agent sees                                                                |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `auto` (default) | Direct for small catalogs; deferred for large ones when `tool_search` is available |
-| `direct`         | Full tool contract immediately                                                     |
-| `deferred`       | Name first; `tool_search` loads the contract                                       |
-| `hidden`         | No callable tool; server may remain connected                                      |
+| Value              | What the agent sees                                                           |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `direct` (default) | Full tool contract immediately, without discovery                             |
+| `auto`             | Opt-in size heuristic; can defer large catalogs with supported native loading |
+| `deferred`         | Name first; `tool_search` loads the contract                                  |
+| `hidden`           | No callable tool; server may remain connected                                 |
 
 ```json
 {
@@ -113,6 +113,6 @@ Validated instructions and tool contracts are cached in memory; reconnect refres
 
 ## Replace the built-in MCP support
 
-`--no-mcp` disables the host for one run. An extension that registers `/mcp` replaces the built-in host, including the default `octocode` server. [Extension and SDK details](mcp-reference.md#extensions-and-sdk).
+`--no-mcp` disables the host for one run. An extension that registers `/mcp` replaces the built-in host, including the default `octocode` and `browser` servers. [Extension and SDK details](mcp-reference.md#extensions-and-sdk).
 
 For migration, OAuth settings, retries, permissions, and SDK use, see the [MCP reference](mcp-reference.md).

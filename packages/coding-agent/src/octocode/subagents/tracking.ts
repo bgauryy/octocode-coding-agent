@@ -37,16 +37,30 @@ export const reportFacts = (
 	details: RunDetails,
 ): Pick<
 	ResultDetails,
-	"usage" | "unpriced" | "compactions" | "notices" | "session" | "asks" | "firstTurnTokens" | "startup" | "structured"
+	| "usage"
+	| "unpriced"
+	| "model"
+	| "fallback"
+	| "compactions"
+	| "notices"
+	| "session"
+	| "asks"
+	| "firstTurnTokens"
+	| "requests"
+	| "startup"
+	| "structured"
 > => {
 	const usage = spent.get(details);
 	return {
 		...(usage ? { usage, unpriced: details.unpriced } : {}),
+		...(details.model ? { model: details.model } : {}),
+		...(details.fallback ? { fallback: details.fallback } : {}),
 		...(details.compactions ? { compactions: details.compactions } : {}),
 		...(details.notices ? { notices: details.notices } : {}),
 		...(details.session ? { session: details.session } : {}),
 		...(details.asks ? { asks: details.asks } : {}),
 		...(details.firstTurnTokens !== undefined ? { firstTurnTokens: details.firstTurnTokens } : {}),
+		...(details.requests !== undefined ? { requests: details.requests } : {}),
 		...(details.startup ? { startup: details.startup } : {}),
 		...(details.structured ? { structured: details.structured } : {}),
 	};
@@ -89,6 +103,7 @@ export function tracker(identity: Identity, details: RunDetails, find: ModelLook
 			compacting,
 			compactions,
 			notices,
+			requests,
 		}: ChildProgress) => {
 			if (waiting !== undefined) {
 				if (waiting) details.waiting = true;
@@ -100,6 +115,7 @@ export function tracker(identity: Identity, details: RunDetails, find: ModelLook
 			}
 			if (compactions) details.compactions = compactions;
 			if (notices) details.notices = notices;
+			if (requests !== undefined) details.requests = requests;
 			if (denied) details.denied = (details.denied ?? 0) + 1;
 			if (line) details.toolCalls += 1;
 			const entry = line ?? step;

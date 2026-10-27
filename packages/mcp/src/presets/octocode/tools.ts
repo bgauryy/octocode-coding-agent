@@ -12,6 +12,7 @@ import { timedTool, timingOf } from "../../../../coding-agent/src/octocode/share
 import { isRecord } from "../../../../coding-agent/src/utils/guards.ts";
 import { type ImageLimits, imageLimits } from "../../../../coding-agent/src/octocode/shared/vision.ts";
 import { skillNameOfRead } from "../../../../coding-agent/src/octocode/skill/catalog.ts";
+import { summarizeResult } from "./summary.ts";
 import { skillHeader } from "../../../../coding-agent/src/octocode/skill/render.ts";
 
 /** What the extension registers one of the server's tools as: the generic path's name rules (charset, length) apply here too. */
@@ -123,8 +124,8 @@ function callSummary(args: unknown): { summary: string; queries: string[] } {
 
 /**
  * The Octocode tool for one tool the server lists. Its input schema is the server's JSON Schema as is (Octocode validates calls
- * against it). The local research tools are `direct`, declared to the model from the first request; the server's other
- * tools use the exposure the host resolves from catalog size and provider support.
+ * against it). All tools use the host's shared exposure policy: direct by default, with explicit server and tool
+ * settings taking precedence.
  */
 export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 	const { tool, name } = options;
@@ -159,6 +160,10 @@ export function defineOctocodeTool(options: McpToolDefinitionOptions) {
 							max: 0,
 							...timingOf(result.details),
 						});
+					// The server's JSON envelope reads as one human line; the full payload shows when the row expands.
+					const brief = summarizeResult(text);
+					if (brief)
+						return resultBlock(theme, context, { summary: brief, body: text, max: 0, ...timingOf(result.details) });
 					return resultBlock(theme, context, {
 						summary: failed ? text : "",
 						body: failed ? text.split("\n").slice(1).join("\n") : text,

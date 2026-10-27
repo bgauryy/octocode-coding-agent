@@ -33,10 +33,9 @@ function memoryPrompt(subagent: boolean): {
 	promptGuidelines: string[];
 } {
 	const description =
-		"Retrieve or maintain durable decisions and preferences across sessions. " +
-		(subagent
-			? "Read-only in a subagent: report anything worth remembering to your parent. "
-			: "Near-duplicates and secrets are refused; global or pinned changes need a trusted project. ") +
+		// The same text for every role, so parent and child declare identical bytes; a subagent's limit is stated when it hits it.
+		"Durable decisions and preferences across sessions: search, read and, where `op` allows, save. " +
+		"Near-duplicates and secrets are refused; global or pinned changes need a trusted project. " +
 		"An untrusted project shows only global memories.";
 	const ops =
 		"search: relevant notes by query; get: full note by id; list: pinned notes first, then newest" +

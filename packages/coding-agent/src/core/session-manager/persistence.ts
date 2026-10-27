@@ -9,6 +9,8 @@ import {
 	getSessionFilePath,
 	migrateToCurrentVersion,
 } from "./entries.ts";
+import { repairSessionFile, type SessionRepair } from "./repair.ts";
+import { isSessionLockTimeout, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
 import { assertCompleteSessionTail, loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
 import { buildBranchedEntries, indexSessionEntries } from "./tree.ts";
@@ -38,6 +40,9 @@ export function initializeSession(
 export function setSessionFile(state: SessionState, sessionFile: string, preloadedFileEntries?: FileEntry[]): void {
 	const resolvedFile = resolvePath(sessionFile);
 	if (existsSync(resolvedFile)) {
+		// Take the size before reading: records another process appends after it are merged on the next write
+		// (records the read already saw are skipped there by id).
+		const sizeBeforeRead = preloadedFileEntries ? undefined : statSync(resolvedFile).size;
 		const entries = preloadedFileEntries ?? loadEntriesFromFile(resolvedFile);
 
 		// If file was empty, initialize it with a valid session header. If it was
@@ -49,6 +54,7 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 			}
 			startNewSession(state);
 			state.sessionFile = explicitPath;
+			state.fileSize = 0;
 			rewriteSessionFile(state);
 			state.flushed = true;
 			return;
@@ -57,6 +63,7 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		const header = entries.find((entry) => entry.type === "session");
 		if ((header?.version ?? 1) < CURRENT_SESSION_VERSION) assertCompleteSessionTail(resolvedFile);
 		state.sessionFile = resolvedFile;
+		state.fileSize = sizeBeforeRead ?? statSync(resolvedFile).size;
 		loadEntries(state, entries);
 		state.flushed = true;
 	} else {
@@ -65,6 +72,17 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 		state.sessionFile = explicitPath; // preserve explicit path from --session flag
 	}
 	state.persistenceFailure = undefined;
+}
+
+/**
+ * Repair the torn tail of this session's file (`repairSessionFile`) and reload it, which also lifts the write block a
+ * failed append left (`persistenceFailure`). Returns what was cut off, or undefined when the tail was complete.
+ */
+export function recoverSession(state: SessionState): SessionRepair | undefined {
+	if (!state.persist || !state.sessionFile) throw new Error("Session persistence is disabled");
+	const repair = existsSync(state.sessionFile) ? repairSessionFile(state.sessionFile) : undefined;
+	setSessionFile(state, state.sessionFile);
+	return repair;
 }
 
 export function startNewSession(state: SessionState, options?: NewSessionOptions): string | undefined {
@@ -79,6 +97,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	state.labelTimestampsById.clear();
 	state.leafId = null;
 	state.flushed = false;
+	state.fileSize = undefined;
 	state.persistenceFailure = undefined;
 
 	if (state.persist) {
@@ -109,9 +128,25 @@ function rebuildIndex(state: SessionState): void {
 	state.leafId = indexSessionEntries(state.fileEntries, state.byId, state.labelsById, state.labelTimestampsById);
 }
 
+/** Replace the file with this state's entries, after merging records another process appended since our last write. */
 export function rewriteSessionFile(state: SessionState): void {
-	if (!state.persist || !state.sessionFile) return;
-	atomicWriteFileSync(state.sessionFile, state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
+	const file = state.sessionFile;
+	if (!state.persist || !file) return;
+	withSessionFileLock(file, () => {
+		if (state.fileSize !== undefined && existsSync(file)) mergeForeignEntries(state, file);
+		const content = state.fileEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+		atomicWriteFileSync(file, content);
+		state.fileSize = Buffer.byteLength(content);
+	});
+}
+
+/** Create the session file with every entry held so far; fails when the file already exists. */
+function flushNewSessionFile(state: SessionState, file: string): void {
+	withSessionFileLock(file, () => {
+		writeNewSessionFile(file, state.fileEntries);
+		state.fileSize = statSync(file).size;
+		state.flushed = true;
+	});
 }
 
 /** Explicitly persist an empty session for clients that expose reloadable IDs before the first prompt. */
@@ -120,9 +155,10 @@ export function materializeSession(state: SessionState): void {
 	if (state.persistenceFailure) throw state.persistenceFailure;
 	if (state.flushed) return;
 	try {
-		writeNewSessionFile(state.sessionFile, state.fileEntries);
-		state.flushed = true;
+		flushNewSessionFile(state, state.sessionFile);
 	} catch (error) {
+		// Another process held the lock past the wait: nothing was written, so a later write may retry.
+		if (isSessionLockTimeout(error)) throw error;
 		state.persistenceFailure = error instanceof Error ? error : new Error(String(error));
 		throw state.persistenceFailure;
 	}
@@ -146,11 +182,16 @@ export function persistEntry(state: SessionState, entry: SessionEntry): void {
 
 	if (!state.flushed) {
 		if (!hasConversation(state)) return;
-		writeNewSessionFile(state.sessionFile, state.fileEntries);
-		state.flushed = true;
+		flushNewSessionFile(state, state.sessionFile);
 	} else {
-		assertCompleteSessionTail(state.sessionFile);
-		appendFileSync(state.sessionFile, `${JSON.stringify(entry)}\n`, { flush: true });
+		const file = state.sessionFile;
+		withSessionFileLock(file, () => {
+			mergeForeignEntries(state, file, entry);
+			assertCompleteSessionTail(file);
+			const line = `${JSON.stringify(entry)}\n`;
+			appendFileSync(file, line, { flush: true });
+			state.fileSize = (state.fileSize ?? 0) + Buffer.byteLength(line);
+		});
 	}
 }
 
@@ -167,6 +208,8 @@ export function appendEntry(state: SessionState, entry: SessionEntry): void {
 		state.fileEntries.pop();
 		state.byId.delete(entry.id);
 		state.leafId = previousLeaf;
+		// Another process held the lock past the wait: nothing was written, so a later write may retry.
+		if (isSessionLockTimeout(error)) throw error;
 		state.persistenceFailure = new Error(
 			`Session persistence failed: ${String(error)}. Further writes are blocked; reload or recover the transcript before continuing.`,
 			{ cause: error },
@@ -197,6 +240,7 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 	state.sessionId = newSessionId;
 	if (state.persist) {
 		state.sessionFile = newSessionFile;
+		state.fileSize = undefined;
 		rebuildIndex(state);
 
 		// Use the same rule as persistEntry(): write now if the branched path already

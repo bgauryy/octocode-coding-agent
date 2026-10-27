@@ -1,5 +1,5 @@
 import { type Component, Markdown, visibleWidth } from "@octocodeai/octocode-tui";
-import { getMarkdownTheme, type Theme } from "../../../modes/interactive/theme/theme.ts";
+import { getMarkdownTheme, type Theme } from "../../../theme/theme.ts";
 import { sanitizeTerminalText } from "../sanitize.ts";
 import { expandKey, INDENT, plural } from "./text.ts";
 
@@ -17,12 +17,17 @@ export class ReportView implements Component {
 	private cache: { width: number; lines: string[] } | undefined;
 
 	private readonly more: string | undefined;
+	private readonly earlier: number;
 
-	/** `more` names what expanding also shows (such as the prompt), for the hint after a report that does not fold. */
-	constructor(theme: Theme, report: string, expanded: boolean, more?: string) {
+	/**
+	 * `more` names what expanding also shows (such as the prompt), for the hint after a report that does not fold;
+	 * `earlier` counts older reports the collapsed view leaves out, one line above this one.
+	 */
+	constructor(theme: Theme, report: string, expanded: boolean, more?: string, earlier = 0) {
 		this.theme = theme;
 		this.expanded = expanded;
 		this.more = more;
+		this.earlier = expanded ? 0 : earlier;
 		this.markdown = new Markdown(sanitizeTerminalText(report).trim(), 0, 0, getMarkdownTheme(theme));
 	}
 
@@ -33,12 +38,14 @@ export class ReportView implements Component {
 		const hidden = this.expanded ? 0 : body.length - REPORT_LINES;
 		const more = this.more && !this.expanded ? ` · ${this.more}` : "";
 		const hint = (text: string) => `${INDENT}${this.theme.fg("dim", `${text} (${expandKey()} to expand)`)}`;
-		const lines =
+		const earlier = this.earlier > 0 ? [hint(`+${plural(this.earlier, "earlier report")}`)] : [];
+		const lines = earlier.concat(
 			hidden > 0
 				? [...body.slice(0, REPORT_LINES), hint(`… +${plural(hidden, "line")}${more}`)]
 				: more
 					? [...body, hint(`… ${this.more}`)]
-					: body;
+					: body,
+		);
 		this.cache = { width, lines };
 		return lines;
 	}

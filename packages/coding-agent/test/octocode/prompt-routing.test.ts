@@ -23,7 +23,7 @@ describe("Octocode research routing in the policy", () => {
 		const prompt = octocodePrompt({ octocode: true, profiles: [], canDelegate: true });
 		expect(prompt).toContain("Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it");
 		expect(prompt).not.toContain("`await tools.mcp__octocode__<tool>(args)`");
-		expect(prompt).toContain("instead of answering from memory.");
+		expect(prompt).toContain("(instead of answering from memory)");
 		expect(prompt).not.toContain("generic web search");
 		for (const name of ["localSearch", "ghSearchCode", "lspSearch", "structureSearch"])
 			expect(prompt).not.toContain(name);
@@ -138,6 +138,57 @@ describe("registerTurnSetup routing and child trim", () => {
 		expect((await run(fake, { selectedTools: ["bash", "web", "agent"] })).octocode).toBe(full.octocode);
 	});
 
+	it("routes native graph questions without MCP and updates the cached prompt with tool selection", async () => {
+		const fake = fakePi();
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		const selectedTools = ["graphBuild", "graphQuery"];
+		const full = (await run(fake, { selectedTools })).octocode;
+		expect(full).toContain("Repeated repository or package dependency, cycle and broad impact questions");
+		expect(full).toContain("`graphQuery`");
+		expect(full).toContain("`graphBuild` when writes are permitted");
+		expect(full).not.toContain("Use Octocode MCP");
+		const query = (await run(fake, { selectedTools: ["graphQuery"] })).octocode;
+		expect(query).toContain("`graphQuery` on an existing snapshot");
+		expect(query).not.toContain("graphBuild");
+		expect((await run(fake, { selectedTools: [] })).octocode).not.toMatch(/graphBuild|graphQuery/);
+		expect((await run(fake, { selectedTools })).octocode).toBe(full);
+	});
+
+	it("routes graph questions without restating the server's tool routing", async () => {
+		const fake = fakePi();
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => new Map() });
+		const { octocode } = await run(fake, {
+			selectedTools: ["graphBuild", "graphQuery", "mcp__octocode__lspSearch"],
+		});
+		expect(octocode).toContain("broad impact questions: `graphQuery`");
+		expect(octocode).not.toContain("lspSearch");
+	});
+
+	it("lets a read-only child build a graph, saying it writes only derived snapshots", async () => {
+		vi.stubEnv("OCTOCODE_READ_ONLY", "1");
+		const fake = fakePi();
+		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
+		const { octocode } = await run(fake, { selectedTools: ["file", "graphBuild", "graphQuery"] });
+		expect(octocode).toContain("`graphQuery` on an existing snapshot; create or refresh it with `graphBuild`");
+		expect(octocode).toContain(".octocode/graph/");
+		expect(octocode).not.toContain("when writes are permitted");
+		// Without graphQuery the build line stands alone and says the same.
+		const build = (await run(fake, { selectedTools: ["file", "graphBuild"] })).octocode;
+		expect(build).toContain("`graphBuild`");
+		expect(build).toContain(".octocode/graph/");
+	});
+
+	it("routes a read-only child to deferred graph tools it can load through tool_search", async () => {
+		vi.stubEnv("OCTOCODE_READ_ONLY", "1");
+		const fake = fakePi();
+		fake.tools.set("tool_search", { name: "tool_search", exposure: "model-only" });
+		for (const name of ["graphBuild", "graphQuery"]) fake.tools.set(name, { name, exposure: "deferred" });
+		registerTurnSetup(fake.pi, { isSubagent: true, profiles: () => new Map() });
+		const { octocode } = await run(fake, { selectedTools: ["file", "tool_search"] });
+		expect(octocode).toContain("`graphQuery` on an existing snapshot; create or refresh it with `graphBuild`");
+		expect(octocode).toContain(".octocode/graph/");
+	});
+
 	it("keeps bounded evidence and authorization guidance in root and child context", async () => {
 		for (const isSubagent of [false, true]) {
 			const fake = fakePi();
@@ -158,6 +209,61 @@ describe("registerTurnSetup routing and child trim", () => {
 				expect(octocode).toContain("leave it blocked in your report");
 			}
 		}
+	});
+
+	it("keeps the research and delegation sections byte-identical before and after the MCP servers connect", async () => {
+		const natives = ["bash", "file", "agent", "mcp"];
+		const octocodeTools = ["localSearch", "localFetch", "ghSearchCode", "lspSearch"].map((n) => `mcp__octocode__${n}`);
+		const browserTools = ["open", "run"].map((n) => `mcp__browser__${n}`);
+		const status = (state: string, toolCount: number) => [
+			{ name: "octocode", enabled: true, state, toolCount, source: "default", exposure: "auto" as const },
+			{ name: "browser", enabled: true, state, toolCount, source: "default", exposure: "auto" as const },
+		];
+		for (const isSubagent of [false, true]) {
+			const fake = fakePi();
+			for (const name of [...natives, ...octocodeTools, ...browserTools])
+				fake.tools.set(name, { name, exposure: "direct" });
+			fake.pi.events = createEventBus();
+			registerTurnSetup(fake.pi, {
+				isSubagent,
+				profiles: () =>
+					new Map([["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never]]),
+			});
+			setMcpSessionStatus(fake.pi.events, status("connecting", 0));
+			const before = await run(fake, { selectedTools: natives });
+			setMcpSessionStatus(fake.pi.events, status("connected", 4));
+			const after = await run(fake, { selectedTools: [...natives, ...octocodeTools, ...browserTools, "tool_search"] });
+			// Every named section the prompt carries keeps its exact bytes, so the cached prefix survives the connection.
+			expect(before.octocode_research).toContain("Use Octocode MCP");
+			expect(after.octocode_research).toBe(before.octocode_research);
+			expect(after.octocode_delegation).toBe(before.octocode_delegation);
+			expect(after.octocode_work).toBe(before.octocode_work);
+		}
+	});
+
+	it("delegates browser work to a specialist only when the browser server is off, whatever the connection state", async () => {
+		const fake = fakePi();
+		fake.pi.events = createEventBus();
+		const profiles = new Map([
+			["browser", { name: "browser", description: "Drives Chrome", tools: "+browser" } as never],
+		]);
+		registerTurnSetup(fake.pi, { isSubagent: false, profiles: () => profiles });
+		const selectedTools = ["bash", "agent", "mcp"];
+		setMcpSessionStatus(fake.pi.events, [
+			{ name: "browser", enabled: false, state: "disabled", toolCount: 0, source: "default", exposure: "auto" },
+		]);
+		expect((await run(fake, { selectedTools })).octocode_delegation).toContain(
+			"Delegate browser interaction to `browser`",
+		);
+		setMcpSessionStatus(fake.pi.events, [
+			{ name: "browser", enabled: true, state: "connecting", toolCount: 0, source: "default", exposure: "auto" },
+		]);
+		const connecting = (await run(fake, { selectedTools })).octocode_delegation;
+		setMcpSessionStatus(fake.pi.events, [
+			{ name: "browser", enabled: true, state: "connected", toolCount: 2, source: "default", exposure: "auto" },
+		]);
+		expect(connecting).not.toContain("Delegate browser interaction");
+		expect((await run(fake, { selectedTools })).octocode_delegation).toBe(connecting);
 	});
 
 	it("drops the docs block and skill descriptions in a child", async () => {

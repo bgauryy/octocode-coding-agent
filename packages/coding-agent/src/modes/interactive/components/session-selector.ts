@@ -9,7 +9,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyText } from "./keybinding-hints.ts";
 import { type SessionScope, SessionSelectorHeader } from "./session-selector/header.ts";

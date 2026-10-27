@@ -1,7 +1,7 @@
 /** Session reports that read the session without changing it: fork candidates and HTML export. */
 
 import { contentText } from "@octocodeai/octocode-ai";
-import { getThemeByName, theme } from "../../modes/interactive/theme/theme.ts";
+import { getThemeByName, theme } from "../../theme/theme.ts";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "../export-html/index.ts";
 import { createToolHtmlRenderer } from "../export-html/tool-renderer.ts";
 import type { ToolDefinition } from "../extensions/index.ts";

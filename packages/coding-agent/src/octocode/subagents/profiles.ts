@@ -24,6 +24,10 @@ export interface AgentProfile {
 	model?: string;
 	/** Browser mode: true (default) is headless; false uses visible Chrome and its persistent login profile. */
 	headless?: boolean;
+	/** Soft limit on the child's model requests per run (`budget.ts`): a steer to wrap up there, a stop at 1.5 times it. 0 turns the budget off for this profile; absent: `OCTOCODE_SUBAGENT_MAX_REQUESTS`, then `DEFAULT_MAX_REQUESTS` (160). */
+	maxRequests?: number;
+	/** Seconds a finished background run of this profile stays reachable for a follow-up message (`linger.ts`); replaces `OCTOCODE_SUBAGENT_LINGER_SECONDS` for it, and 0 turns it off. A `blocked` report still gets at least `BLOCKED_LINGER_SECONDS`. */
+	linger?: number;
 	/** Legacy opt-out, rejected because specialists require local research. */
 	mcp?: false;
 	/** True: the child runs the user's command hooks (`OCTOCODE_HOOKS`); by default subagents do not. */
@@ -122,6 +126,12 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 		if (value === undefined || typeof value === "boolean") return value;
 		throw new Error(`${key} must be true or false, not ${JSON.stringify(value)}`);
 	};
+	const requests = frontmatter.maxRequests;
+	if (requests !== undefined && (typeof requests !== "number" || !Number.isInteger(requests) || requests < 0))
+		throw new Error(`maxRequests must be a non-negative integer, not ${JSON.stringify(requests)}`);
+	const linger = frontmatter.linger;
+	if (linger !== undefined && (typeof linger !== "number" || !Number.isInteger(linger) || linger < 0))
+		throw new Error(`linger must be a non-negative integer of seconds, not ${JSON.stringify(linger)}`);
 	if (flag("mcp") === false) throw new Error(mcpRequired(name));
 	const visibleBrowser = flag("visibleBrowser");
 	const headless = flag("headless") ?? (visibleBrowser === undefined ? undefined : !visibleBrowser);
@@ -133,6 +143,8 @@ export function parseProfile(fallbackName: string, text: string): AgentProfile {
 		...(excludeTools ? { excludeTools } : {}),
 		...(model ? { model } : {}),
 		...(headless === undefined ? {} : { headless }),
+		...(requests === undefined ? {} : { maxRequests: requests }),
+		...(linger === undefined ? {} : { linger }),
 		...(flag("hooks") === true ? { hooks: true as const } : {}),
 		...(flag("readOnly") === true ? { readOnly: true as const } : {}),
 		...(declared.length > 0 ? { permissions: declared } : {}),
@@ -238,6 +250,11 @@ export function profileSelectsTool(
 			? matchesTool(selected, name)
 			: applyToolModifiers(defaults, selected ?? []).includes(name))
 	);
+}
+
+/** Whether the profile can use browser tools: the native `browser` tool or any browser MCP server tool (`mcp__browser__*`). */
+export function profileSelectsBrowser(profile: AgentProfile | undefined): boolean {
+	return profileSelectsTool(profile, "browser", []) || profileSelectsTool(profile, "mcp__browser__open", []);
 }
 
 /** The workspace classes exposed by the child's native selection and Octocode's direct extension tools. */

@@ -1,6 +1,6 @@
 import { type Container, Markdown, type MarkdownTheme, Text } from "@octocodeai/octocode-tui";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
 

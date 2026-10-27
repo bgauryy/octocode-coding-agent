@@ -161,14 +161,17 @@ export default function(api) {
 			}
 			await vi.waitFor(() => expect(readFileSync(journal, "utf8")).toContain('"finished"'));
 			await connection.agent.request(methods.agent.session.list, { cwd: directory });
-			const messages = updates.filter(({ update }) => update.sessionUpdate === "agent_message_chunk");
+			const messages = updates.filter(
+				({ update }) =>
+					update.sessionUpdate === "agent_message_chunk" && !(update._meta && "octocode/customType" in update._meta),
+			);
 			expect(messages, diagnostics).toHaveLength(1);
 			expect.soft(updates.every((update) => update.sessionId === session.sessionId)).toBe(true);
 			expect
 				.soft(
 					updates.some(
 						({ update }) =>
-							update.sessionUpdate === "user_message_chunk" &&
+							update.sessionUpdate === "agent_message_chunk" &&
 							update.content.type === "text" &&
 							update.content.text === "startup note",
 					),
@@ -190,7 +193,13 @@ export default function(api) {
 				.map((line) => JSON.parse(line))
 				.filter((entry) => entry.event === "session");
 			expect.soft(starts.map((entry) => entry.id)).toEqual([session.sessionId]);
-			expect(updates.filter(({ update }) => update.sessionUpdate === "agent_message_chunk")).toHaveLength(2);
+			// Replayed history, then the live restart: two assistant messages, and the startup notes as agent-side content.
+			const agentSide = updates.filter(({ update }) => update.sessionUpdate === "agent_message_chunk");
+			expect(agentSide.filter(({ update }) => !(update._meta && "octocode/customType" in update._meta))).toHaveLength(
+				2,
+			);
+			expect(agentSide).toHaveLength(6);
+			expect(updates.some(({ update }) => update.sessionUpdate === "user_message_chunk")).toBe(false);
 			expect(updates.every((update) => update.sessionId === session.sessionId)).toBe(true);
 			if (mode === "permission") expect(permissions).toEqual([session.sessionId, session.sessionId]);
 			if (mode === "dialog") expect(readFileSync(journal, "utf8")).toContain('"cancelled":true');

@@ -14,7 +14,8 @@ it("shuts native activity down before invalidating a live session", async () => 
 	vi.useFakeTimers();
 	try {
 		await live.session.extensionRunner.emit({ type: "agent_start" });
-		expect(vi.getTimerCount()).toBeGreaterThan(0);
+		// The working line counts the run in its own indicator: activity keeps no repaint timer of its own.
+		expect(vi.getTimerCount()).toBe(0);
 		await Promise.all([live.close(), live.close()]);
 		expect(() => vi.advanceTimersByTime(2_000)).not.toThrow();
 		expect(vi.getTimerCount()).toBe(0);

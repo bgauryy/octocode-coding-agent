@@ -8,7 +8,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
-import { theme } from "../../theme/theme.ts";
+import { theme } from "../../../../theme/theme.ts";
 import { formatKeyText, keyHint } from "../keybinding-hints.ts";
 import type { TreeList } from "./tree-list.ts";
 

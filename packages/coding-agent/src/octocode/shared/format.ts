@@ -1,6 +1,8 @@
 /** Compact numbers, durations, clock times, paths, tokens and cost for the agents panel, the footer and `coordinate list`. */
 import os from "node:os";
 import path from "node:path";
+import { formatDuration } from "./duration.ts";
+import { plural } from "./render/text.ts";
 import { DAY_MS, HOUR_MS, type UsageTotals } from "./util.ts";
 
 /** `file` relative to `cwd` when inside it, else with the home directory as `~`; otherwise unchanged. */
@@ -57,22 +59,7 @@ export function formatCost(usage: Pick<UsageTotals, "cost" | "unpriced">): strin
 	return money ? `${money} + n/a` : "cost n/a";
 }
 
-/**
- * The one duration format: `45s`, `2m14s`, `15m`, `1h03m`, `2h`. `precise` adds sub-10s detail for timings
- * (`850ms`, `1.2s`).
- */
-export function formatDuration(ms: number, precise = false): string {
-	const safe = Number.isFinite(ms) ? Math.max(0, ms) : 0;
-	if (precise && safe < 999.5) return `${Math.round(safe)}ms`;
-	if (precise && safe < 9_950) return `${(safe / 1_000).toFixed(1)}s`;
-	const seconds = Math.round(safe / 1_000);
-	if (seconds < 60) return `${seconds}s`;
-	const minutes = Math.floor(seconds / 60);
-	const pad = (value: number, unit: string) => (value ? `${String(value).padStart(2, "0")}${unit}` : "");
-	return minutes < 60
-		? `${minutes}m${pad(seconds % 60, "s")}`
-		: `${Math.floor(minutes / 60)}h${pad(minutes % 60, "m")}`;
-}
+export { formatDuration };
 
 /**
  * A coarse span for times that are read, not measured: `45s`, `12m`, `5h20m`, `3d4h`. Under a day it is `formatDuration`
@@ -89,7 +76,7 @@ export function formatSpan(ms: number): string {
 /** The one relative-time format: `45s ago`, `12m ago`, `5h20m ago`, `3d4h ago`. */
 export const formatAgo = (ms: number): string => `${formatSpan(ms)} ago`;
 
-export const toolCallCount = (count: number) => `${count} tool call${count === 1 ? "" : "s"}`;
+export const toolCallCount = (count: number) => plural(count, "tool call");
 
 export const formatClock = (at: number) => new Date(at).toTimeString().slice(0, 8);
 

@@ -9,7 +9,7 @@ import {
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { keyDisplayText } from "./components/keybinding-hints.ts";
-import { theme } from "./theme/theme.ts";
+import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "../../utils/guards.ts";
 
 interface InteractiveTuiOptions {

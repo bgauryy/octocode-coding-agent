@@ -148,6 +148,16 @@ describe("project trust", () => {
 		expect(startup.ui.notify.mock.calls[0]?.[0]).toContain("/trust");
 	});
 
+	it("tells a subagent, which has no /trust, that the user decides in the main session", async () => {
+		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
+		const child = ctx(project({ ".codex/hooks.json": MCP }));
+		expect(await projectTrust(child)).toBe(false);
+		const notice = String(child.ui.notify.mock.calls[0]?.[0]);
+		expect(notice).toContain("Project config not loaded (1 files)");
+		expect(notice).not.toContain("Run /trust");
+		expect(notice).toContain("main session");
+	});
+
 	it("/trust lists what would run, asks, remembers the answer and must be repeated when the files change", async () => {
 		const cwd = project({
 			".codex/hooks.json": MCP,

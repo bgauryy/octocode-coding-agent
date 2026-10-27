@@ -5,7 +5,7 @@ import { AssistantMessageComponent } from "../src/modes/interactive/components/a
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
 import { ContentAttachmentComponent } from "../src/modes/interactive/components/application-content.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const untrusted = "before\x1b[2J\x1b[1;1Hafter\x1b]52;c;dGVzdA==\x07\x1bPpayload\x1b\\";

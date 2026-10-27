@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
 import { type Fetched, language, type PageFetcher, pageFetcher, unreadReason } from "../../src/octocode/web/fetch.ts";

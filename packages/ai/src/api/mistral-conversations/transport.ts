@@ -1,6 +1,6 @@
 import type { Model } from "../../types.ts";
 import { combineAbortSignals } from "../../utils/abort-signals.ts";
-import { safeJsonStringify } from "../../utils/error-body.ts";
+import { safeJsonStringify, truncateErrorText } from "../../utils/error-body.ts";
 import { headersToRecord } from "../../utils/headers.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { shouldUsePromptCaching } from "./request.ts";
@@ -26,11 +26,6 @@ export function formatMistralError(error: unknown): string {
 		return error.message;
 	}
 	return safeJsonStringify(error);
-}
-
-function truncateErrorText(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
 }
 
 export async function requestMistralStream(

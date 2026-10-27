@@ -93,7 +93,6 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent)
 	// extension and listener dispatch above also picks up messages that turn_end
 	// handlers queued.
 	if (event.type === "turn_end") {
-		run.lastAssistantToolResults = event.toolResults;
 		host.inputs.flushPendingCustomMessages();
 	}
 }

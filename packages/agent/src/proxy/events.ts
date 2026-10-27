@@ -4,7 +4,7 @@ import {
 	type AssistantMessageEvent,
 	type AssistantContent,
 	type ContentAnnotation,
-	parseStreamingJson,
+	parseStreamingJsonThrottled,
 	type StopReason,
 	type ToolCall,
 } from "@octocodeai/octocode-ai";
@@ -144,7 +144,7 @@ export function processProxyEvent(
 			if (content?.type === "toolCall") {
 				const call: StreamingToolCall = content;
 				call.partialJson = (call.partialJson ?? "") + proxyEvent.delta;
-				content.arguments = parseStreamingJson(call.partialJson) || {};
+				content.arguments = parseStreamingJsonThrottled(content.arguments, call.partialJson);
 				partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
 				return {
 					type: "toolcall_delta",

@@ -1,8 +1,10 @@
+import { animationClock, MOTION } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { ToolDefinition } from "../../../core/extensions/index.ts";
 import { formatDuration } from "../format.ts";
 import { exclusive, takeTiming } from "../locks.ts";
 import { isRecord } from "../../../utils/guards.ts";
+import { stopRowMotion } from "./motion.ts";
 import type { Phase, RenderContext, ToolRow } from "./types.ts";
 
 export function phaseOf(context: RenderContext): Phase {
@@ -45,11 +47,11 @@ export function runStart(context: RenderContext, state: ToolRow): number | undef
  * clock ticking on a row that scrolled off would flicker and yank the user out of scrollback every second. Only the
  * newest running row ticks (it is the last row, nearest the viewport); the working line shows how long the run took.
  */
-let clock: { state: ToolRow; invalidate: () => void; timer: ReturnType<typeof setInterval> } | undefined;
+let clock: { state: ToolRow; invalidate: () => void; stop: () => void } | undefined;
 
 function stopClock(): void {
 	if (!clock) return;
-	clearInterval(clock.timer);
+	clock.stop();
 	clock.state.ticking = false;
 	clock = undefined;
 }
@@ -57,6 +59,7 @@ function stopClock(): void {
 /** Stop the clock and forget run starts (on `agent_end` and `session_shutdown`: no row is still running). */
 export function stopRowTimers(): void {
 	stopClock();
+	stopRowMotion();
 	waitingRows.clear();
 	runStarts.clear();
 }
@@ -78,11 +81,13 @@ export function track(context: RenderContext, phase: Phase): ToolRow {
 			// Redrawn after this pass: invalidating another row from inside this row's render would re-enter Octocode's display.
 			if (previous) queueMicrotask(previous);
 			const invalidate = context.invalidate;
-			const timer = setInterval(() => {
-				if (runStart(context, state) !== undefined) invalidate();
-			}, 1_000);
-			timer.unref?.();
-			clock = { state, invalidate, timer };
+			const stop = animationClock.subscribe(
+				() => {
+					if (runStart(context, state) !== undefined) invalidate();
+				},
+				{ kind: "info", everyMs: MOTION.tickMs },
+			);
+			clock = { state, invalidate, stop };
 			state.ticking = true;
 		}
 	} else if (phase !== "pending") {

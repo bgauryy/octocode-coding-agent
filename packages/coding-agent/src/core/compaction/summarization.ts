@@ -70,9 +70,13 @@ ${UPDATE_SUMMARIZATION_INSTRUCTIONS}`;
 
 /**
  * Returns an error message when a summarization response cannot safely be persisted.
- * A length stop contains partial text and must not become a session checkpoint.
+ * A length stop or a cancel (providers return `aborted` rather than throwing) leaves partial text, which must not
+ * become a session checkpoint.
  */
 export function getSummarizationFailure(response: AssistantMessage, label: string): string | undefined {
+	if (response.stopReason === "aborted") {
+		return `${label} was cancelled`;
+	}
 	if (response.stopReason === "error") {
 		return `${label} failed: ${response.errorMessage || "Unknown error"}`;
 	}

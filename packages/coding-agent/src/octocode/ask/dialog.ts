@@ -9,6 +9,7 @@ import type { ExtensionContext } from "../../core/extensions/index.ts";
 import { shortcutText } from "../shared/keys.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { Breath, tabMark } from "./dialog/marks.ts";
 import { type AskAnswer, type AskQuestion, type AskResult, answerOf, rows, SUBMIT_PICKS } from "./dialog/answers.ts";
 import { type DialogTheme, editorTheme } from "./dialog/theme.ts";
 
@@ -57,6 +58,11 @@ class AskDialog {
 	private cache: string[] | undefined;
 	private cacheWidth = 0;
 	private readonly onAbort = () => this.finish(true);
+	/** The unanswered tabs' `◇` breathes while any question waits. */
+	private readonly breath = new Breath(() => {
+		this.cache = undefined;
+		this.requestRender();
+	});
 
 	readonly theme: DialogTheme;
 	private readonly questions: AskQuestion[];
@@ -82,6 +88,7 @@ class AskDialog {
 		this.signal = signal;
 
 		this.isMulti = questions.length > 1;
+		this.breath.sync(this.isMulti);
 		this.typing = questions[0]?.options.length === 0;
 		editor.onSubmit = (value) => this.submitTyped(value);
 		// The run was aborted (e.g. the user interrupted the agent) while the dialog was open.
@@ -107,9 +114,11 @@ class AskDialog {
 
 	dispose(): void {
 		this.signal?.removeEventListener("abort", this.onAbort);
+		this.breath.dispose();
 	}
 
 	private refresh(): void {
+		this.breath.sync(this.isMulti && this.answers.size < this.questions.length);
 		this.cache = undefined;
 		this.requestRender();
 	}
@@ -296,10 +305,11 @@ class AskDialog {
 	private tabsLine(): string {
 		const { theme, questions, answers } = this;
 		const tabs = questions.map((q, index) => {
-			const label = ` ${answers.has(index) ? "■" : "□"} ${sanitizeTerminalText(q.header ?? `Q${index + 1}`)} `;
+			const mark = tabMark(theme, answers.has(index));
+			const name = ` ${sanitizeTerminalText(q.header ?? `Q${index + 1}`)} `;
 			return index === this.tab
-				? theme.bg("selectedBg", theme.fg("text", label))
-				: theme.fg(answers.has(index) ? "success" : "muted", label);
+				? theme.bg("selectedBg", `${theme.fg("text", " ")}${mark}${theme.fg("text", name)}`)
+				: `${theme.fg("muted", " ")}${mark}${theme.fg(answers.has(index) ? "success" : "muted", name)}`;
 		});
 		const submit = " ✓ Submit ";
 		tabs.push(

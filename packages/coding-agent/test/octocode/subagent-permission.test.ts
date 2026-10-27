@@ -62,7 +62,7 @@ describe("a child's refused actions", () => {
 		expect(result.details.denied).toBe(2);
 		// The child's report starts with `blocked`: the row says so.
 		expect(result.details.outcome).toBe("blocked");
-		expect(doneSummary(result.details, 1_000)).toMatch(/^Blocked \(/);
+		expect(doneSummary(result.details, 1_000)).toMatch(/^Blocked · /);
 		expect(doneSummary(result.details, 1_000)).toContain("2 denied");
 		expect(doneSummary({ ...result.details, denied: undefined }, 1_000)).not.toContain("denied");
 		team.stop();
@@ -88,7 +88,7 @@ describe("a child's refused actions", () => {
 		expect(f.sent[0].message.details).toMatchObject({
 			status: "done",
 			outcome: "blocked",
-			summary: expect.stringMatching(/^Blocked \(/),
+			summary: expect.stringMatching(/^Blocked · /),
 		});
 		team.stop();
 	}, 20_000);

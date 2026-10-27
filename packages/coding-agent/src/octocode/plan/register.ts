@@ -2,10 +2,10 @@ import { contentText } from "@octocodeai/octocode-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/index.ts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
-import { planningRefusal } from "./gate.ts";
+import { planningRefusal, type ShellReader } from "./gate.ts";
 import { getMcpSessionStatus } from "../../../../mcp/src/status.ts";
 import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "./state.ts";
-import { approvedPlanPrompt, PLANNING_INSTRUCTIONS } from "./prompts.ts";
+import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
 /** User controls are commands, never model tools. Plan text lives in branch-aware custom entries. */
 export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWork: () => Promise<void>) {
@@ -48,6 +48,19 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			return;
 		}
 		event.systemPromptOptions.sections.planning = PLANNING_INSTRUCTIONS;
+	});
+	// The summary may drop the plan's wording: put the current revision back at the tail, outside the cached prefix.
+	pi.on("session_compact", async (_event, ctx) => {
+		ensureState(ctx);
+		if (!state.active || !state.text) return;
+		try {
+			void pi.sendMessage(
+				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
+				{ triggerTurn: false, deliverAs: "followUp" },
+			);
+		} catch {
+			// The session was replaced.
+		}
 	});
 	pi.on("agent_end", async (event, ctx) => {
 		if (!state.active || transitioning) return;
@@ -102,7 +115,9 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 			);
 		},
 	});
-	return {
+	const api = {
+		/** The host's read-only shell classifier (the permission layer depends on this module, so it cannot import it); unset, plan mode blocks every shell command. */
+		readOnlyShell: undefined as ShellReader | undefined,
 		blocked,
 		control,
 		gate: (event: Parameters<typeof planningRefusal>[0]) => {
@@ -111,8 +126,10 @@ export function registerPlanning(pi: ExtensionAPI, commands: Subcommands, stopWo
 				event,
 				pi.getAllTools().find((tool) => tool.name === event.toolName),
 				getMcpSessionStatus(pi.events),
+				api.readOnlyShell,
 			);
 			return reason ? { block: true, reason } : undefined;
 		},
 	};
+	return api;
 }

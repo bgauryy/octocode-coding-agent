@@ -64,6 +64,7 @@ function fakePi(models: TestModel[]) {
 		},
 		registerProvider,
 		getSettings: () => ({}),
+		getThinkingLevel: () => "off",
 	} as unknown as ExtensionAPI;
 	const current = { model: models[0] };
 	const usage = { percent: 12 as number | null };

@@ -1,5 +1,5 @@
 import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
 import { keyText } from "./keybinding-hints.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";

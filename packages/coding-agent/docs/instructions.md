@@ -2,16 +2,16 @@
 
 Octocode Code owns its agent policy and bundled subagent instructions in [`src/octocode/instructions/`](../src/octocode/instructions/). The Pi extension was the migration source; the native runtime does not load its prompt implementation.
 
-| Instruction | Owner | How it reaches the model |
-|---|---|---|
-| Common work, research, delegation and safety policy | `instructions/policy.ts` | The named `octocode` system section, adapted to the current tools and main/child role |
-| Bundled specialist profiles | `instructions/roles/*.md` | Profile metadata controls selection; the selected body becomes the child's named `role` section |
-| Child identity, goal, scratch folder and teammates | `instructions/task.ts` | The task message, after the stable system instructions |
-| Report outcome and preview contract | `instructions/report.ts` | Used by both the policy renderer and report handling |
-| Generic system assembly | `core/system-prompt.ts` | Combines the base prompt, tools, user additions, project context, skills and named sections |
-| Tool-specific mechanics | Each tool's declaration and guidelines | Tool schemas and the active-tool rules |
-| MCP server instructions | The connected server | Its instruction text is included through the MCP integration |
-| Compaction task and summary format | `octocode/compaction/summary.ts` and `shared-summary.ts` | A summarization request with the existing transcript and recovery requirements |
+| Instruction                                         | Owner                                                    | How it reaches the model                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Common work, research, delegation and safety policy | `instructions/policy.ts`                                 | The named `octocode` system section, adapted to the current tools and main/child role           |
+| Bundled specialist profiles                         | `instructions/roles/*.md`                                | Profile metadata controls selection; the selected body becomes the child's named `role` section |
+| Child identity, goal, scratch folder and teammates  | `instructions/task.ts`                                   | The task message, after the stable system instructions                                          |
+| Report outcome and preview contract                 | `instructions/report.ts`                                 | Used by both the policy renderer and report handling                                            |
+| Generic system assembly                             | `core/system-prompt.ts`                                  | Combines the base prompt, tools, user additions, project context, skills and named sections     |
+| Tool-specific mechanics                             | Each tool's declaration and guidelines                   | Tool schemas and the active-tool rules                                                          |
+| MCP server instructions                             | The connected server                                     | Its instruction text is included through the MCP integration                                    |
+| Compaction task and summary format                  | `octocode/compaction/summary.ts` and `shared-summary.ts` | A summarization request with the existing transcript and recovery requirements                  |
 
 The common policy does not copy tool schemas, skill bodies or project instructions. Their existing loaders remain authoritative. Bundled role files are package assets; use user or trusted project profiles for local customization rather than editing installed defaults.
 

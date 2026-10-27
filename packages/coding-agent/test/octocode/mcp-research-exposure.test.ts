@@ -1,7 +1,7 @@
 import { octocodePreset } from "../../../mcp/src/presets/octocode/index.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
 import type { ExtensionFactory } from "../../src/core/extensions/index.ts";
@@ -21,9 +21,11 @@ afterEach(() => vi.unstubAllEnvs());
 /** The tools a session declares to the model (and whether codemode is among them) when the user's mcp.json runs `octocode`. */
 async function declaredTools(
 	role: "main" | "researcher",
-	server: Record<string, unknown>,
+	server: Record<string, unknown> | undefined,
 	expectConnected = true,
 	contextWindow = 200_000,
+	/** A tool_search query to run after the session connected; the result is then the tools declared after it. */
+	load?: string,
 ): Promise<string[]> {
 	const root = tmp("octocode-mcp-exposure-");
 	const cwd = path.join(root, "project");
@@ -37,7 +39,7 @@ async function declaredTools(
 	vi.stubEnv("OCTOCODE_MCP", "1");
 	vi.stubEnv("OCTOCODE_OFFLINE", "1");
 	vi.stubEnv("OCTOCODE_SUBAGENT", role === "main" ? "0" : "1");
-	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: server } }));
+	if (server) fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: server } }));
 	const faux = createFauxCore({
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow, maxTokens: 4096 }],
@@ -105,6 +107,16 @@ async function declaredTools(
 			await session.prompt("Which tools do you have?");
 			if (!expectConnected || declared.some((name) => name.startsWith("mcp__octocode__"))) break;
 		}
+		if (load) {
+			faux.setResponses([
+				fauxAssistantMessage([fauxToolCall("tool_search", { query: load })], { stopReason: "toolUse" }),
+				(context) => {
+					declared = getCurrentTools(context.messages).map((tool) => tool.name);
+					return fauxAssistantMessage("ok");
+				},
+			]);
+			await session.prompt("Load it.");
+		}
 		return declared;
 	} finally {
 		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
@@ -120,9 +132,14 @@ const RESEARCH = ["localFetch", "localSearch", "structureSearch", "astSearch", "
 	(name) => `mcp__octocode__${name}`,
 );
 
+const GITHUB_DIRECT = ["ghSearchCode", "ghGetFileContent", "ghStructure"].map((name) => `mcp__octocode__${name}`);
+const DEFERRED = ["ghSearchHistory", "ghGetHistoryItem", "artifactSearch", "ghSearchRepo"].map(
+	(name) => `mcp__octocode__${name}`,
+);
+
 describe("Octocode research tools declared for a user-owned server", () => {
 	it.each(["main", "researcher"] as const)(
-		"declares the local research tools and, without native loading, the rest too in the %s session while the catalog is small",
+		"declares local, GitHub, and package tools directly by default in the %s session",
 		async (role) => {
 			const declared = await declaredTools(role, real());
 			expect(declared).not.toContain("codemode");
@@ -134,11 +151,38 @@ describe("Octocode research tools declared for a user-owned server", () => {
 	);
 
 	it.each(["main", "researcher"] as const)(
-		"defers the GitHub and package tools to tool_search in the %s session without native loading once the catalog is large for the window",
+		"defers the rarely used GitHub history and registry tools behind tool_search in the %s session",
+		async (role) => {
+			const declared = await declaredTools(role, undefined);
+			const octocode = declared.filter((name) => name.startsWith("mcp__octocode__"));
+			expect(octocode).toEqual(expect.arrayContaining([...RESEARCH, ...GITHUB_DIRECT]));
+			for (const name of DEFERRED) expect(declared).not.toContain(name);
+			expect(declared).toContain("tool_search");
+		},
+		60_000,
+	);
+
+	it("loads a deferred research tool with tool_search so the next request declares it", async () => {
+		const declared = await declaredTools("main", undefined, true, 200_000, "ghSearchRepo");
+		expect(declared).toContain("mcp__octocode__ghSearchRepo");
+		expect(declared).toEqual(expect.arrayContaining(RESEARCH));
+	}, 60_000);
+
+	it("lets mcp.json bring the deferred tools back to the declaration", async () => {
+		const server = real();
+		const all = await declaredTools("main", { ...server, exposure: "direct" });
+		for (const name of DEFERRED) expect(all).toContain(name);
+		const one = await declaredTools("main", { ...server, toolExposure: { ghSearchRepo: "direct" } });
+		expect(one).toContain("mcp__octocode__ghSearchRepo");
+		expect(one).not.toContain("mcp__octocode__ghSearchHistory");
+	}, 120_000);
+
+	it.each(["main", "researcher"] as const)(
+		"keeps the default catalog direct in the %s session even with a small context window",
 		async (role) => {
 			const declared = await declaredTools(role, real(), true, 8_000);
-			expect(declared).toContain("tool_search");
-			expect(declared.filter((name) => name.startsWith("mcp__octocode__")).sort()).toEqual([...RESEARCH].sort());
+			expect(declared).toEqual(expect.arrayContaining(RESEARCH));
+			expect(declared).toContain("mcp__octocode__ghSearchCode");
 		},
 		60_000,
 	);
@@ -155,16 +199,15 @@ describe("Octocode research tools declared for a user-owned server", () => {
 		expect(all.filter((name) => name.startsWith("mcp__octocode__")).length).toBeGreaterThan(RESEARCH.length);
 	}, 120_000);
 
-	it("applies the default to the octocode server only", async () => {
+	it("uses the same direct default for Octocode and other servers", async () => {
 		const { getMcpToolExposure } = await import("../../../mcp/src/servers.ts");
 		expect(getMcpToolExposure({ command: "x" }, "localFetch", octocodePreset(() => [], {}).toolExposure)).toBe(
 			"direct",
 		);
 		expect(getMcpToolExposure({ command: "x" }, "ghSearchCode", octocodePreset(() => [], {}).toolExposure)).toBe(
-			"auto",
+			"direct",
 		);
-		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("auto");
-		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("auto");
+		expect(getMcpToolExposure({ command: "x" }, "localFetch")).toBe("direct");
 		expect(
 			getMcpToolExposure(
 				{ command: "x", exposure: "deferred" },

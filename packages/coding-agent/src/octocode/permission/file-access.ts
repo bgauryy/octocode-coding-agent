@@ -8,12 +8,28 @@ import { canonicalPath, isWithin, workspaceRoot } from "../shared/home/repo.ts";
  * Repository paths that load code, hooks or agent instructions in later sessions (git config, Octocode, Claude Code, Codex
  * and Octocode project config, skills): a change there outlives the session, so it asks like an outside change.
  */
-const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents", OCTOCODE_DIR];
+const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents", OCTOCODE_DIR].map((entry) =>
+	entry.toLowerCase(),
+);
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
-const RUNS_LATER_ANYWHERE = [".git/hooks", ".husky", ".github/workflows", ".vscode/tasks.json", ".envrc"];
+const RUNS_LATER_ANYWHERE = [
+	".git/hooks",
+	".git/config",
+	".gitmodules",
+	".npmrc",
+	".mcp.json",
+	".husky",
+	".github/workflows",
+	".vscode/tasks.json",
+	".envrc",
+];
 
+/**
+ * Whether a change to `file` (canonical, inside `root`) outlives the session. Compared lower-cased: on macOS and Windows
+ * `.CLAUDE/settings.json` is the folder Claude Code loads, and on a case-sensitive filesystem the extra match only asks.
+ */
 export function runsLater(file: string, root: string): boolean {
-	const relative = path.relative(root, file).split(path.sep).join("/");
+	const relative = path.relative(root, file).split(path.sep).join("/").toLowerCase();
 	const rooted = RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
 	return (
 		rooted ||
@@ -27,6 +43,16 @@ export function stateFolderRefusal(file: string, shown: string, tool: string): s
 	return `${shown} is in Octocode's state folder; ${tool} does not change it. Ask the user to change it themselves.`;
 }
 
+/**
+ * The path a shell command's operand names, for a containment check. The shell resolves `..` after following symlinks
+ * (`link/../x` leaves the directory the link points into), so a path that spells `..` stays unnormalised for
+ * `canonicalPath`; the file tools write the lexically resolved path and use `resolveToolPath`.
+ */
+export function shellPath(cwd: string, raw: string): string {
+	if (!/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(raw) || raw.startsWith("~")) return resolveToolPath(cwd, raw);
+	return path.isAbsolute(raw) ? raw : `${path.resolve(cwd)}${path.sep}${raw}`;
+}
+
 export function shellTargetAccess(
 	target: BashFileTarget,
 	cwd: string,
@@ -37,7 +63,7 @@ export function shellTargetAccess(
 	protected?: boolean;
 } {
 	if (!target.path || target.uncertain) return { uncertain: true };
-	const file = canonicalPath(resolveToolPath(cwd, target.path));
+	const file = canonicalPath(shellPath(cwd, target.path));
 	if (target.kind === "write") {
 		const refusal = stateFolderRefusal(file, target.raw, "Bash");
 		if (refusal) return { refusal };

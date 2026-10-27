@@ -1,5 +1,5 @@
 import { mutatedPaths } from "../shared/file-input.ts";
-import { apiClientLabel, fenceUntrusted, headerText, messageHeader } from "../shared/fence.ts";
+import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import { formatAgo, formatClock, formatDuration, memberStats } from "../shared/format.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
@@ -19,12 +19,18 @@ export const MESSAGE_MAX_CHARS = 8_000;
 /** Senders that are not agents: they cannot be replied to, and their messages wake the recipient. */
 export const outside = (from: string) => from === USER_SENDER || from === EXTERNAL_SENDER;
 
-/** The notice a sender gets when every recipient of its message left the team before reading it. */
+/** The notice a sender gets when its message's recipients left the team before reading it, or before answering its question. */
 export function deadLetterText(letter: DeadLetter): string {
-	const who = letter.recipients.join(", ");
-	return visibleControls(
-		`Message #${letter.id} to ${who} was not read: ${letter.recipients.length === 1 ? `${who} left` : "they left"} the team first. Its text began: "${cutText(letter.text.split("\n")[0], 120, { chars: true })}"`,
-	);
+	const read = letter.read ?? [];
+	const unread = letter.recipients.filter((recipient) => !read.includes(recipient));
+	const began = `Its text began: "${cutText(letter.text.split("\n")[0], 120, { chars: true })}"`;
+	const notice = (who: string[], fate: string) =>
+		`Message #${letter.id} to ${who.join(", ")} ${fate}: ${who.length === 1 ? `${who[0]} left` : "they left"} the team first.`;
+	const parts = [
+		unread.length > 0 ? notice(unread, "was not read") : "",
+		read.length > 0 ? notice(read, "was read but not answered") : "",
+	].filter(Boolean);
+	return visibleControls(`${parts.join(" ")} ${began}`);
 }
 
 /** `reviewer: audit auth token refresh`: what the sender is and works on, as written. Each reader escapes it for its own channel. */
@@ -76,7 +82,12 @@ export function messageText(
 	const answers = message.replyTo === undefined ? "" : ` (in reply to #${message.replyTo})`;
 	const header = `${messageHeader(label, message.at, message.id)}${answers}${interrupt}`;
 	if (fromUser) return `${visibleControls(header)}:\n${visibleControls(body)}`;
-	return fenceUntrusted(header, body, footer ? { footer } : {});
+	// The parent started this agent and steers its task; peers, API clients and unverified senders stay untrusted data.
+	const fromParent = parentId !== undefined && message.from === parentId;
+	return fenceUntrusted(header, body, {
+		...(footer ? { footer } : {}),
+		...(fromParent ? { note: PARENT_FENCE_NOTE } : {}),
+	});
 }
 
 /**

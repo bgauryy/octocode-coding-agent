@@ -2,7 +2,7 @@ import { setKeybindings } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { TrustSelectorComponent } from "../src/modes/interactive/components/trust-selector.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("TrustSelectorComponent", () => {
@@ -26,12 +26,12 @@ describe("TrustSelectorComponent", () => {
 		let output = stripAnsi(selector.render(120).join("\n"));
 		expect(output).toContain("Saved decision: trusted (/project)");
 		expect(output).toContain("Current session: trusted");
-		expect(output).toContain("→ ✓ Trust");
+		expect(output).toContain("› ✓ Trust");
 
 		selector.handleInput("\x1b[B");
 		output = stripAnsi(selector.render(120).join("\n"));
 		expect(output).toContain("✓ Trust");
-		expect(output).toContain("→   Trust parent folder (/)");
+		expect(output).toContain("›   Trust parent folder (/)");
 		expect(output).not.toContain("✓ Do not trust");
 	});
 

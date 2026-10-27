@@ -553,12 +553,15 @@ describe("AgentSession compaction characterization", () => {
 			willRetry: true,
 		});
 		expect(harness.session.getLastAssistantText()).toBe("completed response");
+		expect(harness.session.getSessionStats().compaction.lengthRecoveries).toBe(1);
 	});
 
 	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
 	it("compacts after an oversized tool result in the same run", async () => {
-		// About 2,000 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
-		const toolResult = `large-tool-result:${"x".repeat(6000)}`;
+		// About 2,100 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
+		// With the system prompt and tool declarations the request estimate lands near 2,870 tokens, over the 2,800-token
+		// threshold (3,200 window less the 400-token reserve) and under the window; shrinking the prompt moves it, so keep margin.
+		const toolResult = `large-tool-result:${"x".repeat(6300)}`;
 		const largeTool: AgentTool = {
 			name: "large_result",
 			label: "Large result",
@@ -740,6 +743,7 @@ describe("AgentSession compaction characterization", () => {
 
 		expect(harness.faux.state.callCount).toBe(1);
 		expect(harness.eventsOfType("compaction_start")).toHaveLength(0);
+		expect(harness.session.getSessionStats().compaction.lengthRecoveries).toBe(0);
 	});
 
 	it("stops after one compact-and-retry when a second response is also truncated", async () => {

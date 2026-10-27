@@ -1,5 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../theme/theme.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../shared/render.ts";
 import { redactSecrets } from "../shared/sanitize.ts";
 import { clipText } from "../shared/util.ts";
@@ -18,7 +18,7 @@ interface BrowserCallArgs {
 	text?: string;
 }
 
-/** `● Browser(navigate https://example.com)`: the action and its target (URL, element, key, or expression). */
+/** `✓ Browser(navigate https://example.com)`: the action and its target (URL, element, key, or expression). */
 export function browserCallHeader(args: BrowserCallArgs, theme: Theme, context: RenderContext): Component {
 	const target =
 		args.url ??

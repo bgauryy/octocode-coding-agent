@@ -332,8 +332,8 @@ export class Team {
 		return this.peers;
 	}
 
-	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined. */
-	reservation(absolute: string, display: string): string | undefined {
+	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */
+	reservation(absolute: string | undefined, display: string): string | undefined {
 		return reservationText(this.reservationHost(), absolute, display);
 	}
 

@@ -20,7 +20,7 @@ import * as resourceGroups from "../src/modes/interactive/interactive-mode/resou
 import * as resourcePaths from "../src/modes/interactive/interactive-mode/resource-paths.ts";
 import * as statusIndicators from "../src/modes/interactive/interactive-mode/status-indicators.ts";
 import * as viewState from "../src/modes/interactive/interactive-mode/view-state.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/theme/theme.ts";
 import type { ToolStatus } from "../src/utils/tools-manager.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
@@ -129,6 +129,43 @@ describe("InteractiveMode.showStatus", () => {
 		expect(fakeThis.chatContainer.children).toHaveLength(5);
 		expect(renderLastLine(fakeThis.chatContainer)).toContain("STATUS_TWO");
 	});
+
+	test("keeps each status line's own text after invalidation", () => {
+		const fakeThis: any = {
+			chatContainer: new Container(),
+			ui: { requestRender: vi.fn() },
+			lastStatusSpacer: undefined,
+			lastStatusText: undefined,
+		};
+
+		statusIndicators.showStatus(createFakeHost(fakeThis), "Model set to A");
+		fakeThis.chatContainer.addChild({ render: () => ["(assistant reply)"], invalidate: () => {} });
+		statusIndicators.showStatus(createFakeHost(fakeThis), "Model set to B");
+		// A theme change or settings change invalidates every component.
+		fakeThis.chatContainer.invalidate();
+
+		const first = fakeThis.chatContainer.children[1].render(120).join("\n");
+		expect(first).toContain("Model set to A");
+		expect(first).not.toContain("Model set to B");
+		expect(renderLastLine(fakeThis.chatContainer)).toContain("Model set to B");
+	});
+
+	test("a coalesced status line keeps its latest text after invalidation", () => {
+		const fakeThis: any = {
+			chatContainer: new Container(),
+			ui: { requestRender: vi.fn() },
+			lastStatusSpacer: undefined,
+			lastStatusText: undefined,
+		};
+
+		statusIndicators.showStatus(createFakeHost(fakeThis), "STATUS_ONE");
+		statusIndicators.showStatus(createFakeHost(fakeThis), "STATUS_TWO");
+		fakeThis.chatContainer.invalidate();
+
+		expect(fakeThis.chatContainer.children).toHaveLength(2);
+		expect(renderLastLine(fakeThis.chatContainer)).toContain("STATUS_TWO");
+		expect(renderLastLine(fakeThis.chatContainer)).not.toContain("STATUS_ONE");
+	});
 });
 
 describe("InteractiveMode.showManagedToolStatus", () => {
@@ -161,12 +198,14 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		const header = { setExpanded: vi.fn() };
 		const loadedResourcesChild = { setExpanded: vi.fn() };
 		const chatChild = { setExpanded: vi.fn() };
+		const footerDataProvider = { setExtensionStatus: vi.fn() };
 		const fakeThis: any = {
 			toolOutputExpanded: false,
 			customHeader: undefined,
 			builtInHeader: header,
 			loadedResourcesContainer: { children: [loadedResourcesChild] },
 			chatContainer: { children: [chatChild] },
+			footerDataProvider,
 			ui: { requestRender: vi.fn() },
 			showStatus: vi.fn(),
 		};
@@ -177,7 +216,39 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		expect(header.setExpanded).toHaveBeenCalledWith(true);
 		expect(loadedResourcesChild.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
-		expect(fakeThis.showStatus).toHaveBeenCalledWith("Tool output: expanded");
+		// The acknowledgement is transient footer text, never a permanent chat line.
+		expect(footerDataProvider.setExtensionStatus).toHaveBeenCalledWith("notice", "Tool output: expanded");
+		expect(fakeThis.showStatus).not.toHaveBeenCalled();
+	});
+
+	test("clears the acknowledgement from the footer after a moment, and a newer one restarts the clock", () => {
+		vi.useFakeTimers();
+		try {
+			const statuses = new Map<string, string>();
+			const fakeThis: any = {
+				toolOutputExpanded: false,
+				builtInHeader: undefined,
+				loadedResourcesContainer: { children: [] },
+				chatContainer: { children: [] },
+				footerDataProvider: {
+					setExtensionStatus: (key: string, text: string | undefined) =>
+						text === undefined ? statuses.delete(key) : statuses.set(key, text),
+				},
+				ui: { requestRender: vi.fn() },
+			};
+			const host = createFakeHost(fakeThis);
+
+			viewState.setToolsExpanded(host, true);
+			vi.advanceTimersByTime(1500);
+			viewState.setToolsExpanded(host, false);
+			vi.advanceTimersByTime(1500);
+			expect(statuses.get("notice")).toBe("Tool output: collapsed");
+			vi.advanceTimersByTime(600);
+			expect(statuses.has("notice")).toBe(false);
+			expect(fakeThis.chatContainer.children).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
@@ -809,7 +880,9 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toContain("[Skills]");
-		expect(output).toContain("commit");
+		// Names are for ctrl+o: collapsed, the section is one count line.
+		expect(output).toMatch(/1 loaded \(.* ?to list\)/);
+		expect(output).not.toContain("commit");
 		expect(output).not.toContain("resource-list");
 	});
 
@@ -1393,6 +1466,33 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(display.shouldShowStartupHeader(createFakeHost(quiet))).toBe(false);
 		const verbose = createShowLoadedResourcesThis({ quietStartup: "header", verbose: true });
 		expect(display.shouldShowStartupDetails(createFakeHost(verbose))).toBe(true);
+	});
+
+	test("folds routine duplicate-skill collisions into one short line that wraps under its indent", () => {
+		const collision = (name: string) => ({
+			type: "collision" as const,
+			message: `name "${name}" collision`,
+			collision: {
+				resourceType: "skill" as const,
+				name,
+				winnerPath: `/a/${name}/SKILL.md`,
+				loserPath: `/b/${name}/SKILL.md`,
+			},
+		});
+		const fakeThis = createShowLoadedResourcesThis({
+			quietStartup: false,
+			skills: [{ filePath: "/tmp/skill/SKILL.md", name: "commit" }],
+			skillDiagnostics: [collision("commit"), collision("review"), collision("deploy")],
+		});
+
+		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: false });
+
+		const wide = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 120);
+		expect(wide).toMatch(/\[Skill conflicts\]\n {2}3 skills have duplicates; first found is used \(.*for paths\)/);
+		const narrow = normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 40).split("\n");
+		const body = narrow.slice(narrow.indexOf("[Skill conflicts]") + 1).filter((line) => line.length > 0);
+		expect(body.length).toBeGreaterThan(1);
+		expect(body.every((line) => line.startsWith("  "))).toBe(true);
 	});
 
 	test("still shows diagnostics on quiet startup when requested", () => {

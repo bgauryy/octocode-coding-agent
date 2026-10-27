@@ -2,7 +2,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { Box, Container, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { EntryRenderer } from "../../../core/extensions/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 import { sanitizeTerminalText } from "../../../octocode/shared/sanitize.ts";
 

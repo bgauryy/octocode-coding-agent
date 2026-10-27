@@ -1,7 +1,7 @@
 import { Container, rgbColor, styleText, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../../src/modes/interactive/components/index.ts";
-import { initTheme } from "../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import { toolHeader } from "../../src/octocode/shared/render.ts";
 import { BANNER_HEIGHT } from "../../src/octocode/ui/banner.ts";
 import {
@@ -53,13 +53,41 @@ describe("chrome", () => {
 		header.dispose();
 	});
 
+	it("tells a fullscreen transcript its reasoning stubs can be clicked, and no other", async () => {
+		initTheme("dark", false);
+		const stub = async (mode?: "fullscreen" | "regular") => {
+			const fake = fakePi();
+			registerUi(fake.pi, false);
+			const ctx = fakeCtx({ cwd: "/work/app" });
+			await fake.emit("session_start", { reason: "resume" }, ctx);
+			const chat = new Container();
+			const message = new AssistantMessageComponent(
+				{ role: "assistant", content: [{ type: "thinking", thinking: "Hidden thought." }] } as never,
+				true,
+			);
+			chat.addChild(message);
+			const header = (
+				ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[]; dispose(): void }
+			)({ children: [chat], requestRender: vi.fn(), mode }, theme);
+			header.render(80);
+			header.dispose();
+			message.setHideThinkingBlock(true);
+			return message.render(80).join("\n");
+		};
+		expect(await stub("fullscreen")).toContain("click");
+		expect(await stub("regular")).not.toContain("click");
+		expect(await stub()).not.toContain("click");
+	});
+
 	it("computes output tokens per second of streaming time", () => {
 		expect(tokensPerSecond(400, 4_000)).toBe(100);
 		expect(tokensPerSecond(0, 1_000)).toBeUndefined();
 		expect(tokensPerSecond(400, 0)).toBeUndefined();
+		// One chunk of a short reply: too brief to be a speed.
+		expect(tokensPerSecond(10, 5)).toBeUndefined();
 	});
 
-	it("dresses the TUI once per session start: banner header, footer, spinner, thinking label; speed after a run", async () => {
+	it("dresses the TUI once per session start: banner header, footer, spinner; speed after a run", async () => {
 		const fake = fakePi();
 		registerUi(fake.pi, false);
 		expect(packageVersion()).toMatch(/^\d+\.\d+\.\d+/);
@@ -72,7 +100,8 @@ describe("chrome", () => {
 		expect(typeof ctx.ui.header).toBe("function");
 		expect(ctx.ui.footer).toBeDefined();
 		expect((ctx.ui as never as { indicator: { frames: string[] } }).indicator.frames).toHaveLength(10);
-		expect((ctx.ui as never as { thinkingLabel: string }).thinkingLabel).toContain("Toggle reasoning");
+		// The hidden reasoning stub is one line the message itself draws; no extension label adds a second.
+		expect((ctx.ui as never as { thinkingLabel?: string }).thinkingLabel).toBeUndefined();
 		const requestRender = vi.fn();
 		const header = (
 			ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[]; dispose(): void }
@@ -109,22 +138,11 @@ describe("chrome", () => {
 		expect(child.handlers.size).toBe(0);
 	});
 
-	it("repaints the spinner and thinking label when a theme switch invalidates the header, and stops row clocks at run end", async () => {
+	it("stops row clocks at run end", async () => {
 		const fake = fakePi();
 		registerUi(fake.pi, false);
 		const ctx = fakeCtx({ cwd: "/work/app" });
 		await fake.emit("session_start", { reason: "resume" }, ctx);
-		const ui = ctx.ui as never as { thinkingLabel: string; theme: unknown };
-		ui.theme = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };
-		const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { invalidate(): void; dispose(): void })(
-			{ requestRender: vi.fn(), children: [] },
-			theme,
-		);
-		expect(ui.thinkingLabel).not.toContain("<thinkingText>");
-		header.invalidate();
-		expect(ui.thinkingLabel).toContain("<thinkingText>");
-		header.dispose();
-
 		vi.useFakeTimers();
 		try {
 			const invalidate = vi.fn();

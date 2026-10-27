@@ -1,7 +1,7 @@
 import { Container, getCapabilities, type SettingItem, SettingsList } from "@octocodeai/octocode-tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import { CACHE_WARMING_MODES } from "../../../core/settings-manager.ts";
-import { getSettingsListTheme } from "../theme/theme.ts";
+import { getSettingsListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 import { applySettingChange, DEFAULT_PROJECT_TRUST_LABELS } from "./settings-selector/change-handler.ts";

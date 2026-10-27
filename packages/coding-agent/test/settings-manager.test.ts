@@ -577,6 +577,56 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("terminal.reduceMotion", () => {
+		const original = process.env.OCTOCODE_REDUCE_MOTION;
+		afterEach(() => {
+			if (original === undefined) delete process.env.OCTOCODE_REDUCE_MOTION;
+			else process.env.OCTOCODE_REDUCE_MOTION = original;
+		});
+
+		it("defaults to auto, which follows OCTOCODE_REDUCE_MOTION (1 or true)", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getReduceMotion()).toBe("auto");
+			for (const [value, active] of [
+				[undefined, false],
+				["0", false],
+				["", false],
+				["1", true],
+				["true", true],
+				["TRUE", true],
+			] as const) {
+				if (value === undefined) delete process.env.OCTOCODE_REDUCE_MOTION;
+				else process.env.OCTOCODE_REDUCE_MOTION = value;
+				expect(manager.isReduceMotionActive()).toBe(active);
+			}
+		});
+
+		it("persists an explicit choice, which wins over the environment", async () => {
+			process.env.OCTOCODE_REDUCE_MOTION = "1";
+			const manager = SettingsManager.create(projectDir, agentDir);
+
+			manager.setReduceMotion(false);
+			await manager.flush();
+			expect(manager.getReduceMotion()).toBe(false);
+			expect(manager.isReduceMotionActive()).toBe(false);
+			expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")).terminal.reduceMotion).toBe(false);
+
+			manager.setReduceMotion(true);
+			delete process.env.OCTOCODE_REDUCE_MOTION;
+			await manager.flush();
+			expect(SettingsManager.create(projectDir, agentDir).isReduceMotionActive()).toBe(true);
+
+			manager.setReduceMotion("auto");
+			await manager.flush();
+			expect(SettingsManager.create(projectDir, agentDir).getReduceMotion()).toBe("auto");
+		});
+
+		it("treats unsupported stored values as auto", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ terminal: { reduceMotion: "yes" } }));
+			expect(SettingsManager.create(projectDir, agentDir).getReduceMotion()).toBe("auto");
+		});
+	});
+
 	describe("markdown.mermaid", () => {
 		it("defaults to streaming and persists rendering modes", async () => {
 			const manager = SettingsManager.create(projectDir, agentDir);

@@ -104,9 +104,39 @@ function lapsedCover(host: ReservationHost, db: TeamStore, file: string): string
 	return host.held.lapsedCover(pathKey(db.workspace, file), () => db.owned(me.id));
 }
 
-/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined. */
-export function reservationText(host: ReservationHost, absolute: string, display: string): string | undefined {
-	const { lease, peer, lapsed, error } = checkReservation(host, absolute);
+/**
+ * Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one;
+ * or an unreadable team database), or undefined. Without a file (a change whose paths cannot be named, such as a
+ * PowerShell command), the first live reservation another agent holds anywhere.
+ */
+export function reservationText(
+	host: ReservationHost,
+	absolute: string | undefined,
+	display: string,
+): string | undefined {
+	return absolute === undefined
+		? anyReservationText(host)
+		: describeReservation(checkReservation(host, absolute), display);
+}
+
+function anyReservationText(host: ReservationHost): string | undefined {
+	try {
+		const db = host.existing();
+		const self = host.me()?.id ?? USER_SENDER;
+		// `conflict` retires the leases of an owner that is gone; `leases` alone only checks expiry.
+		const lease = db?.leases().find((entry) => entry.owner !== self && db.conflict(entry.path, self, entry.kind));
+		if (lease) return describeReservation({ lease }, lease.path);
+	} catch (error) {
+		if (host.collaborating()) return describeReservation({ error: dbFailure(error) }, "");
+	}
+	const peer = host.peerLeases().any();
+	return peer ? describeReservation({ peer }, peer.path) : undefined;
+}
+
+function describeReservation(
+	{ lease, peer, lapsed, error }: ReturnType<typeof checkReservation>,
+	display: string,
+): string | undefined {
 	if (error) return `Team database unavailable (${error}); retry the change.`;
 	if (lapsed) return `Your reservation on ${lapsed} lapsed; lock it again before editing ${display}.`;
 	if (peer)

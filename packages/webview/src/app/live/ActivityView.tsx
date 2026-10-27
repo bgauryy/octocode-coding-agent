@@ -155,7 +155,7 @@ function Overview({ ongoing }: { ongoing: number }) {
 
 /** Two or more consecutive tool calls read as one step; a group with a failure opens so the error is visible. */
 const ToolGroup = memo(function ToolGroup({ entry }: { entry: Extract<FeedEntry, { kind: "tools" }> }) {
-	const { total, running, failed, done } = entry.summary;
+	const { total, running, failed, done, notRun } = entry.summary;
 	return (
 		<details className={cx("tool-group", failed > 0 && "has-failure")} open={failed > 0}>
 			<summary>
@@ -169,8 +169,14 @@ const ToolGroup = memo(function ToolGroup({ entry }: { entry: Extract<FeedEntry,
 				<span className="muted">
 					{running
 						? `Running · ${done}/${total} done`
-						: failed
-							? `${failed} failed · ${done - failed} succeeded`
+						: failed || notRun
+							? [
+									failed ? `${failed} failed` : "",
+									`${done - failed - notRun} succeeded`,
+									notRun ? `${notRun} not run` : "",
+								]
+									.filter(Boolean)
+									.join(" · ")
 							: `${done} done`}
 				</span>
 			</summary>

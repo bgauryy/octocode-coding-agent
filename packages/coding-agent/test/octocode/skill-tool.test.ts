@@ -156,8 +156,8 @@ describe("skill tool", () => {
 	describe("rendering", () => {
 		it("draws the call as `Skill: <name>` and the result as one compact, expandable line", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
-			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toContain(
-				"● Skill: alpha",
+			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toMatch(
+				/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Skill: alpha/,
 			);
 			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill: alpha");
 			const result = await call("alpha");
@@ -207,17 +207,17 @@ describe("localFetch of a loaded skill's SKILL.md", () => {
 		const f = fixtures();
 		setActiveSkillCatalog(new SkillCatalog(f.snapshot));
 		const file = path.join(f.alpha, "SKILL.md");
-		expect(call({ queries: [{ path: file, fullContent: true }] })).toBe("● Skill: alpha");
+		expect(call({ queries: [{ path: file, fullContent: true }] })).toBe("✓ Skill: alpha");
 		// A relative path resolves against the session's directory.
-		expect(call({ queries: [{ path: "alpha/SKILL.md" }] }, f.root)).toBe("● Skill: alpha");
+		expect(call({ queries: [{ path: "alpha/SKILL.md" }] }, f.root)).toBe("✓ Skill: alpha");
 		// A disabled-for-models skill read by a model is still a skill load.
-		expect(call({ queries: [{ path: path.join(f.root, "hidden", "SKILL.md") }] })).toBe("● Skill: hidden");
+		expect(call({ queries: [{ path: path.join(f.root, "hidden", "SKILL.md") }] })).toBe("✓ Skill: hidden");
 		// Anything else keeps the generic row: another file, a reference of the skill, a batch, no path.
 		expect(call({ queries: [{ path: f.secret }] })).toContain("localFetch(");
 		expect(call({ queries: [{ path: path.join(f.alpha, "reference.md") }] })).toContain("localFetch(");
 		expect(call({ queries: [{ path: file }, { path: f.secret }] })).toContain("2 queries");
-		expect(call({ queries: [{ matchString: "x" }] })).toBe("● localFetch");
-		expect(call({})).toBe("● localFetch");
+		expect(call({ queries: [{ matchString: "x" }] })).toBe("✓ localFetch");
+		expect(call({})).toBe("✓ localFetch");
 	});
 
 	it("keeps the generic row when no skill is loaded, and for other Octocode tools", () => {

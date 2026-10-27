@@ -9,6 +9,7 @@ import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { setTimeout as sleep } from "timers/promises";
 import { getAgentDir } from "../../config.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 import { lockSyncWithRetry } from "../../utils/file-write-lock.ts";
 import { normalizePath } from "../../utils/paths.ts";
 
@@ -33,6 +34,12 @@ export type LockResult<T> = {
 
 // The mode applies only on creation so administrator-managed modes and ACLs remain intact.
 const AUTH_FILE_WRITE_OPTIONS = { encoding: "utf-8", mode: 0o600 } as const;
+
+/** Replace auth.json whole (temp file, fsync, rename): a crash leaves the old or the new credentials, never a torn file. */
+function writeAuthFile(path: string, next: string): void {
+	// An existing file keeps its mode (administrator-managed modes and ACLs); a new one is private.
+	atomicWriteFileSync(path, next, existsSync(path) ? {} : { mode: 0o600 });
+}
 
 export interface AuthStorageBackend {
 	withLock<T>(fn: (current: string | undefined) => LockResult<T>): T;
@@ -74,7 +81,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
 			const { result, next } = fn(current);
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, AUTH_FILE_WRITE_OPTIONS);
+				writeAuthFile(this.authPath, next);
 			}
 			return result;
 		} finally {
@@ -155,7 +162,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			throwIfCompromised();
 			options?.signal?.throwIfAborted();
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, AUTH_FILE_WRITE_OPTIONS);
+				writeAuthFile(this.authPath, next);
 			}
 			throwIfCompromised();
 			return result;

@@ -1,4 +1,5 @@
 import { registerGraphTools } from "./graph/register.ts";
+import { registerRunGuards } from "./run-guards.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
@@ -30,7 +31,6 @@ import { registerExternal } from "./external/register.ts";
 import { registerBashTool } from "./files/bash.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
-import { registerReadDedupe } from "./files/dedupe.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
 import { contextReads } from "./files/reads.ts";
 import { registerFileTool } from "./files/tool.ts";
@@ -43,6 +43,8 @@ import { PROFILE_DECLARABLE } from "./permission/mode.ts";
 import { createProvenance } from "./permission/provenance.ts";
 import { pruneSnapshots } from "./permission/snapshot.ts";
 import { reservationTargets, shellMutation, shellParserReady } from "./permission/shell/mutation.ts";
+import { readOnlyCommand } from "./permission/shell/read-only.ts";
+import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerSessions } from "./sessions/register.ts";
 import { notify, Subcommands } from "./shared/commands.ts";
@@ -142,6 +144,7 @@ export default function octocode(pi: ExtensionAPI): void {
 	const planning = registerPlanning(pi, commands, async () => {
 		await Promise.all([jobs.stopAll("user"), agents?.stopAll("plan mode"), external?.reset(), hooks.suspend?.()]);
 	});
+	planning.readOnlyShell = planReadOnly;
 	// /new, /resume and /fork end this runtime, and with it its bash jobs and background subagents: ask before leaving
 	// them. Registered before the checkpoint handlers, so a fork is confirmed before its file-restore offer.
 	const confirmLeave = async (ctx: ExtensionContext, action: string) => {
@@ -194,10 +197,8 @@ export default function octocode(pi: ExtensionAPI): void {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
 		beforeLeave: async (reason) => agents?.stopAll(reason),
 		registerTool: agentTool.collect,
-		shellWrites: async (command) => {
-			await shellParserReady();
-			return reservationTargets(command);
-		},
+		shellWrites: (command) => shellParserReady().then(() => reservationTargets(command)),
+		shellReadOnly: readOnlyCommand,
 		shellChanges: async (command) => {
 			await shellParserReady();
 			return shellMutation(command).writes;
@@ -305,8 +306,7 @@ export default function octocode(pi: ExtensionAPI): void {
 	registerArchiveCommand(commands);
 	registerArchiveTool(pi);
 	registerSkillTool(pi);
-	// After the file guard's `tool_result` handler (`registerFileTool`), which must digest the text a read returned.
-	registerReadDedupe(pi);
+	registerRunGuards(pi); // after the file guard and the Stop hook: see run-guards.ts
 	registerHooksCommand(commands, hooks);
 	// Subagents have no terminal of their own: their parent's row and report carry their state.
 	if (!isSubagent) registerNotify(pi, { onNotice: (notice, ctx) => hooks.notification(notice, ctx) });

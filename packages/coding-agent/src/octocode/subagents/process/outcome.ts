@@ -37,6 +37,8 @@ export interface SubagentOutcome {
 	usage: Usage;
 	/** Set when the child's model call failed (stopReason error/aborted). */
 	error?: string;
+	/** Set when the request budget stopped the run (`budget.ts`): the replies it made and the soft limit. */
+	budget?: { requests: number; limit: number };
 }
 
 /** Wait before the one retry of a child that crashed while loading its code (a source file being edited at that moment). */

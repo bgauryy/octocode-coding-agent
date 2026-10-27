@@ -1,7 +1,7 @@
-import { Container, Markdown, type MarkdownTheme } from "@octocodeai/octocode-tui";
+import { Container, GLYPH, Markdown, type MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { ApplicationMessage } from "@octocodeai/octocode-contacts";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import {
 	ContentAttachmentComponent,
@@ -13,6 +13,17 @@ import {
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+
+/** The first padding cell of a message row, after the background escape. */
+const FIRST_CELL = /^((?:\x1b\[[0-9;]*m)*) /;
+
+/** An accent bar in the left padding column marks every row of the prompt without moving its text. */
+class MarkedMarkdown extends Markdown {
+	override render(width: number): string[] {
+		const bar = theme.fg("accent", GLYPH.userBar);
+		return super.render(width).map((line) => line.replace(FIRST_CELL, (_cell, escapes: string) => escapes + bar));
+	}
+}
 
 /**
  * Component that renders a user message
@@ -69,7 +80,7 @@ export class UserMessageComponent extends Container {
 			// The Markdown pads and colors its own background: a Box around it would keep a second full-width copy of every
 			// line, with identical output.
 			this.addChild(
-				new Markdown(
+				new MarkedMarkdown(
 					contentText(block, this.contentOptions.readAsset),
 					this.outputPad,
 					1,

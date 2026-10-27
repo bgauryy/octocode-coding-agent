@@ -20,6 +20,9 @@ export interface DisplaySettingsApi {
 	setClearOnShrink(enabled: boolean): void;
 	getShowTerminalProgress(): boolean;
 	setShowTerminalProgress(enabled: boolean): void;
+	getReduceMotion(): boolean | "auto";
+	isReduceMotionActive(): boolean;
+	setReduceMotion(value: boolean | "auto"): void;
 	getTuiMode(): TuiMode;
 	setTuiMode(mode: TuiMode): void;
 	getFullscreenExitOutput(): FullscreenExitOutput;

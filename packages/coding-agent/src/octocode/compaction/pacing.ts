@@ -16,14 +16,23 @@ export const THRASH_STREAK = 3;
 export class ThrashBreaker {
 	#turnsSince: number | undefined;
 	#streak = 0;
+	#turnInRun = false;
 
 	reset(): void {
 		this.#turnsSince = undefined;
 		this.#streak = 0;
+		this.#turnInRun = false;
 	}
 
 	turnEnded(): void {
+		this.#turnInRun = true;
 		if (this.#turnsSince !== undefined) this.#turnsSince += 1;
+	}
+
+	/** A run settled; one that ended without a turn (its prompt was stopped before the request) counts as one turn. */
+	runSettled(): void {
+		if (!this.#turnInRun) this.turnEnded();
+		this.#turnInRun = false;
 	}
 
 	/** Records a finished compaction; a manual one starts the count over. */
@@ -94,4 +103,14 @@ export function contextTokens(
 		// Unknown size: `needsDownshiftCompaction` then starts no compaction, and the model switch goes on.
 		return undefined;
 	}
+}
+
+/** Whether the context (by `contextTokens`) is known to fit the session's context window, so the next request can be sent. */
+export function fitsWindow(
+	ctx: Pick<ExtensionContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	toolChars = 0,
+): boolean {
+	const window = ctx.getContextUsage()?.contextWindow ?? 0;
+	const tokens = contextTokens(ctx, toolChars);
+	return window > 0 && tokens !== undefined && tokens <= window;
 }

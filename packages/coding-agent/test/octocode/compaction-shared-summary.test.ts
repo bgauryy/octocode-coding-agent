@@ -517,7 +517,43 @@ describe("summary attempt accounting", () => {
 	});
 	it("records returned aborted usage even when no summary is accepted", async () => {
 		const s = setup({ reply: () => reply([], "aborted") });
-		await writeSummary(s.pi, s.event, s.ctx);
+		const result = await writeSummary(s.pi, s.event, s.ctx);
 		expect(s.recordedUsage.length).toBeGreaterThan(0);
+		expect(result).toBeUndefined();
+	});
+	it("does not keep a summary cancelled mid-request: the next compaction of the same span asks the model again", async () => {
+		const signal = { aborted: false };
+		let cancel = true;
+		const s = setup({
+			signal,
+			reply: () => {
+				if (!cancel) return reply([text("## Goal\nfull summary")]);
+				signal.aborted = true;
+				return reply([text("## Goal\npartial")], "aborted");
+			},
+		});
+		expect(await writeSummary(s.pi, s.event, s.ctx)).toBeUndefined();
+		const cancelledCalls = s.calls.length;
+		signal.aborted = false;
+		cancel = false;
+		const result = await writeSummary(s.pi, s.event, s.ctx);
+		expect(s.calls.length).toBeGreaterThan(cancelledCalls);
+		expect(result?.compaction?.summary).toContain("full summary");
+		expect(result?.compaction?.summary).not.toContain("partial");
+	});
+	it("does not keep a complete summary that returned after the user cancelled", async () => {
+		const signal = { aborted: false };
+		const s = setup({
+			signal,
+			reply: (call) => {
+				if (call === 1) signal.aborted = true;
+				return reply([text(`## Goal\nsummary ${call}`)]);
+			},
+		});
+		expect(await writeSummary(s.pi, s.event, s.ctx)).toBeUndefined();
+		signal.aborted = false;
+		const result = await writeSummary(s.pi, s.event, s.ctx);
+		expect(s.calls).toHaveLength(2);
+		expect(result?.compaction?.summary).toContain("summary 2");
 	});
 });

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sanitizeJson, toToolResult } from "../../../mcp/src/presets/octocode/tools.ts";
+import { expandKey } from "../../src/octocode/shared/render/text.ts";
 import { TEXT_MAX_CHARS } from "../../src/octocode/shared/turn-budget.ts";
 import { rendered, theme } from "./fake-pi.ts";
 import { noisyPng, pixelSize } from "./helpers.ts";
@@ -255,6 +256,61 @@ describe("Octocode tool results and rendering", () => {
 		);
 		expect(failed).toContain("It broke");
 		expect(failed).toContain("with detail");
+	});
+
+	it("summarizes the server's JSON envelope in one line and keeps the payload for the expanded row", () => {
+		const definition = octocodeToolDefinition(tool, binding);
+		const context = (extra: object = {}) =>
+			({
+				lastComponent: undefined,
+				state: {},
+				args: {},
+				toolCallId: "c",
+				invalidate: () => undefined,
+				cwd: "/w",
+				executionStarted: true,
+				argsComplete: true,
+				isPartial: false,
+				expanded: false,
+				showImages: false,
+				isError: false,
+				...extra,
+			}) as never;
+		const show = (payload: object, extra: object = {}, expanded = false) =>
+			rendered(
+				definition.renderResult!(
+					{ content: [{ type: "text", text: JSON.stringify(payload) }], details: { tool: "localFetch" } } as never,
+					{ expanded, isPartial: false },
+					theme,
+					context({ expanded, ...extra }),
+				),
+			);
+		const read = {
+			results: [{ index: 0, data: { path: "package.json", content: "1\t{\n2\t}\n3\t", totalLines: 76 } }],
+		};
+		expect(show(read)).toBe(`  ⎿  package.json · lines 1–3 of 76 (${expandKey()} to expand)`);
+		expect(show(read, {}, true)).toContain('"totalLines":76');
+		const search = { results: [{ index: 0, data: { matchCount: 29, files: [{ path: "a" }, { path: "b" }] } }] };
+		expect(show(search)).toContain("29 matches in 2 files");
+		const none = { results: [{ index: 0, status: "empty", data: { matchCount: 0, filesScanned: 4 } }] };
+		expect(show(none)).toContain("no matches");
+		const listing = { results: [{ index: 0, data: { path: "src", files: [], summary: { files: 8, dirs: 1 } } }] };
+		expect(show(listing)).toContain("src · 8 files, 1 dir");
+		const error = {
+			results: [
+				{
+					index: 0,
+					data: {
+						error: `Path '/nonexistent-xyz' is outside allowed directories (allowed: ., ~/.octocode/sessions, ${"~/x/y, ".repeat(20)})`,
+					},
+				},
+			],
+		};
+		const failed = show(error, { isError: true });
+		expect(failed).toContain("Error: Path '/nonexistent-xyz' is outside allowed directories");
+		expect(failed).not.toContain('{"results"');
+		expect(failed).not.toContain("allowed:");
+		expect(show(error, { isError: true }, true)).toContain("allowed:");
 	});
 });
 

@@ -22,6 +22,14 @@ export interface CacheMiss {
 	fullMiss: boolean;
 	/** True when an instruction or tool update (a system message) entered the conversation since the previous request. */
 	promptChanged: boolean;
+	/** Why the provider says the prefix diverged (`OCTOCODE_CACHE_DIAGNOSTICS`), for example `tools_changed`. */
+	apiReason?: string;
+}
+
+/** The reason the provider reported for this reply's miss, from the `cache_miss` diagnostic the adapter records. */
+function apiMissReason(message: AssistantMessage): string | undefined {
+	const reason = message.diagnostics?.find((diagnostic) => diagnostic.type === "cache_miss")?.details?.reason;
+	return typeof reason === "string" ? reason : undefined;
 }
 
 /**
@@ -31,6 +39,9 @@ export interface CacheMiss {
  * when a cached prefix was still read.
  */
 export function cacheMissLabel(miss: CacheMiss, ttlMs?: number): string {
+	// The provider compared the two requests; that outranks every inference below.
+	if (miss.apiReason)
+		return `${miss.fullMiss ? "Full" : "History"} cache miss: provider reports ${miss.apiReason.replaceAll("_", " ")}`;
 	if (miss.modelChanged) return "Cache miss after model switch";
 	if (miss.promptChanged) return "Cache miss after instruction or tool update";
 	const area = miss.fullMiss ? "Full cache miss" : "History cache miss";
@@ -114,6 +125,7 @@ function detectMiss(
 		modelChanged: modelKeyOf(message) !== prev.modelKey,
 		fullMiss: usage.cacheRead === 0,
 		promptChanged: prev.promptChanged,
+		...(apiMissReason(message) ? { apiReason: apiMissReason(message) } : {}),
 	};
 }
 

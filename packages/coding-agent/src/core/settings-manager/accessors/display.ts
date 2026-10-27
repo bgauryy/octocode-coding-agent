@@ -115,6 +115,29 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 		this.save();
 	}
 
+	/** The stored choice: `true`, `false` or `"auto"` (follow `OCTOCODE_REDUCE_MOTION`). */
+	getReduceMotion(): boolean | "auto" {
+		const value = this.settings.terminal?.reduceMotion;
+		return typeof value === "boolean" || value === "auto" ? value : SETTINGS_DEFAULTS.terminal.reduceMotion;
+	}
+
+	/** Whether motion is reduced now: an explicit choice wins; `"auto"` reads `OCTOCODE_REDUCE_MOTION`. */
+	isReduceMotionActive(): boolean {
+		const value = this.getReduceMotion();
+		if (value !== "auto") return value;
+		const env = process.env.OCTOCODE_REDUCE_MOTION?.trim().toLowerCase();
+		return env === "1" || env === "true";
+	}
+
+	setReduceMotion(value: boolean | "auto"): void {
+		if (!this.globalSettings.terminal) {
+			this.globalSettings.terminal = {};
+		}
+		this.globalSettings.terminal.reduceMotion = value;
+		this.markModified("terminal", "reduceMotion");
+		this.save();
+	}
+
 	getTuiMode(): TuiMode {
 		return this.settings.tuiMode === "regular" ? "regular" : SETTINGS_DEFAULTS.tuiMode;
 	}

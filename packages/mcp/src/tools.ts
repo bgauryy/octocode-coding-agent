@@ -125,6 +125,58 @@ function relocateSchema(schema: unknown, pointer: string): unknown {
 	return relocated;
 }
 
+/** Whether `ref` points at something in `root`: the root, an existing JSON pointer, or a declared anchor. */
+function resolvesWithin(root: unknown, ref: string): boolean {
+	if (ref === "#") return true;
+	if (ref.startsWith("#/")) {
+		let node: unknown = root;
+		for (const segment of ref.slice(2).split("/")) {
+			let key: string;
+			try {
+				key = decodeURIComponent(segment).replaceAll("~1", "/").replaceAll("~0", "~");
+			} catch {
+				return false;
+			}
+			if (typeof node !== "object" || node === null || !Object.hasOwn(node, key)) return false;
+			node = (node as Record<string, unknown>)[key];
+		}
+		return true;
+	}
+	return ref.startsWith("#") && declaresAnchor(root, ref.slice(1));
+}
+
+function declaresAnchor(schema: unknown, name: string): boolean {
+	if (Array.isArray(schema)) return schema.some((item) => declaresAnchor(item, name));
+	if (typeof schema !== "object" || schema === null) return false;
+	const { $anchor, $id } = schema as Record<string, unknown>;
+	return $anchor === name || $id === `#${name}` || Object.values(schema).some((value) => declaresAnchor(value, name));
+}
+
+/**
+ * `schema` without the `$ref`s that cannot resolve (remote documents, missing definitions): the host's validator
+ * cannot compile them and would reject every call of the tool, while the server validates its own input anyway.
+ * The rest of the subschema (siblings of the `$ref`) still applies; a bare `$ref` becomes the permissive `{}`.
+ */
+function dropUnresolvableRefs(schema: unknown, root: unknown = schema): unknown {
+	if (Array.isArray(schema)) return schema.map((item) => dropUnresolvableRefs(item, root));
+	if (typeof schema !== "object" || schema === null) return schema;
+	const cleaned: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(schema)) {
+		if (key === "$ref" && typeof value === "string") {
+			if (resolvesWithin(root, value)) cleaned[key] = value;
+		} else if (SCHEMA_DATA_KEYWORDS.has(key)) {
+			cleaned[key] = value;
+		} else if (SCHEMA_MAP_KEYWORDS.has(key) && typeof value === "object" && value !== null && !Array.isArray(value)) {
+			cleaned[key] = Object.fromEntries(
+				Object.entries(value).map(([name, subschema]) => [name, dropUnresolvableRefs(subschema, root)]),
+			);
+		} else {
+			cleaned[key] = dropUnresolvableRefs(value, root);
+		}
+	}
+	return cleaned;
+}
+
 /**
  * Output schema of every MCP tool: the structured `CallToolResult` (without `_meta`, which
  * {@link convertMcpResult} drops), with the tool's own output schema as `structuredContent`.
@@ -198,11 +250,11 @@ export async function convertMcpResult(
 
 /**
  * Tool input schemas must be objects. MCP servers may omit `type`, and some providers reject object
- * schemas without `properties`.
+ * schemas without `properties`. References that cannot resolve are dropped (see {@link dropUnresolvableRefs}).
  */
 export function toParameters(schema: Record<string, unknown>): TSchema {
 	return {
-		...schema,
+		...(dropUnresolvableRefs(schema) as Record<string, unknown>),
 		type: schema.type ?? "object",
 		...(schema.properties === undefined ? { properties: {} } : {}),
 	};

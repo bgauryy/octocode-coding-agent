@@ -30,6 +30,7 @@ export interface AgentOptions {
 	beforeToolCall?: (context: BeforeToolCallContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>;
 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
 	unknownToolMessage?: (toolName: string) => string | undefined;
+	pendingToolNames?: () => ReadonlySet<string>;
 	finishTurn?: FinishTurn;
 	prepareRequest?: PrepareRequest;
 	prepareInput?: PrepareInput;

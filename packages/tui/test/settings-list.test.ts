@@ -33,7 +33,7 @@ describe("SettingsList", () => {
 		);
 		const lines = list.render(48);
 		assert.ok(lines.every((line) => visibleWidth(line) <= 48));
-		assert.match(lines.join("\n"), /Type to search/);
+		assert.match(lines.join("\n"), /type to search/);
 		assert.match(lines.join("\n"), /enter\/space change/);
 		assert.match(lines.join("\n"), /escape\/ctrl\+c cancel/);
 	});

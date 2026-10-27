@@ -10,13 +10,13 @@ octocode models discover --offline --json
 
 `--provider` limits discovery to one provider; omitting it checks all registered providers. Requests run in groups of four with a 60-second command deadline and a 15-second deadline per vendor list. `--offline` or `OCTOCODE_OFFLINE=1` reads only local model definitions and does not resolve credentials. An error or unconfigured provider gives the command a nonzero exit status; unavailable discovery contracts are reported separately.
 
-| Status | Meaning |
-|---|---|
-| `verified` | The documented model-list request succeeded. This does not prove inference access or feature compatibility. |
-| `catalog` | Offline result from configured model definitions. |
-| `unsupported` | No verified HTTP list contract is implemented for this provider; consult the result's documentation link and note. |
-| `unconfigured` | The list needs authentication and none resolved. |
-| `error` | Authentication or the list request failed. Local definitions remain available in the result. |
+| Status         | Meaning                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `verified`     | The documented model-list request succeeded. This does not prove inference access or feature compatibility.        |
+| `catalog`      | Offline result from configured model definitions.                                                                  |
+| `unsupported`  | No verified HTTP list contract is implemented for this provider; consult the result's documentation link and note. |
+| `unconfigured` | The list needs authentication and none resolved.                                                                   |
+| `error`        | Authentication or the list request failed. Local definitions remain available in the result.                       |
 
 Every built-in provider has a strategy and official reference in [the discovery source registry](../../ai/src/providers/discovery-sources.ts). The same registry drives the implementation. Public Hugging Face, OpenCode Console and Vercel catalogs need no credentials and do not establish subscription entitlement. Subscription plans use their own supported-model lists, rather than borrowing the pay-as-you-go catalog.
 
@@ -29,11 +29,11 @@ OpenAI API keys use the standard `data[].id` list. Sign in with ChatGPT uses the
 The SDK exposes the same behavior without importing every provider:
 
 ```typescript
-import { discoverProviderModels } from '@octocodeai/octocode-ai/providers/discovery';
+import { discoverProviderModels } from "@octocodeai/octocode-ai/providers/discovery";
 
-const result = await discoverProviderModels(models, 'openai', {
-  allowNetwork: true,
-  signal: AbortSignal.timeout(15_000),
+const result = await discoverProviderModels(models, "openai", {
+	allowNetwork: true,
+	signal: AbortSignal.timeout(15_000),
 });
 ```
 

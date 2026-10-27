@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { claudeConfigDir } from "../../utils/host-config.ts";
 import { getAgentDir, getOctocodeHome } from "../../config.ts";
-import { resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
+import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path-utils.ts";
 import { dirsToRepoRoot, repoKey } from "./home/repo.ts";
 
 /** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
@@ -47,6 +47,15 @@ export function privateDir(dir: string): string {
 /** Resolve tracked and reserved files with the same rules as the native file tools. */
 export function resolveToolPath(cwd: string, raw: string): string {
 	return resolveToCwd(raw, cwd);
+}
+
+/**
+ * Like `resolveToolPath`, but a relative path is joined to `cwd` without collapsing its `..` segments, so a later
+ * `canonicalPath` follows a symlink before the `..` that comes after it, as the shell does.
+ */
+export function reservationPath(cwd: string, raw: string): string {
+	const expanded = expandPath(raw);
+	return path.isAbsolute(expanded) ? expanded : `${cwd}${path.sep}${expanded}`;
 }
 
 /** Paths of a `read` tool call, from a transcript of another host or an SDK caller's own `read` tool; native MCP reads carry verified metadata from shared/local-reads. */

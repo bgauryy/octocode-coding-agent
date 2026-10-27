@@ -5,7 +5,7 @@ import { getCliInvocation } from "../../../config.ts";
 import { writeRolePrompt } from "../../instructions/role.ts";
 import { formatDuration, shortPath } from "../../shared/format.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
-import { adoptTree, groupAlive, groupStartTimes, prepareTree, sameProcess, stopTree } from "../../shared/process.ts";
+import { adoptTree, prepareTree, stopTree } from "../../shared/process.ts";
 import { visibleControls } from "../../shared/sanitize.ts";
 import { settleWithin } from "../../shared/util.ts";
 import {
@@ -16,6 +16,7 @@ import {
 	reduceEvent,
 	type WatchdogLimits,
 } from "../events.ts";
+import { budgetOutcome, maxRequests, RequestBudget } from "../budget.ts";
 import type { AgentProfile } from "../profiles.ts";
 import { ChildRelay, type RelayHost } from "../relay.ts";
 import { ReportTracker } from "../report.ts";
@@ -36,20 +37,13 @@ import {
 	USER_STOP_GRACE_MS,
 	WATCHDOG,
 } from "./outcome.ts";
+import { leftBehind } from "./left-behind.ts";
+import { startGate } from "../rate-gate.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
 
-/**
- * Whether the exited child's process group (POSIX; the child leads one) still has live members. Each is checked against
- * the start time `ps` just reported, so a pid the system handed to another process is never signalled; when `ps`
- * cannot be read, a live group counts. Windows has no process group: the child's Job Object (`adoptTree`) ends its
- * tree through `stopTree`, which the caller runs after any exit.
- */
-function leftBehind(pgid: number | undefined): boolean {
-	if (pgid === undefined || process.platform === "win32") return false;
-	const members = groupStartTimes(pgid);
-	return members ? members.some((member) => sameProcess(member.pid, member.started)) : groupAlive(pgid);
-}
+/** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
+const INTERRUPT_FOLLOW_UP_MS = 1_500;
 
 /**
  * Runs one child in Octocode's RPC mode and resolves with its report. The task is sent as a `prompt` command on stdin. The
@@ -153,10 +147,14 @@ export async function runChild(
 				);
 			};
 			signal?.addEventListener("abort", abort, { once: true });
+			// The request budget: one steer at the soft limit, the same stop as above at the hard limit (0: off).
+			const budget = new RequestBudget(maxRequests(profile), (message) => void send({ type: "steer", message }), abort);
 			// Watchdog: a child stuck on a stalled model stream emits nothing; stop it instead of spinning forever.
 			let activeAt = Date.now();
 			let stalled: Error | undefined;
 			let cancelled = false;
+			/** Waits after an unrequested aborted settle for the run an interrupt's message starts. */
+			let followUp: NodeJS.Timeout | undefined;
 			// While the child waits for the user's answer it is not hung, however long the user takes.
 			let waitingSince = 0;
 			const relay = new ChildRelay(identity, host, {
@@ -222,12 +220,29 @@ export async function runChild(
 						// Octocode can abort after a normal reply or between tools without an aborted assistant message.
 						// A watchdog stopping shutdown after an answer still preserves that completed report.
 						cancelled = effect.aborted && !stalled;
+						clearTimeout(followUp);
+						// An abort nobody here asked for may be a team interrupt: the child's held message starts its next run right
+						// after this settle, and closed input would end that run. It leaves only if no run starts within the grace.
+						if (cancelled && !signal?.aborted && !streamFailure && budget.stopped === undefined) {
+							followUp = setTimeout(() => {
+								if (state.running) cancelled = false;
+								else {
+									onSettled?.();
+									closeInput();
+								}
+							}, INTERRUPT_FOLLOW_UP_MS);
+							return;
+						}
 						onSettled?.();
 						return closeInput();
 					case "incoming":
 						return report.incoming(effect.role, effect.job);
 					case "answer":
 						return report.answer(effect.text, effect.stopReason, effect.errorMessage);
+					case "request":
+						return budget.onReply(effect.count, effect.continues);
+					case "responding":
+						return progress({ usage: state.usage, responding: true });
 				}
 			};
 			child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
@@ -263,6 +278,7 @@ export async function runChild(
 				relay.cancelAll();
 				clearInterval(watchdog);
 				clearTimeout(exitGrace);
+				clearTimeout(followUp);
 				signal?.removeEventListener("abort", abort);
 				return true;
 			};
@@ -304,10 +320,13 @@ export async function runChild(
 					outcomeSource,
 					structured,
 				} = report.result();
+				startGate.noteFailure(error);
 				if (streamFailure) reject(streamFailure);
 				// A child stopped while settling after its answer still delivers that answer.
 				else if (stalled && !answered) reject(stalled);
 				else if (signal?.aborted && !answered) reject(new Error("Subagent cancelled"));
+				else if (budget.stopped !== undefined)
+					resolve(budgetOutcome(budget.stopped, budget.limit, lastProgress, state.usage, identity.resultContract));
 				// The child's report (already shown with visible escapes by `Report`) and stderr are untrusted text headed for the model and the terminal. A crash before any
 				// final answer is a failure even when the child narrated progress first: narration is not a report.
 				else if (code !== 0 && !answered && !state.turnSeen) {

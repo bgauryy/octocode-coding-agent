@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { validateLocalDependencies } from "./local-dependencies.mjs";
 
-function fixture(t, { name = "research-cli", installed = true, executable = true } = {}) {
+function fixture(t, { name = "research-cli", installed = true, executable = true, bin = "cli.js" } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "octocode-local-dependencies-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const agent = join(root, "agent");
@@ -16,7 +16,7 @@ function fixture(t, { name = "research-cli", installed = true, executable = true
 		join(agent, "package.json"),
 		JSON.stringify({ dependencies: { "research-cli": "file:../dependency" } }),
 	);
-	writeFileSync(join(dependency, "package.json"), JSON.stringify({ name, version: "1.0.0", bin: "cli.js" }));
+	writeFileSync(join(dependency, "package.json"), JSON.stringify({ name, version: "1.0.0", ...(bin ? { bin } : {}) }));
 	if (executable) writeFileSync(join(dependency, "cli.js"), "");
 	if (installed) symlinkSync(dependency, join(agent, "node_modules/research-cli"), "junction");
 	return agent;
@@ -36,4 +36,11 @@ test("rejects a missing local installation", (t) => {
 
 test("rejects a missing local CLI build", (t) => {
 	assert.throws(() => validateLocalDependencies(fixture(t, { executable: false })), /CLI is missing/);
+});
+
+test("accepts a bin-less library through its declared entry files, and only those", (t) => {
+	const entries = { "research-cli": ["cli.js"] };
+	assert.deepEqual(validateLocalDependencies(fixture(t, { bin: "" }), entries), ["research-cli"]);
+	assert.throws(() => validateLocalDependencies(fixture(t, { bin: "", executable: false }), entries), /CLI is missing/);
+	assert.throws(() => validateLocalDependencies(fixture(t, { bin: "" }), {}), /declares no CLI executable/);
 });

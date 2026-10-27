@@ -19,6 +19,69 @@ describe("shellMutation", () => {
 		expect(writes("cd pkg && echo x > a.ts")).toEqual([]);
 	});
 
+	it("sees the command a wrapper runs: env, sudo, exec, command, nice, nohup and time", () => {
+		const writes = (command: string) => shellMutation(command).writes;
+		expect(writes("env rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("env -i FOO=1 BAR=2 rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("env -u HOME rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("sudo rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("sudo -u root -E touch a.ts")).toEqual(["a.ts"]);
+		expect(writes("exec rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("command rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("nice -n 5 rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("nohup rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("time rm a.ts")).toEqual(["a.ts"]);
+		expect(writes("env tee out.txt")).toEqual(["out.txt"]);
+		expect(writes("/usr/bin/env sudo -n env rm a.ts")).toEqual(["a.ts"]);
+		expect(shellMutation("env sudo git commit -m x").opaque).toEqual(["git commit"]);
+		expect(shellMutation("sudo sh -c 'echo x > a.ts'").writes).toEqual(["a.ts"]);
+		expect(shellMutation("env $CMD a.ts").uncertain).toBe(true);
+		for (const command of ["env", "env FOO=1", "command -v rm", "sudo ls", "exec ls src", "time git status"])
+			expect(shellMutation(command), command).toEqual({ writes: [], opaque: [], uncertain: false, unparsed: false });
+	});
+
+	it("treats opaque writers as mutations: rsync, awk -i inplace, ed/ex, git config, npm pkg/config set", () => {
+		const opaque = (command: string) => shellMutation(command).opaque;
+		expect(opaque("rsync -a src/ dist/")).toEqual(["rsync"]);
+		expect(opaque("env rsync -a src/ dist/")).toEqual(["rsync"]);
+		expect(opaque("awk -i inplace '{print}' a.txt")).toEqual(["awk -i inplace"]);
+		expect(opaque("gawk -iinplace '{print}' a.txt")).toEqual(["gawk -i inplace"]);
+		expect(opaque("gawk --include=inplace '{print}' a.txt")).toEqual(["gawk -i inplace"]);
+		expect(opaque("ed -s a.txt")).toEqual(["ed"]);
+		expect(opaque("ex -sc 'wq' a.txt")).toEqual(["ex"]);
+		expect(opaque("git config user.name Ada")).toEqual(["git config"]);
+		expect(opaque("git -C . config --global core.editor vim")).toEqual(["git config"]);
+		expect(opaque("git config --unset user.name")).toEqual(["git config"]);
+		expect(opaque("npm pkg set scripts.x=y")).toEqual(["npm pkg set"]);
+		expect(opaque("yarn config set nodeLinker node-modules")).toEqual(["yarn config set"]);
+		expect(opaque("pnpm config delete registry")).toEqual(["pnpm config delete"]);
+		// Reads stay reads.
+		for (const command of [
+			"awk '{print}' a.txt",
+			"git config user.name",
+			"git config --get user.name",
+			"git config --list",
+			"git config -l --show-origin",
+			"npm pkg get name",
+			"npm config get registry",
+			"npm config list",
+		])
+			expect(opaque(command), command).toEqual([]);
+	});
+
+	it("finds the git subcommand past global options", () => {
+		const opaque = (command: string) => shellMutation(command).opaque;
+		expect(opaque("git -C . checkout -- a.ts")).toEqual(["git checkout"]);
+		expect(opaque("git -C ../other commit -m x")).toEqual(["git commit"]);
+		expect(opaque("git -c core.editor=true -c k=v rebase main")).toEqual(["git rebase"]);
+		expect(opaque("git --git-dir=.git --no-pager reset --hard")).toEqual(["git reset"]);
+		expect(opaque("git --git-dir .git --work-tree . clean -fd")).toEqual(["git clean"]);
+		expect(opaque("env git -C . stash")).toEqual(["git stash"]);
+		expect(opaque("git -C . status")).toEqual([]);
+		expect(opaque("git -C . stash list")).toEqual([]);
+		expect(opaque("git -c k=v log --oneline")).toEqual([]);
+	});
+
 	it("reports changes without a path, and writes it cannot resolve", () => {
 		expect(shellMutation("git commit -am x").opaque).toEqual(["git commit"]);
 		expect(shellMutation("yarn install").opaque).toEqual(["yarn install"]);

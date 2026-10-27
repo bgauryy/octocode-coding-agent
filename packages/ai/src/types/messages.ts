@@ -132,6 +132,13 @@ export interface UserMessage {
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
+/** Thinking-token budget a request asked for and the budget actually sent after fitting it to the context. */
+export interface ThinkingBudgetReduction {
+	requested: number;
+	/** 0 means thinking was disabled for the request. */
+	sent: number;
+}
+
 export interface AssistantMessage {
 	role: "assistant";
 	content: AssistantContent[];
@@ -144,11 +151,18 @@ export interface AssistantMessage {
 	providerThinkingLevel?: string;
 	/** Pi thinking level the agent loop requested for this response. Absent outside the agent loop and for legacy responses. */
 	thinkingLevel?: ModelThinkingLevel;
+	/** Set only when the thinking budget was reduced to fit the context. Absent when nothing was cut and for legacy responses. */
+	thinkingBudget?: ThinkingBudgetReduction;
 	diagnostics?: AssistantMessageDiagnostic[]; // Redacted provider/runtime diagnostics for failures and recoveries.
 	usage: Usage;
 	stopReason: StopReason;
 	deferred?: DeferredHandle;
 	errorMessage?: string;
+	/**
+	 * Delay in milliseconds the provider asked for before the next attempt, read from `retry-after-ms`/`retry-after`
+	 * on a failed response. Set only on `stopReason: "error"` when the provider sent one.
+	 */
+	retryAfterMs?: number;
 	rawStopReason?: string;
 	/**
 	 * Provider indication of whether the model explicitly ended its turn.

@@ -51,19 +51,56 @@ function validateServerRetryDelayMs(
 	return delayMs;
 }
 
-function getRetryDelayMs(error: ProviderError, retryIndex: number, maxRetryDelayMs: number | undefined): number {
-	const retryAfterMs = error.headers?.get("retry-after-ms");
+/** The delay a provider asked for through `retry-after-ms` or `retry-after` (seconds or HTTP date), if any. */
+function serverRetryDelayMs(headers: Headers | undefined): number | undefined {
+	const retryAfterMs = headers?.get("retry-after-ms");
 	if (retryAfterMs) {
 		const value = Number.parseFloat(retryAfterMs);
-		if (Number.isFinite(value)) return validateServerRetryDelayMs(value, maxRetryDelayMs, error.message);
+		if (Number.isFinite(value)) return value;
 	}
 
-	const retryAfter = error.headers?.get("retry-after");
+	const retryAfter = headers?.get("retry-after");
 	if (retryAfter) {
 		const seconds = Number.parseFloat(retryAfter);
 		const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
-		if (Number.isFinite(delayMs)) return validateServerRetryDelayMs(delayMs, maxRetryDelayMs, error.message);
+		if (Number.isFinite(delayMs)) return delayMs;
 	}
+	return undefined;
+}
+
+/** Headers of an AWS SDK error: its raw HTTP response carries them as a plain record, not a `Headers`. */
+function awsResponseHeaders(error: Error): Headers | undefined {
+	const raw = (error as { $response?: { headers?: unknown } }).$response?.headers;
+	if (typeof raw !== "object" || raw === null) return undefined;
+	const headers = new Headers();
+	for (const [name, value] of Object.entries(raw)) if (typeof value === "string") headers.set(name, value);
+	return headers;
+}
+
+/** Google's `google.rpc.RetryInfo.retryDelay` (a duration such as "34s" or "0.5s") from a JSON error message. */
+function googleRetryDelayMs(error: Error): number | undefined {
+	const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(error.message);
+	return match?.[1] === undefined ? undefined : Number.parseFloat(match[1]) * 1000;
+}
+
+/**
+ * Retry delay a failed provider request asked for, in whole milliseconds, or `undefined` when the error carries no
+ * usable delay: a `retry-after` header (OpenAI/Anthropic `Headers`, AWS SDK `$response.headers`) or Google's
+ * `RetryInfo` detail, whose SDK error has no headers. Providers copy it onto the error assistant message so the
+ * session retry can wait as long as the provider asked instead of using its own backoff.
+ */
+export function retryAfterMsFromError(error: unknown): number | undefined {
+	let delayMs: number | undefined;
+	if (isProviderError(error)) delayMs = serverRetryDelayMs(error.headers);
+	if (delayMs === undefined && error instanceof Error) {
+		delayMs = serverRetryDelayMs(awsResponseHeaders(error)) ?? googleRetryDelayMs(error);
+	}
+	return delayMs === undefined || !Number.isFinite(delayMs) || delayMs <= 0 ? undefined : Math.ceil(delayMs);
+}
+
+function getRetryDelayMs(error: ProviderError, retryIndex: number, maxRetryDelayMs: number | undefined): number {
+	const serverDelayMs = serverRetryDelayMs(error.headers);
+	if (serverDelayMs !== undefined) return validateServerRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message);
 
 	const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
 	return exponentialDelay * (1 - Math.random() * 0.25);

@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { StreamOptions } from "../../types.ts";
+import type { StreamOptions, ThinkingBudgetReduction } from "../../types.ts";
 
 export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -20,6 +20,8 @@ export interface AnthropicOptions extends StreamOptions {
 	 * Default: 1024 when `thinkingEnabled` is true and no budget is provided.
 	 */
 	thinkingBudgetTokens?: number;
+	/** Recorded on the response when `streamSimple()` reduced the requested thinking budget to fit the context. */
+	thinkingBudgetReduction?: ThinkingBudgetReduction;
 	/**
 	 * Effort level for adaptive thinking models.
 	 * Controls how much thinking Claude allocates:

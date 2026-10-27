@@ -11,7 +11,7 @@ import type { ContextUsage, ExtensionRunner, ToolInfo } from "../extensions/inde
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
-import type { ResourceLoader } from "../resource-loader.ts";
+import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { AgentSessionEvent, ModelMutationOptions, PromptOptions } from "./types.ts";
@@ -32,8 +32,9 @@ export interface SessionRunState {
 	 */
 	failedResponse: AssistantMessage | undefined;
 	overflowRecoveryAttempted: boolean;
+	/** Responses cut off at the output limit that the session recovered by compacting and retrying. */
+	lengthRecoveries: number;
 	lastAssistantMessage: AssistantMessage | undefined;
-	lastAssistantToolResults: AgentMessage[];
 	turnIndex: number;
 	isBeforeSettle: boolean;
 	abortDuringBeforeSettle: boolean;
@@ -50,8 +51,8 @@ export function createRunState(): SessionRunState {
 		inputTerminated: false,
 		failedResponse: undefined,
 		overflowRecoveryAttempted: false,
+		lengthRecoveries: 0,
 		lastAssistantMessage: undefined,
-		lastAssistantToolResults: [],
 		turnIndex: 0,
 		isBeforeSettle: false,
 		abortDuringBeforeSettle: false,

@@ -42,6 +42,17 @@ describe("MCP system prompt inventory", () => {
 		expect(renderServersSection([direct])).toContain(
 			"mcp__octocode (declared)\n  declared: read\n  instructions:\nRead known paths.",
 		);
+		expect(renderServersSection([direct])).not.toContain("tool_search");
+	});
+	it("includes discovery guidance only while a server has reachable deferred tools", () => {
+		const deferred = listing("docs", ["mcp__docs__search"]);
+		const guidance = "Load deferred tools with tool_search before calling them.";
+		expect(renderServersSection([deferred])).toContain(guidance);
+		deferred.connection!.state = "disconnected";
+		expect(renderServersSection([deferred])).not.toContain(guidance);
+		deferred.connection!.state = "connected";
+		deferred.tools = { deferred: [], declared: [] };
+		expect(renderServersSection([deferred])).not.toContain(guidance);
 	});
 	it("retains every server and tool in a large catalog", () => {
 		const servers = Array.from({ length: 50 }, (_, i) =>

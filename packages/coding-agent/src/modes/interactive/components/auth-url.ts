@@ -1,6 +1,6 @@
 import { Container, hyperlink, Text, type TUI } from "@octocodeai/octocode-tui";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
-import { theme } from "../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
 import { errorMessage } from "../../../utils/guards.ts";
 

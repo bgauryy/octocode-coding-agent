@@ -5,8 +5,9 @@ import { Agent, type AgentEvent, type AgentTool } from "@octocodeai/octocode-age
 import { type AssistantMessage, createAssistantMessageEventStream } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
+import { RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "../src/core/agent-session/retry.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -61,6 +62,9 @@ describe("AgentSession retry", () => {
 		maxRetries?: number;
 		maxAgentDelayMs?: number;
 		delayAssistantMessageEndMs?: number;
+		errorMessage?: string;
+		retryAfterMs?: number;
+		baseDelayMs?: number;
 	}) {
 		const failCount = options?.failCount ?? 1;
 		const maxRetries = options?.maxRetries ?? 3;
@@ -79,7 +83,8 @@ describe("AgentSession retry", () => {
 					if (callCount <= failCount) {
 						const msg = createAssistantMessage("", {
 							stopReason: "error",
-							errorMessage: "overloaded_error",
+							errorMessage: options?.errorMessage ?? "overloaded_error",
+							...(options?.retryAfterMs === undefined ? {} : { retryAfterMs: options.retryAfterMs }),
 						});
 						stream.push({ type: "start", partial: msg });
 						stream.push({ type: "error", reason: "error", error: msg });
@@ -98,7 +103,9 @@ describe("AgentSession retry", () => {
 		const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 		const modelRegistry = await createModelRegistry(authStorage, tempDir);
 		await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));
-		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries, baseDelayMs: 1, maxAgentDelayMs } });
+		settingsManager.applyOverrides({
+			retry: { enabled: true, maxRetries, baseDelayMs: options?.baseDelayMs ?? 1, maxAgentDelayMs },
+		});
 
 		session = new AgentSession({
 			agent,
@@ -166,6 +173,102 @@ describe("AgentSession retry", () => {
 		await created.session.prompt("Test");
 
 		expect(delays).toEqual([1, 2, 4, 5]);
+	});
+
+	it("spreads rate-limit retries so concurrent sessions sharing a quota do not retry in lockstep", async () => {
+		const random = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(1).mockReturnValue(0.5);
+		try {
+			const created = await createSession({
+				failCount: 3,
+				maxRetries: 3,
+				baseDelayMs: 4,
+				errorMessage: "429 Quota or rate limit exceeded",
+			});
+			const delays: number[] = [];
+			created.session.subscribe((event) => {
+				if (event.type === "auto_retry_start") delays.push(event.delayMs);
+			});
+			await created.session.prompt("Test");
+			// Backoff 4, 8, 16 ms plus up to half again, by Math.random().
+			expect(delays).toEqual([4, 12, 20]);
+		} finally {
+			random.mockRestore();
+		}
+	});
+
+	it("waits at least the provider retry-after on a rate limit, capped by maxAgentDelayMs", async () => {
+		const random = vi.spyOn(Math, "random").mockReturnValue(0);
+		try {
+			const created = await createSession({
+				failCount: 2,
+				maxRetries: 3,
+				baseDelayMs: 1,
+				maxAgentDelayMs: 40,
+				errorMessage: "429 rate_limit_error",
+				retryAfterMs: 30,
+			});
+			const delays: number[] = [];
+			created.session.subscribe((event) => {
+				if (event.type === "auto_retry_start") delays.push(event.delayMs);
+			});
+			await created.session.prompt("Test");
+			expect(delays).toEqual([30, 30]);
+
+			const capped = await createSession({
+				failCount: 1,
+				maxRetries: 3,
+				baseDelayMs: 1,
+				maxAgentDelayMs: 40,
+				errorMessage: "429 rate_limit_error",
+				retryAfterMs: 5000,
+			});
+			const cappedDelays: number[] = [];
+			capped.session.subscribe((event) => {
+				if (event.type === "auto_retry_start") cappedDelays.push(event.delayMs);
+			});
+			await capped.session.prompt("Test");
+			expect(cappedDelays).toEqual([40]);
+		} finally {
+			random.mockRestore();
+		}
+	});
+
+	it("gives rate limits a larger retry budget than other errors", async () => {
+		const limited = await createSession({ failCount: 99, maxRetries: 2, errorMessage: "429 rate limit" });
+		await limited.session.prompt("Test");
+		expect(limited.getCallCount()).toBe(1 + RATE_LIMIT_MIN_RETRIES);
+
+		const other = await createSession({ failCount: 99, maxRetries: 2 });
+		await other.session.prompt("Test");
+		expect(other.getCallCount()).toBe(3);
+	});
+
+	it("does not raise the budget when retries are configured off", async () => {
+		const created = await createSession({ failCount: 99, maxRetries: 0, errorMessage: "429 rate limit" });
+		await created.session.prompt("Test");
+		expect(created.getCallCount()).toBe(1);
+	});
+
+	it("stops rate-limit retries once the waiting window is spent", async () => {
+		const created = await createSession({
+			failCount: 99,
+			maxRetries: 3,
+			baseDelayMs: 1,
+			maxAgentDelayMs: RATE_LIMIT_WINDOW_MS,
+			errorMessage: "429 rate limit",
+			retryAfterMs: 1,
+		});
+		const delays: number[] = [];
+		created.session.subscribe((event) => {
+			if (event.type === "auto_retry_start") delays.push(event.delayMs);
+		});
+		// Pretend most of the window is gone so the next wait is clamped and the one after is refused.
+		(created.session as unknown as { _c: { retry: { _rateLimitWaitedMs: number } } })._c.retry._rateLimitWaitedMs =
+			RATE_LIMIT_WINDOW_MS - 5;
+		await created.session.prompt("Test");
+		expect(delays).toHaveLength(1);
+		expect(delays[0]).toBeLessThanOrEqual(5);
+		expect(created.getCallCount()).toBe(2);
 	});
 
 	it("prompt waits for retry completion even when assistant message_end handling is delayed", async () => {

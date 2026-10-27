@@ -16,6 +16,14 @@ export function appKey(action: Keybinding): string {
 	return shortcutText(action).toLowerCase();
 }
 
+/** Fewest words a model-given reason needs to say anything the row's title does not (`Edit` alone does not). */
+const REASON_MIN_WORDS = 3;
+
+/** Whether a call's `reason` carries information worth a `↳` line. */
+export function isInformativeReason(reason: string | undefined): reason is string {
+	return reason !== undefined && reason.trim().split(/\s+/).length >= REASON_MIN_WORDS;
+}
+
 /** `1 line`, `2 lines`; pass `many` for irregular plurals. */
 export function plural(count: number, one: string, many = `${one}s`): string {
 	return `${count} ${count === 1 ? one : many}`;

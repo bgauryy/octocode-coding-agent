@@ -5,7 +5,13 @@ The `debug` tool is active by default; disable it with `octocode --tools -debug`
 For an adapter whose launch arguments include `program`, an illustrative call is:
 
 ```json
-{"action":"launch","adapter":"/path/to/installed/adapter","adapterArgs":[],"launch":{"program":"/absolute/path/to/program"},"breakpoints":[{"source":"/absolute/path/to/source.ts","lines":[17]}]}
+{
+	"action": "launch",
+	"adapter": "/path/to/installed/adapter",
+	"adapterArgs": [],
+	"launch": { "program": "/absolute/path/to/program" },
+	"breakpoints": [{ "source": "/absolute/path/to/source.ts", "lines": [17] }]
+}
 ```
 
 Adapter launch schemas differ. Supply only arguments supported by the selected adapter. The response reports actual verified or unverified breakpoints, current state and stop generation. If running, read `output` later to obtain the new state. At a stop, call `stack` with that generation and optional thread ID; then `scopes` with a frame ID returned by stack, and `variables` with a reference returned by scopes. `continue`, `next`, `stepIn` and `stepOut` require the current generation and optional thread ID. A resume invalidates all frame and variable references; use the new generation after the next stop. `breakpoints` replaces the breakpoints for one source. `output` drains the bounded adapter output. `terminate` ends the session and owned adapter process.
