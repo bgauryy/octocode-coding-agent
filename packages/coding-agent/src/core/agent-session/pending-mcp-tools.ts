@@ -7,15 +7,6 @@ import { isMcpToolName, mcpNamespace } from "../../../../mcp/src/servers.ts";
 import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/status.ts";
 import type { EventBus } from "../event-bus.ts";
 
-/* B134-DEBUG */ import { appendFileSync as __dbgAppend } from "node:fs";
-/* B134-DEBUG */ const __dbg = (tag: string, data: unknown) => {
-	if (process.env.OCTOCODE_DEBUG_PENDING === "1")
-		__dbgAppend(
-			"/tmp/b134-debug.log",
-			`${new Date().toISOString()} pid=${process.pid} ${tag} ${JSON.stringify(data)}\n`,
-		);
-};
-
 /** The status of the server that owns the MCP tool: the one with the longest matching namespace. */
 function serverOf(toolName: string, servers: readonly McpServerStatus[]): McpServerStatus | undefined {
 	let owner: McpServerStatus | undefined;

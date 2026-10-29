@@ -38,9 +38,8 @@ export interface CreateAgentSessionOptions {
 	 * selection when configured. Otherwise it enables the default built-in tools
 	 * from the loaded runtime, including native Octocode tools. Extension/custom tools remain enabled unless
 	 * `noTools` changes that default. When provided, only matching tools are
-	 * enabled. MCP tools stay registered for tool search unless an
-	 * entry starts with `mcp__`; then only matching MCP tools are kept. An empty
-	 * list, like `noTools: "all"`, disables MCP tools too.
+	 * enabled, MCP tools included; an MCP server whose tools no entry can match is
+	 * not started. An empty list, like `noTools: "all"`, disables MCP tools too.
 	 *
 	 * A list of only `+name` and `-name` entries is not an allowlist: it adds tools
 	 * to or removes them from the default selection, like the `defaultTools` setting.

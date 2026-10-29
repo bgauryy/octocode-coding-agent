@@ -1,5 +1,6 @@
 import { UsagePersistenceError } from "../../core/usage-totals.ts";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
+import { archivedSummary, inlineSummaryTokens } from "../../core/compaction/checkpoint.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
 import { convertToLlm } from "../../core/messages.ts";
@@ -30,6 +31,21 @@ ${SUMMARY_CHECKPOINT_FORMAT} Code adds the lists of files read and modified and 
 
 /** Said when the conversation starts with an earlier summary, which this one replaces. */
 const PREVIOUS_SUMMARY_NOTE = `The conversation begins with an earlier summary. Update it: keep its entries (goals, progress, decisions, context), move finished work to Done, and add what the later messages show; newer messages win where they contradict it. Code appended the sections "## User Messages" and "## Recovery" and the \`<read-files>\`, \`<modified-files>\` and \`<saved-results>\` blocks to that summary and appends them again to yours: do not copy them.`;
+
+/**
+ * The complete text of the earlier checkpoint when it was too long to stay inline and the conversation shows only a
+ * reference to its saved file. It goes into the final message rather than replacing the reference, so the cached
+ * messages stay the same.
+ */
+function archivedPreviousNote(entries: ReadonlyArray<{ sourceEntry: unknown; messages: unknown[] }>): string {
+	const previous = entries.find(
+		(entry) => isRecord(entry.sourceEntry) && entry.sourceEntry.type === "compaction" && entry.messages.length > 0,
+	);
+	const text = isRecord(previous?.sourceEntry) ? archivedSummary(previous.sourceEntry.details) : undefined;
+	return text === undefined
+		? ""
+		: `The earlier summary in the conversation is only a reference to a saved file. Its complete text follows; update this text, not the reference:\n<previous-summary>\n${text}\n</previous-summary>`;
+}
 
 /** The longest a quoted start of a message gets. */
 const QUOTE_CHARS = 120;
@@ -68,9 +84,9 @@ function boundaryNote(
 		: `The conversation continues after your summary with the messages from the ${first} on; they stay in context word for word, so summarize only what comes before that point and leave out what happens from there on, although you can see it. Where the instructions below say "the last messages above", they mean the last ones before it.`;
 }
 
-/** Octocode's cap on a summary: 80% of the reserve, and never beyond what the model can write. */
+/** Octocode's cap on a summary: what fits inline (`inlineSummaryTokens`), and never beyond what the model can write. */
 function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: number): number {
-	return Math.min(Math.floor(0.8 * reserveTokens), model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY);
+	return Math.min(inlineSummaryTokens(reserveTokens), model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY);
 }
 
 /**
@@ -105,6 +121,7 @@ export async function sharedSummary(
 			SHARED_SUMMARY_PROMPT,
 			boundaryNote(projection.entries, preparation.firstKeptEntryId),
 			preparation.previousSummary === undefined ? "" : PREVIOUS_SUMMARY_NOTE,
+			archivedPreviousNote(projection.entries),
 			`Additional focus:\n${instructions}`,
 		]
 			.filter(Boolean)

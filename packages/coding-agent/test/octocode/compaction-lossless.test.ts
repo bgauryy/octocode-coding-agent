@@ -1,4 +1,9 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { inlineSummaryTokens } from "../../src/core/compaction/checkpoint.ts";
+import { CHARS_PER_TOKEN } from "../../src/core/compaction/tokens.ts";
 import { summarizerView, userMessagesSection, writeSummary } from "../../src/octocode/compaction/summary.ts";
 
 describe("lossless compaction references", () => {
@@ -85,5 +90,65 @@ describe("lossless compaction references", () => {
 		expect(out?.cancel).toBeUndefined();
 		expect(out?.compaction?.summary).toContain("## Goal\nsummary");
 		expect(messages[0].content[0].text).toBe("complete evidence ".repeat(1000));
+	});
+	it("sizes the kept user messages to the room the inline summary has left, saving them whole behind a reference", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-lossless-"));
+		const sessionFile = path.join(dir, "session.jsonl");
+		fs.writeFileSync(sessionFile, "");
+		// About 15k tokens of the user's own words: more than the inline summary may hold with the model's part.
+		const words = Array.from({ length: 10 }, (_, i) => `${i} ${"pasted spec line ".repeat(260)}`);
+		const reserveTokens = 16_384;
+		const body = `## Goal\n${"summary detail ".repeat(2_000)}`;
+		const pi = {
+			getThinkingLevel: () => "off",
+			getActiveTools: () => [],
+			getSettings: () => ({}),
+			appendEntry: () => {},
+			createUsageRecorder: () => () => {},
+		};
+		const event = {
+			signal: new AbortController().signal,
+			preparation: {
+				firstKeptEntryId: "kept",
+				tokensBefore: 10,
+				isSplitTurn: false,
+				messagesToSummarize: words.map((content) => ({ role: "user", content, timestamp: 0 })),
+				turnPrefixMessages: [],
+				fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+				settings: { reserveTokens },
+			},
+			branchEntries: [],
+		};
+		const ctx = {
+			model: { id: "test", provider: "p", api: "x", maxTokens: 32_000, contextWindow: 200_000 },
+			hasUI: false,
+			sessionManager: { getSessionFile: () => sessionFile, getSessionId: () => "s" },
+			modelRegistry: {
+				streamSimple: () => ({
+					result: async () => ({
+						role: "assistant",
+						content: [{ type: "text", text: body }],
+						stopReason: "stop",
+						usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+						timestamp: 0,
+					}),
+				}),
+			},
+		};
+		try {
+			const out = await writeSummary(pi as never, event as never, ctx as never, ctx.model as never);
+			const summary = out?.compaction?.summary ?? "";
+			expect(summary).toContain(body);
+			expect(summary).toContain("Complete text saved at");
+			expect(summary.length).toBeLessThanOrEqual(inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN);
+			const saved = fs
+				.readdirSync(dir)
+				.filter((name) => name.includes(".checkpoint-"))
+				.map((name) => fs.readFileSync(path.join(dir, name), "utf8"))
+				.join("\n");
+			for (const text of words) expect(saved).toContain(text);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

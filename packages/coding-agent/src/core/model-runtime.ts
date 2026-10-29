@@ -29,7 +29,6 @@ import {
 	type ModelsImagesOptions,
 	type ModelsRefreshOptions,
 	type ModelsRefreshResult,
-	type ModelsSimpleStreamOptions,
 	type ModelsStore,
 	type ModelThinkingLevel,
 	type ModelType,
@@ -53,6 +52,7 @@ import {
 	classifyWithModel,
 	generateModelImages,
 	resolveModelAuth,
+	type RuntimeSimpleStreamOptions,
 	streamChatModel,
 	streamDeferredResponse,
 	streamSimpleChatModel,
@@ -283,11 +283,11 @@ export class ModelRuntime implements Models {
 		return this.stream(model, context, options).result();
 	}
 
-	streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream {
+	streamSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): AssistantMessageEventStream {
 		return streamSimpleChatModel(this, model, context, options);
 	}
 
-	completeSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): Promise<AssistantMessage> {
+	completeSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): Promise<AssistantMessage> {
 		return this.streamSimple(model, context, options).result();
 	}
 

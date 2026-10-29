@@ -90,7 +90,7 @@ export interface AgentSessionStateApi {
 export interface AgentSessionToolsApi {
 	/**
 	 * Get the names of currently active tools, which are the tools declared to the model.
-	 * Tools with `deferred` exposure are callable from other tools without being active.
+	 * Only active `direct` tools are also callable from other tools (`getCallableToolNames()`).
 	 */
 	getActiveToolNames(): string[];
 

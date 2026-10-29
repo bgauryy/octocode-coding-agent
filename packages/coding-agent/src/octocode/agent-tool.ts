@@ -4,7 +4,13 @@ import { Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../core/extensions/index.ts";
 import { errorMessage, isRecord } from "../utils/guards.ts";
 
-const MODES = { agent: "task", externalAgent: "external", coordinate: "coordinate", sendMessage: "message" } as const;
+const MODES = {
+	agent: "task",
+	agentModels: "models",
+	externalAgent: "external",
+	coordinate: "coordinate",
+	sendMessage: "message",
+} as const;
 type Mode = (typeof MODES)[keyof typeof MODES];
 
 /** Domain registrations supply their implementation; only the unified agent tool is exposed. */

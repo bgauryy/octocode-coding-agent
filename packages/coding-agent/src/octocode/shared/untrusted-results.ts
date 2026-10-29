@@ -23,7 +23,7 @@ const FENCE_NOTE =
 const LOCAL_TOOLS: ReadonlySet<string> = new Set(LOCAL_RESEARCH_TOOLS);
 
 /** Whether the result of `toolName` carries text from outside the user's workspace. */
-export const isUntrustedSource = (toolName: string): boolean =>
+const isUntrustedSource = (toolName: string): boolean =>
 	toolName === "web" || (toolName.startsWith("mcp__") && !LOCAL_TOOLS.has(toolName));
 
 const fenceText = (toolName: string, text: string): string =>

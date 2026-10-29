@@ -562,6 +562,22 @@ describe("prepareCompaction with previous compaction", () => {
 		expect(summarizedText).not.toContain("First summary");
 		expect(preparation!.previousSummary).toBe("First summary");
 	});
+
+	it("updates the complete saved checkpoint when the previous one was replaced by a reference", () => {
+		const u1 = createMessageEntry(createUserMessage("user msg 1 ".repeat(12)));
+		const a1 = createMessageEntry(createAssistantMessage("assistant msg 1 ".repeat(12)));
+		const compaction1 = {
+			...createCompactionEntry("The complete context checkpoint is saved at /s.checkpoint.md.", u1.id),
+			details: { checkpointArchive: { path: "/s.checkpoint.md", summary: "## Goal\nComplete first summary" } },
+		};
+		const u2 = createMessageEntry(createUserMessage("user msg 2 ".repeat(12)));
+		const a2 = createMessageEntry(createAssistantMessage("assistant msg 2 ".repeat(12), createMockUsage(8000, 2000)));
+		const preparation = prepareCompaction([u1, a1, compaction1, u2, a2], {
+			...DEFAULT_COMPACTION_SETTINGS,
+			keepRecentTokens: 10,
+		});
+		expect(preparation!.previousSummary).toBe("## Goal\nComplete first summary");
+	});
 });
 
 // ============================================================================

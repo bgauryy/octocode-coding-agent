@@ -1,15 +1,15 @@
 import fs from "node:fs";
-import { JOB_TYPE } from "../shared/messages.ts";
+import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { tildePath } from "../shared/home.ts";
 import { stringOrEmpty } from "../shared/util.ts";
-import { RESULT_TYPE } from "../subagents/handoff.ts";
+import { type ChildFiles, childFiles, describeFiles } from "../subagents/children.ts";
 import { flatLine } from "./store.ts";
 
 /**
  * Background work recorded in a session's entries: `bash` calls with `background: true` (result `details.job` and
  * `details.log`, report `JOB_TYPE` with the same log) and background `agent` calls (result `details.status`
- * `background` and `details.id`, report `RESULT_TYPE` with the same id). A start without its report is work
+ * `background` and `details.id`, report `AGENT_RESULT_TYPE` with the same id). A start without its report is work
  * still running in this process, or, read when a session starts, work that ended with an earlier process unreported.
  */
 interface BackgroundWork {
@@ -21,16 +21,20 @@ interface BackgroundWork {
 	goal?: boolean;
 	/** A bash job's log file. */
 	log?: string;
+	/** A subagent's saved conversation and report, as its start recorded them (`details.session`). */
+	files?: ChildFiles;
 }
 
 /** Bash job ids restart with each extension instance; the log path (id plus start time) is unique. */
 const jobKey = (id: string, log: string | undefined) => (log ? `log:${log}` : `id:${id}`);
+const agentKey = (id: string, runId: unknown) => `agent:${id}${typeof runId === "string" ? `:${runId}` : ""}`;
 
 /** The unreported work in `entries`, oldest first; with `since` (ms), only work started at or after it. */
 export function unreportedWork(entries: readonly unknown[], since?: number): BackgroundWork[] {
 	const args = new Map<string, Record<string, unknown>>();
 	const started = new Map<string, BackgroundWork>();
 	const reported = new Set<string>();
+	const latestAgent = new Map<string, string>();
 	for (const entry of entries) {
 		if (!isRecord(entry)) continue;
 		if (entry.type === "custom_message") {
@@ -40,7 +44,7 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			if (entry.customType === JOB_TYPE) {
 				const log = typeof details.log === "string" ? details.log : undefined;
 				reported.add(jobKey(id, log));
-			} else if (entry.customType === RESULT_TYPE) reported.add(`agent:${id}`);
+			} else if (entry.customType === AGENT_RESULT_TYPE) reported.add(agentKey(id, details.runId));
 			continue;
 		}
 		const message = entry.type === "message" && isRecord(entry.message) ? entry.message : undefined;
@@ -67,10 +71,18 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			// The agent tool's arguments are `{type, input}`; sessions recorded before it keep them flat.
 			const task = isRecord(input.input) ? input.input : input;
 			const goal = typeof task.goal === "string" ? flatLine(task.goal) : "";
-			started.set(`agent:${details.id}`, {
+			const files = childFiles(details.session);
+			const key = agentKey(details.id, details.runId);
+			const previous = latestAgent.get(details.id);
+			if (previous) started.delete(previous);
+			latestAgent.set(details.id, key);
+			// Legacy records have no run id: their later launch starts a new report window in transcript order.
+			if (typeof details.runId !== "string") reported.delete(key);
+			started.set(key, {
 				kind: "agent",
 				id: details.id,
 				...(goal ? { label: goal, goal: true } : { label: flatLine(stringOrEmpty(task.task)) }),
+				...(Object.keys(files).length > 0 ? { files } : {}),
 			});
 		}
 	}
@@ -78,11 +90,12 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 }
 
 /**
- * One item per line part: `bash-3 (`yarn test`, log ~/…/bash-3-….log)`, `general-ab12 (goal "…")` or, without a goal,
- * `(task "…")`. A log that is gone (the retention sweep removed it) is not offered.
+ * One item per line part: `bash-3 (`yarn test`, log ~/…/bash-3-….log)`, `general-ab12 (goal "…", transcript folder ~/…,
+ * report ~/…)` or, without a goal, `(task "…")`. A log that is gone (the retention sweep removed it) is not offered.
  */
 export function describeWork(work: BackgroundWork, checkLog = true): string {
-	if (work.kind === "agent") return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}")`;
+	if (work.kind === "agent")
+		return `${work.id} (${work.goal ? "goal" : "task"} "${work.label}"${describeFiles(work.files ?? {})})`;
 	const log = work.log ? (!checkLog || fs.existsSync(work.log) ? `, log ${tildePath(work.log)}` : ", log deleted") : "";
 	return `${work.id} (\`${work.label}\`${log})`;
 }

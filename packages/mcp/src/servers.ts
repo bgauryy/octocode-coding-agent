@@ -31,31 +31,28 @@ export const MCP_MANAGE_TOOL_NAME = "mcp";
 export const isMcpToolName = (name: string): boolean => name.startsWith("mcp__");
 
 /**
- * - `auto`: small catalogs are direct; large catalogs defer when native tool loading is supported.
- * - `deferred`: not declared to the model until the `tool_search` tool loads them; the model then
- *   calls them directly.
  * - `direct`: tools are declared to the model like any other tool.
  * - `hidden`: tools are registered but unreachable.
  */
 export const DEFAULT_MCP_EXPOSURE = "direct";
 
-export const MCP_EXPOSURES = ["auto", "deferred", "direct", "hidden"] as const;
+export const MCP_EXPOSURES = ["direct", "hidden"] as const;
 export type McpExposure = (typeof MCP_EXPOSURES)[number];
 
-/** Older exposure names, accepted in configs and replaced by their current name when validated. */
-const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = {
-	codemode: "deferred",
-	"codemode-deferred": "deferred",
-};
+/** Exposure values that no longer exist; a config that still uses one gets an error naming the replacement. */
+const REMOVED_EXPOSURES: ReadonlySet<string> = new Set(["auto", "deferred", "codemode", "codemode-deferred"]);
 
 interface McpServerConfigBase {
 	/** Default: `direct`. */
 	exposure?: McpExposure;
-	/**
-	 * What the server offers, in a sentence. The `mcp_servers` system prompt section lists the server
-	 * with it, tool search ranks the server's tools by it.
-	 */
+	/** What the server offers, in a sentence. The server's system prompt section shows it above the server's file. */
 	description?: string;
+	/**
+	 * Set to false to keep the server out of an agent's default tool selection: only an agent whose selection names
+	 * its tools (`--tools`, a profile's `tools:`, the `defaultTools` setting) gets them, and a session whose selection
+	 * does not reach the server never starts it. Default: true.
+	 */
+	defaultActive?: boolean;
 	/**
 	 * Exposure of single tools, overriding `exposure`. Keys are tool names as the server offers them,
 	 * or patterns where `*` matches any characters. An exact name wins over patterns; among patterns
@@ -208,63 +205,42 @@ export function isMcpExposure(value: unknown): value is McpExposure {
 	return MCP_EXPOSURES.some((mode) => mode === value);
 }
 
-/** The exposure an alias stands for; other values are returned unchanged. */
-function resolveExposureAlias(value: unknown): unknown {
-	return typeof value === "string" ? (MCP_EXPOSURE_ALIASES[value] ?? value) : value;
-}
-
-/** A copy of the server entry with exposure aliases replaced by their current names. */
-function resolveExposureAliases(value: Record<string, unknown>): Record<string, unknown> {
-	const { exposure, toolExposure } = value;
-	const resolved: Record<string, unknown> = { ...value };
-	if (exposure !== undefined) resolved.exposure = resolveExposureAlias(exposure);
-	if (isRecord(toolExposure)) {
-		resolved.toolExposure = Object.fromEntries(
-			Object.entries(toolExposure).map(([tool, entry]) => [tool, resolveExposureAlias(entry)]),
-		);
-	}
-	return resolved;
-}
-
-/**
- * Exposure of one tool: explicit tool settings, explicit server exposure, then optional preset defaults.
- */
-export function getMcpToolExposure(
-	config: McpServerConfig,
-	toolName: string,
-	defaults?: Readonly<Record<string, McpExposure>>,
-): McpExposure {
+/** Exposure of one tool: explicit tool settings, then the server's exposure. */
+export function getMcpToolExposure(config: McpServerConfig, toolName: string): McpExposure {
 	const overrides = config.toolExposure ?? {};
 	const exact = overrides[toolName];
 	if (exact !== undefined) return exact;
 	for (const [pattern, exposure] of Object.entries(overrides)) {
 		if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return exposure;
 	}
-	if (config.exposure === undefined && defaults?.[toolName]) return defaults[toolName];
 	return config.exposure ?? DEFAULT_MCP_EXPOSURE;
 }
 
-/**
- * Validate one server entry of the `mcpServers` shape. Returns a copy of the config with exposure
- * aliases resolved, or an error message.
- */
-export function validateMcpServerConfig(name: string, raw: unknown): McpServerConfig | string {
+/** The error for an exposure value that is not `direct` or `hidden`; a removed value names its replacement. */
+function exposureError(value: unknown): string {
+	const allowed = `must be one of ${MCP_EXPOSURES.map((exposure) => `"${exposure}"`).join(", ")}`;
+	return typeof value === "string" && REMOVED_EXPOSURES.has(value)
+		? `${allowed}; "${value}" was removed (assign the server to the agents that need it with "defaultActive": false and a tool selector such as mcp__<server>__*)`
+		: allowed;
+}
+
+/** Validate one server entry of the `mcpServers` shape. Returns the config, or an error message. */
+export function validateMcpServerConfig(name: string, value: unknown): McpServerConfig | string {
 	if (!SERVER_NAME.test(name) && !PLUGIN_SERVER_NAME.test(name))
 		return `invalid server name "${name}" (use letters, digits, "_" and "-", or plugin:<plugin>:<server>)`;
-	if (!isRecord(raw)) return `server "${name}" must be an object`;
-	const value = resolveExposureAliases(raw);
-	const { type, exposure, enabled, timeout, toolExposure, description } = value;
-	const exposures = MCP_EXPOSURES.map((value) => `"${value}"`).join(", ");
-	if (exposure !== undefined && !isMcpExposure(exposure)) {
-		return `server "${name}": exposure must be one of ${exposures}`;
-	}
+	if (!isRecord(value)) return `server "${name}" must be an object`;
+	const { type, exposure, enabled, defaultActive, timeout, toolExposure, description } = value;
+	if (exposure !== undefined && !isMcpExposure(exposure))
+		return `server "${name}": exposure ${exposureError(exposure)}`;
 	if (toolExposure !== undefined) {
 		if (!isRecord(toolExposure)) return `server "${name}": toolExposure must map tool names to exposures`;
-		for (const [tool, value] of Object.entries(toolExposure)) {
-			if (!isMcpExposure(value)) return `server "${name}": toolExposure "${tool}" must be one of ${exposures}`;
+		for (const [tool, entry] of Object.entries(toolExposure)) {
+			if (!isMcpExposure(entry)) return `server "${name}": toolExposure "${tool}" ${exposureError(entry)}`;
 		}
 	}
 	if (enabled !== undefined && typeof enabled !== "boolean") return `server "${name}": enabled must be a boolean`;
+	if (defaultActive !== undefined && typeof defaultActive !== "boolean")
+		return `server "${name}": defaultActive must be a boolean`;
 	if (description !== undefined && typeof description !== "string") {
 		return `server "${name}": description must be a string`;
 	}

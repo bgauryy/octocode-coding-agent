@@ -14,6 +14,7 @@ import type { ExtensionRunner } from "./extensions/index.ts";
 import { createToolNameMatcher } from "../../../mcp/src/servers.ts";
 import { findInitialModel } from "./model-resolver.ts";
 import { ModelRuntime } from "./model-runtime.ts";
+import type { RuntimeSimpleStreamOptions } from "./model-runtime/requests.ts";
 import { defaultToolNames as getDefaultToolNames } from "./native-tools.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
@@ -23,7 +24,7 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sdk/
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
 import { applyToolModifiers, getToolListError, isToolModifier, SettingsManager } from "./settings-manager.ts";
 import { time } from "./timings.ts";
-import { getBranchSelection } from "./virtual-models.ts";
+import { getBranchSelection, isVirtualModel } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
@@ -187,17 +188,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const buildRequestOptions = (
 		requestModel: Model<any>,
 		options: ModelsSimpleStreamOptions = {},
-	): ModelsSimpleStreamOptions => {
+	): RuntimeSimpleStreamOptions => {
 		const providerRetrySettings = settingsManager.getProviderRetrySettings();
 		const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();
 		const effectiveTimeoutMs = httpIdleTimeoutMs === 0 ? 2147483647 : httpIdleTimeoutMs;
 		const headerRunner = extensionRunnerRef.current;
+		// Only session requests measure idle gaps and move to the long tier; compaction and summaries use other ids.
+		const sessionRequest = options.sessionId === sessionManager.getSessionId();
+		const resolveCache = (physical: Model<any>) => {
+			const policy = modelRuntime.getCachePolicy(physical, options, settingsManager.getCachePreferenceLayers());
+			return sessionRequest ? idleHistoryCache.apply(physical, policy) : policy.options;
+		};
 		return {
 			...options,
-			...idleHistoryCache.apply(
-				requestModel,
-				modelRuntime.getCachePolicy(requestModel, options, settingsManager.getCachePreferenceLayers()),
-			),
+			// A virtual model's request is resolved for the model it routes to.
+			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,
 			websocketConnectTimeoutMs: options.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs(),
 			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,

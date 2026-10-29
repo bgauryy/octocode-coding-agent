@@ -29,9 +29,8 @@ const usable = (handle: ReturnType<typeof sharedAgentDb>): boolean => {
 };
 
 describe("the composed extension on session_shutdown", () => {
-	// A new, resumed, forked or reloaded session imports the module again: this process's connection would never be reused.
 	it.each(["quit", "reload", "new", "resume", "fork"])(
-		"closes the shared agent database on %s, and the next use reopens it",
+		"preserves the shared agent database on %s until process cleanup",
 		async (reason) => {
 			const fake = fakePi();
 			Object.assign(fake.pi, { getSessionName: () => undefined });
@@ -40,6 +39,9 @@ describe("the composed extension on session_shutdown", () => {
 			const before = sharedAgentDb();
 			expect(usable(before)).toBe(true);
 			await fake.fire("session_shutdown", { type: "session_shutdown", reason }, ctx);
+			expect(usable(before)).toBe(true);
+			expect(sharedAgentDb()).toBe(before);
+			closeSharedAgentDb();
 			expect(usable(before)).toBe(false);
 			const after = sharedAgentDb();
 			expect(after).not.toBe(before);

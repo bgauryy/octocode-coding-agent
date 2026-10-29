@@ -98,9 +98,12 @@ export function formatSkillsForPrompt(
 					: fileReadTool === "bash"
 						? `Use bash to load a skill's file ${when}.`
 						: `Load a skill's file ${when}.`,
-		fileReadTool === "skill"
-			? "When a skill references a relative path, resolve it against the skill directory the tool returns and use that absolute path in tool commands."
-			: "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+		// The skill tool's description says how to resolve a loaded skill's relative paths.
+		...(fileReadTool === "skill"
+			? []
+			: [
+					"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+				]),
 		...(undescribed > 0
 			? [
 					`To fit the prompt, ${undescribed} skill${undescribed === 1 ? " is" : "s are"} listed without a description; load one when its name fits the task.`,

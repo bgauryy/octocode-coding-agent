@@ -34,7 +34,7 @@ export function deadLetterText(letter: DeadLetter): string {
 }
 
 /** `reviewer: audit auth token refresh`: what the sender is and works on, as written. Each reader escapes it for its own channel. */
-export const senderLabel = (sender: NonNullable<Message["sender"]>): string =>
+const senderLabel = (sender: NonNullable<Message["sender"]>): string =>
 	sender.goal ? `${sender.role}: ${sender.goal}` : sender.role;
 
 /** ` (reviewer: audit auth token refresh)`, so the reader knows who it hears from; empty without a sender. */

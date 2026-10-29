@@ -84,6 +84,9 @@ describe("summarization retries on context overflow", () => {
 		expect(prompts[1]).toContain("third");
 		expect(prompts[1]).toContain("NEWEST");
 		expect(prompts[1]).toContain("PREVIOUS-SUMMARY");
+		// The summarizer is told what it does not see, so its summary does not claim to cover it.
+		expect(prompts[0]).not.toContain("did not fit this request");
+		expect(prompts[1]).toContain("the 2 oldest messages of this conversation did not fit this request");
 	});
 
 	it("gives up after three trims and reports the overflow", async () => {

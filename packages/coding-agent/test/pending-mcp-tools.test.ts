@@ -7,7 +7,7 @@ const server = (name: string, state: string, enabled = true): McpServerStatus =>
 	name,
 	enabled,
 	state,
-	exposure: "deferred",
+	exposure: "direct",
 	toolCount: 0,
 	source: "test",
 });
@@ -21,7 +21,7 @@ function setup(initial: McpServerStatus[], names: string[]) {
 }
 
 describe("PendingMcpTools", () => {
-	it("keeps MCP tools of connecting servers at run start and drops every other pending tool", () => {
+	it("keeps MCP tools of connecting servers at run start and drops every other pending tool, including unselected servers", () => {
 		const { pending, retain } = setup(
 			[
 				server("browser-tools", "starting"),
@@ -29,9 +29,11 @@ describe("PendingMcpTools", () => {
 				server("ready", "connected"),
 				server("broken", "failed"),
 				server("off", "disabled", false),
+				server("browser", "unselected"),
 			],
 			[
 				"bash",
+				"mcp__browser__open",
 				"mcp__browser_tools__open",
 				"mcp__docs__search",
 				"mcp__ready__a",

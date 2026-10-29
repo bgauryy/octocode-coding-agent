@@ -62,6 +62,31 @@ describe("bounded memory retrieval", () => {
 	});
 });
 
+describe("pinned memories beyond one injection", () => {
+	it("counts every held-back pinned memory, and reaches those past the first 50 once the rest were seen", () => {
+		const db = openAgentDb(path.join(tmp(), "memory.sqlite"));
+		try {
+			const store = new MemoryStore(db, "repo-a");
+			const ids = Array.from(
+				{ length: 55 },
+				(_, i) => store.set({ title: `Rule zq${i}x`, pinned: true, author: "test" }, 1000 + i).memory.id,
+			);
+			const first = selectInjection(store, { query: "", scope: "all", seen: new Set(), topK: 5 })!;
+			expect(first.ids.length).toBeGreaterThan(0);
+			expect(first.content.split("\n").at(-1)).toBe(
+				`[${55 - first.ids.length} more pinned memories did not fit here; call memory with op "list" to read them.]`,
+			);
+			// The 50 newest were injected earlier: the 5 oldest come now, and nothing is held back.
+			const seen = new Set(ids.slice(5));
+			const rest = selectInjection(store, { query: "", scope: "all", seen, topK: 5 });
+			expect(rest?.ids.sort((a, b) => a - b)).toEqual(ids.slice(0, 5));
+			expect(rest?.content).not.toMatch(/did not fit/);
+		} finally {
+			db.close();
+		}
+	});
+});
+
 describe("injected ids across a compaction", () => {
 	it("keeps the ids injected from the compaction's first kept entry on", () => {
 		const message = (ids: unknown[]) => ({
@@ -148,6 +173,28 @@ describe("edited and long memories", () => {
 			})!.content.split("\n")[1];
 			expect(line.length).toBeLessThanOrEqual(600);
 			expect(line.endsWith(`…" (memory get M${memory.id})`)).toBe(true);
+		} finally {
+			db.close();
+		}
+	});
+});
+
+describe("pinned memories over the budget", () => {
+	it("says how many pinned memories it held back and how to read them, without cutting any", () => {
+		const db = openAgentDb(path.join(tmp(), "memory.sqlite"));
+		try {
+			const store = new MemoryStore(db, "repo-a");
+			for (const name of ["one", "two", "three", "four"])
+				store.set({ title: `Pinned ${name}`, body: `${name} `.repeat(100), pinned: true, author: "test" });
+			const injection = selectInjection(store, { query: "", scope: "all", seen: new Set(), topK: 5 })!;
+			expect(injection.ids).toHaveLength(2);
+			expect(injection.content.split("\n").at(-1)).toBe(
+				'[2 more pinned memories did not fit here; call memory with op "list" to read them.]',
+			);
+			// Held-back memories are not recorded as injected, so a later prompt still brings them.
+			const later = selectInjection(store, { query: "", scope: "all", seen: new Set(injection.ids), topK: 5 })!;
+			expect(later.ids).toHaveLength(2);
+			expect(later.content).not.toContain("did not fit");
 		} finally {
 			db.close();
 		}

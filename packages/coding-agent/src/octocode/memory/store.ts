@@ -10,6 +10,11 @@ export type MemoryKind = (typeof MEMORY_KINDS)[number];
 type MemoryScope = "global" | "project";
 /** Which memories a read sees: `all` is global plus this repository's project memories. */
 export type ScopeFilter = MemoryScope | "all";
+/** Narrows a list or count: only pinned memories, and none of the `exclude` ids (those already in context). */
+export interface MemoryFilter {
+	pinnedOnly?: boolean;
+	exclude?: ReadonlySet<number>;
+}
 
 export interface Memory {
 	id: number;
@@ -117,13 +122,21 @@ export class MemoryStore {
 		return row ? toMemory(row) : undefined;
 	}
 
-	/** Pinned first, then most recently updated. */
-	list(scope: ScopeFilter = "all", limit = 50, options: { pinnedOnly?: boolean } = {}): Memory[] {
+	/** `scopeSql` narrowed by `options`: only pinned memories, and none of the `exclude` ids. */
+	private filterSql(scope: ScopeFilter, options: MemoryFilter): { sql: string; params: string[] } {
 		const where = this.scopeSql(scope);
-		const pinned = options.pinnedOnly ? " AND m.pinned = 1" : "";
+		return {
+			sql: `${where.sql}${options.pinnedOnly ? " AND m.pinned = 1" : ""}${options.exclude?.size ? " AND m.id NOT IN (SELECT value FROM json_each(?))" : ""}`,
+			params: [...where.params, ...(options.exclude?.size ? [JSON.stringify([...options.exclude])] : [])],
+		};
+	}
+
+	/** Pinned first, then most recently updated. */
+	list(scope: ScopeFilter = "all", limit = 50, options: MemoryFilter = {}): Memory[] {
+		const where = this.filterSql(scope, options);
 		const rows = this.db
 			.prepare(
-				`SELECT m.* FROM memories m WHERE ${where.sql}${pinned} ORDER BY m.pinned DESC, m.updated_at DESC, m.id DESC LIMIT ?`,
+				`SELECT m.* FROM memories m WHERE ${where.sql} ORDER BY m.pinned DESC, m.updated_at DESC, m.id DESC LIMIT ?`,
 			)
 			.all(...where.params, limit) as Row[];
 		return rows.map(toMemory);
@@ -138,8 +151,8 @@ export class MemoryStore {
 		return new Map(rows.map((row) => [Number(row.id), Number(row.updated_at)]));
 	}
 
-	count(scope: ScopeFilter = "all"): number {
-		const where = this.scopeSql(scope);
+	count(scope: ScopeFilter = "all", options: MemoryFilter = {}): number {
+		const where = this.filterSql(scope, options);
 		const row = this.db.prepare(`SELECT count(*) AS n FROM memories m WHERE ${where.sql}`).get(...where.params) as Row;
 		return Number(row.n);
 	}

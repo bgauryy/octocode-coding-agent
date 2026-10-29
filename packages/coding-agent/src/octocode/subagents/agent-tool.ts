@@ -27,6 +27,12 @@ export function agentToolSpec() {
 				description:
 					"Task contract: objective; inputs it cannot infer (paths, evidence, decisions); constraints (scope, authorization, budget); output; Definition of Done",
 			}),
+			resume: Type.Optional(
+				Type.String({
+					description:
+						"Id of a finished or stopped subagent this session started: continues its saved conversation with this task (same profile) instead of a fresh session; an unknown id is refused with this session's subagents",
+				}),
+			),
 			profile: Type.Optional(
 				Type.String({
 					description: "Profile from the active Profiles list; omit for general-purpose",

@@ -13,11 +13,11 @@ describe("CLI value completion", () => {
 		const { fakePi } = await import("./octocode/fake-pi.ts");
 		const fake = fakePi();
 		octocode(fake.pi);
-		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp", "tool_search"]));
+		expect(new Set(completeCli(["--tools", ""]))).toEqual(new Set([...fake.tools.keys(), "mcp"]));
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual(["file,browser"]);
 	});
 	it("follows nested commands and does not suggest flags in free text or after --", () => {
-		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["auto", "deferred", "direct", "hidden"]);
+		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "hidden"]);
 		expect(completeCli(["auth", ""])).toContain("check");
 		expect(completeCli(["models", ""])).toContain("discover");
 		expect(completeCli(["--api-key", ""])).toEqual([]);

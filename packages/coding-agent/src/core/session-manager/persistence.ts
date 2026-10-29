@@ -9,7 +9,7 @@ import {
 	getSessionFilePath,
 	migrateToCurrentVersion,
 } from "./entries.ts";
-import { repairSessionFile, type SessionRepair } from "./repair.ts";
+import { backupSessionFile, repairSessionFile, type SessionRepair } from "./repair.ts";
 import { isSessionLockTimeout, mergeForeignEntries, withSessionFileLock } from "./shared-file.ts";
 import { getBranchEntries, type SessionState } from "./state.ts";
 import { assertCompleteSessionTail, loadEntriesFromFile, writeNewSessionFile } from "./storage.ts";
@@ -76,11 +76,19 @@ export function setSessionFile(state: SessionState, sessionFile: string, preload
 
 /**
  * Repair the torn tail of this session's file (`repairSessionFile`) and reload it, which also lifts the write block a
- * failed append left (`persistenceFailure`). Returns what was cut off, or undefined when the tail was complete.
+ * failed append left (`persistenceFailure`). Returns what was cut off, or undefined when the tail was complete. When
+ * the file was never created (the first write failed), the transcript exists only in memory: it is kept, and the next
+ * write creates the file with every entry.
  */
 export function recoverSession(state: SessionState): SessionRepair | undefined {
 	if (!state.persist || !state.sessionFile) throw new Error("Session persistence is disabled");
-	const repair = existsSync(state.sessionFile) ? repairSessionFile(state.sessionFile) : undefined;
+	if (!existsSync(state.sessionFile)) {
+		state.flushed = false;
+		state.fileSize = undefined;
+		state.persistenceFailure = undefined;
+		return undefined;
+	}
+	const repair = repairSessionFile(state.sessionFile);
 	setSessionFile(state, state.sessionFile);
 	return repair;
 }
@@ -114,6 +122,8 @@ function loadEntries(state: SessionState, entries: FileEntry[], options?: NewSes
 		state.sessionId = header.id;
 
 		if (migrateToCurrentVersion(state.fileEntries)) {
+			// The rewrite keeps only the records that parsed: a `.bak` keeps the file as it was, malformed lines included.
+			if (state.persist && state.sessionFile && existsSync(state.sessionFile)) backupSessionFile(state.sessionFile);
 			rewriteSessionFile(state);
 		}
 	} else {

@@ -202,10 +202,10 @@ it("source ask on one native file invocation resolves once across outer and inte
 	}
 });
 
-it.each([false, true])("deferred read-only MCP invoked by another tool obeys source deny=%s", async (denied) => {
+it.each([false, true])("read-only MCP invoked by another tool obeys source deny=%s", async (denied) => {
 	const f = await fixture("claude", {
 		mode: "full",
-		deferredMcp: true,
+		nestedMcp: true,
 		rules: denied ? { deny: ["mcp__policy__*"] } : {},
 	});
 	let pid: number | undefined;
@@ -222,7 +222,7 @@ it.each([false, true])("deferred read-only MCP invoked by another tool obeys sou
 		pid = records[0].pid;
 		expect(records.filter((record) => record.message.method === "tools/call")).toHaveLength(denied ? 0 : 1);
 		const result = f.session.messages.findLast((m) => m.role === "toolResult");
-		expect(JSON.stringify(result).includes("DEFERRED_MCP_READ_EVIDENCE")).toBe(!denied);
+		expect(JSON.stringify(result).includes("NESTED_MCP_READ_EVIDENCE")).toBe(!denied);
 	} finally {
 		await f.close();
 		if (pid) expect(() => process.kill(pid!, 0)).toThrow();

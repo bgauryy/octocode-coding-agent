@@ -203,8 +203,9 @@ export class SessionCompaction {
 				preparation,
 				branchEntries: pathEntries,
 				signal: controller.signal,
-				checkAbort: (stage) => {
-					if (stage === "summary" && controller.signal.aborted) throw new Error("Compaction cancelled");
+				// A cancel during the hook stops before the default summary starts a request of its own.
+				checkAbort: () => {
+					if (controller.signal.aborted) throw new Error("Compaction cancelled");
 				},
 				outcome,
 			});

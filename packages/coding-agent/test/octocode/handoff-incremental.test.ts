@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../src/core/session-manager.ts";
-import { ReportQueue, RESULT_TYPE } from "../../src/octocode/subagents/handoff.ts";
+import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
@@ -44,7 +45,7 @@ describe("incremental report receipts", () => {
 			for (let index = 0; index < 20; index++) queue.recorded();
 			expect(visits).toBe(initial);
 			expect(getEntries).toHaveBeenCalledTimes(1);
-			entries.push(entry("receipt", RESULT_TYPE, { reportId: "r1" }) as (typeof entries)[number]);
+			entries.push(entry("receipt", AGENT_RESULT_TYPE, { reportId: "r1" }) as (typeof entries)[number]);
 			queue.recorded();
 			expect(visits).toBe(initial);
 			expect(getEntries).toHaveBeenCalledTimes(2);
@@ -53,7 +54,7 @@ describe("incremental report receipts", () => {
 			entries.splice(
 				0,
 				entries.length,
-				entry("replacement", RESULT_TYPE, { reportId: "r2" }) as (typeof entries)[number],
+				entry("replacement", AGENT_RESULT_TYPE, { reportId: "r2" }) as (typeof entries)[number],
 			);
 			queue.add({ ...report, reportId: "r2" });
 			queue.recorded();
@@ -82,7 +83,7 @@ describe("incremental report receipts", () => {
 				wake: true,
 			});
 			queue.flush();
-			entries.push(entry("receipt", RESULT_TYPE, { reportId: "r1" }));
+			entries.push(entry("receipt", AGENT_RESULT_TYPE, { reportId: "r1" }));
 			await vi.advanceTimersByTimeAsync(5_000);
 			expect(send).toHaveBeenCalledTimes(1);
 			expect(fs.readdirSync(queue.pendingDir)).toEqual([]);

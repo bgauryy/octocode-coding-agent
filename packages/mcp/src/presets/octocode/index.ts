@@ -1,7 +1,8 @@
 import type { McpServerPreset } from "../../preset.ts";
 import { envFlag, MCP_ENV } from "../../../../coding-agent/src/octocode/shared/env.ts";
 import { projectTrustNow } from "../../../../coding-agent/src/octocode/shared/trust.ts";
-import { OCTOCODE_DEFERRED_TOOLS, OCTOCODE_SERVER } from "./names.ts";
+import { octocodeCompactOverrides } from "./compact-overrides.ts";
+import { OCTOCODE_SERVER } from "./names.ts";
 import { octocodeLaunch } from "./launch.ts";
 import { literalConfigEnv } from "./literal.ts";
 import { prepareOctocodeSkillLaunch } from "./skill-paths.ts";
@@ -14,8 +15,8 @@ export function octocodePreset(
 	return {
 		name: OCTOCODE_SERVER,
 		config: { command: "octocode-mcp", inheritEnv: true, enabled: envFlag(env, MCP_ENV, true) },
-		toolExposure: Object.fromEntries(OCTOCODE_DEFERRED_TOOLS.map((tool) => [tool, "deferred" as const])),
 		defineTool: defineOctocodeTool,
+		compactOverrides: octocodeCompactOverrides,
 		prepareLaunch(entry, cwd, trusted) {
 			if (entry.scope === "default") {
 				const launch = octocodeLaunch(

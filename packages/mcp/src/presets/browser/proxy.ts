@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CallToolResult } from "../../client/index.ts";
-import { createMcpToolName } from "../../tools.ts";
+import { createMcpToolName } from "../../tool-names.ts";
 import {
 	type BlockedConnection,
 	type FilteringProxy,

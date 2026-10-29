@@ -1,5 +1,10 @@
 import { Box, type Component, Container } from "@octocodeai/octocode-tui";
-import type { AgentToolResult, MessageRenderer, ToolRenderResultOptions } from "../../core/extensions/index.ts";
+import type {
+	AgentToolResult,
+	ExtensionAPI,
+	MessageRenderer,
+	ToolRenderResultOptions,
+} from "../../core/extensions/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../shared/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
@@ -32,6 +37,7 @@ import { ReportView } from "../shared/render/report.ts";
 import { displayReport } from "./report-display.ts";
 import { timingOf } from "../shared/render/rows.ts";
 import { isRecord } from "../../utils/guards.ts";
+import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 
 /** The model a run is on without its provider (`claude-haiku-5-5:low`), marked as the parent's when the profile's preference was unavailable. */
 function modelLabel(details: Pick<RunDetails, "model" | "fallback">): string {
@@ -383,3 +389,8 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 	);
 	return box;
 };
+
+/** Draws background subagent reports (`AGENT_RESULT_TYPE` custom messages) in the transcript. */
+export function registerAgentMessageRenderer(pi: Pick<ExtensionAPI, "registerMessageRenderer">): void {
+	pi.registerMessageRenderer(AGENT_RESULT_TYPE, renderAgentMessage);
+}

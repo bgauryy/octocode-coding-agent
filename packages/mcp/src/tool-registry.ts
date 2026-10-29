@@ -1,19 +1,13 @@
 /** Registers server tools and hides them when their server goes away. */
 
 import { isDeepStrictEqual } from "node:util";
-import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
 import { mcpNamespace } from "./servers.ts";
-import {
-	activateDiscovery,
-	canDiscoverTools,
-	TOOL_SEARCH_TOOL_NAME,
-} from "../../coding-agent/src/core/tools/tool-search.ts";
-import { configuredExposures } from "./exposure.ts";
+import { isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
 import { createMcpToolDefinition } from "./tool-definition.ts";
-import { createMcpToolName } from "./tools.ts";
+import { assignMcpToolNames, createMcpToolName } from "./tool-names.ts";
 
 type ToolDefinitions = Array<Parameters<McpExtensionState["definitions"]["set"]>[1]>;
 
@@ -31,40 +25,53 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	const description = entry.config.description?.trim();
 	const namespace = {
 		name: mcpNamespace(server),
-		// Discovery accepts the configured server name as well as its MCP namespace.
-		aliases: [server],
 		...(description ? { description } : {}),
 		...(connection.instructions ? { instructions: connection.instructions } : {}),
 	};
-	const automaticExposure = state.automaticExposure(entry);
-	const resolvedExposure = (tool: string) => {
-		const requested = state.toolExposure(entry, tool);
-		return requested === "auto" ? automaticExposure : requested;
-	};
-	const batch: ToolDefinitions = [];
-	const demoted: string[] = [];
+	// Off by default only where a selection names the server; a server started by hand outside the selection
+	// (`/mcp` enable) was chosen for this session, so its tools activate like any other. One a hook started stays
+	// unselected.
+	const defaultActive = isDefaultActive(entry) || (!state.findServer(server)?.unselected && !isSelected(pi, entry));
 	const previous = serverTools.get(server) ?? new Set<string>();
 	const current = new Set<string>();
-	// Like Codex, all tools whose names sanitize to the same name get the hash suffix, so which
-	// one would keep the plain name does not depend on the order of the list.
-	const plain = [...new Set(connection.tools.map((tool) => tool.name))].map((tool) => createMcpToolName(server, tool));
-	const assignName = (tool: string, owner: string) => {
-		const name = createMcpToolName(server, tool, (candidate) => {
+	const owner = (tool: string) => `${server}\0${tool}`;
+	const names = assignMcpToolNames(
+		server,
+		connection.tools.map((tool) => tool.name),
+		(candidate, tool) => {
 			const existing = toolOwners.get(candidate);
-			return (
-				(existing !== undefined && existing !== owner) ||
-				current.has(candidate) ||
-				plain.indexOf(candidate) !== plain.lastIndexOf(candidate)
-			);
-		});
-		toolOwners.set(name, owner);
-		current.add(name);
-		return name;
-	};
+			return existing !== undefined && existing !== owner(tool);
+		},
+	);
+	// The server's generated file follows its catalog and configuration: a connect, `tools/list_changed`, new
+	// instructions or a tool hidden in `mcp.json` each arrive here, and a changed catalog hash renders a new file.
+	// The file names each tool by the name assigned here, which is the name the model calls.
+	const { presentation } = state;
+	presentation.sync(
+		server,
+		mcpNamespace(server).slice("mcp__".length),
+		connection.instructions,
+		connection.tools.filter((tool) => state.toolExposure(entry, tool.name) !== "hidden"),
+		names,
+	);
+	const batch: ToolDefinitions = [];
+	const demoted: string[] = [];
 	for (const tool of connection.tools) {
-		const name = assignName(tool.name, `${server}\0${tool.name}`);
-		const exposure = resolvedExposure(tool.name);
-		const metadata = { tool, namespace, exposure, timeoutMs: connection.timeoutMs };
+		const name = names.get(tool.name) ?? createMcpToolName(server, tool.name);
+		toolOwners.set(name, owner(tool.name));
+		current.add(name);
+		const exposure = state.toolExposure(entry, tool.name);
+		const thin = presentation.isThin(server, tool);
+		// A thin declaration depends on the tool's own block of the generated file, not on the rest of the catalog.
+		const metadata = {
+			tool,
+			namespace,
+			exposure,
+			defaultActive,
+			timeoutMs: connection.timeoutMs,
+			compact: thin ? presentation.signature(server, tool.name) : null,
+			summary: thin ? presentation.summary(server, tool.name) : null,
+		};
 		const cached = isDeepStrictEqual(registeredMetadata.get(name), metadata) ? cachedDefinitions.get(name) : undefined;
 		if (cached) {
 			if (definitions.get(name) !== cached) {
@@ -79,8 +86,17 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			tool,
 			name,
 			exposure,
+			defaultActive,
 			namespace,
 			timeoutMs: connection.timeoutMs,
+			...(thin
+				? {
+						compact: {
+							signature: () => presentation.signature(server, tool.name),
+							...(metadata.summary ? { summary: metadata.summary } : {}),
+						},
+					}
+				: {}),
 			getClient: async () => {
 				// A prepared call can outlive this definition's connection while the readiness
 				// hook waits for a disable/re-enable. Resolve the replacement at execution time.
@@ -116,14 +132,11 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 	}
 	registerAll(pi, batch);
 	if (demoted.length > 0) pi.setActiveTools(pi.getActiveTools().filter((active) => !demoted.includes(active)));
-	if (connection.tools.some((tool) => resolvedExposure(tool.name) === "deferred")) {
-		activateDiscovery(pi);
-	}
 }
 
 /** Make a disabled server's tools unreachable. */
 export function hideTools(state: McpExtensionState, server: string): void {
-	state.resetAutomaticExposure(server);
+	state.presentation.forget(server);
 	const batch: ToolDefinitions = [];
 	for (const name of state.serverTools.get(server) ?? []) {
 		const definition = state.definitions.get(name);
@@ -135,29 +148,4 @@ export function hideTools(state: McpExtensionState, server: string): void {
 	}
 	registerAll(state.pi, batch);
 	state.serverTools.set(server, new Set());
-}
-
-/** Activate discovery only for deferred catalogs. */
-export function ensureDiscoveryActive(state: McpExtensionState, ctx: ExtensionContext): void {
-	const { pi } = state;
-	const hasSearch = canDiscoverTools(pi);
-	const needsSearch = state.servers.some(
-		(server) =>
-			isEnabled(server) &&
-			[...configuredExposures(server.entry, state.preset(server.entry)?.toolExposure)].some(
-				(exposure) => (exposure === "auto" ? state.automaticExposure(server.entry) : exposure) === "deferred",
-			),
-	);
-	if (!needsSearch) return;
-	if (hasSearch) {
-		// A deselection after tool_search was active stands (see `activateDiscovery`): warn instead of re-adding it.
-		activateDiscovery(pi);
-		if (pi.getActiveTools().includes(TOOL_SEARCH_TOOL_NAME)) return;
-	}
-	if (state.warnedUnreachable) return;
-	state.warnedUnreachable = true;
-	ctx.ui.notify(
-		"Deferred MCP tools need tool_search. Enable it or select direct exposure for these servers.",
-		"warning",
-	);
 }

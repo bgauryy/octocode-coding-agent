@@ -13,13 +13,13 @@ import { keyHint } from "../../coding-agent/src/modes/interactive/components/key
 import { VisualLinePreview } from "../../coding-agent/src/modes/interactive/components/visual-truncate.ts";
 import { visibleControls } from "../../coding-agent/src/octocode/shared/sanitize.ts";
 import type { McpExposure } from "./config.ts";
+import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import {
 	type McpToolCaller,
 	type McpToolDetails,
 	convertMcpResult,
 	createMcpResultSchema,
 	toParameters,
-	toToolExposure,
 } from "./tools.ts";
 
 const OUTPUT_PREVIEW_LINES = 5;
@@ -38,13 +38,13 @@ const dropReason = <T>(args: T): T => {
 	const { reason: _reason, ...rest } = args as Record<string, unknown>;
 	return rest as T;
 };
-export interface PreparedMcpCall {
+interface PreparedMcpCall {
 	args: Record<string, unknown>;
 	/** Applied to the server's result before `convertResult`. */
 	review?: (result: CallToolResult) => CallToolResult;
 }
 
-export interface McpToolPresentation extends ToolRenderers {
+interface McpToolPresentation extends ToolRenderers {
 	label?: string;
 	outputSchema?: TSchema;
 	/** Rewrites the arguments just before the server call (the model-facing schema is unchanged) and may review the raw result. */
@@ -58,9 +58,17 @@ export interface McpToolDefinitionOptions {
 	tool: McpTool;
 	name: string;
 	exposure: McpExposure;
+	/** False keeps the tool out of the default tool selection: only a selection that names it activates it. */
+	defaultActive?: boolean;
 	namespace: ToolNamespace;
 	timeoutMs: number;
 	getClient: () => Promise<McpToolCaller>;
+	/**
+	 * Declare the tool as a thin stub: `summary` (else the description's first sentence) and an open input object. The
+	 * model reads the tool's typed signature in its server's system prompt section; calls are validated against the
+	 * server's own input schema, and a failed validation shows `signature()`.
+	 */
+	compact?: { signature: () => string | undefined; summary?: string };
 }
 
 export function createMcpToolDefinition(options: McpToolDefinitionOptions): ToolDefinition<TSchema, McpToolDetails> {
@@ -68,21 +76,36 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): Tool
 	const title = tool.title;
 	const label = options.presentation?.label ?? `${server}/${tool.name}`;
 	const description = tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`;
+	const inputSchema = toParameters(tool.inputSchema);
+	const { compact } = options;
 	return {
 		name: options.name,
 		label,
 		// Providers declare input schemas; include the server's output contract in the same cached tool description.
-		description: tool.outputSchema
-			? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
-			: description,
-		parameters: toParameters(tool.inputSchema),
+		// A thin declaration leaves both to the typed signature, whose return type is the output schema.
+		description: compact
+			? (compact.summary ?? firstSentence(description))
+			: tool.outputSchema
+				? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
+				: description,
+		parameters: compact ? thinParameters(inputSchema) : inputSchema,
+		...(compact
+			? {
+					validationParameters: inputSchema,
+					validationHint: () => {
+						const block = compact.signature();
+						return block ? `Expected signature (TypeScript):\n${block}` : undefined;
+					},
+				}
+			: {}),
 		...(declaresReason(tool.inputSchema) ? {} : { prepareArguments: dropReason }),
 		...(options.presentation
 			? options.presentation.outputSchema
 				? { outputSchema: options.presentation.outputSchema }
 				: {}
 			: { outputSchema: createMcpResultSchema(tool.outputSchema) }),
-		exposure: toToolExposure(options.exposure),
+		exposure: options.exposure,
+		...(options.defaultActive === false ? { defaultActive: false } : {}),
 		namespace: options.namespace,
 		...(({ renderCall, renderResult }) => ({ renderCall, renderResult }))(
 			options.presentation ?? createMcpToolRenderers(label),

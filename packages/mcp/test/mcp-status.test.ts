@@ -6,7 +6,7 @@ const server = (name: string): McpServerStatus => ({
 	name,
 	enabled: true,
 	state: "connected",
-	exposure: "deferred",
+	exposure: "hidden",
 	toolCount: 2,
 	source: "test",
 });

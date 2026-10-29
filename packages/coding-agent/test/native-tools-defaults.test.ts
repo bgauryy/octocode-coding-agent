@@ -12,9 +12,9 @@ describe("default tool selection", () => {
 	it("includes the built-in MCP extension's mcp tool, but no other extension tool", () => {
 		const native = extension(NATIVE_FEATURE_PATH, [{ name: "file" }, { name: "hidden", defaultActive: false }]);
 		const mcp = extension("builtin:mcp", [{ name: "mcp", defaultActive: false }]);
-		const discovery = extension("builtin:tool-search", [{ name: "tool_search", defaultActive: false }]);
+		const other = extension("builtin:llama.cpp", [{ name: "llama_probe", defaultActive: false }]);
 		const user = extension("/home/me/ext.ts", [{ name: "mcp" }]);
-		expect(defaultToolNames([native, mcp, discovery])).toEqual(["file", "mcp"]);
+		expect(defaultToolNames([native, mcp, other])).toEqual(["file", "mcp"]);
 		expect(defaultToolNames([native, user])).toEqual(["file"]);
 	});
 });

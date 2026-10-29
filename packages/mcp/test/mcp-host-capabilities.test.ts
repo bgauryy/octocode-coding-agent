@@ -59,7 +59,7 @@ describe("shared MCP host capabilities", () => {
 			for (const name of ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"])
 				expect(h.tools.has(name)).toBe(false);
 			expect((await h.call("mcp__octocode__link", {})).content).toEqual([
-				{ type: "text", text: "[unsupported MCP content resource_link]" },
+				{ type: "text", text: expect.stringMatching(/^\[resource link \S+\]\nname: intro$/) },
 			]);
 			await h.call("mcp", { intent: "stop", server: "octocode" });
 			expect(h.state.findServer("octocode")!.connection!.isStopped).toBe(true);

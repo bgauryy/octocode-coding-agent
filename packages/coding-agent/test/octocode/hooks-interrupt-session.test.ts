@@ -536,7 +536,10 @@ it.each(["success", "hold"] as const)(
 				id: "prompt",
 				message: "MCP interruption fixture",
 			});
-			await f.wait(() => f.requests.length === 1 && f.mcpRecords().some((r) => r.message.method === "tools/list"));
+			// The policy server is used only by the hook: no tool selection names it (`--tools read`), so the hook's call
+			// starts it.
+			await f.wait(() => f.requests.length === 1);
+			expect(f.mcpRecords().some((r) => r.message.method === "tools/list")).toBe(false);
 			const started = Date.now();
 			f.send({ type: "abort", id: "cancel" });
 			await f.wait(() => !!f.response("cancel"), 6000);

@@ -1,7 +1,7 @@
 import type { ReportSummary, ReportsIndex } from "@octocodeai/octocode-contacts/protocol";
 import { hashFor } from "./route.ts";
 
-export const REPORT_TABS = ["rfc", "research"] as const;
+const REPORT_TABS = ["rfc", "research"] as const;
 export type ReportTab = (typeof REPORT_TABS)[number];
 
 /** The kinds each tab lists; research briefs and brainstorms share the Research tab. */

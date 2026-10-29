@@ -57,6 +57,17 @@ import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeAuthOverrides } from "./types.ts";
 
+type CacheOptions = ReturnType<typeof resolveConfiguredCache>["options"];
+
+/**
+ * Chat request options of the runtime. `resolveCache` resolves the cache options for the physical model that sends
+ * the request, after any virtual routing, in place of the runtime's own resolution; options the caller set must win
+ * inside it.
+ */
+export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
+	resolveCache?: (model: Model<Api>) => CacheOptions;
+};
+
 /** Resolve a model's auth and merge the headers configured for it in models.json or by its extension. */
 export async function resolveModelAuth(
 	models: MutableModels,
@@ -97,7 +108,7 @@ export interface ModelRequestHost {
 			state?: unknown;
 		},
 	): Promise<ModelRoute>;
-	streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream;
+	streamSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): AssistantMessageEventStream;
 }
 
 async function prepareModelRequest<
@@ -166,7 +177,7 @@ export function streamSimpleChatModel(
 	host: ModelRequestHost,
 	model: Model<Api>,
 	context: Context,
-	options?: ModelsSimpleStreamOptions,
+	options?: RuntimeSimpleStreamOptions,
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
 	if (isVirtualModel(model)) {
@@ -182,7 +193,8 @@ export function streamSimpleChatModel(
 			const maxTokens = options?.maxTokens && limit > 0 ? Math.min(options.maxTokens, limit) : options?.maxTokens;
 			const reasoning = route.thinkingLevel === "off" ? undefined : route.thinkingLevel;
 			// Caller credentials were resolved for the virtual model's provider. Another provider
-			// resolves its own, so they are not sent to the wrong vendor.
+			// resolves its own, so they are not sent to the wrong vendor. The cache policy, and any
+			// `resolveCache`, is resolved for the routed model.
 			const { apiKey, headers, env, ...rest } = options ?? {};
 			const auth = route.model.provider === model.provider ? { apiKey, headers, env } : {};
 			return host.streamSimple(route.model, context, { ...rest, ...auth, maxTokens, reasoning });
@@ -191,10 +203,11 @@ export function streamSimpleChatModel(
 	return lazyStream(model, async () => {
 		assertChatModel(model);
 		assertImageRequestContext(model, transcript.messages);
+		const { resolveCache, ...requestOptions } = options ?? {};
 		const prepared = await prepareModelRequest(host, model, {
-			...options,
-			...host.getCachePolicy(model, options).options,
-			...instructionCacheBoundaryOption(transcript.messages, options),
+			...requestOptions,
+			...(resolveCache?.(model) ?? host.getCachePolicy(model, requestOptions).options),
+			...instructionCacheBoundaryOption(transcript.messages, requestOptions),
 		});
 		return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 	});

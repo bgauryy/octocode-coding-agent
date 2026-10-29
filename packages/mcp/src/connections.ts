@@ -7,9 +7,9 @@ import { saveConfig } from "./persistence.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
-import { isEnabled, type McpServer } from "./server.ts";
+import { describeState, isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { ensureDiscoveryActive, hideTools, registerTools } from "./tool-registry.ts";
+import { hideTools, registerTools } from "./tool-registry.ts";
 
 function storedTokens(state: McpExtensionState, connection: McpServerConnection): string {
 	const url = connection.oauthUrl;
@@ -24,14 +24,13 @@ function onConnectionChange(state: McpExtensionState, connection: McpServerConne
 }
 
 /** Reconnect servers that need a sign-in when their credentials were stored since. */
-export async function reconnectSignedIn(state: McpExtensionState, ctx: ExtensionContext): Promise<void> {
+export async function reconnectSignedIn(state: McpExtensionState): Promise<void> {
 	const signedIn = [...state.tokensAtSignIn].filter(
 		([connection, tokens]) => storedTokens(state, connection) !== tokens,
 	);
 	if (signedIn.length === 0) return;
 	for (const [connection] of signedIn) state.tokensAtSignIn.delete(connection);
 	await Promise.allSettled(signedIn.map(([connection]) => connection.reconnect()));
-	ensureDiscoveryActive(state, ctx);
 }
 
 /** Create the server's connection, loading the MCP runtime on first use. */
@@ -73,10 +72,17 @@ async function createConnection(
  * failures show in its state. It starts after `after`, unless disabled, replaced, or shut down
  * meanwhile. The returned promise rejects when the MCP runtime cannot be loaded.
  */
-export function startConnection(state: McpExtensionState, server: McpServer, after?: Promise<unknown>): Promise<void> {
+export function startConnection(
+	state: McpExtensionState,
+	server: McpServer,
+	after?: Promise<unknown>,
+	/** False for a start that does not choose the server for the session (a hook's call): it stays `unselected`. */
+	chosen = true,
+): Promise<void> {
 	const { signal } = state.session;
 	const attempt = Symbol();
 	server.attempt = attempt;
+	if (chosen) server.unselected = undefined;
 	const isCurrent = () =>
 		!signal.aborted && server.attempt === attempt && isEnabled(server) && state.servers.includes(server);
 	const ready = (async () => {
@@ -90,21 +96,15 @@ export function startConnection(state: McpExtensionState, server: McpServer, aft
 	return ready;
 }
 
-/** The longest a `tool_search` waits for servers that are still connecting before it searches the connected ones. */
-export const DISCOVERY_WAIT_MS = 15_000;
-
 /**
- * Wait for the latest connection attempts, including ones queued while waiting, an abort, or `timeoutMs` (no
- * deadline when omitted). Returns the servers whose attempt had not settled when the wait ended.
+ * Wait for the latest connection attempts, including ones queued while waiting, or an abort. Returns the servers whose
+ * attempt had not settled when the wait ended.
  */
 export async function waitForServers(
 	state: McpExtensionState,
 	waiting: readonly McpServer[],
-	signal: AbortSignal | undefined,
-	timeoutMs?: number,
+	stop: AbortSignal | undefined,
 ): Promise<McpServer[]> {
-	const deadline = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
-	const stop = deadline ? (signal ? AbortSignal.any([signal, deadline]) : deadline) : signal;
 	const settled = new Set<Promise<void>>();
 	const stillPending = (attempts: { server: McpServer; ready: Promise<void> }[]) =>
 		attempts.flatMap(({ server, ready }) => (settled.has(ready) || !isLive(state, server) ? [] : [server]));
@@ -137,44 +137,30 @@ function isLive(state: McpExtensionState, server: McpServer): boolean {
 }
 
 /**
- * The first prompt waits for servers whose tools are declared to the model, so they are declared
- * in its first request, but not indefinitely: a slow or hanging server must not hold up the
- * prompt. Servers with only deferred tools get a short grace (`deferredGraceMs`), so the section
- * lists their tools when they connect quickly; otherwise they are listed by name and waited for
- * when a tool_search needs them.
+ * The first prompt waits for servers whose tools are declared to the model, so they are declared in its first request
+ * and every session with the same servers starts from the same cached prefix, but not indefinitely: a slow or hanging
+ * server must not hold up the prompt.
  */
 export async function waitForDirectServers(state: McpExtensionState, ctx: ExtensionContext): Promise<void> {
 	if (state.waitedForStartup) return;
 	state.waitedForStartup = true;
-	const readyOf = (direct: boolean) =>
-		state.servers.flatMap((server) =>
-			isEnabled(server) && hasDirectTools(server.entry) === direct && server.ready ? [server.ready] : [],
-		);
-	const direct = readyOf(true);
-	const deferred = state.deferredGraceMs > 0 ? readyOf(false) : [];
-	if (direct.length === 0 && deferred.length === 0) return;
-	const waitFor = async (ready: Promise<unknown>[], ms: number): Promise<boolean> => {
-		if (ready.length === 0 || ctx.signal?.aborted || state.session.signal.aborted) return true;
-		const signal = AbortSignal.any([state.session.signal, ...(ctx.signal ? [ctx.signal] : [])]);
-		let abort: (() => void) | undefined;
-		let timer: NodeJS.Timeout | undefined;
-		const finished = await Promise.race([
-			Promise.all(ready).then(() => true),
-			new Promise<boolean>((resolve) => {
-				timer = setTimeout(() => resolve(false), ms);
-				abort = () => resolve(true);
-				signal.addEventListener("abort", abort, { once: true });
-			}),
-		]);
-		clearTimeout(timer);
-		if (abort) signal.removeEventListener("abort", abort);
-		return finished;
-	};
-	// Both waits run together, so the grace never adds to the direct wait; only the direct wait reports.
-	const [finished] = await Promise.all([
-		waitFor(direct, state.startupWaitMs),
-		waitFor(deferred, state.deferredGraceMs),
+	const ready = state.servers.flatMap((server) =>
+		isEnabled(server) && hasDirectTools(server.entry) && server.ready ? [server.ready] : [],
+	);
+	if (ready.length === 0 || ctx.signal?.aborted || state.session.signal.aborted) return;
+	const signal = AbortSignal.any([state.session.signal, ...(ctx.signal ? [ctx.signal] : [])]);
+	let abort: (() => void) | undefined;
+	let timer: NodeJS.Timeout | undefined;
+	const finished = await Promise.race([
+		Promise.all(ready).then(() => true),
+		new Promise<boolean>((resolve) => {
+			timer = setTimeout(() => resolve(false), state.startupWaitMs);
+			abort = () => resolve(true);
+			signal.addEventListener("abort", abort, { once: true });
+		}),
 	]);
+	clearTimeout(timer);
+	if (abort) signal.removeEventListener("abort", abort);
 	if (!finished) {
 		ctx.ui.notify("MCP servers are still connecting; their tools become available once connected.", "info");
 	}
@@ -227,7 +213,7 @@ export async function signOut(state: McpExtensionState, server: McpServer): Prom
 
 export async function reconnect(server: McpServer): Promise<string | undefined> {
 	const connection = server.connection;
-	if (!connection) return `MCP server "${server.entry.name}" is disabled.`;
+	if (!connection) return `MCP server "${server.entry.name}" is ${describeState(server, false)}.`;
 	const previous = server.ready;
 	// A hung connect is cancelled rather than waited out; `previous` then settles at once.
 	connection.abortOpening();

@@ -252,6 +252,13 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	description: string;
 	parameters: TParameters;
 	constrainedSampling?: false | ConstrainedSamplingConfig;
+	/**
+	 * Schema the arguments are validated against when it differs from `parameters`, for a tool whose declaration is a
+	 * thin stub and whose full contract the model reads elsewhere. Never sent to a provider.
+	 */
+	validationParameters?: TSchema;
+	/** Text appended to a validation failure of this tool's call, such as its typed signature. Never sent to a provider. */
+	validationHint?: () => string | undefined;
 }
 
 export interface ToolReference {

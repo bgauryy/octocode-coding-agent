@@ -4,10 +4,10 @@ import type { McpServerConfig } from "./servers.ts";
 import { reconnect } from "./connections.ts";
 import { toolCatalog } from "./inspection.ts";
 import { createMcpManageTool, type ManagedMcpServer } from "./manage-tool.ts";
-import { describeState } from "./server.ts";
+import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
 import type { McpExtensionState } from "./state.ts";
-import { ensureDiscoveryActive, hideTools } from "./tool-registry.ts";
+import { hideTools } from "./tool-registry.ts";
 
 // The model's `mcp` tool acts on this session's servers only; configuration files stay unchanged.
 export function registerMcpManageTool(state: McpExtensionState): void {
@@ -40,13 +40,16 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 					origin: addedHere.has(server.entry.name) ? ("added" as const) : ("configured" as const),
 					...(server.connection?.error ? { error: server.connection.error } : {}),
 				})),
-			restart: async (name, ctx) => {
+			restart: async (name) => {
 				const server = state.findServer(name);
 				if (!server) return `No MCP server named "${name}".`;
-				if (!server.connection)
+				if (!isEnabled(server))
 					return `MCP server "${name}" is disabled in its configuration; the user can enable it with /mcp enable ${name}.`;
+				// Outside this session's tool selection: its tools belong to the agents that select them.
+				if (server.unselected)
+					return `MCP server "${name}" is not selected for this session; delegate to an agent whose tools include it, or the user can assign it to every agent with /mcp assign ${name} all.`;
+				if (!server.connection) return `MCP server "${name}" is still starting; check its status before restarting.`;
 				const failure = await reconnect(server);
-				ensureDiscoveryActive(state, ctx);
 				return failure;
 			},
 			stop: async (name) => {

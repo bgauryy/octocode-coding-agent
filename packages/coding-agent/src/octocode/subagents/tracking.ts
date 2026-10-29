@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
 import { isRecord } from "../../utils/guards.ts";
@@ -37,6 +38,8 @@ export const reportFacts = (
 	details: RunDetails,
 ): Pick<
 	ResultDetails,
+	| "runId"
+	| "startedAt"
 	| "usage"
 	| "unpriced"
 	| "model"
@@ -52,6 +55,8 @@ export const reportFacts = (
 > => {
 	const usage = spent.get(details);
 	return {
+		...(details.runId ? { runId: details.runId } : {}),
+		startedAt: details.startedAt,
 		...(usage ? { usage, unpriced: details.unpriced } : {}),
 		...(details.model ? { model: details.model } : {}),
 		...(details.fallback ? { fallback: details.fallback } : {}),
@@ -66,12 +71,15 @@ export const reportFacts = (
 	};
 };
 
-/** The run's trusted footer lines: its compactions, its questions to the parent, and where its conversation is saved when it failed. */
+/**
+ * The run's trusted footer lines: its compactions, its questions to the parent, and where its conversation is saved
+ * (once its transcript exists, or by id when it failed): the parent reads it there, or continues it (`resume`).
+ */
 export const runFooter = (details: RunDetails, failed: boolean): string[] => [
 	compactionNote(details),
 	archiveNote(details),
 	asksNote(details.asks),
-	failed ? sessionNote(details) : "",
+	failed || details.session?.file ? sessionNote(details) : "",
 ];
 
 /** The prompt tokens (uncached, cache reads and writes) of an assistant reply, when it reports its usage. */
@@ -175,6 +183,7 @@ export function recordRun<T>(
 			if (file || archive)
 				details.session = {
 					id: session.id,
+					dir: session.dir,
 					...(file ? { file } : {}),
 					...(archive ? { archive: path.dirname(archive) } : {}),
 				};
@@ -202,12 +211,13 @@ const startDetails = (fields: Pick<RunDetails, "id" | "profile" | "goal" | "stat
 	startedAt: Date.now(),
 });
 
-/** A run's details as it starts. */
-export function runDetails(run: Run): RunDetails {
+/** A run's details as it starts; `session` names the folder its transcript goes to. */
+export function runDetails(run: Run, session?: ChildSession): RunDetails {
 	const { model, fallback } = run.route;
 	return {
 		...startDetails({ id: run.identity.id, profile: run.identity.role, goal: run.identity.goal, status: "running" }),
-		session: { id: run.identity.id },
+		runId: randomUUID(),
+		session: { id: run.identity.id, ...(session ? { dir: session.dir } : {}) },
 		...(model ? { model } : {}),
 		...(fallback ? { fallback } : {}),
 	};

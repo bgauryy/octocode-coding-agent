@@ -119,6 +119,7 @@ describe("ExtensionRunner", () => {
 		getAllTools: () => [],
 		getSettings: () => ({}),
 		setActiveTools: () => {},
+		selectsTools: () => true,
 		refreshTools: () => {},
 		getCommands: () => [],
 		getSkillDirectories: () => [],

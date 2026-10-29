@@ -62,7 +62,7 @@ export function toolCatalog(state: McpExtensionState, name: string): McpToolList
 		return server.connection?.state === "connected" && isEnabled(server)
 			? server.connection.tools.map((tool) => ({
 					...tool,
-					exposure: state.effectiveExposure(server.entry, tool.name),
+					exposure: state.toolExposure(server.entry, tool.name),
 				}))
 			: [];
 	return [];

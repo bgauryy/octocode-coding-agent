@@ -86,6 +86,13 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.bashBackgroundAfterSeconds,
 			}),
 		),
+		mcpPresentation: Type.Optional(
+			Type.Union([Type.Literal("compact"), Type.Literal("json")], {
+				description:
+					'How MCP tools reach the model. "compact" shows each server as a generated TypeScript file in the cached system prompt, declares its tools with a one-line trigger and the top-level field types, and validates calls against the server\'s own JSON Schema. "json" declares every tool with its full JSON Schema and ignores the generated files.',
+				default: SETTINGS_DEFAULTS.mcpPresentation,
+			}),
+		),
 		npmCommand: Type.Optional(
 			Type.Array(Type.String(), {
 				description:

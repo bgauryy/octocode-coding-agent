@@ -36,7 +36,6 @@ export const HOST_IMPORT_BASELINE = {
 		"coding-agent/src/core/model-runtime.ts",
 		"coding-agent/src/core/resolve-config-value.ts",
 		"coding-agent/src/core/tools/render-utils.ts",
-		"coding-agent/src/core/tools/tool-search.ts",
 		"coding-agent/src/core/trust-manager.ts",
 		"coding-agent/src/modes/interactive/components/auth-url.ts",
 		"coding-agent/src/modes/interactive/components/framed-view.ts",

@@ -13,9 +13,12 @@ type ResolvedCache = ReturnType<typeof resolveConfiguredCache>;
  * costs a little more per write but spares those rewrites. A session that never pauses never pays for it.
  *
  * Only the application default is changed: a retention the user, a model definition, the environment (which is how a
- * subagent receives its parent's choice) or the request set stays as configured. Only models with Anthropic-style
- * markers that accept a one-hour tier are affected, and only when the instructions are already long-lived, so the
- * history marker does not follow a shorter one. The first request never counts as an idle gap.
+ * subagent receives the retention resolved for it at launch) or the request set stays as configured. Only models with
+ * Anthropic-style markers that accept a one-hour tier are affected, and only when the instructions are already
+ * long-lived, so the history marker does not follow a shorter one. The first request never counts as an idle gap.
+ *
+ * The caller passes only the session's own requests, after virtual routing: compaction and summary requests have
+ * their own cache entries, so they neither measure the gap nor move to the long tier.
  */
 export class IdleHistoryCache {
 	private lastRequestAt: number | undefined;

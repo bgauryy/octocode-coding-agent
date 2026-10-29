@@ -163,14 +163,13 @@ describe("profile permissions", () => {
 });
 
 describe("subagents", () => {
-	it("collaborate mode: lists teammates in the task, flags the child and its prompt", () => {
+	it("collaborate mode: lists teammates in the task", () => {
 		expect(teamTask("Fix A", "main-1", [["researcher-2", "Trace B"]])).toBe(
 			"Fix A\n\n## Teammates\nYou collaborate with the other subagents that main-1 started for the same goal. Running now:\n- `researcher-2`: Trace B",
 		);
 		expect(teamTask("Fix A", "main-1", [])).toMatch(
 			/none yet; `agent` type `coordinate`, action `list` shows teammates that start later/,
 		);
-		expect(subagentProcessEnv(undefined, {}, { id: "a-1", collaborate: true }).OCTOCODE_AGENT_COLLABORATE).toBe("1");
 		// The parent names its session for backlog ownership; an inherited value from a grandparent never leaks through.
 		expect(
 			subagentProcessEnv(undefined, { OCTOCODE_PARENT_SESSION: "old" }, { id: "a-1", parentSession: "s-1" })
@@ -206,12 +205,10 @@ describe("subagents", () => {
 			);
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
-		expect(subagentProcessEnv(undefined, {}, { id: "a-1" }).OCTOCODE_AGENT_COLLABORATE).toBeUndefined();
-		const child = (collaborate: boolean) =>
-			octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate });
-		// Parent/child and teammate communication now share one policy: every child's task names its teammates.
-		expect(child(true)).toMatch(/your task names your role, goal, parent, teammates/);
-		expect(child(false)).toMatch(/your task names your role, goal, parent, teammates/);
+		// Parent/child and teammate communication share one policy: every child's task names its teammates.
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
+			/your task names your role, goal, parent, teammates/,
+		);
 	});
 
 	it("parses profile frontmatter and builds child pi arguments", () => {
@@ -223,7 +220,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,file,agent,archive,skill,tool_search,mcp,mcp__*",
+			tools: "read,grep,file,agent,archive,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -237,12 +234,10 @@ describe("subagents", () => {
 			"--no-extensions",
 			"-e",
 			"builtin:mcp",
-			"-e",
-			"builtin:tool-search",
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,file,agent,archive,skill,tool_search,mcp,mcp__*",
+			"read,grep,file,agent,archive,skill,mcp,mcp__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -271,7 +266,7 @@ describe("subagents", () => {
 		expect(parsed.messages).toEqual([]);
 		expect(parsed.fileArgs).toEqual([]);
 		expect(parsed.model).toBe("faux/model");
-		expect(parsed.extensions).toEqual(["builtin:mcp", "builtin:tool-search"]);
+		expect(parsed.extensions).toEqual(["builtin:mcp"]);
 		expect(parsed.appendSystemPrompt).toBeUndefined();
 		expect(parsed.diagnostics).toEqual([]);
 	});
@@ -296,12 +291,8 @@ describe("subagents", () => {
 			"--no-extensions",
 			"-e",
 			"builtin:mcp",
-			"-e",
-			"builtin:tool-search",
 			"--tools",
-			["file", "agent", "archive", "skill", "tool_search", "mcp", ...LOCAL_RESEARCH_TOOLS]
-				.map((name) => `+${name}`)
-				.join(","),
+			["file", "agent", "archive", "skill", "mcp", ...LOCAL_RESEARCH_TOOLS].map((name) => `+${name}`).join(","),
 			"--exclude-tools",
 			"browser,bash",
 		]);

@@ -66,6 +66,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"doubleEscapeAction",
 			"treeFilterMode",
 			"defaultTools",
+			"mcpPresentation",
 		],
 	},
 	{

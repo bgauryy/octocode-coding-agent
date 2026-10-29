@@ -1,71 +1,75 @@
 import { describe, expect, it } from "vitest";
-import { type McpServerListing, renderServersSection } from "../src/section.ts";
+import { type McpServerListing, renderContractSections, renderStatusSection } from "../src/section.ts";
 
-const listing = (name: string, names: string[], instructions?: string): McpServerListing => ({
-	entry: { name, config: { command: "x", exposure: "deferred" }, source: "test" },
-	connection: { state: "connected", instructions },
-	tools: { deferred: names.map((name) => ({ name })), declared: [] },
+const FILE =
+	'// MCP server "docs" · catalog abc · call a tool as mcp__docs__<function> with the input object.\n/** Use docs. */\ndeclare namespace docs {\n\tfunction search(input: {}): unknown;\n}';
+
+const listing = (name: string, overrides: Partial<McpServerListing> = {}): McpServerListing => ({
+	entry: { name, config: { command: "x" }, source: "test" },
+	state: "connected",
+	declared: true,
+	...overrides,
 });
 
-describe("MCP system prompt inventory", () => {
-	it("sorts servers and tools independent of registration order", () => {
-		const a = listing("a", ["mcp__a__z", "mcp__a__b"]);
-		const b = listing("b", ["mcp__b__get"]);
-		expect(renderServersSection([b, a])).toBe(renderServersSection([a, b]));
-		expect(renderServersSection([a])).toContain("tool_search loads: b, z");
-		expect(renderServersSection([{ ...a, tools: { deferred: [...a.tools!.deferred].reverse(), declared: [] } }])).toBe(
-			renderServersSection([a]),
+describe("MCP contract sections", () => {
+	it("gives each server with declared tools its own section, sorted by server", () => {
+		const sections = renderContractSections([listing("b", { file: "B_FILE" }), listing("a", { file: FILE })]);
+		expect(Object.keys(sections)).toEqual(["mcp_contract_a", "mcp_contract_b"]);
+		expect(sections.mcp_contract_a).toBe(FILE);
+		expect(renderContractSections([listing("a", { file: FILE }), listing("b", { file: "B_FILE" })])).toEqual(sections);
+	});
+
+	it("does not depend on connection state, so a reconnect resends nothing", () => {
+		const connected = listing("docs", { file: FILE });
+		expect(renderContractSections([{ ...connected, state: "connecting" }])).toEqual(
+			renderContractSections([connected]),
 		);
 	});
-	it("preserves complete multiline instructions once without a size cutoff", () => {
+
+	it("puts the configured description above the file", () => {
+		const described = listing("docs", { file: FILE });
+		described.entry.config.description = "Product docs";
+		expect(renderContractSections([described]).mcp_contract_docs).toBe(`Product docs\n${FILE}`);
+	});
+
+	it("carries the whole instructions once for a server without a file", () => {
 		const instructions = `Search first.\n${"Complete instructions.\n".repeat(400)}FINAL_RULE`;
-		const section = renderServersSection([listing("docs", ["mcp__docs__search", "mcp__docs__fetch"], instructions)])!;
+		const section = renderContractSections([listing("docs", { instructions })]).mcp_contract_docs;
 		expect(section).toContain(instructions);
 		expect(section.match(/FINAL_RULE/g)).toHaveLength(1);
 		expect(section).toContain("full descriptions and schemas");
+		expect(section).toContain("mcp__docs__<tool>");
 	});
-	it("excludes instructions for disabled, disconnected, hidden and unreachable servers", () => {
-		const off = listing("disabled", ["mcp__disabled__get"], "DISABLED_RULE");
+
+	it("leaves out disabled servers and servers without declared tools", () => {
+		const off = listing("off", { file: FILE });
 		off.entry.config.enabled = false;
-		const hidden = listing("hidden", [], "HIDDEN_RULE");
-		const failed = listing("failed", ["mcp__failed__get"], "FAILED_RULE");
-		failed.connection!.state = "failed";
-		const section = renderServersSection([off, hidden, failed])!;
-		expect(section).not.toContain("RULE");
-		expect(section).not.toContain("mcp__disabled");
-		expect(section).toContain("mcp__hidden (no available tools)");
-		expect(section).toContain("mcp__failed (failed)");
+		expect(renderContractSections([off, listing("idle", { declared: false, file: FILE })])).toEqual({});
 	});
-	it("includes direct tools and their server instructions", () => {
-		const direct = listing("octocode", [], "Read known paths.");
-		direct.tools = { deferred: [], declared: [{ name: "mcp__octocode__read" }] };
-		expect(renderServersSection([direct])).toContain(
-			"mcp__octocode (declared)\n  declared: read\n  instructions:\nRead known paths.",
-		);
-		expect(renderServersSection([direct])).not.toContain("tool_search");
+
+	it("numbers servers whose names differ only in case", () => {
+		expect(Object.keys(renderContractSections([listing("Docs"), listing("docs")]))).toEqual([
+			"mcp_contract_docs",
+			"mcp_contract_docs-2",
+		]);
 	});
-	it("includes discovery guidance only while a server has reachable deferred tools", () => {
-		const deferred = listing("docs", ["mcp__docs__search"]);
-		const guidance = "Load deferred tools with tool_search before calling them.";
-		expect(renderServersSection([deferred])).toContain(guidance);
-		deferred.connection!.state = "disconnected";
-		expect(renderServersSection([deferred])).not.toContain(guidance);
-		deferred.connection!.state = "connected";
-		deferred.tools = { deferred: [], declared: [] };
-		expect(renderServersSection([deferred])).not.toContain(guidance);
+});
+
+describe("MCP status section", () => {
+	it("names only selected servers that are not connected", () => {
+		const section = renderStatusSection([
+			listing("ok"),
+			listing("slow", { state: "connecting" }),
+			listing("broken", { state: "failed" }),
+		])!;
+		expect(section).toContain("- mcp__broken: failed");
+		expect(section).toContain("- mcp__slow: connecting");
+		expect(section).not.toContain("mcp__ok");
+		expect(section).toContain("Use mcp");
 	});
-	it("retains every server and tool in a large catalog", () => {
-		const servers = Array.from({ length: 50 }, (_, i) =>
-			listing(
-				`s${i}`,
-				Array.from({ length: 50 }, (_, j) => `mcp__s${i}__t${j}`),
-			),
-		);
-		const section = renderServersSection(servers)!;
-		for (let i = 0; i < 50; i++) expect(section).toContain(`- mcp__s${i} (tool_search)`);
-		expect(section.match(/t49/g)).toHaveLength(50);
-	});
-	it("omits the section with no enabled server", () => {
-		expect(renderServersSection([])).toBeUndefined();
+
+	it("is absent while every selected server is connected", () => {
+		expect(renderStatusSection([listing("ok")])).toBeUndefined();
+		expect(renderStatusSection([])).toBeUndefined();
 	});
 });

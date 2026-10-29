@@ -228,6 +228,11 @@ export class SessionExtensionBindings {
 				getAllTools: () => session.getAllTools(),
 				getSettings: () => session.settingsManager.getSettings(),
 				setActiveTools: (toolNames) => session.setActiveToolsByName(toolNames),
+				selectsTools: (prefix, activeByDefault) =>
+					tools.selectsTools(prefix, activeByDefault, [
+						...this.host.defaultToolModifiers,
+						...(session.settingsManager.getSettings().defaultTools ?? []),
+					]),
 				setToolPolicy: (allows) => tools.setToolPolicy(allows),
 				refreshTools: () => tools.refresh(),
 				getCommands,

@@ -43,6 +43,7 @@ export function stageBinary(outDir, platform = currentPlatform()) {
 	copy(from("docs"), join(outDir, "docs"));
 	copy(from("examples"), join(outDir, "examples"));
 	copy(from("src", "octocode", "instructions", "roles"), join(outDir, "roles"));
+	copy(from("src", "octocode", "native-skills"), join(outDir, "native-skills"));
 	const skills = stageCodingAgentSkills(packageDir, join(outDir, "skills"));
 	// The selected architecture's native terminal helpers.
 	const native = platform.replace(/^windows-/, "win32-");

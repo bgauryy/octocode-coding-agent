@@ -30,7 +30,6 @@ beforeAll(() => {
 		"OCTOCODE_AGENT_ID",
 		"OCTOCODE_PARENT_ID",
 		"OCTOCODE_AGENT_GOAL",
-		"OCTOCODE_AGENT_COLLABORATE",
 		"OCTOCODE_AGENT_SCRATCH",
 		"OCTOCODE_TEAM_WORKSPACE",
 		"OCTOCODE_SUBAGENT_LINGER_SECONDS",
@@ -143,19 +142,29 @@ describe("what the parent keeps of a child's run", () => {
 		const id = result.details.id as string;
 		expect(result.details.session).toEqual({
 			id,
+			dir: expect.stringMatching(new RegExp(`agents[\\\\/]${id}[\\\\/]session$`)),
 			file: expect.stringMatching(new RegExp(`agents[\\\\/]${id}[\\\\/]session[\\\\/].*_${id}\\.jsonl$`)),
 		});
+		expect(path.dirname(result.details.session.file)).toBe(result.details.session.dir);
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
-		// A run that saved nothing has only its id: the folder it would be named by.
+		// A run that saved nothing has only its id and the folder its transcript would have been written to.
 		const bare = await s.run({ task: "report" });
-		expect(bare.details.session).toEqual({ id: bare.details.id });
+		expect(bare.details.session).toEqual({
+			id: bare.details.id,
+			dir: expect.stringMatching(new RegExp(`agents[\\\\/]${bare.details.id}[\\\\/]session$`)),
+		});
 	});
 
 	it("records the folder of the child's archive of compacted history next to its session, only once it exists, and tells the parent where it is", async () => {
 		const result = await s.run({ task: "archives" });
 		const id = result.details.id as string;
 		const folder = archiveFolder(id);
-		expect(result.details.session).toEqual({ id, file: expect.stringMatching(/\.jsonl$/), archive: folder });
+		expect(result.details.session).toEqual({
+			id,
+			dir: expect.stringMatching(/session$/),
+			file: expect.stringMatching(/\.jsonl$/),
+			archive: folder,
+		});
 		// Its own folder, under its own session id: never the parent's.
 		expect(folder).not.toBe(archiveFolder());
 		expect(path.basename(path.dirname(folder))).toBe(id);

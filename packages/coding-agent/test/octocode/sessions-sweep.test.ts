@@ -169,6 +169,33 @@ describe("session sweep", () => {
 		expect(await sweepSessions(index, "current", { listed: async () => new Set<string>() })).toEqual(["unindexed-old"]);
 	});
 
+	it.each(["a file", "unreadable"] as const)(
+		"removes nothing when Octocode's default sessions dir is %s",
+		async (broken) => {
+			if (broken === "unreadable" && (process.platform === "win32" || process.getuid?.() === 0)) return;
+			const index = new SessionIndex(sharedAgentDb());
+			const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
+			const agentDir = tmp();
+			process.env.OCTOCODE_CODING_AGENT_DIR = agentDir;
+			const sessions = path.join(agentDir, "sessions");
+			if (broken === "a file") fs.writeFileSync(sessions, "");
+			else fs.mkdirSync(sessions, { mode: 0o000 });
+			try {
+				sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run("dead-pid", DEAD_PID);
+				age(folder("dead-pid"), 31 * DAY);
+				age(folder("orphan"), 31 * DAY);
+				expect(await sweepSessions(index, "current", { force: true })).toEqual([]);
+				for (const name of ["dead-pid", "orphan"])
+					expect(fs.existsSync(path.join(home, "agent", "sessions", name))).toBe(true);
+				expect(index.get("dead-pid")).toBeDefined();
+			} finally {
+				if (broken === "unreadable") fs.chmodSync(sessions, 0o700);
+				if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
+				else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
+			}
+		},
+	);
+
 	it("keeps the folders of sessions Octocode keeps in a recorded custom session dir, still removes true orphans", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
@@ -186,16 +213,54 @@ describe("session sweep", () => {
 			age(folder("orphan"), 31 * DAY);
 			expect(await sweepSessions(index, "current", { force: true })).toEqual(["orphan"]);
 			expect(fs.existsSync(path.join(home, "agent", "sessions", id))).toBe(true);
-
-			// A recorded dir that cannot be read is a failed listing: nothing is removed.
-			age(folder("orphan-2"), 31 * DAY);
-			index.addSessionDir(path.join(custom, "missing"));
-			expect(await sweepSessions(index, "current", { force: true })).toEqual([]);
-			expect(fs.existsSync(path.join(home, "agent", "sessions", "orphan-2"))).toBe(true);
 		} finally {
 			if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
 			else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
 		}
+	});
+
+	it("keeps the sessions of a recorded dir that cannot be read, and still sweeps everything else", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
+		process.env.OCTOCODE_CODING_AGENT_DIR = tmp();
+		try {
+			const missing = path.join(tmp(), "removed");
+			fs.mkdirSync(missing);
+			index.addSessionDir(missing);
+			index.start("in-missing", missing);
+			index.end("in-missing");
+			// A row from before the dir was recorded: where its session lived is unknown, so it is kept too.
+			sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("unknown-dir");
+			fs.rmSync(missing, { recursive: true });
+			for (const name of ["in-missing", "unknown-dir", "orphan"]) age(folder(name), 31 * DAY);
+			expect(await sweepSessions(index, "current", { force: true })).toEqual(["orphan"]);
+			for (const name of ["in-missing", "unknown-dir"])
+				expect(fs.existsSync(path.join(home, "agent", "sessions", name))).toBe(true);
+			expect(index.get("in-missing")).toBeDefined();
+			expect(index.get("unknown-dir")).toBeDefined();
+			// The dir stays recorded: once it can be read again (remounted), its sessions are listed from it.
+			expect(index.sessionDirs()).toEqual([missing]);
+		} finally {
+			if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
+			else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
+		}
+	});
+
+	it("keeps the reports waiting for a kept session's next start however old; they go with an unlisted session's folder", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const waiting = (name: string) => {
+			const dir = folder(name, ["output", "reports/pending"]);
+			fs.writeFileSync(path.join(dir, "reports", "pending", "1-a-general-ab12.json"), "{}");
+			age(dir, 31 * DAY);
+			return path.join(dir, "reports", "pending", "1-a-general-ab12.json");
+		};
+		const kept = waiting("kept");
+		const gone = waiting("gone");
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([
+			"gone",
+		]);
+		expect(fs.existsSync(kept)).toBe(true);
+		expect(fs.existsSync(gone)).toBe(false);
 	});
 
 	it("follows OCTOCODE_CLEANUP_DAYS: 0 turns the sweep off, N days sets how long output is kept", async () => {

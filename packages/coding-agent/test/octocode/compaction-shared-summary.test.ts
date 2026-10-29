@@ -275,6 +275,38 @@ describe("cache-sharing compaction summary", () => {
 		expect(prompt).toContain("<read-files>");
 	});
 
+	it("gives the complete text of an earlier checkpoint that was saved to a file, keeping the cached messages as they are", async () => {
+		const full = "## Goal\nship the parser rewrite\n\n## Key Decisions\n- keep the old tokenizer";
+		const reference = { role: "compactionSummary", summary: "The complete context checkpoint is saved at /s.md." };
+		const compaction = {
+			sourceEntry: {
+				id: "c0",
+				type: "compaction",
+				summary: reference.summary,
+				details: { checkpointArchive: { path: "/s.md", summary: full } },
+			},
+			messages: [reference],
+		};
+		const projected = [compaction, ...entries.slice(1)];
+		const { calls, pi, ctx, event } = setup({
+			previousSummary: full,
+			projection: () => ({ entries: projected, messages: projected.flatMap((item) => item.messages) }),
+		});
+		await sharedSummary(pi, event, ctx, model as never, "x");
+		const prompt = finalPrompt(calls[0]);
+		expect(prompt).toContain("ship the parser rewrite");
+		expect(prompt).toContain("keep the old tokenizer");
+		// The cached prefix is unchanged: the reference stays where the session put it.
+		const plain = [{ ...compaction, sourceEntry: { ...compaction.sourceEntry, details: {} } }, ...entries.slice(1)];
+		const without = setup({
+			previousSummary: reference.summary,
+			projection: () => ({ entries: plain, messages: plain.flatMap((item) => item.messages) }),
+		});
+		await sharedSummary(without.pi, without.event, without.ctx, model as never, "x");
+		expect(finalPrompt(without.calls[0])).not.toContain("<previous-summary>");
+		expect(calls[0].context.messages.slice(0, -1)).toEqual(without.calls[0].context.messages.slice(0, -1));
+	});
+
 	it("keeps the structured sections of Octocode and denies tool calls in words", () => {
 		for (const section of [
 			"## Goal",
@@ -480,6 +512,17 @@ describe("writeSummary with the shared path", () => {
 		expect(finalPrompt(calls[0])).toContain("<conversation>");
 		expect(out?.compaction?.details).toMatchObject({
 			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: expect.stringContaining("prompt cache had expired") },
+		});
+		expect(notices).toEqual([]);
+	});
+
+	it("skips the shared request after a context overflow, which would only overflow again", async () => {
+		const { calls, pi, ctx, event, notices } = setup();
+		const out = await writeSummary(pi, { ...(event as object), reason: "overflow" } as never, ctx);
+		expect(calls).toHaveLength(1);
+		expect(finalPrompt(calls[0])).toContain("<conversation>");
+		expect(out?.compaction?.details).toMatchObject({
+			[SUMMARY_METHOD_DETAILS]: { method: "standalone", reason: expect.stringContaining("overflowed") },
 		});
 		expect(notices).toEqual([]);
 	});

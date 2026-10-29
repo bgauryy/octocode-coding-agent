@@ -1,14 +1,20 @@
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { sha256 } from "../utils/atomic-file.ts";
+import { isRecord } from "../utils/guards.ts";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";
 
 /**
  * Repeated calls without progress. The same tool, the same arguments and the same outcome several times in a row means
- * the model is retrying something that will not change: the result gets a short note that says so (never a refusal, the
- * call has run). Thresholds come from the session logs (`docs/native-features.md`): across 12.6 K tool calls the longest
- * run of an identical call with an identical result was 2, so 3 had no false positive; the one real loop (seven broken
- * `file` calls) got a different error text each time, so an error counts by its call alone, not its text.
+ * the model is retrying something that will not change: the result gets a short note that says so. Thresholds come from
+ * the session logs (`docs/native-features.md`): across 12.6 K tool calls the longest run of an identical call with an
+ * identical result was 2, so 3 had no false positive; the one real loop (seven broken `file` calls) got a different error
+ * text each time, so an error counts by its call alone, not its text. Past `LOOP_HALT_AT` the next identical call is
+ * refused and ends the run, so a call that keeps failing (a denied command, invalid arguments) cannot repeat forever.
+ *
+ * Every result is counted from `message_end`, which the agent loop emits in tool-call order for executed, blocked,
+ * invalid and unknown calls alike; the outcome of an executed call is hashed earlier, on `tool_result`, before the turn
+ * budget may replace its text.
  */
 
 /** Identical outcomes in a row that earn the first note. */
@@ -16,11 +22,16 @@ export const LOOP_NOTE_AT = 3;
 /** Identical outcomes in a row that earn the stronger note, and again every `LOOP_REPEAT_EVERY` after it. */
 export const LOOP_STOP_AT = 5;
 const LOOP_REPEAT_EVERY = 3;
+/** Identical outcomes in a row after which the same call is refused and the run ends. */
+export const LOOP_HALT_AT = 8;
 
 /** Tools whose repeated, identical calls are legitimate: messaging, questions and bookkeeping. */
 const EXEMPT = new Set(["agent", "askUser", "backlog", "coordinate", "memory"]);
-/** A shell command that waits (polling a job, a log, a port) is expected to repeat. */
-const WAITING = /\b(?:sleep|wait|watch|poll)\b|\btail\s+(?:-\S*\s+)*-\S*f/;
+/**
+ * A shell command that waits (polling a job, a log, a port) is expected to repeat: `sleep`, `wait` or `watch` run as a
+ * command (at the start or after `;`, `&&`, `||`, `|`), or `tail -f`. The words inside an argument do not count.
+ */
+const WAITING = /(?:^|[;&|]\s*)(?:sleep|wait|watch)\b|\btail\s+(?:-\S*\s+)*-\S*f/;
 
 /** The note for the `count`-th identical outcome in a row, or undefined when none is due. */
 export function loopNote(tool: string, count: number, failed: boolean): string | undefined {
@@ -32,32 +43,95 @@ export function loopNote(tool: string, count: number, failed: boolean): string |
 	return undefined;
 }
 
+/**
+ * The call's identity: its tool and arguments without any `reason`, at any depth. `reason` is the model's free text
+ * about the goal and is reworded on a retry of the same call. Undefined for a call the guard never counts.
+ */
+function loopCallKey(toolName: string, input: unknown): string | undefined {
+	if (EXEMPT.has(toolName)) return undefined;
+	const args = isRecord(input) ? input : {};
+	if (toolName === "bash" && typeof args.command === "string" && WAITING.test(args.command)) return undefined;
+	const key = argumentsKey(withoutReasons(args) as Record<string, unknown>);
+	return key ? `${toolName}\0${key}` : undefined;
+}
+
+function withoutReasons(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(withoutReasons);
+	if (!isRecord(value)) return value;
+	return Object.fromEntries(
+		Object.entries(value)
+			.filter(([key]) => key !== "reason")
+			.map(([key, item]) => [key, withoutReasons(item)]),
+	);
+}
+
 export function registerLoopGuard(pi: ExtensionAPI): void {
+	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
+	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
+	let lastCall: string | undefined;
 	let last: string | undefined;
 	let count = 0;
+	const refusal = (tool: string, previous: number) =>
+		`[Loop guard: refused. This ${tool} call already ran ${previous} times in a row with the same outcome. Stop retrying it; tell the user what you tried and what blocks you.]`;
 	const reset = () => {
+		calls.clear();
+		lastCall = undefined;
 		last = undefined;
 		count = 0;
 	};
 	pi.on("session_start", reset);
 	// A new prompt is new information: what follows is not a retry of what came before it.
 	pi.on("before_agent_start", reset);
+	pi.on("tool_execution_start", async (event) => {
+		if (!event.parentToolCallId) calls.set(event.toolCallId, { key: loopCallKey(event.toolName, event.args) });
+	});
+	pi.on("tool_call", async (event) => {
+		const call = calls.get(event.toolCallId);
+		if (call) call.checked = true;
+		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
+		// The count keys calls by the arguments the model sent; `event.input` is already validated (and maybe coerced).
+		const key = calls.has(event.toolCallId)
+			? calls.get(event.toolCallId)?.key
+			: loopCallKey(event.toolName, event.input);
+		if (key !== lastCall) return undefined;
+		return {
+			block: true,
+			terminate: true,
+			reason: refusal(event.toolName, count),
+		};
+	});
 	pi.on("tool_result", async (event) => {
-		const command = typeof event.input.command === "string" ? event.input.command : "";
-		if (event.parentToolCallId || EXEMPT.has(event.toolName) || (event.toolName === "bash" && WAITING.test(command)))
+		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
+		if (call && !event.isError) call.outcome = sha256(plainText(event.content) ?? JSON.stringify(event.content));
+		return undefined;
+	});
+	pi.on("message_end", async (event, ctx) => {
+		const message = event.message;
+		if (message.role !== "toolResult") return undefined;
+		const call = calls.get(message.toolCallId);
+		calls.delete(message.toolCallId);
+		if (!call) return undefined;
+		if (!call.key) {
+			// An exempt call is a different call: the streak starts again after it.
+			last = lastCall = undefined;
+			count = 0;
 			return undefined;
-		const args = argumentsKey(event.input);
-		if (!args) return undefined;
-		const outcome = event.isError ? "error" : sha256(plainText(event.content) ?? JSON.stringify(event.content));
-		const key = `${event.toolName}\0${args}\0${outcome}`;
+		}
+		const outcome = message.isError ? "error" : (call.outcome ?? sha256(JSON.stringify(message.content)));
+		const key = `${call.key}\0${outcome}`;
 		count = key === last ? count + 1 : 1;
 		last = key;
-		const note = loopNote(event.toolName, count, event.isError);
-		if (!note) return undefined;
-		return {
-			content: [...event.content, { type: "text" as const, text: note }],
-			// Replacing `content` alone drops the machine-readable result.
-			...(event.structuredContent !== undefined ? { structuredContent: event.structuredContent } : {}),
-		};
+		lastCall = call.key;
+		// Unknown tools and schema-invalid arguments never reach tool_call. Their result still ends the run here.
+		if (!call.checked && count > LOOP_HALT_AT && message.isError) {
+			ctx.abort("internal");
+			return {
+				message: { ...message, content: [{ type: "text" as const, text: refusal(message.toolName, count - 1) }] },
+			};
+		}
+		const note = loopNote(message.toolName, count, message.isError);
+		return note
+			? { message: { ...message, content: [...message.content, { type: "text" as const, text: note }] } }
+			: undefined;
 	});
 }

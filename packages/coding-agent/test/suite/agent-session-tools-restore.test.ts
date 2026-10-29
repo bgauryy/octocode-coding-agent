@@ -6,37 +6,39 @@ import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
-/** Resume and `--tools`: loaded deferred tools come back when the allowlist and tool policy permit them. */
+/** Resume and `--tools`: tools activated by name come back when the allowlist and tool policy permit them. */
 describe("AgentSession restore of loaded tools with an explicit --tools allowlist", () => {
 	const harnesses: Harness[] = [];
 	afterEach(() => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	const deferredTools = (pi: ExtensionAPI) => {
-		for (const name of ["gem_one", "gem_two"]) {
+	/** Tools that registration does not activate: only naming them does. */
+	const registerOptIn = (pi: ExtensionAPI, names: readonly string[]) => {
+		for (const name of names) {
 			pi.registerTool({
 				name,
 				label: name,
-				description: `Deferred tool ${name}.`,
-				exposure: "deferred",
+				description: `Opt-in tool ${name}.`,
+				defaultActive: false,
 				parameters: Type.Object({}),
 				execute: async () => ({ content: [], details: {} }),
 			});
 		}
 	};
+	const optInTools = (pi: ExtensionAPI) => registerOptIn(pi, ["gem_one", "gem_two"]);
 
 	async function start(options: {
 		allowedToolNames?: string[];
 		initialActiveToolNames?: string[];
 		sessionManager?: SessionManager;
 	}) {
-		const harness = await createHarness({ ...options, extensionFactories: [deferredTools] });
+		const harness = await createHarness({ ...options, extensionFactories: [optInTools] });
 		harnesses.push(harness);
 		return harness;
 	}
 
-	/** A session that loaded both deferred tools, with the loadout recorded in its transcript. */
+	/** A session that activated both tools, with the loadout recorded in its transcript. */
 	async function loadBoth() {
 		const first = await start({});
 		first.session.setActiveToolsByName(["gem_one", "gem_two"]);
@@ -65,9 +67,28 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 		expect(second.session.getActiveToolNames()).toEqual(["gem_two"]);
 	});
 
-	it("control: the allowlist alone activates no deferred tool when the transcript loaded none", async () => {
+	it("control: an allowlist that names a tool activates it although registration does not", async () => {
 		const fresh = await start({ allowedToolNames: ["gem_one", "gem_two"], initialActiveToolNames: [] });
-		expect(fresh.session.getActiveToolNames()).toEqual([]);
+		expect(fresh.session.getActiveToolNames()).toEqual(["gem_one", "gem_two"]);
+	});
+
+	it("resumes a transcript that recorded tool_search without declaring it", async () => {
+		const first = await createHarness({
+			extensionFactories: [(pi) => registerOptIn(pi, ["gem_one", "tool_search"])],
+		});
+		harnesses.push(first);
+		first.session.setActiveToolsByName(["gem_one", "tool_search"]);
+		first.setResponses([fauxAssistantMessage("loaded")]);
+		await first.session.prompt("go");
+		const second = await createHarness({
+			extensionFactories: [optInTools],
+			sessionManager: first.sessionManager,
+		});
+		harnesses.push(second);
+		expect(second.session.getActiveToolNames()).not.toContain("tool_search");
+		second.setResponses([fauxAssistantMessage("still fine")]);
+		await second.session.prompt("again");
+		expect(second.session.agent.state.tools.map((tool) => tool.name)).not.toContain("tool_search");
 	});
 
 	it("restores nothing without an allowlist or default tools", async () => {
@@ -88,7 +109,7 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 				sessionManager: first.sessionManager,
 				// Native features own the tool policy, so the extensions load under the native feature path.
 				builtinCompactionFactories: [
-					deferredTools,
+					optInTools,
 					(pi) => {
 						api = pi;
 					},

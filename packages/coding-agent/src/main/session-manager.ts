@@ -2,11 +2,14 @@ import { createInterface } from "node:readline";
 import chalk from "chalk";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
+import { showStartupSelector } from "../cli/startup-ui.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
+import { sessionFileRunningPid } from "../octocode/agentdb/liveness.ts";
 import { stopThemeWatcher } from "../theme/theme.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { errorMessage } from "../utils/guards.ts";
+import { resolveAppMode } from "./startup.ts";
 
 /** Result from resolving a session argument */
 type ResolvedSession =
@@ -134,6 +137,44 @@ function forkSessionOrExit(sourcePath: string, cwd: string, sessionDir?: string,
 	}
 }
 
+/**
+ * The `/resume` check for a session a flag opens: when another live Octocode process has it open, ask as `/resume` does
+ * and exit on Cancel. Without a terminal to ask in, the answer is Cancel: two processes appending to one session
+ * overwrite each other's history.
+ */
+async function confirmSessionNotRunning(
+	sessionFile: string | undefined,
+	parsed: Args,
+	settingsManager: SettingsManager,
+): Promise<void> {
+	const runningPid = sessionFile ? sessionFileRunningPid(sessionFile) : undefined;
+	if (runningPid === undefined) return;
+	if (resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY) !== "interactive") {
+		console.error(
+			chalk.red(
+				`Error: Another Octocode process (pid ${runningPid}) has this session open: ${sessionFile}. Close it, or fork the session with --fork.`,
+			),
+		);
+		process.exit(1);
+	}
+	try {
+		const confirmed = await showStartupSelector(
+			settingsManager,
+			`Another Octocode process (pid ${runningPid}) has this session open. Resume it here as well?`,
+			[
+				{ label: "Resume", value: true },
+				{ label: "Cancel", value: false },
+			],
+		);
+		if (!confirmed) {
+			console.log(chalk.dim("Resume cancelled"));
+			process.exit(0);
+		}
+	} finally {
+		stopThemeWatcher();
+	}
+}
+
 export async function createSessionManager(
 	parsed: Args,
 	cwd: string,
@@ -173,6 +214,7 @@ export async function createSessionManager(
 		switch (resolved.type) {
 			case "path":
 			case "local":
+				await confirmSessionNotRunning(resolved.path, parsed, settingsManager);
 				return openSessionOrExit(resolved.path, sessionDir);
 
 			case "global": {
@@ -209,12 +251,15 @@ export async function createSessionManager(
 	}
 
 	if (parsed.continue) {
-		return SessionManager.continueRecent(cwd, sessionDir);
+		const recent = SessionManager.continueRecent(cwd, sessionDir);
+		await confirmSessionNotRunning(recent.getSessionFile(), parsed, settingsManager);
+		return recent;
 	}
 
 	if (parsed.sessionId) {
 		const existingSession = findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
 		if (existingSession) {
+			await confirmSessionNotRunning(existingSession.path, parsed, settingsManager);
 			return SessionManager.open(existingSession.path, sessionDir);
 		}
 		console.error(

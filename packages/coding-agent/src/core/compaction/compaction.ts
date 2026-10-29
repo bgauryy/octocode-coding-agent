@@ -16,6 +16,7 @@ import {
 	type SessionEntry,
 } from "../session-manager.ts";
 import { combineUsage } from "../usage-totals.ts";
+import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
 import { generateSummaryWithUsage, generateTurnPrefixSummary } from "./summarization.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
@@ -162,7 +163,9 @@ export function prepareCompaction(
 	let previousSummary: string | undefined;
 	let boundaryStart = 0;
 	if (prevCompactionIndex >= 0) {
-		previousSummary = (projectedEntries[prevCompactionIndex].sourceEntry as CompactionEntry).summary;
+		const previous = projectedEntries[prevCompactionIndex].sourceEntry as CompactionEntry;
+		// A checkpoint too long to stay inline was replaced by a reference to its saved text; the update builds on that text.
+		previousSummary = archivedSummary(previous.details) ?? previous.summary;
 		// The canonical projection has already selected the previous compaction's retained tail.
 		boundaryStart = prevCompactionIndex + 1;
 	}

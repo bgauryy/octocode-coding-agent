@@ -1,6 +1,6 @@
 import { type CallToolResult, toLlmContent } from "../../client/index.ts";
 import type { AgentToolResult } from "../../../../coding-agent/src/core/extensions/index.ts";
-import { createMcpToolName } from "../../tools.ts";
+import { createMcpToolName } from "../../tool-names.ts";
 import { createMcpToolDefinition, type McpToolDefinitionOptions } from "../../tool-definition.ts";
 import { OCTOCODE_SERVER, LOCAL_READ_TOOLS } from "./names.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../coding-agent/src/octocode/shared/render.ts";

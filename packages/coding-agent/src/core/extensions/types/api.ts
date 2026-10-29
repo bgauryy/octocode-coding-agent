@@ -245,10 +245,10 @@ export interface ExtensionAPI {
 	/** Get a copy of the effective settings (global and project settings merged, with overrides). */
 	getSettings(): Settings;
 
-	/**
-	 * Set the active tools by name. Unknown and `hidden` tools are ignored. Tools with `deferred` exposure stay callable from programmatic tool callers whether active or not.
-	 */
+	/** Set the active tools by name. Unknown and `hidden` tools are ignored. */
 	setActiveTools(toolNames: string[]): void;
+	/** Whether the tool selection (`--tools`, `--exclude-tools`, `defaultTools`) can activate tools named `<prefix>…` that register with `defaultActive` = `activeByDefault`; a source whose tools it cannot activate need not start. */
+	selectsTools(prefix: string, activeByDefault: boolean): boolean;
 
 	/** Get available slash commands in the current session. */
 	getCommands(): SlashCommandInfo[];

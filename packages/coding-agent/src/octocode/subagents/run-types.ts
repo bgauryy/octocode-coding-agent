@@ -5,12 +5,14 @@ import type { ChildNotices, Compactions } from "./events.ts";
 import type { StructuredResultV1 } from "./result-schema.ts";
 
 /**
- * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/pi/sessions/<id>`),
- * its transcript file once written, and the folder of its archive of compacted history (`shared/archive.ts`) once it
+ * The child's saved conversation: its session id (it names the child's Octocode folder `<home>/agent/sessions/<id>`),
+ * the folder its transcript is written to (recorded at the start, so a run that never reports can still be found), its
+ * transcript file once the run ended, and the folder of its archive of compacted history (`shared/archive.ts`) once it
  * compacted: Markdown the parent can search with the Octocode tools.
  */
 interface ChildSessionDetails {
 	id: string;
+	dir?: string;
 	file?: string;
 	archive?: string;
 }
@@ -19,6 +21,8 @@ interface ChildSessionDetails {
 export interface RunDetails {
 	/** The agent's name. */
 	id: string;
+	/** This execution, distinct from later continuations of the same child; absent in older transcripts. */
+	runId?: string;
 	/** Its role. */
 	profile: string;
 	goal: string;
@@ -76,6 +80,10 @@ export interface RunDetails {
 /** What the background-result message carries for its renderer: the outcome, not parsed back out of the text. */
 export interface ResultDetails {
 	id: string;
+	/** The execution this report completes, as in RunDetails. */
+	runId?: string;
+	/** Its launch time; orders message-based continuations that have no task launch entry. */
+	startedAt?: number;
 	reportId?: string;
 	/** Its role and its goal. */
 	profile?: string;

@@ -3,12 +3,11 @@ import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
-import { createToolSearchExtension } from "../../src/core/tools/tool-search.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 /**
  * A tool that calls other tools, built only on the extension API: its own name, exposure, loadout
- * hook, and ctx.executeTool(). Codemode and tool search use the same mechanisms.
+ * hook, and ctx.executeTool(). It hides the declarations of the tools only it should call.
  */
 function orchestratorExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -23,7 +22,6 @@ function orchestratorExtension(pi: ExtensionAPI): void {
 		label: "helper",
 		description: "Only reachable from other tools.",
 		parameters: Type.Object({}),
-		exposure: "deferred",
 		execute: async () => ({ content: [{ type: "text", text: "helped" }], details: {} }),
 	});
 	pi.registerTool({
@@ -37,7 +35,7 @@ function orchestratorExtension(pi: ExtensionAPI): void {
 				run_tools: `Runs tools: ${loadout.callable.map((tool) => tool.name).join(", ")}`,
 				echo: "Echo text (also callable from run_tools).",
 			},
-			hiddenDeclarations: ["echo"],
+			hiddenDeclarations: ["echo", "helper"],
 		}),
 		execute: async (_id, _params, _signal, _onUpdate, ctx) => {
 			const helper = await ctx.executeTool("helper", {});
@@ -74,7 +72,7 @@ describe("AgentSession tool orchestration", () => {
 		harnesses.push(harness);
 		await harness.session.bindExtensions({});
 
-		expect(harness.session.getActiveToolNames()).toEqual(["echo", "run_tools"]);
+		expect(harness.session.getActiveToolNames()).toEqual(["echo", "helper", "run_tools"]);
 		expect(harness.session.getCallableToolNames()).toEqual(["echo", "helper"]);
 		const find = (name: string) => harness.session.agent.state.tools.find((tool) => tool.name === name);
 		expect(find("run_tools")?.description).toBe("Runs tools: echo, helper");
@@ -90,7 +88,7 @@ describe("AgentSession tool orchestration", () => {
 		]);
 		await harness.session.prompt("go");
 
-		// echo stays active, but its declaration is left out of requests.
+		// echo and helper stay active, but their declarations are left out of requests.
 		expect(requestTools[0]).toEqual(["run_tools"]);
 		const result = harness.session.messages.find(
 			(message): message is ToolResultMessage => message.role === "toolResult",
@@ -111,20 +109,30 @@ describe("AgentSession tool orchestration", () => {
 		expect(persisted?.type === "message" && persisted.message).toMatchObject({ nestedCalls: result.nestedCalls });
 	});
 
-	it("registers tool_search inactive until they are named", async () => {
-		const extensionFactories = [createToolSearchExtension()];
+	it("registers defaultActive: false tools inactive until they are named", async () => {
+		const extensionFactories = [
+			(pi: ExtensionAPI) =>
+				pi.registerTool({
+					name: "probe",
+					label: "probe",
+					description: "Opt-in tool.",
+					parameters: Type.Object({}),
+					defaultActive: false,
+					execute: async () => ({ content: [], details: {} }),
+				}),
+		];
 		const plain = await createHarness({ extensionFactories });
 		harnesses.push(plain);
-		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(expect.arrayContaining(["tool_search"]));
+		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(expect.arrayContaining(["probe"]));
 		expect(plain.session.getActiveToolNames()).toEqual(["bash"]);
 
 		// --tools and the defaultTools setting name them explicitly.
-		const allowed = await createHarness({ allowedToolNames: ["bash", "tool_search"], extensionFactories });
+		const allowed = await createHarness({ allowedToolNames: ["bash", "probe"], extensionFactories });
 		harnesses.push(allowed);
-		expect(allowed.session.getActiveToolNames()).toEqual(["bash", "tool_search"]);
-		const initial = await createHarness({ initialActiveToolNames: ["tool_search"], extensionFactories });
+		expect(allowed.session.getActiveToolNames()).toEqual(["bash", "probe"]);
+		const initial = await createHarness({ initialActiveToolNames: ["probe"], extensionFactories });
 		harnesses.push(initial);
-		expect(initial.session.getActiveToolNames()).toEqual(["tool_search"]);
+		expect(initial.session.getActiveToolNames()).toEqual(["probe"]);
 	});
 
 	it("cancels a nested permission wait without aborting the parent turn", async () => {
@@ -142,7 +150,6 @@ describe("AgentSession tool orchestration", () => {
 						label: "Child",
 						description: "A protected nested tool.",
 						parameters: Type.Object({}),
-						exposure: "deferred",
 						execute: async () => {
 							executed = true;
 							return { content: [], details: {} };

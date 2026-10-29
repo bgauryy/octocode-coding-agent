@@ -29,6 +29,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		getAllTools: notInitialized,
 		getSettings: notInitialized,
 		setActiveTools: notInitialized,
+		selectsTools: notInitialized,
 		setToolPolicy: notInitialized,
 		// registerTool() is valid during extension load; refresh is only needed post-bind.
 		refreshTools: () => {},

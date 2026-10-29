@@ -29,22 +29,17 @@ export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"
 }
 
 /**
- * The error a call to an undeclared tool gets when the session knows the tool: a deferred tool is loaded with
- * `tool_search` (when it is active), any other registered tool is switched off for this session. Unknown names keep
- * the agent's default. A declared MCP tool whose server is still connecting is retried shortly. Each text keeps the
- * default's `Tool <name> not found` prefix, which consumers match.
+ * The error a call to an undeclared tool gets when the session knows the tool: it is switched off for this session.
+ * Unknown names keep the agent's default. A declared MCP tool whose server is still connecting is retried shortly.
+ * Each text keeps the default's `Tool <name> not found` prefix, which consumers match.
  */
 export function unknownToolMessage(
-	session: Pick<SessionPublic, "getAllTools" | "getActiveToolNames">,
+	session: Pick<SessionPublic, "getAllTools">,
 	name: string,
 	pending: ReadonlySet<string> = new Set(),
 ): string | undefined {
 	if (pending.has(name)) return `Tool ${name} not found: its MCP server is still connecting. Retry in a moment.`;
-	const tool = session.getAllTools().find((candidate) => candidate.name === name);
-	if (!tool) return undefined;
-	const active = session.getActiveToolNames();
-	if (tool.exposure === "deferred" && !active.includes(name) && active.includes("tool_search"))
-		return `Tool ${name} not found: it is not loaded yet. Call tool_search with query "${name}" to load it, then call it again.`;
+	if (!session.getAllTools().some((candidate) => candidate.name === name)) return undefined;
 	return `Tool ${name} not found: it is not active in this session. Use another tool, or ask the user to enable it.`;
 }
 

@@ -73,18 +73,18 @@ describe("waitForServers", () => {
 		({ entry: { name, source: "test", config: { command: "unused" } }, ready }) as McpServer;
 	const stateOf = (servers: McpServer[]) => ({ servers }) as unknown as McpExtensionState;
 
-	it("stops at its deadline and reports the servers still pending", async () => {
+	it("stops when aborted and reports the servers still pending", async () => {
 		const slow = server("slow", never());
 		const fast = server("fast", Promise.resolve());
 		const started = Date.now();
-		const pending = await waitForServers(stateOf([slow, fast]), [slow, fast], undefined, 50);
+		const pending = await waitForServers(stateOf([slow, fast]), [slow, fast], AbortSignal.timeout(50));
 		expect(Date.now() - started).toBeLessThan(1_000);
 		expect(pending).toEqual([slow]);
 	});
 
-	it("reports nothing pending when every server settles in time", async () => {
+	it("reports nothing pending when every server settles", async () => {
 		const a = server("a", new Promise<void>((resolve) => setTimeout(resolve, 10)));
-		expect(await waitForServers(stateOf([a]), [a], undefined, 1_000)).toEqual([]);
+		expect(await waitForServers(stateOf([a]), [a], undefined)).toEqual([]);
 	});
 });
 

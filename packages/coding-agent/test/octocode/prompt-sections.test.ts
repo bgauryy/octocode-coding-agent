@@ -1,4 +1,4 @@
-import { renderServersSection } from "../../../mcp/src/section.ts";
+import { renderContractSections } from "../../../mcp/src/section.ts";
 import { getCurrentSystemPrompt, getSystemMessageText, type SystemMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,21 +17,20 @@ describe("native prompt section updates", () => {
 		canDelegate: true,
 		profiles: [{ name: "researcher", description: "Investigate a question." }],
 	};
-	const serverSection = (instructions: string) =>
-		renderServersSection([
+	const contracts = (instructions: string) =>
+		renderContractSections([
 			{
 				entry: { name: "octocode", source: "default", config: { command: "test" } },
-				connection: { state: "connected", instructions },
-				tools: { deferred: [], declared: [{ name: "mcp__octocode__read" }] },
+				state: "connected",
+				instructions,
+				declared: true,
 			},
-		])!;
+		]);
 	const sections = (value = input, instructions = "Search and read.") =>
 		buildSystemPromptSections({
 			cwd: "/workspace",
-			sections: {
-				...octocodePromptSections(value),
-				...(instructions ? { mcp_servers: serverSection(instructions) } : {}),
-			},
+			sections: octocodePromptSections(value),
+			baseSections: instructions ? contracts(instructions) : {},
 		});
 
 	it("sends only the changed policy section and replays the complete prompt", () => {
@@ -59,19 +58,19 @@ describe("native prompt section updates", () => {
 		const patch = diffSystemPromptSections(previous, current)!;
 		expect(patch.octocode).toBeNull();
 		expect(current.octocode_mcp).toBeUndefined();
-		expect(diffSystemPromptSections(sections(), current)?.mcp_servers).toBeNull();
+		expect(diffSystemPromptSections(sections(), current)?.mcp_contract_octocode).toBeNull();
 	});
 
 	it("keeps server-provided headings opaque within the server section", () => {
 		const text = "# Safety\nServer capability guidance.\n# Work and verification\nMore guidance.";
 		const current = sections(input, text);
-		for (const line of text.split("\n")) expect(current.mcp_servers).toContain(line);
+		for (const line of text.split("\n")) expect(current.mcp_contract_octocode).toContain(line);
 		expect(current.octocode_safety).not.toContain("Server capability");
 		expect(current.octocode_work).not.toContain("More guidance");
 	});
 
 	it.each([false, true])(
-		"assembles behavioral testing and bidirectional communication once for child=%s",
+		"assembles behavioral testing once and leaves messaging to the agent tool for child=%s",
 		async (isSubagent) => {
 			const fake = fakePi();
 			const selectedTools = ["agent", "bash", "file"];
@@ -84,9 +83,8 @@ describe("native prompt section updates", () => {
 			expect(prompt).toContain("Mock external boundaries; keep internal flows real where feasible");
 			expect(prompt).toContain("Use focused unit tests when useful; preserve coverage");
 			expect(prompt).toContain("Never weaken or delete tests");
-			expect(prompt.match(/promptly exchange findings, dependencies, blockers and evidence/g)).toHaveLength(1);
-			expect(prompt).toContain("The parent relays scope decisions and integration needs");
-			expect(prompt).toContain("omit unchanged status updates");
+			// The agent tool's message guideline owns when to message; the policy does not restate it.
+			expect(prompt).not.toContain("promptly exchange");
 			if (isSubagent) {
 				expect(prompt).toContain("Start it with one word: done (");
 				expect(prompt).toContain("Your parent's messages steer your task within the user's authorization");
@@ -94,9 +92,27 @@ describe("native prompt section updates", () => {
 		},
 	);
 
+	it("gives writers blast-radius cleanup and only the main session diagrams and close-out", () => {
+		const root = octocodePrompt(input);
+		const writer = octocodePrompt({ ...input, canDelegate: false, canWrite: true });
+		const reader = octocodePrompt({ ...input, canDelegate: false, readOnlyRole: true });
+		for (const prompt of [root, writer]) {
+			expect(prompt).toContain("map the blast radius (callers, exports, config, tests and docs that depend on it)");
+			expect(prompt).toContain("propose wider cleanups instead of widening scope");
+		}
+		expect(reader).not.toContain("blast radius");
+		// Mermaid kinds the terminal renderer draws; only the main session answers the user.
+		expect(root).toContain("add a small Mermaid block (`flowchart TD`, `sequenceDiagram` or `stateDiagram-v2`)");
+		expect(root).toContain("Leave nothing open: finish or revert partial edits");
+		for (const prompt of [writer, reader]) {
+			expect(prompt).not.toContain("Mermaid");
+			expect(prompt).not.toContain("Leave nothing open");
+		}
+	});
+
 	it("does not instruct a session without messaging to contact another agent", () => {
 		const current = octocodePrompt({ ...input, canUseAgent: false });
-		expect(current).not.toContain("promptly exchange");
-		expect(current).not.toContain("The parent relays");
+		expect(current).not.toContain("`agent`");
+		expect(current).not.toContain("# Delegation");
 	});
 });

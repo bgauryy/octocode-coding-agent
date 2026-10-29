@@ -7,6 +7,7 @@ import { permissionGate } from "../../src/octocode/permission/gate.ts";
 import { browserMcpUrls } from "../../src/octocode/shared/browser-mcp.ts";
 import { PERMISSION_ENV } from "../../src/octocode/shared/env.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
+import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { fakeCtx, fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
 
@@ -60,7 +61,9 @@ describe("browser MCP navigation targets", () => {
 		expect(file).toMatchObject({ action: "net.private", what: [expect.stringContaining("not a web address")] });
 		expect(file?.grant).toBeUndefined();
 		for (const tool of ["script", "cookies", "api-replay"])
-			expect((await browserMcpRequest(`mcp__browser__${tool}`, { args: [] }, lookup))?.action).toBe("browser.control");
+			expect((await browserMcpRequest(createMcpToolName("browser", tool), { args: [] }, lookup))?.action).toBe(
+				"browser.control",
+			);
 		expect(
 			await browserMcpRequest("browser", { action: "navigate", url: "http://127.0.0.1/" }, lookup),
 		).toBeUndefined();
@@ -92,5 +95,15 @@ describe("browser MCP navigation targets", () => {
 		const refused = await gate(call(goto("http://127.0.0.1:3000/")), ctx);
 		expect(asked).toHaveLength(1);
 		expect(refused?.block).toBe(true);
+		const replay = await gate(
+			{
+				...call({ args: ["--url", "http://127.0.0.1:3000/", "--method", "POST"] }),
+				toolName: createMcpToolName("browser", "api-replay"),
+			},
+			ctx,
+		);
+		expect(asked).toHaveLength(2);
+		expect(asked[1]).toContain("Replay a captured request?");
+		expect(replay?.block).toBe(true);
 	});
 });

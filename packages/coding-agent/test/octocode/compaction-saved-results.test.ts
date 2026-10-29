@@ -130,7 +130,7 @@ describe("saved results carried into the compaction summary", () => {
 		const note = trimmed("bash-standalone", "STANDALONE");
 		const out = await summarize([result("a", note)], { standalone: true });
 		expect(out!.compaction!.summary).toContain(
-			`<saved-results>\nTool results this summary leaves out are saved whole in these files; read or search them:\n${fileOf(note)}\n</saved-results>`,
+			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${fileOf(note)}\n</saved-results>`,
 		);
 		expect(out!.compaction!.details).toMatchObject({ [SAVED_RESULTS_DETAILS]: [path.resolve(fileOf(note))] });
 	});
@@ -143,7 +143,7 @@ describe("saved results carried into the compaction summary", () => {
 		const out = await summarize([result("old", "whole cleared text"), result("other", "nothing saved")], { branch });
 		const file = copy.split(" (sha256")[0];
 		expect(out!.compaction!.summary).toContain(
-			`<saved-results>\nTool results this summary leaves out are saved whole in these files; read or search them:\n${file}\n</saved-results>`,
+			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${file}\n</saved-results>`,
 		);
 		expect(out!.compaction!.summary).not.toContain("sha256");
 	});
@@ -337,5 +337,37 @@ describe("saved results carried into the compaction summary", () => {
 		const message = { role: "custom", customType: JOB_TYPE, content: text, display: true, timestamp: at };
 		expect(savedResultPaths([message], new Map())).toEqual([log, `${log}.1`]);
 		expect(savedResultPaths([{ ...message, customType: "other" }], new Map())).toEqual([]);
+	});
+
+	it("keeps the saved conversation of each subagent run, foreground or background, while it is on disk", () => {
+		const dir = tmp();
+		const transcript = path.join(dir, "child-a", "session.jsonl");
+		const archive = path.join(dir, "child-a-archive");
+		const background = path.join(dir, "child-b", "session.jsonl");
+		const removed = path.join(dir, "child-c", "session.jsonl");
+		for (const file of [transcript, background]) {
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			fs.writeFileSync(file, "{}\n");
+		}
+		fs.mkdirSync(archive, { recursive: true });
+		const foreground = {
+			role: "toolResult",
+			toolCallId: "call-1",
+			toolName: "agent",
+			content: [{ type: "text", text: "Done: report" }],
+			details: { id: "a", profile: "worker", status: "done", session: { id: "s-a", file: transcript, archive } },
+			isError: false,
+			timestamp: at,
+		};
+		const late = {
+			role: "custom",
+			customType: "octocode-agent-result",
+			content: "Background report",
+			details: { id: "b", status: "done", session: { id: "s-b", file: background } },
+			display: true,
+			timestamp: at,
+		};
+		const gone = { ...late, details: { id: "c", status: "done", session: { id: "s-c", file: removed } } };
+		expect(savedResultPaths([foreground, late, gone], new Map())).toEqual([transcript, archive, background]);
 	});
 });

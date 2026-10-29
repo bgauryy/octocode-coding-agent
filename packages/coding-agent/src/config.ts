@@ -78,6 +78,12 @@ export function getSubagentsDir(): string {
 	return join(getSourceOrDistDir(), "octocode", "instructions", "roles");
 }
 
+/** Skills this application ships itself, such as `octocode-compact-mcp`: `native-skills/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
+export function getNativeSkillsDir(): string {
+	if (isBunBinary) return join(getPackageDir(), "native-skills");
+	return join(getSourceOrDistDir(), "octocode", "native-skills");
+}
+
 /** Public skills come from the installed research CLI; standalone releases stage the same payload. */
 export function getBundledSkillsDir(): string {
 	if (isBunBinary) return join(getPackageDir(), "skills");

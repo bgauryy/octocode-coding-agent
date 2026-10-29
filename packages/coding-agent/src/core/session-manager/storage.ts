@@ -14,6 +14,7 @@ import {
 import { join, resolve } from "path";
 import { StringDecoder } from "string_decoder";
 import { getAgentDir as getDefaultAgentDir } from "../../config.ts";
+import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 import { normalizePath, resolvePath } from "../../utils/paths.ts";
 import {
 	assertValidSessionId,
@@ -308,16 +309,14 @@ export function forkSessionFile(
 	const timestamp = new Date().toISOString();
 	const newSessionFile = getSessionFilePath(dir, timestamp, newSessionId);
 
-	// Write new header pointing to source as parent, with updated cwd
+	// A new header pointing to the source as parent, with the target cwd, then every non-header entry of the source.
+	// The copy is written whole to a temporary sibling and renamed into place, so a failure leaves no partial fork.
 	const newHeader = createSessionHeader(newSessionId, timestamp, resolvedTargetCwd, resolvedSourcePath);
-	writeFileSync(newSessionFile, `${JSON.stringify(newHeader)}\n`, { flag: "wx" });
-
-	// Copy all non-header entries from source
-	for (const entry of sourceEntries) {
-		if (entry.type !== "session") {
-			appendFileSync(newSessionFile, `${JSON.stringify(entry)}\n`);
-		}
-	}
+	const content = [newHeader, ...sourceEntries.filter((entry) => entry.type !== "session")]
+		.map((entry) => `${JSON.stringify(entry)}\n`)
+		.join("");
+	if (existsSync(newSessionFile)) throw new Error(`Cannot fork: session file already exists: ${newSessionFile}`);
+	atomicWriteFileSync(newSessionFile, content);
 
 	return { cwd: resolvedTargetCwd, dir, sessionFile: newSessionFile };
 }

@@ -1,0 +1,1216 @@
+{
+	"server": "browser",
+	"instructions": "Inspect targets and snapshot before acting.",
+	"tools": [
+		{
+			"name": "api_replay",
+			"description": "Replay a discovered request once; page the saved response",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "artifact",
+			"description": "Page any saved JSON, text or binary capture",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"file": {
+						"type": "string",
+						"minLength": 1
+					},
+					"format": {
+						"type": "string",
+						"enum": [
+							"text",
+							"json",
+							"binary"
+						]
+					},
+					"pointer": {
+						"type": "string"
+					},
+					"offset": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 9007199254740991
+					},
+					"length": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 20000
+					},
+					"sha256": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{64}$"
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "cdp",
+			"description": "Execute an installed Domain.method with open params; protocol discovers its installed contract.",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"method": {
+						"type": "string",
+						"pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+					},
+					"params": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {}
+					}
+				},
+				"required": [
+					"method"
+				],
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "check",
+			"description": "Run a named optional capture recipe; schema with command: check lists options",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"recipe": {
+						"type": "string",
+						"enum": [
+							"page-snapshot",
+							"page-screenshot",
+							"dom-operations-check",
+							"live-har-monitor",
+							"network-body-har-fetch-check",
+							"network-measure-check",
+							"performance-measure-check",
+							"storage-measure-check",
+							"webmcp-tools",
+							"actionability-diagnostics",
+							"graph-actionability-check",
+							"stealth-check",
+							"affiliates-stealth-check"
+						]
+					},
+					"options": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {}
+					}
+				},
+				"required": [
+					"recipe"
+				],
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "cleanup",
+			"description": "Stop the tracked isolated Chrome session",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"port": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 65535
+					},
+					"dryRun": {
+						"type": "boolean"
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "cookies",
+			"description": "Transfer authorized session cookies",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "corpus_query",
+			"description": "Query captures with optional scraping skill",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "har_ingest",
+			"description": "Import HAR into optional scraping corpus",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "har_pager",
+			"description": "Page saved HAR requests",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "har_redact",
+			"description": "Redact HAR before sharing",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "measure_query",
+			"description": "Query saved health measurements",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "open",
+			"description": "Launch or reuse Chrome (isolated profile by default)",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"port": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 65535
+					},
+					"url": {
+						"type": "string",
+						"minLength": 1
+					},
+					"headless": {
+						"type": "boolean"
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "protocol",
+			"description": "Save installed schema, optionally selecting Domain.member",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"member": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "protocol_corpus",
+			"description": "Build optional offline protocol corpus",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "prune",
+			"description": "Prune old artifacts; --dry-run previews retention",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "query",
+			"description": "Filter saved JSON/JSONL with source-pinned pagination",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"file": {
+						"type": "string",
+						"minLength": 1
+					},
+					"format": {
+						"type": "string",
+						"enum": [
+							"json",
+							"jsonl"
+						]
+					},
+					"pointer": {
+						"type": "string"
+					},
+					"cursor": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 9007199254740991
+					},
+					"limit": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 300
+					},
+					"where": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string"
+								},
+								"op": {
+									"type": "string",
+									"enum": [
+										"eq",
+										"contains",
+										"gte",
+										"lte",
+										"exists"
+									]
+								},
+								"value": {}
+							},
+							"required": [
+								"path",
+								"op",
+								"value"
+							],
+							"additionalProperties": false
+						}
+					},
+					"select": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"sha256": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{64}$"
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "run",
+			"description": "Execute known transitions in one browser plan; discover operations with schema (command: run). Stops on failure; returns read pages and acknowledgements.",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"plan": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {},
+						"description": "Browser plan with nonempty steps; discover operations with schema (command: run)."
+					}
+				},
+				"required": [
+					"plan"
+				],
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "schema",
+			"description": "Discover browser plan and recipe contracts without connecting to Chrome",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"command": {
+						"type": "string",
+						"enum": [
+							"open",
+							"cleanup",
+							"targets",
+							"run",
+							"step",
+							"cdp",
+							"protocol",
+							"snapshot",
+							"screenshot",
+							"check",
+							"script",
+							"schema",
+							"artifact",
+							"skill",
+							"query",
+							"snapshot-query",
+							"measure-query",
+							"har-pager",
+							"har-redact",
+							"api-replay",
+							"cookies",
+							"prune",
+							"protocol-corpus",
+							"har-ingest",
+							"corpus-query"
+						]
+					},
+					"operation": {
+						"description": "Focus on one plan operation; requires command: run or step.",
+						"type": "string",
+						"enum": [
+							"goto",
+							"act",
+							"wait",
+							"extract",
+							"cdp",
+							"protocol",
+							"listen",
+							"waitEvent",
+							"readStream"
+						]
+					},
+					"recipe": {
+						"description": "Requires command: check.",
+						"type": "string",
+						"enum": [
+							"page-snapshot",
+							"page-screenshot",
+							"dom-operations-check",
+							"live-har-monitor",
+							"network-body-har-fetch-check",
+							"network-measure-check",
+							"performance-measure-check",
+							"storage-measure-check",
+							"webmcp-tools",
+							"actionability-diagnostics",
+							"graph-actionability-check",
+							"stealth-check",
+							"affiliates-stealth-check"
+						]
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "screenshot",
+			"description": "Capture viewport, element or all full-page tiles",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"options": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "script",
+			"description": "Run a custom module exporting async run(cdp)",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "skill",
+			"description": "Read package operating guidance or a topic with complete pagination",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"topic": {
+						"type": "string",
+						"enum": [
+							"operating",
+							"web-research",
+							"browser-execution",
+							"cdp-protocol",
+							"cdp-checks",
+							"intents",
+							"launch-stealth",
+							"script-patterns",
+							"recovery",
+							"clasify-screen",
+							"mcp-cli"
+						]
+					},
+					"offset": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 9007199254740991
+					},
+					"length": {
+						"type": "integer",
+						"exclusiveMinimum": 0,
+						"maximum": 20000
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "snapshot",
+			"description": "Capture current controls, regions and frame refs",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"options": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "snapshot_query",
+			"description": "Page a saved snapshot without recapturing",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"args": {
+						"default": [],
+						"description": "Existing CLI arguments, passed directly without a shell.",
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "step",
+			"description": "Execute one browser operation; discover operations with schema (command: run).",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					},
+					"step": {
+						"type": "object",
+						"propertyNames": {
+							"type": "string"
+						},
+						"additionalProperties": {},
+						"description": "One browser operation; discover operations with schema (command: run)."
+					}
+				},
+				"required": [
+					"step"
+				],
+				"additionalProperties": false
+			}
+		},
+		{
+			"name": "targets",
+			"description": "List all targets; select an exact id for later calls",
+			"inputSchema": {
+				"type": "object",
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"properties": {
+					"connection": {
+						"type": "object",
+						"properties": {
+							"port": {
+								"description": "Chrome debugging port; default 9222.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 65535
+							},
+							"target": {
+								"description": "Observed exact target id. Exclusive with targetUrl, newTab and browser.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetUrl": {
+								"description": "Unique URL substring; ambiguity fails.",
+								"type": "string",
+								"minLength": 1
+							},
+							"targetType": {
+								"type": "string",
+								"minLength": 1
+							},
+							"newTab": {
+								"type": "string",
+								"minLength": 1
+							},
+							"browser": {
+								"type": "boolean"
+							},
+							"closeTab": {
+								"type": "boolean"
+							},
+							"keepTab": {
+								"type": "boolean"
+							},
+							"noReload": {
+								"type": "boolean"
+							},
+							"stealth": {
+								"type": "boolean"
+							},
+							"noStealth": {
+								"type": "boolean"
+							},
+							"timeout": {
+								"description": "Per-protocol-request ceiling in milliseconds; default 60000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"scriptTimeout": {
+								"description": "Whole engine deadline in milliseconds; default 300000.",
+								"type": "integer",
+								"exclusiveMinimum": 0,
+								"maximum": 9007199254740991
+							},
+							"verbose": {
+								"type": "boolean"
+							},
+							"dryRun": {
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false,
+						"description": "Exact target selection and bounded execution; defaults retain tabs and state."
+					}
+				},
+				"additionalProperties": false
+			}
+		}
+	]
+}

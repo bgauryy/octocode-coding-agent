@@ -329,7 +329,9 @@ describe("memory injection selection", () => {
 		for (let i = 0; i < 10; i++)
 			add(store, { title: `Parser ${WORDS[i + 20]}`, body: `parser ${`${WORDS[i + 30]} `.repeat(40)}` }, 2000 + i);
 		const injection = selectInjection(store, { query: "parser", scope: "all", seen: new Set(), topK: 3 })!;
-		const lines = injection.content.split("\n").slice(1);
+		// The memory lines; the last line says how many pinned memories were held back.
+		const lines = injection.content.split("\n").slice(1, -1);
+		expect(injection.content.split("\n").at(-1)).toMatch(/^\[\d+ more pinned memories did not fit here/);
 		const pinnedLines = lines.filter((line) => line.includes("pinned"));
 		expect(pinnedLines.join("\n").length).toBeLessThanOrEqual(PINNED_BUDGET);
 		expect(lines.join("\n").length).toBeLessThanOrEqual(TOTAL_BUDGET);
@@ -416,28 +418,32 @@ describe("memory tool", () => {
 		).rejects.toThrow(/Similar memory M2/);
 	});
 
-	it("saves a global or pinned memory at once in a trusted project, and never in an untrusted one", async () => {
+	it("saves a global or pinned memory in a trusted project once the user allows it, and never in an untrusted one", async () => {
 		const { tool } = setup();
-		// No dialog: a save the store would refuse (a secret, no title) fails the same way.
+		// A save the store would refuse (a secret, no title) fails before any dialog.
 		const asked: string[] = [];
 		const seen = ctxFor().ctx;
 		Object.assign(seen.ui, {
 			select: async (title: string) => {
 				asked.push(title);
-				return "Deny";
+				return "Allow once";
 			},
 		});
 		expect(
 			text(await run(tool, { op: "set", title: "Shown", body: "Line one\nLine two", pinned: true }, seen)),
 		).toMatch(/^Saved M1 \(project/);
+		expect(asked).toEqual([expect.stringMatching(/Save this shared memory\?[\s\S]*\(project, pinned\) Shown/)]);
 		await expect(
 			run(tool, { op: "set", title: "Key", body: `sk-${"a".repeat(40)}`, pinned: true }, seen),
 		).rejects.toThrow(/secret/);
 		await expect(run(tool, { op: "set", body: "no title", pinned: true }, seen)).rejects.toThrow(/needs a title/);
-		expect(asked).toEqual([]);
-		expect(
-			text(await run(tool, { op: "set", title: "Global one", scope: "global" }, ctxFor({ hasUI: false }).ctx)),
-		).toMatch(/^Saved M2 \(global/);
+		expect(asked).toHaveLength(1);
+		await expect(
+			run(tool, { op: "set", title: "Global one", scope: "global" }, ctxFor({ hasUI: false }).ctx),
+		).rejects.toThrow(/needs the user's approval/);
+		expect(text(await run(tool, { op: "set", title: "Global one", scope: "global" }, seen))).toMatch(
+			/^Saved M2 \(global/,
+		);
 		expect(text(await run(tool, { op: "set", title: "Project one" }))).toMatch(/^Saved M3 \(project/);
 		fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
 		fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), '{"hooks":{}}');

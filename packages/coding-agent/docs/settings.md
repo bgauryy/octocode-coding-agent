@@ -53,6 +53,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `branchSummary` | object |  | Summaries of abandoned branches when navigating the session tree. |
 | `branchSummary.reserveTokens` | number | `16384` | Tokens reserved for the prompt and LLM response. |
 | `branchSummary.skipPrompt` | boolean | `false` | When true, skips the "Summarize branch?" prompt and defaults to no summary. |
+| `mcpPresentation` | `"compact" \| "json"` | `"compact"` | How MCP tools reach the model. "compact" shows each server as a generated TypeScript file in the cached system prompt, declares its tools with a one-line trigger and the top-level field types, and validates calls against the server's own JSON Schema. "json" declares every tool with its full JSON Schema and ignores the generated files. |
 | `defaultTools` | `string[]` |  | Initial tool selection. Plain names replace the inherited selection; +name and -name entries add or remove tools. |
 | `doubleEscapeAction` | `"fork" \| "tree" \| "none"` | `"tree"` | Action for double-escape with an empty editor. |
 | `treeFilterMode` | `"default" \| "no-tools" \| "user-only" \| "labeled-only" \| "all"` | `"default"` | Default filter when opening /tree. |

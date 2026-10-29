@@ -22,6 +22,8 @@ export interface SessionExtra {
 	pid_started: string | null;
 	/** 1 when part of the session's usage came from a model without pricing (its cost is incomplete). */
 	unpriced: number;
+	/** The session dir it last ran from (resolved); null in rows from before it was recorded. */
+	dir: string | null;
 }
 
 interface SessionStats {
@@ -109,13 +111,13 @@ export class SessionIndex {
 		return rows;
 	}
 
-	/** This process has the session open now. Keeps what earlier runs recorded. */
-	start(id: string): void {
+	/** This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded. */
+	start(id: string, dir?: string): void {
 		this.agent.db
 			.prepare(
-				"INSERT INTO sessions (id, pid, pid_started) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, pid_started = excluded.pid_started",
+				"INSERT INTO sessions (id, pid, pid_started, dir) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, pid_started = excluded.pid_started, dir = COALESCE(excluded.dir, sessions.dir)",
 			)
-			.run(id, process.pid, processStartTime(process.pid) ?? null);
+			.run(id, process.pid, processStartTime(process.pid) ?? null, dir ?? null);
 	}
 
 	stats(id: string, stats: SessionStats): void {

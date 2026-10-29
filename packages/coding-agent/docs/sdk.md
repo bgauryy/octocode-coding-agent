@@ -122,7 +122,7 @@ Use `DefaultResourceLoader` when you want standard discovery with selected overr
 
 <a id="inlineextension"></a>
 
-Inline extension factories can be supplied through `DefaultResourceLoader.extensionFactories`. Give one an `InlineExtension` name when it needs a stable name in diagnostics and startup output. A named inline extension with `replaceable: true` is left out when another extension registers a tool, command, or flag with a name it registers during loading, instead of both loading with a conflict. The built-in tool-search and MCP extensions are replaceable.
+Inline extension factories can be supplied through `DefaultResourceLoader.extensionFactories`. Give one an `InlineExtension` name when it needs a stable name in diagnostics and startup output. A named inline extension with `replaceable: true` is left out when another extension registers a tool, command, or flag with a name it registers during loading, instead of both loading with a conflict. The built-in MCP extension is replaceable.
 
 A named entry with `builtin: true` supplies the code of a `builtin:<name>` extension, which loads like a configured extension file. It loads by default, is listed in `octocode config`, and is disabled by `-builtin:<name>` in the `extensions` setting or by `noExtensions`; `additionalExtensionPaths: ["builtin:<name>"]` loads it explicitly. It loads after project trust is resolved, so it cannot handle `project_trust`. The standard loader's built-in extensions use this form.
 
@@ -130,9 +130,9 @@ A named entry with `builtin: true` supplies the code of a `builtin:<name>` exten
 
 ### MCP
 
-The default resource loader includes `tool_search` and MCP. A custom loader with `nativeFeatures: false` can supply `createToolSearchExtension()` and `createMcpExtension()` explicitly. `createMcpExtension({ presets: [octocodePreset()] })` opts into the Octocode default; both factories and the `McpServerPreset` type are exported from `@octocodeai/octocodecode`. Presets supply default configuration, exposure, launch and presentation policies while the host owns every connection. Omitting presets leaves only configured and extension-registered servers. The low-level client is exported separately from `@octocodeai/octocodecode/mcp`; see the [client API reference](../../mcp/README.md).
+The default resource loader includes MCP. A custom loader with `nativeFeatures: false` can supply `createMcpExtension()` explicitly. `createMcpExtension({ presets: [octocodePreset()] })` opts into the Octocode default; the factory, `octocodePreset` and the `McpServerPreset` type are exported from `@octocodeai/octocodecode`. Presets supply default configuration, exposure, launch and presentation policies while the host owns every connection. Omitting presets leaves only configured and extension-registered servers. The low-level client is exported separately from `@octocodeai/octocodecode/mcp`; see the [client API reference](../../mcp/README.md).
 
-MCP defaults to direct exposure: connected tools supply full descriptions and input schemas without discovery, and the server section includes shared instructions once. Explicit `auto` opts into the catalog-size heuristic; explicit `deferred` exposure activates `tool_search`. Discovered tools are called natively through the session pipeline.
+MCP declares every tool of a selected server up front, and the server's prompt section carries its instructions once. `hidden` exposure withdraws tools, and `defaultActive: false` keeps a server to the sessions whose tool selection names it ([assign servers to agents](mcp.md#assign-servers-to-agents)). Calls go through the session pipeline.
 
 MCP starts on `session_start`, emitted by `await session.bindExtensions({})`. Connections may continue in the background; calls wait for the servers they need. On shutdown, emit `session_shutdown` before disposing the session, as in the opening example. See [MCP](mcp.md) for configuration and lifecycle.
 

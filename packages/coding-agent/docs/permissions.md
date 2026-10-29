@@ -60,7 +60,7 @@ For example, this user configuration denies Bash calls and requires approval for
 
 Deny takes precedence over ask, then allow. Source asks still require resolution in native full mode and despite existing native grants. A supported source allow can resolve an ordinary native approval, but cannot bypass tool invariants or authorize unrelated private-network, upload or subagent permissions. An unresolved headless request is refused. A PermissionRequest hook can answer the original ask; outer Bash and staged file-query replacement are available in the [permission-hook preview](hooks.md#permission-request-preview), while persistent permission-update effects remain unfinished.
 
-Tool-wide denies also affect model-visible and deferred callable tools. Native tools can combine several source operations: a partial restriction on `file`, `bash`, `web` or `agent` must still be enforced on the specific operation without hiding unrelated operations. Removing a rule should restore the user's prior tool selection.
+Tool-wide denies also affect model-visible and callable tools. Native tools can combine several source operations: a partial restriction on `file`, `bash`, `web` or `agent` must still be enforced on the specific operation without hiding unrelated operations. Removing a rule should restore the user's prior tool selection.
 
 The preview is not full Claude policy compatibility. The active implementation and tests are tracked in the [compatibility matrix](../../../docs/PLUGINS_MODS_HOOKS.md#source-permission-policy-implementation-in-progress).
 

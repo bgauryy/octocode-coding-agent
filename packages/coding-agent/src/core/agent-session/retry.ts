@@ -28,7 +28,7 @@ export function isRateLimitedText(text: string): boolean {
 	return RATE_LIMITED.test(text);
 }
 
-export function isRateLimitedError(message: AssistantMessage): boolean {
+function isRateLimitedError(message: AssistantMessage): boolean {
 	return isRateLimitedText(message.errorMessage ?? "");
 }
 

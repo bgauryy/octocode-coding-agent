@@ -6,7 +6,7 @@ import { READ_ONLY_ENV } from "../../src/octocode/shared/env.ts";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakePi } from "./fake-pi.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, allSections } from "./helpers.ts";
 
 describe("registerTurnSetup", () => {
 	const setup = () => {
@@ -20,10 +20,14 @@ describe("registerTurnSetup", () => {
 	const setupTurn = (fake: ReturnType<typeof fakePi>) => turns.get(fake)!;
 	const run = async (fake: ReturnType<typeof fakePi>, selectedTools?: string[]) => {
 		const event = {
-			systemPromptOptions: { sections: {} as Record<string, string>, ...(selectedTools ? { selectedTools } : {}) },
+			systemPromptOptions: {
+				sections: {} as Record<string, string>,
+				baseSections: {} as Record<string, string>,
+				...(selectedTools ? { selectedTools } : {}),
+			},
 		};
 		await fake.emit("before_agent_start", event, {});
-		return Object.values(event.systemPromptOptions.sections).join("\n\n");
+		return Object.values(allSections(event)).join("\n\n");
 	};
 	const argv = process.argv;
 	let agentDir = "";
@@ -37,14 +41,14 @@ describe("registerTurnSetup", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("routes deferred Octocode research through native discovery without suggesting scripts", async () => {
+	it("routes declared Octocode research tools without suggesting scripts or discovery", async () => {
 		const { fake } = setup();
-		fake.tools.set("tool_search", { name: "tool_search" });
-		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "deferred" });
-		fake.pi.setActiveTools(["tool_search"]);
+		fake.tools.set("mcp__octocode__ghSearchCode", { name: "mcp__octocode__ghSearchCode", exposure: "direct" });
+		fake.pi.setActiveTools(["mcp__octocode__ghSearchCode"]);
 		const prompt = await run(fake);
 		expect(prompt).toContain("Use Octocode MCP");
 		expect(prompt).not.toContain("are called from `codemode`");
+		expect(prompt).not.toContain("tool_search");
 	});
 
 	it("uses the core tool set at session start and leaves the active set alone per turn", async () => {
@@ -52,7 +56,11 @@ describe("registerTurnSetup", () => {
 		process.argv = ["node", "pi"];
 		expect(fake.pi.getActiveTools()).toEqual(["read", "bash", "file"]);
 		const event = {
-			systemPromptOptions: { sections: {} as Record<string, string>, selectedTools: ["read", "edit"] },
+			systemPromptOptions: {
+				sections: {} as Record<string, string>,
+				baseSections: {} as Record<string, string>,
+				selectedTools: ["read", "edit"],
+			},
 		};
 		await fake.emit("before_agent_start", event, {});
 		expect(event.systemPromptOptions.selectedTools).toEqual(["read", "edit"]);
@@ -155,15 +163,16 @@ describe("registerTurnSetup", () => {
 			const event = {
 				systemPromptOptions: {
 					sections: {} as Record<string, string>,
+					baseSections: {} as Record<string, string>,
 					selectedTools: ["file", "agent", "archive", "browser", "web"],
 				},
 			};
 			await fake.emit("before_agent_start", event, {});
-			expect(event.systemPromptOptions.sections.role).toBe(profile.prompt);
-			sections.push({ ...event.systemPromptOptions.sections });
+			expect(allSections(event).role).toBe(profile.prompt);
+			sections.push(allSections(event));
 			fs.writeFileSync(file, "changed after this child started");
 			await fake.emit("before_agent_start", event, {});
-			expect(event.systemPromptOptions.sections).toEqual(sections.at(-1));
+			expect(allSections(event)).toEqual(sections.at(-1));
 		}
 		expect(sections[0]).toEqual(sections[1]);
 	});
@@ -198,11 +207,10 @@ describe("registerTurnSetup", () => {
 		expect(await run(fake, ["read"])).not.toContain("Use Octocode MCP");
 	});
 	it("gives every child of one profile the same octocode section, whatever its id, parent and scratch folder", async () => {
-		const sectionFor = async (id: string, parent: string, scratch: string, collaborate = false) => {
+		const sectionFor = async (id: string, parent: string, scratch: string) => {
 			vi.stubEnv("OCTOCODE_AGENT_ID", id);
 			vi.stubEnv("OCTOCODE_PARENT_ID", parent);
 			vi.stubEnv("OCTOCODE_AGENT_SCRATCH", scratch);
-			vi.stubEnv("OCTOCODE_AGENT_COLLABORATE", collaborate ? "1" : "");
 			const fake = fakePi();
 			for (const name of ["read", "bash", "file"]) fake.tools.set(name, { name });
 			registerTurnSetup(fake.pi, {
@@ -215,11 +223,6 @@ describe("registerTurnSetup", () => {
 		const second = await sectionFor("researcher-9z8y", "main-bbbbbb", "/other/.octocode/tmp/agents/researcher-9z8y");
 		expect(second).toBe(first);
 		expect(first).not.toMatch(/researcher-1a2b|main-aaaaaa|\.octocode\/tmp/);
-		// Collaboration changes the section for every child alike, not per child.
-		const team = await sectionFor("a-1", "main-aaaaaa", "/x/a-1", true);
-		expect(team).toBe(await sectionFor("b-2", "main-bbbbbb", "/y/b-2", true));
-		// All children share the same bidirectional communication policy; team membership stays in task data.
-		expect(team).toBe(first);
 	});
 
 	it("gives isolated children of one profile byte-identical leading system prompts", async () => {

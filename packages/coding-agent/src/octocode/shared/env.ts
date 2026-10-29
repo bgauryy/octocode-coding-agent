@@ -29,7 +29,15 @@ export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
 export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
 
 /** Days kept output and bash logs survive in a kept session folder (default 30); `0` turns the session sweep off. */
-export const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
+const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
+
+/**
+ * The one retention for session output and subagent scratch folders (`OCTOCODE_CLEANUP_DAYS`, default 30; `0` keeps
+ * everything), so a path a kept transcript cites stays readable as long as the rest of the session's files.
+ */
+export function cleanupDays(env: NodeJS.ProcessEnv = process.env): number {
+	return envInt(env, CLEANUP_DAYS_ENV, 30, { min: 0 });
+}
 
 /** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
 export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";

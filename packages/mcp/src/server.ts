@@ -15,12 +15,15 @@ export interface McpServer {
 	ready?: Promise<void>;
 	/** Cleanup of a detached connection; a replacement waits for it before opening a transport. */
 	closing?: Promise<void>;
+	/**
+	 * No tool selection of this session reaches the server (`defaultActive: false` and no selector names its tools), so
+	 * it was not started. A start that chooses it for the session (enabling it from `/mcp`) clears this; a hook's does not.
+	 */
+	unselected?: boolean;
 }
 
 export const EXPOSURE_DESCRIPTIONS: Record<McpExposure, string> = {
-	auto: "small catalogs declared directly; large catalogs discovered on supported providers",
 	hidden: "not callable",
-	deferred: "not declared until tool_search loads them, then called directly",
 	direct: "declared to the model like built-in tools",
 };
 
@@ -36,7 +39,7 @@ export function isEnabled(server: Pick<McpServer, "entry">): boolean {
 export function describeState(server: McpServer, withError = true): string {
 	if (!isEnabled(server)) return "disabled";
 	const connection = server.connection;
-	if (!connection) return "starting";
+	if (!connection) return server.unselected ? "not selected" : "starting";
 	switch (connection.state) {
 		case "needs-auth":
 			return "needs sign-in";

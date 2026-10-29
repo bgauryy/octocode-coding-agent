@@ -245,6 +245,11 @@ export function createExtensionAPI(
 			runtime.setActiveTools(toolNames);
 		},
 
+		selectsTools(prefix: string, activeByDefault: boolean): boolean {
+			assertActive();
+			return runtime.selectsTools(prefix, activeByDefault);
+		},
+
 		// Not on the public ExtensionAPI type; see `NativeExtensionAPI` in src/octocode/shared/host-api.ts.
 		setToolPolicy(allows: (name: string) => boolean) {
 			assertActive();

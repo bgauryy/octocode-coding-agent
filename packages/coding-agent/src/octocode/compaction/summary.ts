@@ -6,6 +6,7 @@ import {
 	type CompactionResult,
 	CheckpointPersistenceError,
 	compact,
+	inlineSummaryTokens,
 	persistCheckpointText,
 } from "../../core/compaction/index.ts";
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/extensions/index.ts";
@@ -68,6 +69,8 @@ export function windowBudget(
 
 /** Of the room after the reserve, the kept user messages take at most this share (a tenth: the summary and restored files need the rest). */
 export const USER_MESSAGES_SHARE = 0.1;
+/** The least room the user-message section gets: enough for the reference to their complete saved text. */
+const USER_REFERENCE_CHARS = 1_000;
 
 const RECOVERY_HEADING = "## Recovery";
 
@@ -276,13 +279,16 @@ export async function writeSummary(
 		if (paidSummary?.key !== key) {
 			// On the session's own model the summary is asked for inside the session's request, which the prompt cache already
 			// holds; on another (a downshift) or when that fails, as a standalone request that pays for the whole input.
-			const share = summaryModel === undefined && options.cacheCold !== true;
+			// After an overflow the session's own request just failed for its size: sharing it would only fail again.
+			const share = summaryModel === undefined && options.cacheCold !== true && event.reason !== "overflow";
 			let fallback =
 				summaryModel !== undefined
 					? `the summary ran on ${model.id}, the model before a downshift, not the session's own`
-					: share
-						? "the cache-sharing request was cancelled"
-						: "the prompt cache had expired, so sharing it would rewrite the whole context";
+					: event.reason === "overflow"
+						? "the context had overflowed the model's window, so sharing it would overflow again"
+						: share
+							? "the cache-sharing request was cancelled"
+							: "the prompt cache had expired, so sharing it would rewrite the whole context";
 			const shared = share
 				? await sharedSummary(
 						pi,
@@ -323,21 +329,6 @@ export async function writeSummary(
 		const added = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].flatMap(
 			(message) => userText(message) ?? [],
 		);
-		// Sized for the window the summary lands in (this session's model; after a downshift, the smaller one).
-		const total = windowBudget(
-			ctx.model?.contextWindow,
-			event.preparation.settings.reserveTokens,
-			USER_MESSAGES_SHARE,
-			USER_MESSAGES_CHARS,
-		);
-		const messages = userMessagesSection(
-			previous?.messages ?? [],
-			previous?.omitted ?? 0,
-			added,
-			{ total, perMessage: Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4))) },
-			segment,
-			saveText,
-		);
 		const note = transcriptNote(
 			ctx.sessionManager.getSessionFile(),
 			pi.getActiveTools().includes("backlog"),
@@ -349,6 +340,24 @@ export async function writeSummary(
 			clearedResults(event.branchEntries),
 			carriedSavedResults(event.branchEntries),
 		);
+		const body = `${withoutModelSavedResults(result.summary)}${savedResultsBlock(saved)}`;
+		// Sized for the window the summary lands in (this session's model; after a downshift, the smaller one), and for
+		// what the inline summary has left: messages that do not fit are saved whole behind a reference, so the summary
+		// itself stays inline instead of the whole checkpoint becoming a file reference.
+		const reserveTokens = event.preparation.settings.reserveTokens;
+		const inlineRoom = inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN - body.length - note.length;
+		const total = Math.min(
+			windowBudget(ctx.model?.contextWindow, reserveTokens, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS),
+			Math.max(USER_REFERENCE_CHARS, inlineRoom),
+		);
+		const messages = userMessagesSection(
+			previous?.messages ?? [],
+			previous?.omitted ?? 0,
+			added,
+			{ total, perMessage: Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4))) },
+			segment,
+			saveText,
+		);
 		const details = {
 			...(isRecord(result.details) ? result.details : {}),
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
@@ -358,7 +367,7 @@ export async function writeSummary(
 			compaction: {
 				...result,
 				usage: undefined,
-				summary: `${withoutModelSavedResults(result.summary)}${savedResultsBlock(saved)}${messages}${note}`,
+				summary: `${body}${messages}${note}`,
 				details,
 			},
 		};

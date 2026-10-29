@@ -9,24 +9,13 @@
  * errors (`isError`) are error results for the model, but programmatic consumers retain the structured result.
  */
 
-import { createHash } from "node:crypto";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, JsonValue, TextContent } from "@octocodeai/octocode-ai";
 import { type CallToolResult, type McpRequestOptions, toLlmContent } from "./client/index.ts";
 import type { TSchema } from "typebox";
-import type { ToolExposure } from "../../coding-agent/src/core/extensions/types.ts";
-import { isPluginMcpServerName } from "./servers.ts";
 import { spillOutput } from "../../coding-agent/src/octocode/shared/spill.ts";
-import type { McpExposure } from "./config.ts";
 import { visibleContent } from "./sanitize.ts";
 
-/** Automatic exposure is resolved by the host; standalone definitions default to direct. */
-export function toToolExposure(exposure: McpExposure): ToolExposure {
-	return exposure === "auto" ? "direct" : exposure;
-}
-
-/** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
-const MAX_TOOL_NAME_LENGTH = 64;
 /** Model-facing text of an MCP result beyond this is cut in the middle. */
 const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
 export interface McpToolDetails {
@@ -44,26 +33,6 @@ type McpOutputSaver = (data: string | Uint8Array, extension: string) => string |
 
 export interface McpToolCaller {
 	callTool(name: string, args: Record<string, unknown>, options: McpRequestOptions): Promise<CallToolResult>;
-}
-
-/**
- * `mcp__<server>__<tool>`, sanitized and shortened with a hash suffix when too long. Like Codex,
- * everything but `[A-Za-z0-9_]` becomes `_`, so the name is also the identifier programmatic tool callers
- * call it by. `isTaken` reports names used by a different MCP tool: sanitizing can map two tools to
- * one name (`a-b` and `a_b`), which then get the hash suffix.
- */
-export function createMcpToolName(
-	server: string,
-	tool: string,
-	isTaken: (name: string) => boolean = () => false,
-): string {
-	const name = `mcp__${server}__${tool}`.replace(
-		isPluginMcpServerName(server) ? /[^A-Za-z0-9_-]/g : /[^A-Za-z0-9_]/g,
-		"_",
-	);
-	if (name.length <= MAX_TOOL_NAME_LENGTH && !isTaken(name)) return name;
-	const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
-	return `${name.slice(0, MAX_TOOL_NAME_LENGTH - hash.length - 1)}_${hash}`;
 }
 
 function textOf(content: readonly (TextContent | ImageContent)[]): string {
@@ -203,7 +172,7 @@ export function createMcpResultSchema(structuredContentSchema: Record<string, un
  * start and end and the file's path (`spillOutput`, shared with the Octocode server's results, which has its own budget);
  * images follow it.
  */
-export function limitMcpContent(
+function limitMcpContent(
 	content: (TextContent | ImageContent)[],
 	label: string,
 	saveOutput?: McpOutputSaver,

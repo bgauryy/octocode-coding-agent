@@ -1,4 +1,3 @@
-import { octocodePreset } from "../src/presets/octocode/index.ts";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -19,11 +18,11 @@ import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-sto
 import { validateMcpServerConfig } from "../src/servers.ts";
 import { truncateMiddle } from "../../coding-agent/src/core/tools/truncate.ts";
 import { getMcpToolExposure, loadMcpConfig, type McpServerEntry, updateMcpServerConfig } from "../src/config.ts";
-import { reachesServer } from "../src/section.ts";
 import { McpServerLog } from "../src/log.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../src/runtime.ts";
-import { convertMcpResult, createMcpResultSchema, createMcpToolName } from "../src/tools.ts";
+import { createMcpToolName } from "../src/tool-names.ts";
+import { convertMcpResult, createMcpResultSchema } from "../src/tools.ts";
 
 // Config values are resolved at connect time, so the literal reference must survive loading.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: literal config value reference
@@ -31,25 +30,26 @@ const TOKEN_HEADER = "Bearer ${TOKEN}";
 
 describe("stdio launch configuration", () => {
 	afterEach(() => vi.unstubAllEnvs());
-	it("validates environment inheritance and migrates both legacy exposure spellings", () => {
+	it("validates environment inheritance and rejects removed exposure values with the replacement", () => {
 		expect(validateMcpServerConfig("python", { command: "python3", args: ["server.py"], inheritEnv: "no" })).toContain(
 			"inheritEnv must be a boolean",
 		);
-		for (const exposure of ["codemode", "codemode-deferred"]) {
-			expect(
-				validateMcpServerConfig("python", {
-					command: "python3",
-					args: ["server.py"],
-					exposure,
-					toolExposure: { read: exposure },
-				}),
-			).toMatchObject({
-				command: "python3",
-				args: ["server.py"],
-				exposure: "deferred",
-				toolExposure: { read: "deferred" },
-			});
+		for (const exposure of ["auto", "deferred", "codemode", "codemode-deferred"]) {
+			const server = validateMcpServerConfig("python", { command: "python3", exposure });
+			expect(server).toContain(
+				`server "python": exposure must be one of "direct", "hidden"; "${exposure}" was removed`,
+			);
+			expect(server).toContain('"defaultActive": false');
+			expect(validateMcpServerConfig("python", { command: "python3", toolExposure: { read: exposure } })).toContain(
+				`toolExposure "read" must be one of "direct", "hidden"; "${exposure}" was removed`,
+			);
 		}
+		expect(validateMcpServerConfig("python", { command: "python3", defaultActive: "no" })).toBe(
+			'server "python": defaultActive must be a boolean',
+		);
+		expect(validateMcpServerConfig("python", { command: "python3", defaultActive: false })).toMatchObject({
+			defaultActive: false,
+		});
 	});
 	it("launches a binary with only its configured environment when inheritance is disabled", async () => {
 		vi.stubEnv("OCTOCODE_TEST_PARENT_SECRET", "must-not-leak");
@@ -130,23 +130,16 @@ describe("MCP config", () => {
 		expect((standard as StreamableHttpTransport).options.headers).toEqual({ Authorization: TOKEN_HEADER });
 	});
 
-	it("persists explicit script exposure and Octocode's deferred override across reload", () => {
+	it("persists explicit exposure across reload", () => {
 		const paths = setup({ mcpServers: { docs: { command: "x" }, octocode: { command: "x" } } }, {});
 		const file = join(paths.agentDir, "mcp.json");
-		updateMcpServerConfig(file, "docs", { exposure: "deferred" });
-		updateMcpServerConfig(file, "octocode", { exposure: "deferred" });
+		updateMcpServerConfig(file, "docs", { exposure: "hidden" });
 		let loaded = loadMcpConfig({ ...paths, projectTrusted: false });
-		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search")).toBe("deferred");
-		expect(
-			getMcpToolExposure(
-				loaded.servers.find((s) => s.name === "octocode")!.config,
-				"localFetch",
-				octocodePreset(() => [], {}).toolExposure,
-			),
-		).toBe("deferred");
-		updateMcpServerConfig(file, "docs", { exposure: "deferred" });
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search")).toBe("hidden");
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "octocode")!.config, "localFetch")).toBe("direct");
+		updateMcpServerConfig(file, "docs", { exposure: "direct" });
 		loaded = loadMcpConfig({ ...paths, projectTrusted: false });
-		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search")).toBe("deferred");
+		expect(getMcpToolExposure(loaded.servers.find((s) => s.name === "docs")!.config, "search")).toBe("direct");
 	});
 
 	it("merges global and trusted project servers and validates entries", () => {
@@ -196,7 +189,9 @@ describe("MCP config", () => {
 			["tools", undefined, { command: "x", env: { TOKEN: "secret" } }],
 		]);
 		expect(errors).toEqual([
-			expect.stringContaining('server "tools": an override can only set enabled, exposure, toolExposure'),
+			expect.stringContaining(
+				'server "tools": an override can only set enabled, defaultActive, exposure, toolExposure',
+			),
 			expect.stringContaining('server "missing" needs "command" or "url", or a global server to override'),
 		]);
 
@@ -220,14 +215,13 @@ describe("MCP config", () => {
 		expect(errors).toEqual([expect.stringContaining('server "work_files" conflicts with "work-files"')]);
 	});
 
-	it("migrates legacy exposure and ignores the removed activation setting", () => {
+	it("rejects removed exposure values and ignores the removed activation setting", () => {
 		const paths = setup(
 			{
 				autoEnableCodemode: false,
 				mcpServers: {
 					later: { command: "x", exposure: "deferred" },
-					// Legacy script exposure is migrated to native discovery.
-					scripts: { command: "x", exposure: "codemode-deferred", toolExposure: { a: "codemode-deferred" } },
+					scripts: { command: "x", exposure: "direct", toolExposure: { a: "codemode-deferred" } },
 					off: { command: "x", exposure: "hidden" },
 					wrong: { command: "x", exposure: "model-only" },
 					described: { command: "x", description: "Docs search" },
@@ -239,14 +233,15 @@ describe("MCP config", () => {
 
 		const untrusted = loadMcpConfig({ ...paths, projectTrusted: false });
 		expect(untrusted.servers.map((server) => [server.name, server.config.exposure])).toEqual([
-			["later", "deferred"],
-			["scripts", "deferred"],
 			["off", "hidden"],
 			["described", undefined],
 		]);
-		expect(untrusted.servers[1].config.toolExposure).toEqual({ a: "deferred" });
-		expect(untrusted.servers[3].config.description).toBe("Docs search");
+		expect(untrusted.servers[1].config.description).toBe("Docs search");
 		expect(untrusted.errors).toEqual([
+			expect.stringContaining('server "later": exposure must be one of "direct", "hidden"; "deferred" was removed'),
+			expect.stringContaining(
+				'server "scripts": toolExposure "a" must be one of "direct", "hidden"; "codemode-deferred" was removed',
+			),
 			expect.stringContaining('server "wrong": exposure must be one of'),
 			expect.stringContaining('server "badDescription": description must be a string'),
 		]);
@@ -312,8 +307,8 @@ describe("MCP config", () => {
 				mcpServers: {
 					gh: {
 						command: "x",
-						exposure: "deferred",
-						toolExposure: { "get_*": "deferred", get_me: "direct", "*delete*": "hidden", "get_file.*": "direct" },
+						exposure: "hidden",
+						toolExposure: { "get_*": "hidden", get_me: "direct", "*delete*": "direct", "get_file.*": "direct" },
 					},
 					bad: { command: "x", toolExposure: { a: "visible" } },
 				},
@@ -324,10 +319,10 @@ describe("MCP config", () => {
 		expect(errors).toEqual([expect.stringContaining('server "bad": toolExposure "a" must be one of')]);
 		const config = servers[0].config;
 		expect(getMcpToolExposure(config, "get_me")).toBe("direct");
-		expect(getMcpToolExposure(config, "get_issue")).toBe("deferred");
-		expect(getMcpToolExposure(config, "get_delete_hint")).toBe("deferred");
-		expect(getMcpToolExposure(config, "delete_repo")).toBe("hidden");
-		expect(getMcpToolExposure(config, "list_issues")).toBe("deferred");
+		expect(getMcpToolExposure(config, "get_issue")).toBe("hidden");
+		expect(getMcpToolExposure(config, "get_delete_hint")).toBe("hidden");
+		expect(getMcpToolExposure(config, "delete_repo")).toBe("direct");
+		expect(getMcpToolExposure(config, "list_issues")).toBe("hidden");
 		// Only `*` is special.
 		expect(getMcpToolExposure({ command: "x", toolExposure: { "get_file.*": "hidden" } }, "get_file_x")).toBe("direct");
 	});
@@ -1026,15 +1021,5 @@ for await (const line of createInterface({ input: process.stdin })) {
 		expect(connection).not.toHaveProperty("hasResources");
 		expect(methods).toEqual(["initialize", "tools/list"]);
 		await connection.close();
-	});
-});
-
-describe("tool_search reach", () => {
-	it("matches a plugin server whose name keeps '-' in its namespace, however the model spells it", () => {
-		const server = "plugin:my-plug:srv";
-		for (const word of ["mcp__plugin_my_plug_srv", "mcp__plugin_my-plug_srv", "mcp__plugin_my_plug_srv__find"])
-			expect(reachesServer([word], server)).toBe(true);
-		expect(reachesServer(["mcp__other"], server)).toBe(false);
-		expect(reachesServer(["mcp__docs"], "docs")).toBe(true);
 	});
 });

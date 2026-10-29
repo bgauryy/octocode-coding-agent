@@ -59,7 +59,7 @@ import { registerSkillTool } from "./skill/tool.ts";
 import { statusCommand } from "./status-command.ts";
 import { currentCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
-import { registerModelsCommand } from "./subagents/models-command.ts";
+import { registerModels } from "./subagents/models-command.ts";
 import { type AgentProfile, loadProfiles, profileFileName } from "./subagents/profiles.ts";
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
 import { Team } from "./team/session.ts";
@@ -220,7 +220,7 @@ export default function octocode(pi: ExtensionAPI): void {
 		commands.add("agents", agents.command);
 		// A user's narrowing mode change names the running subagents it would stop and asks first.
 		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
-		registerModelsCommand(commands, () => profiles);
+		registerModels(commands, () => profiles, agentTool.collect);
 	}
 	registerSkills(pi);
 	registerUi(pi, isSubagent);

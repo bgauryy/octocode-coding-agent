@@ -84,7 +84,7 @@ export function interruptedText(message: string | undefined): string {
 }
 
 /** The live label's text: the one word the working line also shows while the model reasons. */
-export const THINKING_LABEL = `Thinking${ELLIPSIS}`;
+const THINKING_LABEL = `Thinking${ELLIPSIS}`;
 
 /**
  * `text` with the light band the working line's verb has (`text` colour, peaking toward the accent), or in plain

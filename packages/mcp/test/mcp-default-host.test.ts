@@ -108,9 +108,10 @@ describe("default MCP in the shared host", () => {
 		expect(h.state.servers).toHaveLength(1);
 		expect(h.transports).toHaveLength(1);
 		expect(h.state.findServer("octocode")?.connection?.tools).toHaveLength(9);
-		expect(sections.mcp_servers).toContain("octocode");
-		expect(sections.mcp_servers).toContain("Echo test server.");
-		expect(sections.mcp_servers).toContain("localFetch");
+		expect(sections.mcp_status).toBeUndefined();
+		// The generated file carries the instructions and signatures, in the server's contract section.
+		expect(sections.mcp_contract_octocode).toContain("Echo test server.");
+		expect(sections.mcp_contract_octocode).toContain("localFetch");
 		expect(sections.octocode_mcp).toBeUndefined();
 		expect(await h.call("mcp__octocode__shout", { text: "hello" })).toMatchObject({ content: [{ text: "HELLO" }] });
 		expect(await h.call("mcp__octocode__roots")).toMatchObject({
@@ -152,8 +153,8 @@ describe("default MCP in the shared host", () => {
 		const h = host();
 		await h.start();
 		const sections = await h.prompt();
-		expect(sections.mcp_servers).toContain("fixture");
-		expect(sections.mcp_servers).not.toContain("\u001b");
+		expect(sections.mcp_contract_octocode).toContain("fixture");
+		expect(sections.mcp_contract_octocode).not.toContain("\u001b");
 	});
 	it("returns tool errors and honors cancellation and progress through the common executor", async () => {
 		const h = host();
@@ -193,7 +194,7 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		expect(await h.call("mcp", { intent: "stop", server: "octocode" })).not.toMatchObject({ isError: true });
 		expect(getMcpSessionStatus(h.pi.events)).toMatchObject([{ name: "octocode", state: "stopped" }]);
-		expect((await h.prompt()).mcp_servers).toContain("(stopped)");
+		expect((await h.prompt()).mcp_status).toContain("- mcp__octocode: stopped");
 		expect(h.transports).toHaveLength(1);
 		expect(h.tools.get("mcp__octocode__shout").exposure).toBe("hidden");
 		await h.commands.get("mcp").handler("reconnect octocode", h.ctx);

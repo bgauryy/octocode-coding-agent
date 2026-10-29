@@ -82,7 +82,7 @@ export function stderrTail(transport: StdioTransport | undefined): string | unde
 }
 
 /** A stdio server's stderr as untrusted text (control characters shown as escapes): all of it, and its end. */
-export function stderrReport(transport: StdioTransport | undefined): { text: string; tail: string } | undefined {
+function stderrReport(transport: StdioTransport | undefined): { text: string; tail: string } | undefined {
 	if (!transport) return undefined;
 	const text = visibleControls(transport.stderr).trim();
 	const tail = cutText(text, STDERR_TAIL_CHARS, { chars: true, tail: true });

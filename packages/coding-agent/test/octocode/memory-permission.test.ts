@@ -27,9 +27,14 @@ afterEach(() => {
 
 function memoryTool(mode: PermissionMode) {
 	const fake = fakePi();
-	registerMemory(fake.pi, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(mode) });
+	registerMemory(fake.pi, {
+		commands: new Subcommands(),
+		isSubagent: false,
+		permission: fakePermission(mode, { pi: fake.pi }),
+	});
 	const tool = fake.tools.get("memory");
-	return (
+	/** Runs the tool; `selects` answer the permission dialogs in order, and what is left of them shows how many were asked. */
+	const run = (
 		params: Record<string, unknown>,
 		options: { hasUI?: boolean; selects?: string[]; inputs?: Array<string | undefined> } = {},
 	) => {
@@ -45,22 +50,78 @@ function memoryTool(mode: PermissionMode) {
 			.execute("call", params, undefined, undefined, ctx)
 			.then((result: { content: Array<{ text: string }> }) => result.content[0].text);
 	};
+	return Object.assign(run, { entries: fake.entries });
 }
 
 describe("shared memory", () => {
-	it("saves, changes and deletes a global or pinned memory at once in every mode, with no dialog and no UI", async () => {
+	it("saves a plain project memory at once in every mode, with no dialog and no UI", async () => {
 		for (const mode of ["manual", "workspace", "full"] as const) {
 			const run = memoryTool(mode);
-			expect(await run({ op: "set", title: `Global ${mode}`, scope: "global" }, { hasUI: false })).toMatch(
-				/^Saved M\d+ \(global/,
-			);
-			expect(await run({ op: "set", title: `Pinned ${mode}`, pinned: true }, { hasUI: false })).toMatch(
-				/^Saved M\d+ \(project/,
-			);
+			const selects: string[] = [];
+			expect(await run({ op: "set", title: `Project note ${mode}` }, { selects })).toMatch(/^Saved M\d+ \(project/);
+			expect(await run({ op: "set", title: `Headless note ${mode}` }, { hasUI: false })).toMatch(/^Saved M\d+/);
+			expect(run.entries.map((entry) => entry.data)).toEqual([]);
 		}
-		const run = memoryTool("manual");
-		expect(await run({ op: "set", id: "M1", title: "Changed note" }, { hasUI: false })).toMatch(/^Updated M1/);
-		expect(await run({ op: "delete", id: "M1" }, { hasUI: false })).toMatch(/^Deleted M1/);
+	});
+
+	it.each(["manual", "workspace"] as const)(
+		"asks the user before the agent saves, changes or deletes a global or pinned memory (%s)",
+		async (mode) => {
+			const run = memoryTool(mode);
+			for (const params of [
+				{ op: "set", title: "Global rule", scope: "global" },
+				{ op: "set", title: "Pinned rule", pinned: true },
+			]) {
+				const selects = ["Allow once"];
+				expect(await run(params, { selects })).toMatch(/^Saved M\d+/);
+				expect(selects).toEqual([]);
+			}
+			// A change to a global memory, even of its title only, asks again.
+			const change = ["Allow once"];
+			expect(await run({ op: "set", id: "M1", title: "Global rule changed" }, { selects: change })).toMatch(
+				/^Updated M1/,
+			);
+			expect(change).toEqual([]);
+			const remove = ["Allow once"];
+			expect(await run({ op: "delete", id: "M2" }, { selects: remove })).toMatch(/^Deleted M2/);
+			expect(remove).toEqual([]);
+			expect(run.entries.map((entry) => entry.data)).toEqual(
+				Array.from({ length: 4 }, () => expect.objectContaining({ allowed: true, via: "user" })),
+			);
+		},
+	);
+
+	it("saves nothing when the user denies a global or pinned memory, and says so", async () => {
+		const run = memoryTool("workspace");
+		await expect(run({ op: "set", title: "Injected rule", scope: "global" }, { selects: ["Deny"] })).rejects.toThrow(
+			/user denied/,
+		);
+		await expect(run({ op: "set", title: "Injected pin", pinned: true }, { selects: ["Deny"] })).rejects.toThrow(
+			/user denied/,
+		);
+		expect(await run({ op: "list" })).toBe("No memories yet.");
+	});
+
+	it("refuses a global or pinned memory when no one can be asked, with the reason", async () => {
+		const run = memoryTool("workspace");
+		await expect(run({ op: "set", title: "Headless rule", scope: "global" }, { hasUI: false })).rejects.toThrow(
+			/needs the user's approval .*no one can be asked/,
+		);
+		await expect(run({ op: "set", title: "Headless pin", pinned: true }, { hasUI: false })).rejects.toThrow(
+			/needs the user's approval/,
+		);
+		expect(await run({ op: "list" })).toBe("No memories yet.");
+		expect(run.entries.map((entry) => entry.data)).toEqual([
+			expect.objectContaining({ allowed: false, via: "headless" }),
+			expect.objectContaining({ allowed: false, via: "headless" }),
+		]);
+	});
+
+	it("follows full mode, which allows changes that reach later sessions without a dialog", async () => {
+		const run = memoryTool("full");
+		expect(await run({ op: "set", title: "Full rule", scope: "global" }, { hasUI: false })).toMatch(
+			/^Saved M\d+ \(global/,
+		);
 	});
 
 	it("refuses a global or pinned memory in an untrusted project in every mode, and audits the refusal", async () => {

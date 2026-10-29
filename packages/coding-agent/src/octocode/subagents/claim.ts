@@ -130,6 +130,8 @@ export interface AgentRuns {
 /** What a call asks for: its goal (already checked by `checkGoal`), a profile and model to plan with, and whether its subagents work together. */
 interface AgentParams {
 	goal: string;
+	/** The name of the child a continued run is (`resume`): it keeps it, and with it its saved conversation. */
+	name?: string;
 	profile?: string;
 	model?: string;
 	headless?: boolean;
@@ -206,7 +208,7 @@ export function planRun(
 export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
-	params: Pick<AgentParams, "goal" | "collaborate">,
+	params: Pick<AgentParams, "goal" | "collaborate" | "name">,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
@@ -222,9 +224,12 @@ export function claimRun(
 		teamNote = `\n\n(Started without the team: ${errorMessage(error)}. It cannot message you or its teammates.)`;
 	}
 	const collaborate = parentId !== undefined && params.collaborate === true;
+	if (params.name && runs.running.has(params.name)) throw new Error(`${params.name} is running.`);
 	// A resumed run continues as the same agent: name, role, goal, scratch folder and permission.
 	const identity: Run["identity"] = resumed ?? {
-		id: runs.team.newName([...runs.running.keys(), ...scratchNames(cwd), ...sessionFolderNames(), ...avoid]),
+		id:
+			params.name ??
+			runs.team.newName([...runs.running.keys(), ...scratchNames(cwd), ...sessionFolderNames(), ...avoid]),
 		role: profile?.name ?? GENERAL_PROFILE,
 		goal: params.goal,
 		parentSession: ctx.sessionManager.getSessionId(),

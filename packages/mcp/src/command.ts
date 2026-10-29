@@ -6,16 +6,18 @@ import { reconnect, setEnabled, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
 import { formatMcpConfigLocations, formatMcpTool } from "./inspection.ts";
 import { manage, signInWithUi, toolCatalog } from "./manager.ts";
-import { setExposure } from "./persistence.ts";
+import { saveConfig, setExposure } from "./persistence.ts";
 import { formatStatus } from "./report.ts";
 import { describeState, firstLine, isEnabled, type McpServer } from "./server.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
 import type { McpExtensionState } from "./state.ts";
 import { getMcpSessionStatus } from "./status.ts";
-import { ensureDiscoveryActive } from "./tool-registry.ts";
 import { showMcpManager } from "./ui.ts";
 
-const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp enable|disable <server> [--local], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp login|logout [server], /mcp reconnect [server|all]`;
+/** `/mcp assign` values: every agent's default selection (`defaultActive: true`), or only agents that name the server. */
+const ASSIGNMENTS = ["all", "selected"] as const;
+
+const MCP_USAGE = `Usage: /mcp [list|config], /mcp tools [server] [tool], /mcp enable|disable <server> [--local], /mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [--local], /mcp assign <server> <all|selected> [--local], /mcp login|logout [server], /mcp reconnect [server|all]`;
 
 /** Resolve the server for a subcommand, asking when the name is omitted and ambiguous. */
 async function pickServer(
@@ -84,7 +86,6 @@ async function loginCommand(state: McpExtensionState, server: McpServer, ctx: Ex
 		ctx.ui.notify(failure, failure === "Sign-in cancelled." ? "info" : "error");
 		return;
 	}
-	ensureDiscoveryActive(state, ctx);
 	ctx.ui.notify(`Signed in to MCP server "${name}" (${server.connection?.tools.length ?? 0} tools).`, "info");
 }
 
@@ -93,12 +94,17 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 	const words = prefix.trimStart().split(/\s+/);
 	const [action = "", name = "", value = ""] = words;
 	if (words.length === 1)
-		return ["list", "tools", "config", "enable", "disable", "exposure", "login", "logout", "reconnect"]
+		return ["list", "tools", "config", "enable", "disable", "exposure", "assign", "login", "logout", "reconnect"]
 			.filter((item) => item.startsWith(action))
 			.map((item) => ({ value: `${item} `, label: item }));
 	if (action === "exposure" && words.length === 3)
 		return MCP_EXPOSURES.filter((mode) => mode.startsWith(value)).map((mode) => ({
 			value: `exposure ${name} ${mode}`,
+			label: mode,
+		}));
+	if (action === "assign" && words.length === 3)
+		return ASSIGNMENTS.filter((mode) => mode.startsWith(value)).map((mode) => ({
+			value: `assign ${name} ${mode}`,
 			label: mode,
 		}));
 	if (action === "tools") {
@@ -116,7 +122,10 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 				.map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
 		return null;
 	}
-	if (words.length !== 2 || !["enable", "disable", "exposure", "login", "logout", "reconnect"].includes(action))
+	if (
+		words.length !== 2 ||
+		!["enable", "disable", "exposure", "assign", "login", "logout", "reconnect"].includes(action)
+	)
 		return null;
 	return state.servers
 		.filter(
@@ -124,7 +133,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 				((action !== "login" && action !== "logout") || usesOAuth(candidate)) && candidate.entry.name.startsWith(name),
 		)
 		.map((candidate) => ({
-			value: `${action} ${candidate.entry.name}${action === "exposure" ? " " : ""}`,
+			value: `${action} ${candidate.entry.name}${action === "exposure" || action === "assign" ? " " : ""}`,
 			label: candidate.entry.name,
 			description: describeState(candidate),
 		}));
@@ -163,17 +172,26 @@ function showToolsCommand(state: McpExtensionState, name: string, extra: string[
 		);
 }
 
-/** `/mcp enable|disable <server> [--local]` and `/mcp exposure <server> <mode> [--local]`. */
+/**
+ * `/mcp enable|disable <server> [--local]`, `/mcp exposure <server> <mode> [--local]` and
+ * `/mcp assign <server> <all|selected> [--local]` (`defaultActive`; it decides which sessions start the server, so it
+ * applies from the next session).
+ */
 async function configureCommand(
 	state: McpExtensionState,
-	action: "enable" | "disable" | "exposure",
+	action: "enable" | "disable" | "exposure" | "assign",
 	name: string,
 	extra: string[],
 	ctx: ExtensionCommandContext,
 ): Promise<void> {
-	const mode = action === "exposure" ? extra.shift() : undefined;
+	const mode = action === "exposure" || action === "assign" ? extra.shift() : undefined;
 	const inProject = extra.length === 1 && (extra[0] === "--local" || extra[0] === "-l");
-	if (!name || (extra.length > 0 && !inProject) || (action === "exposure" && !isMcpExposure(mode))) {
+	if (
+		!name ||
+		(extra.length > 0 && !inProject) ||
+		(action === "exposure" && !isMcpExposure(mode)) ||
+		(action === "assign" && !ASSIGNMENTS.some((value) => value === mode))
+	) {
 		ctx.ui.notify(MCP_USAGE, "warning");
 		return;
 	}
@@ -185,10 +203,18 @@ async function configureCommand(
 	const failure =
 		action === "exposure"
 			? setExposure(state, server, mode as McpExposure, inProject)
-			: await state.track(setEnabled(state, server, action === "enable", inProject));
+			: action === "assign"
+				? saveConfig(state, server, { defaultActive: mode === "all" }, inProject)
+				: await state.track(setEnabled(state, server, action === "enable", inProject));
 	if (failure) ctx.ui.notify(failure, "error");
-	else {
-		ensureDiscoveryActive(state, ctx);
+	else if (action === "assign") {
+		ctx.ui.notify(
+			mode === "all"
+				? `${name}: in every agent's default tool selection from the next session.`
+				: `${name}: only agents whose tools name mcp__${name}__ get it, from the next session.`,
+			"info",
+		);
+	} else {
 		const saved = server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
 		ctx.ui.notify(
 			`${name}: ${isEnabled(server) ? "enabled" : "disabled"} · ${describeState(server, false)} · ${exposureOf(server.entry)}. Saved to ${saved}.`,
@@ -208,7 +234,6 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 			await Promise.all(targets.map(async (target) => ({ name: target.name, failure: await target.run() })))
 		).filter((result) => result.failure);
 		if (state.session.signal.aborted) return;
-		ensureDiscoveryActive(state, ctx);
 		ctx.ui.notify(
 			failures.length
 				? `Reconnected ${targets.length - failures.length} of ${targets.length} MCP servers. ${failures.map((result) => `${result.name}: ${result.failure}`).join("; ")}`
@@ -227,7 +252,6 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Ext
 	const failure = await reconnect(server);
 	if (failure) ctx.ui.notify(failure, "error");
 	else {
-		ensureDiscoveryActive(state, ctx);
 		ctx.ui.notify(`Reconnected to MCP server "${server.entry.name}" (${describeState(server)}).`, "info");
 	}
 }
@@ -259,7 +283,7 @@ export function registerMcpCommand(state: McpExtensionState): void {
 				showToolsCommand(state, name, extra, ctx);
 				return;
 			}
-			if (action === "enable" || action === "disable" || action === "exposure") {
+			if (action === "enable" || action === "disable" || action === "exposure" || action === "assign") {
 				await configureCommand(state, action, name, extra, ctx);
 				return;
 			}

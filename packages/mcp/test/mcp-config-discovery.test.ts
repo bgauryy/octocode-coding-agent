@@ -123,7 +123,7 @@ describe("shared MCP discovery", () => {
 		expect(failed.servers[0]).toMatchObject({ source: fallback, config: { command: "fallback" } });
 		expect(failed.servers[0].config.enabled).toBeUndefined();
 		expect(failed.errors).toEqual([
-			expect.stringContaining("an override can only set enabled, exposure, toolExposure"),
+			expect.stringContaining("an override can only set enabled, defaultActive, exposure, toolExposure"),
 		]);
 		writeFileSync(canonical, JSON.stringify({ autoEnableCodemode: true, mcpServers: { tools: { enabled: false } } }));
 	});

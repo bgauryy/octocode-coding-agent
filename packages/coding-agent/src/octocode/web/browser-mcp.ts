@@ -34,7 +34,7 @@ export function browserMcpAsked(key: string): boolean | undefined {
 const CONTROL: Record<string, string> = {
 	script: "Run custom code against the browser?",
 	cookies: "Transfer browser cookies?",
-	"api-replay": "Replay a captured request?",
+	api_replay: "Replay a captured request?",
 };
 
 /**

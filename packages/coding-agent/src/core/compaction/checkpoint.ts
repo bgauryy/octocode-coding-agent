@@ -9,6 +9,14 @@ import { CHARS_PER_TOKEN, charsToTokens, estimateProjectedContextTokens } from "
 
 export class CheckpointPersistenceError extends Error {}
 
+/**
+ * Tokens a compaction summary may take inline: 80% of the reserve, so the reply after it still has room. A longer
+ * summary is saved whole and the context gets a reference to it instead.
+ */
+export function inlineSummaryTokens(reserveTokens: number): number {
+	return Math.floor(reserveTokens * 0.8);
+}
+
 export function persistCheckpointText(text: string, sessionFile?: string): string {
 	if (!sessionFile)
 		throw new CheckpointPersistenceError("Cannot persist the complete checkpoint without a session file.");
@@ -20,6 +28,13 @@ export function persistCheckpointText(text: string, sessionFile?: string): strin
 	} catch (error) {
 		throw new CheckpointPersistenceError(`Cannot persist the complete checkpoint: ${String(error)}`);
 	}
+}
+
+/** The complete text of a checkpoint that was saved to a file and replaced by a reference in the session. */
+export function archivedSummary(details: unknown): string | undefined {
+	if (details === null || typeof details !== "object") return undefined;
+	const archive = (details as { checkpointArchive?: { summary?: unknown } }).checkpointArchive;
+	return typeof archive?.summary === "string" ? archive.summary : undefined;
 }
 
 export function finalizeCompactionResult(
@@ -60,7 +75,7 @@ export function finalizeCompactionResult(
 	};
 	const available = contextWindow - reserveTokens;
 	const summaryBudget = Math.min(
-		reserveTokens > 0 ? Math.floor(reserveTokens * 0.8) : available,
+		reserveTokens > 0 ? inlineSummaryTokens(reserveTokens) : available,
 		available - projectedTokens(""),
 	);
 	if (summaryBudget <= 0) {

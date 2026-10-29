@@ -118,9 +118,7 @@ export interface AgentSessionConfig {
 	defaultToolModifiers?: string[];
 	/**
 	 * Optional allowlist of tool names or patterns (`*` matches any characters). When provided, only
-	 * matching tools are exposed. A non-empty list without `mcp__` entries also keeps MCP tools
-	 * registered for tool_search; only tool_search can declare them. An empty list
-	 * exposes no tools.
+	 * matching tools are exposed, MCP tools included. An empty list exposes no tools.
 	 */
 	allowedToolNames?: string[];
 	/** Optional denylist of tool names or patterns. When provided, matching tools are not exposed. */

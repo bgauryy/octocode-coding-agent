@@ -102,10 +102,10 @@ describe("registered MCP inspection wiring", () => {
 		expect(f.confirm).not.toHaveBeenCalled();
 	});
 
-	it("reports the resolved exposure of an auto tool", async () => {
+	it("reports the exposure of a tool", async () => {
 		const f = setup();
 		configured(f.state);
-		f.state.servers[0].entry.config.exposure = "auto";
+		f.state.servers[0].entry.config.exposure = "direct";
 		const result = await f.inspect("docs", "read");
 		expect(result.details.tool.exposure).toBe("direct");
 		expect(result.content[0].text).toContain("read [direct]");

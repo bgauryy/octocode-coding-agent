@@ -20,8 +20,6 @@ interface PromptInputs {
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
 	canUseAgent?: boolean;
-	/** Compatibility hint; parent/child and teammate communication now share one policy. */
-	collaborate?: boolean;
 	/** Whether a file-writing tool is selected; this does not define the role or restrict shell/MCP effects. */
 	canWrite?: boolean;
 	/** Profile-level read-only role, enforced separately by the permission layer. */
@@ -69,7 +67,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	// instructions and tool descriptions), so this block names none and stays identical before and after the server connects.
 	const research = input.octocode
 		? [
-				`- Use Octocode MCP (\`mcp__octocode__*\`) to check code before you rely on it, here${shell ? " (instead of ls, rg, grep or find in bash)" : ""} and in GitHub or package registries outside this repository (instead of answering from memory). The mcp_servers section routes each question to a tool.`,
+				`- Use Octocode MCP (\`mcp__octocode__*\`) to check code before you rely on it, here${shell ? " (instead of ls, rg, grep or find in bash)" : ""} and in GitHub or package registries outside this repository (instead of answering from memory). Its mcp_contract section routes each question to a tool.`,
 				`- Use \`localFetch\` for ${readOnly ? "files you know" : "a file you will edit"}.${shell && !readOnly ? " Use bash for builds, tests, git and running commands." : ""} If an Octocode tool is unavailable, say so${shell ? " and use permitted bash search (`rg`, `fd`, `sed -n`)" : ""}. A permission refusal is not a reason to retry through another tool.`,
 			]
 		: [
@@ -90,14 +88,14 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 				// The agent tool description owns the mechanics: the parallel limit, background delivery and report files.
 				"- You coordinate your subagents. Use `agent` for bounded work needing separate context; handle small tasks yourself. Start independent tasks together; own user communication, approvals and integration; check reports against acceptance checks.",
 				"- Scale delegation to the task: none for a lookup or small change, one agent for a scoped investigation, two to four for independent parts or a comparison, more only for broad work. Delegate output-heavy triage (a full suite's failures, wide searches) so only the answer reaches your context.",
-				"- Write each task as a task contract (the `task` field lists its parts); children do not see this conversation. Start a child in the background when it may need your decisions: a foreground child's messages reach you only after its report.",
+				"- Start a child in the background when it may need your decisions: a foreground child's messages reach you only after its report.",
 				"- Answer a child's request only within the user's authorization; otherwise ask the user.",
 				"- Set each task's `model` by the reasoning it needs: `small` with low thinking for lookups and mechanical steps, `medium` for scoped implementation or review, and omit `model` (this session's model) for root causes and design. Spend within the user's budget.",
 				"- Keep coupled work in one agent. For disjoint-file parallel work, name owners and shared interfaces in `.octocode/<topic>/contract.md`.",
 				"- Resolve design questions before parallel implementation; review the combined diff.",
 				...(input.browserProfiles?.length
 					? [
-							`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}; start it in the background with the task, URL, required evidence, headless choice and whether follow-ups may come; message that same agent for follow-ups while it stays reachable instead of starting a new one, and tell it to close the browser when done.`,
+							`- Delegate browser interaction to ${input.browserProfiles.map((name) => `\`${name}\``).join(", ")}, which has the browser tools you lack; start it in the background with the task, URL, required evidence, headless choice and whether follow-ups may come; message that same agent for follow-ups while it stays reachable instead of starting a new one, and tell it to close the browser when done.`,
 						]
 					: []),
 				"- For durable results, name a Markdown output path under `.octocode/<topic>/` (or the user/skill destination) in the task and cite it. Scratch is cleared after a week.",
@@ -140,7 +138,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		? [`- Investigate and report; do not modify repository source. ${readOnlyRule}`]
 		: [
 				"- Make the smallest complete change that follows the repository's conventions and existing dependencies. Preserve user changes; include necessary code, tests and docs.",
-				"- Leave the code clean; remove your debug output, unused code and temporary files.",
+				"- Leave the code clean; remove your debug output, unused code and temporary files. Fix dead code, stale docs or duplicate helpers you meet inside the blast radius; propose wider cleanups instead of widening scope.",
 			];
 	const checks = readOnly
 		? []
@@ -160,7 +158,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			"- Ancestor instructions are already loaded. Before working under a subdirectory, read its first available AGENTS.override.md, AGENTS.md or CLAUDE.md; apply deeper instructions within their directory; a deeper file wins over a shallower one, and direct user instructions win over both.",
 			readOnly
 				? "- For code questions: read affected code and callers before concluding; run the deciding check when a read-only one exists."
-				: "- For code changes: read affected code and callers before editing; after editing, run the deciding check (focused test, typecheck or reproduction).",
+				: "- For code changes: read affected code and callers before editing and map the blast radius (callers, exports, config, tests and docs that depend on it); after editing, run the deciding check across it (focused test, typecheck or reproduction).",
 			"- When writing or reviewing tests, prefer observable behavior and public contracts over implementation details. Mock external boundaries; keep internal flows real where feasible. Use focused unit tests when useful; preserve coverage.",
 			...(readOnly
 				? []
@@ -203,12 +201,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 		].join("\n"),
 		octocode_communication: [
 			"# Communication",
-			...(input.canUseAgent !== false
-				? [
-						"- During delegated work, promptly exchange findings, dependencies, blockers and evidence that change another agent's next step. The parent relays scope decisions and integration needs; omit unchanged status updates.",
-					]
-				: []),
-			// A subagent's tools and task already name its teammates; only the main session meets a second coordination system.
+			// The agent tool's message guideline owns when to message; a subagent's tools and task already name its teammates; only the main session meets a second coordination system.
 			...(input.canDelegate && input.canUseAgent !== false
 				? [
 						"- Use `agent` type `external` to reach configured agents in other hosts; connection and prompt permissions still apply.",
@@ -219,11 +212,22 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 			"  - Result or report: give the answer first, evidence (path:line, command result or URL) and limits. Distinguish checks run from checks not run.",
 			"  - Finding: give the location, trigger, impact, verified cause and repair; mark unknowns rather than filling an unsupported template.",
 			"  - Blocker that needs someone else's action: SBAR. Situation, background, assessment, recommendation.",
+			// Only the main session answers the user; the interactive Markdown renderer draws these Mermaid kinds as Unicode
+			// diagrams when they fit the terminal width and shows the source otherwise (`modes/interactive/components/mermaid.ts`).
+			...(input.canDelegate
+				? [
+						"- When a flow, sequence or dependency graph explains the answer better than prose, add a small Mermaid block (`flowchart TD`, `sequenceDiagram` or `stateDiagram-v2`) with short labels; the terminal draws it when it fits.",
+					]
+				: []),
 			...(readOnly
 				? []
-				: [
-						`- After changing files, end with a short summary ${input.canDelegate ? "for the user" : "in your report"}: changed paths, checks and remaining work.`,
-					]),
+				: input.canDelegate
+					? [
+							"- After changing files or other multi-step work, end with a short summary for the user: what was done, changed paths, checks run and the blast radius. Leave nothing open: finish or revert partial edits, stop jobs and agents you started, release locks and close claimed items; name any work left unfinished.",
+						]
+					: [
+							"- After changing files, end with a short summary in your report: changed paths, checks and remaining work.",
+						]),
 		].join("\n"),
 	};
 }

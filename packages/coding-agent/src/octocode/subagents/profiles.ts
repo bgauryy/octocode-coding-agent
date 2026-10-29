@@ -57,8 +57,8 @@ export const CORE_TOOLS = ["file", "agent", "archive"] as const;
  * `skill` loads a listed skill by name, and stays out of requests while the child has none.
  */
 export const DEFAULT_CHILD_TOOLS = ["skill"] as const;
-/** Deferred MCP catalogs need discovery before the child can call their tools directly; `mcp` restarts the child's own servers. */
-export const MCP_ACCESS_TOOLS = ["tool_search", "mcp"] as const;
+/** `mcp` restarts the child's own MCP servers. */
+export const MCP_ACCESS_TOOLS = ["mcp"] as const;
 
 const BUNDLED_DIR = getSubagentsDir();
 
@@ -250,11 +250,6 @@ export function profileSelectsTool(
 			? matchesTool(selected, name)
 			: applyToolModifiers(defaults, selected ?? []).includes(name))
 	);
-}
-
-/** Whether the profile can use browser tools: the native `browser` tool or any browser MCP server tool (`mcp__browser__*`). */
-export function profileSelectsBrowser(profile: AgentProfile | undefined): boolean {
-	return profileSelectsTool(profile, "browser", []) || profileSelectsTool(profile, "mcp__browser__open", []);
 }
 
 /** The workspace classes exposed by the child's native selection and Octocode's direct extension tools. */

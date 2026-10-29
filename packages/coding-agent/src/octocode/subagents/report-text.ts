@@ -29,7 +29,7 @@ export const foregroundExtras = (details: RunDetails, failed: boolean): string =
 
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
 export const FAILED_NEXT = "Retry with a narrower task or do the work yourself.";
-export const PARTIAL_UNVERIFIED = " The partial answer is unverified.";
+const PARTIAL_UNVERIFIED = " The partial answer is unverified.";
 
 /**
  * A provider refusing the credential or the model (an expired key, no access, an unknown id): retrying the same route

@@ -1,4 +1,13 @@
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -67,6 +76,34 @@ describe("session repair after a torn final record", () => {
 		expect(() => repairSessionFile(file)).toThrow(/no complete record/);
 		expect(readFileSync(file, "utf8")).toBe('{"type":"session","id":"a');
 		expect(existsSync(`${file}.bak`)).toBe(false);
+	});
+
+	it("keeps the transcript in memory when the first write failed before the file existed", () => {
+		const sessionDir = join(dir, "sessions");
+		mkdirSync(sessionDir);
+		const manager = SessionManager.create(dir, sessionDir);
+		const sessionId = manager.getSessionId();
+		const modelEntry = manager.appendModelChange("p", "m");
+		chmodSync(sessionDir, 0o500);
+		try {
+			expect(() => manager.appendMessage({ role: "user", content: "lost?", timestamp: 1 })).toThrow(
+				/persistence failed/,
+			);
+		} finally {
+			chmodSync(sessionDir, 0o700);
+		}
+		const file = manager.getSessionFile()!;
+		expect(existsSync(file)).toBe(false);
+
+		expect(manager.recover()).toBeUndefined();
+
+		expect(manager.getSessionId()).toBe(sessionId);
+		expect(manager.getSessionFile()).toBe(file);
+		expect(manager.getEntry(modelEntry)).toBeDefined();
+		const id = manager.appendMessage({ role: "user", content: "again", timestamp: 2 });
+		const reopened = SessionManager.open(file, sessionDir);
+		expect(reopened.getSessionId()).toBe(sessionId);
+		expect(reopened.getEntries().map((entry) => entry.id)).toEqual([modelEntry, id]);
 	});
 
 	it("refuses to recover an in-memory session", () => {

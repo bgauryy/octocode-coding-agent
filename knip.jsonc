@@ -29,10 +29,19 @@
 			],
 		},
 		"packages/coding-agent": {
-			// The native MCP launcher resolves this package name from package.json at runtime.
-			"ignoreDependencies": ["octocode-mcp"],
+			// Resolved by name or path at runtime: the native MCP launcher and the sibling `octocode` CLI from package.json,
+			// the browser preset's package (`BROWSER_PACKAGE`), the native binary through its resolver (`config.ts`), and the
+			// private ACP and MCP workspaces, whose sources are compiled into this package.
+			"ignoreDependencies": [
+				"octocode-mcp",
+				"octocode",
+				"@octocodeai/octocode-chrome-devtools",
+				"@octocodeai/octocode-native",
+				"@octocodeai/octocode-acp",
+				"@octocodeai/octocode-mcp",
+			],
 			// Platform commands and optional test prerequisites, not npm packages.
-			"ignoreBinaries": ["perl", "pwsh", "where", "trash"],
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv"],
 			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
 			"entry": [
 				"src/index.ts",
@@ -45,6 +54,8 @@
 				"scripts/export-agent-prompts.ts",
 				"examples/extensions/*.{ts,tsx}",
 				"examples/extensions/*/index.ts",
+				// Bundled skill scripts the agent runs with node by path.
+				"src/octocode/native-skills/*/scripts/*.mjs",
 			],
 			// Vendored scripts are copied into exports, not imported as application modules.
 			"ignore": ["src/core/export-html/vendor/**"],

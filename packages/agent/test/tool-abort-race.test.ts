@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { runToolCall } from "../src/agent-loop.ts";
+import { ABANDONED_MESSAGE } from "../src/agent-loop/tool-call.ts";
 import type { AgentTool, AgentToolResult } from "../src/types.ts";
 
 const assistantMessage = { role: "assistant", content: [] } as unknown as AssistantMessage;
@@ -21,7 +22,7 @@ describe("aborting a running tool", () => {
 		const outcome = await runToolCall(call, { tools: [tool], assistantMessage, context, signal: controller.signal });
 		expect(Date.now() - startedAt).toBeLessThan(250);
 		expect(outcome.isError).toBe(true);
-		expect(outcome.result.content).toEqual([{ type: "text", text: "Operation aborted" }]);
+		expect(outcome.result.content).toEqual([{ type: "text", text: ABANDONED_MESSAGE }]);
 	});
 
 	it("ignores late updates, results and rejections from the abandoned tool without unhandled rejections", async () => {
@@ -48,7 +49,7 @@ describe("aborting a running tool", () => {
 				signal: controller.signal,
 				onUpdate: (update) => void updates.push(update),
 			});
-			expect(outcome.result.content).toEqual([{ type: "text", text: "Operation aborted" }]);
+			expect(outcome.result.content).toEqual([{ type: "text", text: ABANDONED_MESSAGE }]);
 			await new Promise((resolve) => setTimeout(resolve, 250));
 			expect(updates).toEqual([]);
 			expect(unhandled).toEqual([]);

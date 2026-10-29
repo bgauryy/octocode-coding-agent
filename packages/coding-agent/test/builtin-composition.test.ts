@@ -1,13 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectConfig } from "../src/cli/config-selector.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import type { InlineExtension } from "../src/core/extensions/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createToolSearchExtension } from "../src/core/tools/tool-search.ts";
 import { main } from "../src/main.ts";
 import { handleConfigCommand } from "../src/package-manager-cli/config-command.ts";
 
@@ -49,11 +49,7 @@ describe("built-in composition", () => {
 		expect(options).toBeDefined();
 		for (const scope of ["global", "project"] as const) {
 			const builtins = options.resolvedPaths[scope].extensions.filter((item) => item.path.startsWith("builtin:"));
-			expect(builtins.map((item) => item.path).sort()).toEqual([
-				"builtin:llama.cpp",
-				"builtin:mcp",
-				"builtin:tool-search",
-			]);
+			expect(builtins.map((item) => item.path).sort()).toEqual(["builtin:llama.cpp", "builtin:mcp"]);
 			expect(builtins.find((item) => item.path === "builtin:mcp")?.enabled).toBe(false);
 		}
 	});
@@ -79,7 +75,7 @@ describe("built-in composition", () => {
 		const loader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
-			settingsManager: SettingsManager.inMemory({ extensions: ["-builtin:llama.cpp", "-builtin:tool-search"] }),
+			settingsManager: SettingsManager.inMemory({ extensions: ["-builtin:llama.cpp"] }),
 			extensionFactories: [{ name: "mcp", builtin: true, factory: replacement }],
 		});
 		await loader.reload();
@@ -91,13 +87,22 @@ describe("built-in composition", () => {
 		expect(replacement).toHaveBeenCalledTimes(1);
 	});
 
-	it("allows explicit discovery without native defaults and preserves inline factory order", async () => {
+	it("loads inline factories in order without native defaults", async () => {
 		const calls: string[] = [];
 		const extensionFactories: InlineExtension[] = [
 			() => {
 				calls.push("first");
 			},
-			createToolSearchExtension(),
+			(pi) => {
+				pi.registerTool({
+					name: "probe",
+					label: "Probe",
+					description: "Test tool.",
+					parameters: Type.Object({}),
+					defaultActive: false,
+					execute: async () => ({ content: [], details: {} }),
+				});
+			},
 			() => {
 				calls.push("last");
 			},
@@ -114,9 +119,9 @@ describe("built-in composition", () => {
 		expect(errors).toEqual([]);
 		expect(calls).toEqual(["first", "last"]);
 		expect(extensions.some((extension) => extension.path.startsWith("builtin:"))).toBe(false);
-		const discovery = extensions.flatMap((extension) => [...extension.tools.values()]);
-		expect(discovery).toHaveLength(1);
-		expect(discovery[0]?.definition.name).toBe("tool_search");
-		expect(discovery[0]?.definition.defaultActive).toBe(false);
+		const tools = extensions.flatMap((extension) => [...extension.tools.values()]);
+		expect(tools).toHaveLength(1);
+		expect(tools[0]?.definition.name).toBe("probe");
+		expect(tools[0]?.definition.defaultActive).toBe(false);
 	});
 });

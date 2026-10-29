@@ -6,7 +6,6 @@ import { getBuiltinProviders, getBuiltinModels } from "@octocodeai/octocode-ai/p
 import { loadMcpConfig } from "../../../mcp/src/config.ts";
 import { MCP_EXPOSURES, MCP_MANAGE_TOOL_NAME } from "../../../mcp/src/servers.ts";
 import { ProjectTrustStore } from "../core/trust-manager.ts";
-import { TOOL_SEARCH_TOOL_NAME } from "../core/tools/tool-search.ts";
 import { getNativeToolNames } from "../octocode/permission/native-tools.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { VALID_THINKING_LEVELS } from "./args.ts";
@@ -128,7 +127,7 @@ const textFlags = new Set([
 	"--timeout",
 	"--min-expiry",
 ]);
-const tools = [...getNativeToolNames(), MCP_MANAGE_TOOL_NAME, TOOL_SEARCH_TOOL_NAME];
+const tools = [...getNativeToolNames(), MCP_MANAGE_TOOL_NAME];
 
 function fileValues(prefix: string, cwd: string): string[] {
 	const slash = prefix.lastIndexOf("/");

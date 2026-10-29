@@ -215,6 +215,6 @@ ${chalk.bold("Built-in Tool Names:")}
   askUser    - Ask structured questions
 
 Tool availability follows session mode and selection. Enabled MCP servers provide
-additional tools; mcp manages servers and tool_search discovers deferred tools.
+additional tools; mcp manages servers.
 `);
 }

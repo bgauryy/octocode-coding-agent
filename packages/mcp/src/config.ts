@@ -5,7 +5,7 @@
  * paths. Each uses the `mcpServers` shape shared by other MCP clients. Later entries replace earlier
  * transports with the same namespace; conflicting spellings within one file are refused.
  *
- * An entry without `command`, `url`, or `type` overrides only `enabled`, `exposure`, and
+ * An entry without `command`, `url`, or `type` overrides only `enabled`, `defaultActive`, `exposure`, and
  * `toolExposure` of an earlier server with the same namespace, for example to turn it off in one project:
  * `{ "mcpServers": { "internal-tools": { "enabled": false } } }`. The rest of the global entry is kept,
  * including credentials the project could not set itself.
@@ -54,7 +54,7 @@ export interface McpServerEntry {
 	 * `pi.registerMcpServer()`. Changes to extension servers are not saved.
 	 */
 	scope?: "global" | "project" | "extension" | "default";
-	/** Latest `mcp.json` overriding this server's `enabled`, `exposure`, or `toolExposure`. */
+	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure`, or `toolExposure`. */
 	override?: string;
 	overrideScope?: "global" | "project";
 }
@@ -68,7 +68,7 @@ export interface LoadedMcpConfig {
 	projectConfig?: string;
 }
 
-const OVERRIDE_KEYS = ["enabled", "exposure", "toolExposure"];
+const OVERRIDE_KEYS = ["enabled", "defaultActive", "exposure", "toolExposure"];
 
 /** Whether an entry overrides a server defined elsewhere instead of defining one. */
 function isOverride(value: Record<string, unknown>): boolean {
@@ -167,9 +167,13 @@ export function loadMcpConfig(options: {
 	};
 }
 
-/** Settings `/mcp` changes. `enabled: true` and `exposure: "direct"` are the defaults and remove the key. */
+/**
+ * Settings `/mcp` changes. `enabled: true`, `defaultActive: true` and `exposure: "direct"` are the defaults and remove
+ * the key.
+ */
 export interface McpServerConfigPatch {
 	enabled?: boolean;
+	defaultActive?: boolean;
 	exposure?: McpExposure;
 }
 
@@ -179,13 +183,17 @@ export interface McpServerConfigPatch {
  * server's.
  */
 export function applyMcpServerPatch(
-	server: { enabled?: unknown; exposure?: unknown },
+	server: { enabled?: unknown; defaultActive?: unknown; exposure?: unknown },
 	patch: McpServerConfigPatch,
 	keepDefaults: boolean,
 ): void {
 	if (patch.enabled !== undefined) {
 		if (patch.enabled && !keepDefaults) delete server.enabled;
 		else server.enabled = patch.enabled;
+	}
+	if (patch.defaultActive !== undefined) {
+		if (patch.defaultActive && !keepDefaults) delete server.defaultActive;
+		else server.defaultActive = patch.defaultActive;
 	}
 	if (patch.exposure !== undefined) {
 		if (patch.exposure === DEFAULT_MCP_EXPOSURE && !keepDefaults) delete server.exposure;

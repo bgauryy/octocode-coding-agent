@@ -10,6 +10,7 @@ import { RESUME_MESSAGE_TYPE, RUNNING_WORK_TYPE, registerSessions } from "../../
 import * as sessionStore from "../../src/octocode/sessions/store.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { describeWork, unreportedWork } from "../../src/octocode/sessions/work.ts";
+import { pendingReportsDir, savePendingReport } from "../../src/octocode/subagents/handoff/pending.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
@@ -123,7 +124,7 @@ describe("session extras", () => {
 		});
 		// A subagent's usage rides its `agent` tool result: it counts, as in the footer.
 		// A background subagent's report carries its run's usage in `details.usage`: it counts too.
-		const { fire, ctx, start, id } = setup({
+		const { fire, ctx, start, id, file } = setup({
 			entries: [
 				{ type: "message", id: "a0", message: { role: "assistant", usage: usage(0.25, 15) } },
 				{ type: "message", id: "t0", message: { role: "toolResult", usage: usage(1, 100) } },
@@ -146,6 +147,7 @@ describe("session extras", () => {
 			pid: process.pid,
 			pid_started: processStartTime(process.pid) ?? null,
 			unpriced: 0,
+			dir: path.dirname(file),
 		});
 		// Totals are read once at start, then each reply adds its usage: agent_end does not rescan the session.
 		await fire("message_end", { type: "message_end", message: { role: "assistant", usage: usage(0.5, 25) } }, ctx);
@@ -209,11 +211,14 @@ describe("session extras", () => {
 			const custom = setup({ id: "sess-custom" });
 			await custom.start();
 			expect(custom.index().sessionDirs()).toEqual([path.dirname(custom.file)]);
+			// Each session records the dir it runs from: the sweep keeps it while that dir cannot be read.
+			expect(custom.index().get("sess-custom")?.dir).toBe(path.dirname(custom.file));
 			const plain = setup({ id: "sess-default" });
 			const defaultDir = path.join(process.env.OCTOCODE_CODING_AGENT_DIR, "sessions", "--project--");
 			Object.assign(plain.ctx.sessionManager, { getSessionDir: () => defaultDir });
 			await plain.start();
 			expect(plain.index().sessionDirs()).toEqual([path.dirname(custom.file)]);
+			expect(plain.index().get("sess-default")?.dir).toBe(defaultDir);
 		} finally {
 			if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
 			else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
@@ -561,6 +566,27 @@ describe("resume brief", () => {
 		// A log the retention sweep removed is not offered.
 		fs.rmSync(log);
 		expect(describeWork(unreportedWork(entries)[0])).toBe("bash-3 (`yarn test`, log deleted)");
+	});
+
+	it("does not call a subagent stopped without a report when its report is saved for this session's start", async () => {
+		const log = path.join(tmp(), "bash-3-1700000000000.log");
+		fs.writeFileSync(log, "partial\n");
+		const host = setup({
+			id: "sess-late",
+			entries: [...lastActive(5 * 60_000), ...backgroundWork(log, ago(5 * 60_000))],
+		});
+		// general-ab12 finished after the earlier process ended: its report waits for this start (subagents' LateReports).
+		savePendingReport(pendingReportsDir("sess-late"), "general-ab12", {
+			content: "done",
+			details: { id: "general-ab12", status: "done" } as never,
+			wake: true,
+		});
+		await host.start("resume");
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { content: string };
+		};
+		expect(result.message.content).toMatch(/without a report: .*bash-3 \(.*general-done/);
+		expect(result.message.content).not.toContain("general-ab12");
 	});
 
 	it("formats short durations", () => {

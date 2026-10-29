@@ -18,7 +18,7 @@ export const AGENT_APPLICATION_ID = 0x4f635067;
 
 /**
  * Sessions (`pid_started`: the process start time, so a reused pid is not taken for the session; `unpriced`: part of
- * its usage came from a model without pricing), the backlog (`goal`: what done means; `started_at`: when it was last
+ * its usage came from a model without pricing; `dir`: the session dir it last ran from, null in older rows), the backlog (`goal`: what done means; `started_at`: when it was last
  * claimed; `from_item`: the row id of the item it came from, cleared by the store when that item is removed;
  * `paths` and `evidence`: one entry per line, so a substring search over the column finds a path or a fact, and
  * `why` and `plan`: free text) and its
@@ -31,7 +31,7 @@ const SCHEMA = `
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY, branch TEXT, head TEXT,
   cost REAL NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0, files_changed INTEGER NOT NULL DEFAULT 0, pid INTEGER,
-  pid_started TEXT, unpriced INTEGER NOT NULL DEFAULT 0);
+  pid_started TEXT, unpriced INTEGER NOT NULL DEFAULT 0, dir TEXT);
 
 CREATE TABLE backlog (
   id INTEGER PRIMARY KEY AUTOINCREMENT, repo_key TEXT NOT NULL, seq INTEGER NOT NULL,

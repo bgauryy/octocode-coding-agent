@@ -6,7 +6,8 @@ import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { noticeText, NOTICE_TYPE, RESULT_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { noticeText, NOTICE_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
+import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
 import { fakePi } from "./fake-pi.ts";
 import { tmp } from "./helpers.ts";
@@ -48,7 +49,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		expect(notices).toHaveLength(1);
 		expect(notices[0].options).toEqual({ triggerTurn: false, deliverAs: "steer" });
 		expect(notices[0].message.display).toBe(false);
-		const reports = f.sent.filter(({ message }) => message.customType === RESULT_TYPE);
+		const reports = f.sent.filter(({ message }) => message.customType === AGENT_RESULT_TYPE);
 		expect(reports.map(({ options }) => options.deliverAs)).toEqual(["followUp", "followUp"]);
 		queue.persist();
 		idle = true;
@@ -60,7 +61,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => true);
 		queue.add(report("a"));
 		queue.flush();
-		expect(f.sent.map(({ message }) => message.customType)).toEqual([RESULT_TYPE]);
+		expect(f.sent.map(({ message }) => message.customType)).toEqual([AGENT_RESULT_TYPE]);
 		queue.persist();
 	});
 
@@ -111,7 +112,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			// Then the full report was delivered as before, once.
 			await harness.session.agent.waitForIdle();
 			const transcript = fs.readFileSync(manager.getSessionFile()!, "utf8");
-			expect(transcript.split(RESULT_TYPE).length - 1).toBe(1);
+			expect(transcript.split(AGENT_RESULT_TYPE).length - 1).toBe(1);
 			expect(transcript).toContain(NOTICE_TYPE);
 		} finally {
 			queue.persist();

@@ -77,6 +77,7 @@ describe("unified MCP slash management", () => {
 			"enable",
 			"disable",
 			"exposure",
+			"assign",
 			"login",
 			"logout",
 			"reconnect",

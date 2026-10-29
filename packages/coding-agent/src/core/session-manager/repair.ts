@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, fstatSync, openSync, readSync, truncateSync } from "fs";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, openSync, readSync, truncateSync } from "fs";
 import { resolvePath } from "../../utils/paths.ts";
 import { withSessionFileLock } from "./shared-file.ts";
 
@@ -16,6 +16,13 @@ export interface SessionRepair {
 function backupPath(file: string): string {
 	let backup = `${file}.bak`;
 	for (let n = 1; existsSync(backup); n++) backup = `${file}.${n}.bak`;
+	return backup;
+}
+
+/** Copy the file as it is to the first free backup name and return that name; an existing backup is never replaced. */
+export function backupSessionFile(file: string): string {
+	const backup = backupPath(file);
+	copyFileSync(file, backup, constants.COPYFILE_EXCL);
 	return backup;
 }
 
@@ -52,8 +59,7 @@ export function repairSessionFile(sessionFile: string): SessionRepair | undefine
 			closeSync(fd);
 		}
 		if (keep === 0) throw new Error(`Session file has no complete record to keep: ${file}`);
-		const backup = backupPath(file);
-		copyFileSync(file, backup);
+		const backup = backupSessionFile(file);
 		truncateSync(file, keep);
 		return { file, backup, removedBytes: size - keep };
 	});

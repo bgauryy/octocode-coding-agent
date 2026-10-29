@@ -545,6 +545,25 @@ describe("AgentSessionRuntime characterization", () => {
 		await expect(runtime.fork("missing-entry")).rejects.toThrow("Invalid entry ID for forking");
 	});
 
+	it("keeps a resumed session's cwd override when forking it", async () => {
+		const { runtime } = await createRuntimeForTest(() => {});
+		await runtime.session.prompt("hello");
+		const sessionFile = runtime.session.sessionFile!;
+		const movedDir = join(tmpdir(), `pi-runtime-moved-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(movedDir, { recursive: true });
+		cleanups.push(() => rmSync(movedDir, { recursive: true, force: true }));
+
+		await runtime.switchSession(sessionFile, { cwdOverride: movedDir });
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(movedDir));
+		await runtime.fork(runtime.session.sessionManager.getLeafId()!, { position: "at" });
+
+		expect(runtime.session.sessionFile).not.toBe(sessionFile);
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(movedDir));
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(movedDir));
+		const header = JSON.parse(readFileSync(runtime.session.sessionFile!, "utf8").split("\n")[0]);
+		expect(realpathSync(header.cwd)).toBe(realpathSync(movedDir));
+	});
+
 	it("updates the runtime session cwd on cross-cwd session replacement", async () => {
 		const firstDir = join(tmpdir(), `pi-runtime-cwd-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		const secondDir = join(tmpdir(), `pi-runtime-cwd-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);

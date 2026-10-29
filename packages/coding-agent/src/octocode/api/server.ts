@@ -185,14 +185,14 @@ export class ApiServer {
 		if (req.method === "GET" && url.pathname === "/health") return reply(200, { ok: true });
 		if (req.method !== "POST" || url.pathname !== "/rpc")
 			return reply(404, failure(null, ERR.methodNotFound, "Use POST /rpc, GET /events or GET /health"));
-		let body = "";
+		const chunks: Buffer[] = [];
 		let bytes = 0;
 		for await (const chunk of req as AsyncIterable<Buffer>) {
-			body += chunk.toString("utf8");
 			bytes += chunk.length;
 			if (bytes > MAX_FRAME_BYTES) return reply(413, failure(null, ERR.invalidRequest, "Body too large"));
+			chunks.push(chunk);
 		}
-		const parsed = parseRequest(body);
+		const parsed = parseRequest(Buffer.concat(chunks, bytes).toString("utf8"));
 		if (isResponse(parsed)) return reply(400, parsed);
 		// Event streaming over HTTP is GET /events; a subscription needs a connection that outlives the request.
 		const response = await answer(parsed, this.dispatch, {});

@@ -43,7 +43,6 @@ import type {
 	ResourceLoaderReloadOptions,
 } from "./resource-loader/types.ts";
 
-export { isBuiltinExtension } from "./resource-loader/extension-sets.ts";
 export { loadProjectContextFiles } from "./resource-loader/context-files.ts";
 export type {
 	DefaultResourceLoaderOptions,

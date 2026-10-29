@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SessionEntry } from "../../core/session-manager.ts";
-import { JOB_TYPE } from "../shared/messages.ts";
+import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../shared/format.ts";
@@ -81,11 +81,24 @@ function savedPaths(text: string): string[] {
 	return [...text.matchAll(savedPathPattern(root))].flatMap((match) => resolveSaved(match[0], root) ?? []);
 }
 
-/** The message a branch entry adds to the context, with a custom message's text kept (a job report names its log there). */
+/**
+ * The saved conversation of the subagent run `message` records (a finished `agent` result or a background report): its
+ * transcript and its archive folder, so the parent can still open them once the report is summarized away.
+ */
+function childSessionPaths(message: Record<string, unknown>): string[] {
+	const run =
+		(message.role === "toolResult" && message.toolName === "agent") ||
+		(message.role === "custom" && message.customType === AGENT_RESULT_TYPE);
+	const session = run && isRecord(message.details) ? message.details.session : undefined;
+	if (!isRecord(session)) return [];
+	return [session.file, session.archive].filter((file): file is string => typeof file === "string");
+}
+
+/** The message a branch entry adds to the context, with a custom message's text and details kept (a job report names its log there, a subagent report its transcript). */
 function branchMessage(entry: SessionEntry): unknown {
 	if (entry.type === "message") return entry.message;
 	return entry.type === "custom_message"
-		? { role: "custom", customType: entry.customType, content: entry.content }
+		? { role: "custom", customType: entry.customType, content: entry.content, details: entry.details }
 		: undefined;
 }
 
@@ -135,7 +148,8 @@ export function carriedSavedResults(branch: readonly SessionEntry[]): string[] {
 
 /**
  * Each file saved from the summarized `messages`, once: those `carried` from the earlier summary that are still on disk
- * (the session sweep removes old ones), then the paths a tool result or job report names, then the file `cleared` (tool call id → saved copy, `clearedResults`) holds for a result that was cleared.
+ * (the session sweep removes old ones), then a subagent run's saved conversation and the paths a tool result or job report
+ * names, then the file `cleared` (tool call id → saved copy, `clearedResults`) holds for a result that was cleared.
  */
 export function savedResultPaths(
 	messages: readonly unknown[],
@@ -144,10 +158,12 @@ export function savedResultPaths(
 ): string[] {
 	const found = new Set(carried.filter((file) => fs.existsSync(file)));
 	for (const message of messages) {
+		if (!isRecord(message)) continue;
+		for (const file of childSessionPaths(message)) if (fs.existsSync(file)) found.add(file);
 		// A finished background job's report names its log (and the older part after a rotation) like a result does.
-		if (isRecord(message) && message.role === "custom" && message.customType === JOB_TYPE)
+		if (message.role === "custom" && message.customType === JOB_TYPE)
 			for (const file of savedPaths(contentText(message.content))) found.add(file);
-		if (!isRecord(message) || message.role !== "toolResult") continue;
+		if (message.role !== "toolResult") continue;
 		for (const file of savedPaths(contentText(message.content))) found.add(file);
 		const copy = cleared.get(String(message.toolCallId));
 		if (copy !== undefined) for (const file of savedPaths(copy)) found.add(file);
@@ -166,6 +182,6 @@ export function savedResultsBlock(files: readonly string[]): string {
 	const list = lines.join("\n");
 	const spilled = list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, "saved-results") : undefined;
 	if (spilled === undefined)
-		return `\n\n${OPEN}\nTool results this summary leaves out are saved whole in these files; read or search them:\n${list}\n${CLOSE}`;
-	return `\n\n<saved-results count="${files.length}">\nTool results this summary leaves out are saved whole in ${files.length} files, listed one per line in ${shortPath(spilled)}; read or search that list for the one you need.\n${CLOSE}`;
+		return `\n\n${OPEN}\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${list}\n${CLOSE}`;
+	return `\n\n<saved-results count="${files.length}">\nTool results and subagent conversations this summary leaves out are saved whole in ${files.length} files, listed one per line in ${shortPath(spilled)}; read or search that list for the one you need.\n${CLOSE}`;
 }

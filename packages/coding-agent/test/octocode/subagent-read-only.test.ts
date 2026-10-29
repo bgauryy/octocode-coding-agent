@@ -5,7 +5,7 @@ import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakePi } from "./fake-pi.ts";
-import { tmp } from "./helpers.ts";
+import { tmp, allSections } from "./helpers.ts";
 
 /**
  * A reviewer or researcher keeps `file` for its own reports, so tool availability cannot tell it is read-only: the
@@ -41,11 +41,12 @@ describe("read-only subagent roles", () => {
 			const event = {
 				systemPromptOptions: {
 					sections: {} as Record<string, string>,
+					baseSections: {} as Record<string, string>,
 					selectedTools: ["file", "agent", "archive", "bash"],
 				},
 			};
 			await fake.emit("before_agent_start", event, {});
-			return Object.values(event.systemPromptOptions.sections).join("\n");
+			return Object.values(allSections(event)).join("\n");
 		};
 		const reviewer = await policy(true);
 		expect(reviewer).toContain("Investigate and report; do not modify repository source.");
@@ -61,10 +62,14 @@ describe("read-only subagent roles", () => {
 				profiles: () => new Map(),
 			});
 			const event = {
-				systemPromptOptions: { sections: {} as Record<string, string>, selectedTools },
+				systemPromptOptions: {
+					sections: {} as Record<string, string>,
+					baseSections: {} as Record<string, string>,
+					selectedTools,
+				},
 			};
 			await fake.emit("before_agent_start", event, {});
-			const prompt = Object.values(event.systemPromptOptions.sections).join("\n\n");
+			const prompt = Object.values(allSections(event)).join("\n\n");
 			expect(prompt).toContain("Make the smallest complete change");
 			expect(prompt).not.toContain("Investigate and report; do not modify repository source");
 			expect(prompt).not.toContain("Run only read-only commands");

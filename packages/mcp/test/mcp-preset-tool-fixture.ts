@@ -1,10 +1,10 @@
 import type { CallToolResult, ProgressNotification, Tool } from "../src/client/index.ts";
 import type { ToolDefinition } from "../../coding-agent/src/core/extensions/index.ts";
 import { defineOctocodeTool, octocodeToolName } from "../src/presets/octocode/tools.ts";
-import { OCTOCODE_SERVER, isDirectResearchTool } from "../src/presets/octocode/names.ts";
+import { OCTOCODE_SERVER } from "../src/presets/octocode/names.ts";
 /** What the extension registers a server's tool as. */
 interface ToolBinding {
-	exposure?: "direct" | "deferred";
+	exposure?: "direct" | "hidden";
 	/** The tools' namespace: the server's name and its instructions. */
 	namespace: NonNullable<ToolDefinition["namespace"]>;
 	call(
@@ -21,7 +21,7 @@ export function octocodeToolDefinition(tool: Tool, binding: ToolBinding) {
 		server: OCTOCODE_SERVER,
 		tool,
 		name: octocodeToolName(tool.name),
-		exposure: isDirectResearchTool(octocodeToolName(tool.name)) ? "direct" : (binding.exposure ?? "direct"),
+		exposure: binding.exposure ?? "direct",
 		namespace: binding.namespace,
 		timeoutMs: 60_000,
 		getClient: async () => ({

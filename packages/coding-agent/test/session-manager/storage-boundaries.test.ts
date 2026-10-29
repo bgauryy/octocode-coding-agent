@@ -53,6 +53,43 @@ describe("session storage boundaries", () => {
 		expect(readFileSync(source, "utf8")).toBe(original);
 		expect(SessionManager.open(fork.getSessionFile()!).getBranch()).toHaveLength(2);
 	});
+	it("keeps the exact original bytes, malformed lines included, when a legacy migration rewrites the file", () => {
+		const file = join(dir, "legacy-malformed.jsonl");
+		const original = [
+			JSON.stringify({ type: "session", id: "legacy", timestamp: "2025-01-01T00:00:00Z", cwd: dir }),
+			JSON.stringify({ type: "message", timestamp: "t1", message: { role: "user", content: "first", timestamp: 1 } }),
+			'{"type":"message","message":{"role":"user","content":"hand-edited',
+			JSON.stringify({ type: "message", timestamp: "t2", message: { role: "user", content: "second", timestamp: 2 } }),
+			"",
+		].join("\n");
+		writeFileSync(file, original);
+		const manager = SessionManager.open(file, dir);
+		expect(manager.getHeader()?.version).toBe(3);
+		expect(readFileSync(`${file}.bak`, "utf8")).toBe(original);
+		manager.appendMessage({ role: "user", content: "third", timestamp: 3 });
+		expect(SessionManager.open(file, dir).buildSessionContext().messages).toHaveLength(3);
+		expect(fs.existsSync(`${file}.1.bak`)).toBe(false);
+	});
+
+	it("leaves no partial fork when copying the source fails midway", () => {
+		const manager = SessionManager.create(dir, dir);
+		manager.appendMessage({ role: "user", content: "first", timestamp: 1 });
+		manager.appendMessage({ role: "user", content: "poison", timestamp: 2 });
+		const target = join(dir, "forks");
+		const stringify = JSON.stringify;
+		const spy = vi.spyOn(JSON, "stringify").mockImplementation((value, ...rest) => {
+			if ((value as { message?: { content?: unknown } } | null)?.message?.content === "poison")
+				throw new Error("serialize failure");
+			return stringify(value, ...(rest as [never]));
+		});
+		try {
+			expect(() => SessionManager.forkFrom(manager.getSessionFile()!, dir, target)).toThrow("serialize failure");
+		} finally {
+			spy.mockRestore();
+		}
+		expect(fs.readdirSync(target)).toEqual([]);
+	});
+
 	it("keeps a resumable transcript when replacing a session file fails", () => {
 		const manager = SessionManager.create(dir, dir);
 		manager.appendMessage({ role: "user", content: "keep this", timestamp: 1 });

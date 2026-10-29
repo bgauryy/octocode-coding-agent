@@ -1,6 +1,6 @@
 /**
- * Registers configured MCP servers and their native tools. Direct and automatic catalogs are
- * awaited before the first prompt; deferred discovery waits only for the servers it reaches.
+ * Registers configured MCP servers and their native tools. Servers the session's tool selection reaches are started,
+ * and those with declared tools are awaited before the first prompt.
  */
 
 import type { ExtensionAPI, ExtensionFactory } from "../../coding-agent/src/core/extensions/types.ts";

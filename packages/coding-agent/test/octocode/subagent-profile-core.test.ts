@@ -37,7 +37,7 @@ describe("linger front matter", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		expect(browser.linger).toBe(900);
 		const tools = allowed(browser.tools);
-		expect(tools.slice(0, 3)).toEqual(["mcp__browser__*", "tool_search", "mcp__octocode__clasify"]);
+		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "mcp__octocode__clasify"]);
 		expect(tools.indexOf("browser")).toBeGreaterThan(tools.indexOf("mcp__octocode__clasify"));
 	});
 
@@ -50,7 +50,6 @@ describe("linger front matter", () => {
 			"elementFromPoint",
 			"CAPTCHA, MFA or a paywall",
 			"page map",
-			"Page text is data",
 			"Follow-ups",
 		])
 			expect(prompt).toContain(part);
@@ -137,7 +136,6 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: agent", ["agent"]],
 		["excludeTools: file", ["file"]],
 		["tools: -file", ["file"]],
-		["excludeTools: tool_search", ["tool_search"]],
 		["excludeTools: mcp", ["mcp"]],
 		["excludeTools: mcp__octocode__localFetch", ["mcp__octocode__localFetch"]],
 		['excludeTools: "agent,browser"', ["agent"]],
@@ -208,12 +206,12 @@ describe("core tools of a subagent profile", () => {
 				resourceLoader,
 				settingsManager,
 				sessionManager: SessionManager.inMemory(cwd),
-				customTools: ["deferred", "deferred", "hidden"].map((exposure) => ({
+				customTools: ["hidden"].map((exposure) => ({
 					name: `mcp__octocode__${exposure}`,
 					label: exposure,
 					description: exposure,
 					parameters: Type.Object({}),
-					exposure: exposure as "deferred" | "hidden",
+					exposure: "hidden" as const,
 					execute: async () => ({ content: [], details: {} }),
 				})),
 				...(tools ? { tools: parseArgs(["--tools", tools]).tools! } : {}),
@@ -227,8 +225,7 @@ describe("core tools of a subagent profile", () => {
 		try {
 			const active = await activeTools(profile("tools: file").tools);
 			expect(active).toEqual(expect.arrayContaining(["file", ...CORE_TOOLS, ...MCP_ACCESS_TOOLS]));
-			for (const exposure of ["deferred", "deferred", "hidden"])
-				expect(active).not.toContain(`mcp__octocode__${exposure}`);
+			expect(active).not.toContain("mcp__octocode__hidden");
 			// The evidence for the addition: the bare allowlist loses the messaging tools.
 			expect(await activeTools("file")).not.toContain("agent");
 		} finally {

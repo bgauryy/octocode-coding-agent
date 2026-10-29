@@ -9,8 +9,7 @@ beforeEach(() => {
 	saved = { ...process.env };
 	process.env.OCTOCODE_HOME = tmp();
 	// Hermetic: a run inside a Octocode subagent inherits its identity, which changes the tools and the prompt.
-	for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_BROWSER_VISIBLE", "OCTOCODE_AGENT_COLLABORATE"])
-		delete process.env[key];
+	for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_BROWSER_VISIBLE"]) delete process.env[key];
 });
 afterEach(() => {
 	process.env = saved;
@@ -60,7 +59,7 @@ async function promptSize(options: { subagent: boolean; exclude?: string[] }): P
 		{
 			type: "before_agent_start",
 			prompt: "hi",
-			systemPromptOptions: { sections, selectedTools: [...active, ...OCTOCODE_TOOLS] },
+			systemPromptOptions: { sections, baseSections: sections, selectedTools: [...active, ...OCTOCODE_TOOLS] },
 		},
 		ctx,
 	);
@@ -129,7 +128,10 @@ const BACKLOG_ENTITIES_CEILING = 3_000;
 // 29_200 (measured 27_798 without entity fields): browsing moved to the built-in browser MCP server, whose tools defer
 // behind tool search, so the native `browser` schema (3_533) left the default request; the graph tools (about 12_000)
 // are deferred the same way.
-const MAIN_CEILING = 29_200;
+// 40_500 (2026-10-28, measured 40_226 without entity fields): deferred exposure and tool_search were removed, so the
+// graph tools are declared in every request: graphBuild 2_964 + graphQuery 9_171 = 12_135 characters, cached with the
+// tool declarations.
+const MAIN_CEILING = 40_500;
 // Every specialist now keeps file for requested reports and scratch artifacts (+1,635 measured schema characters).
 // 14_100 (B15, measured 13_931): +37 for the same bash read fallback.
 // 14_600 (measured 14_356): the same file, bash and coordinate additions.
@@ -137,16 +139,17 @@ const MAIN_CEILING = 29_200;
 // 18_500 (measured 17_532 without entity fields): +1_924 for default debug activation.
 // 20_700 (measured 20_363 without entity fields, with the real Octocode tool list): the same B89 and B90 growth
 // (18_894 before the tool list) plus 1_469 for the research-workflow lines.
-const SPECIALIST_CEILING = 20_700;
+// 32_400 (2026-10-28, measured 32_154 without entity fields): the same 12_135 characters of declared graph tools.
+const SPECIALIST_CEILING = 32_400;
 
 describe("prompt size", () => {
 	it("main session", async () => {
 		const size = await promptSize({ subagent: false });
 		console.log(`main session: ${size.total} chars (prompt ${size.prompt}); ${JSON.stringify(size.perTool)}`);
 		expect(size.prompt).toBeGreaterThan(0);
-		// Browsing defaults to the browser MCP server; the native `browser` tool is opt-in, and the graph tools are deferred.
+		// Browsing defaults to the browser MCP server; the native `browser` tool is opt-in. The graph tools are declared.
 		expect(size.perTool.browser).toBeUndefined();
-		expect(size.perTool.graphQuery).toBeUndefined();
+		expect(size.perTool.graphQuery).toBeGreaterThan(0);
 		expect(size.perTool.debug).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeGreaterThan(0);
 		expect(size.backlogEntities).toBeLessThan(BACKLOG_ENTITIES_CEILING);

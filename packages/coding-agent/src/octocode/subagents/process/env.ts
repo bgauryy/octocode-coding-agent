@@ -10,7 +10,6 @@ import {
 	BROWSER_VISIBLE_ENV,
 	CACHE_RETENTION_ENV,
 	HOOKS_ENV,
-	MCP_BROWSER_ENV,
 	READ_ONLY_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
@@ -28,15 +27,8 @@ import {
 import { PRIVATE_FILE_MODE, sessionOutputDir } from "../../shared/home.ts";
 import { PROMPT_ROOT_ENV, WORKTREE_ROOT_ENV } from "../../shared/prompt-root.ts";
 import { processStartTime } from "../../shared/process.ts";
-import {
-	AGENT_COLLABORATE_ENV,
-	AGENT_GOAL_ENV,
-	AGENT_ID_ENV,
-	AGENT_ROLE_ENV,
-	PARENT_ID_ENV,
-	PARENT_PID_ENV,
-} from "../../team/store/env.ts";
-import { type AgentProfile, profileSelectsBrowser } from "../profiles.ts";
+import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../team/store/env.ts";
+import type { AgentProfile } from "../profiles.ts";
 import type { ResultContract } from "../result-schema.ts";
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
@@ -112,7 +104,6 @@ export function subagentProcessEnv(
 		AGENT_ROLE_ENV,
 		PARENT_ID_ENV,
 		AGENT_GOAL_ENV,
-		AGENT_COLLABORATE_ENV,
 		AGENT_SCRATCH_ENV,
 		PARENT_SESSION_ENV,
 		PARENT_TRANSCRIPT_ENV,
@@ -129,8 +120,6 @@ export function subagentProcessEnv(
 			: {}),
 		...(profile?.hooks && hooks !== undefined ? { [HOOKS_ENV]: hooks } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
-		// A child that cannot use browser tools does not start the browser MCP server (an inherited `0` stays).
-		...(profileSelectsBrowser(profile) ? {} : { [MCP_BROWSER_ENV]: "0" }),
 		[SUBAGENT_ENV]: "1",
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
@@ -140,7 +129,6 @@ export function subagentProcessEnv(
 		...(identity?.parentId ? { [PARENT_ID_ENV]: identity.parentId } : {}),
 		...(identity?.role ? { [AGENT_ROLE_ENV]: identity.role } : {}),
 		...(identity?.goal ? { [AGENT_GOAL_ENV]: identity.goal } : {}),
-		...(identity?.collaborate ? { [AGENT_COLLABORATE_ENV]: "1" } : {}),
 		...(identity?.isolation
 			? { [WORKTREE_ROOT_ENV]: identity.isolation.path, [PROMPT_ROOT_ENV]: identity.isolation.repo }
 			: {}),

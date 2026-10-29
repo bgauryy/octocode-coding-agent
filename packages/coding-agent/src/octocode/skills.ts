@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getAgentDir } from "../config.ts";
+import { getAgentDir, getNativeSkillsDir } from "../config.ts";
 import type { ExtensionAPI } from "../core/extensions/index.ts";
 import { loadSkillsFromDir } from "../core/skills.ts";
 import { claudeConfigDir, codexConfigDir } from "../utils/host-config.ts";
@@ -82,15 +82,24 @@ export function extraSkillsEnabled(env: NodeJS.ProcessEnv = process.env): boolea
 	return !envFlag(env, SUBAGENT_ENV) && envFlag(env, EXTRA_SKILLS_ENV, true);
 }
 
+/**
+ * Skills the application ships (`octocode-compact-mcp`). A native subagent adopts its parent's inventory, so only a root
+ * session discovers them; `OCTOCODE_EXTRA_SKILLS=0` does not remove them, because they are not another agent's folders.
+ */
+export function bundledSkillDirs(env: NodeJS.ProcessEnv = process.env): string[] {
+	return envFlag(env, SUBAGENT_ENV) ? [] : [getNativeSkillsDir()].filter(isDirectory);
+}
+
 export function registerSkills(pi: ExtensionAPI): void {
 	pi.on("resources_discover", async (event, ctx) => {
-		if (!extraSkillsEnabled()) return { skillPaths: [] };
+		const bundled = bundledSkillDirs();
+		if (!extraSkillsEnabled()) return { skillPaths: bundled };
 		const trusted = await projectTrust({
 			cwd: event.cwd,
 			hasUI: ctx.hasUI,
 			ui: ctx.ui,
 			isProjectTrusted: () => ctx.isProjectTrusted(),
 		});
-		return { skillPaths: extraSkillDirs(event.cwd, undefined, trusted) };
+		return { skillPaths: [...bundled, ...extraSkillDirs(event.cwd, undefined, trusted)] };
 	});
 }

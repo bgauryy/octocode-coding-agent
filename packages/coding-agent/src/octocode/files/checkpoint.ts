@@ -11,7 +11,7 @@ import { type CheckpointEntry, journalOf, readJournal, serialize } from "./check
  * restores the last turns, newest first, but only files still exactly as the agent left them; a file changed since
  * (by the user, bash or a peer) is listed and left alone. Forking the session offers the same restore, and the fork
  * inherits the parent's checkpoints on its branch.
- * Stored under `<Octocode home>/agent/pi/sessions/<session id>/checkpoints/` as `journal.jsonl` plus `blobs/<sha256>`. The journal is
+ * Stored under `<Octocode home>/agent/sessions/<session id>/checkpoints/` as `journal.jsonl` plus `blobs/<sha256>`. The journal is
  * append-only (one line per settled change; a later line for the same turn and path wins) and is rewritten only
  * when checkpoints are dropped (prune, rewind) or its last line was torn by a crash.
  */

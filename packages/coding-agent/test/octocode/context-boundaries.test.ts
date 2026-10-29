@@ -1,3 +1,4 @@
+import { allSections } from "./helpers.ts";
 import { describe, expect, it } from "vitest";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { messageText } from "../../src/octocode/team/routing.ts";
@@ -10,7 +11,6 @@ describe("agent context boundaries", () => {
 			OCTOCODE_AGENT_ID: "old",
 			OCTOCODE_PARENT_ID: "old-parent",
 			OCTOCODE_AGENT_GOAL: "old-task",
-			OCTOCODE_AGENT_COLLABORATE: "1",
 			OCTOCODE_AGENT_SCRATCH: "/old",
 			OCTOCODE_TRUST_ROOT: "/old-trust",
 			OCTOCODE_BROWSER_VISIBLE: "1",
@@ -28,7 +28,6 @@ describe("agent context boundaries", () => {
 		for (const key of [
 			"OCTOCODE_PARENT_ID",
 			"OCTOCODE_AGENT_GOAL",
-			"OCTOCODE_AGENT_COLLABORATE",
 			"OCTOCODE_AGENT_SCRATCH",
 			"OCTOCODE_TRUST_ROOT",
 			"OCTOCODE_BROWSER_VISIBLE",
@@ -91,9 +90,15 @@ describe("agent context boundaries", () => {
 		});
 		(fake.pi as unknown as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
 		const prompt = async (selectedTools: string[]) => {
-			const event = { systemPromptOptions: { sections: {} as Record<string, string>, selectedTools } };
+			const event = {
+				systemPromptOptions: {
+					sections: {} as Record<string, string>,
+					baseSections: {} as Record<string, string>,
+					selectedTools,
+				},
+			};
 			await fake.emit("before_agent_start", event, {});
-			return Object.values(event.systemPromptOptions.sections).join("\n\n");
+			return Object.values(allSections(event)).join("\n\n");
 		};
 		const inactive = await prompt(["read"]);
 		expect(inactive).not.toContain("Use Octocode MCP");

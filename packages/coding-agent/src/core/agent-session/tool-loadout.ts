@@ -22,6 +22,7 @@ import {
 } from "../system-prompt.ts";
 import type { SessionInternals } from "./host.ts";
 import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.ts";
+import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 import { errorMessage } from "../../utils/guards.ts";
@@ -44,9 +45,11 @@ export class SessionToolLoadout {
 	readonly pendingMcp = new PendingMcpTools();
 	/** Matches the `--tools` entries: tool names or patterns. */
 	private _allowedTools?: (name: string) => boolean;
+	private readonly _allowedEntries?: readonly string[];
 	/** Whether the allowlist filters MCP tools: it is empty (`--no-tools`) or names an `mcp__*` tool. */
 	private _allowlistFiltersMcp = false;
 	private _excludedTools?: (name: string) => boolean;
+	private readonly _excludedEntries: readonly string[];
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	/** Declared tools whose declarations requests leave out, from `prepareLoadout` hooks. */
@@ -68,10 +71,12 @@ export class SessionToolLoadout {
 		this._customTools = options.customTools ?? [];
 		if (options.allowedToolNames) {
 			this._allowedTools = createToolNameMatcher(options.allowedToolNames);
+			this._allowedEntries = [...options.allowedToolNames];
 			this._allowlistFiltersMcp =
 				options.allowedToolNames.length === 0 || options.allowedToolNames.some((entry) => entry.startsWith("mcp__"));
 		}
 		this._excludedTools = options.excludedToolNames ? createToolNameMatcher(options.excludedToolNames) : undefined;
+		this._excludedEntries = [...(options.excludedToolNames ?? [])];
 	}
 
 	get hiddenDeclarations(): ReadonlySet<string> {
@@ -104,7 +109,6 @@ export class SessionToolLoadout {
 			exposure: this._getToolExposure(definition.name),
 			...(definition.namespace ? { namespace: definition.namespace } : {}),
 			...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
-			...(definition.reachesTools ? { reachesTools: definition.reachesTools } : {}),
 			sourceInfo,
 		}));
 	}
@@ -118,7 +122,7 @@ export class SessionToolLoadout {
 		const previous = session.getActiveToolNames();
 		this.setActiveTools(toolNames);
 		// A loadout that deactivates a tool replaces the restored one, whose pending tools are dropped.
-		// One that only adds tools, like activating tool_search, keeps them.
+		// One that only adds tools keeps them.
 		const active = new Set(session.getActiveToolNames());
 		if (previous.some((name) => !active.has(name))) this._pendingToolNames.clear();
 	}
@@ -159,49 +163,41 @@ export class SessionToolLoadout {
 	}
 
 	/**
-	 * Whether `--tools` and `--exclude-tools` keep the tool registered. MCP tools stay registered
-	 * unless the allowlist filters them (see `_allowlistFiltersMcp`).
+	 * Whether `--tools` and `--exclude-tools` keep the tool registered. An allowlist without `mcp__` entries keeps MCP
+	 * tools registered but never active, so hook calls to a server still find them (see `_isActivatable`).
 	 */
 	private _isAllowedTool(name: string): boolean {
 		if (this._excludedTools?.(name)) return false;
-		if (!this._allowedTools || this._allowedTools(name)) return true;
-		return !this._allowlistFiltersMcp && isMcpToolName(name);
+		return !this._allowedTools || this._allowedTools(name) || (!this._allowlistFiltersMcp && isMcpToolName(name));
 	}
 
-	/**
-	 * Whether the tool may be active, which declares it to the model. MCP tools the allowlist keeps
-	 * without matching them are only for tool_search: they may be declared only when
-	 * tool_search can load them (non-`direct` exposure and tool_search registered). This also applies
-	 * to tools restored from the transcript or set by extensions.
-	 */
+	/** Whether the tool may be active (declared), including when restored from the transcript or set by extensions. */
 	private _isActivatable(name: string): boolean {
 		if (this._toolPolicy && !this._toolPolicy(name)) return false;
-		if (!this._allowedTools || this._allowedTools(name) || !isMcpToolName(name)) return true;
-		return this._getToolExposure(name) !== "direct" && this._toolRegistry.has("tool_search");
+		return !this._allowedTools || this._allowedTools(name) || !isMcpToolName(name);
 	}
 
-	/** Registered `deferred` tools the model can load, which needs an active `tool_search`. */
-	private _getLoadableDeferredToolNames(activeToolNames: readonly string[]): string[] {
-		if (!activeToolNames.includes("tool_search")) return [];
-		return [...this._toolRegistry.keys()].filter(
-			(name) => this._getToolExposure(name) === "deferred" && (!this._toolPolicy || this._toolPolicy(name)),
-		);
+	/** Whether the session's selection can activate tools named `<prefix>…` (`selectsToolPrefix`). */
+	selectsTools(prefix: string, activeByDefault: boolean, modifiers: readonly string[]): boolean {
+		return selectsToolPrefix(prefix, activeByDefault, {
+			allowed: this._allowedEntries,
+			excluded: this._excludedEntries,
+			modifiers,
+		});
 	}
 
 	private _getToolExposure(name: string): ToolExposure {
 		return this._toolDefinitions.get(name)?.definition.exposure ?? "direct";
 	}
 
-	/**
-	 * Tools callable through `ctx.executeTool()`: the active `direct` tools and every registered
-	 * `deferred` tool.
-	 */
+	/** Tools callable through `ctx.executeTool()`: the active `direct` tools. */
 	getCallableTools(active: ReadonlySet<string> = new Set(this.host.session.getActiveToolNames())): AgentTool[] {
-		return [...this._toolRegistry.values()].filter((tool) => {
-			if (this._toolPolicy && !this._toolPolicy(tool.name)) return false;
-			const exposure = this._getToolExposure(tool.name);
-			return exposure === "deferred" || (exposure === "direct" && active.has(tool.name));
-		});
+		return [...this._toolRegistry.values()].filter(
+			(tool) =>
+				(!this._toolPolicy || this._toolPolicy(tool.name)) &&
+				this._getToolExposure(tool.name) === "direct" &&
+				active.has(tool.name),
+		);
 	}
 
 	/**
@@ -282,7 +278,6 @@ export class SessionToolLoadout {
 			appendSystemPrompt,
 			selectedTools: validToolNames,
 			hiddenTools: [...this._hiddenDeclarations],
-			deferredTools: this._getLoadableDeferredToolNames(validToolNames),
 			toolSnippets,
 			toolGuidelines: Object.fromEntries(this._toolPromptGuidelines),
 		});
@@ -305,7 +300,6 @@ export class SessionToolLoadout {
 		options.selectedTools = this._applyToolLoadout(options.selectedTools).map((tool) => tool.name);
 		// The tool list and rules must match the declarations the request carries.
 		options.hiddenTools = [...this._hiddenDeclarations];
-		options.deferredTools = this._getLoadableDeferredToolNames(options.selectedTools);
 		const sections = diffSystemPromptSections(
 			getCurrentSystemMessage(messages)?.sections ?? {},
 			buildSystemPromptSections(options),
@@ -362,8 +356,7 @@ export class SessionToolLoadout {
 
 		if (allowedTools) {
 			for (const toolName of this._toolRegistry.keys()) {
-				// Naming or matching a tool activates it even when it is not active by default. MCP tools
-				// kept registered without being named stay inactive.
+				// Naming or matching a tool activates it even when it is not active by default.
 				if (allowedTools(toolName) && this._isDeclarable(toolName)) {
 					nextActiveToolNames.push(toolName);
 				}

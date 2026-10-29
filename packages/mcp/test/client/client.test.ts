@@ -157,21 +157,21 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
-	it("strips content annotations and ignores resources without losing structured data", async () => {
+	it("strips content annotations and shows resources without reading them or losing structured data", async () => {
 		const { client, server } = await connect();
 		server.setHandler("tools/call", () => ({
 			content: [
 				{ type: "text", text: "ok", annotations: { audience: ["user"] } },
-				{ type: "resource", resource: { uri: "secret://a", text: "must not render" } },
-				{ type: "resource_link", uri: "secret://b", name: "must not fetch" },
+				{ type: "resource", resource: { uri: "secret://a", text: "embedded text" } },
+				{ type: "resource_link", uri: "secret://b", name: "not fetched" },
 			],
 			structuredContent: { annotations: { domain: "user data" } },
 		}));
 		expect(await client.callTool("read", {})).toEqual({
 			content: [
 				{ type: "text", text: "ok" },
-				{ type: "text", text: "[unsupported MCP content resource]" },
-				{ type: "text", text: "[unsupported MCP content resource_link]" },
+				{ type: "text", text: "[resource secret://a]\nembedded text" },
+				{ type: "text", text: "[resource link secret://b]\nname: not fetched" },
 			],
 			structuredContent: { annotations: { domain: "user data" } },
 		});

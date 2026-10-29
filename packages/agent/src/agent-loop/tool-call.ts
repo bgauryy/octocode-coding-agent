@@ -154,6 +154,10 @@ const ABORT_GRACE_MS = 50;
 
 const ABANDONED = Symbol("abandoned");
 
+/** An abandoned tool may still finish its work: retrying it blindly could repeat a side effect. */
+export const ABANDONED_MESSAGE =
+	"Operation aborted. The tool did not stop when asked and may still be running, so its effects (a write, a command) may still happen; check the current state before retrying it.";
+
 /**
  * Resolve with the operation's outcome, or with {@link ABANDONED} once `signal` has been aborted for
  * {@link ABORT_GRACE_MS}. A tool that honors the signal settles inside the grace period and keeps its own
@@ -192,7 +196,7 @@ function raceAbort<T>(operation: Promise<T>, signal: AbortSignal | undefined): P
 
 /**
  * Execute a prepared call. An abort ends the call within a short grace period even when the tool ignores
- * the signal: the call then reports "Operation aborted" and the tool keeps running in the background,
+ * the signal: the call then reports {@link ABANDONED_MESSAGE} and the tool keeps running in the background,
  * with its late result, updates and errors discarded.
  */
 export async function executePreparedToolCall(
@@ -216,7 +220,7 @@ export async function executePreparedToolCall(
 		acceptingUpdates = false;
 		await Promise.all(updateEvents);
 		if (result === ABANDONED) {
-			return { result: createErrorToolResult("Operation aborted"), isError: true, durationMs };
+			return { result: createErrorToolResult(ABANDONED_MESSAGE), isError: true, durationMs };
 		}
 		return { result, isError: result.isError === true, durationMs };
 	} catch (error) {

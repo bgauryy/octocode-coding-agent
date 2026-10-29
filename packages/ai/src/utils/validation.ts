@@ -1,6 +1,7 @@
 import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
+import { parseStringifiedContainers } from "./stringified-containers.ts";
 import { formatValidationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
 
@@ -341,13 +342,14 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	if (toolCall.argumentsError) {
 		throw new Error(`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}`);
 	}
-	const args = structuredClone(toolCall.arguments);
-	normalizeOptionalNulls(args, tool.parameters);
-	Value.Convert(tool.parameters, args);
+	const schema = tool.validationParameters ?? tool.parameters;
+	let args = structuredClone(toolCall.arguments);
+	const validator = getValidator(schema);
+	normalizeOptionalNulls(args, schema);
+	Value.Convert(schema, args);
 
-	const validator = getValidator(tool.parameters);
-	if (!Object.getOwnPropertySymbols(tool.parameters).includes(TYPEBOX_KIND)) {
-		const coerced = coerceWithJsonSchema(args, tool.parameters, tool.parameters);
+	if (!Object.getOwnPropertySymbols(schema).includes(TYPEBOX_KIND)) {
+		const coerced = coerceWithJsonSchema(args, schema, schema);
 		if (coerced !== args) {
 			if (typeof args === "object" && args !== null && typeof coerced === "object" && coerced !== null) {
 				for (const key of Object.keys(args)) {
@@ -363,6 +365,16 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	if (validator.Check(args)) {
 		return args;
 	}
+	// A successful union branch keeps its unconstrained fields; container recovery is only a fallback.
+	const recovered = structuredClone(toolCall.arguments);
+	if (parseStringifiedContainers(recovered, schema)) {
+		normalizeOptionalNulls(recovered, schema);
+		Value.Convert(schema, recovered);
+		if (validator.Check(recovered)) return recovered;
+		args = recovered;
+	}
 
-	throw new Error(formatValidationFailure(toolCall.name, [...validator.Errors(args)], toolCall.arguments));
+	const failure = formatValidationFailure(toolCall.name, [...validator.Errors(args)], toolCall.arguments);
+	const hint = tool.validationHint?.();
+	throw new Error(hint ? `${failure}\n\n${hint}` : failure);
 }

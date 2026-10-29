@@ -1,12 +1,10 @@
 import { dirname, join } from "node:path";
-import type { Model } from "@octocodeai/octocode-ai";
 import type { TSchema } from "typebox";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../coding-agent/src/core/extensions/types.ts";
 import { mcpNamespace } from "./servers.ts";
 import type { ModelRegistry } from "../../coding-agent/src/core/model-registry.ts";
 import { openBrowser } from "../../coding-agent/src/utils/open-browser.ts";
-import { canDiscoverTools } from "../../coding-agent/src/core/tools/tool-search.ts";
 import {
 	getMcpToolExposure,
 	type LoadedMcpConfig,
@@ -15,7 +13,7 @@ import {
 	type McpServerEntry,
 	updateMcpServerConfig,
 } from "./config.ts";
-import { exposureOf, resolveMcpExposure } from "./exposure.ts";
+import { exposureOf } from "./exposure.ts";
 import { getMcpConfigLocations } from "./inspection.ts";
 import { McpServerLog } from "./log.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
@@ -26,6 +24,7 @@ import { setMcpSessionStatus } from "./status.ts";
 import type { McpToolDetails } from "./tools.ts";
 
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
+import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } from "./presentation/index.ts";
 
 export interface McpExtensionOptions {
 	presets?: readonly McpServerPreset[];
@@ -48,23 +47,14 @@ export interface McpExtensionOptions {
 	updateConfig?: (entry: McpServerEntry, patch: McpServerConfigPatch) => void;
 	/**
 	 * How long the first prompt waits for servers with `direct` tools that are still connecting at
-	 * startup, in milliseconds. Their tools become available when they connect. Other servers are
-	 * waited for when a tool_search needs them. Default: 10000.
+	 * startup, in milliseconds. Their tools become available when they connect. Default: 10000.
 	 */
 	startupWaitMs?: number;
-	/**
-	 * How long the first prompt also waits for servers whose tools are all deferred, in milliseconds, so the
-	 * `mcp_servers` section can list their tools instead of only their names. Counted from the same start as
-	 * `startupWaitMs` and bounded by it. 0 turns it off. Default: 1500.
-	 */
-	deferredGraceMs?: number;
+	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `compact`. */
+	presentation?: McpPresentationMode;
 }
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
-const DEFAULT_DEFERRED_GRACE_MS = 1_500;
-
-const modelKey = (model: Model<any> | undefined): string =>
-	model ? JSON.stringify([model.provider, model.id, model.contextWindow, model.maxTokens, model.compat]) : "";
 
 /**
  * State of one MCP extension instance, shared by its tool registration, connection lifecycle,
@@ -82,13 +72,10 @@ export class McpExtensionState {
 	globalConfig: string | undefined;
 	/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 	overridden: string[] = [];
-	/** Whether the "deferred tools unreachable" warning was shown since the session started. */
-	warnedUnreachable = false;
 	pending: Promise<unknown> | undefined;
 	/** Whether a prompt already waited for the startup connections since the session started. */
 	waitedForStartup = false;
 	readonly startupWaitMs: number;
-	readonly deferredGraceMs: number;
 	/** Working directory of the session, for stdio servers. */
 	sessionCwd = process.cwd();
 	projectTrusted = false;
@@ -111,14 +98,6 @@ export class McpExtensionState {
 	/** Work registered with `track`: manager actions opening or closing connections, and sign-ins. */
 	readonly backgroundActions = new Set<Promise<void>>();
 	readonly listeners = new Set<() => void>();
-	#selectedModel: Model<any> | undefined;
-	/** Sticky `auto` decisions per server, with what they were decided for. See `automaticExposure`. */
-	private readonly automaticExposures = new Map<string, { key: string; exposure: Exclude<McpExposure, "auto"> }>();
-	/** Whether the startup wait ended, so `auto` decisions stick; until then they are provisional. */
-	#automaticSettled = false;
-	/** Revision of each connection's published tool list, so decision keys do not serialize the catalog. */
-	readonly #catalogRevisions = new WeakMap<readonly unknown[], number>();
-	#lastCatalogRevision = 0;
 
 	/** pi tool name to the `<server>\0<tool>` it was assigned to, so names stay unique and stable. */
 	readonly toolOwners = new Map<string, string>();
@@ -126,6 +105,8 @@ export class McpExtensionState {
 	readonly serverTools = new Map<string, Set<string>>();
 	/** Last definition registered under each tool name, to re-register withdrawn tools as hidden. */
 	readonly definitions = new Map<string, ToolDefinition<TSchema, McpToolDetails>>();
+	/** Generated TypeScript files that tell the model what each server offers; see `presentation/index.ts`. */
+	readonly presentation: McpPresentation;
 	readonly registeredMetadata = new Map<string, unknown>();
 	readonly cachedDefinitions = new Map<string, ToolDefinition<TSchema, McpToolDetails>>();
 
@@ -140,8 +121,15 @@ export class McpExtensionState {
 		this.pi = pi;
 		this.options = options;
 		this.startupWaitMs = options.startupWaitMs ?? DEFAULT_STARTUP_WAIT_MS;
-		this.deferredGraceMs = Math.min(options.deferredGraceMs ?? DEFAULT_DEFERRED_GRACE_MS, this.startupWaitMs);
 		this.credentials = options.credentials;
+		this.presentation = new McpPresentation({
+			agentDir: getAgentDir,
+			mode: () =>
+				options.presentation ??
+				(typeof pi.getSettings === "function" ? pi.getSettings().mcpPresentation : undefined) ??
+				DEFAULT_MCP_PRESENTATION,
+			presetOverrides: (name, input) => findMcpPreset(options.presets, name)?.compactOverrides?.(input),
+		});
 		this.openUrl = options.openUrl ?? openBrowser;
 		this.updateConfig =
 			options.updateConfig ??
@@ -150,16 +138,6 @@ export class McpExtensionState {
 					override: entry.override !== undefined,
 				}));
 		this.session.abort();
-	}
-
-	/** The selected model. A different model or window clears the sticky automatic decisions. */
-	get selectedModel(): Model<any> | undefined {
-		return this.#selectedModel;
-	}
-
-	set selectedModel(model: Model<any> | undefined) {
-		if (modelKey(model) !== modelKey(this.#selectedModel)) this.automaticExposures.clear();
-		this.#selectedModel = model;
 	}
 
 	readonly track = <T>(work: Promise<T>): Promise<T> => {
@@ -180,9 +158,11 @@ export class McpExtensionState {
 				enabled: isEnabled(server),
 				state: !isEnabled(server)
 					? "disabled"
-					: server.connection?.isStopped
-						? "stopped"
-						: (server.connection?.state ?? "starting"),
+					: server.unselected
+						? "unselected"
+						: server.connection?.isStopped
+							? "stopped"
+							: (server.connection?.state ?? "starting"),
 				exposure: exposureOf(server.entry),
 				toolCount: server.connection?.state === "connected" ? server.connection.tools.length : 0,
 				source: server.entry.source,
@@ -199,106 +179,12 @@ export class McpExtensionState {
 		};
 	};
 
-	/**
-	 * The tools of all enabled servers that count toward automatic exposure: their `direct` tools and their
-	 * `auto` tools, except those of servers that prefer discovery. Their declarations share one context window.
-	 * With `server`, only that server's tools.
-	 */
-	automaticCatalog(server?: string) {
-		return this.servers
-			.filter((candidate) => isEnabled(candidate) && (server === undefined || candidate.entry.name === server))
-			.flatMap(({ entry, connection }) =>
-				(connection?.tools ?? []).filter((tool) => {
-					const exposure = this.toolExposure(entry, tool.name);
-					return exposure === "direct" || (exposure === "auto" && !this.prefersDeferred(entry));
-				}),
-			);
-	}
-
-	/**
-	 * What `auto` exposure resolves to for a server. A server is decided against the combined catalog of all
-	 * enabled servers, so that small catalogs that together exceed the budget are deferred. Until the startup wait ends
-	 * (`settleAutomaticExposure`) the answer is provisional, since servers are still connecting and their order must
-	 * not decide the result. After that it sticks for the session: another server connecting or leaving never moves
-	 * this server's tools between direct and deferred, which would change the cached tool declarations in the middle
-	 * of a conversation. It is decided again when the server's own tools change, when discovery becomes available or
-	 * unavailable, and when the selected model changes, since the declarations change then anyway.
-	 */
-	automaticExposure(entry: McpServerEntry): Exclude<McpExposure, "auto"> {
-		const discovery = canDiscoverTools(this.pi);
-		const key = `${this.catalogKey(entry)}|${discovery}`;
-		const decided = this.automaticExposures.get(entry.name);
-		if (decided?.key === key) return decided.exposure;
-		const exposure = resolveMcpExposure(
-			"auto",
-			this.prefersDeferred(entry)
-				? [
-						...this.automaticCatalog(),
-						...(this.findServer(entry.name)?.connection?.tools ?? []).filter(
-							(tool) => this.toolExposure(entry, tool.name) === "auto",
-						),
-					]
-				: this.automaticCatalog(),
-			this.selectedModel,
-			discovery,
-			this.prefersDeferred(entry),
-		);
-		if (this.#automaticSettled) this.automaticExposures.set(entry.name, { key, exposure });
-		return exposure;
-	}
-
-	/**
-	 * What decides a server's contribution to automatic exposure: whether it is enabled, its exposure settings, and the
-	 * revision of its tool list (a new list is a new array, numbered once).
-	 */
-	private catalogKey(entry: McpServerEntry): string {
-		const server = this.findServer(entry.name);
-		const tools = server?.connection?.tools;
-		let revision = 0;
-		if (tools) {
-			revision = this.#catalogRevisions.get(tools) ?? ++this.#lastCatalogRevision;
-			this.#catalogRevisions.set(tools, revision);
-		}
-		return `${server && isEnabled(server)}|${revision}|${JSON.stringify([entry.config.exposure, entry.config.toolExposure])}`;
-	}
-
-	/**
-	 * End the startup wait for `auto` decisions: decide every enabled server now, in name order, against the catalog of
-	 * the servers connected by then, so the split does not depend on which server connected first. Later decisions stick.
-	 */
-	settleAutomaticExposure(): void {
-		if (this.#automaticSettled) return;
-		this.#automaticSettled = true;
-		this.automaticExposures.clear();
-		const enabled = this.servers.filter(isEnabled).sort((a, b) => (a.entry.name < b.entry.name ? -1 : 1));
-		for (const { entry } of enabled) this.automaticExposure(entry);
-	}
-
-	/** Forget the sticky automatic decisions, for a server that goes away or a session that starts. */
-	resetAutomaticExposure(server?: string): void {
-		if (server !== undefined) {
-			this.automaticExposures.delete(server);
-			return;
-		}
-		this.automaticExposures.clear();
-		this.#automaticSettled = false;
-	}
-
-	effectiveExposure(entry: McpServerEntry, tool?: string): Exclude<McpExposure, "auto"> {
-		const requested = tool === undefined ? exposureOf(entry) : this.toolExposure(entry, tool);
-		return requested === "auto" ? this.automaticExposure(entry) : requested;
-	}
-
 	preset(entry: McpServerEntry): McpServerPreset | undefined {
 		return findMcpPreset(this.options.presets, entry.name);
 	}
 
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure {
-		return getMcpToolExposure(entry.config, tool, this.preset(entry)?.toolExposure);
-	}
-
-	prefersDeferred(entry: McpServerEntry): boolean {
-		return entry.config.exposure === undefined && this.preset(entry)?.preferDeferred === true;
+		return getMcpToolExposure(entry.config, tool);
 	}
 
 	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {

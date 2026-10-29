@@ -5,11 +5,9 @@ import type { registerBashTool } from "./files/bash.ts";
 import type { Permission } from "./permission/ask.ts";
 import type { AgentControl } from "./subagents/tool.ts";
 import type { Team } from "./team/session.ts";
-import { closeSharedAgentDb } from "./agentdb/db.ts";
 import { stopRowTimers } from "./shared/render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
 import { MINUTE_MS, settleWithin } from "./shared/util.ts";
-import { windowsTree } from "./shared/winhelper.ts";
 
 export function registerNativeSessionLifecycle(
 	pi: ExtensionAPI,
@@ -49,9 +47,6 @@ export function registerNativeSessionLifecycle(
 		stopRowTimers();
 		await api?.stop();
 		await external?.reset();
-		// Every reason: a new, resumed, forked or reloaded session imports this module again, so this connection would never be reused.
-		closeSharedAgentDb();
-		// After the subagents and bash jobs (their own shutdown handlers ran first): the helper that holds their Windows job objects can end.
-		await windowsTree.stopAll();
+		// The database and Windows helper belong to the process. Session-owned stores, jobs and children release only their own resources.
 	});
 }

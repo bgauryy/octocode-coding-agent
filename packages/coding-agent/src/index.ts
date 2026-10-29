@@ -211,7 +211,6 @@ export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } fr
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "../../mcp/src/index.ts";
 export type { McpServerPreset } from "../../mcp/src/preset.ts";
 export { octocodePreset } from "../../mcp/src/presets/octocode/index.ts";
-export { createToolSearchExtension } from "./core/tools/tool-search.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage

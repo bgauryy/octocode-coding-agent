@@ -272,11 +272,12 @@ describe("shared memory moves", () => {
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 
-	it("unpins a pinned memory and moves a global one into the project at once: shared memory has no prompt", async () => {
+	it("unpins a pinned memory and moves a global one into the project at once: narrowing shared memory has no prompt", async () => {
 		const fake = fakePi();
 		registerMemory(fake.pi, { commands: new Subcommands(), isSubagent: false, permission: fakePermission("manual") });
 		const tool = fake.tools.get("memory");
-		const ctx = fakeCtx({ cwd: root });
+		// Saving each shared memory asks once; the moves that narrow them do not.
+		const ctx = fakeCtx({ cwd: root, ui: { selects: ["Allow once", "Allow once"] } });
 		const run = (params: Record<string, unknown>) =>
 			tool
 				.execute("c", params, undefined, undefined, ctx)

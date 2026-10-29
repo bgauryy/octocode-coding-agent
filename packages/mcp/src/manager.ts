@@ -20,7 +20,6 @@ import {
 	type McpServer,
 } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { ensureDiscoveryActive } from "./tool-registry.ts";
 import type { McpMenu, McpUi } from "./ui.ts";
 
 function notices(state: McpExtensionState): string[] {
@@ -208,7 +207,6 @@ function runInBackground(
 	const finish = (message: string | undefined) => {
 		if (signal.aborted || server.attempt !== attempt || !state.servers.includes(server)) return;
 		server.message = message;
-		ensureDiscoveryActive(state, ctx);
 		state.emitChange();
 	};
 	void state.track(ready.then(finish, (error: unknown) => finish(errorMessage(error))));
@@ -255,7 +253,6 @@ async function runAction(
 	// The session ended meanwhile (for example during a sign-in), which made ctx stale.
 	if (signal.aborted) return;
 	server.message = message;
-	ensureDiscoveryActive(state, ctx);
 	state.emitChange();
 }
 

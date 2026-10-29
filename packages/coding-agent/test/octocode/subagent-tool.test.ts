@@ -52,7 +52,6 @@ beforeAll(() => {
 		"OCTOCODE_AGENT_ID",
 		"OCTOCODE_PARENT_ID",
 		"OCTOCODE_AGENT_GOAL",
-		"OCTOCODE_AGENT_COLLABORATE",
 		"OCTOCODE_AGENT_SCRATCH",
 		"OCTOCODE_TEAM_WORKSPACE",
 	])
@@ -135,7 +134,8 @@ describe("subagent scratch sweep", () => {
 	it("keeps old folders whose owning Octocode process is alive (another session's background subagent) and removes the rest", async () => {
 		const s = setup();
 		const root = path.join(s.cwd, ".octocode", "tmp", "agents");
-		const old = (Date.now() - 8 * 24 * 3_600_000) / 1000;
+		// Past the default OCTOCODE_CLEANUP_DAYS (30).
+		const old = (Date.now() - 31 * 24 * 3_600_000) / 1000;
 		const folder = (name: string, owner?: number) => {
 			const dir = path.join(root, name);
 			fs.mkdirSync(dir, { recursive: true });
@@ -269,7 +269,6 @@ describe("agent tool with a scripted pi child", () => {
 		const text = result.content[0].text as string;
 		const facts = reportOf(text);
 		expect(facts.subagent).toBe("1");
-		expect(facts.collaborate).toBeUndefined();
 		expect(facts.id).toMatch(/^[a-z]+-[a-z]+$/);
 		expect(facts).toMatchObject({ role: "researcher", goal: "check things" });
 		expect(facts.parent).toBe(s.team.id);
@@ -290,7 +289,7 @@ describe("agent tool with a scripted pi child", () => {
 				"--model",
 				"faux/model",
 				"--tools",
-				"read,bash,file,agent,archive,skill,tool_search,mcp,mcp__*",
+				"read,bash,file,agent,archive,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser",
 			]),
@@ -531,7 +530,7 @@ describe("agent tool with a scripted pi child", () => {
 		const text = result.content[0].text as string;
 		const facts = reportOf(text);
 		expect(facts.parent).toBeUndefined();
-		expect(facts.collaborate).toBeUndefined();
+		expect(facts.task).not.toContain("## Teammates");
 		expect(text).toContain("Started without the team: Team database unavailable: locked");
 	});
 
@@ -962,7 +961,6 @@ describe("agent tool with a scripted pi child", () => {
 		});
 		const second = await s.run({ task: "report as collaborator", collaborate: true });
 		const facts = reportOf(second.content[0].text);
-		expect(facts.collaborate).toBe("1");
 		expect(facts.task).toContain("## Teammates");
 		expect(facts.task).toContain(`\`${first.details.id}\`: general: slow collaborator`);
 		await s.commands.get("agents").handler(`kill ${first.details.id}`, s.ctx);

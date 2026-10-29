@@ -17,9 +17,9 @@ See [models](models.md) and [environment variables](environment-variables.md).
 
 ## Built-in features
 
-`octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp`, `builtin:tool-search`, and `builtin:llama.cpp`; for example, `-builtin:mcp` in the `extensions` setting disables the built-in MCP host. Global and trusted workspace resource selection still use the normal settings precedence.
+`octocode config` and the default resource loader use the same [built-in catalog](../src/core/resource-loader/builtins.ts). Existing selections keep the identities `builtin:mcp` and `builtin:llama.cpp`; for example, `-builtin:mcp` in the `extensions` setting disables the built-in MCP host. Global and trusted workspace resource selection still use the normal settings precedence.
 
-SDK hosts can supply a named built-in factory to replace its default implementation, or set `nativeFeatures: false` to omit the defaults. Explicit factories still load in that mode, including the public `createToolSearchExtension()` factory. See the [SDK reference](sdk.md) and [native feature guide](native-features.md) for tool selection and third-party extension behavior.
+SDK hosts can supply a named built-in factory to replace its default implementation, or set `nativeFeatures: false` to omit the defaults. Explicit factories still load in that mode, including the public `createMcpExtension()` factory. See the [SDK reference](sdk.md) and [native feature guide](native-features.md) for tool selection and third-party extension behavior.
 
 ## Terminal images
 

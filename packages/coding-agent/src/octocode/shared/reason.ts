@@ -6,7 +6,7 @@ import { isRecord } from "../../utils/guards.ts";
  * wrapper adds it to each native tool's parameters (`withReason`) and removes it before the tool runs (`withoutReason`);
  * permission requests and tool rows read it from the call's input (`callReason`).
  */
-export const REASON_DESCRIPTION = "The goal this call serves, in one short sentence";
+const REASON_DESCRIPTION = "The goal this call serves, in one short sentence";
 
 const reasonSchema = () => Type.String({ description: REASON_DESCRIPTION });
 

@@ -183,9 +183,15 @@ async function completeWithOverflowTrim(
 ): Promise<AssistantMessage> {
 	let remaining = messages;
 	for (let trims = 0; ; trims++) {
+		const dropped = messages.length - remaining.length;
+		// The summary must not claim to cover what it never saw.
+		const note =
+			dropped > 0
+				? `\n\nNote: the ${dropped} oldest messages of this conversation did not fit this request and are not shown above. Summarize only what is shown, and say that earlier history was left out.`
+				: "";
 		const response = await completeSummarization(
 			model,
-			buildSummarizationContext(buildPrompt(remaining)),
+			buildSummarizationContext(`${buildPrompt(remaining)}${note}`),
 			options,
 			streamFn,
 			retry,

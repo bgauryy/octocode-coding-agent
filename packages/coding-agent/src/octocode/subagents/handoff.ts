@@ -6,15 +6,13 @@ import { atomicWriteFileSync } from "../../utils/atomic-file.ts";
 import { isRecord } from "../../utils/guards.ts";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
+import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
  * of its background report to the parent.
  */
-
-/** Custom message type of a background subagent's report. */
-export const RESULT_TYPE = "octocode-agent-result";
 
 /** Custom message type of the short mid-turn notice that a background report is on its way (never the report). */
 export const NOTICE_TYPE = "octocode-agent-notice";
@@ -94,7 +92,7 @@ export class ReportQueue {
 			const end = buffer.subarray(0, read).lastIndexOf(0x0a) + 1;
 			this.scanned.offset = from + end;
 			for (const line of buffer.subarray(0, end).toString("utf8").split("\n")) {
-				if (!line.includes(RESULT_TYPE)) continue;
+				if (!line.includes(AGENT_RESULT_TYPE)) continue;
 				try {
 					this.receipt(JSON.parse(line));
 				} catch {
@@ -107,7 +105,7 @@ export class ReportQueue {
 	}
 
 	private receipt(entry: unknown): void {
-		if (!isRecord(entry) || entry.type !== "custom_message" || entry.customType !== RESULT_TYPE) return;
+		if (!isRecord(entry) || entry.type !== "custom_message" || entry.customType !== AGENT_RESULT_TYPE) return;
 		if (!isRecord(entry.details)) return;
 		const id = entry.details.reportId;
 		if (typeof id === "string") this.known.add(id);
@@ -216,7 +214,7 @@ export class ReportQueue {
 				// followUp: read once the current turn ends; triggerTurn wakes an idle parent, once per batch.
 				const sending = this.pi.sendMessage(
 					{
-						customType: RESULT_TYPE,
+						customType: AGENT_RESULT_TYPE,
 						content: report.content,
 						display: true,
 						details: { ...report.details, reportId: report.reportId },

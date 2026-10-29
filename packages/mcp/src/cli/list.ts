@@ -1,4 +1,3 @@
-import { findMcpPreset } from "../preset.ts";
 /** `pi mcp list` and `pi mcp tools`: connect to each server and report its state and tools. */
 
 import { APP_NAME } from "../../../coding-agent/src/config.ts";
@@ -68,18 +67,10 @@ export async function list(
 							name: tool.name,
 							description: tool.description,
 							inputSchema: tool.inputSchema,
-							exposure: getMcpToolExposure(
-								entry.config,
-								tool.name,
-								findMcpPreset(options.presets, entry.name)?.toolExposure,
-							),
+							exposure: getMcpToolExposure(entry.config, tool.name),
 						}));
 				const overrides = connection.tools.flatMap((tool) => {
-					const exposure = getMcpToolExposure(
-						entry.config,
-						tool.name,
-						findMcpPreset(options.presets, entry.name)?.toolExposure,
-					);
+					const exposure = getMcpToolExposure(entry.config, tool.name);
 					return exposure === report.exposure ? [] : [[tool.name, exposure] as const];
 				});
 				if (overrides.length > 0) report.toolExposure = Object.fromEntries(overrides);

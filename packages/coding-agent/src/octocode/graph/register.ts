@@ -24,7 +24,7 @@ const BOUNDS = new Set([
  * arguments back; the CLI's own validation reports the same limit with recovery hints instead. A property that happens
  * to be named like a bound (an object schema, not a number or string) stays.
  */
-export function shapeOnly<T>(schema: T): T {
+function shapeOnly<T>(schema: T): T {
 	if (Array.isArray(schema)) return schema.map(shapeOnly) as T;
 	if (!schema || typeof schema !== "object") return schema;
 	return Object.fromEntries(
@@ -35,8 +35,8 @@ export function shapeOnly<T>(schema: T): T {
 }
 
 /**
- * The CLI owns descriptions, validation, grammar support and execution. Both tools are deferred: their contracts cost
- * about 12k characters, so they load through tool search when a dependency, caller or impact question needs them.
+ * The CLI owns descriptions, validation, grammar support and execution. Both tools are declared directly; their
+ * contracts (about 12k characters) sit in the cached tool declarations.
  */
 export function registerGraphTools(pi: ExtensionAPI): void {
 	let binary: string;
@@ -57,7 +57,6 @@ export function registerGraphTools(pi: ExtensionAPI): void {
 			name,
 			label: name === "graphBuild" ? "Build graph" : "Query graph",
 			description: schema.description,
-			exposure: "deferred",
 			parameters: Type.Object(
 				{
 					request: Type.Unsafe<Record<string, unknown>>({

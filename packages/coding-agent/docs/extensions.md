@@ -298,12 +298,11 @@ See `hello.ts`, `todo.ts`, `dynamic-tools.ts`, and `truncated-tool.ts`.
 
 - `direct` (default): declared to the model while active, and callable while active.
 - `model-only`: declared to the model while active, never callable. Use it for tools that orchestrate other tools or ask the user.
-- `deferred`: callable when registered; `tool_search` can find and activate it for direct model calls.
 - `hidden`: registered but unreachable. Re-register a tool with `exposure: "hidden"` to withdraw it, since tools cannot be unregistered.
 
-`namespace: { name, aliases, description, instructions }` groups related tools, as MCP servers do. Discovery uses the description and aliases to match capabilities. Instructions provide server-specific usage guidance.
+`namespace: { name, description, instructions }` groups related tools, as MCP servers do. Instructions provide server-specific usage guidance.
 
-Registering a `direct` or `model-only` tool activates it; the other exposures are not activated on registration. The active set (`octocode.getActiveTools()`, `octocode.setActiveTools()`) is the set of tools declared to the model. `octocode.getAllTools()` reports each tool's `exposure`, `namespace`, `annotations`, and `reachesTools`.
+Registering a `direct` or `model-only` tool activates it unless it sets `defaultActive: false`, which leaves it to selections that name it (`--tools`, `defaultTools`) or `octocode.setActiveTools()`; a `hidden` tool is never activated. The active set (`octocode.getActiveTools()`, `octocode.setActiveTools()`) is the set of tools declared to the model. `octocode.getAllTools()` reports each tool's `exposure`, `namespace`, and `annotations`. `octocode.selectsTools(prefix, activeByDefault)` says whether the session's tool selection could declare tools whose names start with `prefix`, so an extension can skip starting a source of tools nobody selects, as the MCP host does per server.
 
 `annotations` are hints about what a tool does, with the meaning of MCP tool annotations: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. Custom extensions may attach these hints to their own tools. MCP server annotations are discarded, and the native permission gate does not consult hints. An extension can implement its own policy; for example:
 
@@ -321,8 +320,6 @@ octocode.on("tool_call", async (event, ctx) => {
 
 A tool that orchestrates other tools can adjust what the model sees while it is active with `prepareLoadout(loadout)`. It runs whenever the active tools change and receives the declared tools, the callable tools, and every registered tool with its exposure, namespace, and prompt guidelines. It returns replacement `descriptions` for declared tools (including its own) and `hiddenDeclarations`: active tools whose declarations requests leave out while they stay active and callable. The default system prompt leaves hidden tools out of its tool list and rules, and names no tool in the skills hint when the file reader is hidden, so the orchestrating tool should present their guidelines itself.
 
-A tool that reaches other tools declares which ones a call may reach with `reachesTools(input)`: `"all"`, or tool/namespace names. `tool_search` targets one namespace when supplied, otherwise all tools. The MCP host waits for the requested servers before execution and activates discovery only when it declares `reachesTools`.
-
 ### Activate tools dynamically
 
 Register every tool first, keep optional tools inactive, and use `octocode.setActiveTools()` from a loader tool to select the desired active tools. Names must already be registered; unknown names are ignored.
@@ -337,14 +334,14 @@ In the interactive transcript, a renderer that throws does not stop the terminal
 
 ### MCP servers
 
-`octocode.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, `inheritEnv`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `description`, `enabled`, and `timeout`.
+`octocode.registerMcpServer(name, config)` adds an MCP server for the current session. `config` has the shape of an `mcpServers` entry in [`mcp.json`](mcp.md): `command`, `args`, `env`, `inheritEnv`, and `cwd` for stdio servers, `url`, `headers`, and `oauth` for HTTP servers, plus `exposure`, `toolExposure`, `defaultActive`, `description`, `enabled`, and `timeout`.
 
 ```typescript
 octocode.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
 octocode.unregisterMcpServer("jira");
 ```
 
-Registered servers default to direct tools with full descriptions and input schemas. Server instructions appear once in shared context. Set `exposure: "auto"` or `"deferred"` to opt into discovery; see [tool exposure](mcp.md#control-tool-exposure).
+Registered servers declare their tools directly, and the server's instructions appear once in its prompt section. Set `defaultActive: false` to give the server only to the agents whose tool selection names it; see [assign servers to agents](mcp.md#assign-servers-to-agents).
 
 Servers registered while the extension loads connect when the session starts, together with the `mcp.json` servers; servers registered later connect right away, and `octocode.unregisterMcpServer()` closes the connection and makes the server's tools unreachable. Registrations are not saved: register again on every load, for example based on the extension's own settings. A server in `mcp.json` with the same name takes precedence, and `/mcp` shows the override. Registering the same name again replaces the extension's earlier registration; names registered by another extension, invalid names, and invalid configs throw.
 

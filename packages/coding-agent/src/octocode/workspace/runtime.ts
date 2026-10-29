@@ -9,6 +9,7 @@ import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contacts/team";
 import type { WorkspaceConnection, WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contacts/workspace";
+import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "../shared/sanitize.ts";
 import { contentText, toolHint } from "../shared/util.ts";
 import { errorMessage, isRecord } from "../../utils/guards.ts";
@@ -74,7 +75,7 @@ export class WorkspaceRuntime {
 			if (event.message.role === "assistant" || event.message.role === "custom") {
 				const message = event.message;
 				const details = "details" in message ? message.details : undefined;
-				if (message.role === "custom" && message.customType === "octocode-agent-result") {
+				if (message.role === "custom" && message.customType === AGENT_RESULT_TYPE) {
 					const report = presentAgentReport(message.content, isRecord(details) ? details : {});
 					const outcome = report.structured
 						? report.structured.status === "valid" && report.status === "done" && report.outcome === "done"
@@ -98,7 +99,7 @@ export class WorkspaceRuntime {
 		if (application && !this.projectedApplications.has(application)) {
 			application.setToolOutputProjector((toolName, result) => {
 				if (
-					(toolName !== "agent" && toolName !== "octocode-agent-result") ||
+					(toolName !== "agent" && toolName !== AGENT_RESULT_TYPE) ||
 					!isRecord(result) ||
 					!isRecord(result.details) ||
 					!result.details.structured

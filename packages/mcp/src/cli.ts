@@ -13,6 +13,7 @@ import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME } from "../../coding-agent/src/config.ts";
 import { globalMcpConfigPath, projectMcpConfigPath, projectMcpConfigPaths } from "./paths.ts";
 import { ProjectTrustStore } from "../../coding-agent/src/core/trust-manager.ts";
+import { compact, COMPACT_USAGE } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
@@ -22,6 +23,7 @@ import { formatMcpConfigLocations, getMcpConfigLocations } from "./inspection.ts
 import { loadMcpConfig, type McpExposure, updateMcpServerConfig } from "./config.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import { isMcpExposure, MCP_EXPOSURES } from "./servers.ts";
+import { projectMcpChanged, projectMcpTrusted } from "./trust.ts";
 
 const HELP = `${chalk.bold("Usage:")}
   ${APP_NAME} mcp add <server> [options] -- <command> [args...]
@@ -31,6 +33,7 @@ const HELP = `${chalk.bold("Usage:")}
   ${APP_NAME} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
   ${APP_NAME} mcp list [--json]
   ${APP_NAME} mcp tools [server] [tool] [--json]
+  ${COMPACT_USAGE}
   ${APP_NAME} mcp config [--json]
   ${APP_NAME} mcp login <server> [--timeout <seconds>]
   ${APP_NAME} mcp logout <server>
@@ -47,6 +50,7 @@ Commands:
   exposure <server> <mode> Change how its tools are reached
   list                    Show state, tools, and errors (exits 1 on failure)
   tools [server] [tool]    List tools, or inspect a tool's description and input schema
+  compact <action>        Show, check, store or list the TypeScript file the model reads for each server
   config                  Show global/workspace paths and their read order
   login <server>          Sign in through the browser
   logout <server>         Delete the stored OAuth credentials
@@ -68,7 +72,7 @@ Options for add:
                           Fixed OAuth callback port
   --oauth-client-name <name>
                           Client name sent when registering with the OAuth server
-  --exposure <mode>       direct (default), auto, deferred, or hidden
+  --exposure <mode>       direct (default) or hidden
   --description <text>    What the server offers, shown in the system prompt
 
 Other options:
@@ -94,7 +98,11 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			? add(rest, projectConfig, options, log, error)
 			: remove(rest, projectConfig, options, log, error);
 	}
-	const projectTrusted = new ProjectTrustStore(options.agentDir).get(options.cwd) === true;
+	// Writing project controls needs the directory decision. Project definitions start commands, so, as in a session,
+	// they load only when the project's config files also match the content trusted with /trust.
+	const directoryTrusted = new ProjectTrustStore(options.agentDir).get(options.cwd) === true;
+	const trustContext = { cwd: options.cwd, isProjectTrusted: () => directoryTrusted };
+	const projectTrusted = projectMcpTrusted(trustContext);
 	if (command === "config") {
 		const parsed = parseOptions(rest, { json: "flag" }, error);
 		if (!parsed) return 1;
@@ -112,8 +120,9 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 		projectTrusted,
 		defaults: presetEntries(options.presets ?? []),
 	});
-	const untrustedNote =
-		!projectTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
+	const untrustedNote = projectMcpChanged(trustContext, projectTrusted)
+		? `Project MCP servers are not loaded: their config is new or changed since the project was trusted. Run /trust in a ${APP_NAME} session in the project to review it.`
+		: !directoryTrusted && projectMcpConfigPaths(options.cwd).some(existsSync)
 			? `Project MCP configuration is ignored because the project is not trusted. Start ${APP_NAME} in the project to trust it.`
 			: undefined;
 	const credentials = options.credentials ?? new McpOAuthCredentialStore();
@@ -156,7 +165,7 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 				return 1;
 			}
 			const local = parsed.values.has("local");
-			if (local && !projectTrusted) {
+			if (local && !directoryTrusted) {
 				error("Project configuration requires a trusted project.");
 				return 1;
 			}
@@ -189,6 +198,8 @@ export async function runMcpCommand(args: string[], options: McpCommandOptions):
 			);
 			return 0;
 		}
+		case "compact":
+			return compact(rest, loaded, options, credentials, log, error, untrustedNote);
 		case "list": {
 			const parsed = parseOptions(rest, { json: "flag" }, error);
 			if (!parsed) return 1;

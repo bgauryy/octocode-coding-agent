@@ -145,6 +145,8 @@ export function startBackground(
 				details: {
 					id: identity.id,
 					status: "failed",
+					...(details.runId ? { runId: details.runId } : {}),
+					startedAt: details.startedAt,
 					outcome: "failed",
 					summary: `Failed: ${firstLine(errorMessage(error))}`,
 					durationMs: Date.now() - details.startedAt,

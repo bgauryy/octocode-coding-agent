@@ -292,7 +292,8 @@ export class AgentSessionRuntime {
 			if (!existsSync(currentSessionFile)) {
 				throw new Error("This session has not been saved yet. Send a message before cloning or forking it.");
 			}
-			const sessionManager = SessionManager.open(currentSessionFile, sessionDir);
+			// Keep the cwd this session runs in, which a resume may have moved away from the one in its file header.
+			const sessionManager = SessionManager.open(currentSessionFile, sessionDir, this.session.sessionManager.getCwd());
 			const forkedSessionPath = sessionManager.createBranchedSession(targetLeafId);
 			if (!forkedSessionPath) {
 				throw new Error("Failed to create forked session");

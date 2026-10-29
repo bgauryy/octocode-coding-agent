@@ -25,7 +25,7 @@ type Options = {
 	readTool?: boolean;
 	fileReadTool?: boolean;
 	fileWriteTool?: boolean;
-	deferredMcp?: boolean;
+	nestedMcp?: boolean;
 	nestedBash?: boolean;
 	output?: unknown;
 	exit?: number;
@@ -115,11 +115,11 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 	if (options.projectRules && options.projectTrusted !== undefined)
 		saveDecision(cwd, fingerprint(projectConfigFiles(cwd)), options.projectTrusted);
 	const mcpCapture = path.join(root, "mcp.jsonl");
-	if (options.deferredMcp) {
+	if (options.nestedMcp) {
 		const serverFile = path.join(root, "mcp.cjs");
 		fs.writeFileSync(
 			serverFile,
-			`const fs=require('node:fs');require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);fs.appendFileSync(${JSON.stringify(mcpCapture)},JSON.stringify({message:m,pid:process.pid})+'\\n');if(m.id===undefined)return;let result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'policy',version:'1'}}:m.method==='tools/list'?{tools:[{name:'observe',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}}]}:m.method==='tools/call'?{content:[{type:'text',text:'DEFERRED_MCP_READ_EVIDENCE'}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
+			`const fs=require('node:fs');require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);fs.appendFileSync(${JSON.stringify(mcpCapture)},JSON.stringify({message:m,pid:process.pid})+'\\n');if(m.id===undefined)return;let result=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'policy',version:'1'}}:m.method==='tools/list'?{tools:[{name:'observe',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}}]}:m.method==='tools/call'?{content:[{type:'text',text:'NESTED_MCP_READ_EVIDENCE'}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`,
 		);
 		fs.writeFileSync(
 			path.join(agentDir, "mcp.json"),
@@ -128,7 +128,6 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 					policy: {
 						command: process.execPath,
 						args: [serverFile],
-						exposure: "deferred",
 					},
 				},
 			}),
@@ -149,7 +148,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 			agentDir,
 			settingsManager,
 			noExtensions: true,
-			...(options.deferredMcp ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
+			...(options.nestedMcp ? { additionalExtensionPaths: ["builtin:mcp"] } : {}),
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -158,10 +157,10 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 				{
 					name: "permission-fixture",
 					factory(pi) {
-						if (options.deferredMcp)
+						if (options.nestedMcp)
 							pi.registerTool({
 								name: "nested_mcp_policy_fixture",
-								label: "Deferred MCP fixture",
+								label: "Nested MCP fixture",
 								description: "Read through the configured fixture MCP server",
 								parameters: Type.Object({}),
 								async execute(_id, _args, _signal, _update, ctx) {

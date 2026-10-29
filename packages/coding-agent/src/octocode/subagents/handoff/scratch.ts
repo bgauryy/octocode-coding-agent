@@ -1,18 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
-import { readPaths, workspacePaths, workspaceScratchDir } from "../../shared/home.ts";
+import { OCTOCODE_DIR, readPaths, workspaceScratchDir } from "../../shared/home.ts";
 import { processStartTime, sameProcess } from "../../shared/process.ts";
-import { sweepStaleOutputs } from "../../shared/sweep.ts";
+import { cleanupDays } from "../../shared/env.ts";
 import { DAY_MS } from "../../shared/util.ts";
 import { canonicalPath } from "../../shared/home/repo.ts";
 import { teamWorkspace } from "../../team/store/workspace.ts";
 
-/** Subagent scratch folders untouched this long are removed when a session starts. */
-const SCRATCH_MAX_AGE_MS = 7 * DAY_MS;
-
-/** `<workspace>/.octocode/tmp/agents`: one folder per subagent for the files it hands back. */
-export const scratchRoot = (cwd: string) => path.join(workspacePaths(cwd).tmp, "agents");
+/**
+ * `<team workspace>/.octocode/tmp/agents`: one folder per subagent for the files it hands back. The team workspace
+ * (`teamWorkspace`, which follows `OCTOCODE_TEAM_WORKSPACE`) is where `agentScratch` writes, so names and the sweep see
+ * the same folders.
+ */
+export const scratchRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env) =>
+	path.join(teamWorkspace(cwd, env), OCTOCODE_DIR, "tmp", "agents");
 
 /**
  * Names whose scratch folder exists. A name is a subagent's identity: its scratch folder holds its saved conversation
@@ -57,16 +59,51 @@ function ownerRunning(dir: string): boolean {
 	}
 }
 
-/** Removes scratch folders untouched for a week, except those whose owning Octocode process (this or another session) is alive. */
-export async function sweepScratch(root: string): Promise<void> {
+/**
+ * Newest write in a scratch folder: the folder, its saved conversation (`session/` and every file in it: appends to a
+ * transcript do not touch the folder) and its report. 0 when it is missing.
+ */
+async function lastWrite(dir: string): Promise<number> {
+	const session = path.join(dir, "session");
+	const transcripts = await fs.promises.readdir(session).catch((): string[] => []);
+	const files = [dir, session, path.join(dir, "report.md"), ...transcripts.map((name) => path.join(session, name))];
+	const times = await Promise.all(
+		files.map((file) =>
+			fs.promises.stat(file).then(
+				(stat) => stat.mtimeMs,
+				() => 0,
+			),
+		),
+	);
+	return Math.max(0, ...times);
+}
+
+/**
+ * Removes scratch folders nothing wrote to for `OCTOCODE_CLEANUP_DAYS` (default 30; `0` keeps them), except those whose
+ * owning Octocode process (this or another session) is alive. Never rejects.
+ */
+export async function sweepScratch(
+	root: string,
+	env: NodeJS.ProcessEnv = process.env,
+	now = Date.now(),
+): Promise<void> {
+	const days = cleanupDays(env);
+	if (days === 0) return;
 	let names: string[];
 	try {
 		names = await fs.promises.readdir(root);
 	} catch {
 		return;
 	}
-	const owned = new Set(names.filter((name) => ownerRunning(path.join(root, name))));
-	await sweepStaleOutputs(root, SCRATCH_MAX_AGE_MS, owned);
+	for (const name of names) {
+		const dir = path.join(root, name);
+		if (ownerRunning(dir)) continue;
+		try {
+			if (now - (await lastWrite(dir)) > days * DAY_MS) await fs.promises.rm(dir, { recursive: true, force: true });
+		} catch {
+			// Removed meanwhile, or not ours to remove.
+		}
+	}
 }
 
 /**

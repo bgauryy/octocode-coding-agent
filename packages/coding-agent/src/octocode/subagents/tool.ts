@@ -16,7 +16,7 @@ import type { Team } from "../team/session.ts";
 import { type AgentRuns, claimRun, joinTeam, planRun, type Run, Slots } from "./claim.ts";
 import { agentsCommand, stopBackground } from "./command.ts";
 import { ReadReports, scratchRoot, sweepScratch } from "./handoff/scratch.ts";
-import { RESULT_TYPE, ReportQueue } from "./handoff.ts";
+import { ReportQueue } from "./handoff.ts";
 import { LateReports } from "./late.ts";
 import { Lingering } from "./linger.ts";
 import { runSubagent } from "./process.ts";
@@ -27,9 +27,10 @@ import { startGate } from "./rate-gate.ts";
 import { childStagger } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
 import type { RelayHost } from "./relay.ts";
-import { renderAgentCall, renderAgentMessage, renderAgentResult } from "./render.ts";
+import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from "./render.ts";
 import { describePrune, pendingRefs, pruneWorktrees, recordWorktreePid } from "./worktree.ts";
 import { agentToolSpec } from "./agent-tool.ts";
+import { FORK_NOTE_TYPE, forkNote, resumableChild, resumedTask } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { runForeground, startBackground } from "./run-execution.ts";
@@ -65,7 +66,7 @@ export function registerAgentTool(
 	getRefused?: () => ReadonlyMap<string, string>,
 	registerTool: ExtensionAPI["registerTool"] = (tool) => pi.registerTool(tool),
 ): AgentControl {
-	pi.registerMessageRenderer(RESULT_TYPE, renderAgentMessage);
+	registerAgentMessageRenderer(pi);
 	// Per registration, not per module: a replaced session starts clean.
 	const panel = new AgentsView(team);
 	const runs: AgentRuns = {
@@ -122,9 +123,9 @@ export function registerAgentTool(
 		permission,
 		withLaunch,
 		(run, ctx, { text, message }) => {
-			const details = runDetails(run);
-			const track = tracker(run.identity, details, modelLookup(ctx));
 			const session = childSession(run.identity);
+			const details = runDetails(run, session);
+			const track = tracker(run.identity, details, modelLookup(ctx));
 			const args = buildAgentArgs(run.profile, run.route.model, session, []);
 			const host = relayHost(ctx);
 			const launch = (signal: AbortSignal) =>
@@ -196,7 +197,14 @@ export function registerAgentTool(
 		panel.stop(ctx);
 	});
 	// Worktrees left by a Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
+		// A fork's in-flight children stopped with the session it forked from: the model learns which, and how to continue them.
+		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
+		if (forked)
+			void pi.sendMessage(
+				{ customType: FORK_NOTE_TYPE, content: forked, display: false },
+				{ triggerTurn: false, deliverAs: "followUp" },
+			);
 		lingering.reopen(ctx);
 		panel.start(ctx);
 		runs.reports.start(ctx.sessionManager, () => ctx.isIdle());
@@ -228,9 +236,20 @@ export function registerAgentTool(
 				const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 				const goal = checkGoal(params.goal);
 				const skillResources = pi.getSkillResourceSnapshot(params.skills);
+				// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
+				const resumed = params.resume
+					? resumableChild(ctx.sessionManager.getEntries(), params.resume, new Set(runs.running.keys()))
+					: undefined;
+				if (resumed && params.isolate)
+					throw new Error("resume continues a child in this tree; isolate does not apply.");
 				// Refusals first (unknown profile, unavailable model), then a slot, then the spawn ask: the user is never asked
 				// for a run that cannot start, and a denied spawn claims and starts nothing.
-				const plan = planRun(getProfiles(), params, ctx, getRefused?.());
+				const plan = planRun(
+					getProfiles(),
+					resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
+					ctx,
+					getRefused?.(),
+				);
 				await startGate.wait(launchSignal); // a child just failed on a rate limit: the next start would meet it too
 				await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
 				let claimed: Run | undefined;
@@ -248,7 +267,9 @@ export function registerAgentTool(
 					// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
 					const refs = params.isolate ? await pendingRefs(ctx.cwd) : [];
 					launchSignal.throwIfAborted();
-					claimed = claimRun(runs, plan, { ...params, goal }, ctx, refs);
+					claimed = claimRun(runs, plan, { ...params, goal, name: resumed?.child.id }, ctx, refs);
+					// Its follow-up window, if one is open, ends: this call continues it.
+					if (resumed) lingering.forget(resumed.child.id);
 				} finally {
 					// From here the run's `release` gives the slot back.
 					if (!claimed) runs.slots.give();
@@ -289,11 +310,15 @@ export function registerAgentTool(
 					const contractTask = resultContract
 						? `${taskInput}\n\nResult contract (SHA-256 ${resultContract.hash}): Return the requested result in your final answer, after the ordinary report, as exactly one final block:\nStructured result:\n\`\`\`json\n<JSON matching the schema>\n\`\`\`\nSchema: ${JSON.stringify(resultContract.schema)}`
 						: taskInput;
-					const own = withIdentity(contractTask, run.identity, library ? { library } : undefined);
+					const own = withIdentity(
+						resumed ? `Follow-up from your parent:\n${contractTask}` : contractTask,
+						run.identity,
+						library ? { library } : undefined,
+					);
 					const task = run.identity.collaborate ? joinTeam(runs, run, own) : own;
-					const details = runDetails(run);
+					const session = resumed?.session ?? childSession(run.identity);
+					const details = runDetails(run, session);
 					const track = tracker(run.identity, details, modelLookup(ctx));
-					const session = childSession(run.identity);
 					// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
 					const lingers = params.background === true && !params.isolate;
 					const args = buildAgentArgs(run.profile, run.route.model, session, []);

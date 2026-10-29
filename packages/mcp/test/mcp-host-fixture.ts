@@ -21,7 +21,7 @@ export function mcpHost(
 	fake.pi.registerToolRenderer = () => {};
 	fake.pi.getActiveTools = () =>
 		[...fake.tools.values()]
-			.filter((tool) => tool.exposure !== "hidden" && tool.exposure !== "deferred" && tool.defaultActive !== false)
+			.filter((tool) => tool.exposure !== "hidden" && tool.defaultActive !== false)
 			.map((tool) => tool.name);
 	const ctx = fakeCtx({ cwd: options.cwd ?? tmp(), hasUI: options.hasUI ?? true });
 	const transports: StdioTransport[] = [];
@@ -41,9 +41,12 @@ export function mcpHost(
 		await fake.fire("session_start", {}, context);
 	};
 	const prompt = async (context: ExtensionContext = ctx) => {
-		const event = { systemPromptOptions: { sections: {} as Record<string, string> } };
+		const event = {
+			systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} as Record<string, string> },
+		};
 		await fake.fire("before_agent_start", event, context);
-		return event.systemPromptOptions.sections;
+		// Generated server files land in the tool-stable base sections; the session's own sections follow them.
+		return { ...event.systemPromptOptions.baseSections, ...event.systemPromptOptions.sections };
 	};
 	const call = (
 		name: string,

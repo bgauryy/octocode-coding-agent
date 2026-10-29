@@ -408,7 +408,7 @@ describe("collaboration prompt", () => {
 		);
 		expect(tools[0].parameters.properties.collaborate?.description).toMatch(/subagents that must coordinate directly/);
 		// A child names its parent generically: its own id and parent arrive in its task.
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate: true })).toMatch(
+		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false })).toMatch(
 			/your parent[\s\S]*agent[\s\S]*message/,
 		);
 	});

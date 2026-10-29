@@ -6,5 +6,3 @@ export const PARENT_PID_ENV = "OCTOCODE_PARENT_PID";
 export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
 /** Set in a subagent: its goal, at most five words (`identity.ts`). Stored in the `task` column. */
 export const AGENT_GOAL_ENV = "OCTOCODE_AGENT_GOAL";
-/** Set in a subagent started with `collaborate`: it works with its sibling subagents, not only for its parent. */
-export const AGENT_COLLABORATE_ENV = "OCTOCODE_AGENT_COLLABORATE";

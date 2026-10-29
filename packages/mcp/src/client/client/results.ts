@@ -83,7 +83,60 @@ export function validateCallToolResult(value: unknown): CallToolResult {
 	};
 }
 
-/** Project supported content fields so server annotations cannot affect rendering or trust. */
+const optionalString = (value: unknown): value is string | undefined =>
+	value === undefined || typeof value === "string";
+
+/** Bytes a base64 string decodes to. */
+const decodedBytes = (base64: string): number => {
+	const data = base64.replace(/\s/g, "");
+	return Math.floor((data.length * 3) / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+};
+
+/**
+ * An embedded resource as content: its text after a line naming its URI and type, an image blob as an image, any
+ * other blob as a line naming its URI, type and size (base64 is not readable text).
+ */
+function embeddedResource(resource: unknown): ContentBlock {
+	if (!isObject(resource) || typeof resource.uri !== "string" || !optionalString(resource.mimeType))
+		throw invalid("Invalid MCP tool content");
+	const { uri, mimeType } = resource;
+	const label = `[resource ${uri}${mimeType ? ` (${mimeType})` : ""}]`;
+	if (typeof resource.text === "string") return { type: "text", text: `${label}\n${resource.text}` };
+	if (typeof resource.blob !== "string") throw invalid("Invalid MCP tool content");
+	if (mimeType && /^image\//i.test(mimeType)) return { type: "image", data: resource.blob, mimeType };
+	return {
+		type: "text",
+		text: `[resource ${uri} (${mimeType ?? "unknown type"}, ${decodedBytes(resource.blob)} bytes of binary data, not shown)]`,
+	};
+}
+
+/** A link to a resource the server can read: its URI, name and what the server says about it, one per line. */
+function resourceLink(value: Record<string, unknown>): ContentBlock {
+	const { uri, name, title, description, mimeType, size } = value;
+	if (
+		typeof uri !== "string" ||
+		typeof name !== "string" ||
+		!optionalString(title) ||
+		!optionalString(description) ||
+		!optionalString(mimeType) ||
+		(size !== undefined && typeof size !== "number")
+	)
+		throw invalid("Invalid MCP tool content");
+	const lines = [
+		`[resource link ${uri}]`,
+		`name: ${name}`,
+		...(title ? [`title: ${title}`] : []),
+		...(description ? [`description: ${description}`] : []),
+		...(mimeType ? [`mimeType: ${mimeType}`] : []),
+		...(size !== undefined ? [`size: ${size} bytes`] : []),
+	];
+	return { type: "text", text: lines.join("\n") };
+}
+
+/**
+ * Project supported content fields so server annotations cannot affect rendering or trust. Embedded resources and
+ * resource links become text or image blocks (see {@link embeddedResource}, {@link resourceLink}).
+ */
 function contentBlock(value: unknown): ContentBlock {
 	if (!isObject(value) || typeof value.type !== "string") throw invalid("Invalid MCP tool content");
 	if (value.type === "text" && typeof value.text === "string") return { type: "text", text: value.text };
@@ -93,12 +146,14 @@ function contentBlock(value: unknown): ContentBlock {
 		typeof value.mimeType === "string"
 	)
 		return { type: value.type, data: value.data, mimeType: value.mimeType };
+	if (value.type === "resource") return embeddedResource(value.resource);
+	if (value.type === "resource_link") return resourceLink(value);
 	if (["text", "image", "audio"].includes(value.type)) throw invalid("Invalid MCP tool content");
 	return { type: "text", text: `[unsupported MCP content ${value.type}]` };
 }
 
 /** One page of a paginated list method, starting at `cursor`. */
-export async function listPage(
+async function listPage(
 	request: ListRequest,
 	method: string,
 	key: string,

@@ -82,10 +82,17 @@ function describeValues(label: string, record: Record<string, string> | undefine
 	return `\n${label}:\n${lines.join("\n")}`;
 }
 
-/** What the user confirms: where the server runs or connects, and the exact headers and environment it is given. */
+/**
+ * What the user confirms: where the server runs or connects, and the exact headers and environment it is given. The
+ * command, each argument, the URL and the working directory are JSON-quoted like the values, so control characters
+ * cannot forge dialog text and argument boundaries stay visible.
+ */
 function describeNewServer(config: McpServerConfig): string {
-	const target = "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" ");
-	const cwd = "cwd" in config && config.cwd ? `\nWorking directory: ${config.cwd}` : "";
+	const target =
+		"url" in config
+			? `URL: ${JSON.stringify(config.url)}`
+			: `Command: ${[config.command, ...(config.args ?? [])].map((part) => JSON.stringify(part)).join(" ")}`;
+	const cwd = "cwd" in config && config.cwd ? `\nWorking directory: ${JSON.stringify(config.cwd)}` : "";
 	const values =
 		"url" in config
 			? describeValues("Headers", config.headers, config.literalHeaders !== true)
@@ -191,7 +198,7 @@ export function createMcpManageTool(operations: McpManageOperations): ToolDefini
 						);
 					const confirmed = await ctx.ui.confirm(
 						"Add MCP server?",
-						`The agent wants to add "${name}" for this session: ${describeNewServer(config)}`,
+						`The agent wants to add "${name}" for this session.\n${describeNewServer(config)}`,
 						{ signal },
 					);
 					signal?.throwIfAborted();

@@ -5,65 +5,51 @@ import { presetEntries } from "./preset.ts";
 import { getAgentDir } from "../../coding-agent/src/config.ts";
 import type { ExtensionContext } from "../../coding-agent/src/core/extensions/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
-import {
-	DISCOVERY_WAIT_MS,
-	reconnect,
-	reconnectSignedIn,
-	startConnection,
-	waitForDirectServers,
-	waitForServers,
-} from "./connections.ts";
+import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
 import { reportProblems } from "./report.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
 import { mcpNamespace } from "./servers.ts";
-import { resetDiscoveryActivation, TOOL_SEARCH_TOOL_NAME } from "../../coding-agent/src/core/tools/tool-search.ts";
-import { MCP_SERVERS_SECTION, type McpServerListing, reachesServer, renderServersSection } from "./section.ts";
+import { isSelected } from "./exposure.ts";
+import {
+	MCP_CONTRACT_SECTION_PREFIX,
+	MCP_STATUS_SECTION,
+	type McpServerListing,
+	renderContractSections,
+	renderStatusSection,
+} from "./section.ts";
 import { errorMessage } from "../../coding-agent/src/utils/guards.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import type { McpExtensionState } from "./state.ts";
-import { ensureDiscoveryActive, hideTools, registerTools } from "./tool-registry.ts";
+import { hideTools, registerTools } from "./tool-registry.ts";
 
 /**
- * The servers as the `mcp_servers` section lists them: this extension's servers with their registered tools once
- * connected, including presets and extension registrations. Deferred tools count only
- * while `tool_search` is active; without it nothing can load them.
+ * The servers the prompt describes: enabled servers this session's selection reaches, with their tools as the active
+ * tool set declares them. A thin declared tool is described by the server's frozen generated file; the file stays while
+ * the server reconnects, so a state change does not resend it.
  */
 function serverListings(state: McpExtensionState): McpServerListing[] {
-	const { pi } = state;
-	const active = new Set(pi.getActiveTools());
-	const discovery = active.has(TOOL_SEARCH_TOOL_NAME);
-	const all = pi.getAllTools();
-	const toolsOf = (names: Iterable<string>) => {
-		const named = new Set(names);
-		const tools = all.filter((tool) => named.has(tool.name));
-		const declared = tools.filter(
-			(tool) => active.has(tool.name) && tool.exposure !== "hidden" && (tool.exposure === "direct" || !discovery),
+	const active = new Set(state.pi.getActiveTools());
+	return state.servers.flatMap((server) => {
+		if (!isEnabled(server) || server.unselected) return [];
+		const declared = [...(state.serverTools.get(server.entry.name) ?? [])].filter(
+			(name) => active.has(name) && state.definitions.get(name)?.exposure === "direct",
 		);
-		return {
-			deferred: discovery
-				? tools.filter((tool) => tool.exposure === "deferred").map((tool) => ({ name: tool.name }))
-				: [],
-			declared: declared.map((tool) => ({ name: tool.name })),
-		};
-	};
-	const listings: McpServerListing[] = state.servers.map((server) => {
-		const entry = {
-			...server.entry,
-			config: { ...server.entry.config, exposure: state.effectiveExposure(server.entry) },
-		};
-		const registered = server.connection?.state === "connected" ? state.serverTools.get(server.entry.name) : undefined;
-		return {
-			...server,
-			entry,
-			connection: {
+		const thin = declared.filter((name) => state.definitions.get(name)?.validationParameters);
+		const file = state.presentation.section(
+			server.entry.name,
+			thin.map((name) => state.toolOwners.get(name)?.split("\0")[1] ?? name),
+		);
+		return [
+			{
+				entry: server.entry,
 				state: server.connection?.isStopped ? "stopped" : (server.connection?.state ?? "connecting"),
-				instructions: server.connection?.instructions,
+				...(server.connection?.instructions ? { instructions: server.connection.instructions } : {}),
+				declared: declared.length > 0,
+				...(file ? { file } : {}),
 			},
-			...(registered ? { tools: toolsOf(registered) } : {}),
-		};
+		];
 	});
-	return listings;
 }
 
 function defaultLoadConfig(ctx: ExtensionContext, defaults: readonly McpServerEntry[]): LoadedMcpConfig {
@@ -74,15 +60,12 @@ export function registerSessionEvents(state: McpExtensionState): void {
 	const { pi, options } = state;
 
 	pi.on("session_start", (_event, ctx) => {
-		resetDiscoveryActivation(pi);
-		state.resetAutomaticExposure();
-		state.selectedModel = ctx.model;
+		state.presentation.reset();
 		const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		state.configErrors = loaded.errors;
 		state.projectConfig = loaded.projectConfig;
 		state.globalConfig = loaded.globalConfig;
 		state.projectTrusted = ctx.isProjectTrusted();
-		state.warnedUnreachable = false;
 		state.waitedForStartup = false;
 		state.sessionCwd = ctx.cwd;
 		state.modelRegistry = ctx.modelRegistry;
@@ -94,7 +77,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			callSignal.throwIfAborted();
 			const server = state.findServer(request.server);
 			if (!server || !isEnabled(server)) throw new Error(`MCP server "${request.server}" is unavailable`);
-			if (request.waitForConnection) await waitForServers(state, [server], callSignal);
+			// A server outside the tool selection starts for the hook alone; its tools stay undeclared.
+			if (server.unselected && !server.connection) void state.track(startConnection(state, server, undefined, false));
+			if (request.waitForConnection || server.unselected) await waitForServers(state, [server], callSignal);
 			callSignal.throwIfAborted();
 			const connection = server.connection;
 			if (!connection || connection.state !== "connected")
@@ -126,11 +111,9 @@ export function registerSessionEvents(state: McpExtensionState): void {
 				.map((entry) => ({ entry })),
 			...registered.servers,
 		];
+		for (const server of state.servers) server.unselected = isEnabled(server) && !isSelected(state.pi, server.entry);
 		state.emitChange();
-		// Tool search is activated from the config: the first prompt does not wait for
-		// servers whose tools are not declared to the model, and a tool_search waits for them.
-		ensureDiscoveryActive(state, ctx);
-		const enabled = state.servers.filter(isEnabled);
+		const enabled = state.servers.filter((server) => isEnabled(server) && !server.unselected);
 		if (enabled.length === 0) {
 			reportProblems(state, ctx);
 			return;
@@ -150,25 +133,22 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			});
 	});
 
-	// Navigating the tree restores the loadout of the target branch, which may not include tool_search yet.
-	pi.on("session_tree", (_event, ctx) => {
-		resetDiscoveryActivation(pi);
-		ensureDiscoveryActive(state, ctx);
+	// Navigating the tree rebuilds the loadout of the target branch, and with it the prompt.
+	pi.on("session_tree", () => {
+		state.presentation.rebuild();
 	});
 
-	pi.on("model_select", (event, ctx) => {
-		state.selectedModel = event.model;
+	pi.on("model_select", () => {
+		state.presentation.rebuild();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);
-		ensureDiscoveryActive(state, ctx);
 	});
 
-	// Every prompt lists the servers in the `mcp_servers` section as they are when it starts. Pi
-	// appends the section to the conversation when it changed, for example after a server connected.
-	// The first prompt waits for servers whose tools are declared to the model (`waitForDirectServers`);
-	// other servers are waited for when a tool_search needs them (below).
+	// Every prompt describes the servers as they are when it starts: each server's contract is a base section (cached
+	// with the tools, ahead of project context) and servers that are not connected are named in `mcp_status`. Pi appends
+	// a section to the conversation when it changed, for example after a server connected. The first prompt waits for
+	// servers whose tools are declared to the model (`waitForDirectServers`).
 	pi.on("before_agent_start", async (event, ctx) => {
-		state.selectedModel = ctx.model;
 		if (!ctx.signal?.aborted && !state.session.signal.aborted) {
 			const changed = state.servers.filter((server) => {
 				const launched = server.connection && state.preparedLaunches.get(server.connection);
@@ -184,49 +164,38 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			await waitForServers(state, changed, ctx.signal);
 		}
 		await waitForDirectServers(state, ctx);
-		state.settleAutomaticExposure();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);
-		ensureDiscoveryActive(state, ctx);
-		const { sections } = event.systemPromptOptions;
-		const section = renderServersSection(serverListings(state));
-		if (section) sections[MCP_SERVERS_SECTION] = section;
-		else delete sections[MCP_SERVERS_SECTION];
-	});
-
-	// Discovery waits for its requested namespaces.
-	// A direct MCP call waits only for its server, including a pending reconnect.
-	pi.on("tool_call", async (event, ctx) => {
-		const tool = pi.getAllTools().find((candidate) => candidate.name === event.toolName);
-		if (!tool) return;
-		// Readiness can be pending while the display state is still connected: reconnect first
-		// closes the old transport, then opens a new one. Settled promises return immediately.
-		const readyServers = state.servers.filter((server) => isEnabled(server) && server.ready);
-		if (readyServers.length === 0) return;
-		let waiting: McpServer[] = [];
-		const reach = tool.reachesTools?.(event.input);
-		if (reach !== undefined) {
-			waiting = readyServers.filter((server) => reachesServer(reach, server.entry.name));
-		} else {
-			const owner = state.toolOwners.get(event.toolName)?.split("\0", 1)[0];
-			waiting = readyServers.filter((server) => server.entry.name === owner);
-		}
-		if (reach === undefined) {
-			await waitForServers(state, waiting, ctx.signal);
-			return;
-		}
-		// Discovery must not hang on one slow server: search what is connected and say which servers are still connecting.
-		const pending = await waitForServers(state, waiting, ctx.signal, DISCOVERY_WAIT_MS);
-		if (pending.length > 0 && !ctx.signal?.aborted)
+		// A new or changed catalog whose tools keep the server's own wording: tell the user, never the model.
+		for (const { server, tools } of state.presentation.takeUnoptimized())
 			ctx.ui.notify(
-				`MCP servers still connecting: ${pending.map((server) => server.entry.name).join(", ")}. Tool search covers the connected servers only; search again once they connect.`,
+				`MCP server "${server}": ${tools.length} tool description${tools.length === 1 ? "" : "s"} not yet rewritten for its compact file (${tools.join(", ")}). The octocode-compact-mcp skill rewrites them.`,
 				"info",
 			);
+		const { sections, baseSections } = event.systemPromptOptions;
+		const listings = serverListings(state);
+		const status = renderStatusSection(listings);
+		if (status) sections[MCP_STATUS_SECTION] = status;
+		else delete sections[MCP_STATUS_SECTION];
+		const contracts = renderContractSections(listings);
+		for (const name of Object.keys(baseSections))
+			if (name.startsWith(MCP_CONTRACT_SECTION_PREFIX) && !(name in contracts)) delete baseSections[name];
+		Object.assign(baseSections, contracts);
+	});
+
+	// An MCP call waits only for its server, including a pending reconnect. Readiness can be pending while the display
+	// state is still connected: reconnect first closes the old transport, then opens a new one. Settled promises return
+	// immediately.
+	pi.on("tool_call", async (event, ctx) => {
+		const owner = state.toolOwners.get(event.toolName)?.split("\0", 1)[0];
+		if (owner === undefined) return;
+		const waiting = state.servers.filter((server) => isEnabled(server) && server.ready && server.entry.name === owner);
+		await waitForServers(state, waiting, ctx.signal);
 	});
 
 	// Pick up sign-ins done outside the session, such as `pi mcp login` run by the agent.
-	pi.on("turn_start", async (_event, ctx) => {
-		if (state.tokensAtSignIn.size > 0) await reconnectSignedIn(state, ctx);
+	pi.on("turn_start", async () => {
+		if (state.tokensAtSignIn.size > 0) await reconnectSignedIn(state);
 	});
 
 	// Servers registered or unregistered during the session connect or disconnect right away.
@@ -257,11 +226,11 @@ export function registerSessionEvents(state: McpExtensionState): void {
 			(server) =>
 				!state.servers.some((current) => mcpNamespace(current.entry.name) === mcpNamespace(server.entry.name)),
 		);
+		for (const server of added) server.unselected = isEnabled(server) && !isSelected(state.pi, server.entry);
 		state.servers.push(...added);
 		state.emitChange();
-		ensureDiscoveryActive(state, ctx);
 		await Promise.all(removed.flatMap((server) => server.connection?.close() ?? []));
-		const connecting = added.filter(isEnabled);
+		const connecting = added.filter((server) => isEnabled(server) && !server.unselected);
 		if (signal.aborted || connecting.length === 0) return;
 		try {
 			await Promise.all(connecting.map((server) => startConnection(state, server)));

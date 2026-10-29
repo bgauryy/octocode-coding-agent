@@ -10,7 +10,7 @@ The package provides a transport-neutral client core, stdio, Streamable HTTP and
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [CONFIGURATIONS.md](../../CONFIGURATIONS.md) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
-The host declares connected tools directly by default, with full descriptions and input schemas plus shared server instructions once. Explicit `auto`, `deferred`, `hidden`, and per-tool settings remain available; the Octocode preset uses it too, except for five rarely used research tools (`ghSearchHistory`, `ghGetHistoryItem`, `clasify`, `artifactSearch`, `ghSearchRepo`) that its per-tool defaults (`toolExposure` on the preset) defer behind `tool_search`; a server `exposure` or tool setting in `mcp.json` wins.
+The host declares every tool of a selected server up front: each server's generated TypeScript file (`src/compact/`, `src/presentation/`) goes in its own cached prompt section, and provider declarations are thin stubs validated against the server's schema. `hidden` and per-tool settings withdraw tools; a server with `defaultActive: false` reaches only the agents whose tool selection names it, which is how the `browser` preset reaches only the browser subagent. The Octocode preset declares its whole catalog and ships per-tool description overrides (`src/presets/octocode/compact-overrides.json`).
 
 ## Usage
 
@@ -38,7 +38,7 @@ For a server using the older HTTP+SSE transport, use `new LegacySseTransport({ u
 
 ### Tools for an LLM
 
-`toLlmContent(result)` converts a `CallToolResult` to text and image content for a model, in the shape of `@octocodeai/octocode-ai`'s `TextContent` and `ImageContent`. Text and images pass through, and audio becomes a short text placeholder. The client discards annotations and converts unsupported blocks, including resources and resource links, to placeholders without reading their payloads. A result without content blocks but with `structuredContent` becomes its JSON.
+`toLlmContent(result)` converts a `CallToolResult` to text and image content for a model, in the shape of `@octocodeai/octocode-ai`'s `TextContent` and `ImageContent`. Text and images pass through, and audio becomes a short text placeholder. The client discards annotations and never reads resources itself: `callTool` turns an embedded text resource into a text block (a `[resource <uri> (<mimeType>)]` line, then the text), an embedded image blob into an image block, another blob into a line naming its URI, type and size, and a resource link into its URI, name, title, description, type and size. Other unknown blocks become placeholders. A result without content blocks but with `structuredContent` becomes its JSON.
 
 Wrapping an MCP tool as an `@octocodeai/octocode-agent-core` `AgentTool`:
 

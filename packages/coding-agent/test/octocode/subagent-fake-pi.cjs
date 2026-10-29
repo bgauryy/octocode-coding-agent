@@ -479,7 +479,7 @@ async function scenario() {
 				errorMessage: '401 {"type":"error","error":{"type":"authentication_error","message":"api_key_expired"}}',
 			},
 		});
-	} else if (task.startsWith("error")) {
+	} else if (/^(?:Follow-up from your parent:\n)?error/.test(task)) {
 		emit(say("partial findings", { stopReason: "error", errorMessage: "provider down" }));
 	} else if (task.startsWith("length")) {
 		emit(say("unfinished findings", { stopReason: "length" }));
@@ -575,7 +575,6 @@ async function scenario() {
 			goal: env.OCTOCODE_AGENT_GOAL,
 			parent: env.OCTOCODE_PARENT_ID,
 			subagent: env.OCTOCODE_SUBAGENT,
-			collaborate: env.OCTOCODE_AGENT_COLLABORATE,
 			scratch: env.OCTOCODE_AGENT_SCRATCH,
 			workspace: env.OCTOCODE_TEAM_WORKSPACE,
 			trustRoot: env.OCTOCODE_TRUST_ROOT,

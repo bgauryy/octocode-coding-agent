@@ -16,7 +16,7 @@ describe("prompt", () => {
 			"Use Octocode MCP (`mcp__octocode__*`) to check code before you rely on it, here (instead of ls, rg, grep or find in bash) and in GitHub or package registries outside this repository (instead of answering from memory).",
 		);
 		// The server's own instructions route each question to a tool; the prompt only points at them.
-		expect(root).toContain("The mcp_servers section routes each question to a tool.");
+		expect(root).toContain("Its mcp_contract section routes each question to a tool.");
 		// A missing or refusing server has a stated recovery.
 		expect(root).toContain(
 			"If an Octocode tool is unavailable, say so and use permitted bash search (`rg`, `fd`, `sed -n`).",
@@ -258,9 +258,7 @@ describe("prompt", () => {
 		expect(child).toContain("end with a short summary in your report");
 		// The agent message guideline owns "no completion pings" and coordinate owns conflict resolution.
 		expect(child).not.toContain("completion message");
-		expect(octocodePrompt({ octocode: false, profiles: [], canDelegate: false, collaborate: true })).not.toContain(
-			"resolve dependencies",
-		);
+		expect(child).not.toContain("resolve dependencies");
 	});
 
 	it("states one research scope that agrees with the Research section, and the delegate clause only to a delegator", () => {
@@ -345,8 +343,9 @@ describe("prompt", () => {
 		// The main session commits only on request; a subagent leaves commits to its parent.
 		expect(root).toContain("Commit or push only when the user asks.");
 		expect(writer).not.toContain("Commit or push only when the user asks.");
-		expect(root).toContain("Write each task as a task contract");
-		expect(writer).not.toContain("task contract");
+		// The agent tool's `task` field owns the task-contract parts.
+		expect(root).not.toContain("task contract");
+		expect(writer).not.toContain("Start a child in the background");
 	});
 
 	it("makes the main session the coordinator and gives every child decision a channel that can be answered", () => {
@@ -373,7 +372,8 @@ describe("prompt", () => {
 		// A resume keeps the run's browser mode, so a visible session needs a new task.
 		expect(role("browser")).toContain("start the task again with headless=false");
 		expect(role("browser")).not.toContain("resume the task");
-		expect(role("implementer")).toContain("ask your parent as the Subagent section describes");
+		// The Subagent section owns how a child asks its parent; roles do not restate it.
+		expect(role("implementer")).not.toContain("ask your parent");
 		expect(role("implementer")).not.toContain("leave browser work to a browser profile");
 	});
 

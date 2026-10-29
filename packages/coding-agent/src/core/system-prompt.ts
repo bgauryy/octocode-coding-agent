@@ -19,11 +19,6 @@ export interface BuildSystemPromptOptions {
 	 * They are reachable only through another tool, so the tool list and rules leave them out too.
 	 */
 	hiddenTools?: string[];
-	/**
-	 * Deferred tools that `tool_search` can load. They are not declared, but rules that depend on which
-	 * tools exist count them, so loading one does not change the rules.
-	 */
-	deferredTools?: string[];
 	/** Optional one-line tool snippets keyed by tool name. */
 	toolSnippets?: Record<string, string>;
 	/** Guideline bullets contributed by each tool, keyed by tool name. */
@@ -32,10 +27,18 @@ export interface BuildSystemPromptOptions {
 	promptGuidelines?: string[];
 	/** Text appended from user configuration before project context, skills, and cwd. */
 	appendSystemPrompt?: string;
-	/** Additional XML-wrapped prompt sections keyed by tag name. */
+	/** Additional XML-wrapped prompt sections keyed by tag name, placed after the session's own sections. */
 	sections?: Record<string, string>;
+	/**
+	 * XML-wrapped sections that depend only on the tools and the install, such as each MCP server's generated file,
+	 * keyed by tag name. They follow `docs` (the preamble for a custom prompt) in the given order, before project
+	 * context, so sessions in other projects or on other days share them in the first instruction cache block.
+	 */
+	baseSections?: Record<string, string>;
 	/** Working directory. */
 	cwd: string;
+	/** Platform, shell and date for the `environment` section (`currentEnvironment`); left out when absent. */
+	environment?: string;
 	/** Pre-loaded context files. */
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-loaded skills. */
@@ -45,12 +48,12 @@ export interface BuildSystemPromptOptions {
 export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	selectedTools: string[];
 	hiddenTools: string[];
-	deferredTools: string[];
 	toolSnippets: Record<string, string>;
 	toolGuidelines: Record<string, string[]>;
 	promptGuidelines: string[];
 	appendSystemPrompt: string;
 	sections: Record<string, string>;
+	baseSections: Record<string, string>;
 	contextFiles: Array<{ path: string; content: string }>;
 	skills: Skill[];
 };
@@ -63,6 +66,18 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 export type SystemPromptSections = Record<string, string>;
 
 const SYSTEM_PROMPT_SECTION_NAME = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * The `environment` section: platform and shell (command flags differ between them) and today's local date (research
+ * on versions, releases and advisories needs it). The last default section (custom sections follow it); a new day
+ * changes only this section, which reaches the model as a section update instead of rewriting the prompt the session
+ * started with.
+ */
+export function currentEnvironment(now = new Date(), env: NodeJS.ProcessEnv = process.env): string {
+	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
+	return `Platform: ${process.platform} ${process.arch}\nShell: ${shell}\nDate: ${date}`;
+}
 /** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
 export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOptions): NormalizedBuildSystemPromptOptions {
 	return {
@@ -70,7 +85,6 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		forceSystemPrompt: input.forceSystemPrompt,
 		selectedTools: [...(input.selectedTools ?? ["bash"])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
-		deferredTools: [...(input.deferredTools ?? [])],
 		toolSnippets: { ...input.toolSnippets },
 		toolGuidelines: Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
@@ -78,7 +92,9 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		promptGuidelines: [...(input.promptGuidelines ?? [])],
 		appendSystemPrompt: input.appendSystemPrompt ?? "",
 		sections: { ...input.sections },
+		baseSections: { ...input.baseSections },
 		cwd: input.cwd,
+		environment: input.environment,
 		contextFiles: (input.contextFiles ?? []).map((file) => ({ ...file })),
 		skills: (input.skills ?? []).map((skill) => ({ ...skill })),
 	};
@@ -95,7 +111,6 @@ function renderProjectContext(contextFiles: Array<{ path: string; content: strin
 
 function buildRules(
 	selectedTools: string[],
-	deferredTools: string[],
 	toolGuidelines: Record<string, string[]>,
 	promptGuidelines: string[],
 	includeFloor: boolean,
@@ -109,7 +124,7 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	const hasLocalSearch = [...selectedTools, ...deferredTools].some(isOctocodeSearch);
+	const hasLocalSearch = selectedTools.some(isOctocodeSearch);
 
 	if (selectedTools.includes("bash") && !hasLocalSearch) addRule("Use bash for file operations like ls, rg, find");
 
@@ -132,18 +147,19 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		customPrompt,
 		selectedTools,
 		hiddenTools,
-		deferredTools,
 		toolSnippets,
 		toolGuidelines,
 		promptGuidelines,
 		appendSystemPrompt,
 		sections: customSections,
+		baseSections,
 		cwd,
+		environment,
 		contextFiles,
 		skills,
 	} = options;
 
-	for (const name of Object.keys(customSections)) {
+	for (const name of [...Object.keys(customSections), ...Object.keys(baseSections)]) {
 		if (!SYSTEM_PROMPT_SECTION_NAME.test(name) || name === "preamble") {
 			throw new Error(`Invalid system prompt section name: ${name}`);
 		}
@@ -162,7 +178,6 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		promptSections.tools = tools;
 		promptSections.rules = buildRules(
 			declaredTools,
-			deferredTools,
 			toolGuidelines,
 			promptGuidelines,
 			!customSections.octocode_communication,
@@ -174,16 +189,16 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 - Resolve docs/... under Additional docs and examples/... under Examples, not the current working directory. Read the docs and examples that define the behavior, follow .md cross-references a task depends on, and read a whole section when its conditions or exceptions matter.`;
 	}
 
+	for (const [name, content] of Object.entries(baseSections)) if (content) promptSections[name] = content;
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	// Octocode ships no `read` tool, but an extension or SDK caller may register one under that name.
-	// A deferred Octocode reader counts like a declared one: tool_search loads it, as the rules above assume.
 	const readers = ["read", "bash"] as const;
 	// The skill tool loads a skill by name and needs no file reader, so it comes first.
 	const skillFileReadTool = declaredTools.includes("skill")
 		? "skill"
-		: [...declaredTools, ...deferredTools].some(isOctocodeReader)
+		: declaredTools.some(isOctocodeReader)
 			? "octocode"
 			: (readers.find((tool) => declaredTools.includes(tool)) ??
 				(readers.some((tool) => selectedTools.includes(tool)) || selectedTools.some(isOctocodeReader)
@@ -194,6 +209,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		if (skillsPrompt) promptSections.skills = skillsPrompt;
 	}
 	promptSections.cwd = cwd.replace(/\\/g, "/");
+	if (environment) promptSections.environment = environment;
 	// An empty custom section removes the default section of that name.
 	for (const [name, content] of Object.entries(customSections)) {
 		if (content) promptSections[name] = content;

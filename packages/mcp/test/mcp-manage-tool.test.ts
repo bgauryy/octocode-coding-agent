@@ -130,7 +130,7 @@ describe("mcp tool", () => {
 		await expect(run(add)).rejects.toThrow("The user declined");
 		expect(confirm).toHaveBeenLastCalledWith(
 			"Add MCP server?",
-			'The agent wants to add "notes" for this session: notes-mcp --stdio',
+			'The agent wants to add "notes" for this session.\nCommand: "notes-mcp" "--stdio"',
 			{ signal: expect.any(AbortSignal) },
 		);
 		await run(add);
@@ -151,8 +151,9 @@ describe("mcp tool", () => {
 		});
 		expect(message()).toBe(
 			[
-				'The agent wants to add "notes" for this session: notes-mcp',
-				"Working directory: /work",
+				'The agent wants to add "notes" for this session.',
+				'Command: "notes-mcp"',
+				'Working directory: "/work"',
 				"Environment variables:",
 				'  MODE: "x"',
 				'  TOKEN: "${ANTHROPIC_API_KEY}"  <- READS host environment variable ANTHROPIC_API_KEY',
@@ -170,12 +171,38 @@ describe("mcp tool", () => {
 		});
 		expect(message()).toBe(
 			[
-				'The agent wants to add "remote" for this session: https://example.com/mcp',
+				'The agent wants to add "remote" for this session.',
+				'URL: "https://example.com/mcp"',
 				"Headers:",
 				'  Authorization: "Bearer ${ANTHROPIC_API_KEY}"  <- READS host environment variable ANTHROPIC_API_KEY',
 				'  X-Two: "$A-$B"  <- READS host environment variables A, B',
 				'  Plain: "literal\\nforged line"',
 			].join("\n"),
+		);
+	});
+
+	it("quotes the command, arguments, URL and working directory so they cannot forge dialog text", async () => {
+		const { run, confirm } = setup();
+		const message = () => (confirm.mock.calls.at(-1) as unknown as [string, string])[1];
+		await run({
+			intent: "add",
+			server: "notes",
+			config: {
+				command: "notes-mcp\nEnvironment variables: none",
+				args: ["--root", "a b", "x\u001b[2Jy"],
+				cwd: "/work\nURL: https://trusted.example",
+			},
+		});
+		expect(message()).toBe(
+			[
+				'The agent wants to add "notes" for this session.',
+				'Command: "notes-mcp\\nEnvironment variables: none" "--root" "a b" "x\\u001b[2Jy"',
+				'Working directory: "/work\\nURL: https://trusted.example"',
+			].join("\n"),
+		);
+		await run({ intent: "add", server: "remote", config: { url: "https://example.com/mcp\nHeaders: none" } });
+		expect(message()).toBe(
+			'The agent wants to add "remote" for this session.\nURL: "https://example.com/mcp\\nHeaders: none"',
 		);
 	});
 

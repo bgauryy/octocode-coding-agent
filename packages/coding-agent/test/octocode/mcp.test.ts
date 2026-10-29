@@ -147,12 +147,10 @@ describe("Octocode tool results and rendering", () => {
 		expect(await toToolResult("t", structured, false)).not.toHaveProperty("structuredContent");
 	});
 
-	it("keeps local research direct when the host defers other tools", () => {
-		const exposure = (name: string) =>
-			octocodeToolDefinition({ ...tool, name }, { ...binding, exposure: "deferred" }).exposure;
-		for (const name of ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"])
-			expect(exposure(name)).toBe("direct");
-		for (const name of ["ghSearchCode", "artifactSearch", "ghStructure"]) expect(exposure(name)).toBe("deferred");
+	it("gives every Octocode tool the host's shared exposure", () => {
+		for (const exposure of ["direct", "hidden"] as const)
+			for (const name of ["localFetch", "ghSearchCode", "artifactSearch"])
+				expect(octocodeToolDefinition({ ...tool, name }, { ...binding, exposure }).exposure).toBe(exposure);
 	});
 
 	it("defines the Octocode tool from the listed tool: name, schema, declared output", async () => {

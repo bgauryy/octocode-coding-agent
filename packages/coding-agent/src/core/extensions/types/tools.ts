@@ -67,13 +67,12 @@ export interface ToolRenderContext<TState = any, TArgs = any> {
  * - `direct`: declared to the model while active, and callable while active.
  * - `model-only`: declared to the model while active, never callable. Use it for orchestrating or
  *   interactive tools.
- * - `deferred`: callable whenever registered; declared only after discovery or explicit activation.
  * - `hidden`: registered but unreachable. Activating it has no effect.
  *
- * `direct` and `model-only` tools are activated when they are registered; the others are not.
- * The active tool set (`getActiveTools`/`setActiveTools`) is the set declared to the model.
+ * `direct` and `model-only` tools are activated when they are registered (unless `defaultActive` is false);
+ * `hidden` tools are not. The active tool set (`getActiveTools`/`setActiveTools`) is the set declared to the model.
  */
-export type ToolExposure = "direct" | "model-only" | "deferred" | "hidden";
+export type ToolExposure = "direct" | "model-only" | "hidden";
 
 /**
  * Hints about what a tool does, with the meaning of MCP tool annotations. They come from the tool's
@@ -94,10 +93,6 @@ export interface ToolAnnotations {
 export interface ToolNamespace {
 	/** For example `mcp__docs`. */
 	name: string;
-	/**
-	 * Other names that refer to the namespace where tools look it up by name (namespace discovery and the `namespace` option of `tool_search`), for example `docs`.
-	 */
-	aliases?: readonly string[];
 	/** Short summary shown once with the group in model-facing tool listings. */
 	description?: string;
 	/**
@@ -150,6 +145,13 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	parameters: TParams;
 	/** Optional provider-side constrained sampling request for this tool. Set false to explicitly disable it, equivalent to leaving it undefined. */
 	constrainedSampling?: false | ConstrainedSamplingConfig;
+	/**
+	 * Schema that call arguments are validated against when it differs from `parameters`: a tool declared with a thin
+	 * stub keeps its exact contract here. Never sent to the provider.
+	 */
+	validationParameters?: TSchema;
+	/** Text appended to this tool's validation failures, such as its typed signature. Never sent to the provider. */
+	validationHint?: () => string | undefined;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */
 	renderShell?: "default" | "self";
 
@@ -169,15 +171,6 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 
 	/** Group the tool belongs to, for example its MCP server. */
 	namespace?: ToolNamespace;
-
-	/**
-	 * For tools that reach other tools (such as `tool_search`, which
-	 * loads them): which tools a call with `input` may reach. `"all"`, or the words of the input that
-	 * may name them, where a word refers to a tool or namespace whose name it contains, so words may
-	 * over-match. Extensions that register tools late, such as MCP servers that are still connecting,
-	 * use it from their `tool_call` handler to finish registering those tools before the call runs.
-	 */
-	reachesTools?: (input: Record<string, unknown>) => "all" | readonly string[];
 
 	/** Hints about what the tool does, for example from an MCP server. */
 	annotations?: ToolAnnotations;
@@ -255,7 +248,7 @@ export function defineTool<TParams extends TSchema, TDetails = unknown, TState =
 /** Tool info with name, description, parameter schema, prompt guidelines, and source metadata. */
 export type ToolInfo = Pick<
 	ToolDefinition,
-	"name" | "description" | "parameters" | "outputSchema" | "promptGuidelines" | "reachesTools"
+	"name" | "description" | "parameters" | "outputSchema" | "promptGuidelines"
 > & {
 	exposure: ToolExposure;
 	namespace?: ToolNamespace;

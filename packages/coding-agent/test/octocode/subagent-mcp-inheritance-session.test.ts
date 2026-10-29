@@ -197,10 +197,10 @@ it("starts a child with the server the parent's mcp tool added, without writing 
 		const result = f.session.messages.findLast((m) => m.role === "toolResult");
 		expect(result?.isError, JSON.stringify(result)).not.toBe(true);
 
-		// The child's first request lists the server in its mcp_servers section and declares its tools.
+		// The child's first request carries the server's contract section and declares its tools.
 		expect(f.requests).toHaveLength(1);
 		const request = JSON.stringify(f.requests[0]);
-		expect(request).toMatch(/mcp_servers[\s\S]*echo/);
+		expect(request).toContain("mcp_contract_echo");
 		expect(declaredTools(f.requests[0])).toContain("mcp__echo__shout");
 		// No second confirmation for the child, and nothing was persisted.
 		expect(f.confirmations).toHaveLength(1);

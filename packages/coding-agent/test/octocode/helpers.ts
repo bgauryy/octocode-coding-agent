@@ -51,3 +51,10 @@ export function pixelSize(image: string | Uint8Array): { width: number; height: 
 		decoded.free();
 	}
 }
+
+/** Every prompt section an event's handlers wrote: base sections (cached with the tools) first, then the session's. */
+export function allSections(event: {
+	systemPromptOptions: { sections: Record<string, string>; baseSections?: Record<string, string> };
+}): Record<string, string> {
+	return { ...event.systemPromptOptions.baseSections, ...event.systemPromptOptions.sections };
+}

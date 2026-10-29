@@ -11,6 +11,8 @@ export const MEMORY_HEADER =
 /** Characters of pinned memories per injection, and of everything injected at once. */
 export const PINNED_BUDGET = 1200;
 export const TOTAL_BUDGET = 2400;
+/** Unseen pinned memories read per injection: more than the shortest lines that fit `PINNED_BUDGET`. */
+const PINNED_WINDOW = 50;
 /** A hit scoring below this share of the best hit is noise. */
 const RELATIVE_THRESHOLD = 0.3;
 /** Shorter prompt words (`ts`, `ok`) match too much by chance to pull a memory in. */
@@ -117,8 +119,14 @@ export function selectInjection(
 		used += line.length + 1;
 		return true;
 	};
-	if (options.pinned !== false)
-		for (const memory of store.list(options.scope, 50, { pinnedOnly: true })) take(memory, PINNED_BUDGET);
+	// Pinned memories that do not fit wait for a later prompt; the model is told how many instead of meeting silence. Seen
+	// ones are left out of the listing, so each prompt reaches the next ones, and the count covers every one held back.
+	let heldBack = 0;
+	if (options.pinned !== false) {
+		const unseen = { pinnedOnly: true, exclude: options.seen };
+		for (const memory of store.list(options.scope, PINNED_WINDOW, unseen)) take(memory, PINNED_BUDGET);
+		heldBack = store.count(options.scope, unseen) - ids.length;
+	}
 	const words = terms(options.query, MAX_QUERY_TERMS).filter((word) => word.length >= MIN_TERM_LENGTH);
 	const stems = new Set(words.map(stem));
 	const found =
@@ -132,7 +140,14 @@ export function selectInjection(
 		if (added >= options.topK || hit.score < best * RELATIVE_THRESHOLD) break;
 		if (take(hit, TOTAL_BUDGET)) added++;
 	}
-	return ids.length > 0 ? { content: [MEMORY_HEADER, ...lines].join("\n"), ids, updated } : undefined;
+	if (ids.length === 0) return undefined;
+	const note =
+		heldBack > 0
+			? [
+					`[${heldBack} more pinned ${heldBack === 1 ? "memory" : "memories"} did not fit here; call memory with op "list" to read them.]`,
+				]
+			: [];
+	return { content: [MEMORY_HEADER, ...lines, ...note].join("\n"), ids, updated };
 }
 
 /**

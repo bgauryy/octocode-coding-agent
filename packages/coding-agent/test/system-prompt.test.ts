@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
-import { buildSystemPrompt } from "../src/core/system-prompt.ts";
+import { buildSystemPrompt, buildSystemPromptSections, currentEnvironment } from "../src/core/system-prompt.ts";
 
 const testSkill: Skill = {
 	name: "test-skill",
@@ -39,23 +39,6 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).not.toContain("Use bash for file operations");
 	});
 
-	test("counts search tools that tool_search can load, so loading one keeps the rules unchanged", () => {
-		const base = { cwd: "/tmp", contextFiles: [], skills: [] };
-		const deferred = buildSystemPrompt({
-			...base,
-			selectedTools: ["bash", "tool_search"],
-			deferredTools: ["mcp__octocode__localSearch"],
-		});
-		expect(deferred).not.toContain("Use bash for file operations");
-		const loaded = buildSystemPrompt({
-			...base,
-			selectedTools: ["bash", "tool_search", "mcp__octocode__localSearch"],
-			deferredTools: [],
-		});
-		expect(loaded.match(/<rules>[\s\S]*<\/rules>/)?.[0]).toBe(deferred.match(/<rules>[\s\S]*<\/rules>/)?.[0]);
-		expect(buildSystemPrompt({ ...base, selectedTools: ["bash"] })).toContain("Use bash for file operations");
-	});
-
 	test.each(["mcp__octocode__localFetch", "mcp__octocode__localGetFileContent"])(
 		"loads skills through %s without read or bash",
 		(reader) => {
@@ -76,7 +59,8 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain(
 			"Use the skill tool with a skill's name to load it when the task matches its description.",
 		);
-		expect(prompt).toContain("resolve it against the skill directory the tool returns");
+		// The skill tool's description owns how a loaded skill's relative paths resolve.
+		expect(prompt).not.toContain("resolve it against the skill directory");
 		expect(prompt).not.toMatch(/Use Octocode localFetch|Use bash to load|localGetFileContent/);
 		// The tool needs no file reader.
 		expect(
@@ -289,21 +273,6 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("Use bash to load a skill's file");
 		});
 
-		test("names a deferred Octocode reader and keeps skills when it is the only reader", () => {
-			const build = (selectedTools: string[]) =>
-				buildSystemPrompt({
-					selectedTools,
-					deferredTools: ["mcp__octocode__localFetch"],
-					contextFiles: [],
-					skills: [testSkill],
-					cwd: process.cwd(),
-				});
-			expect(build(["tool_search"])).toContain("<available_skills>");
-			expect(build(["tool_search"])).toContain("Use Octocode localFetch");
-			expect(build(["bash", "tool_search"])).toContain("Use Octocode localFetch");
-			expect(build(["bash", "tool_search"])).not.toContain("Use bash to load a skill's file");
-		});
-
 		test("omits skills without read or bash", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: ["write"],
@@ -344,5 +313,77 @@ describe("buildSystemPrompt", () => {
 			expect(build(["read"])).toContain("Use bash to load a skill's file");
 			expect(build([])).toContain("Use the read tool to load a skill's file");
 		});
+	});
+});
+
+describe("environment section", () => {
+	test("names the platform, the shell and the local date", () => {
+		const text = currentEnvironment(new Date(2026, 9, 28, 23, 30), { SHELL: "/bin/zsh" });
+		expect(text).toBe(`Platform: ${process.platform} ${process.arch}\nShell: zsh\nDate: 2026-10-28`);
+	});
+
+	test("is the last default section when given, and absent otherwise", () => {
+		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [], skills: [] };
+		expect(Object.keys(buildSystemPromptSections(base))).not.toContain("environment");
+		const sections = buildSystemPromptSections({ ...base, environment: "Date: 2026-10-28" });
+		expect(Object.keys(sections).at(-1)).toBe("environment");
+		expect(sections.environment).toBe("<environment>\nDate: 2026-10-28\n</environment>");
+	});
+});
+
+describe("base sections", () => {
+	const base = {
+		cwd: "/tmp",
+		selectedTools: ["bash"],
+		contextFiles: [{ path: "/tmp/AGENTS.md", content: "Project rules." }],
+		skills: [],
+		appendSystemPrompt: "Addendum.",
+		environment: "Date: 2026-10-28",
+		sections: { octocode: "Policy." },
+		baseSections: { mcp_contract_docs: "docs file", mcp_contract_octocode: "octocode file" },
+	};
+
+	test("follow docs in the given order, ahead of the addendum, project context and custom sections", () => {
+		expect(Object.keys(buildSystemPromptSections(base))).toEqual([
+			"preamble",
+			"tools",
+			"rules",
+			"docs",
+			"mcp_contract_docs",
+			"mcp_contract_octocode",
+			"addendum",
+			"project_context",
+			"cwd",
+			"environment",
+			"octocode",
+		]);
+		expect(buildSystemPromptSections(base).mcp_contract_docs).toBe(
+			"<mcp_contract_docs>\ndocs file\n</mcp_contract_docs>",
+		);
+	});
+
+	test("follow the preamble of a custom prompt, and stay after rules when a subagent removes docs", () => {
+		expect(Object.keys(buildSystemPromptSections({ ...base, customPrompt: "Custom." })).slice(0, 3)).toEqual([
+			"preamble",
+			"mcp_contract_docs",
+			"mcp_contract_octocode",
+		]);
+		const child = buildSystemPromptSections({ ...base, sections: { docs: "" } });
+		expect(Object.keys(child).slice(0, 5)).toEqual([
+			"preamble",
+			"tools",
+			"rules",
+			"mcp_contract_docs",
+			"mcp_contract_octocode",
+		]);
+	});
+
+	test("reject invalid section names and drop empty ones", () => {
+		expect(() => buildSystemPromptSections({ ...base, baseSections: { "Bad Name": "x" } })).toThrow(
+			"Invalid system prompt section name",
+		);
+		expect(Object.keys(buildSystemPromptSections({ ...base, baseSections: { mcp_contract_docs: "" } }))).not.toContain(
+			"mcp_contract_docs",
+		);
 	});
 });

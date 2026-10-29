@@ -8,7 +8,8 @@ import { browserPreset } from "../src/presets/browser/index.ts";
 import { browserLaunch, browserMcpEntry } from "../src/presets/browser/launch.ts";
 import { BROWSER_SERVER } from "../src/presets/browser/names.ts";
 import { withStructuredText } from "../src/presets/browser/tools.ts";
-import { createMcpToolName } from "../src/tools.ts";
+import { getMcpSessionStatus } from "../src/status.ts";
+import { createMcpToolName } from "../src/tool-names.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 
@@ -37,7 +38,8 @@ describe("browser MCP preset", () => {
 	it("supplies the launch only for its own default entry", () => {
 		const preset = browserPreset();
 		const [entry] = presetEntries([preset]);
-		expect(entry).toMatchObject({ name: BROWSER_SERVER, scope: "default", config: { exposure: "auto" } });
+		expect(entry).toMatchObject({ name: BROWSER_SERVER, scope: "default", config: { defaultActive: false } });
+		expect(entry.config.exposure).toBeUndefined();
 		expect(preset.prepareLaunch!(entry, "/work", true).config).toMatchObject({
 			args: [browserMcpEntry()],
 			cwd: "/work",
@@ -80,9 +82,27 @@ describe("browser MCP preset", () => {
 		expect(withStructuredText(plain)).toBe(plain);
 	});
 
+	it("is not started where no tool selection names it, and says so", async () => {
+		const host = mcpHost({ presets: [browserPreset()], cwd: tmp() });
+		hosts.push(host);
+		// The main agent's selection: tools active by default only.
+		host.pi.selectsTools = (_prefix: string, activeByDefault: boolean) => activeByDefault;
+		await host.start();
+		const server = host.state.findServer(BROWSER_SERVER)!;
+		expect(server.unselected).toBe(true);
+		expect(server.connection).toBeUndefined();
+		expect(host.transports).toHaveLength(0);
+		expect(getMcpSessionStatus(host.pi.events)).toMatchObject([{ name: BROWSER_SERVER, state: "unselected" }]);
+		const sections = await host.prompt();
+		expect(Object.keys(sections).filter((name) => name.startsWith("mcp_"))).toEqual([]);
+	});
+
 	it("lists the real server's tools and returns schema evidence the model can read", async () => {
 		const host = mcpHost({ presets: [browserPreset()], cwd: tmp() });
 		hosts.push(host);
+		// The browser subagent's selection names mcp__browser__*, which activates the tools that are off by default.
+		host.pi.getActiveTools = () =>
+			[...host.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 		await host.start();
 		const sections = await host.prompt();
 		const server = host.state.findServer(BROWSER_SERVER)!;

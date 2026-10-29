@@ -2,7 +2,7 @@
 
 Codemode and its JavaScript executor have been removed. MCP tools are called natively through the host permission and cancellation pipeline. See [MCP](mcp.md#control-tool-exposure).
 
-Remove `codemode` from `defaultTools`, `--tools`, and explicit extension lists. The `codemode` settings object and `autoEnableCodemode` no longer have an effect. Old MCP `codemode` and `codemode-deferred` exposure values are read as `deferred`; use `auto` for automatic direct/deferred selection.
+Remove `codemode` from `defaultTools`, `--tools`, and explicit extension lists. The `codemode` settings object and `autoEnableCodemode` no longer have an effect. Old MCP `codemode` and `codemode-deferred` exposure values are configuration errors, as are `auto` and `deferred`: use `direct` or `hidden`, and `defaultActive` to give a server to some agents only ([assign servers to agents](mcp.md#assign-servers-to-agents)).
 
 The SDK no longer exports `createCodemodeExtension` or codemode result types. Extensions can still call tools through `ctx.executeTool()`, and call classifier/image APIs through `ctx.modelRegistry`; see [Extensions](extensions.md) and [Models](models.md).
 

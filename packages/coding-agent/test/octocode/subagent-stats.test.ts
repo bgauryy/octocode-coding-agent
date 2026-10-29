@@ -177,6 +177,6 @@ describe("/agents stats command", () => {
 		expect(notes.at(-1)?.type).toBe("info");
 		expect(notes.at(-1)?.message).toContain("researcher — 3 runs");
 		await command.handler("bogus", ctx as never);
-		expect(notes.at(-1)?.message).toContain("| stats]");
+		expect(notes.at(-1)?.message).toContain("| stats | history]");
 	});
 });

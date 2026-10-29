@@ -12,6 +12,7 @@ import {
 	MemoryError,
 	type MemoryStore,
 	memoryLine,
+	memoryTags,
 	memoryToolLine,
 	noMemory,
 	refuseMemorySecrets,
@@ -21,6 +22,9 @@ import { timedTool, timingOf } from "../shared/render/rows.ts";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
+
+/** Why an agent's global or pinned change asks: the system's reason line on the card. */
+const WIDE_REASON = "A global or pinned memory is injected into later sessions, untrusted projects included.";
 
 /** A note under reads in an untrusted project, where project memories stay hidden as they do from auto-injection. */
 const HIDDEN_NOTE = "(untrusted project: project memories are hidden; only global ones are shown)";
@@ -35,7 +39,7 @@ function memoryPrompt(subagent: boolean): {
 	const description =
 		// The same text for every role, so parent and child declare identical bytes; a subagent's limit is stated when it hits it.
 		"Durable decisions and preferences across sessions: search, read and, where `op` allows, save. " +
-		"Near-duplicates and secrets are refused; global or pinned changes need a trusted project. " +
+		"Near-duplicates and secrets are refused; global or pinned changes need a trusted project and the user's approval. " +
 		"An untrusted project shows only global memories.";
 	const ops =
 		"search: relevant notes by query; get: full note by id; list: pinned notes first, then newest" +
@@ -94,8 +98,10 @@ function listText(memories: readonly Memory[], empty: string): string {
 /**
  * Registers the `memory` tool over the store `storeFor(ctx)` opens (one per repository). A subagent may only read: its
  * parent decides what is worth remembering. Global and pinned memories reach every session, so changing them needs a
- * trusted project (an invariant no mode skips, recorded in the audit); a save in a trusted project is immediate. An
- * untrusted project reads only global memories, matching what auto-injection shows there.
+ * trusted project (an invariant no mode skips, recorded in the audit) and then the user's approval through the
+ * permission check, as a change that runs in later sessions (`file.outside`): denied, or with no one to ask, nothing
+ * changes. A plain project memory saves at once. An untrusted project reads only global memories, matching what
+ * auto-injection shows there. `/memory` is the user's own command and never asks.
  */
 export function registerMemoryTool(
 	pi: ExtensionAPI,
@@ -158,7 +164,7 @@ export function registerMemoryTool(
 						}),
 					),
 				}),
-				async execute(_toolCallId, input, signal, _onUpdate, ctx) {
+				async execute(toolCallId, input, signal, _onUpdate, ctx) {
 					// The subagent schema omits the set-only fields; set is refused there before they are read.
 					const params = input as MemoryParams;
 					signal?.throwIfAborted();
@@ -173,6 +179,23 @@ export function registerMemoryTool(
 						const refusal = `Refused: ${what} is shared with every session, and this is an untrusted project. Ask the user to /trust it, or save a plain project memory.`;
 						options.permission.refused([`memory ${what}`], refusal, "memory");
 						throw new MemoryError(refusal);
+					};
+					/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. */
+					const confirmWide = async (wide: boolean, title: string, what: string[], effect: string) => {
+						if (!wide) return;
+						const verdict = await options.permission.check(ctx, {
+							action: "file.outside",
+							title,
+							what,
+							reason: WIDE_REASON,
+							effect,
+							undo: "/memory edits or deletes it",
+							risk: "text this session read could steer every later session",
+							toolCallId,
+							cwd: ctx.cwd,
+							...(signal ? { signal } : {}),
+						});
+						if (!verdict.allowed) throw new MemoryError(verdict.message);
 					};
 					const id = params.id === undefined ? undefined : parseMemoryId(params.id);
 					if (params.id !== undefined && id === undefined) throw new Error(`"${params.id}" is not a memory id (M<n>).`);
@@ -222,8 +245,16 @@ export function registerMemoryTool(
 							// Reads hide project memories in an untrusted project; changing one by id must not reveal or touch it either.
 							if (current && !trusted && current.scope !== "global") throw noMemory(current.id);
 							if (params.op === "delete") {
-								if (current)
-									guardWide(current.scope === "global" || current.pinned, `deleting ${memoryLabel(current.id)}`);
+								if (current) {
+									const wide = current.scope === "global" || current.pinned;
+									guardWide(wide, `deleting ${memoryLabel(current.id)}`);
+									await confirmWide(
+										wide,
+										"Delete this shared memory?",
+										[`${memoryLabel(current.id)} (${memoryTags(current)}) ${current.title}`],
+										"removes a memory every later session receives",
+									);
+								}
 								const removed = store.delete(needId());
 								return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
 							}
@@ -234,6 +265,17 @@ export function registerMemoryTool(
 							// Refusals the store would raise come first, so the user is never asked about a save that then fails.
 							refuseMemorySecrets(params);
 							if (!current && !params.title?.trim()) throw new MemoryError("A new memory needs a title.");
+							const body = params.body ?? current?.body ?? "";
+							// Only what reaches every session after the change asks: unpinning or moving into the project narrows it.
+							await confirmWide(
+								global || pinned,
+								current ? "Change this shared memory?" : "Save this shared memory?",
+								[
+									`${current ? `${memoryLabel(current.id)} ` : ""}(${global ? "global" : "project"}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
+									...(body ? [body] : []),
+								],
+								`${current ? "changes" : "saves"} a memory every later session receives`,
+							);
 							const { memory, created } = store.set({
 								...(id !== undefined ? { id } : {}),
 								...(params.scope ? { scope: params.scope } : {}),

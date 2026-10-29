@@ -53,6 +53,7 @@ export function bindRunnerCore(
 	host.runtime.getAllTools = actions.getAllTools;
 	host.runtime.getSettings = actions.getSettings;
 	host.runtime.setActiveTools = actions.setActiveTools;
+	host.runtime.selectsTools = actions.selectsTools;
 	host.runtime.setToolPolicy = actions.setToolPolicy;
 	host.runtime.refreshTools = actions.refreshTools;
 	host.runtime.getCommands = actions.getCommands;

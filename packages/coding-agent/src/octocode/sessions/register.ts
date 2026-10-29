@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
 import { getAgentDir } from "../../config.ts";
@@ -10,6 +11,7 @@ import { repoKey } from "../shared/home/repo.ts";
 import { expandKey, plural } from "../shared/render/text.ts";
 import { errorMessage } from "../../utils/guards.ts";
 import { sanitizeTerminalText } from "../shared/sanitize.ts";
+import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
 import {
 	addUsage,
 	contentText,
@@ -116,6 +118,29 @@ function registerRunningWork(pi: ExtensionAPI): void {
 	});
 }
 
+/**
+ * Ids of the subagents whose reports wait for this session's start (`reports/pending`, saved or being delivered): they
+ * did not stop without a report, it arrives as a message. Empty when there are none or they cannot be read.
+ */
+function pendingReportIds(sessionId: string): Set<string> {
+	const ids = new Set<string>();
+	try {
+		const dir = pendingReportsDir(sessionId);
+		for (const name of fs.readdirSync(dir)) {
+			if (!name.endsWith(".json") && !name.includes(`.json${CLAIM_MARKER}`)) continue;
+			try {
+				const id: unknown = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"))?.details?.id;
+				if (typeof id === "string") ids.add(id);
+			} catch {
+				// Delivered (removed) meanwhile, or not a report.
+			}
+		}
+	} catch {
+		// No reports wait for this session.
+	}
+	return ids;
+}
+
 const hasUserMessage = (entries: readonly Entry[]) =>
 	entries.some((entry) => entry.type === "message" && entry.message?.role === "user");
 
@@ -182,7 +207,13 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 			const resumed = event?.reason === "resume" || (event?.reason === "startup" && hasUserMessage(entries));
 			const at = lastActive(entries);
 			// Work the earlier process started and never reported: it stopped with that process (a crash, or a report lost).
-			const unreported = resumed ? unreportedWork(branchOf(ctx)).map((work) => describeWork(work)) : [];
+			// A subagent whose report waits for this start is not one: its report is delivered as a message.
+			const late = resumed ? pendingReportIds(id) : new Set<string>();
+			const unreported = resumed
+				? unreportedWork(branchOf(ctx))
+						.filter((work) => work.kind !== "agent" || !late.has(work.id))
+						.map((work) => describeWork(work))
+				: [];
 			if (resumed && at !== undefined) {
 				const recorded = { branch: previous?.branch ?? null, head: previous?.head ?? null };
 				pending = {
@@ -193,12 +224,13 @@ export function registerSessions(pi: ExtensionAPI, options: SessionsOptions): vo
 					...(unreported.length > 0 ? { unreported } : {}),
 				};
 			}
-			sessions.start(id);
+			// The row keeps the dir its session runs from: the sweep keeps the session while that dir cannot be read.
+			const sessionDir = ctx.sessionManager.getSessionDir?.();
+			const dir = sessionDir ? path.resolve(sessionDir) : undefined;
+			sessions.start(id, dir);
 			// Octocode's default listing misses sessions kept under --session-dir: the sweep must list that dir too, or it removes their folders.
 			// Octocode's own listing covers every folder of `<agent dir>/sessions`; any other dir is recorded.
-			const dir = ctx.sessionManager.getSessionDir?.();
-			if (dir && path.dirname(path.resolve(dir)) !== path.join(getAgentDir(), "sessions"))
-				sessions.addSessionDir(path.resolve(dir));
+			if (dir && path.dirname(dir) !== path.join(getAgentDir(), "sessions")) sessions.addSessionDir(dir);
 			// Off the start path; at most once per 6 h across all sessions.
 			const env = { ...process.env };
 			setImmediate(() => {

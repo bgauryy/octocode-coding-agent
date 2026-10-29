@@ -1,11 +1,9 @@
 import { REPORT_STATUSES } from "../instructions/report.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
+import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { plural } from "../shared/render/text.ts";
 import { entryMessage, finiteOrZero } from "../shared/util.ts";
 import { isRecord } from "../../utils/guards.ts";
-
-/** The `custom_message` type of a background subagent's report (`handoff.ts` `RESULT_TYPE`). */
-const RESULT_CUSTOM_TYPE = "octocode-agent-result";
 
 type StatsOutcome = (typeof REPORT_STATUSES)[number] | "unknown";
 
@@ -70,7 +68,7 @@ function runOf(entry: unknown): Run | undefined {
 	if (!isRecord(message) || !isRecord(message.details)) return undefined;
 	const details = message.details;
 	if (message.role === "custom") {
-		if (message.customType !== RESULT_CUSTOM_TYPE || typeof details.id !== "string") return undefined;
+		if (message.customType !== AGENT_RESULT_TYPE || typeof details.id !== "string") return undefined;
 		return { foreground: false, details, usage: isRecord(details.usage) ? details.usage : undefined };
 	}
 	if (message.role !== "toolResult" || message.toolName !== "agent") return undefined;

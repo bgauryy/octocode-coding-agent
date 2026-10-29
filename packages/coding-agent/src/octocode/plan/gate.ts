@@ -40,6 +40,5 @@ export function planningRefusal(
 		)
 	)
 		return undefined;
-	if (event.toolName === "tool_search" && definition?.sourceInfo.path === "builtin:tool-search") return undefined;
 	return `Plan mode blocks ${event.toolName}. Use native research tools and questions; only the user can leave with /plan --off or approve the displayed revision.`;
 }
